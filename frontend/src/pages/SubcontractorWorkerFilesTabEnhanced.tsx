@@ -5,6 +5,7 @@ import { api, withFileAccessToken } from '@/lib/api';
 import ImageEditor from '@/components/ImageEditor';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { AppCard, AppSectionHeader, appSectionPresetProps } from '@/components/ui';
 
 export type ClientFileForFiles = { id: string; file_object_id: string; is_image?: boolean; content_type?: string; category?: string; original_name?: string; uploaded_at?: string; site_id?: string };
 
@@ -319,44 +320,41 @@ export function SubcontractorWorkerFilesTabEnhanced({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
-              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-            </div>
-            <h2 className="text-sm font-semibold text-gray-900">Files</h2>
-          </div>
-          {isAdmin && (
-            <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-50" role="tablist" aria-label="File views">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={filesSection === 'active'}
-                onClick={() => setFilesSection('active')}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  filesSection === 'active' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Library
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={filesSection === 'deleted'}
-                onClick={() => setFilesSection('deleted')}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  filesSection === 'deleted' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Deleted files
-              </button>
-            </div>
-          )}
-        </div>
-
+      <AppCard>
+        <AppSectionHeader
+          title="Documents"
+          description="Insurance, IDs, certifications, and other files for this worker."
+          {...appSectionPresetProps('documents')}
+          action={
+            isAdmin ? (
+              <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-50" role="tablist" aria-label="File views">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={filesSection === 'active'}
+                  onClick={() => setFilesSection('active')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    filesSection === 'active' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Library
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={filesSection === 'deleted'}
+                  onClick={() => setFilesSection('deleted')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    filesSection === 'deleted' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Deleted files
+                </button>
+              </div>
+            ) : undefined
+          }
+        />
+        <div className="mt-4">
         {isAdmin && filesSection === 'deleted' ? (
           <div className="rounded-xl border border-amber-100 bg-amber-50/50 overflow-hidden">
             <p className="text-xs text-amber-900 px-3 py-2 border-b border-amber-100/80">
@@ -661,7 +659,8 @@ export function SubcontractorWorkerFilesTabEnhanced({
           </div>
         </div>
         )}
-      </div>
+        </div>
+      </AppCard>
       {showUpload && (
         <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
           <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>

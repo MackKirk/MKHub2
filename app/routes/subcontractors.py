@@ -441,6 +441,32 @@ def _company_row_to_dict(
     return _attach_logo_url(d, logo_file)
 
 
+@router.get("/companies/locations")
+def get_company_locations(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Distinct city and province values for filter dropdowns."""
+    _require_subcontractor_access(user)
+    city_rows = (
+        db.query(SubcontractorCompany.city)
+        .filter(SubcontractorCompany.city.isnot(None), SubcontractorCompany.city != "")
+        .distinct()
+        .order_by(SubcontractorCompany.city.asc())
+        .all()
+    )
+    province_rows = (
+        db.query(SubcontractorCompany.province)
+        .filter(SubcontractorCompany.province.isnot(None), SubcontractorCompany.province != "")
+        .distinct()
+        .order_by(SubcontractorCompany.province.asc())
+        .all()
+    )
+    cities = sorted({str(r[0]).strip() for r in city_rows if r[0] and str(r[0]).strip()})
+    provinces = sorted({str(r[0]).strip() for r in province_rows if r[0] and str(r[0]).strip()})
+    return {"cities": cities, "provinces": provinces}
+
+
 @router.get("/companies")
 def list_companies(
     page: int = Query(1, ge=1),
@@ -452,6 +478,11 @@ def list_companies(
         None,
         description="active|inactive|all; legacy include_inactive=true is equivalent to all",
     ),
+    status_not: Optional[str] = Query(None, description="Exclude active or inactive"),
+    city: Optional[str] = Query(None),
+    city_not: Optional[str] = Query(None),
+    province: Optional[str] = Query(None),
+    province_not: Optional[str] = Query(None),
     include_inactive: bool = Query(False, description="Legacy: false = active only, true = all"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -473,6 +504,22 @@ def list_companies(
         base = base.filter(SubcontractorCompany.is_active.is_(True))
     elif eff_status == "inactive":
         base = base.filter(SubcontractorCompany.is_active.is_(False))
+
+    if status_not:
+        stn = str(status_not).strip().lower()
+        if stn == "active":
+            base = base.filter(SubcontractorCompany.is_active.is_(False))
+        elif stn == "inactive":
+            base = base.filter(SubcontractorCompany.is_active.is_(True))
+
+    if city:
+        base = base.filter(SubcontractorCompany.city == city)
+    if city_not:
+        base = base.filter(SubcontractorCompany.city != city_not)
+    if province:
+        base = base.filter(SubcontractorCompany.province == province)
+    if province_not:
+        base = base.filter(SubcontractorCompany.province != province_not)
 
     if q and str(q).strip():
         term = f"%{str(q).strip()}%"
@@ -580,6 +627,204 @@ def get_company(
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
     return _company_to_dict(c)
+
+
+@router.get("/companies/{company_id}/activity-feed")
+def company_activity_feed(
+    company_id: uuid.UUID,
+    limit: int = Query(80, ge=1, le=500),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(user)
+    c = db.query(SubcontractorCompany).filter(SubcontractorCompany.id == company_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Company not found")
+    items: List[dict[str, Any]] = []
+
+    if c.created_at:
+        items.append(
+            {
+                "type": "company_created",
+                "at": c.created_at.isoformat(),
+                "title": "Company added",
+                "subtitle": c.name,
+            }
+        )
+
+    company_files = (
+        db.query(SubcontractorCompanyFile)
+        .filter(SubcontractorCompanyFile.company_id == company_id)
+        .all()
+    )
+    for cf in company_files:
+        label = cf.original_name or cf.key or "Document"
+        if cf.uploaded_at:
+            items.append(
+                {
+                    "type": "document_uploaded",
+                    "at": cf.uploaded_at.isoformat(),
+                    "title": "Document uploaded",
+                    "subtitle": label,
+                    "company_file_id": str(cf.id),
+                    "file_object_id": str(cf.file_object_id),
+                    "by_user_id": str(cf.uploaded_by) if cf.uploaded_by else None,
+                }
+            )
+        if cf.deleted_at:
+            items.append(
+                {
+                    "type": "document_removed",
+                    "at": cf.deleted_at.isoformat(),
+                    "title": "Document removed",
+                    "subtitle": label,
+                    "company_file_id": str(cf.id),
+                    "file_object_id": str(cf.file_object_id),
+                    "by_user_id": str(cf.deleted_by_id) if cf.deleted_by_id else None,
+                }
+            )
+
+    workers = (
+        db.query(SubcontractorWorker)
+        .filter(SubcontractorWorker.company_id == company_id)
+        .order_by(SubcontractorWorker.created_at.desc())
+        .all()
+    )
+    worker_ids = [w.id for w in workers]
+    workers_by_id = {str(w.id): w for w in workers}
+
+    for w in workers:
+        if w.created_at:
+            items.append(
+                {
+                    "type": "worker_added",
+                    "at": w.created_at.isoformat(),
+                    "title": "Worker added",
+                    "subtitle": w.name,
+                    "worker_id": str(w.id),
+                }
+            )
+
+    if worker_ids:
+        attendances = (
+            db.query(SubcontractorAttendance)
+            .filter(SubcontractorAttendance.worker_id.in_(worker_ids))
+            .order_by(SubcontractorAttendance.clock_in_time.desc())
+            .limit(200)
+            .all()
+        )
+        project_ids = list({a.project_id for a in attendances})
+        projects = (
+            {str(p.id): p for p in db.query(Project).filter(Project.id.in_(project_ids)).all()}
+            if project_ids
+            else {}
+        )
+        for a in attendances:
+            w = workers_by_id.get(str(a.worker_id))
+            wname = w.name if w else None
+            pname = projects[str(a.project_id)].name if projects.get(str(a.project_id)) else None
+            worker_part = wname or "Worker"
+            t_in = a.clock_in_entered_utc or a.clock_in_time
+            if t_in:
+                sub_parts = [p for p in [worker_part, pname] if p]
+                items.append(
+                    {
+                        "type": "clock_in",
+                        "at": t_in.isoformat(),
+                        "title": "Clock in",
+                        "subtitle": " · ".join(sub_parts) if sub_parts else None,
+                        "project_id": str(a.project_id),
+                        "attendance_id": str(a.id),
+                        "worker_id": str(a.worker_id),
+                        "by_user_id": str(a.clock_in_confirmed_by_user_id)
+                        if a.clock_in_confirmed_by_user_id
+                        else None,
+                    }
+                )
+            if a.clock_out_time:
+                t_out = a.clock_out_entered_utc or a.clock_out_time
+                th = a.total_hours
+                hours_f = float(th) if th is not None else None
+                sub_parts = [p for p in [worker_part, pname] if p]
+                items.append(
+                    {
+                        "type": "clock_out",
+                        "at": t_out.isoformat() if t_out else None,
+                        "title": "Clock out",
+                        "subtitle": " · ".join(sub_parts) if sub_parts else None,
+                        "project_id": str(a.project_id),
+                        "attendance_id": str(a.id),
+                        "worker_id": str(a.worker_id),
+                        "total_hours": hours_f,
+                        "by_user_id": str(a.clock_out_confirmed_by_user_id)
+                        if a.clock_out_confirmed_by_user_id
+                        else None,
+                    }
+                )
+
+        audit_rows = (
+            db.query(AuditLog)
+            .filter(
+                AuditLog.entity_type == "subcontractor_worker",
+                AuditLog.entity_id.in_(worker_ids),
+            )
+            .order_by(AuditLog.timestamp_utc.desc())
+            .limit(200)
+            .all()
+        )
+        for al in audit_rows:
+            w = workers_by_id.get(str(al.entity_id))
+            wname = w.name if w else None
+            ts = al.timestamp_utc
+            at_s = ts.isoformat() if ts is not None else None
+            ctx = al.context if isinstance(al.context, dict) else {}
+            summary = (ctx or {}).get("summary") or ""
+            detail_lines = (ctx or {}).get("detail_lines")
+            if not detail_lines and al.changes_json:
+                detail_lines = _worker_audit_diff_detail_lines(al.changes_json)
+            action = (al.action or "").upper()
+            if action == "CREATE":
+                title = "Worker created"
+                subtitle = wname or (ctx or {}).get("display_name") or summary or None
+            elif (ctx or {}).get("scope") == "worker_file":
+                title = "Worker document updated"
+                base = summary or "File metadata"
+                subtitle = f"{wname} · {base}" if wname and base else (wname or base or None)
+            else:
+                title = "Worker profile updated" if action == "UPDATE" else (action.title() or "Record")
+                base = summary or None
+                subtitle = f"{wname} · {base}" if wname and base else (wname or base or None)
+            items.append(
+                {
+                    "type": "audit",
+                    "at": at_s,
+                    "title": title,
+                    "subtitle": subtitle,
+                    "worker_id": str(al.entity_id) if al.entity_id else None,
+                    "by_user_id": str(al.actor_id) if al.actor_id else None,
+                    "audit_id": str(al.id),
+                    "audit_action": action,
+                    "detail_lines": detail_lines or [],
+                }
+            )
+
+    items = [x for x in items if x.get("at")]
+    uids: set[uuid.UUID] = set()
+    for it in items:
+        bid = it.get("by_user_id")
+        if not bid:
+            continue
+        try:
+            uids.add(uuid.UUID(str(bid)))
+        except Exception:
+            pass
+    unames = _activity_username_map(db, uids)
+    for it in items:
+        bid = it.get("by_user_id")
+        it["by_username"] = unames.get(str(bid)) if bid else None
+
+    items.sort(key=lambda x: x["at"], reverse=True)
+    return items[:limit]
 
 
 @router.patch("/companies/{company_id}")

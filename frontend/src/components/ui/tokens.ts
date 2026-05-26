@@ -170,6 +170,18 @@ export const uiDatePicker = {
   footerAction: 'text-xs font-medium text-brand-red hover:text-brand-red/80',
   triggerIcon:
     'pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400',
+  /** Clock In/Out card trigger — icon tile + overline + date (opens same portaled panel). */
+  triggerCard: uiCx(
+    'flex w-full items-center gap-2 bg-white text-left transition-colors hover:border-gray-300',
+    uiRadius.control,
+    uiBorders.input,
+    uiSpacing.controlX,
+    uiSpacing.controlY,
+  ),
+  triggerCardIcon: uiCx(
+    'flex h-7 w-7 flex-shrink-0 items-center justify-center bg-gray-100',
+    uiRadius.control,
+  ),
   monthYearTrigger:
     'inline-flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-gray-100',
   yearSection: 'px-3 pb-2',

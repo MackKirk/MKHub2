@@ -5,6 +5,8 @@ import {
   AppCalendarBase,
   AppCombobox,
   AppDatePicker,
+  AppTimePicker,
+  toIsoDateLocal,
   AppUserSelect,
   AppCard,
   AppEmptyState,
@@ -117,6 +119,10 @@ export default function DesignSystemShowcase() {
   const [showcaseOperator, setShowcaseOperator] = useState('');
   const [showcaseDepartmentsMulti, setShowcaseDepartmentsMulti] = useState<string[]>([]);
   const [showcaseDueDate, setShowcaseDueDate] = useState('');
+  const [showcaseCardDate, setShowcaseCardDate] = useState(() => toIsoDateLocal(new Date()));
+  const [showcaseTime, setShowcaseTime] = useState('');
+  const [showcaseTimeStart, setShowcaseTimeStart] = useState('');
+  const [showcaseTimeEnd, setShowcaseTimeEnd] = useState('');
   const [showcaseUserId, setShowcaseUserId] = useState('');
   const [showcaseUserIds, setShowcaseUserIds] = useState<string[]>([]);
   const [showcaseAttachment, setShowcaseAttachment] = useState<File | null>(null);
@@ -131,8 +137,7 @@ export default function DesignSystemShowcase() {
   );
 
   return (
-    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
-      <div className={uiCx('w-full', uiSpacing.pageStack)}>
+    <div className={uiCx(uiSpacing.pageStack, 'min-h-full w-full bg-gray-50')}>
         <AppPageHeader
           title="Design System Showcase"
           subtitle="MK Hub reusable enterprise UI foundation based on Human Resources User Details patterns."
@@ -482,9 +487,11 @@ export default function DesignSystemShowcase() {
                 <code className="text-[11px]">AppCombobox</code> when search is required.
               </p>
               <p className={uiTypography.helper}>
-                Dates: <code className="text-[11px]">AppDatePicker</code> — click the month label to pick month/year, then
-                choose a day. Portaled panel uses <code className="text-[11px]">uiDatePicker</code> (not the native browser
-                picker).
+                Dates: <code className="text-[11px]">AppDatePicker</code> — portaled calendar (
+                <code className="text-[11px]">uiDatePicker</code>, not the native browser picker).{' '}
+                <code className="text-[11px]">triggerVariant=&quot;default&quot;</code> for forms;{' '}
+                <code className="text-[11px]">triggerVariant=&quot;card&quot;</code> for page headers (Clock In/Out). Click
+                the month label in the panel to jump month/year.
               </p>
               <p className={uiTypography.helper}>
                 Projects: <code className="text-[11px]">AppProjectSelect</code> — searchable jobs from{' '}
@@ -546,6 +553,21 @@ export default function DesignSystemShowcase() {
                 onChange={(e) => setShowcaseDueDate(e.target.value)}
                 fieldHint="Due date\n\nOptional deadline for the task or request."
               />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <AppTimePicker
+                  id="showcase-start-time"
+                  label="Start time"
+                  value={showcaseTimeStart}
+                  onChange={(e) => setShowcaseTimeStart(e.target.value)}
+                  fieldHint="Start time\n\nUse AppTimePicker — not native type=time or loose Hour/Min selects."
+                />
+                <AppTimePicker
+                  id="showcase-end-time"
+                  label="End time"
+                  value={showcaseTimeEnd}
+                  onChange={(e) => setShowcaseTimeEnd(e.target.value)}
+                />
+              </div>
               <AppUserSelect
                 id="showcase-assignee"
                 mode="single"
@@ -681,6 +703,11 @@ export default function DesignSystemShowcase() {
                 <strong className="font-semibold text-gray-800">Quick Info</strong> — whole-modal help in the side panel;{' '}
                 <strong className="font-semibold text-gray-800">AppTooltip</strong> — dark hover on lists and icons
               </li>
+              <li>
+                <strong className="font-semibold text-gray-800">AppDatePicker</strong> /{' '}
+                <strong className="font-semibold text-gray-800">AppTimePicker</strong> — portaled date/time; see{' '}
+                <strong className="font-semibold text-gray-800">Date &amp; time pickers</strong> below
+              </li>
             </ul>
             <div className={uiCx('mt-4 flex flex-wrap gap-2', uiLayout.actionsRow)}>
               <AppButton onClick={() => setIsModalOpen(true)} variant="secondary" leftIcon={<ClipboardList className="h-4 w-4" />}>
@@ -783,7 +810,104 @@ quickInfo={formModalQuickInfo({
             />
           </AppCard>
 
-          <AppCard title="Calendar Base" subtitle="Visual-only calendar scaffold; no business logic included.">
+          <AppCard
+            title="Date & time pickers"
+            subtitle="AppDatePicker + AppTimePicker — portaled panels, shared form trigger. Prefer these over native date/time inputs."
+          >
+            <div className={uiSpacing.sectionStack}>
+              <AppSectionHeader
+                title="Date — AppDatePicker"
+                description="Card trigger for toolbars; default trigger in forms."
+              />
+              <div className="space-y-4">
+                <div>
+                  <p className={uiCx(uiTypography.controlLabel, 'mb-2')}>Card trigger (Clock In/Out)</p>
+                  <AppDatePicker
+                    id="showcase-card-date"
+                    value={showcaseCardDate}
+                    onChange={(e) => setShowcaseCardDate(e.target.value)}
+                    triggerVariant="card"
+                    triggerClassName="w-[220px]"
+                    aria-label="Select date"
+                  />
+                </div>
+                <div>
+                  <p className={uiCx(uiTypography.controlLabel, 'mb-2')}>Default trigger (forms)</p>
+                  <AppDatePicker
+                    id="showcase-due-date-inline"
+                    label="Due date (optional)"
+                    placeholder="yyyy-mm-dd"
+                    value={showcaseDueDate}
+                    onChange={(e) => setShowcaseDueDate(e.target.value)}
+                    fieldHint="Due date\n\nOptional deadline for the task or request."
+                  />
+                </div>
+              </div>
+
+              <AppSectionHeader
+                title="Time — AppTimePicker"
+                description="Encapsulated Hour / Min / AM·PM. Value is HH:mm (24h); trigger shows 12h (e.g. 9:30 AM)."
+                className="border-t border-gray-100 pt-4"
+              />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <AppTimePicker
+                  id="showcase-session-time"
+                  label="Session time"
+                  value={showcaseTime}
+                  onChange={(e) => setShowcaseTime(e.target.value)}
+                  fieldHint="Time\n\nPair with AppDatePicker for datetime-local strings (date + T + HH:mm)."
+                />
+                <div className={uiCx(uiTypography.helper, 'self-end rounded-lg border border-dashed border-gray-200 bg-gray-50/60 p-3')}>
+                  Stored value:{' '}
+                  <code className="text-[11px]">{showcaseTime || '—'}</code>
+                </div>
+              </div>
+
+              <div className={uiCx('rounded-lg border border-gray-200 bg-gray-50 p-3', uiRadius.control)}>
+                <div className={uiTypography.overline}>Do</div>
+                <ul className={uiCx(uiTypography.helper, 'mt-1 list-inside list-disc space-y-0.5')}>
+                  <li>
+                    Use <code className="text-[11px]">AppTimePicker</code> for start/end session times (Training,
+                    Timesheet clock in/out, etc.)
+                  </li>
+                  <li>
+                    <code className="text-[11px]">onChange</code> receives <code className="text-[11px]">HH:mm</code>{' '}
+                    (24-hour), same shape as a native time input
+                  </li>
+                  <li>AM/PM menu: only two options — AM and PM (no extra placeholder row)</li>
+                </ul>
+                <div className={uiCx(uiTypography.overline, 'mt-3')}>Avoid</div>
+                <ul className={uiCx(uiTypography.helper, 'mt-1 list-inside list-disc space-y-0.5')}>
+                  <li>
+                    <code className="text-[11px]">input type=&quot;time&quot;</code> in product forms
+                  </li>
+                  <li>Three separate <code className="text-[11px]">AppSelect</code> fields for hour, minute, and AM/PM</li>
+                  <li>Putting an empty “none” option in <code className="text-[11px]">options</code> when you already use{' '}
+                    <code className="text-[11px]">placeholder</code> on AppSelect (duplicates the row)</li>
+                </ul>
+              </div>
+
+              <pre
+                className={uiCx(
+                  'overflow-x-auto rounded-lg border border-gray-200 bg-gray-900 p-3 text-[11px] leading-relaxed text-gray-100',
+                  uiRadius.control,
+                )}
+              >{`import { AppDatePicker, AppTimePicker } from '@/components/ui';
+
+// Time only (HH:mm)
+<AppTimePicker
+  label="Start time"
+  value={startTime}
+  onChange={(e) => setStartTime(e.target.value)}
+  placeholder="Select time"
+/>
+
+// Date + time → \`\${date}T\${hhmm}\` for APIs expecting datetime-local shape
+// See LocalDateTimeFields in SubcontractorWorkerTimesheetBlock.tsx`}</pre>
+            </div>
+          </AppCard>
+
+          <AppCard title="Calendar Base" subtitle="Visual-only month grid scaffold; no date selection logic.">
             <AppCalendarBase monthLabel="May 2026" days={[...sampleDays]} />
           </AppCard>
         </div>
@@ -848,7 +972,6 @@ quickInfo={formModalQuickInfo({
             </div>
           </AppCard>
         </div>
-      </div>
 
       <AppModal
         open={isModalOpen}
@@ -935,6 +1058,6 @@ quickInfo={formModalQuickInfo({
           copy.
         </p>
       </AppFormModal>
-    </main>
+    </div>
   );
 }

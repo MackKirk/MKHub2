@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { subcontractorCompanyWorkersUrl } from '@/components/SubcontractorWorkersCard';
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toPng } from 'html-to-image';
 import QRCode from 'qrcode';
@@ -14,8 +15,33 @@ import { formatDecimalHoursAsHMin } from '@/lib/dateUtils';
 import { SubcontractorWorkerFilesTabEnhanced } from '@/pages/SubcontractorWorkerFilesTabEnhanced';
 import type { ClientFileForFiles } from '@/pages/SubcontractorCompanyFilesTabEnhanced';
 import ImagePicker from '@/components/ImagePicker';
-import OverlayPortal from '@/components/OverlayPortal';
 import { EmployeeTrainingSection } from './UserInfo';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppControlLabelRow,
+  AppEmptyState,
+  AppFieldHint,
+  AppFormModal,
+  AppHeroEditButton,
+  AppInput,
+  AppModal,
+  AppPageHeader,
+  AppSectionHeader,
+  AppSelect,
+  AppTabs,
+  AppTextarea,
+  appSectionPresetProps,
+  type AppSectionPresetKey,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+import { ChevronDown, ChevronUp, UserRound } from 'lucide-react';
 
 type WorkerBundle = {
   worker: {
@@ -275,103 +301,114 @@ type ActivityFeedItem = {
 };
 
 const WORKER_PHOTO_PLACEHOLDER = '/ui/assets/placeholders/user.png';
+const EM_DASH = '\u2014';
 
-/** Same pencil glyph as `PersonalPencil` (Basic Information edit). */
-function PersonalPencilSvg({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-      />
-    </svg>
-  );
-}
+const controlInputClass = uiCx('w-full text-sm', uiRadius.control, uiBorders.input, 'px-3 py-2');
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+type PersonalTone = 'blue' | 'green' | 'yellow' | 'orange' | 'slate' | 'red' | 'purple' | 'indigo';
+
+const PERSONAL_SECTION_PRESET: Record<PersonalTone, AppSectionPresetKey> = {
+  blue: 'basicInformation',
+  yellow: 'contact',
+  green: 'address',
+  orange: 'emergency',
+  slate: 'description',
+  red: 'documents',
+  purple: 'company',
+  indigo: 'education',
+};
+
+function HeroField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">{label}</span>
-      <div className="text-xs font-semibold text-gray-900 mt-0.5 break-words">{children}</div>
+      <div className={uiTypography.overline}>{label}</div>
+      <div className={uiCx(uiTypography.helper, 'mt-0.5 break-words font-semibold text-gray-900')}>{children}</div>
     </div>
   );
 }
 
-type PersonalTone = 'blue' | 'green' | 'yellow' | 'orange' | 'slate' | 'red' | 'purple' | 'indigo';
-
-const PERSONAL_TONE: Record<PersonalTone, { iconBg: string; title: string }> = {
-  blue: { iconBg: 'bg-blue-100', title: 'text-blue-900' },
-  green: { iconBg: 'bg-green-100', title: 'text-green-900' },
-  yellow: { iconBg: 'bg-yellow-100', title: 'text-yellow-900' },
-  orange: { iconBg: 'bg-orange-100', title: 'text-orange-900' },
-  slate: { iconBg: 'bg-slate-100', title: 'text-slate-900' },
-  red: { iconBg: 'bg-red-100', title: 'text-red-900' },
-  purple: { iconBg: 'bg-purple-100', title: 'text-purple-900' },
-  indigo: { iconBg: 'bg-indigo-100', title: 'text-indigo-900' },
-};
-
-function PersonalPencil({ title, onClick }: { title: string; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors" title={title}>
-      <PersonalPencilSvg className="w-4 h-4" />
-    </button>
-  );
-}
-
-/** Read-only field row — matches UserInfo `EditableGrid` display (label + value). */
-function StaticWorkerField({ label, value }: { label: string; value: ReactNode }) {
+function ReadOnlyField({ label, value }: { label: string; value: ReactNode }) {
   const isEmpty =
     value === '' ||
     value === null ||
     value === undefined ||
     (typeof value === 'string' && value.trim() === '');
   return (
-    <div>
-      <div className="text-xs font-medium text-gray-600 mb-1.5">{label}</div>
-      <div className="text-sm font-semibold text-gray-900 break-words whitespace-pre-wrap">{isEmpty ? '—' : value}</div>
+    <div className="space-y-1">
+      <div className={uiTypography.controlLabel}>{label}</div>
+      <div className={uiCx(uiTypography.helper, 'break-words whitespace-pre-wrap font-medium text-gray-900')}>
+        {isEmpty ? EM_DASH : value}
+      </div>
     </div>
   );
 }
 
-/** Section shell — matches UserInfo `BasicInformationSection` / `AddressSectionCard` cards. */
 function PersonalUserSection({
   tone,
-  icon,
   heading,
+  description,
   children,
   showPencil,
   onEditClick,
 }: {
   tone: PersonalTone;
-  icon: ReactNode;
   heading: string;
+  description: string;
   children: ReactNode;
   showPencil?: boolean;
   onEditClick?: () => void;
 }) {
-  const t = PERSONAL_TONE[tone];
   return (
-    <div className="rounded-xl border bg-white p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className={`w-8 h-8 rounded ${t.iconBg} flex items-center justify-center`}>{icon}</div>
-          <h5 className={`text-sm font-semibold ${t.title}`}>{heading}</h5>
-        </div>
-        {showPencil && onEditClick && <PersonalPencil title={`Edit ${heading}`} onClick={onEditClick} />}
-      </div>
-      <div className="space-y-4">{children}</div>
-    </div>
+    <AppCard>
+      <AppSectionHeader
+        title={heading}
+        description={description}
+        {...appSectionPresetProps(PERSONAL_SECTION_PRESET[tone])}
+        action={
+          showPencil && onEditClick ? (
+            <AppHeroEditButton onClick={onEditClick} title={`Edit ${heading}`} />
+          ) : undefined
+        }
+      />
+      <div className={uiCx('mt-4', uiSpacing.sectionStack)}>{children}</div>
+    </AppCard>
   );
 }
 
-const userInputClass =
-  'w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400';
+function WorkerStatusBadge({
+  active,
+  pending,
+  onClick,
+}: {
+  active: boolean;
+  pending?: boolean;
+  onClick?: () => void;
+}) {
+  const badge = (
+    <AppBadge variant={active ? 'success' : 'warning'} className="normal-case tracking-normal">
+      {pending ? 'Saving…' : active ? 'Active' : 'Inactive'}
+    </AppBadge>
+  );
+  if (!onClick) return badge;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={pending}
+      title="Change worker status"
+      className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30 disabled:opacity-50"
+    >
+      {badge}
+    </button>
+  );
+}
+
+type WorkerPageLocationState = { returnTo?: string };
 
 export default function SubcontractorWorkerPage() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = useMemo(() => workerTabFromSearchParams(searchParams), [searchParams]);
 
@@ -798,52 +835,40 @@ export default function SubcontractorWorkerPage() {
     if (activeTab === 'reports' && !canViewReports) setTab('personal');
   }, [activeTab, canViewReports]);
 
+  const backHref = useMemo(() => {
+    const companyId = data?.worker?.company_id;
+    if (!companyId) return '/business/subcontractors';
+    const returnTo = (location.state as WorkerPageLocationState | null)?.returnTo;
+    if (returnTo && returnTo.includes(`/business/subcontractors/companies/${companyId}`)) {
+      return returnTo;
+    }
+    return subcontractorCompanyWorkersUrl(companyId);
+  }, [data?.worker?.company_id, location.state]);
+
   if (!id) return null;
 
-  const backHref = data?.worker?.company_id
-    ? `/business/subcontractors/companies/${data.worker.company_id}`
-    : '/business/subcontractors';
+  const pageTitle = data ? workerDisplayHeroName(data.worker) : 'Subcontractor worker';
 
   return (
-    <div>
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <button
-              type="button"
-              onClick={() => nav(backHref)}
-              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center flex-shrink-0"
-              title={data?.worker?.company_id ? 'Back to company' : 'Back to subcontractors'}
-            >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </button>
-            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <h5 className="text-sm font-semibold text-blue-900">Subcontractor worker</h5>
-              <p className="text-xs text-gray-600 mt-0.5">
-                Personal details, employer, documents, and site attendance
-              </p>
-            </div>
+    <div className={uiCx('min-h-full w-full bg-gray-50', uiSpacing.pageStack)}>
+      <AppPageHeader
+        title={pageTitle}
+        subtitle="Personal details, employer, documents, and site attendance"
+        icon={<UserRound className="h-4 w-4" />}
+        onBack={() => nav(backHref)}
+        backLabel={data?.worker?.company_id ? 'Back to company' : 'Back to subcontractors'}
+        actions={
+          <div className="text-right">
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-          <div className="text-right shrink-0">
-            <div>
-              <div className="text-[10px] text-gray-400 mb-1 font-medium uppercase tracking-wide">Today</div>
-              <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
-            </div>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       <LoadingOverlay isLoading={isLoading || !data} text="Loading worker…">
         {data && (
-          <div className="space-y-4">
-            <div className="rounded-xl border bg-white p-3 relative">
+          <div className={uiSpacing.pageStack}>
+            <AppCard bodyClassName="p-3 relative">
               {isEmployeeCardMinimized ? (
                 <div className="flex gap-2 items-center pr-8">
                   <div className="relative flex-shrink-0">
@@ -853,15 +878,11 @@ export default function SubcontractorWorkerPage() {
                       alt=""
                     />
                     {hasEditPermission && (
-                      <button
-                        type="button"
+                      <AppHeroEditButton
                         onClick={() => setWorkerPhotoPickerOpen(true)}
-                        className="absolute -top-0.5 -right-0.5 flex items-center justify-center rounded p-0.5 text-gray-700 hover:text-brand-red hover:bg-black/10 transition-colors"
                         title="Change photo"
-                        aria-label="Change photo"
-                      >
-                        <PersonalPencilSvg className="h-3 w-3" />
-                      </button>
+                        className="absolute -top-0.5 -right-0.5 !p-0.5"
+                      />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -871,27 +892,11 @@ export default function SubcontractorWorkerPage() {
                         <div className="text-[10px] text-gray-600 truncate mt-0.5">{data.company?.name || '—'}</div>
                       </div>
                       <div className="flex-shrink-0">
-                        {hasEditPermission ? (
-                          <button
-                            type="button"
-                            disabled={patchWorkerStatusMut.isPending}
-                            onClick={openWorkerStatusModal}
-                            title="Change worker status"
-                            className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border border-transparent transition-shadow hover:ring-2 hover:ring-offset-1 hover:ring-brand-red/40 disabled:opacity-50 disabled:cursor-not-allowed ${
-                              data.worker.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                            }`}
-                          >
-                            {patchWorkerStatusMut.isPending ? 'Saving…' : data.worker.is_active ? 'Active' : 'Inactive'}
-                          </button>
-                        ) : (
-                          <span
-                            className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                              data.worker.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                            }`}
-                          >
-                            {data.worker.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        )}
+                        <WorkerStatusBadge
+                          active={data.worker.is_active}
+                          pending={patchWorkerStatusMut.isPending}
+                          onClick={hasEditPermission ? openWorkerStatusModal : undefined}
+                        />
                       </div>
                     </div>
                   </div>
@@ -906,39 +911,19 @@ export default function SubcontractorWorkerPage() {
                         alt=""
                       />
                       {hasEditPermission && (
-                        <button
-                          type="button"
+                        <AppHeroEditButton
                           onClick={() => setWorkerPhotoPickerOpen(true)}
-                          className="absolute top-0.5 right-0.5 flex items-center justify-center rounded p-1 text-gray-700 hover:text-brand-red hover:bg-black/10 transition-colors"
                           title="Change photo"
-                          aria-label="Change photo"
-                        >
-                          <PersonalPencilSvg className="h-3.5 w-3.5" />
-                        </button>
+                          className="absolute top-0.5 right-0.5"
+                        />
                       )}
                     </div>
                     <div className="mt-2 flex flex-col items-center w-full max-w-[9rem]">
-                      {hasEditPermission ? (
-                        <button
-                          type="button"
-                          disabled={patchWorkerStatusMut.isPending}
-                          onClick={openWorkerStatusModal}
-                          title="Change worker status"
-                          className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-medium w-full border border-transparent transition-shadow hover:ring-2 hover:ring-offset-1 hover:ring-brand-red/40 disabled:opacity-50 disabled:cursor-not-allowed ${
-                            data.worker.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {patchWorkerStatusMut.isPending ? 'Saving…' : data.worker.is_active ? 'Active' : 'Inactive'}
-                        </button>
-                      ) : (
-                        <span
-                          className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-medium w-full ${
-                            data.worker.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {data.worker.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      )}
+                      <WorkerStatusBadge
+                        active={data.worker.is_active}
+                        pending={patchWorkerStatusMut.isPending}
+                        onClick={hasEditPermission ? openWorkerStatusModal : undefined}
+                      />
                     </div>
                   </div>
                   <div className="flex-1 min-w-0">
@@ -947,9 +932,9 @@ export default function SubcontractorWorkerPage() {
                       <div className="text-xs text-gray-600 mt-0.5">{data.company?.name || '—'}</div>
                     </div>
                     <div className="grid md:grid-cols-3 gap-x-3 gap-y-1.5">
-                      <Field label="Phone">{displayWorkerPhone(data.worker.phone) || '—'}</Field>
-                      <Field label="Email">{data.worker.email || '—'}</Field>
-                      <Field label="Address">
+                      <HeroField label="Phone">{displayWorkerPhone(data.worker.phone) || EM_DASH}</HeroField>
+                      <HeroField label="Email">{data.worker.email || EM_DASH}</HeroField>
+                      <HeroField label="Address">
                         {formatAddressDisplay({
                           address_line1: data.worker.address_line1,
                           address_line2: data.worker.address_line2,
@@ -958,128 +943,95 @@ export default function SubcontractorWorkerPage() {
                           postal_code: data.worker.postal_code,
                           country: data.worker.country,
                         })}
-                      </Field>
-                      <Field label="On file since">
-                        {data.worker.created_at ? String(data.worker.created_at).slice(0, 10) : '—'}
-                      </Field>
-                      <Field label="Open attendance">
+                      </HeroField>
+                      <HeroField label="On file since">
+                        {data.worker.created_at ? String(data.worker.created_at).slice(0, 10) : EM_DASH}
+                      </HeroField>
+                      <HeroField label="Open attendance">
                         {data.open_attendance
                           ? `${data.open_attendance.project_name || 'Project'} · in`
-                          : '—'}
-                      </Field>
+                          : EM_DASH}
+                      </HeroField>
                     </div>
                   </div>
                 </div>
               )}
-              <button
+              <AppButton
                 type="button"
+                variant="ghost"
+                size="sm"
+                className="absolute bottom-2 right-2 p-1"
                 onClick={() => setIsEmployeeCardMinimized(!isEmployeeCardMinimized)}
-                className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
                 title={isEmployeeCardMinimized ? 'Expand' : 'Minimize'}
+                aria-label={isEmployeeCardMinimized ? 'Expand' : 'Minimize'}
               >
-                <svg
-                  className={`w-3 h-3 transition-transform ${isEmployeeCardMinimized ? '' : 'rotate-180'}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-            </div>
+                {isEmployeeCardMinimized ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+              </AppButton>
+            </AppCard>
 
-            <div className="rounded-xl border bg-white p-3">
-              <div className="flex flex-wrap gap-2">
-                {tabStrip.map((t) => (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => setTab(t.key)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                      activeTab === t.key
-                        ? 'bg-brand-red text-white border-brand-red'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <AppCard bodyClassName="p-2.5">
+              <AppTabs
+                tabs={tabStrip.map((t) => ({ key: t.key, label: t.label }))}
+                value={activeTab}
+                onChange={(key) => setTab(key as WorkerSubTab)}
+              />
+            </AppCard>
 
-            <div className="rounded-xl border bg-white">
-              <div className="p-5">
+            <AppCard bodyClassName="p-5">
             {activeTab === 'personal' && (
               <div className={`space-y-6 ${personalEditSection ? 'relative pb-2' : ''}`}>
                 <div className="space-y-6">
                     <PersonalUserSection
                       tone="blue"
                       heading="Basic Information"
+                      description="Legal name and identity fields for this worker."
                       showPencil={hasEditPermission && personalEditSection !== 'basic'}
                       onEditClick={hasEditPermission ? () => beginPersonalEditSection('basic') : undefined}
-                      icon={
-                        <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                      }
                     >
                       {personalEditSection === 'basic' ? (
                       <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">First name</div>
-                          <input
-                            className={userInputClass}
-                            value={wf.first_name}
-                            onChange={(e) => setWf((s) => ({ ...s, first_name: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Last name</div>
-                          <input
-                            className={userInputClass}
-                            value={wf.last_name}
-                            onChange={(e) => setWf((s) => ({ ...s, last_name: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Middle name</div>
-                          <input
-                            className={userInputClass}
-                            value={wf.middle_name}
-                            onChange={(e) => setWf((s) => ({ ...s, middle_name: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Preferred name</div>
-                          <input
-                            className={userInputClass}
-                            value={wf.preferred_name}
-                            onChange={(e) => setWf((s) => ({ ...s, preferred_name: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Gender</div>
-                          <select
-                            className={userInputClass}
-                            value={wf.gender}
-                            onChange={(e) => setWf((s) => ({ ...s, gender: e.target.value }))}
-                          >
-                            <option value="">—</option>
-                            {WORKER_GENDER_OPTIONS.map((g) => (
-                              <option key={g} value={g}>
-                                {g}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        <AppInput
+                          label="First name"
+                          value={wf.first_name}
+                          onChange={(e) => setWf((s) => ({ ...s, first_name: e.target.value }))}
+                          fieldHint="First name\n\nGiven name on file for reports and badges."
+                        />
+                        <AppInput
+                          label="Last name"
+                          value={wf.last_name}
+                          onChange={(e) => setWf((s) => ({ ...s, last_name: e.target.value }))}
+                          fieldHint="Last name\n\nFamily name on file for reports and badges."
+                        />
+                        <AppInput
+                          label="Middle name"
+                          value={wf.middle_name}
+                          onChange={(e) => setWf((s) => ({ ...s, middle_name: e.target.value }))}
+                          fieldHint="Middle name\n\nOptional middle name or initial."
+                        />
+                        <AppInput
+                          label="Preferred name"
+                          value={wf.preferred_name}
+                          onChange={(e) => setWf((s) => ({ ...s, preferred_name: e.target.value }))}
+                          fieldHint="Preferred name\n\nShown on the profile hero when set; overrides composed legal name."
+                        />
+                        <AppSelect
+                          label="Gender"
+                          value={wf.gender}
+                          onChange={(e) => setWf((s) => ({ ...s, gender: e.target.value }))}
+                          fieldHint="Gender\n\nOptional; used for HR and reporting only."
+                          options={[
+                            { value: '', label: EM_DASH },
+                            ...WORKER_GENDER_OPTIONS.map((g) => ({ value: g, label: g })),
+                          ]}
+                        />
                       </div>
                       ) : (
                       <div className="grid md:grid-cols-2 gap-4">
-                        <StaticWorkerField label="First name" value={data.worker.first_name || ''} />
-                        <StaticWorkerField label="Last name" value={data.worker.last_name || ''} />
-                        <StaticWorkerField label="Middle name" value={data.worker.middle_name || ''} />
-                        <StaticWorkerField label="Preferred name" value={data.worker.preferred_name || ''} />
-                        <StaticWorkerField label="Gender" value={data.worker.gender || ''} />
+                        <ReadOnlyField label="First name" value={data.worker.first_name || ''} />
+                        <ReadOnlyField label="Last name" value={data.worker.last_name || ''} />
+                        <ReadOnlyField label="Middle name" value={data.worker.middle_name || ''} />
+                        <ReadOnlyField label="Preferred name" value={data.worker.preferred_name || ''} />
+                        <ReadOnlyField label="Gender" value={data.worker.gender || ''} />
                       </div>
                       )}
                     </PersonalUserSection>
@@ -1087,42 +1039,30 @@ export default function SubcontractorWorkerPage() {
                     <PersonalUserSection
                       tone="yellow"
                       heading="Contact"
+                      description="Email and phone for site coordination and reports."
                       showPencil={hasEditPermission && personalEditSection !== 'contact'}
                       onEditClick={hasEditPermission ? () => beginPersonalEditSection('contact') : undefined}
-                      icon={
-                        <svg className="w-5 h-5 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-                          />
-                        </svg>
-                      }
                     >
                       {personalEditSection === 'contact' ? (
                       <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Email</div>
-                          <input
-                            className={userInputClass}
-                            value={wf.email}
-                            onChange={(e) => setWf((s) => ({ ...s, email: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Phone</div>
-                          <input
-                            className={userInputClass}
-                            value={wf.phone}
-                            onChange={(e) => setWf((s) => ({ ...s, phone: formatWorkerPhone(e.target.value) }))}
-                          />
-                        </div>
+                        <AppInput
+                          label="Email"
+                          type="email"
+                          value={wf.email}
+                          onChange={(e) => setWf((s) => ({ ...s, email: e.target.value }))}
+                          fieldHint="Email\n\nUsed on QR badges and internal contact lists."
+                        />
+                        <AppInput
+                          label="Phone"
+                          value={wf.phone}
+                          onChange={(e) => setWf((s) => ({ ...s, phone: formatWorkerPhone(e.target.value) }))}
+                          fieldHint="Phone\n\nNorth American format; shown on the clock-in QR badge."
+                        />
                       </div>
                       ) : (
                       <div className="grid md:grid-cols-2 gap-4">
-                        <StaticWorkerField label="Email" value={data.worker.email || ''} />
-                        <StaticWorkerField label="Phone" value={displayWorkerPhone(data.worker.phone)} />
+                        <ReadOnlyField label="Email" value={data.worker.email || ''} />
+                        <ReadOnlyField label="Phone" value={displayWorkerPhone(data.worker.phone)} />
                       </div>
                       )}
                     </PersonalUserSection>
@@ -1130,19 +1070,17 @@ export default function SubcontractorWorkerPage() {
                     <PersonalUserSection
                       tone="green"
                       heading="Address"
+                      description="Home or mailing address for this worker."
                       showPencil={hasEditPermission && personalEditSection !== 'address'}
                       onEditClick={hasEditPermission ? () => beginPersonalEditSection('address') : undefined}
-                      icon={
-                        <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                      }
                     >
                       {personalEditSection === 'address' ? (
-                      <div className="space-y-4">
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Address line 1</div>
+                      <div className={uiSpacing.sectionStack}>
+                        <div className="space-y-1.5">
+                          <AppControlLabelRow
+                            label="Address line 1"
+                            fieldHint={<AppFieldHint hint="Address line 1\n\nStreet address. Suggestions appear as you type." />}
+                          />
                           <AddressAutocomplete
                             value={wf.address_line1}
                             onChange={(v) => setWf((s) => ({ ...s, address_line1: v }))}
@@ -1158,56 +1096,52 @@ export default function SubcontractorWorkerPage() {
                               }))
                             }
                             placeholder="Start typing an address…"
-                            className={userInputClass}
+                            className={controlInputClass}
                           />
                         </div>
                         <div className="grid md:grid-cols-2 gap-4">
                           <div className="md:col-span-2">
-                            <div className="text-xs font-medium text-gray-600 mb-1.5">Address line 2</div>
-                            <input
-                              className={userInputClass}
+                            <AppInput
+                              label="Address line 2"
                               value={wf.address_line2}
                               onChange={(e) => setWf((s) => ({ ...s, address_line2: e.target.value }))}
+                              fieldHint="Address line 2\n\nSuite, unit, or building (optional)."
                             />
                           </div>
-                          <div>
-                            <div className="text-xs font-medium text-gray-600 mb-1.5">City</div>
-                            <input className={userInputClass} value={wf.city} onChange={(e) => setWf((s) => ({ ...s, city: e.target.value }))} />
-                          </div>
-                          <div>
-                            <div className="text-xs font-medium text-gray-600 mb-1.5">Province</div>
-                            <input
-                              className={userInputClass}
-                              value={wf.province}
-                              onChange={(e) => setWf((s) => ({ ...s, province: e.target.value }))}
-                            />
-                          </div>
-                          <div>
-                            <div className="text-xs font-medium text-gray-600 mb-1.5">Postal code</div>
-                            <input
-                              className={userInputClass}
-                              value={wf.postal_code}
-                              onChange={(e) => setWf((s) => ({ ...s, postal_code: e.target.value }))}
-                            />
-                          </div>
-                          <div>
-                            <div className="text-xs font-medium text-gray-600 mb-1.5">Country</div>
-                            <input
-                              className={userInputClass}
-                              value={wf.country}
-                              onChange={(e) => setWf((s) => ({ ...s, country: e.target.value }))}
-                            />
-                          </div>
+                          <AppInput
+                            label="City"
+                            value={wf.city}
+                            onChange={(e) => setWf((s) => ({ ...s, city: e.target.value }))}
+                            fieldHint="City\n\nFilled automatically when you pick an address suggestion."
+                          />
+                          <AppInput
+                            label="Province"
+                            value={wf.province}
+                            onChange={(e) => setWf((s) => ({ ...s, province: e.target.value }))}
+                            fieldHint="Province/State\n\nProvince or state for mailing and site context."
+                          />
+                          <AppInput
+                            label="Postal code"
+                            value={wf.postal_code}
+                            onChange={(e) => setWf((s) => ({ ...s, postal_code: e.target.value }))}
+                            fieldHint="Postal code\n\nZIP or postal code."
+                          />
+                          <AppInput
+                            label="Country"
+                            value={wf.country}
+                            onChange={(e) => setWf((s) => ({ ...s, country: e.target.value }))}
+                            fieldHint="Country\n\nCountry for mailing address."
+                          />
                         </div>
                       </div>
                       ) : (
                       <div className="grid md:grid-cols-2 gap-4">
-                        <StaticWorkerField label="Address line 1" value={data.worker.address_line1 || ''} />
-                        <StaticWorkerField label="Address line 2" value={data.worker.address_line2 || ''} />
-                        <StaticWorkerField label="City" value={data.worker.city || ''} />
-                        <StaticWorkerField label="Province" value={data.worker.province || ''} />
-                        <StaticWorkerField label="Country" value={data.worker.country || ''} />
-                        <StaticWorkerField label="Postal code" value={data.worker.postal_code || ''} />
+                        <ReadOnlyField label="Address line 1" value={data.worker.address_line1 || ''} />
+                        <ReadOnlyField label="Address line 2" value={data.worker.address_line2 || ''} />
+                        <ReadOnlyField label="City" value={data.worker.city || ''} />
+                        <ReadOnlyField label="Province" value={data.worker.province || ''} />
+                        <ReadOnlyField label="Country" value={data.worker.country || ''} />
+                        <ReadOnlyField label="Postal code" value={data.worker.postal_code || ''} />
                       </div>
                       )}
                     </PersonalUserSection>
@@ -1215,77 +1149,66 @@ export default function SubcontractorWorkerPage() {
                     <PersonalUserSection
                       tone="orange"
                       heading="Emergency Contacts"
+                      description="Person to contact if something happens on site."
                       showPencil={hasEditPermission && personalEditSection !== 'emergency'}
                       onEditClick={hasEditPermission ? () => beginPersonalEditSection('emergency') : undefined}
-                      icon={
-                        <svg className="w-5 h-5 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                          />
-                        </svg>
-                      }
                     >
                       {personalEditSection === 'emergency' ? (
                       <div className="grid md:grid-cols-2 gap-3">
                         <div className="md:col-span-2">
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Name</div>
-                          <input
-                            className={userInputClass}
+                          <AppInput
+                            label="Name"
                             value={wf.emergency_contact_name}
                             onChange={(e) => setWf((s) => ({ ...s, emergency_contact_name: e.target.value }))}
+                            fieldHint="Name\n\nFull name of the emergency contact."
                           />
                         </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Relationship</div>
-                          <input
-                            className={userInputClass}
-                            value={wf.emergency_contact_relationship}
-                            onChange={(e) => setWf((s) => ({ ...s, emergency_contact_relationship: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Mobile phone</div>
-                          <input
-                            className={userInputClass}
-                            value={wf.emergency_contact_phone}
-                            onChange={(e) => setWf((s) => ({ ...s, emergency_contact_phone: formatWorkerPhone(e.target.value) }))}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Home phone</div>
-                          <input
-                            className={userInputClass}
-                            value={wf.emergency_contact_home_phone}
-                            onChange={(e) => setWf((s) => ({ ...s, emergency_contact_home_phone: formatWorkerPhone(e.target.value) }))}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Work phone</div>
-                          <input
-                            className={userInputClass}
-                            value={wf.emergency_contact_work_phone}
-                            onChange={(e) => setWf((s) => ({ ...s, emergency_contact_work_phone: formatWorkerPhone(e.target.value) }))}
-                          />
-                        </div>
+                        <AppInput
+                          label="Relationship"
+                          value={wf.emergency_contact_relationship}
+                          onChange={(e) => setWf((s) => ({ ...s, emergency_contact_relationship: e.target.value }))}
+                          fieldHint="Relationship\n\ne.g. Spouse, parent, or friend."
+                        />
+                        <AppInput
+                          label="Mobile phone"
+                          value={wf.emergency_contact_phone}
+                          onChange={(e) =>
+                            setWf((s) => ({ ...s, emergency_contact_phone: formatWorkerPhone(e.target.value) }))
+                          }
+                          fieldHint="Mobile phone\n\nPrimary number to reach this contact."
+                        />
+                        <AppInput
+                          label="Home phone"
+                          value={wf.emergency_contact_home_phone}
+                          onChange={(e) =>
+                            setWf((s) => ({ ...s, emergency_contact_home_phone: formatWorkerPhone(e.target.value) }))
+                          }
+                          fieldHint="Home phone\n\nOptional home line."
+                        />
+                        <AppInput
+                          label="Work phone"
+                          value={wf.emergency_contact_work_phone}
+                          onChange={(e) =>
+                            setWf((s) => ({ ...s, emergency_contact_work_phone: formatWorkerPhone(e.target.value) }))
+                          }
+                          fieldHint="Work phone\n\nOptional work line."
+                        />
                         <div className="md:col-span-2">
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Email</div>
-                          <input
+                          <AppInput
+                            label="Email"
                             type="email"
-                            className={userInputClass}
                             value={wf.emergency_contact_email}
                             onChange={(e) => setWf((s) => ({ ...s, emergency_contact_email: e.target.value }))}
+                            fieldHint="Email\n\nOptional email for the emergency contact."
                           />
                         </div>
                         <div className="md:col-span-2">
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Address</div>
-                          <textarea
-                            className={`${userInputClass} min-h-[72px]`}
+                          <AppTextarea
+                            label="Address"
                             rows={3}
                             value={wf.emergency_contact_address}
                             onChange={(e) => setWf((s) => ({ ...s, emergency_contact_address: e.target.value }))}
+                            fieldHint="Address\n\nMailing address for the emergency contact (optional)."
                           />
                         </div>
                       </div>
@@ -1353,51 +1276,28 @@ export default function SubcontractorWorkerPage() {
                     <PersonalUserSection
                       tone="slate"
                       heading="Notes"
+                      description="Internal notes visible to staff with subcontractor access."
                       showPencil={hasEditPermission && personalEditSection !== 'notes'}
                       onEditClick={hasEditPermission ? () => beginPersonalEditSection('notes') : undefined}
-                      icon={
-                        <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                          />
-                        </svg>
-                      }
                     >
                       {personalEditSection === 'notes' ? (
-                      <div>
-                        <div className="text-xs font-medium text-gray-600 mb-1.5">Internal notes</div>
-                        <textarea
-                          className={`${userInputClass} min-h-[100px]`}
-                          rows={4}
-                          value={wf.notes}
-                          onChange={(e) => setWf((s) => ({ ...s, notes: e.target.value }))}
-                        />
-                      </div>
+                      <AppTextarea
+                        label="Internal notes"
+                        rows={4}
+                        value={wf.notes}
+                        onChange={(e) => setWf((s) => ({ ...s, notes: e.target.value }))}
+                        fieldHint="Internal notes\n\nOptional; not shown to the worker on site."
+                      />
                       ) : (
-                      <StaticWorkerField label="Internal notes" value={data.worker.notes || ''} />
+                      <ReadOnlyField label="Internal notes" value={data.worker.notes || ''} />
                       )}
                     </PersonalUserSection>
 
                     <PersonalUserSection
                       tone="red"
                       heading="Clock-in QR"
-                      icon={
-                        <svg className="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
-                          />
-                        </svg>
-                      }
+                      description="Site QR for clock-in/out via the subcontractor scan flow (same role as kiosk access on Users)."
                     >
-                      <p className="text-xs text-gray-600 -mt-1 mb-3">
-                        Site QR for this worker (same role as kiosk access on Users — opens the subcontractor scan flow for clock-in/out).
-                      </p>
                       {qrDataUrl && qrCardInfo ? (
                         <button
                           type="button"
@@ -1418,22 +1318,24 @@ export default function SubcontractorWorkerPage() {
                     </PersonalUserSection>
 
                     {personalEditSection && (
-                    <div className="sticky bottom-0 z-10 -mx-5 mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-gray-200 bg-white px-5 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-                      <button
-                        type="button"
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 text-gray-700 bg-white hover:bg-gray-50"
-                        onClick={cancelPersonalEdit}
-                      >
+                    <div
+                      className={uiCx(
+                        'sticky bottom-0 z-10 -mx-5 mt-2 flex flex-wrap items-center justify-end gap-2 border-t bg-white px-5 py-3',
+                        uiBorders.subtle,
+                      )}
+                    >
+                      <AppButton type="button" variant="secondary" size="sm" onClick={cancelPersonalEdit}>
                         Cancel
-                      </button>
-                      <button
+                      </AppButton>
+                      <AppButton
                         type="button"
-                        className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm hover:opacity-95 disabled:opacity-50"
+                        size="sm"
                         disabled={patchWorker.isPending}
+                        loading={patchWorker.isPending}
                         onClick={() => patchWorker.mutate()}
                       >
                         Save changes
-                      </button>
+                      </AppButton>
                     </div>
                     )}
                   </div>
@@ -1446,22 +1348,13 @@ export default function SubcontractorWorkerPage() {
                   <PersonalUserSection
                     tone="purple"
                     heading="Organization"
+                    description="Job title and employer subcontractor company."
                     showPencil={hasEditPermission}
                     onEditClick={beginJobEdit}
-                    icon={
-                      <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                        />
-                      </svg>
-                    }
                   >
                     <div className="grid md:grid-cols-2 gap-4">
-                      <StaticWorkerField label="Job title" value={data.worker.job_title || ''} />
-                      <StaticWorkerField
+                      <ReadOnlyField label="Job title" value={data.worker.job_title || ''} />
+                      <ReadOnlyField
                         label="Employer"
                         value={
                           data.worker.company_id && data.company?.name ? (
@@ -1486,27 +1379,16 @@ export default function SubcontractorWorkerPage() {
                     <PersonalUserSection
                       tone="purple"
                       heading="Organization"
-                      icon={
-                        <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                          />
-                        </svg>
-                      }
+                      description="Job title and employer subcontractor company."
                     >
                       <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-xs font-medium text-gray-600 mb-1.5">Job title</div>
-                          <input
-                            className={userInputClass}
-                            value={wf.job_title}
-                            onChange={(e) => setWf((s) => ({ ...s, job_title: e.target.value }))}
-                            placeholder="e.g. Site labourer"
-                          />
-                        </div>
+                        <AppInput
+                          label="Job title"
+                          value={wf.job_title}
+                          onChange={(e) => setWf((s) => ({ ...s, job_title: e.target.value }))}
+                          placeholder="e.g. Site labourer"
+                          fieldHint="Job title\n\nRole on site (e.g. labourer, foreman)."
+                        />
                         <div>
                           <div className="text-xs font-medium text-gray-600 mb-1.5">Employer (subcontractor)</div>
                           {data.worker.company_id && data.company?.name ? (
@@ -1526,22 +1408,24 @@ export default function SubcontractorWorkerPage() {
                       </div>
                     </PersonalUserSection>
 
-                    <div className="sticky bottom-0 z-10 -mx-5 mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-gray-200 bg-white px-5 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-                      <button
-                        type="button"
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 text-gray-700 bg-white hover:bg-gray-50"
-                        onClick={cancelJobEdit}
-                      >
+                    <div
+                      className={uiCx(
+                        'sticky bottom-0 z-10 -mx-5 mt-2 flex flex-wrap items-center justify-end gap-2 border-t bg-white px-5 py-3',
+                        uiBorders.subtle,
+                      )}
+                    >
+                      <AppButton type="button" variant="secondary" size="sm" onClick={cancelJobEdit}>
                         Cancel
-                      </button>
-                      <button
+                      </AppButton>
+                      <AppButton
                         type="button"
-                        className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm hover:opacity-95 disabled:opacity-50"
+                        size="sm"
                         disabled={patchWorker.isPending}
+                        loading={patchWorker.isPending}
                         onClick={() => patchWorker.mutate()}
                       >
                         Save changes
-                      </button>
+                      </AppButton>
                     </div>
                   </div>
                 )}
@@ -1578,7 +1462,7 @@ export default function SubcontractorWorkerPage() {
             )}
 
             {activeTab === 'training' && id && canViewTraining && (
-              <div className="space-y-6 pb-24">
+              <div className="pb-24">
                 <EmployeeTrainingSection variant="worker" workerId={id} canEdit={canEditTraining} />
               </div>
             )}
@@ -1588,20 +1472,11 @@ export default function SubcontractorWorkerPage() {
             )}
 
             {activeTab === 'activity' && (
-              <div className="space-y-6 pb-24">
+              <div className="pb-24">
                 <PersonalUserSection
                   tone="slate"
                   heading="Activity"
-                  icon={
-                    <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                  }
+                  description="Clock events, documents, and profile updates for this worker."
                 >
                   <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
                     {(activityFeed || []).length ? (
@@ -1651,14 +1526,13 @@ export default function SubcontractorWorkerPage() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-gray-500 text-sm py-6 px-3">No activity yet.</div>
+                      <AppEmptyState title="No activity yet" className="py-6" />
                     )}
                   </div>
                 </PersonalUserSection>
               </div>
             )}
-              </div>
-            </div>
+            </AppCard>
             {workerPhotoPickerOpen && (
               <ImagePicker
                 isOpen
@@ -1673,172 +1547,131 @@ export default function SubcontractorWorkerPage() {
             )}
 
             {qrModalOpen && qrDataUrl && qrCardInfo && (
-              <OverlayPortal>
-                <div
-                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-                  onClick={() => setQrModalOpen(false)}
-                >
-                  <div
-                    className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
-                    onClick={(e) => e.stopPropagation()}
-                    role="dialog"
-                    aria-labelledby="worker-qr-modal-title"
-                    aria-modal="true"
-                  >
-                    <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-50/80">
-                      <h2 id="worker-qr-modal-title" className="text-sm font-semibold text-gray-900">
-                        Clock-in QR badge
-                      </h2>
-                      <button
-                        type="button"
-                        className="w-8 h-8 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 text-lg leading-none"
-                        aria-label="Close"
-                        onClick={() => setQrModalOpen(false)}
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <div className="p-5 flex flex-col items-center">
-                      <WorkerQrBadgeCard
-                        ref={qrBadgeExportRef}
-                        variant="full"
-                        workerName={qrCardInfo.workerName}
-                        companyName={qrCardInfo.companyName}
-                        phone={qrCardInfo.phone}
-                        qrDataUrl={qrDataUrl}
-                        className="w-full max-w-[320px]"
-                      />
-                    </div>
-                    <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex flex-wrap justify-center gap-2">
-                      <button
-                        type="button"
-                        disabled={qrCardExporting}
-                        onClick={() => void downloadQrCard()}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm hover:opacity-95 disabled:opacity-50"
-                      >
-                        {qrCardExporting ? 'Preparing…' : 'Download PNG'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={qrCardExporting}
-                        onClick={() => void printQrCard()}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        Print
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setQrModalOpen(false)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                      >
-                        Close
-                      </button>
-                    </div>
+              <AppModal
+                open
+                onClose={() => setQrModalOpen(false)}
+                title="Clock-in QR badge"
+                description="Site QR for this worker — opens the subcontractor scan flow for clock-in/out."
+                footer={
+                  <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-center')}>
+                    <AppButton
+                      type="button"
+                      disabled={qrCardExporting}
+                      loading={qrCardExporting}
+                      onClick={() => void downloadQrCard()}
+                    >
+                      {qrCardExporting ? 'Preparing…' : 'Download PNG'}
+                    </AppButton>
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      disabled={qrCardExporting}
+                      onClick={() => void printQrCard()}
+                    >
+                      Print
+                    </AppButton>
+                    <AppButton type="button" variant="secondary" onClick={() => setQrModalOpen(false)}>
+                      Close
+                    </AppButton>
                   </div>
+                }
+              >
+                <div className="flex flex-col items-center">
+                  <WorkerQrBadgeCard
+                    ref={qrBadgeExportRef}
+                    variant="full"
+                    workerName={qrCardInfo.workerName}
+                    companyName={qrCardInfo.companyName}
+                    phone={qrCardInfo.phone}
+                    qrDataUrl={qrDataUrl}
+                    className="w-full max-w-[320px]"
+                  />
                 </div>
-              </OverlayPortal>
+              </AppModal>
             )}
 
             {workerStatusModalOpen && (
-              <OverlayPortal>
-                <div
-                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-                  onClick={() => {
-                    if (!patchWorkerStatusMut.isPending) setWorkerStatusModalOpen(false);
-                  }}
-                >
-                  <div
-                    className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden flex flex-col"
-                    onClick={(e) => e.stopPropagation()}
-                    role="dialog"
-                    aria-labelledby="worker-status-modal-title"
-                    aria-modal="true"
-                  >
-                    <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                      <h2 id="worker-status-modal-title" className="text-sm font-semibold text-gray-900">
-                        Worker status
-                      </h2>
-                      <button
-                        type="button"
-                        disabled={patchWorkerStatusMut.isPending}
-                        className="w-8 h-8 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 text-lg leading-none disabled:opacity-40 disabled:pointer-events-none"
-                        aria-label="Close"
-                        onClick={() => setWorkerStatusModalOpen(false)}
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <div className="px-4 py-3 space-y-3">
-                      <p className="text-xs text-gray-600">
-                        Controls whether this worker can be used for subcontractor site attendance and clock-in/out when
-                        their employer company is active. This is separate from editing name or contact in Basic
-                        information.
-                      </p>
-                      <fieldset className="space-y-2">
-                        <legend className="sr-only">Worker status</legend>
-                        <label
-                          className={`flex items-start gap-3 cursor-pointer rounded-lg border p-3 ${
-                            workerStatusDraft ? 'border-green-300 bg-green-50/60' : 'border-gray-200 hover:bg-gray-50/80'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="worker-status"
-                            className="mt-0.5 text-brand-red focus:ring-brand-red"
-                            checked={workerStatusDraft === true}
-                            disabled={patchWorkerStatusMut.isPending}
-                            onChange={() => setWorkerStatusDraft(true)}
-                          />
-                          <span>
-                            <span className="block text-sm font-medium text-gray-900">Active</span>
-                            <span className="block text-xs text-gray-600 mt-0.5">
-                              Eligible for timesheet and site clock-in (subject to company).
-                            </span>
-                          </span>
-                        </label>
-                        <label
-                          className={`flex items-start gap-3 cursor-pointer rounded-lg border p-3 ${
-                            !workerStatusDraft ? 'border-red-300 bg-red-50/60' : 'border-gray-200 hover:bg-gray-50/80'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="worker-status"
-                            className="mt-0.5 text-brand-red focus:ring-brand-red"
-                            checked={workerStatusDraft === false}
-                            disabled={patchWorkerStatusMut.isPending}
-                            onChange={() => setWorkerStatusDraft(false)}
-                          />
-                          <span>
-                            <span className="block text-sm font-medium text-gray-900">Inactive</span>
-                            <span className="block text-xs text-gray-600 mt-0.5">
-                              Not eligible for new clock-ins until set active again.
-                            </span>
-                          </span>
-                        </label>
-                      </fieldset>
-                    </div>
-                    <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
-                      <button
-                        type="button"
-                        disabled={patchWorkerStatusMut.isPending}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        onClick={() => setWorkerStatusModalOpen(false)}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        disabled={patchWorkerStatusMut.isPending}
-                        onClick={() => saveWorkerStatusFromModal()}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {patchWorkerStatusMut.isPending ? 'Saving…' : 'Save'}
-                      </button>
-                    </div>
+              <AppFormModal
+                open
+                onClose={() => {
+                  if (!patchWorkerStatusMut.isPending) setWorkerStatusModalOpen(false);
+                }}
+                title="Worker status"
+                description="Active workers can clock in when their employer company is active."
+                formWidth="comfortable"
+                footer={
+                  <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={patchWorkerStatusMut.isPending}
+                      onClick={() => setWorkerStatusModalOpen(false)}
+                    >
+                      Cancel
+                    </AppButton>
+                    <AppButton
+                      type="button"
+                      size="sm"
+                      disabled={patchWorkerStatusMut.isPending}
+                      loading={patchWorkerStatusMut.isPending}
+                      onClick={() => saveWorkerStatusFromModal()}
+                    >
+                      Save
+                    </AppButton>
                   </div>
-                </div>
-              </OverlayPortal>
+                }
+              >
+                <p className={uiTypography.helper}>
+                  Controls whether this worker can be used for subcontractor site attendance and clock-in/out when their
+                  employer company is active. This is separate from editing name or contact in Basic information.
+                </p>
+                <fieldset className={uiCx(uiSpacing.sectionStack, 'mt-3')}>
+                  <legend className="sr-only">Worker status</legend>
+                  <label
+                    className={uiCx(
+                      'flex cursor-pointer items-start gap-3 rounded-lg border p-3',
+                      workerStatusDraft ? 'border-green-300 bg-green-50/60' : uiBorders.subtle,
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="worker-status"
+                      className="mt-0.5 text-brand-red focus:ring-brand-red"
+                      checked={workerStatusDraft === true}
+                      disabled={patchWorkerStatusMut.isPending}
+                      onChange={() => setWorkerStatusDraft(true)}
+                    />
+                    <span>
+                      <span className={uiTypography.sectionTitle}>Active</span>
+                      <span className={uiCx(uiTypography.helper, 'mt-0.5 block')}>
+                        Eligible for timesheet and site clock-in (subject to company).
+                      </span>
+                    </span>
+                  </label>
+                  <label
+                    className={uiCx(
+                      'flex cursor-pointer items-start gap-3 rounded-lg border p-3',
+                      !workerStatusDraft ? 'border-red-300 bg-red-50/60' : uiBorders.subtle,
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="worker-status"
+                      className="mt-0.5 text-brand-red focus:ring-brand-red"
+                      checked={workerStatusDraft === false}
+                      disabled={patchWorkerStatusMut.isPending}
+                      onChange={() => setWorkerStatusDraft(false)}
+                    />
+                    <span>
+                      <span className={uiTypography.sectionTitle}>Inactive</span>
+                      <span className={uiCx(uiTypography.helper, 'mt-0.5 block')}>
+                        Not eligible for new clock-ins until set active again.
+                      </span>
+                    </span>
+                  </label>
+                </fieldset>
+              </AppFormModal>
             )}
           </div>
         )}

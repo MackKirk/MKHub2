@@ -531,8 +531,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
   const newItemLabel = isLeakMode ? 'New Leak Investigation' : 'New Opportunity';
 
   return (
-    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
-      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack)}>
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
         <AppPageHeader
           title={isLeakMode ? 'Leak investigations' : 'Opportunities'}
           subtitle={isLeakMode ? 'Create, edit and track leak investigations' : 'Create, edit and track bids and quotes'}
@@ -795,8 +794,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
           fields={filterFields}
           getFieldData={() => null}
         />
-      </div>
-    </main>
+    </div>
   );
 }
 

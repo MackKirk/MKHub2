@@ -91,3 +91,210 @@ export const createRequestQuickInfo = formModalQuickInfo({
     </>
   ),
 });
+
+/** Subcontractor worker — Clock In / Clock Out modal on the Timesheet tab. */
+export function scWorkerClockQuickInfo(clockType: 'in' | 'out'): ReactNode {
+  return formModalQuickInfo({
+    purpose:
+      clockType === 'in' ? (
+        <>
+          Record when this subcontractor worker started on site — for example, arrival at a project in the morning.
+        </>
+      ) : (
+        <>
+          End the worker&apos;s open session — for example, when they leave the site for the day.
+        </>
+      ),
+    howToUse:
+      clockType === 'in' ? (
+        <>
+          Choose {uiLabel('Date')} and {uiLabel('Time')}, then select the {uiLabel('Project')}. Location may be captured
+          when you submit.
+        </>
+      ) : (
+        <>
+          Confirm {uiLabel('Date')} and {uiLabel('Time')}, check {uiLabel('I confirm that the recorded working hours are accurate')},
+          add optional break time, and provide the required {uiLabel('Signature')}.
+        </>
+      ),
+    behavior: (
+      <>
+        Time is usually locked to the current time unless your account can edit clock times. Clock-out needs an open
+        clock-in for this worker.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Cancel')} closes without saving. {uiLabel('Submit')} records the clock event and refreshes the
+        timesheet list.
+      </>
+    ),
+  });
+}
+
+/** Subcontractor worker — manual New / Edit attendance on the Timesheet tab. */
+export function scWorkerManualAttendanceQuickInfo(editing: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        {editing
+          ? 'Correct an existing attendance row — for example, fix the project or clock times after a site report.'
+          : 'Add a past or manual attendance row when clock-in/out was not done live — for example, office entry from a paper timesheet.'}
+      </>
+    ),
+    howToUse: (
+      <>
+        Select a {uiLabel('Project')}, choose {uiLabel('Entry type')} ({uiLabel('Clock in / out')} or{' '}
+        {uiLabel('Hours worked')}), set {uiLabel('HR status')}, then fill all required dates and times. For{' '}
+        {uiLabel('Clock in / out')}, both clock-in and clock-out are required.
+      </>
+    ),
+    behavior: (
+      <>
+        {uiLabel('Hours worked')} stores total time for one day without separate in/out times. Break minutes apply when
+        clock-out or hours are set. The row appears in the table after you save.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Cancel')} discards changes. {editing ? uiLabel('Update') : uiLabel('Create')} saves the record and
+        updates the list.
+      </>
+    ),
+  });
+}
+
+/** Subcontractor worker — read-only attendance detail from the timesheet table. */
+/** Employee or subcontractor worker — add / edit training record. */
+export function employeeTrainingRecordQuickInfo(opts: {
+  isWorker: boolean;
+  editing: boolean;
+  hasCertificateFile?: boolean;
+}): ReactNode {
+  const { isWorker, editing, hasCertificateFile } = opts;
+  const docsTarget = isWorker ? (
+    <>
+      worker&apos;s {uiLabel('Documents')} tab ({uiLabel('Training certificates')})
+    </>
+  ) : (
+    <>
+      {uiLabel('Docs')} → {uiLabel('Training certificates')}
+    </>
+  );
+
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        {editing
+          ? 'Update course, certification, or matrix-linked training — for example, fix dates or upload a renewed certificate.'
+          : isWorker
+            ? 'Add training required for site access — courses, certifications, or a standard matrix item not yet on file.'
+            : 'Add HR training history — courses, certifications, renewals, or scheduled sessions for the team calendar.'}
+      </>
+    ),
+    howToUse: (
+      <>
+        Enter {uiLabel('Title')}, optional {uiLabel('Matrix slot')}, dates, and {uiLabel('Status')}. For{' '}
+        {uiLabel('completed')} or {uiLabel('expired')}, set {uiLabel('End date')} (used as completion unless you check{' '}
+        {uiLabel('Use different completion date')}). Daily {uiLabel('Start time')} / {uiLabel('End time')} calculate{' '}
+        {uiLabel('Duration (hours)')} across the date range.
+      </>
+    ),
+    behavior: (
+      <>
+        An optional certificate file saves to {docsTarget} when you save. Matrix shortcuts pre-fill the title when
+        adding from the standard matrix section below the table.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} stores the record and refreshes the training list
+        {hasCertificateFile ? ' (and uploads the certificate when selected)' : ''}.
+      </>
+    ),
+  });
+}
+
+/** Employee or subcontractor worker — create / edit safety or incident report. */
+export function employeeReportFormQuickInfo(opts: { isWorker: boolean; editing: boolean }): ReactNode {
+  const { isWorker, editing } = opts;
+  const subject = isWorker ? 'this worker' : 'this employee';
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        {editing
+          ? `Update an existing report on file for ${subject} — title, status, type-specific fields, or linked projects.`
+          : `Record a safety or HR incident for ${subject} — fines, warnings, suspensions, behavior notes, or general items.`}
+      </>
+    ),
+    howToUse: (
+      <>
+        Choose {uiLabel('Report type')} first; extra fields appear for fines, suspensions, or behavior notes. Set{' '}
+        {uiLabel('Occurrence date')}, {uiLabel('Severity')}, and {uiLabel('Status')}. Link optional projects or
+        departments when the event ties to a site or team.
+      </>
+    ),
+    behavior: (
+      <>
+        Attachments upload when you pick files (create only) and are saved with the new report. After creation, open the
+        report from the list to add more files or comments.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Cancel')} closes without saving. {uiLabel(editing ? 'Update report' : 'Create report')} stores the
+        record and refreshes the reports table.
+      </>
+    ),
+  });
+}
+
+/** Employee or subcontractor worker — read / inline-edit report detail. */
+export function employeeReportDetailQuickInfo(opts: { isWorker: boolean; canEdit: boolean }): ReactNode {
+  const { isWorker, canEdit } = opts;
+  const subject = isWorker ? 'worker' : 'employee';
+  return formModalQuickInfo({
+    purpose: <>Review one report filed for this {subject} — status, description, type-specific data, files, and comments.</>,
+    howToUse: (
+      <>
+        Open a row with {uiLabel('View')}. Use {uiLabel('Edit')} (when allowed) for full changes in the edit window, or{' '}
+        {uiLabel('Save changes')} after quick edits on this screen.
+      </>
+    ),
+    behavior: (
+      <>
+        Comments and attachments can be added here when you have permission. Closed reports still appear in history and
+        filters.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Close')} returns to the list.
+        {canEdit ? ` ${uiLabel('Edit')} opens the full edit form.` : ''}
+      </>
+    ),
+  });
+}
+
+export const scWorkerAttendanceDetailQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>Review everything recorded for one attendance session — times, project, status, notes, and signature.</>
+  ),
+  howToUse: (
+    <>
+      Open a row in the timesheet table to see this view. Scroll to read clock-in/out, who confirmed each step, and any
+      GPS note on the record.
+    </>
+  ),
+  behavior: (
+    <>
+      {uiLabel('Open')} sessions have no clock-out yet. Use {uiLabel('Edit')} on the row (if you have permission) to
+      change times in the edit window.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Close')} returns to the timesheet list without changing the record.
+    </>
+  ),
+});

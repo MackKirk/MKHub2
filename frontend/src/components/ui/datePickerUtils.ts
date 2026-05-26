@@ -26,6 +26,26 @@ export function formatDateDisplay(iso: string) {
   return d.toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+/** Overline on card trigger — "Today" or weekday short (Mon, Tue, …). */
+export function formatDatePickerCardOverline(iso: string, todayIso?: string) {
+  const today = todayIso ?? toIsoDateLocal(new Date());
+  if (iso === today) return 'Today';
+  const d = parseIsoDate(iso);
+  if (!d) return '';
+  return d.toLocaleDateString('en-US', { weekday: 'short' });
+}
+
+/** Primary line on card trigger — e.g. "May 26, 2026". */
+export function formatDatePickerCardValue(iso: string) {
+  const d = parseIsoDate(iso);
+  if (!d) return '';
+  return d.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 export function buildMonthGrid(viewMonth: Date) {
   const first = startOfMonth(viewMonth);
   const start = new Date(first);

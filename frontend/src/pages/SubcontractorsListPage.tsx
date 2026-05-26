@@ -1,9 +1,29 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Briefcase, Search, SlidersHorizontal } from 'lucide-react';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
+import FilterChip from '@/components/FilterBuilder/FilterChip';
+import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import NewSubcontractorCompanyModal from '@/components/NewSubcontractorCompanyModal';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppInput,
+  AppListCreateItem,
+  AppPageHeader,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type Company = {
   id: string;
@@ -28,13 +48,83 @@ type CompaniesResponse = {
 };
 
 type SortKey = 'name' | 'city' | 'province' | 'created' | 'workers';
-type StatusFilter = 'all' | 'active' | 'inactive';
+
+const STATUS_LABELS: Record<string, string> = {
+  active: 'Active',
+  inactive: 'Inactive',
+};
+
+function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
+  const params = new URLSearchParams();
+  params.delete('status');
+  params.delete('status_not');
+  params.delete('city');
+  params.delete('city_not');
+  params.delete('province');
+  params.delete('province_not');
+
+  for (const rule of rules) {
+    if (!rule.value || (Array.isArray(rule.value) && (!rule.value[0] || !rule.value[1]))) {
+      continue;
+    }
+    if (typeof rule.value !== 'string') continue;
+
+    switch (rule.field) {
+      case 'status':
+        if (rule.operator === 'is') params.set('status', rule.value);
+        else if (rule.operator === 'is_not') params.set('status_not', rule.value);
+        break;
+      case 'city':
+        if (rule.operator === 'is') params.set('city', rule.value);
+        else if (rule.operator === 'is_not') params.set('city_not', rule.value);
+        break;
+      case 'province':
+        if (rule.operator === 'is') params.set('province', rule.value);
+        else if (rule.operator === 'is_not') params.set('province_not', rule.value);
+        break;
+    }
+  }
+
+  return params;
+}
+
+function convertParamsToRules(params: URLSearchParams): FilterRule[] {
+  const rules: FilterRule[] = [];
+  let idCounter = 1;
+
+  const status = params.get('status');
+  const statusNot = params.get('status_not');
+  if (status && status !== 'all') {
+    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is', value: status });
+  } else if (statusNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is_not', value: statusNot });
+  }
+
+  const city = params.get('city');
+  const cityNot = params.get('city_not');
+  if (city) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'city', operator: 'is', value: city });
+  } else if (cityNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'city', operator: 'is_not', value: cityNot });
+  }
+
+  const province = params.get('province');
+  const provinceNot = params.get('province_not');
+  if (province) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'province', operator: 'is', value: province });
+  } else if (provinceNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'province', operator: 'is_not', value: provinceNot });
+  }
+
+  return rules;
+}
 
 export default function SubcontractorsListPage() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [newModalOpen, setNewModalOpen] = useState(false);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   const queryParam = searchParams.get('q') || '';
   const pageParam = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
@@ -44,7 +134,8 @@ export default function SubcontractorsListPage() {
 
   const sortBy = (searchParams.get('sort') as SortKey) || 'name';
   const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
-  const statusFilter = (searchParams.get('status') as StatusFilter) || 'all';
+
+  const currentRules = useMemo(() => convertParamsToRules(searchParams), [searchParams]);
 
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
@@ -87,32 +178,102 @@ export default function SubcontractorsListPage() {
     setSearchParams(params, { replace: true });
   };
 
-  const setStatusFilter = (next: StatusFilter) => {
-    const params = new URLSearchParams(searchParams);
-    if (next === 'all') params.delete('status');
-    else params.set('status', next);
-    params.set('page', '1');
-    setPage(1);
-    setSearchParams(params);
-  };
-
   const queryString = useMemo(() => {
-    const p = new URLSearchParams();
-    p.set('page', String(page));
-    p.set('limit', String(limit));
-    const qv = searchParams.get('q');
-    if (qv) p.set('q', qv);
-    p.set('sort', (searchParams.get('sort') as string) || 'name');
-    p.set('dir', searchParams.get('dir') === 'desc' ? 'desc' : 'asc');
-    const st = (searchParams.get('status') as StatusFilter) || 'all';
-    p.set('status', st);
-    return p.toString();
+    const p = new URLSearchParams(searchParams);
+    const qParam = p.get('q');
+    const sortParam = (p.get('sort') as string) || 'name';
+    const dirParam = p.get('dir') === 'desc' ? 'desc' : 'asc';
+    const statusParam = p.get('status');
+    p.delete('q');
+    p.delete('page');
+    p.delete('sort');
+    p.delete('dir');
+    const filterString = p.toString();
+    const finalParams = new URLSearchParams();
+    if (qParam) finalParams.set('q', qParam);
+    if (filterString) {
+      filterString.split('&').forEach((param) => {
+        const [key, value] = param.split('=');
+        if (key && value) finalParams.set(key, decodeURIComponent(value));
+      });
+    }
+    finalParams.set('page', String(page));
+    finalParams.set('limit', String(limit));
+    finalParams.set('sort', sortParam);
+    finalParams.set('dir', dirParam);
+    finalParams.set('status', statusParam && statusParam !== 'all' ? statusParam : 'all');
+    return finalParams.toString();
   }, [searchParams, page, limit]);
+
+  const { data: locationsData } = useQuery({
+    queryKey: ['subcontractor-company-locations'],
+    queryFn: () => api<{ cities: string[]; provinces: string[] }>('GET', '/subcontractors/companies/locations'),
+    staleTime: 300_000,
+  });
+
+  const allCities = useMemo(() => locationsData?.cities ?? [], [locationsData]);
+  const allProvinces = useMemo(() => locationsData?.provinces ?? [], [locationsData]);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['subcontractor-companies', queryString],
     queryFn: () => api<CompaniesResponse>('GET', `/subcontractors/companies?${queryString}`),
   });
+
+  const filterFields: FieldConfig[] = useMemo(
+    () => [
+      {
+        id: 'status',
+        label: 'Status',
+        type: 'select',
+        operators: ['is', 'is_not'],
+        getOptions: () => [
+          { value: 'active', label: 'Active' },
+          { value: 'inactive', label: 'Inactive' },
+        ],
+      },
+      {
+        id: 'city',
+        label: 'City',
+        type: 'select_search',
+        operators: ['is', 'is_not'],
+        getOptions: () => allCities.map((city) => ({ value: city, label: city })),
+      },
+      {
+        id: 'province',
+        label: 'Province',
+        type: 'select_search',
+        operators: ['is', 'is_not'],
+        getOptions: () => allProvinces.map((province) => ({ value: province, label: province })),
+      },
+    ],
+    [allCities, allProvinces],
+  );
+
+  const handleApplyFilters = (rules: FilterRule[]) => {
+    const params = convertRulesToParams(rules);
+    if (q) params.set('q', q);
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params);
+    refetch();
+  };
+
+  const hasActiveFilters = currentRules.length > 0;
+
+  const formatRuleValue = (rule: FilterRule): string => {
+    if (rule.field === 'status' && typeof rule.value === 'string') {
+      return STATUS_LABELS[rule.value] || rule.value;
+    }
+    if ((rule.field === 'city' || rule.field === 'province') && typeof rule.value === 'string') {
+      return rule.value;
+    }
+    return String(rule.value);
+  };
+
+  const getFieldLabel = (fieldId: string): string => {
+    const field = filterFields.find((f) => f.id === fieldId);
+    return field?.label || fieldId;
+  };
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const hasEditPermission =
@@ -139,220 +300,266 @@ export default function SubcontractorsListPage() {
   }, [isInitialLoading, hasAnimated]);
 
   const listItems = data?.items ?? [];
-  const statusChipLabel =
-    statusFilter === 'active' ? 'Active only' : statusFilter === 'inactive' ? 'Inactive only' : null;
+  const showEmptyList =
+    data != null && listItems.length === 0 && (data.total === 0 || (data.items ?? []).length === 0);
+
+  const listCardAnimClass = animationComplete
+    ? undefined
+    : uiCx(
+        'transition-[opacity,transform] duration-[400ms] ease-out',
+        hasAnimated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-2 scale-[0.98]',
+      );
 
   return (
-    <div>
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Subcontractors</div>
-              <div className="text-xs text-gray-500 mt-0.5">Manage third-party companies and their workers</div>
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+        <AppPageHeader
+          title="Subcontractors"
+          subtitle="Manage third-party companies and their workers"
+          icon={<Briefcase className="h-4 w-4" />}
+          actions={
+            <div className="text-right">
+              <div className={uiTypography.overline}>Today</div>
+              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
             </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-          </div>
-        </div>
-      </div>
+          }
+        />
 
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="relative">
-              <input
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150"
+        <AppCard bodyClassName={uiSpacing.cardPadding}>
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+            <div className="min-w-0 flex-1">
+              <AppInput
                 placeholder="Search by name, contact, email, phone, city, province, address…"
                 value={q}
                 onChange={(e) => handleQChange(e.target.value)}
+                leftIcon={<Search className="h-4 w-4" />}
+                fieldHint="Search\n\nMatches company name, contact, email, phone, city, province, or address."
+                aria-label="Search subcontractors"
               />
-              <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
             </div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-xs text-gray-600 whitespace-nowrap flex items-center gap-1.5">
-              <span className="hidden sm:inline">Status</span>
-              <select
-                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs font-medium text-gray-700 bg-white"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              >
-                <option value="all">All</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </label>
-            {statusChipLabel && (
-              <button
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              leftIcon={<SlidersHorizontal className="h-4 w-4" />}
+              onClick={() => setIsFilterModalOpen(true)}
+            >
+              Filters
+            </AppButton>
+            {hasActiveFilters && (
+              <AppButton
                 type="button"
-                onClick={() => setStatusFilter('all')}
-                className="px-2 py-1 rounded-full text-[10px] font-medium border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  if (q) params.set('q', q);
+                  params.set('page', '1');
+                  setPage(1);
+                  setSearchParams(params);
+                  refetch();
+                }}
               >
-                {statusChipLabel} ×
-              </button>
+                Clear
+              </AppButton>
             )}
           </div>
-        </div>
-      </div>
+        </AppCard>
 
-      <LoadingOverlay isLoading={isInitialLoading} text="Loading subcontractors…">
-        <div
-          className="rounded-xl border border-gray-200 bg-white overflow-hidden"
-          style={
-            animationComplete
-              ? {}
-              : {
-                  opacity: hasAnimated ? 1 : 0,
-                  transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-                  transition: 'opacity 400ms ease-out, transform 400ms ease-out',
-                }
-          }
-        >
-          <div className="flex flex-col gap-2 overflow-x-auto">
-            {hasEditPermission && (
-              <button
-                type="button"
-                onClick={() => setNewModalOpen(true)}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[52px] min-w-[800px]"
-              >
-                <div className="text-lg text-gray-400 mr-2">+</div>
-                <div className="font-medium text-xs text-gray-700">New subcontractor company</div>
-              </button>
-            )}
-            {listItems.length > 0 && (
-              <>
+        {hasActiveFilters && (
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
+            {currentRules.map((rule) => (
+              <FilterChip
+                key={rule.id}
+                rule={rule}
+                onRemove={() => {
+                  const updatedRules = currentRules.filter((r) => r.id !== rule.id);
+                  const params = convertRulesToParams(updatedRules);
+                  if (q) params.set('q', q);
+                  params.set('page', String(page));
+                  setSearchParams(params);
+                  refetch();
+                }}
+                getValueLabel={formatRuleValue}
+                getFieldLabel={getFieldLabel}
+              />
+            ))}
+          </div>
+        )}
+
+        <LoadingOverlay isLoading={isInitialLoading} text="Loading subcontractors…">
+          <AppCard
+            className={uiCx(uiShadows.card, listCardAnimClass)}
+            bodyClassName="!p-0"
+            footer={
+              data && data.total > 0 ? (
+                <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
+                  <p className={uiTypography.helper}>
+                    Showing {(data.page - 1) * data.limit + 1} to {Math.min(data.page * data.limit, data.total)} of{' '}
+                    {data.total} companies
+                  </p>
+                  <div className={uiCx(uiLayout.actionsRow, 'items-center')}>
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={data.page <= 1 || isFetching}
+                      onClick={() => {
+                        const newPage = Math.max(1, data.page - 1);
+                        setPage(newPage);
+                        const params = new URLSearchParams(searchParams);
+                        params.set('page', String(newPage));
+                        setSearchParams(params);
+                      }}
+                    >
+                      Previous
+                    </AppButton>
+                    <span className={uiTypography.helper}>
+                      Page {data.page} of {data.total_pages}
+                    </span>
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={data.page >= data.total_pages || isFetching}
+                      onClick={() => {
+                        const newPage = Math.min(data.total_pages, data.page + 1);
+                        setPage(newPage);
+                        const params = new URLSearchParams(searchParams);
+                        params.set('page', String(newPage));
+                        setSearchParams(params);
+                      }}
+                    >
+                      Next
+                    </AppButton>
+                  </div>
+                </div>
+              ) : undefined
+            }
+          >
+            <div className="flex flex-col">
+              {showEmptyList ? (
                 <div
-                  className="grid grid-cols-[18fr_11fr_11fr_14fr_10fr_6fr_10fr_8fr] gap-2 sm:gap-3 items-center px-4 py-2 w-full text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[800px]"
-                  role="row"
+                  className={uiCx(
+                    uiSpacing.cardPadding,
+                    uiSpacing.sectionStack,
+                    'min-h-[12rem] pb-10',
+                  )}
                 >
-                  <button
-                    type="button"
-                    onClick={() => setListSort('name')}
-                    className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5"
-                  >
-                    Company{sortBy === 'name' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setListSort('city')}
-                    className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5"
-                  >
-                    City{sortBy === 'city' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setListSort('province')}
-                    className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5"
-                  >
-                    Province{sortBy === 'province' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
-                  </button>
-                  <span className="min-w-0 text-left text-gray-600">Contact / email</span>
-                  <span className="min-w-0 text-left text-gray-600">Phone</span>
-                  <button
-                    type="button"
-                    onClick={() => setListSort('workers')}
-                    className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5"
-                  >
-                    Workers{sortBy === 'workers' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setListSort('created')}
-                    className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5"
-                  >
-                    Created{sortBy === 'created' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
-                  </button>
-                  <span className="min-w-0 text-left text-gray-600">Status</span>
+                  {hasEditPermission ? (
+                    <AppListCreateItem
+                      label="New subcontractor company"
+                      layout="row"
+                      className="min-w-[800px] w-full"
+                      onClick={() => setNewModalOpen(true)}
+                    />
+                  ) : null}
+                  <AppEmptyState
+                    title="No subcontractor companies match your criteria."
+                    className="border-0 bg-transparent p-0 shadow-none"
+                    action={
+                      hasEditPermission ? (
+                        <AppButton type="button" size="sm" onClick={() => setNewModalOpen(true)}>
+                          Create company
+                        </AppButton>
+                      ) : undefined
+                    }
+                  />
                 </div>
-                <div className="rounded-b-lg border border-t-0 border-gray-200 overflow-hidden min-w-[800px]">
-                  {listItems.map((c) => (
-                    <CompanyRow key={c.id} c={c} onOpen={() => nav(`/business/subcontractors/companies/${c.id}`)} />
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          {data && data.total > 0 && (
-            <div className="p-4 border-t border-gray-200 flex items-center justify-between">
-              <div className="text-xs text-gray-600">
-                Showing {(data.page - 1) * data.limit + 1} to {Math.min(data.page * data.limit, data.total)} of {data.total} companies
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newPage = Math.max(1, data.page - 1);
-                    setPage(newPage);
-                    const params = new URLSearchParams(searchParams);
-                    params.set('page', String(newPage));
-                    setSearchParams(params);
-                  }}
-                  disabled={data.page <= 1 || isFetching}
-                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                <div className="text-xs text-gray-700 font-medium">
-                  Page {data.page} of {data.total_pages}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newPage = Math.min(data.total_pages, data.page + 1);
-                    setPage(newPage);
-                    const params = new URLSearchParams(searchParams);
-                    params.set('page', String(newPage));
-                    setSearchParams(params);
-                  }}
-                  disabled={data.page >= data.total_pages || isFetching}
-                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-
-          {data && data.total === 0 && (
-            <div className="p-10 text-center space-y-3">
-              <div className="text-sm text-gray-600">No subcontractor companies match your criteria.</div>
-              {hasEditPermission && (
-                <button
-                  type="button"
-                  onClick={() => setNewModalOpen(true)}
-                  className="inline-flex px-4 py-2 rounded-lg text-xs font-medium bg-[#7f1010] text-white hover:opacity-95"
-                >
-                  Create company
-                </button>
+              ) : (
+                <>
+                  {hasEditPermission && (
+                    <div
+                      className={uiCx(
+                        uiSpacing.cardPadding,
+                        listItems.length === 0 ? 'pb-10' : 'pb-3',
+                      )}
+                    >
+                      <AppListCreateItem
+                        label="New subcontractor company"
+                        layout="row"
+                        className="min-w-[800px] w-full"
+                        onClick={() => setNewModalOpen(true)}
+                      />
+                    </div>
+                  )}
+                  {listItems.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <div
+                        className={uiCx(
+                          'grid min-w-[800px] w-full grid-cols-[18fr_11fr_11fr_14fr_10fr_6fr_10fr_8fr] items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 sm:gap-3',
+                          uiTypography.overline,
+                          'normal-case tracking-normal text-gray-700',
+                        )}
+                        role="row"
+                      >
+                        <SortHeader label="Company" column="name" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} />
+                        <SortHeader label="City" column="city" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} />
+                        <SortHeader label="Province" column="province" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} />
+                        <span className="min-w-0 text-left text-gray-600">Contact / email</span>
+                        <span className="min-w-0 text-left text-gray-600">Phone</span>
+                        <SortHeader label="Workers" column="workers" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} />
+                        <SortHeader label="Created" column="created" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} />
+                        <span className="min-w-0 text-left text-gray-600">Status</span>
+                      </div>
+                      <div className={uiCx('min-w-[800px] border-t-0', uiBorders.subtle)}>
+                        {listItems.map((c) => (
+                          <CompanyRow key={c.id} c={c} onOpen={() => nav(`/business/subcontractors/companies/${c.id}`)} />
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
-          )}
-        </div>
-      </LoadingOverlay>
+          </AppCard>
+        </LoadingOverlay>
 
-      {newModalOpen && (
-        <NewSubcontractorCompanyModal
-          onClose={() => setNewModalOpen(false)}
-          onSuccess={(companyId) => {
-            setNewModalOpen(false);
-            qc.invalidateQueries({ queryKey: ['subcontractor-companies'] });
-            refetch();
-            nav(`/business/subcontractors/companies/${encodeURIComponent(companyId)}`);
-          }}
+        <FilterBuilderModal
+          isOpen={isFilterModalOpen}
+          onClose={() => setIsFilterModalOpen(false)}
+          onApply={handleApplyFilters}
+          initialRules={currentRules}
+          fields={filterFields}
+          getFieldData={() => null}
         />
-      )}
+
+        {newModalOpen && (
+          <NewSubcontractorCompanyModal
+            onClose={() => setNewModalOpen(false)}
+            onSuccess={(companyId) => {
+              setNewModalOpen(false);
+              qc.invalidateQueries({ queryKey: ['subcontractor-companies'] });
+              refetch();
+              nav(`/business/subcontractors/companies/${encodeURIComponent(companyId)}`);
+            }}
+          />
+        )}
     </div>
+  );
+}
+
+function SortHeader({
+  label,
+  column,
+  sortBy,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  column: SortKey;
+  sortBy: SortKey;
+  sortDir: 'asc' | 'desc';
+  onSort: (column: SortKey, direction?: 'asc' | 'desc') => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      className="flex min-w-0 items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none"
+    >
+      {label}
+      {sortBy === column ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+    </button>
   );
 }
 
@@ -360,38 +567,44 @@ function CompanyRow({ c, onOpen }: { c: Company; onOpen: () => void }) {
   const avatarUrl = withFileAccessTokenIfNeeded(c.logo_url) || '/ui/assets/placeholders/customer.png';
   return (
     <div
-      className="grid grid-cols-[18fr_11fr_11fr_14fr_10fr_6fr_10fr_8fr] gap-2 sm:gap-3 items-center px-4 py-3 w-full hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 min-h-[52px] text-left bg-white"
+      role="button"
+      tabIndex={0}
+      className={uiCx(
+        'grid min-h-[52px] w-full cursor-pointer grid-cols-[18fr_11fr_11fr_14fr_10fr_6fr_10fr_8fr] items-center gap-2 border-b border-gray-100 px-4 py-3 last:border-b-0 hover:bg-gray-50 sm:gap-3',
+      )}
       onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
-      <div className="min-w-0 flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <img
           src={avatarUrl}
-          className="w-10 h-10 rounded-lg border border-gray-200 object-cover flex-shrink-0"
+          className={uiCx('h-10 w-10 shrink-0 object-cover', uiRadius.control, uiBorders.subtle)}
           alt={c.name || 'Company logo'}
         />
-        <div className="min-w-0 flex flex-col justify-center">
-          <div className="text-xs font-semibold text-gray-900 truncate">{c.name}</div>
-          {c.contact_name && <div className="text-[10px] text-gray-500 truncate">{c.contact_name}</div>}
+        <div className="flex min-w-0 flex-col justify-center">
+          <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{c.name}</div>
+          {c.contact_name ? (
+            <div className={uiCx(uiTypography.helper, 'truncate text-[10px]')}>{c.contact_name}</div>
+          ) : null}
         </div>
       </div>
-      <div className="min-w-0 text-xs text-gray-600 truncate">{c.city || '—'}</div>
-      <div className="min-w-0 text-xs text-gray-600 truncate">{c.province || '—'}</div>
-      <div className="min-w-0">
-        <div className="text-xs text-gray-700 truncate">{c.email || '—'}</div>
-      </div>
-      <div className="min-w-0 text-xs text-gray-600 truncate">{c.phone || '—'}</div>
-      <div className="min-w-0 text-xs text-gray-700">{c.worker_count ?? 0}</div>
-      <div className="min-w-0 text-[10px] text-gray-600">
+      <div className={uiCx(uiTypography.helper, 'min-w-0 truncate')}>{c.city || '—'}</div>
+      <div className={uiCx(uiTypography.helper, 'min-w-0 truncate')}>{c.province || '—'}</div>
+      <div className={uiCx(uiTypography.body, 'min-w-0 truncate text-xs')}>{c.email || '—'}</div>
+      <div className={uiCx(uiTypography.helper, 'min-w-0 truncate')}>{c.phone || '—'}</div>
+      <div className={uiCx(uiTypography.body, 'min-w-0 text-xs')}>{c.worker_count ?? 0}</div>
+      <div className={uiCx(uiTypography.helper, 'min-w-0 text-[10px]')}>
         {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
       </div>
       <div className="min-w-0">
-        <span
-          className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-medium ${
-            c.is_active ? 'border-green-200 text-green-800 bg-green-50' : 'border-amber-200 text-amber-800 bg-amber-50'
-          }`}
-        >
+        <AppBadge variant={c.is_active ? 'success' : 'warning'} className="normal-case tracking-normal">
           {c.is_active ? 'Active' : 'Inactive'}
-        </span>
+        </AppBadge>
       </div>
     </div>
   );

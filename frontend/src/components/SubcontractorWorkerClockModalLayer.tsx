@@ -2,10 +2,39 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import OverlayPortal from '@/components/OverlayPortal';
 import SubcontractorSimpleSignature from '@/components/SubcontractorSimpleSignature';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { ProjectSearchCombobox } from '@/components/ProjectSearchCombobox';
+import { scWorkerClockQuickInfo } from '@/lib/formModalQuickInfo';
+import {
+  AppButton,
+  AppCheckbox,
+  AppDatePicker,
+  AppFormModal,
+  AppSelect,
+  uiSpacing,
+} from '@/components/ui';
+
+const HOUR_OPTIONS = Array.from({ length: 12 }, (_, i) => ({
+  value: String(i + 1),
+  label: String(i + 1),
+}));
+
+const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => {
+  const m = i * 5;
+  const v = String(m).padStart(2, '0');
+  return { value: v, label: v };
+});
+
+const AM_PM_OPTIONS = [
+  { value: 'AM', label: 'AM' },
+  { value: 'PM', label: 'PM' },
+];
+
+const BREAK_HOUR_OPTIONS = Array.from({ length: 3 }, (_, i) => ({
+  value: String(i),
+  label: String(i),
+}));
 
 function formatTime12h(timeStr: string | null | undefined): string {
   if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
@@ -352,282 +381,196 @@ export function SubcontractorWorkerClockModalLayer({
     }
   };
 
+  const clockSubmitDisabled =
+    submitting ||
+    (clockType === 'in' && !projectId) ||
+    (clockType === 'out' && (!sigProjectId || !hoursConfirm || !sigOut));
+
   return (
-    <OverlayPortal>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closeModal}>
-        <div
-          className="max-w-md w-full min-w-0 max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={closeModal} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">Clock {clockType === 'in' ? 'In' : 'Out'}</h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {clockType === 'in'
-                    ? 'Record clock-in time and project for this worker'
-                    : 'Record clock-out time for this worker'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 min-w-0">
-            <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4 min-w-0">
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Date *</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v) onSelectedDateChange(v);
-                  }}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Time *</label>
-                {!hasUnrestrictedClock ? (
-                  <div className="flex gap-2 items-center pointer-events-none">
-                    <div className="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-100 opacity-60 text-gray-500 text-sm">
-                      {selectedHour12 || 'Hour'}
-                    </div>
-                    <span className="text-gray-500 font-medium">:</span>
-                    <div className="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-100 opacity-60 text-gray-500 text-sm">
-                      {selectedMinute || 'Min'}
-                    </div>
-                    <div className="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-100 opacity-60 text-gray-500 text-sm">
-                      {selectedAmPm || 'AM'}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex gap-2 items-center">
-                    <select
-                      value={selectedHour12}
-                      onChange={(e) => {
-                        const hour12 = e.target.value;
-                        setSelectedHour12(hour12);
-                        updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
-                      }}
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                      required
-                    >
-                      <option value="">Hour</option>
-                      {Array.from({ length: 12 }, (_, i) => (
-                        <option key={i + 1} value={String(i + 1)}>
-                          {i + 1}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-gray-500 font-medium">:</span>
-                    <select
-                      value={selectedMinute}
-                      onChange={(e) => {
-                        const minute = e.target.value;
-                        setSelectedMinute(minute);
-                        updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
-                      }}
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                      required
-                    >
-                      <option value="">Min</option>
-                      {Array.from({ length: 12 }, (_, i) => {
-                        const m = i * 5;
-                        return (
-                          <option key={m} value={String(m).padStart(2, '0')}>
-                            {String(m).padStart(2, '0')}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <select
-                      value={selectedAmPm}
-                      onChange={(e) => {
-                        const amPm = e.target.value as 'AM' | 'PM';
-                        setSelectedAmPm(amPm);
-                        updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
-                      }}
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                      required
-                    >
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                  </div>
-                )}
-                {!hasUnrestrictedClock && (
-                  <p className="text-[10px] text-gray-500 mt-1.5">
-                    Time is locked to the current time (5-minute increments). Contact an administrator to enable time editing.
-                  </p>
-                )}
-              </div>
-
-              {clockType === 'in' && (
-                <div>
-                  <ProjectSearchCombobox
-                    id="sc-worker-clock-project"
-                    value={projectId}
-                    onChange={onProjectIdChange}
-                    disabled={submitting}
-                  />
-                </div>
-              )}
-
-              {clockType === 'out' && openAttendance && (
-                <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-xs text-green-900">
-                  {openAttendance.project_name ? `Project: ${openAttendance.project_name}` : 'Open session'}
-                  {openAttendance.clock_in_time ? ` · Since ${new Date(openAttendance.clock_in_time).toLocaleString()}` : ''}
-                </div>
-              )}
-
-              {clockType === 'out' && (
-                <div className="space-y-3">
-                  <label className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={hoursConfirm}
-                      onChange={(e) => setHoursConfirm(e.target.checked)}
-                      className="mt-0.5 w-3.5 h-3.5 text-brand-red border-gray-300 rounded focus:ring-brand-red"
-                    />
-                    <span>I confirm that the recorded working hours are accurate.</span>
-                  </label>
-                  <div>
-                    <label className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={insertBreakTime}
-                        onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="mt-0.5 w-3.5 h-3.5 text-brand-red border-gray-300 rounded focus:ring-brand-red"
-                      />
-                      <span>Insert break time</span>
-                    </label>
-                    {insertBreakTime && (
-                      <div className="ml-6 mt-2 flex flex-wrap gap-2 items-center text-xs">
-                        <span className="text-gray-500">Hours</span>
-                        <select
-                          value={breakHours}
-                          onChange={(e) => setBreakHours(e.target.value)}
-                          className="border border-gray-200 rounded-lg px-2 py-1 text-sm"
-                        >
-                          {Array.from({ length: 3 }, (_, i) => (
-                            <option key={i} value={String(i)}>
-                              {i}
-                            </option>
-                          ))}
-                        </select>
-                        <span className="text-gray-500">Minutes</span>
-                        <select
-                          value={breakMinutes}
-                          onChange={(e) => setBreakMinutes(e.target.value)}
-                          className="border border-gray-200 rounded-lg px-2 py-1 text-sm"
-                        >
-                          {Array.from({ length: 12 }, (_, i) => {
-                            const m = i * 5;
-                            return (
-                              <option key={m} value={String(m).padStart(2, '0')}>
-                                {String(m).padStart(2, '0')}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                  {sigProjectId ? (
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1.5">Signature *</p>
-                      <SubcontractorSimpleSignature
-                        projectId={sigProjectId}
-                        disabled={submitting}
-                        onUploaded={(fid) => setSigOut(fid)}
-                        onClear={() => setSigOut(null)}
-                      />
-                    </div>
-                  ) : (
-                    <p className="text-xs text-amber-700">Missing project context for signature upload.</p>
-                  )}
-                </div>
-              )}
-
-              <div>
-                {gpsLocation ? (
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-green-800 font-medium text-sm">
-                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>Location captured</span>
-                    </div>
-                    <div className="text-xs text-green-700 mt-1">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
-                  </div>
-                ) : gpsLoading ? (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-blue-800 text-sm">
-                      <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-blue-800 border-t-transparent" />
-                      <span>Getting location...</span>
-                    </div>
-                  </div>
-                ) : gpsError ? (
-                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="text-sm text-yellow-800">
-                      {gpsError}
-                      <button
-                        type="button"
-                        onClick={getCurrentLocation}
-                        className="ml-2 text-xs underline font-medium hover:text-yellow-900"
-                      >
-                        Try again
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                    <div className="text-sm text-gray-600">No location data</div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex flex-col gap-2 rounded-b-xl">
-            {clockSubmitBlockedReason ? (
-              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                {clockSubmitBlockedReason}
-              </p>
-            ) : null}
-            <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={closeModal}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void performSubmit()}
-                title={clockSubmitBlockedReason || undefined}
-                disabled={
-                  submitting ||
-                  (clockType === 'in' && !projectId) ||
-                  (clockType === 'out' && (!sigProjectId || !hoursConfirm || !sigOut))
-                }
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submitting ? 'Submitting...' : 'Submit'}
-              </button>
-            </div>
+    <AppFormModal
+      open
+      onClose={closeModal}
+      title={`Clock ${clockType === 'in' ? 'In' : 'Out'}`}
+      description={
+        clockType === 'in'
+          ? 'Record clock-in time and project for this worker.'
+          : 'Record clock-out time for this worker.'
+      }
+      quickInfo={scWorkerClockQuickInfo(clockType)}
+      footer={
+        <div className="flex w-full flex-col gap-2">
+          {clockSubmitBlockedReason ? (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {clockSubmitBlockedReason}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <AppButton type="button" variant="secondary" onClick={closeModal}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              onClick={() => void performSubmit()}
+              title={clockSubmitBlockedReason || undefined}
+              disabled={clockSubmitDisabled}
+              loading={submitting}
+            >
+              Submit
+            </AppButton>
           </div>
         </div>
+      }
+    >
+      <div className={uiSpacing.sectionStack}>
+        <AppDatePicker
+          id="sc-worker-clock-modal-date"
+          label="Date"
+          value={selectedDate}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v) onSelectedDateChange(v);
+          }}
+          required
+        />
+
+        <div>
+          <span className="mb-1.5 block text-xs font-medium text-gray-700">Time</span>
+          {!hasUnrestrictedClock ? (
+            <div className="flex items-center gap-2 pointer-events-none opacity-60">
+              <AppSelect className="flex-1" value={selectedHour12} options={HOUR_OPTIONS} placeholder="Hour" disabled />
+              <span className="font-medium text-gray-500">:</span>
+              <AppSelect className="flex-1" value={selectedMinute} options={MINUTE_OPTIONS} placeholder="Min" disabled />
+              <AppSelect className="flex-1" value={selectedAmPm} options={AM_PM_OPTIONS} disabled />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <AppSelect
+                className="flex-1"
+                value={selectedHour12}
+                onChange={(e) => {
+                  const hour12 = e.target.value;
+                  setSelectedHour12(hour12);
+                  updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
+                }}
+                options={HOUR_OPTIONS}
+                placeholder="Hour"
+                required
+              />
+              <span className="font-medium text-gray-500">:</span>
+              <AppSelect
+                className="flex-1"
+                value={selectedMinute}
+                onChange={(e) => {
+                  const minute = e.target.value;
+                  setSelectedMinute(minute);
+                  updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
+                }}
+                options={MINUTE_OPTIONS}
+                placeholder="Min"
+                required
+              />
+              <AppSelect
+                className="flex-1"
+                value={selectedAmPm}
+                onChange={(e) => {
+                  const amPm = e.target.value as 'AM' | 'PM';
+                  setSelectedAmPm(amPm);
+                  updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
+                }}
+                options={AM_PM_OPTIONS}
+                required
+              />
+            </div>
+          )}
+          {!hasUnrestrictedClock && (
+            <p className="mt-1.5 text-xs text-gray-500">
+              Time is locked to the current time (5-minute increments). Contact an administrator to enable time editing.
+            </p>
+          )}
+        </div>
+
+        {clockType === 'in' && (
+          <ProjectSearchCombobox
+            id="sc-worker-clock-project"
+            value={projectId}
+            onChange={onProjectIdChange}
+            disabled={submitting}
+          />
+        )}
+
+        {clockType === 'out' && openAttendance && (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-xs text-green-900">
+            {openAttendance.project_name ? `Project: ${openAttendance.project_name}` : 'Open session'}
+            {openAttendance.clock_in_time ? ` · Since ${new Date(openAttendance.clock_in_time).toLocaleString()}` : ''}
+          </div>
+        )}
+
+        {clockType === 'out' && (
+          <div className={uiSpacing.sectionStack}>
+            <AppCheckbox
+              label="I confirm that the recorded working hours are accurate."
+              checked={hoursConfirm}
+              onChange={setHoursConfirm}
+            />
+            <AppCheckbox label="Insert break time" checked={insertBreakTime} onChange={setInsertBreakTime} />
+            {insertBreakTime && (
+              <div className="flex flex-wrap items-end gap-3 pl-8">
+                <AppSelect
+                  label="Hours"
+                  value={breakHours}
+                  onChange={(e) => setBreakHours(e.target.value)}
+                  options={BREAK_HOUR_OPTIONS}
+                  className="min-w-[100px] flex-1"
+                />
+                <AppSelect
+                  label="Minutes"
+                  value={breakMinutes}
+                  onChange={(e) => setBreakMinutes(e.target.value)}
+                  options={MINUTE_OPTIONS}
+                  className="min-w-[100px] flex-1"
+                />
+              </div>
+            )}
+            {sigProjectId ? (
+              <div className="min-w-0">
+                <p className="mb-1.5 text-xs font-medium text-gray-600">Signature</p>
+                <SubcontractorSimpleSignature
+                  projectId={sigProjectId}
+                  disabled={submitting}
+                  onUploaded={(fid) => setSigOut(fid)}
+                  onClear={() => setSigOut(null)}
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-amber-700">Missing project context for signature upload.</p>
+            )}
+          </div>
+        )}
+
+        <div>
+          {gpsLocation ? (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-green-800">
+                <span>Location captured</span>
+              </div>
+              <div className="mt-1 text-xs text-green-700">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
+            </div>
+          ) : gpsLoading ? (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+              Getting location…
+            </div>
+          ) : gpsError ? (
+            <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+              {gpsError}{' '}
+              <button type="button" onClick={getCurrentLocation} className="text-xs font-medium underline">
+                Try again
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">No location data</div>
+          )}
+        </div>
       </div>
-    </OverlayPortal>
+    </AppFormModal>
   );
 }

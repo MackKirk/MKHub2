@@ -232,6 +232,8 @@ export default function Customers(){
   const { data:settings, isLoading: settingsLoading } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
 
   const listItems = data?.items ?? [];
+  const showEmptyList =
+    data != null && listItems.length === 0 && (data.total === 0 || (data.items ?? []).length === 0);
 
   // Track if we've loaded data at least once
   useEffect(() => {
@@ -355,8 +357,7 @@ export default function Customers(){
       );
 
   return (
-    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
-      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack)}>
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
         <AppPageHeader
           title="Customers"
           subtitle="Manage your customer list and sites"
@@ -481,48 +482,74 @@ export default function Customers(){
               ) : undefined
             }
           >
-            <div className="flex flex-col gap-2">
-              {hasEditPermission && (
-                <div className={uiCx(uiSpacing.cardPadding, 'pb-0')}>
-                  <AppListCreateItem
-                    label="New Customer"
-                    layout="row"
-                    className="w-full"
-                    onClick={() => setNewCustomerModalOpen(true)}
+            <div className="flex flex-col">
+              {showEmptyList ? (
+                <div
+                  className={uiCx(
+                    uiSpacing.cardPadding,
+                    uiSpacing.sectionStack,
+                    'min-h-[12rem] pb-10',
+                  )}
+                >
+                  {hasEditPermission ? (
+                    <AppListCreateItem
+                      label="New Customer"
+                      layout="row"
+                      className="w-full"
+                      onClick={() => setNewCustomerModalOpen(true)}
+                    />
+                  ) : null}
+                  <AppEmptyState
+                    title="No customers found matching your criteria."
+                    className="border-0 bg-transparent p-0 shadow-none"
                   />
                 </div>
-              )}
-              {(data?.items || []).length > 0 ? (
-                <div className="overflow-x-auto">
-                  <div
-                    className={uiCx(
-                      'grid min-w-[640px] w-full grid-cols-[40fr_10fr_25fr_10fr_15fr] items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 sm:gap-3 lg:gap-4',
-                      uiTypography.overline,
-                      'normal-case tracking-normal text-gray-700',
-                    )}
-                    role="row"
-                  >
-                    <SortHeader label="Customer" column="customer" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by customer name" />
-                    <SortHeader label="Code" column="code" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by code" />
-                    <SortHeader label="City" column="city" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by city" />
-                    <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by status" />
-                    <SortHeader label="Type" column="type" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by type" />
-                  </div>
-                  <div className={uiCx('min-w-[640px] border-t-0', uiBorders.subtle)}>
-                    {listItems.map((c) => (
-                      <ClientRow
-                        key={c.id}
-                        c={c}
-                        onOpen={() => nav(`/customers/${encodeURIComponent(c.id)}`)}
+              ) : (
+                <>
+                  {hasEditPermission && (
+                    <div
+                      className={uiCx(
+                        uiSpacing.cardPadding,
+                        listItems.length === 0 ? 'pb-10' : 'pb-3',
+                      )}
+                    >
+                      <AppListCreateItem
+                        label="New Customer"
+                        layout="row"
+                        className="w-full"
+                        onClick={() => setNewCustomerModalOpen(true)}
                       />
-                    ))}
-                  </div>
-                </div>
-              ) : data && data.total === 0 ? (
-                <div className={uiSpacing.cardPadding}>
-                  <AppEmptyState title="No customers found matching your criteria." className="border-0 bg-transparent shadow-none" />
-                </div>
-              ) : null}
+                    </div>
+                  )}
+                  {(data?.items || []).length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <div
+                        className={uiCx(
+                          'grid min-w-[640px] w-full grid-cols-[40fr_10fr_25fr_10fr_15fr] items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 sm:gap-3 lg:gap-4',
+                          uiTypography.overline,
+                          'normal-case tracking-normal text-gray-700',
+                        )}
+                        role="row"
+                      >
+                        <SortHeader label="Customer" column="customer" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by customer name" />
+                        <SortHeader label="Code" column="code" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by code" />
+                        <SortHeader label="City" column="city" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by city" />
+                        <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by status" />
+                        <SortHeader label="Type" column="type" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by type" />
+                      </div>
+                      <div className={uiCx('min-w-[640px] border-t-0', uiBorders.subtle)}>
+                        {listItems.map((c) => (
+                          <ClientRow
+                            key={c.id}
+                            c={c}
+                            onOpen={() => nav(`/customers/${encodeURIComponent(c.id)}`)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              )}
             </div>
           </AppCard>
         </LoadingOverlay>
@@ -549,8 +576,7 @@ export default function Customers(){
             }}
           />
         )}
-      </div>
-    </main>
+    </div>
   );
 }
 

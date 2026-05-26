@@ -4,6 +4,7 @@
   disabled?: boolean;
   onClick: () => void;
   title?: string;
+  subtitle?: string;
 };
 
 function ClockActionIcon({ kind, enabled }: { kind: 'in' | 'out'; enabled: boolean }) {
@@ -28,9 +29,11 @@ function ClockActionIcon({ kind, enabled }: { kind: 'in' | 'out'; enabled: boole
   );
 }
 
-export function ClockActionTile({ kind, enabled, disabled = false, onClick, title }: ClockActionTileProps) {
+export function ClockActionTile({ kind, enabled, disabled = false, onClick, title, subtitle }: ClockActionTileProps) {
   const interactive = enabled && !disabled;
   const isIn = kind === 'in';
+  const description =
+    subtitle ?? (isIn ? 'Start tracking your work time' : 'End your current work session');
 
   return (
     <button
@@ -52,9 +55,7 @@ export function ClockActionTile({ kind, enabled, disabled = false, onClick, titl
           <div className={`mb-1 text-base font-semibold ${interactive ? 'text-gray-900' : 'text-gray-400'}`}>
             {isIn ? 'Clock In' : 'Clock Out'}
           </div>
-          <div className={`text-xs ${interactive ? 'text-gray-600' : 'text-gray-400'}`}>
-            {isIn ? 'Start tracking your work time' : 'End your current work session'}
-          </div>
+          <div className={`text-xs ${interactive ? 'text-gray-600' : 'text-gray-400'}`}>{description}</div>
         </div>
       </div>
     </button>

@@ -2,8 +2,25 @@ import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import toast from 'react-hot-toast';
-import OverlayPortal from '@/components/OverlayPortal';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { formatContactPhone } from '@/lib/contactPhoto';
+import {
+  AppButton,
+  AppControlLabelRow,
+  AppFieldHint,
+  AppFormModal,
+  AppInput,
+  AppSectionHeader,
+  AppTextarea,
+  FORM_MODAL_WIDE_DIALOG_COLLAPSED,
+  FORM_MODAL_WIDE_DIALOG_EXPANDED,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 export type NewWorkerPayload = {
   name: string;
@@ -23,25 +40,28 @@ export type NewWorkerPayload = {
   emergency_contact_phone?: string | null;
 };
 
-const fieldLabelClass = 'text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1';
-const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300';
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  companyId: string;
+  companyName?: string | null;
+  onCreated?: () => void;
+};
 
 export default function NewSubcontractorWorkerModal({
   open,
   onClose,
   companyId,
+  companyName,
   onCreated,
-}: {
-  open: boolean;
-  onClose: () => void;
-  companyId: string;
-  onCreated?: () => void;
-}) {
+}: Props) {
   const qc = useQueryClient();
+  const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [jobTitle, setJobTitle] = useState('');
+  const [notes, setNotes] = useState('');
   const [addressLine1, setAddressLine1] = useState('');
   const [addressLine2, setAddressLine2] = useState('');
   const [city, setCity] = useState('');
@@ -50,30 +70,24 @@ export default function NewSubcontractorWorkerModal({
   const [country, setCountry] = useState('');
   const [emergencyName, setEmergencyName] = useState('');
   const [emergencyPhone, setEmergencyPhone] = useState('');
-  const [notes, setNotes] = useState('');
-  const [isActive, setIsActive] = useState(true);
   const [photoFileId, setPhotoFileId] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+
+  const controlInputClass = uiCx('w-full text-sm', uiRadius.control, uiBorders.input, uiSpacing.controlX, 'py-2');
 
   const handleClose = useCallback(() => {
     onClose();
   }, [onClose]);
 
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, handleClose]);
-
-  useEffect(() => {
     if (open) return;
+    setStep(1);
     setName('');
     setPhone('');
     setEmail('');
     setJobTitle('');
+    setNotes('');
     setAddressLine1('');
     setAddressLine2('');
     setCity('');
@@ -82,10 +96,9 @@ export default function NewSubcontractorWorkerModal({
     setCountry('');
     setEmergencyName('');
     setEmergencyPhone('');
-    setNotes('');
-    setIsActive(true);
     setPhotoFileId(null);
     setPhotoPreview(null);
+    setPhotoUploading(false);
   }, [open]);
 
   const createMut = useMutation({
@@ -94,6 +107,9 @@ export default function NewSubcontractorWorkerModal({
     onSuccess: () => {
       toast.success('Worker created');
       qc.invalidateQueries({ queryKey: ['subcontractor-workers', companyId] });
+      qc.invalidateQueries({ queryKey: ['subcontractor-workers-overview', companyId] });
+      qc.invalidateQueries({ queryKey: ['subcontractor-company-activity', companyId] });
+      qc.invalidateQueries({ queryKey: ['subcontractor-company', companyId] });
       qc.invalidateQueries({ queryKey: ['subcontractor-companies'] });
       onCreated?.();
       handleClose();
@@ -112,12 +128,15 @@ export default function NewSubcontractorWorkerModal({
     fd.append('employee_id', '');
     fd.append('category_id', 'files');
     try {
+      setPhotoUploading(true);
       const res = await api<{ id: string }>('POST', '/files/upload-proxy', fd);
       setPhotoFileId(res.id);
       setPhotoPreview(withFileAccessTokenIfNeeded(`/files/${res.id}/thumbnail?w=160`) || null);
       toast.success('Photo uploaded');
     } catch {
       toast.error('Photo upload failed');
+    } finally {
+      setPhotoUploading(false);
     }
   };
 
@@ -125,11 +144,12 @@ export default function NewSubcontractorWorkerModal({
     const n = name.trim();
     if (!n) {
       toast.error('Name is required');
+      setStep(1);
       return;
     }
     const body: NewWorkerPayload = {
       name: n,
-      is_active: isActive,
+      is_active: true,
       phone: phone.trim() || undefined,
       email: email.trim() || undefined,
       job_title: jobTitle.trim() || undefined,
@@ -147,204 +167,262 @@ export default function NewSubcontractorWorkerModal({
     createMut.mutate(body);
   };
 
-  if (!open) return null;
+  const isSaving = createMut.isPending;
+  const canGoToStep2 = !!name.trim();
+  const title = companyName?.trim() ? `New worker — ${companyName.trim()}` : 'New worker';
+  const stepSubtitle = step === 1 ? 'Identity and contact details' : 'Address and emergency contact';
+
+  const stepPillClass = (n: number) =>
+    uiCx(
+      'rounded-full px-2 py-1 text-[10px] font-medium',
+      step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
+    );
+
+  const stepIndicators = (
+    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-[10px] font-medium')}>
+      <span className={stepPillClass(1)}>Step 1</span>
+      <span className="text-gray-400">→</span>
+      <span className={stepPillClass(2)}>Step 2</span>
+    </div>
+  );
+
+  const modalFooter = (
+    <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
+      <span className={uiTypography.helper}>{step === 1 ? 'Step 1 of 2' : 'Step 2 of 2'}</span>
+      <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+        <AppButton type="button" variant="secondary" size="sm" onClick={handleClose} disabled={isSaving}>
+          Cancel
+        </AppButton>
+        {step === 1 ? (
+          <AppButton type="button" size="sm" disabled={!canGoToStep2} onClick={() => setStep(2)}>
+            Next
+          </AppButton>
+        ) : (
+          <>
+            <AppButton type="button" variant="secondary" size="sm" disabled={isSaving} onClick={() => setStep(1)}>
+              Back
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              disabled={!canGoToStep2 || isSaving}
+              loading={isSaving}
+              onClick={() => submit()}
+            >
+              {isSaving ? 'Creating…' : 'Create worker'}
+            </AppButton>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  if (!companyId) return null;
 
   return (
-    <OverlayPortal>
-      <div
-        className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
-        role="presentation"
-        onClick={handleClose}
-      >
-        <div
-          className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="new-worker-modal-title"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <button
+    <AppFormModal
+      open={open}
+      onClose={handleClose}
+      title={title}
+      description={stepSubtitle}
+      formWidth="wide"
+      dialogClassName={FORM_MODAL_WIDE_DIALOG_COLLAPSED}
+      dialogClassNameExpanded={FORM_MODAL_WIDE_DIALOG_EXPANDED}
+      headerExtra={stepIndicators}
+      quickInfo={
+        <>
+          <p>Step 1: name, phone, email, job title, notes, and optional photo. Name is required.</p>
+          <p>Step 2: address and emergency contact (all optional).</p>
+          <p>New workers are created as active. QR code is available on the profile after creation.</p>
+        </>
+      }
+      footer={modalFooter}
+    >
+      {step === 1 ? (
+        <div className={uiSpacing.sectionStack}>
+          <AppSectionHeader
+            title="Worker details"
+            description="Basic identity and how to reach this person."
+          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <AppInput
+              className="md:col-span-2"
+              label="Name *"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={isSaving}
+              autoFocus
+              fieldHint="Name\n\nFull name shown on worker lists and safety forms."
+            />
+            <AppInput
+              label="Phone"
+              value={phone}
+              onChange={(e) => setPhone(formatContactPhone(e.target.value))}
+              disabled={isSaving}
+              fieldHint="Phone\n\nDirect phone number for this worker."
+            />
+            <AppInput
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isSaving}
+              fieldHint="Email\n\nWork email for this worker."
+            />
+            <AppInput
+              className="md:col-span-2"
+              label="Job title"
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+              disabled={isSaving}
+              fieldHint="Job title\n\nRole or trade (optional)."
+            />
+          </div>
+
+          <div className="grid items-start gap-3 md:grid-cols-5">
+            <AppTextarea
+              className="md:col-span-3"
+              label="Notes"
+              rows={3}
+              textareaClassName="h-32 min-h-32 resize-y"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              disabled={isSaving}
+              fieldHint="Notes\n\nInternal notes about this worker (optional)."
+            />
+            <div className="space-y-1.5 md:col-span-2">
+              <AppControlLabelRow
+                label="Photo"
+                fieldHint={<AppFieldHint hint="Photo\n\nOptional profile image for this worker." />}
+              />
+              <label
+                className={uiCx(
+                  'relative grid h-32 w-full cursor-pointer place-items-center overflow-hidden bg-gray-50',
+                  uiRadius.control,
+                  uiBorders.input,
+                  (photoUploading || isSaving) && 'pointer-events-none opacity-60',
+                )}
+              >
+                {photoPreview ? (
+                  <img src={photoPreview} className="h-full w-full object-cover" alt="Worker photo preview" />
+                ) : (
+                  <span className={uiTypography.helper}>{photoUploading ? 'Uploading…' : 'Select photo'}</span>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  disabled={photoUploading || isSaving}
+                  onChange={(e) => void onPickPhoto(e.target.files?.[0] || null)}
+                />
+              </label>
+              {photoFileId ? (
+                <AppButton
                   type="button"
-                  onClick={handleClose}
-                  className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                  title="Close"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isSaving}
+                  onClick={() => {
+                    setPhotoFileId(null);
+                    setPhotoPreview(null);
+                  }}
                 >
-                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                </button>
-                <div>
-                  <div id="new-worker-modal-title" className="text-sm font-semibold text-gray-900">
-                    New worker
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    Add a worker for this subcontractor company. QR code is available on the worker profile after creation.
-                  </div>
-                </div>
-              </div>
+                  Remove photo
+                </AppButton>
+              ) : null}
             </div>
-          </div>
-
-          <div className="overflow-y-auto flex-1 p-4">
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <span className={fieldLabelClass}>Photo (optional)</span>
-                    <div className="flex items-center gap-3">
-                      {photoPreview ? (
-                        <img src={photoPreview} alt="" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
-                      ) : (
-                        <div className="w-16 h-16 rounded-lg bg-gray-100 border border-dashed border-gray-300 grid place-items-center text-xs text-gray-400">
-                          No photo
-                        </div>
-                      )}
-                      <label className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
-                        Upload
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => void onPickPhoto(e.target.files?.[0] || null)}
-                        />
-                      </label>
-                      {photoFileId && (
-                        <button
-                          type="button"
-                          className="text-xs text-red-600 hover:underline"
-                          onClick={() => {
-                            setPhotoFileId(null);
-                            setPhotoPreview(null);
-                          }}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className={fieldLabelClass}>
-                      Name <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      className={inputClass}
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Worker name"
-                      autoFocus
-                    />
-                  </div>
-
-                  <div>
-                    <label className={fieldLabelClass}>Phone</label>
-                    <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} />
-                  </div>
-
-                  <div>
-                    <label className={fieldLabelClass}>Email</label>
-                    <input type="email" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} />
-                  </div>
-
-                  <div>
-                    <label className={fieldLabelClass}>Job title</label>
-                    <input className={inputClass} value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
-                  </div>
-
-                  <label className="flex items-center gap-2 text-sm text-gray-700 pt-1">
-                    <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-                    Active
-                  </label>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className={fieldLabelClass}>Address line 1</label>
-                    <AddressAutocomplete
-                      value={addressLine1}
-                      onChange={setAddressLine1}
-                      onAddressSelect={(a) => {
-                        setAddressLine1(a.address_line1 || '');
-                        setAddressLine2(a.address_line2 || '');
-                        setCity(a.city || '');
-                        setProvince(a.province || '');
-                        setPostalCode(a.postal_code || '');
-                        setCountry(a.country || '');
-                      }}
-                      placeholder="Start typing an address…"
-                      className={`${inputClass} bg-white`}
-                    />
-                  </div>
-
-                  <div>
-                    <label className={fieldLabelClass}>Address line 2</label>
-                    <input className={inputClass} value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className={fieldLabelClass}>City</label>
-                      <input className={inputClass} value={city} onChange={(e) => setCity(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={fieldLabelClass}>Province</label>
-                      <input className={inputClass} value={province} onChange={(e) => setProvince(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={fieldLabelClass}>Postal code</label>
-                      <input className={inputClass} value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={fieldLabelClass}>Country</label>
-                      <input className={inputClass} value={country} onChange={(e) => setCountry(e.target.value)} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className={fieldLabelClass}>Emergency contact name</label>
-                    <input className={inputClass} value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} />
-                  </div>
-
-                  <div>
-                    <label className={fieldLabelClass}>Emergency contact phone</label>
-                    <input className={inputClass} value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} />
-                  </div>
-
-                  <div>
-                    <label className={fieldLabelClass}>Notes</label>
-                    <textarea
-                      className={`${inputClass} min-h-[88px] resize-y`}
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={!name.trim() || createMut.isPending}
-              onClick={() => submit()}
-              className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#c41e1e] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {createMut.isPending ? 'Creating…' : 'Create worker'}
-            </button>
           </div>
         </div>
-      </div>
-    </OverlayPortal>
+      ) : (
+        <div className={uiSpacing.sectionStack}>
+          <AppSectionHeader
+            title="Address"
+            description="Mailing address"
+          />
+
+          <div className="space-y-1.5">
+            <AppControlLabelRow
+              label="Address 1"
+              fieldHint={<AppFieldHint hint="Address 1\n\nStreet address. Suggestions appear as you type." />}
+            />
+            <AddressAutocomplete
+              value={addressLine1}
+              onChange={setAddressLine1}
+              disabled={isSaving}
+              onAddressSelect={(a) => {
+                setAddressLine1(a.address_line1 || '');
+                setAddressLine2(a.address_line2 || '');
+                setCity(a.city || '');
+                setProvince(a.province || '');
+                setPostalCode(a.postal_code || '');
+                setCountry(a.country || '');
+              }}
+              placeholder="Start typing an address…"
+              className={controlInputClass}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <AppControlLabelRow
+              label="Address 2"
+              fieldHint={
+                <AppFieldHint hint="Address 2\n\nSuite, unit, or building (optional). Suggestions appear as you type." />
+              }
+            />
+            <AddressAutocomplete
+              value={addressLine2}
+              onChange={setAddressLine2}
+              disabled={isSaving}
+              lineOnly
+              placeholder="Enter a second address"
+              className={controlInputClass}
+            />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <AppInput label="City" value={city} onChange={(e) => setCity(e.target.value)} disabled={isSaving} />
+            <AppInput
+              label="Province/State"
+              value={province}
+              onChange={(e) => setProvince(e.target.value)}
+              disabled={isSaving}
+            />
+            <AppInput
+              label="Postal code"
+              value={postalCode}
+              onChange={(e) => setPostalCode(e.target.value)}
+              disabled={isSaving}
+            />
+            <AppInput
+              label="Country"
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              disabled={isSaving}
+            />
+          </div>
+
+          <AppSectionHeader
+            title="Emergency contact"
+            description="Optional person to call in an emergency."
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <AppInput
+              label="Emergency contact name"
+              value={emergencyName}
+              onChange={(e) => setEmergencyName(e.target.value)}
+              disabled={isSaving}
+              fieldHint="Emergency contact name\n\nPerson to call in an emergency."
+            />
+            <AppInput
+              label="Emergency contact phone"
+              value={emergencyPhone}
+              onChange={(e) => setEmergencyPhone(formatContactPhone(e.target.value))}
+              disabled={isSaving}
+              fieldHint="Emergency contact phone\n\nPhone number for emergency contact."
+            />
+          </div>
+        </div>
+      )}
+    </AppFormModal>
   );
 }

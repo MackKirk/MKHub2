@@ -848,8 +848,7 @@ export default function Projects(){
   }, []);
 
   return (
-    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
-      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack)}>
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
         <AppPageHeader
           title="Projects"
           subtitle="List, search and manage projects"
@@ -1091,8 +1090,7 @@ export default function Projects(){
           fields={filterFields}
           getFieldData={() => null}
         />
-      </div>
-    </main>
+    </div>
   );
 }
 

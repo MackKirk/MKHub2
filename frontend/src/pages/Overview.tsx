@@ -78,7 +78,7 @@ export default function Overview() {
   const [communityUnread, setCommunityUnread] = useState(0);
 
   return (
-    <div className={uiCx('min-h-full w-full bg-gray-50', uiSpacing.pageY, uiSpacing.pageStack)}>
+    <div className={uiCx('min-h-full w-full bg-gray-50', uiSpacing.pageStack)}>
       <AppPageHeader
         title={greetingTitle}
         subtitle={jobTitle || undefined}

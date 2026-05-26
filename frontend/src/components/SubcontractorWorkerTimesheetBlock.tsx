@@ -1,13 +1,38 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
-import OverlayPortal from '@/components/OverlayPortal';
 import SubcontractorSimpleSignature from '@/components/SubcontractorSimpleSignature';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { SubcontractorWorkerClockModalLayer } from '@/components/SubcontractorWorkerClockModalLayer';
 import { ProjectSearchCombobox } from '@/components/ProjectSearchCombobox';
+import { ClockActionTile } from '@/components/ClockActionTile';
 import { formatDateLocal, formatDecimalHoursAsHMin, getTodayLocal } from '@/lib/dateUtils';
+import { parseHhmm } from '@/lib/timePickerUtils';
+import {
+  scWorkerAttendanceDetailQuickInfo,
+  scWorkerManualAttendanceQuickInfo,
+} from '@/lib/formModalQuickInfo';
+import {
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppControlLabelRow,
+  AppDatePicker,
+  AppFieldHint,
+  AppFormModal,
+  AppInput,
+  AppProjectSelect,
+  AppSectionHeader,
+  AppSelect,
+  AppTimePicker,
+  appSectionPresetProps,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 const inputClass =
   'w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400';
@@ -23,15 +48,16 @@ const toLocalInputValue = (iso?: string | null) => {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
-/** `datetime-local` value for the current moment in the user's local timezone. */
-function localDatetimeInputNow(): string {
-  const local = new Date();
-  const y = local.getFullYear();
-  const m = String(local.getMonth() + 1).padStart(2, '0');
-  const d = String(local.getDate()).padStart(2, '0');
-  const hh = String(local.getHours()).padStart(2, '0');
-  const mm = String(local.getMinutes()).padStart(2, '0');
-  return `${y}-${m}-${d}T${hh}:${mm}`;
+/** Date selected, time not yet chosen (shows Hour / Min / AM placeholders). */
+function localDatetimeDateOnly(): string {
+  return `${getTodayLocal()}T`;
+}
+
+function isCompleteLocalDatetime(value: string): boolean {
+  if (!value?.includes('T')) return false;
+  const [datePart, timePart = ''] = value.split('T');
+  const { hour12, minute, amPm } = parseHhmm(timePart.slice(0, 5));
+  return Boolean(datePart && hour12 && minute && amPm);
 }
 
 /** Parse `datetime-local` string as local civil time and return UTC ISO string. */
@@ -69,18 +95,89 @@ const formatBreak = (breakMinutes?: number | null) => {
   return `${m}min`;
 };
 
-function formatDayName(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString(undefined, { weekday: 'short' });
+const HR_STATUS_OPTIONS = [
+  { value: 'approved', label: 'Approved' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
+const FILTER_STATUS_OPTIONS = [
+  { value: '', label: 'All statuses' },
+  { value: 'open', label: 'Open (in progress)' },
+  { value: 'finalized', label: 'Finalized' },
+];
+
+const BREAK_HOUR_OPTIONS = Array.from({ length: 3 }, (_, i) => ({
+  value: String(i),
+  label: String(i),
+}));
+
+const BREAK_MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => {
+  const m = i * 5;
+  const v = String(m).padStart(2, '0');
+  return { value: v, label: v };
+});
+
+function localDatePart(value: string): string {
+  if (!value?.includes('T')) return value?.trim() || '';
+  return value.split('T')[0] || '';
 }
 
-function formatDateWithYear(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString(undefined, {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
+function localTimePart(value: string): string {
+  if (!value?.includes('T')) return '';
+  const timePart = value.split('T')[1] || '';
+  return /^\d{2}:\d{2}/.test(timePart) ? timePart.slice(0, 5) : '';
+}
+
+function LocalDateTimeFields({
+  label,
+  value,
+  onChange,
+  required,
+  dateFieldHint,
+  timeFieldHint,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  required?: boolean;
+  dateFieldHint?: string;
+  timeFieldHint?: string;
+}) {
+  const date = localDatePart(value);
+  const time = localTimePart(value);
+  const dateLabel = required ? `${label} *` : label;
+  const timeLabel = required ? 'Time *' : 'Time';
+
+  return (
+    <div className={uiSpacing.sectionStack}>
+      <AppDatePicker
+        label={dateLabel}
+        fieldHint={dateFieldHint ? <AppFieldHint hint={dateFieldHint} /> : undefined}
+        value={date}
+        onChange={(e) => {
+          const d = e.target.value;
+          if (!d) {
+            onChange('');
+            return;
+          }
+          onChange(time ? `${d}T${time}` : `${d}T`);
+        }}
+        required={required}
+      />
+      <AppTimePicker
+        label={timeLabel}
+        fieldHint={timeFieldHint ? <AppFieldHint hint={timeFieldHint} /> : undefined}
+        value={time}
+        onChange={(e) => {
+          const t = e.target.value;
+          if (!date) return;
+          onChange(t ? `${date}T${t}` : `${date}T`);
+        }}
+        required={required}
+      />
+    </div>
+  );
 }
 
 /** Parse `GPS:{...}` lines from attendance notes (e.g. session notes from clock-in/out). */
@@ -91,7 +188,9 @@ function extractGpsFromSessionNotes(text?: string | null): { lat: number; lng: n
     if (!line.startsWith('GPS:')) continue;
     try {
       const j = JSON.parse(line.slice(4)) as { lat?: number; lng?: number; accuracy_m?: number };
-      if (typeof j.lat === 'number' && typeof j.lng === 'number') return j;
+      if (typeof j.lat === 'number' && typeof j.lng === 'number') {
+        return { lat: j.lat, lng: j.lng, accuracy_m: j.accuracy_m };
+      }
     } catch {
       /* ignore */
     }
@@ -101,37 +200,102 @@ function extractGpsFromSessionNotes(text?: string | null): { lat: number; lng: n
 
 function DetailField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-x-3 gap-y-0.5 py-2 border-b border-gray-100 last:border-0 text-xs">
-      <div className="text-gray-500 font-medium shrink-0">{label}</div>
-      <div className="text-gray-900 break-words min-w-0">{children}</div>
+    <div
+      className={uiCx(
+        'grid grid-cols-1 gap-1 border-b border-gray-100 py-3 last:border-0 sm:grid-cols-[9.5rem_minmax(0,1fr)] sm:items-start sm:gap-x-4 sm:py-2.5',
+      )}
+    >
+      <dt className={uiTypography.helper}>{label}</dt>
+      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
     </div>
   );
 }
 
-function SignaturePreviewBlock({ fileId, label }: { fileId?: string | null; label: string }) {
-  if (!fileId?.trim()) {
-    return (
-      <div className="pt-1">
-        <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</p>
-        <p className="text-xs text-gray-400">None</p>
-      </div>
-    );
-  }
-  const fid = encodeURIComponent(fileId.trim());
-  const thumb = withFileAccessToken(`/files/${fid}/thumbnail?w=640`);
-  const dl = withFileAccessToken(`/files/${fid}/download`);
+type AttendanceEventView = {
+  event_id: string;
+  worker_name: string;
+  subcontractor_company_name?: string | null;
+  project_name?: string | null;
+  project_address?: string | null;
+  clock_in_time?: string | null;
+  clock_out_time?: string | null;
+  clock_in_status?: string | null;
+  hr_status?: string | null;
+  break_minutes?: number | null;
+  clock_in_confirmed_by?: string | null;
+  clock_out_confirmed_by?: string | null;
+  hours_worked?: number | null;
+  clock_in_notes?: string | null;
+  clock_out_notes?: string | null;
+  session_notes?: string | null;
+  clock_out_signature_file_id?: string | null;
+};
+
+function AttendanceDetailsBody({ event }: { event: AttendanceEventView }) {
+  const hrLabel = (event.hr_status || event.clock_in_status || 'approved');
+  const hrDisplay = `${hrLabel.charAt(0).toUpperCase()}${hrLabel.slice(1)}`;
+  const gps = extractGpsFromSessionNotes(event.session_notes);
+  const signatureId = event.clock_out_signature_file_id?.trim();
+
   return (
-    <div className="pt-1 min-w-0">
-      <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</p>
-      <a href={dl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 hover:underline">
-        Open / download
-      </a>
-      <img
-        src={thumb}
-        alt=""
-        className="mt-1.5 max-w-full h-auto rounded border border-gray-200 bg-white"
-      />
-    </div>
+    <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
+      <dl className="min-w-0">
+        <DetailField label="Record ID">
+          <span className="break-all font-mono text-[11px] font-normal text-gray-700">{event.event_id}</span>
+        </DetailField>
+        <DetailField label="Worker">{event.worker_name || '—'}</DetailField>
+        {event.subcontractor_company_name ? (
+          <DetailField label="Company">{event.subcontractor_company_name}</DetailField>
+        ) : null}
+        <DetailField label="Project">{event.project_name || '—'}</DetailField>
+        <DetailField label="Project address">{event.project_address || '—'}</DetailField>
+        <DetailField label="Session">{event.clock_out_time ? 'Finalized' : 'Open'}</DetailField>
+        <DetailField label="HR status">{hrDisplay}</DetailField>
+        <DetailField label="Break">{formatBreak(event.break_minutes)}</DetailField>
+        <DetailField label="Clock in">{formatDateTime(event.clock_in_time)}</DetailField>
+        <DetailField label="Clock in by">{event.clock_in_confirmed_by || '—'}</DetailField>
+        <DetailField label="Clock out">{formatDateTime(event.clock_out_time)}</DetailField>
+        <DetailField label="Clock out by">{event.clock_out_confirmed_by || '—'}</DetailField>
+        <DetailField label="Hours worked">{formatHours(event.hours_worked)}</DetailField>
+        {event.clock_in_notes ? (
+          <DetailField label="Clock-in notes">
+            <pre className="whitespace-pre-wrap font-sans font-normal text-gray-700">{event.clock_in_notes}</pre>
+          </DetailField>
+        ) : null}
+        {event.clock_out_notes ? (
+          <DetailField label="Clock-out notes">
+            <pre className="whitespace-pre-wrap font-sans font-normal text-gray-700">{event.clock_out_notes}</pre>
+          </DetailField>
+        ) : null}
+        {gps ? (
+          <DetailField label="Location">
+            {gps.lat.toFixed(6)}, {gps.lng.toFixed(6)}
+            {gps.accuracy_m != null ? ` · ±${Math.round(gps.accuracy_m)}m` : ''}
+          </DetailField>
+        ) : null}
+        <DetailField label="Signature">
+          {signatureId ? (
+            <div className="space-y-2">
+              <a
+                href={withFileAccessToken(`/files/${encodeURIComponent(signatureId)}/download`)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-brand-red hover:underline"
+              >
+                Open / download
+              </a>
+              <img
+                src={withFileAccessToken(`/files/${encodeURIComponent(signatureId)}/thumbnail?w=640`)}
+                alt="Clock-out signature"
+                className={uiCx('max-h-40 max-w-full rounded border bg-white', uiBorders.subtle)}
+              />
+            </div>
+          ) : (
+            '—'
+          )}
+        </DetailField>
+      </dl>
+    </AppCard>
   );
 }
 
@@ -297,7 +461,6 @@ export default function SubcontractorWorkerTimesheetBlock({
   const [clockActionDate, setClockActionDate] = useState(() => formatDateLocal(new Date()));
   const [clockActionModal, setClockActionModal] = useState<null | 'in' | 'out'>(null);
   const [quickClockBusy, setQuickClockBusy] = useState(false);
-  const dateInputRef = useRef<HTMLInputElement>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<AttendanceEvent | null>(null);
   const [formProjectId, setFormProjectId] = useState('');
@@ -338,20 +501,6 @@ export default function SubcontractorWorkerTimesheetBlock({
     () => scRowsToEvents(Array.isArray(attendances) ? attendances : []),
     [attendances],
   );
-
-  const todayStr = useMemo(() => formatDateLocal(new Date()), []);
-
-  const openDatePicker = () => {
-    const el = dateInputRef.current;
-    if (!el) return;
-    const anyEl = el as unknown as { showPicker?: () => void };
-    if (typeof anyEl.showPicker === 'function') {
-      anyEl.showPicker();
-      return;
-    }
-    el.focus();
-    el.click();
-  };
 
   const sigProjectId = projectId || openAttendance?.project_id || '';
 
@@ -408,20 +557,6 @@ export default function SubcontractorWorkerTimesheetBlock({
     resetModal();
   };
 
-  useEffect(() => {
-    if (!showModal && !clockActionModal) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      if (showModal) {
-        setShowModal(false);
-        resetModal();
-      }
-      if (clockActionModal) closeClockModal();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [showModal, clockActionModal, closeClockModal]);
-
   const openNewModal = () => {
     if (!canEdit) {
       toast.error('You do not have permission to edit attendance');
@@ -429,8 +564,8 @@ export default function SubcontractorWorkerTimesheetBlock({
     }
     resetModal();
     setEditingEvent(null);
-    setFormClockIn(localDatetimeInputNow());
-    setFormClockOut('');
+    setFormClockIn(localDatetimeDateOnly());
+    setFormClockOut(localDatetimeDateOnly());
     setFormProjectId(projectId || '');
     setFormEntryMode('time');
     setFormHoursWorked('');
@@ -474,8 +609,12 @@ export default function SubcontractorWorkerTimesheetBlock({
       toast.error('Project is required');
       return;
     }
-    if (!formClockIn) {
-      toast.error(formEntryMode === 'hours' ? 'Work date is required' : 'Clock-in time is required');
+    if (formEntryMode === 'hours' && !formClockIn) {
+      toast.error('Work date is required');
+      return;
+    }
+    if (formEntryMode === 'time' && !isCompleteLocalDatetime(formClockIn)) {
+      toast.error('Clock-in date and time are required');
       return;
     }
 
@@ -498,13 +637,17 @@ export default function SubcontractorWorkerTimesheetBlock({
       const outMs = new Date(clockInUtc).getTime() + hours * 3600000;
       clockOutUtc = new Date(outMs).toISOString();
     } else {
+      if (!isCompleteLocalDatetime(formClockOut)) {
+        toast.error('Clock-out date and time are required');
+        return;
+      }
       clockInUtc = toUtcISOString(formClockIn);
       if (!clockInUtc) {
         toast.error('Invalid clock-in time');
         return;
       }
-      clockOutUtc = formClockOut ? toUtcISOString(formClockOut) : null;
-      if (formClockOut && !clockOutUtc) {
+      clockOutUtc = toUtcISOString(formClockOut);
+      if (!clockOutUtc) {
         toast.error('Invalid clock-out time');
         return;
       }
@@ -638,12 +781,15 @@ export default function SubcontractorWorkerTimesheetBlock({
     if (!formProjectId) {
       return { submitDisabled: true, submitDisabledReason: 'Select a project.' };
     }
-    if (!formClockIn) {
-      return {
-        submitDisabled: true,
-        submitDisabledReason:
-          formEntryMode === 'hours' ? 'Select the work date.' : 'Set clock-in date and time.',
-      };
+    if (formEntryMode === 'time') {
+      if (!isCompleteLocalDatetime(formClockIn)) {
+        return { submitDisabled: true, submitDisabledReason: 'Set clock-in date, hour, minute, and AM/PM.' };
+      }
+      if (!isCompleteLocalDatetime(formClockOut)) {
+        return { submitDisabled: true, submitDisabledReason: 'Set clock-out date, hour, minute, and AM/PM.' };
+      }
+    } else if (!formClockIn) {
+      return { submitDisabled: true, submitDisabledReason: 'Select the work date.' };
     }
     if (
       formEntryMode === 'hours' &&
@@ -657,6 +803,7 @@ export default function SubcontractorWorkerTimesheetBlock({
     patchMut.isPending,
     formProjectId,
     formClockIn,
+    formClockOut,
     formEntryMode,
     formHoursWorked,
   ]);
@@ -664,20 +811,17 @@ export default function SubcontractorWorkerTimesheetBlock({
   const showManualClockOutSignature =
     formEntryMode === 'hours'
       ? !!formHoursWorked && parseFloat(formHoursWorked || '0') > 0
-      : !!formClockOut;
+      : isCompleteLocalDatetime(formClockOut);
 
   return (
     <div className="space-y-6 pb-24">
-      <div className="rounded-xl border bg-white p-4">
-        <div className="mb-4 flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h5 className="text-sm font-semibold text-indigo-900">Timesheet</h5>
-        </div>
-
+      <AppCard>
+        <AppSectionHeader
+          title="Timesheet"
+          description="Site clock-in/out history and manual attendance entries."
+          {...appSectionPresetProps('employment')}
+        />
+        <div className="mt-4">
         {openAttendance && (
           <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900">
             Clocked in
@@ -686,169 +830,51 @@ export default function SubcontractorWorkerTimesheetBlock({
           </div>
         )}
 
-        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-gray-900">Clock Actions</div>
-            <div className="relative">
-              <label htmlFor="sc-worker-clock-actions-date" className="sr-only">
-                Date
-              </label>
-              <div
-                className="relative w-[220px] max-w-[60vw] rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-gray-300 transition-all duration-200 cursor-pointer"
-                onClick={openDatePicker}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    openDatePicker();
-                  }
-                }}
-                aria-label="Select date"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[14px] font-semibold text-gray-500 uppercase tracking-wide leading-tight">
-                      {clockActionDate === todayStr ? 'Today' : formatDayName(clockActionDate)}
-                    </div>
-                    <div className="text-sm font-semibold text-gray-900 leading-tight truncate">
-                      {formatDateWithYear(clockActionDate)}
-                    </div>
-                  </div>
-                </div>
-                <input
-                  ref={dateInputRef}
-                  id="sc-worker-clock-actions-date"
-                  type="date"
-                  value={clockActionDate}
-                  onChange={(e) => e.target.value && setClockActionDate(e.target.value)}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                  aria-hidden="true"
-                  tabIndex={-1}
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <button
-              type="button"
-              onClick={() => {
-                setClockActionModal('in');
-              }}
-              disabled={!!openAttendance || !canEdit || quickClockBusy}
-              className={`w-full rounded-xl border-2 p-4 text-left transition-all duration-200 ${
-                !openAttendance && canEdit && !quickClockBusy
-                  ? 'border-green-200 bg-green-50/50 hover:border-green-300 hover:bg-green-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer'
-                  : 'border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-60'
-              }`}
-              title={openAttendance ? 'Clock out first to start a new session' : !canEdit ? 'View only' : ''}
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
-                    !openAttendance && canEdit && !quickClockBusy ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-500'
-                  }`}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                    <circle cx="12" cy="12" r="9" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 12h-3m3 0l-2 2m2-2l-2-2" />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div
-                    className={`text-base font-semibold mb-1 ${
-                      !openAttendance && canEdit && !quickClockBusy ? 'text-gray-900' : 'text-gray-400'
-                    }`}
-                  >
-                    Clock In
-                  </div>
-                  <div
-                    className={`text-xs ${
-                      !openAttendance && canEdit && !quickClockBusy ? 'text-gray-600' : 'text-gray-400'
-                    }`}
-                  >
-                    Start tracking work time for this worker
-                  </div>
-                </div>
-              </div>
-            </button>
-
-            <button
-              type="button"
+        <AppCard
+          className="mb-6"
+          title="Clock Actions"
+          actions={
+            <AppDatePicker
+              id="sc-worker-clock-actions-date"
+              value={clockActionDate}
+              onChange={(e) => e.target.value && setClockActionDate(e.target.value)}
+              triggerVariant="card"
+              triggerClassName="w-[220px] max-w-[60vw] shrink-0"
+              aria-label="Select date"
+            />
+          }
+        >
+          <div className={uiSpacing.sectionStack}>
+            <ClockActionTile
+              kind="in"
+              enabled={!openAttendance && canEdit}
+              disabled={quickClockBusy}
+              onClick={() => setClockActionModal('in')}
+              title={openAttendance ? 'Clock out first to start a new session' : !canEdit ? 'View only' : undefined}
+              subtitle="Start tracking work time for this worker"
+            />
+            <ClockActionTile
+              kind="out"
+              enabled={!!openAttendance && canEdit}
+              disabled={quickClockBusy}
               onClick={() => setClockActionModal('out')}
-              disabled={!openAttendance || !canEdit || quickClockBusy}
-              className={`w-full rounded-xl border-2 p-4 text-left transition-all duration-200 ${
-                openAttendance && canEdit && !quickClockBusy
-                  ? 'border-red-200 bg-red-50/50 hover:border-red-300 hover:bg-red-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer'
-                  : 'border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-60'
-              }`}
-              title={!openAttendance ? 'No open session' : !canEdit ? 'View only' : ''}
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
-                    openAttendance && canEdit && !quickClockBusy ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-500'
-                  }`}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                    <circle cx="12" cy="12" r="9" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h3m-3 0l2 2m-2-2l2-2" />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div
-                    className={`text-base font-semibold mb-1 ${
-                      openAttendance && canEdit && !quickClockBusy ? 'text-gray-900' : 'text-gray-400'
-                    }`}
-                  >
-                    Clock Out
-                  </div>
-                  <div
-                    className={`text-xs ${
-                      openAttendance && canEdit && !quickClockBusy ? 'text-gray-600' : 'text-gray-400'
-                    }`}
-                  >
-                    End the current work session
-                  </div>
-                </div>
-              </div>
-            </button>
+              title={!openAttendance ? 'No open session' : !canEdit ? 'View only' : undefined}
+              subtitle="End the current work session"
+            />
           </div>
-        </div>
+        </AppCard>
 
         <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Start date</label>
-            <input
-              type="date"
-              value={filters.start_date}
-              onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">End date</label>
-            <input
-              type="date"
-              value={filters.end_date}
-              onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-              className={inputClass}
-            />
-          </div>
+          <AppDatePicker
+            label="Start date"
+            value={filters.start_date}
+            onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
+          />
+          <AppDatePicker
+            label="End date"
+            value={filters.end_date}
+            onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
+          />
           <div>
             <ProjectSearchCombobox
               id="sc-worker-filter-project"
@@ -859,18 +885,12 @@ export default function SubcontractorWorkerTimesheetBlock({
               inputClassName={`${inputClass} pl-9`}
             />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
-            <select
-              value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-              className={inputClass}
-            >
-              <option value="">All statuses</option>
-              <option value="open">Open (in progress)</option>
-              <option value="finalized">Finalized</option>
-            </select>
-          </div>
+          <AppSelect
+            label="Status"
+            value={filters.status}
+            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            options={FILTER_STATUS_OPTIONS}
+          />
         </div>
 
         {error && (
@@ -882,23 +902,28 @@ export default function SubcontractorWorkerTimesheetBlock({
         {canEdit && selectedEvents.size > 0 && (
           <div className="mb-4 rounded-xl border bg-blue-50 p-3 flex items-center justify-between">
             <div className="text-xs font-medium text-blue-900">{selectedEvents.size} record(s) selected</div>
-            <button
+            <AppButton
               type="button"
+              variant="danger"
+              size="sm"
               onClick={() => void handleDeleteSelected()}
               disabled={deletingSelected}
-              className="px-2 py-1 text-xs bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+              loading={deletingSelected}
             >
-              {deletingSelected ? 'Deleting…' : 'Delete selected'}
-            </button>
+              Delete selected
+            </AppButton>
           </div>
         )}
 
-        <div className="rounded-xl border overflow-x-auto">
-          <p className="text-[10px] text-gray-500 mb-2 px-0.5">Click a row to view full details, notes, and signatures.</p>
+        <div className={uiCx('rounded-xl border bg-white', uiSpacing.cardPadding)}>
+          <p className={uiCx(uiTypography.helper, 'mb-3')}>
+            Click a row to view full details, notes, and signatures.
+          </p>
+          <div className="overflow-x-auto">
           <table className="w-full min-w-[720px]">
             <thead className="bg-gray-50">
               <tr>
-                <th className="p-2.5 text-left w-12">
+                <th className="p-3 text-left w-12">
                   {canEdit && (
                     <input
                       type="checkbox"
@@ -908,13 +933,13 @@ export default function SubcontractorWorkerTimesheetBlock({
                     />
                   )}
                 </th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock In</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock Out</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Project</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Hours</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Break</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Status</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Actions</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-600">Clock In</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-600">Clock Out</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-600">Project</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-600">Hours</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-600">Break</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-600">Status</th>
+                <th className="p-3 text-left text-xs font-medium text-gray-600">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -924,7 +949,7 @@ export default function SubcontractorWorkerTimesheetBlock({
                     <button
                       type="button"
                       onClick={openNewModal}
-                      className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 flex items-center justify-center gap-2 min-h-[52px] text-gray-600 hover:text-brand-red transition-colors"
+                      className="w-full border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 flex items-center justify-center gap-2 min-h-[52px] text-gray-600 hover:text-brand-red transition-colors"
                     >
                       <span className="text-lg font-medium">+</span>
                       <span className="text-sm font-medium">New attendance</span>
@@ -965,7 +990,7 @@ export default function SubcontractorWorkerTimesheetBlock({
                       }
                     }}
                   >
-                    <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
+                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
                       {canEdit && (
                         <input
                           type="checkbox"
@@ -975,16 +1000,16 @@ export default function SubcontractorWorkerTimesheetBlock({
                         />
                       )}
                     </td>
-                    <td className="p-2.5 text-xs text-gray-900">
+                    <td className="p-3 text-xs text-gray-900">
                       {event.clock_in_time ? formatDateTime(event.clock_in_time) : '—'}
                     </td>
-                    <td className="p-2.5 text-xs text-gray-900">
+                    <td className="p-3 text-xs text-gray-900">
                       {event.clock_out_time ? formatDateTime(event.clock_out_time) : '—'}
                     </td>
-                    <td className="p-2.5 text-xs text-gray-900">{event.project_name || '—'}</td>
-                    <td className="p-2.5 text-xs text-gray-900">{formatHours(event.hours_worked)}</td>
-                    <td className="p-2.5 text-xs text-gray-900">{formatBreak(event.break_minutes)}</td>
-                    <td className="p-2.5">
+                    <td className="p-3 text-xs text-gray-900">{event.project_name || '—'}</td>
+                    <td className="p-3 text-xs text-gray-900">{formatHours(event.hours_worked)}</td>
+                    <td className="p-3 text-xs text-gray-900">{formatBreak(event.break_minutes)}</td>
+                    <td className="p-3">
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-medium ${
                           event.clock_out_time
@@ -1001,7 +1026,7 @@ export default function SubcontractorWorkerTimesheetBlock({
                           : 'Open'}
                       </span>
                     </td>
-                    <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
+                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
                         {canEdit ? (
                           <>
@@ -1031,325 +1056,211 @@ export default function SubcontractorWorkerTimesheetBlock({
               )}
             </tbody>
           </table>
+          </div>
         </div>
-      </div>
+        </div>
+      </AppCard>
 
-      {showModal && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
-            onClick={closeModal}
-          >
-            <div
-              className="max-w-lg w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-                    title="Close"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  <div>
-                    <h2 className="text-sm font-semibold text-gray-900">
-                      {editingEvent ? 'Edit attendance' : 'New attendance'}
-                    </h2>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {editingEvent
-                        ? 'Update times and project.'
-                        : 'Add clock-in (and optionally clock-out for a closed session). Optional signature when clock-out is set.'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-                  <div>
-                    <ProjectSearchCombobox
-                      id="sc-worker-manual-project"
-                      value={formProjectId}
-                      onChange={setFormProjectId}
-                      disabled={createManualMut.isPending || patchMut.isPending}
-                      inputClassName={`${inputClass} pl-9`}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Entry type</label>
-                    <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 overflow-hidden text-xs">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormEntryMode('time');
-                          setFormHoursWorked('');
-                        }}
-                        className={`px-2.5 py-1.5 ${
-                          formEntryMode === 'time' ? 'bg-white text-gray-900' : 'text-gray-600 hover:bg-gray-100'
-                        }`}
-                      >
-                        Clock in / out
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormEntryMode('hours');
-                          const datePart = formClockIn ? formClockIn.slice(0, 10) : getTodayLocal();
-                          setFormClockIn(`${datePart}T00:00`);
-                          setFormClockOut('');
-                        }}
-                        className={`px-2.5 py-1.5 border-l border-gray-200 ${
-                          formEntryMode === 'hours' ? 'bg-white text-gray-900' : 'text-gray-600 hover:bg-gray-100'
-                        }`}
-                      >
-                        Hours worked
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">HR status *</label>
-                    <select
-                      value={formHrStatus}
-                      onChange={(e) => setFormHrStatus(e.target.value)}
-                      className={inputClass}
-                    >
-                      <option value="approved">Approved</option>
-                      <option value="pending">Pending</option>
-                      <option value="rejected">Rejected</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                      {formEntryMode === 'hours' ? 'Work date *' : 'Clock in (local) *'}
-                    </label>
-                    {formEntryMode === 'hours' ? (
-                      <input
-                        type="date"
-                        value={formClockIn ? formClockIn.slice(0, 10) : ''}
-                        onChange={(e) => {
-                          const d = e.target.value;
-                          setFormClockIn(d ? `${d}T00:00` : '');
-                        }}
-                        className={inputClass}
-                      />
-                    ) : (
-                      <input
-                        type="datetime-local"
-                        value={formClockIn}
-                        onChange={(e) => setFormClockIn(e.target.value)}
-                        className={inputClass}
-                      />
-                    )}
-                  </div>
-                  {formEntryMode === 'time' && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                        Clock out (local){editingEvent ? ' — optional' : ''}
-                      </label>
-                      <input
-                        type="datetime-local"
-                        value={formClockOut}
-                        onChange={(e) => setFormClockOut(e.target.value)}
-                        className={inputClass}
-                      />
-                    </div>
-                  )}
-                  {formEntryMode === 'hours' && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Hours worked *</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.25"
-                        value={formHoursWorked}
-                        onChange={(e) => setFormHoursWorked(e.target.value)}
-                        className={inputClass}
-                        placeholder="e.g. 8"
-                      />
-                    </div>
-                  )}
-                  {(formEntryMode === 'hours' ? !!formHoursWorked && parseFloat(formHoursWorked) > 0 : !!formClockOut) && (
-                    <div>
-                      <label className="flex items-center gap-2 mb-1.5">
-                        <input
-                          type="checkbox"
-                          checked={insertBreakTime}
-                          onChange={(e) => setInsertBreakTime(e.target.checked)}
-                          className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                        />
-                        <span className="text-xs font-medium text-gray-600">Insert break time</span>
-                      </label>
-                      {insertBreakTime && (
-                        <div className="ml-4 flex flex-wrap gap-2 items-center">
-                          <label className="text-[10px] text-gray-500">Hours</label>
-                          <select
-                            value={breakHours}
-                            onChange={(e) => setBreakHours(e.target.value)}
-                            className={`${inputClass} w-20`}
-                          >
-                            {Array.from({ length: 3 }, (_, i) => (
-                              <option key={i} value={String(i)}>
-                                {i}
-                              </option>
-                            ))}
-                          </select>
-                          <label className="text-[10px] text-gray-500">Minutes</label>
-                          <select
-                            value={breakMinutes}
-                            onChange={(e) => setBreakMinutes(e.target.value)}
-                            className={`${inputClass} w-24`}
-                          >
-                            {Array.from({ length: 12 }, (_, i) => {
-                              const m = i * 5;
-                              return (
-                                <option key={m} value={String(m).padStart(2, '0')}>
-                                  {String(m).padStart(2, '0')}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {showManualClockOutSignature && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-600 mb-1.5">Clock-out signature (optional)</p>
-                      {formProjectId ? (
-                        <SubcontractorSimpleSignature
-                          projectId={formProjectId}
-                          disabled={createManualMut.isPending || patchMut.isPending}
-                          onUploaded={(fid) => setFormSigOut(fid)}
-                          onClear={() => setFormSigOut(null)}
-                        />
-                      ) : (
-                        <p className="text-xs text-amber-700">Select a project to attach a signature file.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex flex-col gap-2 rounded-b-xl">
-                {submitDisabledReason ? (
-                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    {submitDisabledReason}
-                  </p>
-                ) : null}
-                <div className="flex items-center justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void submitModal()}
-                    title={submitDisabledReason || undefined}
-                    disabled={submitDisabled}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {editingEvent ? 'Update' : 'Create'}
-                  </button>
-                </div>
-              </div>
+      <AppFormModal
+        open={showModal}
+        onClose={closeModal}
+        title={editingEvent ? 'Edit attendance' : 'New attendance'}
+        description={
+          editingEvent
+            ? 'Update times and project.'
+            : 'Add clock-in/out.'
+        }
+        quickInfo={scWorkerManualAttendanceQuickInfo(!!editingEvent)}
+        footer={
+          <div className="flex w-full flex-col gap-2">
+            {submitDisabledReason ? (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                {submitDisabledReason}
+              </p>
+            ) : null}
+            <div className="flex justify-end gap-2">
+              <AppButton type="button" variant="secondary" onClick={closeModal}>
+                Cancel
+              </AppButton>
+              <AppButton
+                type="button"
+                onClick={() => void submitModal()}
+                title={submitDisabledReason || undefined}
+                disabled={submitDisabled}
+                loading={createManualMut.isPending || patchMut.isPending}
+              >
+                {editingEvent ? 'Update' : 'Create'}
+              </AppButton>
             </div>
           </div>
-        </OverlayPortal>
-      )}
-
-      {viewingEvent && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
-            onClick={() => setViewingEvent(null)}
-          >
-            <div
-              className="max-w-lg w-full min-w-0 max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden my-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setViewingEvent(null)}
-                    className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-                    aria-label="Close"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-gray-900">Attendance details</h2>
-                    <p className="text-xs text-gray-500 mt-0.5 truncate">Record ID: {viewingEvent.event_id}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 min-w-0">
-                <div className="rounded-xl border border-gray-200 bg-white p-4 min-w-0">
-                  <DetailField label="Worker">{viewingEvent.worker_name}</DetailField>
-                  {viewingEvent.subcontractor_company_name ? (
-                    <DetailField label="Company">{viewingEvent.subcontractor_company_name}</DetailField>
-                  ) : null}
-                  <DetailField label="Project">{viewingEvent.project_name || '—'}</DetailField>
-                  <DetailField label="Project address">{viewingEvent.project_address || '—'}</DetailField>
-                  <DetailField label="Session">{viewingEvent.clock_out_time ? 'Finalized' : 'Open'}</DetailField>
-                  <DetailField label="HR status">
-                    {(viewingEvent.hr_status || viewingEvent.clock_in_status || 'approved').charAt(0).toUpperCase()}
-                    {(viewingEvent.hr_status || viewingEvent.clock_in_status || 'approved').slice(1)}
-                  </DetailField>
-                  <DetailField label="Break">{formatBreak(viewingEvent.break_minutes)}</DetailField>
-                  <DetailField label="Clock in">{formatDateTime(viewingEvent.clock_in_time)}</DetailField>
-                  <DetailField label="Clock in by (user)">{viewingEvent.clock_in_confirmed_by || '—'}</DetailField>
-                  <DetailField label="Clock out">{formatDateTime(viewingEvent.clock_out_time)}</DetailField>
-                  <DetailField label="Clock out by (user)">{viewingEvent.clock_out_confirmed_by || '—'}</DetailField>
-                  <DetailField label="Hours worked">{formatHours(viewingEvent.hours_worked)}</DetailField>
-                  {viewingEvent.clock_in_notes ? (
-                    <DetailField label="Clock-in notes">
-                      <pre className="whitespace-pre-wrap font-sans text-xs">{viewingEvent.clock_in_notes}</pre>
-                    </DetailField>
-                  ) : null}
-                  {viewingEvent.clock_out_notes ? (
-                    <DetailField label="Clock-out notes">
-                      <pre className="whitespace-pre-wrap font-sans text-xs">{viewingEvent.clock_out_notes}</pre>
-                    </DetailField>
-                  ) : null}
-                  {(() => {
-                    const gps = extractGpsFromSessionNotes(viewingEvent.session_notes);
-                    if (!gps) return null;
-                    return (
-                      <DetailField label="Location">
-                        <span className="text-xs">
-                          {gps.lat.toFixed(6)}, {gps.lng.toFixed(6)}
-                          {gps.accuracy_m != null ? ` · ±${Math.round(gps.accuracy_m)}m` : ''}
-                        </span>
-                      </DetailField>
-                    );
-                  })()}
-                  <div className="pt-4 mt-2 border-t border-gray-100">
-                    <SignaturePreviewBlock fileId={viewingEvent.clock_out_signature_file_id} label="Signature" />
-                  </div>
-                </div>
-              </div>
-              <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end rounded-b-xl">
-                <button
-                  type="button"
-                  onClick={() => setViewingEvent(null)}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212]"
-                >
-                  Close
-                </button>
-              </div>
+        }
+      >
+        <div className={uiSpacing.sectionStack}>
+          <AppProjectSelect
+            id="sc-worker-manual-project"
+            label="Project *"
+            fieldHint="Project\n\nJob site where this worker was on site for this attendance row."
+            value={formProjectId}
+            onChange={setFormProjectId}
+            disabled={createManualMut.isPending || patchMut.isPending}
+          />
+          <div>
+            <AppControlLabelRow
+              label="Entry type"
+              fieldHint={
+                <AppFieldHint hint="Entry type\n\nClock in / out — enter start and end times. Hours worked — enter total hours for one work date." />
+              }
+            />
+            <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 bg-gray-50 text-xs">
+              <AppButton
+                type="button"
+                variant={formEntryMode === 'time' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="rounded-none border-0 shadow-none"
+                onClick={() => {
+                  setFormEntryMode('time');
+                  setFormHoursWorked('');
+                }}
+              >
+                Clock in / out
+              </AppButton>
+              <AppButton
+                type="button"
+                variant={formEntryMode === 'hours' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="rounded-none border-0 border-l border-gray-200 shadow-none"
+                onClick={() => {
+                  setFormEntryMode('hours');
+                  const datePart = formClockIn ? formClockIn.slice(0, 10) : getTodayLocal();
+                  setFormClockIn(`${datePart}T00:00`);
+                  setFormClockOut('');
+                }}
+              >
+                Hours worked
+              </AppButton>
             </div>
           </div>
-        </OverlayPortal>
-      )}
+          <AppSelect
+            label="HR status *"
+            fieldHint="HR status\n\nApproval state for this row (approved, pending, or rejected)."
+            value={formHrStatus}
+            onChange={(e) => setFormHrStatus(e.target.value)}
+            options={HR_STATUS_OPTIONS}
+            required
+          />
+          {formEntryMode === 'hours' ? (
+            <AppDatePicker
+              label="Work date *"
+              fieldHint={<AppFieldHint hint="Work date\n\nCalendar day when the hours were worked." />}
+              value={formClockIn ? formClockIn.slice(0, 10) : ''}
+              onChange={(e) => {
+                const d = e.target.value;
+                setFormClockIn(d ? `${d}T00:00` : '');
+              }}
+              required
+            />
+          ) : (
+            <LocalDateTimeFields
+              key={`clock-in-${editingEvent?.event_id ?? 'new'}`}
+              label="Clock in"
+              value={formClockIn}
+              onChange={setFormClockIn}
+              required
+              dateFieldHint="Clock-in date\n\nDay the worker started on site."
+              timeFieldHint="Clock-in time\n\nLocal time when the worker clocked in (5-minute steps)."
+            />
+          )}
+          {formEntryMode === 'time' && (
+            <LocalDateTimeFields
+              key={`clock-out-${editingEvent?.event_id ?? 'new'}`}
+              label="Clock out"
+              value={formClockOut}
+              onChange={setFormClockOut}
+              required
+              dateFieldHint="Clock-out date\n\nDay the worker finished on site."
+              timeFieldHint="Clock-out time\n\nLocal time when the worker clocked out. Must be after clock-in."
+            />
+          )}
+          {formEntryMode === 'hours' && (
+            <AppInput
+              label="Hours worked *"
+              fieldHint="Hours worked\n\nTotal hours for the work date (e.g. 8 for a full day)."
+              type="number"
+              min={0}
+              step={0.25}
+              value={formHoursWorked}
+              onChange={(e) => setFormHoursWorked(e.target.value)}
+              placeholder="e.g. 8"
+              required
+            />
+          )}
+          {(formEntryMode === 'hours' ? !!formHoursWorked && parseFloat(formHoursWorked) > 0 : !!formClockOut) && (
+            <div className={uiSpacing.sectionStack}>
+              <AppCheckbox
+                label="Insert break time"
+                fieldHint="Insert break time\n\nSubtract unpaid break minutes from the total session time."
+                checked={insertBreakTime}
+                onChange={setInsertBreakTime}
+              />
+              {insertBreakTime && (
+                <div className="flex flex-wrap items-end gap-3 pl-8">
+                  <AppSelect
+                    label="Hours"
+                    fieldHint="Break hours\n\nWhole hours of break time."
+                    value={breakHours}
+                    onChange={(e) => setBreakHours(e.target.value)}
+                    options={BREAK_HOUR_OPTIONS}
+                    className="min-w-[100px] flex-1"
+                  />
+                  <AppSelect
+                    label="Minutes"
+                    fieldHint="Break minutes\n\nAdditional break minutes in 5-minute steps."
+                    value={breakMinutes}
+                    onChange={(e) => setBreakMinutes(e.target.value)}
+                    options={BREAK_MINUTE_OPTIONS}
+                    className="min-w-[100px] flex-1"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          {showManualClockOutSignature && (
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-gray-600">Clock-out signature (optional)</p>
+              {formProjectId ? (
+                <SubcontractorSimpleSignature
+                  projectId={formProjectId}
+                  disabled={createManualMut.isPending || patchMut.isPending}
+                  onUploaded={(fid) => setFormSigOut(fid)}
+                  onClear={() => setFormSigOut(null)}
+                />
+              ) : (
+                <p className="text-xs text-amber-700">Select a project to attach a signature file.</p>
+              )}
+            </div>
+          )}
+        </div>
+      </AppFormModal>
+
+      <AppFormModal
+        open={!!viewingEvent}
+        onClose={() => setViewingEvent(null)}
+        layout="detail"
+        size="md"
+        title="Attendance details"
+        description="Session times, project, and signature for this row."
+        quickInfo={scWorkerAttendanceDetailQuickInfo}
+        bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" onClick={() => setViewingEvent(null)}>
+              Close
+            </AppButton>
+          </div>
+        }
+      >
+        {viewingEvent ? <AttendanceDetailsBody event={viewingEvent} /> : null}
+      </AppFormModal>
 
       {clockActionModal && (
         <SubcontractorWorkerClockModalLayer

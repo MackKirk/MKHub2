@@ -1,20 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { GripVertical, Mail, Phone } from 'lucide-react';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { useConfirm } from '@/components/ConfirmProvider';
 import NewSubcontractorContactModal from '@/components/NewSubcontractorContactModal';
+import EditSubcontractorContactModal, {
+  type SubcontractorContactRecord,
+} from '@/components/EditSubcontractorContactModal';
+import {
+  AppBadge,
+  AppEmptyState,
+  AppListCreateItem,
+  AppSectionHeader,
+  appSectionPresetProps,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
-type Contact = {
-  id: string;
-  name: string;
-  role_title?: string | null;
-  department?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  is_primary?: boolean;
-  photo_file_id?: string | null;
-};
+const EM_DASH = '\u2014';
+
+type Contact = SubcontractorContactRecord;
 
 export default function SubcontractorContactsCard({
   companyId,
@@ -25,7 +34,6 @@ export default function SubcontractorContactsCard({
   companyDisplayName?: string;
   hasEditPermission?: boolean;
 }) {
-  const confirm = useConfirm();
   const qc = useQueryClient();
   const { data, refetch, isSuccess } = useQuery({
     queryKey: ['subcontractor-company-contacts', companyId],
@@ -36,13 +44,7 @@ export default function SubcontractorContactsCard({
   useEffect(() => {
     setList(data || []);
   }, [data]);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [eName, setEName] = useState('');
-  const [eEmail, setEEmail] = useState('');
-  const [ePhone, setEPhone] = useState('');
-  const [eRole, setERole] = useState('');
-  const [eDept, setEDept] = useState('');
-  const [ePrimary, setEPrimary] = useState<'true' | 'false'>('false');
+  const [editContact, setEditContact] = useState<SubcontractorContactRecord | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
 
@@ -55,29 +57,24 @@ export default function SubcontractorContactsCard({
     return () => window.removeEventListener('keydown', onKey);
   }, [createOpen]);
 
-  const formatPhone = (v: string) => {
-    const d = String(v || '')
-      .replace(/\D+/g, '')
-      .slice(0, 11);
-    if (d.length <= 3) return d;
-    if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
-    if (d.length <= 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-    return `+${d.slice(0, 1)} (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 11)}`;
+  const avatarByContactId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of list) {
+      if (c.photo_file_id) {
+        map.set(String(c.id), withFileAccessTokenIfNeeded(`/files/${c.photo_file_id}/thumbnail?w=160`) || '');
+      }
+    }
+    return map;
+  }, [list]);
+
+  const contactMetaLine = (c: Contact) => {
+    const parts = [c.role_title, c.department].filter(Boolean);
+    return parts.length ? parts.join(' · ') : null;
   };
 
-  const avatarFor = (c: Contact) => {
-    if (!c.photo_file_id) return '';
-    return withFileAccessTokenIfNeeded(`/files/${c.photo_file_id}/thumbnail?w=160`) || '';
-  };
-
-  const beginEdit = (c: Contact) => {
-    setEditId(c.id);
-    setEName(c.name || '');
-    setEEmail(c.email || '');
-    setEPhone(c.phone || '');
-    setERole(c.role_title || '');
-    setEDept(c.department || '');
-    setEPrimary(c.is_primary ? 'true' : 'false');
+  const refreshContacts = () => {
+    refetch();
+    qc.invalidateQueries({ queryKey: ['subcontractor-company', companyId] });
   };
 
   const onDragStart = (cid: string) => setDragId(cid);
@@ -96,221 +93,162 @@ export default function SubcontractorContactsCard({
     try {
       await api('POST', `/subcontractors/companies/${companyId}/contacts/reorder`, curr.map((c) => String(c.id)));
       toast.success('Order saved');
-      refetch();
-      qc.invalidateQueries({ queryKey: ['subcontractor-company', companyId] });
+      refreshContacts();
     } catch {
       toast.error('Failed to save order');
       refetch();
     }
   };
 
-  const uploadContactPhoto = async (contactId: string, file: File | null) => {
-    if (!file) return;
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('original_name', file.name);
-    fd.append('content_type', file.type || 'image/jpeg');
-    fd.append('project_id', '');
-    fd.append('client_id', '');
-    fd.append('employee_id', '');
-    fd.append('category_id', 'files');
-    try {
-      const res = await api<{ id: string }>('POST', '/files/upload-proxy', fd);
-      await api('PATCH', `/subcontractors/companies/${companyId}/contacts/${contactId}`, { photo_file_id: res.id });
-      toast.success('Photo updated');
-      refetch();
-      qc.invalidateQueries({ queryKey: ['subcontractor-company', companyId] });
-    } catch {
-      toast.error('Upload failed');
-    }
+  const openEdit = (c: Contact) => {
+    if (!hasEditPermission) return;
+    setEditContact({
+      id: String(c.id),
+      name: c.name,
+      email: c.email,
+      phone: c.phone,
+      role_title: c.role_title,
+      department: c.department,
+      is_primary: c.is_primary,
+      photo_file_id: c.photo_file_id,
+    });
   };
 
   return (
-    <div>
-      <div className="mb-2">
-        <h4 className="font-semibold text-gray-900">Contacts</h4>
-        <p className="text-xs text-gray-500 mt-0.5">People at this subcontractor company.</p>
-      </div>
-      <div className="grid md:grid-cols-2 gap-4">
+    <div className={uiSpacing.sectionStack}>
+      <AppSectionHeader
+        title="Contacts"
+        description={
+          hasEditPermission
+            ? 'Click a row to edit. Drag rows to reorder. Primary contact is highlighted.'
+            : 'People at this subcontractor company.'
+        }
+        {...appSectionPresetProps('contact')}
+      />
+      <div className="flex flex-col gap-2">
         {hasEditPermission && (
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="rounded-xl border-2 border-dashed border-gray-300 p-4 hover:border-brand-red hover:bg-gray-50 transition-all bg-white flex items-center justify-center min-h-[100px]"
-          >
-            <div className="text-lg text-gray-400 mr-2">+</div>
-            <div className="font-medium text-xs text-gray-700">New Contact</div>
-          </button>
+          <AppListCreateItem label="New Contact" layout="row" onClick={() => setCreateOpen(true)} />
         )}
-        {(list || []).map((c) => (
-          <div
-            key={c.id}
-            className="rounded-xl border bg-white overflow-hidden flex"
-            draggable
-            onDragStart={() => onDragStart(String(c.id))}
-            onDragOver={onDragOver}
-            onDrop={() => onDropOver(String(c.id))}
-          >
-            <div className="w-28 bg-gray-100 flex items-center justify-center relative group flex-shrink-0">
-              {avatarFor(c) ? (
-                <img className="w-20 h-20 object-cover rounded border" src={avatarFor(c)} alt="" />
-              ) : (
-                <div className="w-20 h-20 rounded bg-gray-200 grid place-items-center text-lg font-bold text-gray-600">{(c.name || '?').slice(0, 2).toUpperCase()}</div>
+        {(list || []).map((c) => {
+          const avatarSrc = avatarByContactId.get(String(c.id)) || '';
+          const meta = contactMetaLine(c);
+
+          return (
+            <div
+              key={c.id}
+              role={hasEditPermission ? 'button' : undefined}
+              tabIndex={hasEditPermission ? 0 : undefined}
+              draggable={hasEditPermission}
+              onDragStart={(e) => {
+                e.stopPropagation();
+                onDragStart(String(c.id));
+              }}
+              onDragOver={onDragOver}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDropOver(String(c.id));
+              }}
+              onClick={() => openEdit(c)}
+              onKeyDown={(e) => {
+                if (hasEditPermission && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  openEdit(c);
+                }
+              }}
+              className={uiCx(
+                'group flex items-center gap-2 sm:gap-3 text-left',
+                uiRadius.control,
+                uiBorders.subtle,
+                uiColors.surface,
+                'px-2 py-2 sm:px-3 sm:py-2.5',
+                hasEditPermission && 'cursor-pointer transition-shadow hover:border-gray-300 hover:shadow-sm',
+                c.is_primary && 'ring-1 ring-emerald-200/80',
               )}
-              {hasEditPermission && (
-                <label className="hidden group-hover:flex absolute right-1 bottom-1 text-[11px] px-2 py-0.5 rounded bg-black/70 text-white cursor-pointer">
-                  Photo
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadContactPhoto(c.id, e.target.files?.[0] || null)} />
-                </label>
-              )}
-              <div className="absolute left-1 top-1 text-[10px] text-gray-600">⋮⋮</div>
-            </div>
-            <div className="flex-1 p-3 text-sm min-w-0">
-              {editId === c.id ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="font-semibold">Edit contact</div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-600">Primary</label>
-                      <select className="border rounded px-2 py-1 text-xs" value={ePrimary} onChange={(e) => setEPrimary(e.target.value as 'true' | 'false')}>
-                        <option value="false">No</option>
-                        <option value="true">Yes</option>
-                      </select>
-                      {hasEditPermission && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const ok = await confirm({ title: 'Delete contact', message: 'Are you sure you want to delete this contact?' });
-                            if (!ok) return;
-                            try {
-                              await api('DELETE', `/subcontractors/companies/${companyId}/contacts/${c.id}`);
-                              toast.success('Contact deleted');
-                              setEditId(null);
-                              refetch();
-                              qc.invalidateQueries({ queryKey: ['subcontractor-company', companyId] });
-                            } catch {
-                              toast.error('Failed to delete contact');
-                            }
-                          }}
-                          className="px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 text-xs"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
+            >
+              {hasEditPermission ? (
+                <span
+                  className="flex h-9 w-5 shrink-0 cursor-grab items-center justify-center text-gray-300 active:cursor-grabbing group-hover:text-gray-400"
+                  title="Drag to reorder"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  aria-hidden
+                >
+                  <GripVertical className="h-4 w-4" />
+                </span>
+              ) : null}
+              <div className="relative shrink-0">
+                {avatarSrc ? (
+                  <img
+                    src={avatarSrc}
+                    alt=""
+                    className={uiCx('h-11 w-11 object-cover', uiRadius.control, 'ring-2 ring-white')}
+                  />
+                ) : (
+                  <div
+                    className={uiCx(
+                      'flex h-11 w-11 items-center justify-center text-sm font-semibold text-gray-600',
+                      uiRadius.control,
+                      'bg-gradient-to-br from-gray-100 to-gray-200',
+                    )}
+                  >
+                    {(c.name || '?').slice(0, 2).toUpperCase()}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Name</label>
-                      <input className="border rounded px-2 py-1 w-full text-sm" value={eName} onChange={(e) => setEName(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Role/Title</label>
-                      <input className="border rounded px-2 py-1 w-full text-sm" value={eRole} onChange={(e) => setERole(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Department</label>
-                      <input className="border rounded px-2 py-1 w-full text-sm" value={eDept} onChange={(e) => setEDept(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Email</label>
-                      <input className="border rounded px-2 py-1 w-full text-sm" value={eEmail} onChange={(e) => setEEmail(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Phone</label>
-                      <input className="border rounded px-2 py-1 w-full text-sm" value={ePhone} onChange={(e) => setEPhone(formatPhone(e.target.value))} />
-                    </div>
-                  </div>
-                  <div className="text-right space-x-2">
-                    <button type="button" onClick={() => setEditId(null)} className="px-2 py-1 rounded bg-gray-100 text-xs">
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await api('PATCH', `/subcontractors/companies/${companyId}/contacts/${c.id}`, {
-                            name: eName,
-                            role_title: eRole,
-                            department: eDept,
-                            email: eEmail,
-                            phone: ePhone,
-                            is_primary: ePrimary === 'true',
-                          });
-                          setEditId(null);
-                          refetch();
-                          qc.invalidateQueries({ queryKey: ['subcontractor-company', companyId] });
-                        } catch {
-                          toast.error('Failed to save');
-                        }
-                      }}
-                      className="px-2 py-1 rounded bg-brand-red text-white text-xs"
-                    >
-                      Save
-                    </button>
-                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className={uiCx(uiTypography.sectionTitle, 'truncate')}>{c.name || EM_DASH}</span>
+                  {c.is_primary ? <AppBadge variant="success">Primary</AppBadge> : null}
                 </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-semibold truncate">{c.name}</div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}
-                      {!c.is_primary && hasEditPermission && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await api('PATCH', `/subcontractors/companies/${companyId}/contacts/${c.id}`, { is_primary: true });
-                              refetch();
-                              qc.invalidateQueries({ queryKey: ['subcontractor-company', companyId] });
-                            } catch {
-                              toast.error('Failed to set primary');
-                            }
-                          }}
-                          className="px-2 py-1 rounded bg-gray-100 text-xs"
-                        >
-                          Set Primary
-                        </button>
-                      )}
-                      {hasEditPermission && (
-                        <button type="button" onClick={() => beginEdit(c)} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red" title="Edit">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-gray-600 text-xs">
-                    {c.role_title || ''} {c.department ? `· ${c.department}` : ''}
-                  </div>
-                  <div className="mt-2">
-                    <div className="text-[11px] uppercase text-gray-500">Email</div>
-                    <div className="text-gray-700 text-xs break-all">{c.email || '—'}</div>
-                  </div>
-                  <div className="mt-2">
-                    <div className="text-[11px] uppercase text-gray-500">Phone</div>
-                    <div className="text-gray-700 text-xs">{c.phone || '—'}</div>
-                  </div>
-                </>
-              )}
+                {meta ? <p className={uiCx(uiTypography.helper, 'truncate')}>{meta}</p> : null}
+                <div
+                  className={uiCx('mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5', uiTypography.helper)}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {c.email ? (
+                    <a
+                      href={`mailto:${c.email}`}
+                      className="inline-flex min-w-0 max-w-full items-center gap-1 truncate text-gray-600 hover:text-brand-red"
+                    >
+                      <Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                      <span className="truncate">{c.email}</span>
+                    </a>
+                  ) : null}
+                  {c.phone ? (
+                    <a
+                      href={`tel:${c.phone}`}
+                      className="inline-flex min-w-0 items-center gap-1 text-gray-600 hover:text-brand-red"
+                    >
+                      <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                      <span>{c.phone}</span>
+                    </a>
+                  ) : null}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
-        {isSuccess && (!list || !list.length) && (
-          <div className="text-sm text-gray-600 md:col-span-2">No contacts yet.</div>
-        )}
+          );
+        })}
       </div>
+      {isSuccess && (!list || !list.length) && !hasEditPermission ? (
+        <AppEmptyState title="No contacts" />
+      ) : null}
       <NewSubcontractorContactModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         companyId={companyId}
         companyName={companyDisplayName}
-        onCreated={() => {
-          refetch();
-          qc.invalidateQueries({ queryKey: ['subcontractor-company', companyId] });
-        }}
+        onCreated={() => refreshContacts()}
+      />
+      <EditSubcontractorContactModal
+        open={!!editContact}
+        onClose={() => setEditContact(null)}
+        companyId={companyId}
+        companyDisplayName={companyDisplayName}
+        contact={editContact}
+        photoUrl={editContact ? avatarByContactId.get(String(editContact.id)) || '' : ''}
+        onSaved={() => refreshContacts()}
+        onDeleted={() => refreshContacts()}
       />
     </div>
   );

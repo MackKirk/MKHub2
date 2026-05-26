@@ -592,21 +592,18 @@ export default function MyReviews() {
 
   if (availLoading) {
     return (
-      <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
-        <div className={uiCx('w-full', uiSpacing.pageStack)}>
+      <div className={uiCx('w-full', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
           {pageHeader('Loading your review tasks…')}
           <AppCard bodyClassName={uiSpacing.cardPadding}>
             <div className={uiCx('h-28 animate-pulse bg-gray-100', uiRadius.control)} />
           </AppCard>
-        </div>
-      </main>
+      </div>
     );
   }
 
   if (reviewsAvailable && !reviewsAvailable.available) {
     return (
-      <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
-        <div className={uiCx('w-full', uiSpacing.pageStack)}>
+      <div className={uiCx('w-full', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
           {pageHeader('Self-reviews and supervisor questionnaires for active HR cycles.')}
           <AppCard bodyClassName={uiSpacing.cardPadding}>
             <p className={uiCx(uiTypography.body, 'mb-4')}>
@@ -615,14 +612,12 @@ export default function MyReviews() {
             </p>
             <AppEmptyState title="There is no employee review available for you at this time." />
           </AppCard>
-        </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
-      <div className={uiCx('w-full pb-8', uiSpacing.pageStack)}>
+    <div className={uiCx('w-full pb-8', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
         {pageHeader('Your self-review is highlighted below. Supervisor tasks for your team are listed in tables.')}
 
         <AppTabs tabs={[...mainTabItems]} value={mainTab} onChange={(key) => setMainTab(key as MainTab)} />
@@ -744,7 +739,6 @@ export default function MyReviews() {
             </>
           )}
         </AppFormModal>
-      </div>
-    </main>
+    </div>
   );
 }

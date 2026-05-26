@@ -785,8 +785,7 @@ export default function BusinessDashboard() {
 
   return (
     <LoadingOverlay isLoading={isInitialLoading} text="Loading dashboard data...">
-      <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
-        <div className={uiCx('w-full min-w-0', uiSpacing.pageStack)}>
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
         <AppPageHeader
           title={
             <>
@@ -1758,8 +1757,7 @@ export default function BusinessDashboard() {
           initialStartDate={projStatusCustomStart}
           initialEndDate={projStatusCustomEnd}
         />
-        </div>
-      </main>
+      </div>
     </LoadingOverlay>
   );
 }

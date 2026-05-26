@@ -19,6 +19,11 @@ interface AddressAutocompleteProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  /**
+   * When true, picking a suggestion only updates this input (e.g. Address 2 / complement).
+   * Does not call `onAddressSelect` and prefers `address_line2` from the place result.
+   */
+  lineOnly?: boolean;
   /** @deprecated Key is no longer used; autocomplete goes through /integrations/places (server-side key). */
   apiKey?: string;
 }
@@ -32,6 +37,7 @@ export default function AddressAutocomplete({
   placeholder = 'Enter address',
   className = '',
   disabled = false,
+  lineOnly = false,
 }: AddressAutocompleteProps) {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [open, setOpen] = useState(false);
@@ -74,17 +80,23 @@ export default function AddressAutocomplete({
         );
         if (!d.result) return;
         const parsed = parseGooglePlaceResult(d.result);
-        onChange(parsed.address_line1);
-        onAddressSelect?.(parsed);
+        if (lineOnly) {
+          onChange(parsed.address_line2 || parsed.address_line1);
+        } else {
+          onChange(parsed.address_line1);
+          onAddressSelect?.(parsed);
+        }
       } catch {
         const fallback = (p.description || '').trim();
         if (fallback) {
           onChange(fallback);
-          onAddressSelect?.({ address_line1: fallback });
+          if (!lineOnly) {
+            onAddressSelect?.({ address_line1: fallback });
+          }
         }
       }
     },
-    [onChange, onAddressSelect]
+    [onChange, onAddressSelect, lineOnly]
   );
 
   useEffect(() => {

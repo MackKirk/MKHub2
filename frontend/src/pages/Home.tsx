@@ -272,8 +272,7 @@ export default function Home() {
   return (
     <LoadingOverlay isLoading={showLoading} text="Loading dashboard…" minHeight="min-h-[50vh]">
     <AnimationReadyProvider loaded={!isLoading} delay={80}>
-    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
-    <div className={uiCx('mx-auto w-full max-w-[1600px]', uiSpacing.pageStack)}>
+    <div className={uiCx('mx-auto w-full max-w-[1600px]', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <AppPageHeader
         title="My Dashboard"
         icon={<LayoutDashboard className="h-4 w-4" />}
@@ -402,7 +401,6 @@ export default function Home() {
         onSave={handleSaveConfig}
       />
     </div>
-    </main>
     </AnimationReadyProvider>
     </LoadingOverlay>
   );

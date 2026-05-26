@@ -27,7 +27,17 @@ export * from './useAppClientSelectCatalog';
 export * from './AppUserAvatar';
 export * from './useAppUserSelectCatalog';
 export * from './AppDatePicker';
+export * from './AppTimePicker';
 export * from './datePickerUtils';
+export {
+  TIME_AM_PM_OPTIONS,
+  TIME_HOUR_12_OPTIONS,
+  TIME_MINUTE_OPTIONS,
+  buildHhmm,
+  formatTimeDisplay,
+  parseHhmm,
+  type TimeAmPm,
+} from '@/lib/timePickerUtils';
 export * from './useComboboxDropdown';
 export * from './AppTextarea';
 export * from './AppBadge';

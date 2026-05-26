@@ -46,6 +46,31 @@ import {
 } from '@/lib/projectLinePermissionKeys';
 import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
 import {
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppControlLabelRow,
+  AppDatePicker,
+  AppFieldHint,
+  AppFileUpload,
+  AppFormModal,
+  AppInput,
+  AppSectionHeader,
+  AppSelect,
+  AppTextarea,
+  AppTimePicker,
+  FORM_MODAL_WIDE_DIALOG_COLLAPSED,
+  FORM_MODAL_WIDE_DIALOG_EXPANDED,
+  appSectionPresetProps,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+import { employeeTrainingRecordQuickInfo } from '@/lib/formModalQuickInfo';
+import {
   IMPLEMENTED_PERMISSIONS,
   isConstructionProjectPermissionKey,
   isRepairsProjectPermissionKey,
@@ -7727,9 +7752,6 @@ const TRAINING_CATEGORIES = ['', 'Safety', 'Compliance', 'Technical skills', 'So
 const TRAINING_FORMATS = ['', 'in_person', 'online', 'hybrid'];
 const TRAINING_STATUSES = ['completed', 'in_progress', 'scheduled', 'expired'];
 
-const TRAINING_INPUT_CLASS =
-  'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-red-500/15';
-
 /** Docs tab folder for certificate files uploaded from Training & courses modal. */
 const TRAINING_CERTIFICATES_FOLDER_NAME = 'Training certificates';
 
@@ -7941,8 +7963,6 @@ function EmployeeTrainingSection(
   const [saving, setSaving] = useState(false);
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
   const [certificateDocTitle, setCertificateDocTitle] = useState('');
-  const [certificateDragActive, setCertificateDragActive] = useState(false);
-  const certificateFileInputRef = useRef<HTMLInputElement>(null);
   const [includeWeekends, setIncludeWeekends] = useState(false);
   const [differentCompletionDate, setDifferentCompletionDate] = useState(false);
   const [form, setForm] = useState({
@@ -7995,7 +8015,6 @@ function EmployeeTrainingSection(
     resetForm();
     setCertificateFile(null);
     setCertificateDocTitle('');
-    setCertificateDragActive(false);
     setModalOpen(true);
   };
 
@@ -8004,7 +8023,6 @@ function EmployeeTrainingSection(
     resetForm({ title: slot.label, matrix_training_id: slot.id });
     setCertificateFile(null);
     setCertificateDocTitle('');
-    setCertificateDragActive(false);
     setModalOpen(true);
   };
 
@@ -8037,7 +8055,6 @@ function EmployeeTrainingSection(
     });
     setCertificateFile(null);
     setCertificateDocTitle('');
-    setCertificateDragActive(false);
     setIncludeWeekends(false);
     setModalOpen(true);
   };
@@ -8047,7 +8064,6 @@ function EmployeeTrainingSection(
     setEditing(null);
     setCertificateFile(null);
     setCertificateDocTitle('');
-    setCertificateDragActive(false);
     setIncludeWeekends(false);
     setDifferentCompletionDate(false);
   };
@@ -8114,8 +8130,7 @@ function EmployeeTrainingSection(
     };
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitTrainingRecord = async () => {
     if (!form.title.trim()) {
       toast.error('Title is required');
       return;
@@ -8223,39 +8238,63 @@ function EmployeeTrainingSection(
     return v || '—';
   };
 
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100">
-            <svg className="h-4 w-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-            </svg>
-          </div>
-          <div className="min-w-0">
-            <h5 className="text-sm font-semibold text-emerald-950">Training & courses</h5>
-            <p className="mt-0.5 text-xs text-gray-500">
-              HR training history, including optional sync from completed internal LMS courses. Use{' '}
-              <span className="font-medium text-gray-700">Start date</span> for scheduled or in-progress rows so they
-              show on the team training calendar.
-            </p>
-          </div>
-        </div>
-        {canEdit && (
-          <button
-            type="button"
-            onClick={openAdd}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-red px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-800"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add record
-          </button>
-        )}
-      </div>
+  const trainingTitle = isWorker ? 'Training' : 'Training & courses';
+  const trainingDescription = isWorker
+    ? 'Training matrix records required for site access.'
+    : 'HR training history, including optional sync from completed internal LMS courses. Use Start date for scheduled or in-progress rows so they show on the team training calendar.';
 
-      <div className="space-y-4">
+  const matrixSelectOptions = useMemo(
+    () => (matrixCatalog?.items ?? []).map((opt) => ({ value: opt.id, label: opt.label })),
+    [matrixCatalog?.items],
+  );
+
+  const categorySelectOptions = useMemo(
+    () => TRAINING_CATEGORIES.filter(Boolean).map((c) => ({ value: c, label: c })),
+    [],
+  );
+
+  const formatSelectOptions = useMemo(
+    () =>
+      TRAINING_FORMATS.filter(Boolean).map((c) => ({
+        value: c,
+        label: formatLabel(c),
+      })),
+    [],
+  );
+
+  const statusSelectOptions = useMemo(
+    () =>
+      TRAINING_STATUSES.map((s) => ({
+        value: s,
+        label: s.replace('_', ' '),
+      })),
+    [],
+  );
+
+  const needsCompletionDate = form.status === 'completed' || form.status === 'expired';
+  const endDateLabel =
+    needsCompletionDate && !differentCompletionDate ? 'End date *' : 'End date';
+
+  const certificateUploadHint = isWorker
+    ? "Certificate file\n\nOptional. Saves to this worker's Documents tab under Training certificates when you save."
+    : `Certificate file\n\nOptional. Saves to Docs → ${TRAINING_CERTIFICATES_FOLDER_NAME} (folder is created automatically if missing).`;
+
+  return (
+    <AppCard>
+      <AppSectionHeader
+        title={trainingTitle}
+        description={trainingDescription}
+        {...appSectionPresetProps('education')}
+        action={
+          canEdit ? (
+            <AppButton type="button" size="sm" onClick={openAdd}>
+              Add record
+            </AppButton>
+          ) : undefined
+        }
+      />
+
+      <div className="mt-4 space-y-4">
         {isLoading ? (
           <div className="h-28 animate-pulse rounded-lg bg-slate-100" />
         ) : !(rows as any[]).length ? (
@@ -8385,7 +8424,7 @@ function EmployeeTrainingSection(
               <h5 className="text-sm font-semibold text-emerald-950">Standard training matrix</h5>
               <p className="mt-0.5 text-xs text-gray-500">
                 Shortcuts to add a linked record for a checklist slot. After you save, it appears in{' '}
-                <span className="font-medium text-gray-700">Training & courses</span> above and leaves this list.
+                <span className="font-medium text-gray-700">{trainingTitle}</span> above and leaves this list.
               </p>
             </div>
           </div>
@@ -8394,7 +8433,7 @@ function EmployeeTrainingSection(
           <div className="h-24 animate-pulse rounded-lg bg-slate-100" />
         ) : matrixShortcutItems.length === 0 ? (
           <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-4 py-3 text-sm text-emerald-900">
-            All standard matrix slots are covered in <span className="font-semibold">Training & courses</span> above.
+            All standard matrix slots are covered in <span className="font-semibold">{trainingTitle}</span> above.
           </div>
         ) : canEdit ? (
           <div className="flex flex-wrap gap-2">
@@ -8412,499 +8451,275 @@ function EmployeeTrainingSection(
           </div>
         ) : (
           <p className="rounded-lg border border-dashed border-gray-200 bg-slate-50/60 px-4 py-3 text-xs text-gray-600">
-            Not yet linked in Training & courses:{' '}
+            Not yet linked in {trainingTitle}:{' '}
             <span className="font-medium text-gray-800">{matrixShortcutItems.map((r) => r.label).join(', ')}</span>
           </p>
         )}
       </div>
 
-      {modalOpen && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-6"
-            onClick={closeModal}
-          >
-            <div
-              className="flex max-h-[min(92vh,980px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
+      <AppFormModal
+        open={modalOpen}
+        onClose={closeModal}
+        title={editing ? 'Edit training record' : 'Add training record'}
+        description="For completed or expired, the end date counts as completion unless you choose a different completion date."
+        formWidth="wide"
+        quickInfo={employeeTrainingRecordQuickInfo({
+          isWorker,
+          editing: !!editing,
+          hasCertificateFile: !!certificateFile,
+        })}
+        dialogClassName={FORM_MODAL_WIDE_DIALOG_COLLAPSED}
+        dialogClassNameExpanded={FORM_MODAL_WIDE_DIALOG_EXPANDED}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={closeModal} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              loading={saving}
+              disabled={saving}
+              onClick={() => void submitTrainingRecord()}
             >
-              <div className="shrink-0 border-b border-gray-100 bg-slate-50/90 px-5 py-4 sm:px-8 sm:py-4">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {editing ? 'Edit training record' : 'Add training record'}
-                </h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  For completed or expired, the end date counts as completion unless you choose a different completion
-                  date. Fields marked * apply when that option is on.
-                </p>
-              </div>
-              <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-6">
-                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-x-10 xl:gap-x-12">
-                    <div className="space-y-4">
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                          Title *
-                        </label>
-                        <input
-                          value={form.title}
-                          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                          className={TRAINING_INPUT_CLASS}
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                          Matrix slot (optional)
-                        </label>
-                        <select
-                          value={form.matrix_training_id}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            const label =
-                              matrixCatalog?.items?.find((x) => x.id === v)?.label?.trim() || '';
-                            setForm((f) => ({
-                              ...f,
-                              matrix_training_id: v,
-                              ...(!editing && label ? { title: label } : {}),
-                            }));
-                          }}
-                          className={TRAINING_INPUT_CLASS}
-                        >
-                          <option value="">— None —</option>
-                          {(matrixCatalog?.items || []).map((opt) => (
-                            <option key={opt.id} value={opt.id}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                          Provider
-                        </label>
-                        <input
-                          value={form.provider}
-                          onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
-                          className={TRAINING_INPUT_CLASS}
-                          placeholder="Organization or trainer"
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            Category
-                          </label>
-                          <select
-                            value={form.category}
-                            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                            className={TRAINING_INPUT_CLASS}
-                          >
-                            {TRAINING_CATEGORIES.map((c) => (
-                              <option key={c || 'empty'} value={c}>
-                                {c || '— Select —'}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            Format
-                          </label>
-                          <select
-                            value={form.delivery_format}
-                            onChange={(e) => setForm((f) => ({ ...f, delivery_format: e.target.value }))}
-                            className={TRAINING_INPUT_CLASS}
-                          >
-                            <option value="">—</option>
-                            {TRAINING_FORMATS.filter(Boolean).map((c) => (
-                              <option key={c} value={c}>
-                                {formatLabel(c)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            Crew
-                          </label>
-                          <input
-                            value={form.crew}
-                            onChange={(e) => setForm((f) => ({ ...f, crew: e.target.value }))}
-                            className={TRAINING_INPUT_CLASS}
-                            placeholder="e.g. Repairs, Metal, Office"
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            Location
-                          </label>
-                          <input
-                            value={form.location}
-                            onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-                            className={TRAINING_INPUT_CLASS}
-                            placeholder="Address or room"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            Start date
-                          </label>
-                          <input
-                            type="date"
-                            value={form.start_date}
-                            onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
-                            className={TRAINING_INPUT_CLASS}
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            End date
-                            {(form.status === 'completed' || form.status === 'expired') &&
-                              !differentCompletionDate &&
-                              ' *'}
-                          </label>
-                          <input
-                            type="date"
-                            value={form.end_date}
-                            onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))}
-                            className={TRAINING_INPUT_CLASS}
-                          />
-                          {!differentCompletionDate &&
-                          (form.status === 'completed' || form.status === 'expired') ? (
-                            <p className="mt-1 text-[11px] text-gray-500">Also used as completion date.</p>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={differentCompletionDate}
-                            onChange={(e) => {
-                              const on = e.target.checked;
-                              setDifferentCompletionDate(on);
-                              if (on) {
-                                setForm((f) => ({
-                                  ...f,
-                                  completion_date:
-                                    f.completion_date.trim() ||
-                                    f.end_date.trim() ||
-                                    f.start_date.trim() ||
-                                    new Date().toISOString().slice(0, 10),
-                                }));
-                              }
-                            }}
-                            className="h-4 w-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                          />
-                          <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            Use different completion date
-                          </span>
-                        </label>
-                        {differentCompletionDate ? (
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                              Completion date{' '}
-                              {(form.status === 'completed' || form.status === 'expired') && '*'}
-                            </label>
-                            <input
-                              type="date"
-                              value={form.completion_date}
-                              onChange={(e) => setForm((f) => ({ ...f, completion_date: e.target.value }))}
-                              className={TRAINING_INPUT_CLASS}
-                            />
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            Start time
-                          </label>
-                          <input
-                            type="time"
-                            value={form.time_start}
-                            onChange={(e) =>
-                              setForm((f) => ({ ...f, time_start: e.target.value, session_time: '' }))
-                            }
-                            className={TRAINING_INPUT_CLASS}
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            End time
-                          </label>
-                          <input
-                            type="time"
-                            value={form.time_end}
-                            onChange={(e) =>
-                              setForm((f) => ({ ...f, time_end: e.target.value, session_time: '' }))
-                            }
-                            className={TRAINING_INPUT_CLASS}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-4">
-                        <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={includeWeekends}
-                            onChange={(e) => setIncludeWeekends(e.target.checked)}
-                            className="h-4 w-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                          />
-                          <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            Include weekends
-                          </span>
-                        </label>
-                      </div>
-                      <div>
-                        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-600">
-                          Duration (hours)
-                        </p>
-                        {computedDurationHours != null && trainingDurationHint ? (
-                          <p className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2 text-sm text-gray-800">
-                            <span className="font-semibold tabular-nums">{computedDurationHours}</span>
-                            <span className="text-gray-600">
-                              {' '}
-                              ({trainingDurationHint.days} day(s) × {trainingDurationHint.perDay.toFixed(2)} h/day)
-                            </span>
-                          </p>
-                        ) : (
-                          <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 px-3 py-2 text-sm text-gray-500">
-                            Set start and end dates plus daily start and end times to calculate hours
-                            {includeWeekends ? ' (all days)' : ' (weekdays only unless weekends are included)'}.
-                            {editing?.duration_hours != null
-                              ? ` Saved value: ${editing.duration_hours} h (unchanged until recalculated).`
-                              : ''}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                          Status
-                        </label>
-                        <select
-                          value={form.status}
-                          onChange={(e) => {
-                            const ns = e.target.value;
-                            setForm((f) => {
-                              let cd = f.completion_date;
-                              if (ns === 'scheduled' || ns === 'in_progress') {
-                                // keep completion_date for when user switches back
-                              } else if (
-                                (ns === 'completed' || ns === 'expired') &&
-                                differentCompletionDate &&
-                                !cd.trim()
-                              ) {
-                                cd =
-                                  f.end_date.trim() ||
-                                  f.start_date.trim() ||
-                                  new Date().toISOString().slice(0, 10);
-                              }
-                              return { ...f, status: ns, completion_date: cd };
-                            });
-                          }}
-                          className={TRAINING_INPUT_CLASS}
-                        >
-                          {TRAINING_STATUSES.map((s) => (
-                            <option key={s} value={s}>
-                              {s.replace('_', ' ')}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            Certificate / reference #
-                          </label>
-                          <input
-                            value={form.certificate_number}
-                            onChange={(e) => setForm((f) => ({ ...f, certificate_number: e.target.value }))}
-                            className={TRAINING_INPUT_CLASS}
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                            Expiry / renewal date
-                          </label>
-                          <input
-                            type="date"
-                            value={form.expiry_date}
-                            onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))}
-                            className={TRAINING_INPUT_CLASS}
-                          />
-                        </div>
-                      </div>
-                      {canEdit && (
-                        <div className="space-y-3 rounded-lg border border-dashed border-emerald-200 bg-emerald-50/50 p-4">
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                              Certificate file (optional)
-                            </label>
-                            <p className="mb-2 text-xs leading-relaxed text-gray-600">
-                              {isWorker ? (
-                                <>
-                                  Uploads to this worker&apos;s{' '}
-                                  <span className="font-medium text-gray-800">Documents</span> tab (category{' '}
-                                  <span className="font-medium text-emerald-900">Training certificates</span>).
-                                </>
-                              ) : (
-                                <>
-                                  Uploads to{' '}
-                                  <span className="font-medium text-gray-800">Docs</span> →{' '}
-                                  <span className="font-medium text-emerald-900">{TRAINING_CERTIFICATES_FOLDER_NAME}</span>{' '}
-                                  (folder is created automatically if missing).
-                                </>
-                              )}
-                            </p>
-                            <input
-                              ref={certificateFileInputRef}
-                              type="file"
-                              className="hidden"
-                              onChange={(e) => {
-                                setCertificateFile(e.target.files?.[0] ?? null);
-                                e.target.value = '';
-                              }}
-                            />
-                            <div
-                              role="button"
-                              tabIndex={0}
-                              onClick={() => certificateFileInputRef.current?.click()}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  certificateFileInputRef.current?.click();
-                                }
-                              }}
-                              onDragOver={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                e.dataTransfer.dropEffect = 'copy';
-                              }}
-                              onDragEnter={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setCertificateDragActive(true);
-                              }}
-                              onDragLeave={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                const el = e.currentTarget;
-                                const rel = e.relatedTarget as Node | null;
-                                if (!rel || !el.contains(rel)) setCertificateDragActive(false);
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setCertificateDragActive(false);
-                                const f = e.dataTransfer.files?.[0];
-                                if (f) setCertificateFile(f);
-                              }}
-                              className={`flex min-h-[112px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
-                                certificateDragActive
-                                  ? 'border-emerald-500 bg-emerald-100/90'
-                                  : 'border-emerald-300 bg-white/90 hover:border-emerald-400 hover:bg-emerald-50/90'
-                              }`}
-                            >
-                              <svg
-                                className={`h-8 w-8 shrink-0 ${certificateDragActive ? 'text-emerald-700' : 'text-emerald-600'}`}
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                                aria-hidden
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={1.5}
-                                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                                />
-                              </svg>
-                              <div className="text-xs text-gray-700">
-                                <span className="font-semibold text-emerald-900">Drop file here</span>
-                                <span className="text-gray-500"> or </span>
-                                <span className="font-semibold text-brand-red underline-offset-2 hover:underline">browse</span>
-                              </div>
-                              <p className="text-[11px] text-gray-500">PDF, image, or other — one file per save</p>
-                            </div>
-                            {certificateFile ? (
-                              <div className="mt-2 flex items-start justify-between gap-2 rounded-md border border-emerald-200 bg-white px-3 py-2">
-                                <p className="min-w-0 flex-1 truncate text-xs text-gray-800" title={certificateFile.name}>
-                                  <span className="font-medium text-gray-600">Selected:</span>{' '}
-                                  {certificateFile.name}
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setCertificateFile(null);
-                                  }}
-                                  className="shrink-0 text-xs font-medium text-gray-500 hover:text-red-600"
-                                >
-                                  Clear
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                              Document title in Docs (optional)
-                            </label>
-                            <input
-                              value={certificateDocTitle}
-                              onChange={(e) => setCertificateDocTitle(e.target.value)}
-                              className={TRAINING_INPUT_CLASS}
-                              placeholder={
-                                form.title.trim()
-                                  ? `Default: “${form.title.trim()} — file name”`
-                                  : 'Default: training title — file name'
-                              }
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-6 border-t border-gray-100 pt-6">
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      Notes
-                    </label>
-                    <textarea
-                      value={form.notes}
-                      onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                      className={`${TRAINING_INPUT_CLASS} min-h-[160px] w-full resize-y sm:min-h-[200px]`}
-                      rows={7}
-                    />
-                  </div>
-                </div>
-                <div className="flex shrink-0 justify-end gap-3 border-t border-gray-200 bg-slate-50/80 px-5 py-4 sm:px-8">
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
-                  >
-                    {saving ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-              </form>
-            </div>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
           </div>
-        </OverlayPortal>
-      )}
-    </div>
+        }
+      >
+        <AppInput
+          label="Title *"
+          value={form.title}
+          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+          required
+          fieldHint="Title\n\nCourse, certification, or matrix training name shown in the list."
+        />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-start">
+          <AppSelect
+            label="Matrix slot (optional)"
+            value={form.matrix_training_id}
+            options={matrixSelectOptions}
+            placeholder="Select matrix slot…"
+            onChange={(e) => {
+              const v = e.target.value;
+              const slotLabel =
+                matrixCatalog?.items?.find((x) => x.id === v)?.label?.trim() || '';
+              setForm((f) => ({
+                ...f,
+                matrix_training_id: v,
+                ...(!editing && slotLabel ? { title: slotLabel } : {}),
+              }));
+            }}
+            fieldHint="Matrix slot\n\nLinks this record to a standard training matrix item."
+          />
+          <AppSelect
+            label="Status"
+            value={form.status}
+            options={statusSelectOptions}
+            onChange={(e) => {
+              const ns = e.target.value;
+              setForm((f) => {
+                let cd = f.completion_date;
+                if (
+                  (ns === 'completed' || ns === 'expired') &&
+                  differentCompletionDate &&
+                  !cd.trim()
+                ) {
+                  cd =
+                    f.end_date.trim() ||
+                    f.start_date.trim() ||
+                    new Date().toISOString().slice(0, 10);
+                }
+                return { ...f, status: ns, completion_date: cd };
+              });
+            }}
+            fieldHint="Status\n\nCompleted or expired require an end date (or separate completion date)."
+          />
+        </div>
+        <AppInput
+          label="Provider"
+          value={form.provider}
+          onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
+          placeholder="Organization or trainer"
+        />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-start">
+          <AppSelect
+            label="Category"
+            value={form.category}
+            options={categorySelectOptions}
+            placeholder="Select category…"
+            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+          />
+          <AppSelect
+            label="Format"
+            value={form.delivery_format}
+            options={formatSelectOptions}
+            placeholder="Select format…"
+            onChange={(e) => setForm((f) => ({ ...f, delivery_format: e.target.value }))}
+          />
+          <AppInput
+            label="Crew"
+            value={form.crew}
+            onChange={(e) => setForm((f) => ({ ...f, crew: e.target.value }))}
+            placeholder="e.g. Repairs, Metal, Office"
+          />
+          <AppInput
+            label="Location"
+            value={form.location}
+            onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+            placeholder="Address or room"
+          />
+          <AppDatePicker
+            label="Start date"
+            value={form.start_date}
+            onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
+          />
+          <AppDatePicker
+            label={endDateLabel}
+            value={form.end_date}
+            onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))}
+            helperText={
+              !differentCompletionDate && needsCompletionDate
+                ? 'Also used as completion date.'
+                : undefined
+            }
+          />
+          <AppTimePicker
+            label="Start time"
+            value={form.time_start}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, time_start: e.target.value, session_time: '' }))
+            }
+            fieldHint="Start time\n\nDaily session start; used with end time to calculate duration."
+          />
+          <AppTimePicker
+            label="End time"
+            value={form.time_end}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, time_end: e.target.value, session_time: '' }))
+            }
+            fieldHint="End time\n\nDaily session end; must be after start time for duration."
+          />
+          <AppInput
+            label="Certificate / reference #"
+            value={form.certificate_number}
+            onChange={(e) => setForm((f) => ({ ...f, certificate_number: e.target.value }))}
+          />
+          <AppDatePicker
+            label="Expiry / renewal date"
+            value={form.expiry_date}
+            onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))}
+          />
+        </div>
+        <div className={uiSpacing.sectionStack}>
+          <AppCheckbox
+            label="Use different completion date"
+            checked={differentCompletionDate}
+            onChange={(on) => {
+              setDifferentCompletionDate(on);
+              if (on) {
+                setForm((f) => ({
+                  ...f,
+                  completion_date:
+                    f.completion_date.trim() ||
+                    f.end_date.trim() ||
+                    f.start_date.trim() ||
+                    new Date().toISOString().slice(0, 10),
+                }));
+              }
+            }}
+          />
+          {differentCompletionDate ? (
+            <AppDatePicker
+              label={needsCompletionDate ? 'Completion date *' : 'Completion date'}
+              value={form.completion_date}
+              onChange={(e) => setForm((f) => ({ ...f, completion_date: e.target.value }))}
+              className="max-w-xs"
+            />
+          ) : null}
+          <AppCheckbox
+            label="Include weekends"
+            checked={includeWeekends}
+            onChange={setIncludeWeekends}
+          />
+        </div>
+        <div className={uiSpacing.sectionStack}>
+          <AppControlLabelRow
+            label="Duration (hours)"
+            fieldHint={
+              <AppFieldHint hint="Duration\n\nCalculated from dates and daily start/end times." />
+            }
+          />
+          {computedDurationHours != null && trainingDurationHint ? (
+            <p
+              className={uiCx(
+                uiRadius.control,
+                uiBorders.subtle,
+                'bg-gray-50/80 px-3 py-2',
+                uiTypography.body,
+              )}
+            >
+              <span className="font-semibold tabular-nums">{computedDurationHours}</span>
+              <span className="text-gray-600">
+                {' '}
+                ({trainingDurationHint.days} day(s) × {trainingDurationHint.perDay.toFixed(2)} h/day)
+              </span>
+            </p>
+          ) : (
+            <p
+              className={uiCx(
+                uiRadius.control,
+                'border border-dashed border-gray-200 bg-gray-50/50 px-3 py-2',
+                uiTypography.helper,
+              )}
+            >
+              Set start and end dates plus daily start and end times to calculate hours
+              {includeWeekends ? ' (all days)' : ' (weekdays only unless weekends are included)'}.
+              {editing?.duration_hours != null
+                ? ` Saved value: ${editing.duration_hours} h (unchanged until recalculated).`
+                : ''}
+            </p>
+          )}
+        </div>
+        {canEdit ? (
+          <div
+            className={uiCx(
+              uiSpacing.sectionStack,
+              uiRadius.card,
+              uiBorders.subtle,
+              uiSpacing.compactCardPadding,
+              'bg-gray-50/40',
+            )}
+          >
+            <AppFileUpload
+              mode="single"
+              value={certificateFile}
+              onChange={setCertificateFile}
+              label="Certificate file (optional)"
+              fieldHint={certificateUploadHint}
+              helperText="PDF, image, or other — one file per save."
+            />
+            <AppInput
+              label={isWorker ? 'Document title (optional)' : 'Document title in Docs (optional)'}
+              value={certificateDocTitle}
+              onChange={(e) => setCertificateDocTitle(e.target.value)}
+              placeholder={
+                form.title.trim()
+                  ? `Default: “${form.title.trim()} — file name”`
+                  : 'Default: training title — file name'
+              }
+            />
+          </div>
+        ) : null}
+        <AppTextarea
+          label="Notes"
+          value={form.notes}
+          onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+          rows={5}
+          fieldHint="Notes\n\nInternal comments or renewal reminders."
+        />
+      </AppFormModal>
+    </AppCard>
   );
 }
 

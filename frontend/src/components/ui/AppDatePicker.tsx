@@ -8,13 +8,15 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
 import {
   addMonths,
   buildMonthGrid,
   formatDateDisplay,
+  formatDatePickerCardOverline,
+  formatDatePickerCardValue,
   isIsoInRange,
   parseIsoDate,
   startOfMonth,
@@ -24,8 +26,11 @@ import { uiCx, uiDatePicker, uiDropdown, uiTypography } from './tokens';
 import { useComboboxDropdown } from './useComboboxDropdown';
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+const DATE_PICKER_PANEL_WIDTH = 280;
 
 type PanelView = 'days' | 'monthYear';
+
+export type AppDatePickerTriggerVariant = 'default' | 'card';
 
 export type AppDatePickerProps = {
   label?: ReactNode;
@@ -34,6 +39,10 @@ export type AppDatePickerProps = {
   placeholder?: string;
   min?: string;
   max?: string;
+  /** `default` — form field with text + calendar icon. `card` — Clock In/Out style tile (overline + long date). */
+  triggerVariant?: AppDatePickerTriggerVariant;
+  /** Extra classes on the trigger control (e.g. `w-[220px]` for card in card headers). */
+  triggerClassName?: string;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'value' | 'onChange'> & {
     value?: string;
     onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -77,10 +86,17 @@ export function AppDatePicker({
   min,
   max,
   className,
+  triggerVariant = 'default',
+  triggerClassName,
+  'aria-label': ariaLabel,
 }: AppDatePickerProps) {
+  const isCardTrigger = triggerVariant === 'card';
   const [open, setOpen] = useState(false);
   const [panelView, setPanelView] = useState<PanelView>('days');
-  const { anchorRef, portalListId, menuRect, closeDropdown } = useComboboxDropdown(open, setOpen);
+  const { anchorRef, portalListId, menuRect, closeDropdown } = useComboboxDropdown(open, setOpen, {
+    menuWidth: DATE_PICKER_PANEL_WIDTH,
+    menuAlign: isCardTrigger ? 'end' : 'start',
+  });
 
   const yearListRef = useRef<HTMLDivElement>(null);
   const selectedYearRef = useRef<HTMLButtonElement>(null);
@@ -99,7 +115,6 @@ export function AppDatePicker({
   }, [yMin, yMax]);
   const viewYear = viewMonth.getFullYear();
   const activeMonthIndex = viewMonth.getMonth();
-
   useEffect(() => {
     if (parsed) setViewMonth(startOfMonth(parsed));
   }, [parsed]);
@@ -110,13 +125,15 @@ export function AppDatePicker({
 
   useEffect(() => {
     if (!open || panelView !== 'monthYear') return;
-    const id = window.requestAnimationFrame(() => {
+    const rid = window.requestAnimationFrame(() => {
       selectedYearRef.current?.scrollIntoView({ block: 'center' });
     });
-    return () => window.cancelAnimationFrame(id);
+    return () => window.cancelAnimationFrame(rid);
   }, [open, panelView, viewYear]);
 
   const display = value ? formatDateDisplay(value) : '';
+  const cardOverline = value ? formatDatePickerCardOverline(value, todayIso) : '';
+  const cardValue = value ? formatDatePickerCardValue(value) : placeholder;
 
   const pickDate = (iso: string) => {
     if (!isIsoInRange(iso, min, max)) return;
@@ -287,33 +304,67 @@ export function AppDatePicker({
       </div>
     ) : null;
 
+  const triggerButton = (
+    <button
+      id={id}
+      type="button"
+      disabled={disabled}
+      aria-expanded={open}
+      aria-haspopup="dialog"
+      aria-controls={open ? portalListId : undefined}
+      aria-label={isCardTrigger && !label ? ariaLabel ?? 'Select date' : undefined}
+      className={uiCx(
+        isCardTrigger
+          ? uiCx(
+              uiDatePicker.triggerCard,
+              open && !disabled && 'border-gray-400 ring-1 ring-inset ring-gray-400/35',
+              triggerClassName,
+            )
+          : uiCx(
+              uiDropdown.trigger,
+              'flex w-full items-center justify-between gap-2 pr-9 text-left',
+              !display && 'text-gray-400',
+              open && !disabled && 'border-gray-400 ring-1 ring-inset ring-gray-400/35',
+              triggerClassName,
+            ),
+      )}
+      onClick={() => {
+        if (!disabled) setOpen((o) => !o);
+      }}
+    >
+      {isCardTrigger ? (
+        <>
+          <div className={uiDatePicker.triggerCardIcon}>
+            <CalendarDays className="h-4 w-4 text-gray-500" aria-hidden />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className={uiCx(uiTypography.overline, 'leading-tight')}>{cardOverline}</div>
+            <div
+              className={uiCx(
+                uiTypography.sectionTitle,
+                'truncate leading-tight',
+                !value && 'font-normal text-gray-400',
+              )}
+            >
+              {cardValue}
+            </div>
+          </div>
+        </>
+      ) : (
+        <span className="min-w-0 truncate">{display || placeholder}</span>
+      )}
+    </button>
+  );
+
   return (
-    <div className={uiCx('block space-y-1.5', className)}>
+    <div className={uiCx('block space-y-1.5', isCardTrigger && label == null && helperText == null && '!space-y-0', className)}>
       {label ? (
         <AppControlLabelRow label={label} fieldHint={fieldHint ? <AppFieldHint hint={fieldHint} /> : undefined} />
       ) : null}
       {name ? <input type="hidden" name={name} value={value} required={required} min={min} max={max} /> : null}
       <div ref={anchorRef} className="relative">
-        <button
-          id={id}
-          type="button"
-          disabled={disabled}
-          aria-expanded={open}
-          aria-haspopup="dialog"
-          aria-controls={open ? portalListId : undefined}
-          className={uiCx(
-            uiDropdown.trigger,
-            'flex w-full items-center justify-between gap-2 pr-9 text-left',
-            !display && 'text-gray-400',
-            open && !disabled && 'border-gray-400 ring-1 ring-inset ring-gray-400/35',
-          )}
-          onClick={() => {
-            if (!disabled) setOpen((o) => !o);
-          }}
-        >
-          <span className="min-w-0 truncate">{display || placeholder}</span>
-        </button>
-        <Calendar className={uiDatePicker.triggerIcon} aria-hidden />
+        {triggerButton}
+        {!isCardTrigger ? <Calendar className={uiDatePicker.triggerIcon} aria-hidden /> : null}
       </div>
       {helperText ? <span className={uiTypography.helper}>{helperText}</span> : null}
       {typeof document !== 'undefined' && panel ? createPortal(panel, document.body) : null}

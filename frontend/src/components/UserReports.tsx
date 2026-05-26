@@ -1,10 +1,35 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Paperclip, X } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
-import OverlayPortal from '@/components/OverlayPortal';
+import {
+  employeeReportDetailQuickInfo,
+  employeeReportFormQuickInfo,
+} from '@/lib/formModalQuickInfo';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppDatePicker,
+  AppFileUpload,
+  AppFormModal,
+  AppInput,
+  AppMultiSelect,
+  type AppMultiSelectOption,
+  AppSectionHeader,
+  AppSelect,
+  AppTextarea,
+  FORM_MODAL_WIDE_DIALOG_COLLAPSED,
+  FORM_MODAL_WIDE_DIALOG_EXPANDED,
+  appSectionPresetProps,
+  uiBorders,
+  uiCx,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type Report = {
   id: string;
@@ -70,6 +95,78 @@ function formatCurrency(value: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+const REPORT_TYPE_OPTIONS = [
+  { value: 'Fine', label: 'Fine' },
+  { value: 'Warning', label: 'Warning' },
+  { value: 'Suspension', label: 'Suspension' },
+  { value: 'Behavior Note', label: 'Behavior Note' },
+  { value: 'Other', label: 'Other' },
+];
+
+const REPORT_STATUS_OPTIONS = [
+  { value: 'Open', label: 'Open' },
+  { value: 'Under Review', label: 'Under Review' },
+  { value: 'Closed', label: 'Closed' },
+];
+
+const REPORT_SEVERITY_OPTIONS = [
+  { value: 'Low', label: 'Low' },
+  { value: 'Medium', label: 'Medium' },
+  { value: 'High', label: 'High' },
+];
+
+type ReportBadgeVariant = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
+
+function reportSeverityVariant(severity: string): ReportBadgeVariant {
+  if (severity === 'High') return 'danger';
+  if (severity === 'Medium') return 'warning';
+  return 'success';
+}
+
+function reportStatusVariant(status: string): ReportBadgeVariant {
+  if (status === 'Closed') return 'neutral';
+  if (status === 'Under Review') return 'info';
+  return 'warning';
+}
+
+function buildProjectDepartmentOptions(
+  projects: any[] | undefined,
+  settings: any | undefined,
+): AppMultiSelectOption[] {
+  const opts: AppMultiSelectOption[] = [];
+  projects?.forEach((project: any) => {
+    const name = project.name || project.code || 'Project';
+    const displayName = project.code ? `${project.code} - ${name}` : name;
+    opts.push({ value: `project-${project.id}`, label: displayName });
+  });
+  settings?.divisions?.forEach((division: any) => {
+    opts.push({ value: `department-${division.id}`, label: division.label });
+  });
+  return opts;
+}
+
+function ReportTypeFieldsSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={uiCx(
+        uiSpacing.sectionStack,
+        uiBorders.subtle,
+        uiTypography.body,
+        'rounded-lg border bg-gray-50 p-4',
+      )}
+    >
+      <h4 className={uiCx(uiTypography.sectionTitle)}>{title}</h4>
+      {children}
+    </div>
+  );
 }
 
 export default function UserReports(props: UserReportsProps) {
@@ -169,214 +266,163 @@ export default function UserReports(props: UserReportsProps) {
     setFilterDateTo('');
   };
 
+  const reportsDescription = isWorker
+    ? 'Safety and incident reports linked to this worker.'
+    : 'Safety and incident reports for this employee.';
+
   return (
     <div className="space-y-6 pb-24">
-      {/* Reports Section */}
-      <div className="rounded-xl border bg-white p-4">
-        {/* Header */}
-        <div className="mb-4 flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <h5 className="text-sm font-semibold text-red-900">Reports</h5>
-        </div>
-
-        {/* Search */}
-        <div className="mb-4">
-          <input
-            type="text"
-            placeholder="Search reports..."
-            className="w-full max-w-md rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+      <AppCard>
+        <AppSectionHeader
+          title="Reports"
+          description={reportsDescription}
+          {...appSectionPresetProps('description')}
+          action={
+            canEdit ? (
+              <AppButton type="button" size="sm" onClick={() => setShowCreateModal(true)}>
+                Add report
+              </AppButton>
+            ) : undefined
+          }
+        />
+        <div className="mt-4 space-y-4">
+          <AppInput
+            placeholder="Search reports…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            className="max-w-md"
           />
-        </div>
 
-        {/* Filters */}
-        <div className="mb-4 grid grid-cols-12 gap-4">
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Type</label>
-            <select
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+            <AppSelect
+              label="Type"
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-            >
-              <option value="">All Types</option>
-              <option value="Fine">Fine</option>
-              <option value="Warning">Warning</option>
-              <option value="Suspension">Suspension</option>
-              <option value="Behavior Note">Behavior Note</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
-            <select
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              placeholder="All types"
+              options={REPORT_TYPE_OPTIONS}
+            />
+            <AppSelect
+              label="Status"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-            >
-              <option value="">All Status</option>
-              <option value="Open">Open</option>
-              <option value="Under Review">Under Review</option>
-              <option value="Closed">Closed</option>
-            </select>
-          </div>
-          
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Severity</label>
-            <select
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              placeholder="All statuses"
+              options={REPORT_STATUS_OPTIONS}
+            />
+            <AppSelect
+              label="Severity"
               value={filterSeverity}
               onChange={(e) => setFilterSeverity(e.target.value)}
-            >
-              <option value="">All Severities</option>
-              <option value="Low">Low</option>
-              <option value="Medium">Medium</option>
-              <option value="High">High</option>
-            </select>
-          </div>
-          
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">From Date</label>
-            <input
-              type="date"
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              placeholder="All severities"
+              options={REPORT_SEVERITY_OPTIONS}
+            />
+            <AppDatePicker
+              label="From date"
               value={filterDateFrom}
               onChange={(e) => setFilterDateFrom(e.target.value)}
             />
-          </div>
-          
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">To Date</label>
-            <input
-              type="date"
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            <AppDatePicker
+              label="To date"
               value={filterDateTo}
               onChange={(e) => setFilterDateTo(e.target.value)}
             />
+            <div className="flex items-end">
+              <AppButton type="button" variant="secondary" size="sm" className="w-full" onClick={clearFilters}>
+                Clear filters
+              </AppButton>
+            </div>
           </div>
-          
-          <div className="col-span-2 flex items-end">
-            <button
-              onClick={clearFilters}
-              className="w-full px-2 py-1 text-xs rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium transition-colors"
-            >
-              Clear Filters
-            </button>
-          </div>
-        </div>
 
-        {/* Reports Table */}
-        <div className="rounded-xl border overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Date</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Type</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Title</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Severity</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Status</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Last Updated</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {canEdit && (
+          <div className={uiCx(uiBorders.subtle, 'overflow-hidden rounded-xl border')}>
+            <table className="w-full">
+              <thead className="bg-gray-50">
                 <tr>
-                  <td colSpan={7} className="p-0 align-top">
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateModal(true)}
-                      className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 flex items-center justify-center gap-2 min-h-[52px] text-gray-600 hover:text-brand-red transition-colors"
-                    >
-                      <span className="text-lg font-medium">+</span>
-                      <span className="text-sm font-medium">Add Report</span>
-                    </button>
-                  </td>
+                  <th className="p-3 text-left text-xs font-medium text-gray-600">Date</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-600">Type</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-600">Title</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-600">Severity</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-600">Status</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-600">Last updated</th>
+                  <th className="p-3 text-left text-xs font-medium text-gray-600">Actions</th>
                 </tr>
-              )}
-              {!reports ? (
-                <tr>
-                  <td colSpan={7} className="p-4 text-center text-xs text-gray-500">
-                    <div className="h-6 bg-gray-100 animate-pulse rounded" />
-                  </td>
-                </tr>
-              ) : filteredReports.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="p-4 text-center text-xs text-gray-500">
-                    {reports.length === 0 ? 'No reports found' : 'No reports match the filters'}
-                  </td>
-                </tr>
-              ) : (
-                filteredReports.map((report) => (
-                  <tr key={report.id} className="border-t border-gray-200 hover:bg-gray-50 transition-colors">
-                    <td className="p-2.5 text-xs text-gray-900">{formatDate(report.occurrence_date)}</td>
-                    <td className="p-2.5 text-xs text-gray-900">{report.report_type}</td>
-                    <td className="p-2.5 text-xs font-semibold text-gray-900">{report.title}</td>
-                    <td className="p-2.5">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                          report.severity === 'High'
-                            ? 'bg-red-100 text-red-800'
-                            : report.severity === 'Medium'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}
+              </thead>
+              <tbody>
+                {canEdit && (
+                  <tr>
+                    <td colSpan={7} className="p-0 align-top">
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateModal(true)}
+                        className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-t-xl border-2 border-dashed border-gray-300 p-3 text-gray-600 transition-colors hover:border-brand-red hover:bg-gray-50 hover:text-brand-red"
                       >
-                        {report.severity}
-                      </span>
-                    </td>
-                    <td className="p-2.5">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                          report.status === 'Closed'
-                            ? 'bg-gray-100 text-gray-800'
-                            : report.status === 'Under Review'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-orange-100 text-orange-800'
-                        }`}
-                      >
-                        {report.status}
-                      </span>
-                    </td>
-                    <td className="p-2.5 text-xs text-gray-600">{formatDate(report.updated_at || report.created_at)}</td>
-                    <td className="p-2.5">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => setShowReportDetail(report.id)}
-                          className="px-2 py-1 text-[10px] font-medium rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
-                        >
-                          View
-                        </button>
-                        {canEdit && (
-                          <button
-                            onClick={async () => {
-                              try {
-                                const reportDetail = await api<ReportDetail>('GET', `${reportsPrefix}/${report.id}`);
-                                setEditingReport(reportDetail);
-                                setShowCreateModal(true);
-                              } catch (e: any) {
-                                toast.error('Failed to load report details');
-                              }
-                            }}
-                            className="px-2 py-1 text-[10px] font-medium rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 transition-colors"
-                          >
-                            Edit
-                          </button>
-                        )}
-                      </div>
+                        <span className="text-lg font-medium">+</span>
+                        <span className="text-sm font-medium">Add report</span>
+                      </button>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                )}
+                {!reports ? (
+                  <tr>
+                    <td colSpan={7} className="p-4 text-center text-xs text-gray-500">
+                      <div className="h-6 animate-pulse rounded bg-gray-100" />
+                    </td>
+                  </tr>
+                ) : filteredReports.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-4 text-center text-xs text-gray-500">
+                      {reports.length === 0 ? 'No reports found' : 'No reports match the filters'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredReports.map((report) => (
+                    <tr key={report.id} className="border-t border-gray-200 transition-colors hover:bg-gray-50">
+                      <td className="p-3 text-xs text-gray-900">{formatDate(report.occurrence_date)}</td>
+                      <td className="p-3 text-xs text-gray-900">{report.report_type}</td>
+                      <td className="p-3 text-xs font-semibold text-gray-900">{report.title}</td>
+                      <td className="p-3">
+                        <AppBadge variant={reportSeverityVariant(report.severity)}>{report.severity}</AppBadge>
+                      </td>
+                      <td className="p-3">
+                        <AppBadge variant={reportStatusVariant(report.status)}>{report.status}</AppBadge>
+                      </td>
+                      <td className="p-3 text-xs text-gray-600">
+                        {formatDate(report.updated_at || report.created_at)}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setShowReportDetail(report.id)}
+                            className="text-xs font-medium text-brand-red hover:underline"
+                          >
+                            View
+                          </button>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const detail = await api<ReportDetail>('GET', `${reportsPrefix}/${report.id}`);
+                                  setEditingReport(detail);
+                                  setShowCreateModal(true);
+                                } catch {
+                                  toast.error('Failed to load report details');
+                                }
+                              }}
+                              className="text-xs font-medium text-gray-600 hover:text-gray-900 hover:underline"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      </AppCard>
 
       {/* Create/Edit Report Modal */}
       {showCreateModal && (
@@ -384,6 +430,7 @@ export default function UserReports(props: UserReportsProps) {
           reportsPrefix={reportsPrefix}
           reportsListQueryKey={reportsListQueryKey}
           fileUploadEmployeeId={fileUploadEmployeeId}
+          isWorker={isWorker}
           report={editingReport || undefined}
           onClose={() => {
             setShowCreateModal(false);
@@ -424,12 +471,14 @@ function CreateReportModal({
   reportsPrefix,
   reportsListQueryKey,
   fileUploadEmployeeId,
+  isWorker,
   report,
   onClose,
 }: {
   reportsPrefix: string;
   reportsListQueryKey: readonly ['reports', 'user' | 'worker', string];
   fileUploadEmployeeId: string | null;
+  isWorker: boolean;
   report?: ReportDetail;
   onClose: () => void;
 }) {
@@ -449,10 +498,7 @@ function CreateReportModal({
   
   // Related Project/Department (for all types)
   const [selectedProjectsDepartments, setSelectedProjectsDepartments] = useState<string[]>([]);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
-  const dropdownButtonRef = useRef<HTMLButtonElement>(null);
-  
+
   // Suspension-specific fields
   const [suspensionStartDate, setSuspensionStartDate] = useState('');
   const [suspensionEndDate, setSuspensionEndDate] = useState('');
@@ -463,20 +509,8 @@ function CreateReportModal({
   // Attachments
   const [attachments, setAttachments] = useState<Array<{ file_id: string; file_name: string; file_size: number; file_type: string }>>([]);
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
 
   // Fetch projects
   const { data: projects } = useQuery<any[]>({
@@ -490,25 +524,18 @@ function CreateReportModal({
     queryFn: () => api<any>('GET', '/settings'),
   });
 
-  // Get selected items display names
-  const selectedItemsDisplay = useMemo(() => {
-    const items: string[] = [];
-    selectedProjectsDepartments.forEach(id => {
-      if (id.startsWith('project-')) {
-        const projectId = id.replace('project-', '');
-        const project = projects?.find((p: any) => String(p.id) === projectId);
-        if (project) {
-          const name = project.name || project.code || 'Project';
-          items.push(project.code ? `${project.code} - ${name}` : name);
-        }
-      } else if (id.startsWith('department-')) {
-        const deptId = id.replace('department-', '');
-        const division = settings?.divisions?.find((d: any) => String(d.id) === deptId);
-        if (division) items.push(division.label);
-      }
-    });
-    return items;
-  }, [selectedProjectsDepartments, projects, settings]);
+  const projectDeptOptions = useMemo(
+    () => buildProjectDepartmentOptions(projects, settings),
+    [projects, settings],
+  );
+
+  const selectedItemsDisplay = useMemo(
+    () =>
+      selectedProjectsDepartments
+        .map((id) => projectDeptOptions.find((o) => o.value === id)?.label)
+        .filter((label): label is string => Boolean(label)),
+    [selectedProjectsDepartments, projectDeptOptions],
+  );
 
   // Initialize form when editing
   useEffect(() => {
@@ -571,51 +598,54 @@ function CreateReportModal({
     }
   }, [report, projects, settings]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    setUploading(true);
-    try {
-      const up: any = await api('POST', '/files/upload', {
-        project_id: null,
-        client_id: null,
-        employee_id: fileUploadEmployeeId,
-        category_id: 'report-attachment',
-        original_name: file.name,
-        content_type: file.type || 'application/octet-stream'
-      });
-      
-      const put = await fetch(up.upload_url, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
-        body: file
-      });
-      
-      if (!put.ok) throw new Error('Upload failed');
-      
-      const conf: any = await api('POST', '/files/confirm', {
-        key: up.key,
-        size_bytes: file.size,
-        checksum_sha256: 'na',
-        content_type: file.type || 'application/octet-stream'
-      });
-      
-      setAttachments(prev => [...prev, {
+  const uploadAttachmentFile = async (file: File) => {
+    const up: any = await api('POST', '/files/upload', {
+      project_id: null,
+      client_id: null,
+      employee_id: fileUploadEmployeeId,
+      category_id: 'report-attachment',
+      original_name: file.name,
+      content_type: file.type || 'application/octet-stream',
+    });
+
+    const put = await fetch(up.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
+      body: file,
+    });
+
+    if (!put.ok) throw new Error('Upload failed');
+
+    const conf: any = await api('POST', '/files/confirm', {
+      key: up.key,
+      size_bytes: file.size,
+      checksum_sha256: 'na',
+      content_type: file.type || 'application/octet-stream',
+    });
+
+    setAttachments((prev) => [
+      ...prev,
+      {
         file_id: conf.id,
         file_name: file.name,
         file_size: file.size,
-        file_type: file.type || 'application/octet-stream'
-      }]);
-      
-      toast.success('File uploaded');
+        file_type: file.type || 'application/octet-stream',
+      },
+    ]);
+  };
+
+  const handleFilesSelected = async (added: File[]) => {
+    if (!added.length) return;
+    setUploading(true);
+    try {
+      for (const file of added) {
+        await uploadAttachmentFile(file);
+      }
+      toast.success(added.length === 1 ? 'File uploaded' : `${added.length} files uploaded`);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to upload file');
     } finally {
       setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     }
   };
 
@@ -693,407 +723,192 @@ function CreateReportModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
-      onClick={onClose}
+    <AppFormModal
+      open
+      onClose={onClose}
+      formWidth="wide"
+      dialogClassName={FORM_MODAL_WIDE_DIALOG_COLLAPSED}
+      dialogClassNameExpanded={FORM_MODAL_WIDE_DIALOG_EXPANDED}
+      title={report ? 'Edit report' : 'Create report'}
+      description={
+        report
+          ? 'Update report details.'
+          : isWorker
+            ? 'Add a safety or incident report for this worker.'
+            : 'Add a safety or incident report for this employee.'
+      }
+      quickInfo={employeeReportFormQuickInfo({ isWorker, editing: !!report })}
+      footer={
+        <>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+            Cancel
+          </AppButton>
+          <AppButton type="button" size="sm" loading={saving} onClick={handleSubmit}>
+            {report ? 'Update report' : 'Create report'}
+          </AppButton>
+        </>
+      }
     >
-      <div
-        className="w-[700px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden relative"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-              title="Close"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">{report ? 'Edit Report' : 'Create Report'}</h2>
-              <p className="text-xs text-gray-500 mt-0.5">{report ? 'Update report details' : 'Add a new report for this employee'}</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto overflow-x-visible p-4">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-          <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Title *</label>
-            <input
-              type="text"
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Short title for the report"
+      <div className="space-y-4">
+        <AppInput
+          label="Title"
+          required
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Short title for the report"
+        />
+        <AppSelect
+          label="Report type"
+          required
+          value={reportType}
+          options={REPORT_TYPE_OPTIONS}
+          onChange={(e) => setReportType(e.target.value)}
+        />
+
+        {reportType === 'Fine' && (
+          <ReportTypeFieldsSection title="Fine details">
+            <AppInput
+              label="Vehicle"
+              value={vehicle}
+              onChange={(e) => setVehicle(e.target.value)}
+              placeholder="Vehicle information"
             />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Report Type *</label>
-            <select
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              value={reportType}
-              onChange={(e) => setReportType(e.target.value)}
-            >
-              <option value="Fine">Fine</option>
-              <option value="Warning">Warning</option>
-              <option value="Suspension">Suspension</option>
-              <option value="Behavior Note">Behavior Note</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-
-          {/* Fine-specific fields - moved right after Report Type */}
-          {reportType === 'Fine' && (
-            <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <h4 className="text-xs font-semibold text-gray-900">Fine Details</h4>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Vehicle</label>
-                <input
-                  type="text"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                  value={vehicle}
-                  onChange={(e) => setVehicle(e.target.value)}
-                  placeholder="Vehicle information"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Ticket Number</label>
-                <input
-                  type="text"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                  value={ticketNumber}
-                  onChange={(e) => setTicketNumber(e.target.value)}
-                  placeholder="Ticket number"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Fine Amount</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                    value={fineAmount}
-                    onChange={(e) => setFineAmount(e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Due Date</label>
-                  <input
-                    type="date"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Suspension-specific fields - moved right after Report Type */}
-          {reportType === 'Suspension' && (
-            <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <h4 className="text-xs font-semibold text-gray-900">Suspension Period</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Start Date</label>
-                  <input
-                    type="date"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                    value={suspensionStartDate}
-                    onChange={(e) => setSuspensionStartDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">End Date</label>
-                  <input
-                    type="date"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                    value={suspensionEndDate}
-                    onChange={(e) => setSuspensionEndDate(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Behavior Note-specific fields - moved right after Report Type */}
-          {reportType === 'Behavior Note' && (
-            <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <h4 className="font-medium text-gray-900">Behavior Note Type</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setBehaviorNoteType('Positive')}
-                  className={`p-4 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
-                    behaviorNoteType === 'Positive'
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-gray-300 bg-white hover:border-green-300'
-                  }`}
-                >
-                  <span className="text-2xl">😊</span>
-                  <span className={`font-medium ${behaviorNoteType === 'Positive' ? 'text-green-700' : 'text-gray-700'}`}>
-                    Positive
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBehaviorNoteType('Negative')}
-                  className={`p-4 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
-                    behaviorNoteType === 'Negative'
-                      ? 'border-red-500 bg-red-50'
-                      : 'border-gray-300 bg-white hover:border-red-300'
-                  }`}
-                >
-                  <span className="text-2xl">😞</span>
-                  <span className={`font-medium ${behaviorNoteType === 'Negative' ? 'text-red-700' : 'text-gray-700'}`}>
-                    Negative
-                  </span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Description</label>
-            <textarea
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              rows={4}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Detailed description of the occurrence"
+            <AppInput
+              label="Ticket number"
+              value={ticketNumber}
+              onChange={(e) => setTicketNumber(e.target.value)}
+              placeholder="Ticket number"
             />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Occurrence Date *</label>
-            <input
-              type="date"
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              value={occurrenceDate}
-              onChange={(e) => setOccurrenceDate(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Severity</label>
-              <select
-                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                value={severity}
-                onChange={(e) => setSeverity(e.target.value)}
-              >
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-              </select>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <AppInput
+                label="Fine amount"
+                type="number"
+                step="0.01"
+                min="0"
+                value={fineAmount}
+                onChange={(e) => setFineAmount(e.target.value)}
+                placeholder="0.00"
+              />
+              <AppDatePicker
+                label="Due date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
-              <select
-                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                <option value="Open">Open</option>
-                <option value="Under Review">Under Review</option>
-                <option value="Closed">Closed</option>
-              </select>
-            </div>
-          </div>
+          </ReportTypeFieldsSection>
+        )}
 
-          {/* Related Project/Department - for all types */}
-          <div className="relative z-[100]">
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Related Project/Department</label>
-            <div className="relative">
-              <button
-                ref={dropdownButtonRef}
+        {reportType === 'Suspension' && (
+          <ReportTypeFieldsSection title="Suspension period">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <AppDatePicker
+                label="Start date"
+                value={suspensionStartDate}
+                onChange={(e) => setSuspensionStartDate(e.target.value)}
+              />
+              <AppDatePicker
+                label="End date"
+                value={suspensionEndDate}
+                onChange={(e) => setSuspensionEndDate(e.target.value)}
+              />
+            </div>
+          </ReportTypeFieldsSection>
+        )}
+
+        {reportType === 'Behavior Note' && (
+          <ReportTypeFieldsSection title="Behavior note type">
+            <div className="grid grid-cols-2 gap-3">
+              <AppButton
                 type="button"
-                onClick={() => {
-                  if (dropdownButtonRef.current) {
-                    const rect = dropdownButtonRef.current.getBoundingClientRect();
-                    const viewportHeight = window.innerHeight;
-                    const spaceBelow = viewportHeight - rect.bottom;
-                    const maxHeight = Math.min(spaceBelow - 20, 280); // Max 280px or space available - 20px margin
-                    setDropdownPosition({
-                      top: rect.bottom + window.scrollY + 4,
-                      left: rect.left + window.scrollX,
-                      width: rect.width,
-                      maxHeight,
-                    });
-                  }
-                  setDropdownOpen(!dropdownOpen);
-                }}
-                className="w-full border rounded px-3 py-2 text-left bg-white flex items-center justify-between"
+                variant={behaviorNoteType === 'Positive' ? 'primary' : 'secondary'}
+                className="justify-center gap-2 py-3"
+                onClick={() => setBehaviorNoteType('Positive')}
               >
-                <span className={selectedProjectsDepartments.length === 0 ? 'text-gray-400' : ''}>
-                  {selectedProjectsDepartments.length === 0 
-                    ? 'Select projects/departments...' 
-                    : selectedItemsDisplay.join(', ')}
-                </span>
-                <span className="text-gray-400">▼</span>
-              </button>
-              {dropdownOpen && dropdownPosition && (
-                <>
-                  <OverlayPortal>
-                    <div 
-                      className="fixed inset-0 z-[60]" 
-                      onClick={() => {
-                        setDropdownOpen(false);
-                        setDropdownPosition(null);
-                      }}
-                    />
-                  </OverlayPortal>
-                  <div 
-                    className="fixed bg-white border rounded-lg shadow-xl overflow-y-auto z-[100]"
-                    style={{
-                      top: `${dropdownPosition.top}px`,
-                      left: `${dropdownPosition.left}px`,
-                      width: `${dropdownPosition.width}px`,
-                      maxHeight: `${dropdownPosition.maxHeight}px`,
-                    }}
-                  >
-                    {/* Projects Section */}
-                      <div className="p-2 border-t border-b bg-gray-50">
-                        <div className="font-semibold text-sm text-gray-700">Projects</div>
-                      </div>
-                      <div className="p-2">
-                        {!projects ? (
-                          <div className="text-sm text-gray-500 px-3 py-2">Loading projects...</div>
-                        ) : projects.length === 0 ? (
-                          <div className="text-sm text-gray-500 px-3 py-2">No projects available</div>
-                        ) : (
-                          projects.map((project: any) => {
-                            const name = project.name || project.code || 'Project';
-                            const displayName = project.code ? `${project.code} - ${name}` : name;
-                            return (
-                              <label
-                                key={`project-${project.id}`}
-                                className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selectedProjectsDepartments.includes(`project-${project.id}`)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedProjectsDepartments(prev => [...prev, `project-${project.id}`]);
-                                    } else {
-                                      setSelectedProjectsDepartments(prev => prev.filter(id => id !== `project-${project.id}`));
-                                    }
-                                  }}
-                                  className="rounded border-gray-300"
-                                />
-                                <span className="text-sm">{displayName}</span>
-                              </label>
-                            );
-                          })
-                        )}
-                      </div>
-                      
-                      {/* Departments Section */}
-                      <div className="p-2 border-t border-b bg-gray-50">
-                        <div className="font-semibold text-sm text-gray-700">Departments</div>
-                      </div>
-                      <div className="p-2">
-                        {!settings?.divisions ? (
-                          <div className="text-sm text-gray-500 px-3 py-2">Loading departments...</div>
-                        ) : settings.divisions.length === 0 ? (
-                          <div className="text-sm text-gray-500 px-3 py-2">No departments available</div>
-                        ) : (
-                          settings.divisions.map((division: any) => (
-                            <label
-                              key={`department-${division.id}`}
-                              className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedProjectsDepartments.includes(`department-${division.id}`)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedProjectsDepartments(prev => [...prev, `department-${division.id}`]);
-                                  } else {
-                                    setSelectedProjectsDepartments(prev => prev.filter(id => id !== `department-${division.id}`));
-                                  }
-                                }}
-                                className="rounded border-gray-300"
-                              />
-                              <span className="text-sm">{division.label}</span>
-                            </label>
-                          ))
-                        )}
-                      </div>
-                  </div>
-                </>
-              )}
+                <span aria-hidden>😊</span>
+                Positive
+              </AppButton>
+              <AppButton
+                type="button"
+                variant={behaviorNoteType === 'Negative' ? 'primary' : 'secondary'}
+                className="justify-center gap-2 py-3"
+                onClick={() => setBehaviorNoteType('Negative')}
+              >
+                <span aria-hidden>😞</span>
+                Negative
+              </AppButton>
             </div>
-          </div>
+          </ReportTypeFieldsSection>
+        )}
 
-          {/* Attachments */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Attachments</label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              onChange={handleFileUpload}
+        <AppTextarea
+          label="Description"
+          rows={4}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Detailed description of the occurrence"
+        />
+        <AppDatePicker
+          label="Occurrence date"
+          required
+          value={occurrenceDate}
+          onChange={(e) => setOccurrenceDate(e.target.value)}
+        />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <AppSelect
+            label="Severity"
+            value={severity}
+            options={REPORT_SEVERITY_OPTIONS}
+            onChange={(e) => setSeverity(e.target.value)}
+          />
+          <AppSelect
+            label="Status"
+            value={status}
+            options={REPORT_STATUS_OPTIONS}
+            onChange={(e) => setStatus(e.target.value)}
+          />
+        </div>
+        <AppMultiSelect
+          label="Related project / department"
+          value={selectedProjectsDepartments}
+          onChange={setSelectedProjectsDepartments}
+          options={projectDeptOptions}
+          placeholder="Select projects or departments…"
+          searchable
+          emptyMessage={!projects ? 'Loading…' : 'No projects or departments available'}
+        />
+        {!report && (
+          <>
+            <AppFileUpload
+              mode="multiple"
+              value={[]}
+              onChange={() => {}}
+              onFilesSelected={handleFilesSelected}
               disabled={uploading}
+              label="Attachments"
+              helperText="Files upload when selected and attach when you save the report."
             />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="px-2 py-1 text-xs border rounded-lg hover:bg-gray-50 disabled:opacity-50"
-            >
-              {uploading ? 'Uploading...' : '+ Add File'}
-            </button>
             {attachments.length > 0 && (
-              <div className="mt-2 space-y-1">
+              <ul className="space-y-1">
                 {attachments.map((att, idx) => (
-                  <div key={idx} className="text-sm text-gray-600 flex items-center gap-2">
-                    <span>📎 {att.file_name}</span>
+                  <li key={idx} className="flex items-center gap-2 text-xs text-gray-600">
+                    <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <span className="min-w-0 truncate">{att.file_name}</span>
                     <button
                       type="button"
-                      onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
                       className="text-red-600 hover:text-red-800"
+                      aria-label={`Remove ${att.file_name}`}
+                      onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== idx))}
                     >
-                      ✕
+                      <X className="h-3.5 w-3.5" />
                     </button>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
-          </div>
-          </div>
-        </div>
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={saving}
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? (report ? 'Updating...' : 'Creating...') : (report ? 'Update Report' : 'Create Report')}
-          </button>
-        </div>
+          </>
+        )}
       </div>
-    </div>
+    </AppFormModal>
   );
 }
 
@@ -1121,13 +936,13 @@ function ReportDetailView({
   onEdit?: (report: ReportDetail) => void;
 }) {
   const queryClient = useQueryClient();
+  const isWorker = variant === 'worker';
   const [editing, setEditing] = useState(isEditing);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingReportData, setEditingReportData] = useState<ReportDetail | null>(null);
   const [newComment, setNewComment] = useState('');
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Edit form state
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -1138,9 +953,6 @@ function ReportDetailView({
   const [editFineAmount, setEditFineAmount] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editSelectedProjectsDepartments, setEditSelectedProjectsDepartments] = useState<string[]>([]);
-  const [editDropdownOpen, setEditDropdownOpen] = useState(false);
-  const [editDropdownPosition, setEditDropdownPosition] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
-  const editDropdownButtonRef = useRef<HTMLButtonElement>(null);
   const [editSuspensionStartDate, setEditSuspensionStartDate] = useState('');
   const [editSuspensionEndDate, setEditSuspensionEndDate] = useState('');
   const [editBehaviorNoteType, setEditBehaviorNoteType] = useState<'Positive' | 'Negative' | ''>('');
@@ -1157,41 +969,23 @@ function ReportDetailView({
     queryFn: () => api<any>('GET', '/settings'),
   });
 
-  // Get selected items display names for edit mode
-  const editSelectedItemsDisplay = useMemo(() => {
-    const items: string[] = [];
-    editSelectedProjectsDepartments.forEach(id => {
-      if (id.startsWith('project-')) {
-        const projectId = id.replace('project-', '');
-        const project = editProjects?.find((p: any) => String(p.id) === projectId);
-        if (project) {
-          const name = project.name || project.code || 'Project';
-          items.push(project.code ? `${project.code} - ${name}` : name);
-        }
-      } else if (id.startsWith('department-')) {
-        const deptId = id.replace('department-', '');
-        const division = editSettings?.divisions?.find((d: any) => String(d.id) === deptId);
-        if (division) items.push(division.label);
-      }
-    });
-    return items;
-  }, [editSelectedProjectsDepartments, editProjects, editSettings]);
+  const editProjectDeptOptions = useMemo(
+    () => buildProjectDepartmentOptions(editProjects, editSettings),
+    [editProjects, editSettings],
+  );
+
+  const editSelectedItemsDisplay = useMemo(
+    () =>
+      editSelectedProjectsDepartments
+        .map((id) => editProjectDeptOptions.find((o) => o.value === id)?.label)
+        .filter((label): label is string => Boolean(label)),
+    [editSelectedProjectsDepartments, editProjectDeptOptions],
+  );
 
   const { data: report, refetch: refetchReport } = useQuery<ReportDetail>({
     queryKey: ['report-detail', variant, subjectId, reportId],
     queryFn: () => api<ReportDetail>('GET', `${reportsPrefix}/${reportId}`),
   });
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
 
   // Initialize edit form when report loads
   useEffect(() => {
@@ -1253,43 +1047,46 @@ function ReportDetailView({
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
+  const uploadDetailAttachment = async (file: File) => {
+    const up: any = await api('POST', '/files/upload', {
+      project_id: null,
+      client_id: null,
+      employee_id: fileUploadEmployeeId,
+      category_id: 'report-attachment',
+      original_name: file.name,
+      content_type: file.type || 'application/octet-stream',
+    });
+
+    const put = await fetch(up.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
+      body: file,
+    });
+
+    if (!put.ok) throw new Error('Upload failed');
+
+    const conf: any = await api('POST', '/files/confirm', {
+      key: up.key,
+      size_bytes: file.size,
+      checksum_sha256: 'na',
+      content_type: file.type || 'application/octet-stream',
+    });
+
+    await api('POST', `${reportsPrefix}/${reportId}/attachments`, {
+      file_id: conf.id,
+      file_name: file.name,
+      file_size: file.size,
+      file_type: file.type || 'application/octet-stream',
+    });
+  };
+
+  const handleDetailFilesSelected = async (added: File[]) => {
+    if (!added.length) return;
     setUploading(true);
     try {
-      const up: any = await api('POST', '/files/upload', {
-        project_id: null,
-        client_id: null,
-        employee_id: fileUploadEmployeeId,
-        category_id: 'report-attachment',
-        original_name: file.name,
-        content_type: file.type || 'application/octet-stream'
-      });
-      
-      const put = await fetch(up.upload_url, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
-        body: file
-      });
-      
-      if (!put.ok) throw new Error('Upload failed');
-      
-      const conf: any = await api('POST', '/files/confirm', {
-        key: up.key,
-        size_bytes: file.size,
-        checksum_sha256: 'na',
-        content_type: file.type || 'application/octet-stream'
-      });
-      
-      await api('POST', `${reportsPrefix}/${reportId}/attachments`, {
-        file_id: conf.id,
-        file_name: file.name,
-        file_size: file.size,
-        file_type: file.type || 'application/octet-stream',
-      });
-      
+      for (const file of added) {
+        await uploadDetailAttachment(file);
+      }
       toast.success('File uploaded');
       refetchReport();
       queryClient.invalidateQueries({ queryKey: ['report-detail', variant, subjectId, reportId] });
@@ -1297,9 +1094,6 @@ function ReportDetailView({
       toast.error(e?.message || 'Failed to upload file');
     } finally {
       setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     }
   };
 
@@ -1356,143 +1150,92 @@ function ReportDetailView({
     }
   };
 
-  if (!report) {
-    return (
-      <OverlayPortal><div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
-        onClick={onClose}
-      >
-        <div
-          className="w-[900px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
+  const detailFooter = !report ? (
+    <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
+      Close
+    </AppButton>
+  ) : editing ? (
+    <>
+      <AppButton type="button" variant="secondary" size="sm" onClick={() => setEditing(false)}>
+        Cancel
+      </AppButton>
+      <AppButton type="button" size="sm" onClick={handleSave}>
+        Save changes
+      </AppButton>
+    </>
+  ) : (
+    <>
+      <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
+        Close
+      </AppButton>
+      {canEdit && !showEditModal && (
+        <AppButton
+          type="button"
+          size="sm"
+          onClick={() => {
+            setEditingReportData(report);
+            setShowEditModal(true);
+          }}
         >
-          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-                title="Close"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Report Details</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Loading…</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="rounded-xl border border-gray-200 bg-white p-6 flex items-center justify-center">
-              <div className="text-sm text-gray-500">Loading...</div>
-            </div>
-          </div>
-        </div>
-      </div></OverlayPortal>
-    );
-  }
+          Edit
+        </AppButton>
+      )}
+    </>
+  );
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
-      onClick={onClose}
-    >
-      <div
-        className="w-[900px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+    <>
+      <AppFormModal
+        open
+        onClose={onClose}
+        layout="detail"
+        title="Report details"
+        description={report ? `${report.report_type}: ${report.title}` : 'Loading…'}
+        quickInfo={report ? employeeReportDetailQuickInfo({ isWorker, canEdit }) : undefined}
+        footer={detailFooter}
       >
-        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-              title="Close"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div className="flex-1 min-w-0">
-              <h2 className="text-sm font-semibold text-gray-900">Report Details</h2>
-              <p className="text-xs text-gray-500 mt-0.5 truncate">{report.report_type}: {report.title}</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto overflow-x-visible p-4">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-6">
-          {/* Basic Info - when editing, show title input at top of content */}
+        {!report ? (
+          <div className="flex items-center justify-center py-12 text-sm text-gray-500">Loading…</div>
+        ) : (
+          <div className="space-y-6">
           {editing && (
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Title</label>
-              <input
-                type="text"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                placeholder="Report title"
-              />
-            </div>
+            <AppInput
+              label="Title"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              placeholder="Report title"
+            />
           )}
-          {/* Basic Info */}
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">Status</div>
-              <div className="mt-1">
-                {editing ? (
-                  <select
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
-                  >
-                    <option value="Open">Open</option>
-                    <option value="Under Review">Under Review</option>
-                    <option value="Closed">Closed</option>
-                  </select>
-                ) : (
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                      report.status === 'Closed'
-                        ? 'bg-gray-100 text-gray-800'
-                        : report.status === 'Under Review'
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-orange-100 text-orange-800'
-                    }`}
-                  >
-                    {report.status}
-                  </span>
-                )}
-              </div>
+              {editing ? (
+                <AppSelect
+                  label="Status"
+                  value={editStatus}
+                  options={REPORT_STATUS_OPTIONS}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                />
+              ) : (
+                <>
+                  <div className={uiCx(uiTypography.sectionSubtitle, 'mb-1.5 text-gray-600')}>Status</div>
+                  <AppBadge variant={reportStatusVariant(report.status)}>{report.status}</AppBadge>
+                </>
+              )}
             </div>
             <div>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">Severity</div>
-              <div className="mt-1">
-                {editing ? (
-                  <select
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                    value={editSeverity}
-                    onChange={(e) => setEditSeverity(e.target.value)}
-                  >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                  </select>
-                ) : (
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                      report.severity === 'High'
-                        ? 'bg-red-100 text-red-800'
-                        : report.severity === 'Medium'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-green-100 text-green-800'
-                    }`}
-                  >
-                    {report.severity}
-                  </span>
-                )}
-              </div>
+              {editing ? (
+                <AppSelect
+                  label="Severity"
+                  value={editSeverity}
+                  options={REPORT_SEVERITY_OPTIONS}
+                  onChange={(e) => setEditSeverity(e.target.value)}
+                />
+              ) : (
+                <>
+                  <div className={uiCx(uiTypography.sectionSubtitle, 'mb-1.5 text-gray-600')}>Severity</div>
+                  <AppBadge variant={reportSeverityVariant(report.severity)}>{report.severity}</AppBadge>
+                </>
+              )}
             </div>
             <div>
               <div className="text-xs font-medium text-gray-600 mb-1.5">Occurrence Date</div>
@@ -1508,293 +1251,154 @@ function ReportDetailView({
             </div>
           </div>
 
-          {/* Description */}
-          <div>
-            <div className="text-xs font-semibold text-gray-900 mb-2">Description</div>
-            {editing ? (
-              <textarea
-                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                rows={4}
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-              />
-            ) : (
-              <div className="text-xs text-gray-700 whitespace-pre-wrap">{report.description || '—'}</div>
-            )}
-          </div>
-
-          {/* Type-specific fields */}
-          {report.report_type === 'Fine' && (
-            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <h4 className="font-medium text-gray-900 mb-3">Fine Details</h4>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <div className="text-sm text-gray-600">Vehicle</div>
-                  {editing ? (
-                    <input
-                      type="text"
-                      className="w-full border rounded px-3 py-2 mt-1"
-                      value={editVehicle}
-                      onChange={(e) => setEditVehicle(e.target.value)}
-                    />
-                  ) : (
-                    <div>{report.vehicle || '-'}</div>
-                  )}
-                </div>
-                <div>
-                  <div className="text-sm text-gray-600">Ticket Number</div>
-                  {editing ? (
-                    <input
-                      type="text"
-                      className="w-full border rounded px-3 py-2 mt-1"
-                      value={editTicketNumber}
-                      onChange={(e) => setEditTicketNumber(e.target.value)}
-                    />
-                  ) : (
-                    <div>{report.ticket_number || '-'}</div>
-                  )}
-                </div>
-                <div>
-                  <div className="text-sm text-gray-600">Fine Amount</div>
-                  {editing ? (
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="w-full border rounded px-3 py-2 mt-1"
-                      value={editFineAmount}
-                      onChange={(e) => setEditFineAmount(e.target.value)}
-                    />
-                  ) : (
-                    <div>{report.fine_amount ? formatCurrency(report.fine_amount) : '-'}</div>
-                  )}
-                </div>
-                <div>
-                  <div className="text-sm text-gray-600">Due Date</div>
-                  {editing ? (
-                    <input
-                      type="date"
-                      className="w-full border rounded px-3 py-2 mt-1"
-                      value={editDueDate}
-                      onChange={(e) => setEditDueDate(e.target.value)}
-                    />
-                  ) : (
-                    <div>{formatDate(report.due_date)}</div>
-                  )}
-                </div>
-              </div>
+          {editing ? (
+            <AppTextarea
+              label="Description"
+              rows={4}
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+            />
+          ) : (
+            <div>
+              <div className={uiCx(uiTypography.sectionSubtitle, 'mb-2 font-semibold text-gray-900')}>Description</div>
+              <div className="whitespace-pre-wrap text-xs text-gray-700">{report.description || '—'}</div>
             </div>
           )}
 
-          {/* Related Project/Department - for all types */}
-          <div className="relative">
-            <div className="text-sm text-gray-600 mb-1">Related Project/Department</div>
-            {editing ? (
-              <div className="relative">
-                <button
-                  ref={editDropdownButtonRef}
-                  type="button"
-                  onClick={() => {
-                    if (editDropdownButtonRef.current) {
-                      const rect = editDropdownButtonRef.current.getBoundingClientRect();
-                      const viewportHeight = window.innerHeight;
-                      const spaceBelow = viewportHeight - rect.bottom;
-                      const maxHeight = Math.min(spaceBelow - 20, 280); // Max 280px or space available - 20px margin
-                      setEditDropdownPosition({
-                        top: rect.bottom + window.scrollY + 4,
-                        left: rect.left + window.scrollX,
-                        width: rect.width,
-                        maxHeight,
-                      });
-                    }
-                    setEditDropdownOpen(!editDropdownOpen);
-                  }}
-                  className="w-full border rounded px-3 py-2 text-left bg-white flex items-center justify-between"
-                >
-                  <span className={editSelectedProjectsDepartments.length === 0 ? 'text-gray-400' : ''}>
-                    {editSelectedProjectsDepartments.length === 0 
-                      ? 'Select projects/departments...' 
-                      : editSelectedItemsDisplay.join(', ')}
-                  </span>
-                  <span className="text-gray-400">▼</span>
-                </button>
-                {editDropdownOpen && editDropdownPosition && (
-                  <>
-                    <OverlayPortal>
-                      <div 
-                        className="fixed inset-0 z-[60]" 
-                        onClick={() => {
-                          setEditDropdownOpen(false);
-                          setEditDropdownPosition(null);
-                        }}
-                      />
-                    </OverlayPortal>
-                    <div 
-                      className="fixed bg-white border rounded-lg shadow-xl overflow-y-auto z-[100]"
-                      style={{
-                        top: `${editDropdownPosition.top}px`,
-                        left: `${editDropdownPosition.left}px`,
-                        width: `${editDropdownPosition.width}px`,
-                        maxHeight: `${editDropdownPosition.maxHeight}px`,
-                      }}
-                    >
-                      {/* Projects Section */}
-                      <div className="p-2 border-t border-b bg-gray-50">
-                        <div className="font-semibold text-sm text-gray-700">Projects</div>
-                      </div>
-                      <div className="p-2">
-                        {!editProjects ? (
-                          <div className="text-sm text-gray-500 px-3 py-2">Loading projects...</div>
-                        ) : editProjects.length === 0 ? (
-                          <div className="text-sm text-gray-500 px-3 py-2">No projects available</div>
-                        ) : (
-                          editProjects.map((project: any) => {
-                            const name = project.name || project.code || 'Project';
-                            const displayName = project.code ? `${project.code} - ${name}` : name;
-                            return (
-                              <label
-                                key={`project-${project.id}`}
-                                className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={editSelectedProjectsDepartments.includes(`project-${project.id}`)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setEditSelectedProjectsDepartments(prev => [...prev, `project-${project.id}`]);
-                                    } else {
-                                      setEditSelectedProjectsDepartments(prev => prev.filter(id => id !== `project-${project.id}`));
-                                    }
-                                  }}
-                                  className="rounded border-gray-300"
-                                />
-                                <span className="text-sm">{displayName}</span>
-                              </label>
-                            );
-                          })
-                        )}
-                      </div>
-                      
-                      {/* Departments Section */}
-                      <div className="p-2 border-t border-b bg-gray-50">
-                        <div className="font-semibold text-sm text-gray-700">Departments</div>
-                      </div>
-                      <div className="p-2">
-                        {!editSettings?.divisions ? (
-                          <div className="text-sm text-gray-500 px-3 py-2">Loading departments...</div>
-                        ) : editSettings.divisions.length === 0 ? (
-                          <div className="text-sm text-gray-500 px-3 py-2">No departments available</div>
-                        ) : (
-                          editSettings.divisions.map((division: any) => (
-                            <label
-                              key={`department-${division.id}`}
-                              className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={editSelectedProjectsDepartments.includes(`department-${division.id}`)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setEditSelectedProjectsDepartments(prev => [...prev, `department-${division.id}`]);
-                                  } else {
-                                    setEditSelectedProjectsDepartments(prev => prev.filter(id => id !== `department-${division.id}`));
-                                  }
-                                }}
-                                className="rounded border-gray-300"
-                              />
-                              <span className="text-sm">{division.label}</span>
-                            </label>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div>{report.related_project_department || '-'}</div>
-            )}
-          </div>
+          {report.report_type === 'Fine' && (
+            <ReportTypeFieldsSection title="Fine details">
+              {editing ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <AppInput
+                    label="Vehicle"
+                    value={editVehicle}
+                    onChange={(e) => setEditVehicle(e.target.value)}
+                  />
+                  <AppInput
+                    label="Ticket number"
+                    value={editTicketNumber}
+                    onChange={(e) => setEditTicketNumber(e.target.value)}
+                  />
+                  <AppInput
+                    label="Fine amount"
+                    type="number"
+                    step="0.01"
+                    value={editFineAmount}
+                    onChange={(e) => setEditFineAmount(e.target.value)}
+                  />
+                  <AppDatePicker
+                    label="Due date"
+                    value={editDueDate}
+                    onChange={(e) => setEditDueDate(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 text-sm text-gray-900">
+                  <div>
+                    <div className="text-gray-600">Vehicle</div>
+                    <div>{report.vehicle || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-600">Ticket number</div>
+                    <div>{report.ticket_number || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-600">Fine amount</div>
+                    <div>{report.fine_amount ? formatCurrency(report.fine_amount) : '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-600">Due date</div>
+                    <div>{formatDate(report.due_date)}</div>
+                  </div>
+                </div>
+              )}
+            </ReportTypeFieldsSection>
+          )}
+
+          {editing ? (
+            <AppMultiSelect
+              label="Related project / department"
+              value={editSelectedProjectsDepartments}
+              onChange={setEditSelectedProjectsDepartments}
+              options={editProjectDeptOptions}
+              placeholder="Select projects or departments…"
+              searchable
+              emptyMessage={!editProjects ? 'Loading…' : 'No projects or departments available'}
+            />
+          ) : (
+            <div>
+              <div className={uiCx(uiTypography.sectionSubtitle, 'mb-1 text-gray-600')}>Related project / department</div>
+              <div className="text-sm text-gray-900">{report.related_project_department || '—'}</div>
+            </div>
+          )}
 
           {report.report_type === 'Suspension' && (
-            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <h4 className="font-medium text-gray-900 mb-3">Suspension Period</h4>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <div className="text-sm text-gray-600">Start Date</div>
-                  {editing ? (
-                    <input
-                      type="date"
-                      className="w-full border rounded px-3 py-2 mt-1"
-                      value={editSuspensionStartDate}
-                      onChange={(e) => setEditSuspensionStartDate(e.target.value)}
-                    />
-                  ) : (
+            <ReportTypeFieldsSection title="Suspension period">
+              {editing ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <AppDatePicker
+                    label="Start date"
+                    value={editSuspensionStartDate}
+                    onChange={(e) => setEditSuspensionStartDate(e.target.value)}
+                  />
+                  <AppDatePicker
+                    label="End date"
+                    value={editSuspensionEndDate}
+                    onChange={(e) => setEditSuspensionEndDate(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 text-sm text-gray-900">
+                  <div>
+                    <div className="text-gray-600">Start date</div>
                     <div>{formatDate(report.suspension_start_date)}</div>
-                  )}
-                </div>
-                <div>
-                  <div className="text-sm text-gray-600">End Date</div>
-                  {editing ? (
-                    <input
-                      type="date"
-                      className="w-full border rounded px-3 py-2 mt-1"
-                      value={editSuspensionEndDate}
-                      onChange={(e) => setEditSuspensionEndDate(e.target.value)}
-                    />
-                  ) : (
+                  </div>
+                  <div>
+                    <div className="text-gray-600">End date</div>
                     <div>{formatDate(report.suspension_end_date)}</div>
-                  )}
+                  </div>
                 </div>
-              </div>
-            </div>
+              )}
+            </ReportTypeFieldsSection>
           )}
 
           {report.report_type === 'Behavior Note' && (
-            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <h4 className="font-medium text-gray-900 mb-3">Behavior Note Type</h4>
+            <ReportTypeFieldsSection title="Behavior note type">
               {editing ? (
-                <div className="grid grid-cols-2 gap-4">
-                  <button
+                <div className="grid grid-cols-2 gap-3">
+                  <AppButton
                     type="button"
+                    variant={editBehaviorNoteType === 'Positive' ? 'primary' : 'secondary'}
+                    className="justify-center gap-2 py-3"
                     onClick={() => setEditBehaviorNoteType('Positive')}
-                    className={`p-4 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
-                      editBehaviorNoteType === 'Positive'
-                        ? 'border-green-500 bg-green-50'
-                        : 'border-gray-300 bg-white hover:border-green-300'
-                    }`}
                   >
-                    <span className="text-2xl">😊</span>
-                    <span className={`font-medium ${editBehaviorNoteType === 'Positive' ? 'text-green-700' : 'text-gray-700'}`}>
-                      Positive
-                    </span>
-                  </button>
-                  <button
+                    <span aria-hidden>😊</span>
+                    Positive
+                  </AppButton>
+                  <AppButton
                     type="button"
+                    variant={editBehaviorNoteType === 'Negative' ? 'primary' : 'secondary'}
+                    className="justify-center gap-2 py-3"
                     onClick={() => setEditBehaviorNoteType('Negative')}
-                    className={`p-4 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
-                      editBehaviorNoteType === 'Negative'
-                        ? 'border-red-500 bg-red-50'
-                        : 'border-gray-300 bg-white hover:border-red-300'
-                    }`}
                   >
-                    <span className="text-2xl">😞</span>
-                    <span className={`font-medium ${editBehaviorNoteType === 'Negative' ? 'text-red-700' : 'text-gray-700'}`}>
-                      Negative
-                    </span>
-                  </button>
+                    <span aria-hidden>😞</span>
+                    Negative
+                  </AppButton>
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
                   {(report as any).behavior_note_type === 'Positive' ? (
                     <>
-                      <span className="text-3xl">😊</span>
+                      <span className="text-3xl" aria-hidden>
+                        😊
+                      </span>
                       <span className="font-medium text-green-700">Positive</span>
                     </>
                   ) : (report as any).behavior_note_type === 'Negative' ? (
                     <>
-                      <span className="text-3xl">😞</span>
+                      <span className="text-3xl" aria-hidden>
+                        😞
+                      </span>
                       <span className="font-medium text-red-700">Negative</span>
                     </>
                   ) : (
@@ -1802,57 +1406,52 @@ function ReportDetailView({
                   )}
                 </div>
               )}
-            </div>
+            </ReportTypeFieldsSection>
           )}
 
-          {/* Attachments */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-medium">Attachments</div>
-              {canEdit && (
-                <>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                    disabled={uploading}
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="text-sm px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
-                  >
-                    {uploading ? 'Uploading...' : '+ Add File'}
-                  </button>
-                </>
-              )}
-            </div>
+            <div className={uiCx(uiTypography.sectionSubtitle, 'mb-2 font-semibold text-gray-900')}>Attachments</div>
+            {canEdit && (
+              <AppFileUpload
+                mode="multiple"
+                value={[]}
+                onChange={() => {}}
+                onFilesSelected={handleDetailFilesSelected}
+                disabled={uploading}
+                label="Add file"
+                helperText="Uploads attach to this report immediately."
+              />
+            )}
             {report.attachments.length === 0 ? (
-              <div className="text-sm text-gray-500">No attachments</div>
+              <div className="mt-2 text-sm text-gray-500">No attachments</div>
             ) : (
-              <div className="space-y-2">
+              <ul className="mt-2 space-y-2">
                 {report.attachments.map((att) => (
-                  <div key={att.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                  <li
+                    key={att.id}
+                    className="flex items-center justify-between rounded-lg bg-gray-50 p-2"
+                  >
                     <a
                       href={withFileAccessToken(`/files/${att.file_id}`)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:underline flex items-center gap-2"
+                      className="flex min-w-0 items-center gap-2 text-sm text-brand-red hover:underline"
                     >
-                      📎 {att.file_name || 'File'}
+                      <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      <span className="truncate">{att.file_name || 'File'}</span>
                     </a>
                     {canEdit && (
                       <button
+                        type="button"
                         onClick={() => handleDeleteAttachment(att.id)}
-                        className="text-red-600 hover:text-red-800 text-sm"
+                        className="text-xs font-medium text-red-600 hover:text-red-800"
                       >
                         Remove
                       </button>
                     )}
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </div>
 
@@ -1891,74 +1490,34 @@ function ReportDetailView({
                   ))
               )}
             </div>
-            <div className="mt-4 flex gap-2">
-              <input
-                type="text"
-                className="flex-1 border rounded px-3 py-2"
-                placeholder="Add a comment..."
+            <div className="mt-4 flex flex-wrap items-end gap-2">
+              <AppInput
+                className="min-w-0 flex-1"
+                placeholder="Add a comment…"
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
-                onKeyPress={(e) => {
+                onKeyDown={(e) => {
                   if (e.key === 'Enter') {
+                    e.preventDefault();
                     handleAddComment();
                   }
                 }}
               />
-              <button
-                onClick={handleAddComment}
-                className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700"
-              >
+              <AppButton type="button" size="sm" onClick={handleAddComment}>
                 Add
-              </button>
+              </AppButton>
             </div>
           </div>
           </div>
-        </div>
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-          {editing ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setEditing(false)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212]"
-              >
-                Save Changes
-              </button>
-            </>
-          ) : (
-            <>
-              {canEdit && !showEditModal && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (report) {
-                      setEditingReportData(report);
-                      setShowEditModal(true);
-                    }
-                  }}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212]"
-                >
-                  Edit
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-      
-      {/* Edit Modal Overlay */}
+        )}
+      </AppFormModal>
+
       {showEditModal && editingReportData && (
         <CreateReportModal
           reportsPrefix={reportsPrefix}
           reportsListQueryKey={reportsListQueryKey}
           fileUploadEmployeeId={fileUploadEmployeeId}
+          isWorker={isWorker}
           report={editingReportData}
           onClose={() => {
             setShowEditModal(false);
@@ -1968,7 +1527,7 @@ function ReportDetailView({
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 

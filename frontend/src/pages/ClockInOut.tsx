@@ -23,7 +23,7 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -38,28 +38,12 @@ function formatTime12h(timeStr: string | null | undefined): string {
   return `${hours12}:${minutes} ${period}`;
 }
 
-// Helper to format day name in English (Mon, Tue, ...)
-function formatDayName(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-US', { weekday: 'short' });
-}
-
 // Helper to format date as "Mon dd" (e.g., "Dec 23")
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr + 'T00:00:00');
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
-  });
-}
-
-// Helper to format date with year as "month dd, yyyy"
-function formatDateWithYear(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
   });
 }
 
@@ -995,48 +979,14 @@ export default function ClockInOut() {
             className="shrink-0"
             title="Clock Actions"
             actions={
-              <div className="group relative w-[220px] max-w-[60vw] shrink-0">
-                <label htmlFor="clock-actions-date" className="sr-only">
-                  Select date
-                </label>
-                <div
-                  className={uiCx(
-                    'pointer-events-none relative bg-white transition-colors group-hover:border-gray-300',
-                    uiRadius.control,
-                    uiBorders.input,
-                    uiSpacing.controlX,
-                    uiSpacing.controlY,
-                  )}
-                  aria-hidden
-                >
-                  <div className="flex items-center gap-2">
-                    <div className={uiCx('flex h-7 w-7 flex-shrink-0 items-center justify-center bg-gray-100', uiRadius.control)}>
-                      <CalendarDays className="h-4 w-4 text-gray-500" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className={uiCx(uiTypography.overline, 'leading-tight')}>
-                        {selectedDate === todayStr ? 'Today' : formatDayName(selectedDate)}
-                      </div>
-                      <div className={uiCx(uiTypography.sectionTitle, 'truncate leading-tight')}>
-                        {formatDateWithYear(selectedDate)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <AppDatePicker
-                  id="clock-actions-date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className={uiCx(
-                    'absolute inset-0 z-[1] !m-0 !space-y-0',
-                    '[&>div.relative]:h-full',
-                    '[&_button]:absolute [&_button]:inset-0 [&_button]:h-full [&_button]:w-full [&_button]:cursor-pointer',
-                    '[&_button]:border-0 [&_button]:bg-transparent [&_button]:opacity-0 [&_button]:shadow-none',
-                    '[&_button]:ring-0 [&_button:focus-visible]:ring-2 [&_button:focus-visible]:ring-brand-red/30',
-                    '[&_svg]:pointer-events-none [&_svg]:opacity-0',
-                  )}
-                />
-              </div>
+              <AppDatePicker
+                id="clock-actions-date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                triggerVariant="card"
+                triggerClassName="w-[220px] max-w-[60vw] shrink-0"
+                aria-label="Select date"
+              />
             }
           >
             <div className={uiSpacing.sectionStack}>

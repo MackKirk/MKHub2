@@ -340,8 +340,7 @@ export default function CustomerDetail(){
   const clientStatusVariant = getClientStatusBadgeVariant(clientStatusLabel);
 
   return (
-    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
-      <div className={uiCx('w-full', uiSpacing.pageStack)}>
+    <div className={uiCx('w-full', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <div
         className={uiCx(
           'flex flex-col',
@@ -807,8 +806,7 @@ export default function CustomerDetail(){
           }}
         />
       )}
-      </div>
-    </main>
+    </div>
   );
 }
 
