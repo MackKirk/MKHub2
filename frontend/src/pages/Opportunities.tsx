@@ -41,7 +41,12 @@ import {
   AppTabCountBadge,
   getAppTabButtonClassName,
   AppUserAvatar,
+  AppSortableEntityList,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
   getListCreateItemClassName,
+  useAppListSort,
   uiBorders,
   uiColors,
   uiCx,
@@ -251,17 +256,13 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
   const [reportModalOpen, setReportModalOpen] = useState<{ open:boolean, projectId?:string }|null>(null);
 
-  // List sort: read from URL so it persists and is shareable
-  const sortBy = (searchParams.get('sort') as 'opportunity' | 'estimator' | 'value' | 'status') || 'opportunity';
-  const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
-  const setListSort = (column: typeof sortBy, direction?: 'asc' | 'desc') => {
-    const params = new URLSearchParams(searchParams);
-    const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
-    params.set('sort', column);
-    params.set('dir', nextDir);
-    params.set('page', '1');
-    setSearchParams(params, { replace: true });
-  };
+  type OpportunityListSort = 'opportunity' | 'estimator' | 'value' | 'status';
+  const { sortBy, sortDir, setSort: setListSort } = useAppListSort<OpportunityListSort>({
+    searchParams,
+    setSearchParams,
+    defaultSort: 'opportunity',
+    validSorts: ['opportunity', 'estimator', 'value', 'status'] as const,
+  });
 
   // Get employees for estimator filter
   const { data: employeesData } = useQuery({ 
@@ -677,7 +678,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
             ))}
           </div>
         ) : (
-          <div className={uiCx('flex flex-col gap-2 overflow-x-auto', listCardAnimClass)}>
+          <AppSortableEntityList className={listCardAnimClass}>
             {hasEditPermission && (
               <Link
                 to={newOpportunityPath}
@@ -688,20 +689,41 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
                 <span className={uiListCreateItem.label}>{newItemLabel}</span>
               </Link>
             )}
-            <div
-              className={uiCx(
-                'grid min-w-[680px] grid-cols-[10fr_5fr_5fr_5fr_auto] items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 sm:gap-3 lg:gap-4',
-                uiTypography.overline,
-                'normal-case tracking-normal text-gray-700',
-              )}
-              role="row"
-            >
-              <button type="button" onClick={() => setListSort('opportunity')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title={isLeakMode ? 'Sort by leak investigation name' : 'Sort by opportunity name'}>{isLeakMode ? 'Leak investigation' : 'Opportunity'}{sortBy === 'opportunity' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('estimator')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by estimator">Estimator{sortBy === 'estimator' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('value')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by estimated value">Est. value{sortBy === 'value' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('status')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+            <AppSortableEntityListHeader preset="opportunities">
+              <AppSortableEntityListSortColumn
+                label={isLeakMode ? 'Leak investigation' : 'Opportunity'}
+                column="opportunity"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setListSort}
+                title={isLeakMode ? 'Sort by leak investigation name' : 'Sort by opportunity name'}
+              />
+              <AppSortableEntityListSortColumn
+                label="Estimator"
+                column="estimator"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setListSort}
+                title="Sort by estimator"
+              />
+              <AppSortableEntityListSortColumn
+                label="Est. value"
+                column="value"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setListSort}
+                title="Sort by estimated value"
+              />
+              <AppSortableEntityListSortColumn
+                label="Status"
+                column="status"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setListSort}
+                title="Sort by status"
+              />
               <div className="min-w-0 w-24" aria-hidden />
-            </div>
+            </AppSortableEntityListHeader>
             {arr.map(p => (
               <OpportunityListItem
                 key={p.id}
@@ -711,7 +733,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
                 opportunityBasePath={opportunityBasePath}
               />
             ))}
-          </div>
+          </AppSortableEntityList>
         )}
         {!isInitialLoading && arr.length === 0 && (
           <AppEmptyState
@@ -1130,18 +1152,17 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
   }
 
   return (
-    <Link
+    <AppSortableEntityListRow
+      as="link"
+      preset="opportunities"
       to={`${opportunityBasePath}/${encodeURIComponent(String(opportunity.id))}`}
-      className={uiCx('group block min-w-[680px] p-4 transition-all duration-200 hover:border-gray-300', uiBorders.subtle, uiRadius.card, uiColors.surface, 'hover:shadow-md')}
     >
-      <div className="grid grid-cols-[10fr_5fr_5fr_5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
-        {col1}
-        {col2}
-        {col3}
-        {col4}
-        {col5}
-      </div>
-    </Link>
+      {col1}
+      {col2}
+      {col3}
+      {col4}
+      {col5}
+    </AppSortableEntityListRow>
   );
 }
 

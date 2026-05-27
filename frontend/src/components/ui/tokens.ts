@@ -223,6 +223,52 @@ export const uiTooltip = {
   arrowBottom: 'absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900',
 } as const;
 
+/** Opportunities-style sortable entity lists (grid header + card/flat rows). */
+export const uiSortableEntityList = {
+  /** Standalone card: gray fill + full border + rounded corners (Opportunities list toolbar row). */
+  header: uiCx(
+    'grid items-center gap-2 px-4 py-2 sm:gap-3 lg:gap-4',
+    uiColors.surfaceSubtle,
+    uiBorders.subtle,
+    uiRadius.card,
+    uiTypography.overline,
+    'normal-case tracking-normal text-gray-700',
+  ),
+  /** Attached to flat body below — rounded top only, no bottom border. */
+  headerFlat: uiCx(
+    'grid items-center gap-2 px-4 py-2 sm:gap-3 lg:gap-4',
+    uiColors.surfaceSubtle,
+    uiBorders.subtle,
+    uiRadius.card,
+    'rounded-b-none border-b-0',
+    uiTypography.overline,
+    'normal-case tracking-normal text-gray-700',
+  ),
+  sortColumn:
+    'flex min-w-0 items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none',
+  stack: 'flex flex-col gap-2 overflow-x-auto',
+  rowCard: uiCx(
+    'group block transition-all duration-200 hover:border-gray-300',
+    uiBorders.subtle,
+    uiRadius.card,
+    uiColors.surface,
+    'hover:shadow-md',
+  ),
+  rowFlat:
+    'grid min-h-[52px] w-full cursor-pointer items-center gap-2 border-b border-gray-100 px-4 py-3 last:border-b-0 hover:bg-gray-50 sm:gap-3 lg:gap-4',
+  flatBody: uiCx(uiBorders.subtle, uiRadius.card, 'rounded-t-none border-t-0'),
+} as const;
+
+/** Row action icon buttons — Opportunities list + design-system showcase (`\u{1F4C1}` / `\u{1F4C4}` style). */
+export const uiListRowIconButton = {
+  base: uiCx(
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-100',
+    'text-sm transition-all hover:scale-[1.05] hover:border-gray-300 hover:bg-gray-200',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300',
+    'disabled:pointer-events-none disabled:opacity-50',
+  ),
+} as const;
+
 export const uiLayout = {
   contentContainer: 'max-w-7xl mx-auto',
   sectionGrid2: 'grid grid-cols-1 md:grid-cols-2 gap-4',

@@ -14,23 +14,34 @@ import {
   AppButton,
   AppCard,
   AppDatePicker,
+  AppEmptyState,
   AppFieldHint,
   AppFileUpload,
   AppFormModal,
   AppInput,
+  AppListCreateItem,
+  AppListRowIconButton,
   AppMultiSelect,
   type AppMultiSelectOption,
   AppSectionHeader,
   AppSelect,
+  AppSortableEntityList,
+  AppSortableEntityListFlatBody,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
   AppTextarea,
   FORM_MODAL_WIDE_DIALOG_COLLAPSED,
   FORM_MODAL_WIDE_DIALOG_EXPANDED,
   appSectionPresetProps,
+  resolveAppSortableListPreset,
+  sortListByAppColumn,
   uiBorders,
   uiCx,
   uiLayout,
   uiSpacing,
   uiTypography,
+  useLocalAppListSort,
 } from '@/components/ui';
 
 type Report = {
@@ -271,6 +282,22 @@ export default function UserReports(props: UserReportsProps) {
     });
   }, [reports, searchQuery, filterType, filterStatus, filterSeverity, filterDateFrom, filterDateTo]);
 
+  type ReportSortColumn = 'date' | 'type' | 'title' | 'severity' | 'status' | 'updated';
+  const { sortBy, sortDir, setSort } = useLocalAppListSort<ReportSortColumn>('date', 'desc');
+
+  const sortedFilteredReports = useMemo(
+    () =>
+      sortListByAppColumn(filteredReports, sortBy, sortDir, {
+        date: (r) => (r.occurrence_date ? Date.parse(r.occurrence_date) : null),
+        type: (r) => r.report_type,
+        title: (r) => r.title,
+        severity: (r) => r.severity,
+        status: (r) => r.status,
+        updated: (r) => Date.parse(r.updated_at || r.created_at || '') || null,
+      }),
+    [filteredReports, sortBy, sortDir],
+  );
+
   const clearFilters = () => {
     setSearchQuery('');
     setFilterType('');
@@ -385,103 +412,141 @@ export default function UserReports(props: UserReportsProps) {
             <p className={uiCx(uiTypography.helper, 'mb-3')}>
               Click a row to view full details, attachments, and comments.
             </p>
-            <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px]">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="p-3 text-left text-xs font-medium text-gray-600">Date</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-600">Type</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-600">Title</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-600">Severity</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-600">Status</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-600">Last updated</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-600">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {canEdit && (
-                  <tr>
-                    <td colSpan={7} className="p-0 align-top">
-                      <button
-                        type="button"
-                        onClick={() => setShowCreateModal(true)}
-                        className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-3 text-gray-600 transition-colors hover:border-brand-red hover:bg-gray-50 hover:text-brand-red"
+            <div className="flex flex-col gap-2 overflow-x-auto">
+              {canEdit && (
+                <AppListCreateItem
+                  label="Add report"
+                  layout="row"
+                  className={uiCx('w-full', resolveAppSortableListPreset('workerReports').minWidth)}
+                  onClick={() => setShowCreateModal(true)}
+                />
+              )}
+              {!reports ? (
+                <div
+                  className={uiCx(
+                    resolveAppSortableListPreset('workerReports').minWidth,
+                    'px-4 py-4',
+                  )}
+                >
+                  <div className="h-6 animate-pulse rounded bg-gray-100" />
+                </div>
+              ) : filteredReports.length === 0 ? (
+                <AppEmptyState
+                  title={reports.length === 0 ? 'No reports found' : 'No reports match the filters'}
+                  className="border-0 bg-transparent p-0 py-6 shadow-none"
+                />
+              ) : (
+                <AppSortableEntityList layout="flat">
+                  <AppSortableEntityListHeader preset="workerReports" variant="flat">
+                    <AppSortableEntityListSortColumn
+                      label="Date"
+                      column="date"
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={setSort}
+                    />
+                    <AppSortableEntityListSortColumn
+                      label="Type"
+                      column="type"
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={setSort}
+                    />
+                    <AppSortableEntityListSortColumn
+                      label="Title"
+                      column="title"
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={setSort}
+                    />
+                    <AppSortableEntityListSortColumn
+                      label="Severity"
+                      column="severity"
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={setSort}
+                    />
+                    <AppSortableEntityListSortColumn
+                      label="Status"
+                      column="status"
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={setSort}
+                    />
+                    <AppSortableEntityListSortColumn
+                      label="Last updated"
+                      column="updated"
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={setSort}
+                    />
+                    <div className="min-w-0 w-24" aria-hidden />
+                  </AppSortableEntityListHeader>
+                  <AppSortableEntityListFlatBody preset="workerReports">
+                    {sortedFilteredReports.map((report) => (
+                      <AppSortableEntityListRow
+                        key={report.id}
+                        as="div"
+                        variant="flat"
+                        preset="workerReports"
+                        className="group"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openReportDetail(report.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openReportDetail(report.id);
+                          }
+                        }}
                       >
-                        <span className="text-lg font-medium">+</span>
-                        <span className="text-sm font-medium">Add report</span>
-                      </button>
-                    </td>
-                  </tr>
-                )}
-                {!reports ? (
-                  <tr>
-                    <td colSpan={7} className="p-4">
-                      <div className="h-6 animate-pulse rounded bg-gray-100" />
-                    </td>
-                  </tr>
-                ) : filteredReports.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="p-4 text-center text-xs text-gray-500">
-                      {reports.length === 0 ? 'No reports found' : 'No reports match the filters'}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredReports.map((report) => (
-                    <tr
-                      key={report.id}
-                      role="button"
-                      tabIndex={0}
-                      className="cursor-pointer border-t border-gray-200 transition-colors hover:bg-gray-50"
-                      onClick={() => openReportDetail(report.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          openReportDetail(report.id);
-                        }
-                      }}
-                    >
-                      <td className="p-3 text-xs text-gray-900">{formatDate(report.occurrence_date)}</td>
-                      <td className="p-3 text-xs text-gray-900">{report.report_type}</td>
-                      <td className="p-3 text-xs font-semibold text-gray-900">{report.title}</td>
-                      <td className="p-3">
-                        <AppBadge variant={reportSeverityVariant(report.severity)}>{report.severity}</AppBadge>
-                      </td>
-                      <td className="p-3">
-                        <AppBadge variant={reportStatusVariant(report.status)}>{report.status}</AppBadge>
-                      </td>
-                      <td className="p-3 text-xs text-gray-600">
-                        {formatDate(report.updated_at || report.created_at)}
-                      </td>
-                      <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-1.5">
+                        <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-900')}>
+                          {formatDate(report.occurrence_date)}
+                        </span>
+                        <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-900')}>
+                          {report.report_type}
+                        </span>
+                        <span
+                          className={uiCx(
+                            'min-w-0 truncate text-sm font-bold text-gray-900 transition-colors group-hover:text-[#7f1010]',
+                          )}
+                        >
+                          {report.title}
+                        </span>
+                        <div className="min-w-0">
+                          <AppBadge variant={reportSeverityVariant(report.severity)}>{report.severity}</AppBadge>
+                        </div>
+                        <div className="min-w-0">
+                          <AppBadge variant={reportStatusVariant(report.status)}>{report.status}</AppBadge>
+                        </div>
+                        <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-600')}>
+                          {formatDate(report.updated_at || report.created_at)}
+                        </span>
+                        <div
+                          className="flex w-24 shrink-0 items-center justify-end gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {canEdit ? (
                             <>
-                              <button
-                                type="button"
+                              <AppListRowIconButton
+                                preset="edit"
+                                label="Edit report"
                                 onClick={() => void openEditReport(report.id)}
-                                className="text-[10px] text-blue-600 hover:text-blue-800"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
+                              />
+                              <AppListRowIconButton
+                                preset="delete"
+                                label="Delete report"
+                                loading={deletingId === report.id}
                                 onClick={() => void handleDeleteReport(report)}
-                                disabled={deletingId === report.id}
-                                className="text-[10px] text-red-600 hover:text-red-800 disabled:opacity-50"
-                              >
-                                {deletingId === report.id ? 'Deleting…' : 'Delete'}
-                              </button>
+                              />
                             </>
-                          ) : (
-                            <span className="text-[10px] text-gray-500">View only</span>
-                          )}
+                          ) : null}
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                      </AppSortableEntityListRow>
+                    ))}
+                  </AppSortableEntityListFlatBody>
+                </AppSortableEntityList>
+              )}
             </div>
           </div>
         </div>

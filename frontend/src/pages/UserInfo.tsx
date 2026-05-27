@@ -51,23 +51,34 @@ import {
   AppCheckbox,
   AppControlLabelRow,
   AppDatePicker,
+  AppEmptyState,
   AppFieldHint,
   AppFileUpload,
   AppFormModal,
   AppInput,
+  AppListCreateItem,
+  AppListRowIconButton,
   AppSectionHeader,
   AppSelect,
+  AppSortableEntityList,
+  AppSortableEntityListFlatBody,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
   AppTextarea,
   AppTimePicker,
   FORM_MODAL_WIDE_DIALOG_COLLAPSED,
   FORM_MODAL_WIDE_DIALOG_EXPANDED,
   appSectionPresetProps,
+  resolveAppSortableListPreset,
+  sortListByAppColumn,
   uiBorders,
   uiCx,
   uiLayout,
   uiRadius,
   uiSpacing,
   uiTypography,
+  useLocalAppListSort,
 } from '@/components/ui';
 import { employeeTrainingRecordQuickInfo } from '@/lib/formModalQuickInfo';
 import {
@@ -7866,6 +7877,19 @@ function trainingStatusPill(status: string | null | undefined) {
   return <span className={`${base} bg-slate-50 text-slate-700 border-slate-200`}>{status || '—'}</span>;
 }
 
+function TrainingDetailField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div
+      className={uiCx(
+        'grid grid-cols-1 gap-1 border-b border-gray-100 py-3 last:border-0 sm:grid-cols-[9.5rem_minmax(0,1fr)] sm:items-start sm:gap-x-4 sm:py-2.5',
+      )}
+    >
+      <dt className={uiTypography.helper}>{label}</dt>
+      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
+    </div>
+  );
+}
+
 function _parseYmdLocal(iso: string): Date | null {
   const s = String(iso || '').trim().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
@@ -7959,6 +7983,7 @@ function EmployeeTrainingSection(
     queryFn: () => api<{ items: Array<{ id: string; label: string; cell_kind: string }> }>('GET', '/auth/training-records/matrix-catalog'),
   });
   const [modalOpen, setModalOpen] = useState(false);
+  const [viewingRecord, setViewingRecord] = useState<any | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
@@ -8024,6 +8049,14 @@ function EmployeeTrainingSection(
     setCertificateFile(null);
     setCertificateDocTitle('');
     setModalOpen(true);
+  };
+
+  const openView = (r: any) => {
+    setViewingRecord(r);
+  };
+
+  const closeView = () => {
+    setViewingRecord(null);
   };
 
   const openEdit = (r: any) => {
@@ -8275,6 +8308,38 @@ function EmployeeTrainingSection(
   const endDateLabel =
     needsCompletionDate && !differentCompletionDate ? 'End date *' : 'End date';
 
+  const trainingListPreset = canEdit ? 'workerTraining' : 'workerTrainingReadOnly';
+
+  type TrainingSortColumn =
+    | 'type'
+    | 'title'
+    | 'provider'
+    | 'category'
+    | 'crew'
+    | 'start'
+    | 'completed'
+    | 'hours'
+    | 'status'
+    | 'expires';
+  const { sortBy, sortDir, setSort } = useLocalAppListSort<TrainingSortColumn>('title', 'asc');
+
+  const sortedTrainingRows = useMemo(
+    () =>
+      sortListByAppColumn(rows as any[], sortBy, sortDir, {
+        type: (r) => r.item_type_label || '',
+        title: (r) => r.title || '',
+        provider: (r) => r.provider || '',
+        category: (r) => r.category || '',
+        crew: (r) => r.crew || '',
+        start: (r) => r.start_date || '',
+        completed: (r) => r.completion_date || '',
+        hours: (r) => r.duration_hours ?? null,
+        status: (r) => r.status || '',
+        expires: (r) => r.expiry_date || '',
+      }),
+    [rows, sortBy, sortDir],
+  );
+
   const certificateUploadHint = isWorker
     ? "Certificate file\n\nOptional. Saves to this worker's Documents tab under Training certificates when you save."
     : `Certificate file\n\nOptional. Saves to Docs → ${TRAINING_CERTIFICATES_FOLDER_NAME} (folder is created automatically if missing).`;
@@ -8285,124 +8350,194 @@ function EmployeeTrainingSection(
         title={trainingTitle}
         description={trainingDescription}
         {...appSectionPresetProps('education')}
-        action={
-          canEdit ? (
-            <AppButton type="button" size="sm" onClick={openAdd}>
-              Add record
-            </AppButton>
-          ) : undefined
-        }
       />
 
       <div className="mt-4 space-y-4">
         {isLoading ? (
           <div className="h-28 animate-pulse rounded-lg bg-slate-100" />
-        ) : !(rows as any[]).length ? (
-          <div className="rounded-lg border border-dashed border-gray-200 bg-slate-50/60 py-12 text-center">
-            <p className="text-sm font-medium text-gray-600">No training records yet</p>
-            <p className="mx-auto mt-1 max-w-sm text-xs text-gray-500">
-              Add courses, certifications, or renewals here. Use expiry dates for renewals and dashboard alerts.
-            </p>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={openAdd}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm hover:border-brand-red hover:text-brand-red"
-              >
-                Add first record
-              </button>
-            )}
-          </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Type
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Title
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Provider
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Category
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Crew
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Start
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Completed
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Hrs
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Status
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Expires
-                  </th>
-                  {canEdit && (
-                    <th className="w-28 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-600">
-                      Actions
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {(rows as any[]).map((r) => (
-                  <tr key={r.id} className="transition-colors hover:bg-slate-50/80">
-                    <td className="max-w-[140px] truncate px-4 py-2.5 text-xs text-slate-600" title={r.item_type_label || ''}>
-                      {r.item_type_label || '—'}
-                    </td>
-                    <td className="px-4 py-2.5 font-medium text-gray-900">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span>{r.title}</span>
-                        {r.training_source === 'lms' && (
-                          <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
-                            Internal LMS
+          <div className="flex flex-col gap-2 overflow-x-auto rounded-lg border border-gray-200 bg-white p-4">
+            {(rows as any[]).length > 0 ? (
+              <p className={uiCx(uiTypography.helper, 'mb-1')}>
+                Click a row to view full details.
+              </p>
+            ) : null}
+            {canEdit && (
+              <AppListCreateItem
+                label="Add record"
+                layout="row"
+                className={uiCx('w-full', resolveAppSortableListPreset(trainingListPreset).minWidth)}
+                onClick={openAdd}
+              />
+            )}
+            {!(rows as any[]).length ? (
+              <AppEmptyState
+                title="No training records yet"
+                description={
+                  canEdit
+                    ? 'Add courses, certifications, or renewals using “Add record” above.'
+                    : undefined
+                }
+                className="border-0 bg-transparent p-0 py-6 shadow-none"
+              />
+            ) : (
+              <AppSortableEntityList layout="flat">
+                <AppSortableEntityListHeader preset={trainingListPreset} variant="flat">
+                  <AppSortableEntityListSortColumn
+                    label="Type"
+                    column="type"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Title"
+                    column="title"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Provider"
+                    column="provider"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Category"
+                    column="category"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Crew"
+                    column="crew"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Start"
+                    column="start"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Completed"
+                    column="completed"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Hrs"
+                    column="hours"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Status"
+                    column="status"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Expires"
+                    column="expires"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  {canEdit ? <div className="min-w-0 w-24" aria-hidden /> : null}
+                </AppSortableEntityListHeader>
+                <AppSortableEntityListFlatBody preset={trainingListPreset}>
+                  {sortedTrainingRows.map((r) => (
+                    <AppSortableEntityListRow
+                      key={r.id}
+                      as="div"
+                      variant="flat"
+                      preset={trainingListPreset}
+                      className="group cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openView(r)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openView(r);
+                        }
+                      }}
+                    >
+                      <span
+                        className={uiCx(uiTypography.helper, 'min-w-0 truncate text-slate-600')}
+                        title={r.item_type_label || ''}
+                      >
+                        {r.item_type_label || '—'}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-sm font-bold text-gray-900 transition-colors group-hover:text-[#7f1010]">
+                            {r.title}
                           </span>
-                        )}
+                          {r.training_source === 'lms' && (
+                            <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                              Internal LMS
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-700">{r.provider || '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-700">{r.category || '—'}</td>
-                    <td className="max-w-[100px] truncate px-4 py-2.5 text-gray-700" title={r.crew || ''}>
-                      {r.crew || '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">{fmtDate(r.start_date)}</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">{fmtDate(r.completion_date)}</td>
-                    <td className="px-4 py-2.5 text-gray-700">{r.duration_hours != null ? r.duration_hours : '—'}</td>
-                    <td className="px-4 py-2.5">{trainingStatusPill(r.status)}</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">{fmtDate(r.expiry_date)}</td>
-                    {canEdit && (
-                      <td className="whitespace-nowrap px-4 py-2.5 text-right">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(r)}
-                          className="mr-2 text-xs font-medium text-brand-red hover:text-red-800"
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-700')}>
+                        {r.provider || '—'}
+                      </span>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-700')}>
+                        {r.category || '—'}
+                      </span>
+                      <span
+                        className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-700')}
+                        title={r.crew || ''}
+                      >
+                        {r.crew || '—'}
+                      </span>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 whitespace-nowrap text-gray-700')}>
+                        {fmtDate(r.start_date)}
+                      </span>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 whitespace-nowrap text-gray-700')}>
+                        {fmtDate(r.completion_date)}
+                      </span>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 text-gray-700')}>
+                        {r.duration_hours != null ? r.duration_hours : '—'}
+                      </span>
+                      <div className="min-w-0">{trainingStatusPill(r.status)}</div>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 whitespace-nowrap text-gray-700')}>
+                        {fmtDate(r.expiry_date)}
+                      </span>
+                      {canEdit ? (
+                        <div
+                          className="flex w-24 shrink-0 items-center justify-end gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(r)}
-                          className="text-xs font-medium text-gray-500 hover:text-red-600"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                          <AppListRowIconButton
+                            preset="edit"
+                            label="Edit training record"
+                            onClick={() => openEdit(r)}
+                          />
+                          <AppListRowIconButton
+                            preset="delete"
+                            label="Delete training record"
+                            onClick={() => void handleDelete(r)}
+                          />
+                        </div>
+                      ) : null}
+                    </AppSortableEntityListRow>
+                  ))}
+                </AppSortableEntityListFlatBody>
+              </AppSortableEntityList>
+            )}
           </div>
         )}
       </div>
@@ -8456,6 +8591,94 @@ function EmployeeTrainingSection(
           </p>
         )}
       </div>
+
+      {viewingRecord ? (
+        <AppFormModal
+          open
+          onClose={closeView}
+          layout="detail"
+          size="md"
+          title="Training record details"
+          description={viewingRecord.title || 'Training record'}
+          bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}
+          footer={
+            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+              <AppButton type="button" variant="secondary" size="sm" onClick={closeView}>
+                Close
+              </AppButton>
+              {canEdit ? (
+                <AppButton
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    const r = viewingRecord;
+                    closeView();
+                    openEdit(r);
+                  }}
+                >
+                  Edit
+                </AppButton>
+              ) : null}
+            </div>
+          }
+        >
+          <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
+            <dl className="min-w-0">
+              <TrainingDetailField label="Type">{viewingRecord.item_type_label || '—'}</TrainingDetailField>
+              <TrainingDetailField label="Title">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>{viewingRecord.title || '—'}</span>
+                  {viewingRecord.training_source === 'lms' ? (
+                    <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                      Internal LMS
+                    </span>
+                  ) : null}
+                </div>
+              </TrainingDetailField>
+              <TrainingDetailField label="Status">{trainingStatusPill(viewingRecord.status)}</TrainingDetailField>
+              <TrainingDetailField label="Provider">{viewingRecord.provider || '—'}</TrainingDetailField>
+              <TrainingDetailField label="Category">{viewingRecord.category || '—'}</TrainingDetailField>
+              <TrainingDetailField label="Format">
+                {viewingRecord.delivery_format ? formatLabel(viewingRecord.delivery_format) : '—'}
+              </TrainingDetailField>
+              <TrainingDetailField label="Crew">{viewingRecord.crew || '—'}</TrainingDetailField>
+              <TrainingDetailField label="Location">{viewingRecord.location || '—'}</TrainingDetailField>
+              <TrainingDetailField label="Start date">
+                {viewingRecord.start_date ? String(viewingRecord.start_date).slice(0, 10) : '—'}
+              </TrainingDetailField>
+              <TrainingDetailField label="End date">
+                {viewingRecord.end_date ? String(viewingRecord.end_date).slice(0, 10) : '—'}
+              </TrainingDetailField>
+              <TrainingDetailField label="Completed">
+                {viewingRecord.completion_date ? String(viewingRecord.completion_date).slice(0, 10) : '—'}
+              </TrainingDetailField>
+              <TrainingDetailField label="Session time">{viewingRecord.session_time || '—'}</TrainingDetailField>
+              <TrainingDetailField label="Duration (hours)">
+                {viewingRecord.duration_hours != null ? viewingRecord.duration_hours : '—'}
+              </TrainingDetailField>
+              <TrainingDetailField label="Certificate / reference #">
+                {viewingRecord.certificate_number || '—'}
+              </TrainingDetailField>
+              <TrainingDetailField label="Expires">
+                {viewingRecord.expiry_date ? String(viewingRecord.expiry_date).slice(0, 10) : '—'}
+              </TrainingDetailField>
+              <TrainingDetailField label="Matrix slot">
+                {viewingRecord.matrix_training_id
+                  ? matrixCatalog?.items?.find((x) => x.id === String(viewingRecord.matrix_training_id))?.label ||
+                    viewingRecord.matrix_training_id
+                  : '—'}
+              </TrainingDetailField>
+              <TrainingDetailField label="Notes">
+                {viewingRecord.notes ? (
+                  <span className="whitespace-pre-wrap font-normal text-gray-700">{viewingRecord.notes}</span>
+                ) : (
+                  '—'
+                )}
+              </TrainingDetailField>
+            </dl>
+          </AppCard>
+        </AppFormModal>
+      ) : null}
 
       <AppFormModal
         open={modalOpen}

@@ -801,7 +801,7 @@ export default function SubcontractorWorkerPage() {
 
   const thumbLg = useMemo(() => {
     if (!data?.worker?.photo_file_id) return null;
-    return withFileAccessTokenIfNeeded(`/files/${data.worker.photo_file_id}/thumbnail?w=240`) || null;
+    return withFileAccessTokenIfNeeded(`/files/${data.worker.photo_file_id}/thumbnail?w=320`) || null;
   }, [data?.worker?.photo_file_id]);
 
   const todayLabel = useMemo(() => {
@@ -871,18 +871,25 @@ export default function SubcontractorWorkerPage() {
             <AppCard bodyClassName="p-3 relative">
               {isEmployeeCardMinimized ? (
                 <div className="flex gap-2 items-center pr-8">
-                  <div className="relative flex-shrink-0">
+                  <div
+                    className={uiCx(
+                      'group relative h-10 w-10 shrink-0 overflow-hidden rounded-lg',
+                      uiBorders.subtle,
+                    )}
+                  >
                     <img
-                      className="w-10 h-10 object-cover rounded-lg border border-gray-200"
+                      className="h-full w-full object-cover"
                       src={thumbSm || WORKER_PHOTO_PLACEHOLDER}
                       alt=""
                     />
                     {hasEditPermission && (
-                      <AppHeroEditButton
+                      <button
+                        type="button"
                         onClick={() => setWorkerPhotoPickerOpen(true)}
-                        title="Change photo"
-                        className="absolute -top-0.5 -right-0.5 !p-0.5"
-                      />
+                        className="absolute inset-0 flex items-center justify-center bg-black/40 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        Change
+                      </button>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -902,56 +909,62 @@ export default function SubcontractorWorkerPage() {
                   </div>
                 </div>
               ) : (
-                <div className="flex gap-3 items-start">
-                  <div className="flex-shrink-0 flex flex-col items-center">
-                    <div className="relative">
-                      <img
-                        className="w-24 h-24 object-cover rounded-xl border-2 border-gray-200"
-                        src={thumbLg || WORKER_PHOTO_PLACEHOLDER}
-                        alt=""
-                      />
-                      {hasEditPermission && (
-                        <AppHeroEditButton
-                          onClick={() => setWorkerPhotoPickerOpen(true)}
-                          title="Change photo"
-                          className="absolute top-0.5 right-0.5"
-                        />
-                      )}
-                    </div>
-                    <div className="mt-2 flex flex-col items-center w-full max-w-[9rem]">
-                      <WorkerStatusBadge
-                        active={data.worker.is_active}
-                        pending={patchWorkerStatusMut.isPending}
-                        onClick={hasEditPermission ? openWorkerStatusModal : undefined}
-                      />
-                    </div>
+                <div className="flex items-start gap-3">
+                  <div className="group relative h-32 w-32 shrink-0 overflow-hidden rounded-xl border-2 border-gray-200">
+                    <img
+                      className="h-full w-full object-cover"
+                      src={thumbLg || WORKER_PHOTO_PLACEHOLDER}
+                      alt=""
+                    />
+                    {hasEditPermission && (
+                      <button
+                        type="button"
+                        onClick={() => setWorkerPhotoPickerOpen(true)}
+                        className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        Change
+                      </button>
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="mb-2">
                       <h1 className="text-sm font-bold text-gray-900">{workerDisplayHeroName(data.worker)}</h1>
-                      <div className="text-xs text-gray-600 mt-0.5">{data.company?.name || '—'}</div>
+                      <div className="mt-0.5 text-xs text-gray-600">{data.company?.name || '—'}</div>
                     </div>
-                    <div className="grid md:grid-cols-3 gap-x-3 gap-y-1.5">
-                      <HeroField label="Phone">{displayWorkerPhone(data.worker.phone) || EM_DASH}</HeroField>
-                      <HeroField label="Email">{data.worker.email || EM_DASH}</HeroField>
-                      <HeroField label="Address">
-                        {formatAddressDisplay({
-                          address_line1: data.worker.address_line1,
-                          address_line2: data.worker.address_line2,
-                          city: data.worker.city,
-                          province: data.worker.province,
-                          postal_code: data.worker.postal_code,
-                          country: data.worker.country,
-                        })}
-                      </HeroField>
-                      <HeroField label="On file since">
-                        {data.worker.created_at ? String(data.worker.created_at).slice(0, 10) : EM_DASH}
-                      </HeroField>
-                      <HeroField label="Open attendance">
-                        {data.open_attendance
-                          ? `${data.open_attendance.project_name || 'Project'} · in`
-                          : EM_DASH}
-                      </HeroField>
+                    <div className="grid gap-x-3 md:grid-cols-3">
+                      <div className="flex min-w-0 flex-col gap-1.5">
+                        <HeroField label="Phone">{displayWorkerPhone(data.worker.phone) || EM_DASH}</HeroField>
+                        <HeroField label="Status">
+                          <WorkerStatusBadge
+                            active={data.worker.is_active}
+                            pending={patchWorkerStatusMut.isPending}
+                            onClick={hasEditPermission ? openWorkerStatusModal : undefined}
+                          />
+                        </HeroField>
+                      </div>
+                      <div className="flex min-w-0 flex-col gap-1.5">
+                        <HeroField label="Email">{data.worker.email || EM_DASH}</HeroField>
+                        <HeroField label="On file since">
+                          {data.worker.created_at ? String(data.worker.created_at).slice(0, 10) : EM_DASH}
+                        </HeroField>
+                      </div>
+                      <div className="flex min-w-0 flex-col gap-1.5">
+                        <HeroField label="Address">
+                          {formatAddressDisplay({
+                            address_line1: data.worker.address_line1,
+                            address_line2: data.worker.address_line2,
+                            city: data.worker.city,
+                            province: data.worker.province,
+                            postal_code: data.worker.postal_code,
+                            country: data.worker.country,
+                          })}
+                        </HeroField>
+                        <HeroField label="Open attendance">
+                          {data.open_attendance
+                            ? `${data.open_attendance.project_name || 'Project'} · in`
+                            : EM_DASH}
+                        </HeroField>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   AppBadge,
   AppButton,
@@ -15,6 +16,11 @@ import {
   AppHeroEditButton,
   AppInput,
   AppListCreateItem,
+  AppSortableEntityList,
+  AppSortableEntityListFlatBody,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
   AppModal,
   AppPageBackButton,
   AppPageHeader,
@@ -28,6 +34,8 @@ import {
   AppTabs,
   AppTextarea,
   AppTooltip,
+  AppUserAvatar,
+  useAppListSort,
   uiBorders,
   uiCx,
   uiLayout,
@@ -100,6 +108,41 @@ const tabItems = [
   { key: 'activity', label: 'Activity', count: 4 },
 ] as const;
 
+type ShowcaseOpportunitySort = 'opportunity' | 'estimator' | 'value' | 'status';
+
+const showcaseOpportunityRows = [
+  {
+    id: '1',
+    name: 'Atlas Office Buildout',
+    code: 'OPP-2044',
+    client: 'Atlas Properties',
+    estimator: 'Jordan Lee',
+    value: 128500,
+    status: 'In Progress',
+    statusVariant: 'info' as const,
+  },
+  {
+    id: '2',
+    name: 'West Terminal Retrofit',
+    code: 'OPP-2045',
+    client: 'Harbor Logistics',
+    estimator: 'Sam Rivera',
+    value: 84200,
+    status: 'Review',
+    statusVariant: 'warning' as const,
+  },
+  {
+    id: '3',
+    name: 'South Yard Lighting',
+    code: 'OPP-2046',
+    client: 'MK Electric',
+    estimator: 'Alex Chen',
+    value: 42150.5,
+    status: 'Approved',
+    statusVariant: 'success' as const,
+  },
+] as const;
+
 const spacingTokens = [
   { label: 'space-y-2', className: 'h-2' },
   { label: 'space-y-3', className: 'h-3' },
@@ -108,6 +151,7 @@ const spacingTokens = [
 ] as const;
 
 export default function DesignSystemShowcase() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('overview');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -127,6 +171,33 @@ export default function DesignSystemShowcase() {
   const [showcaseUserIds, setShowcaseUserIds] = useState<string[]>([]);
   const [showcaseAttachment, setShowcaseAttachment] = useState<File | null>(null);
   const [showcaseAttachments, setShowcaseAttachments] = useState<File[]>([]);
+  const { sortBy, sortDir, setSort } = useAppListSort<ShowcaseOpportunitySort>({
+    searchParams,
+    setSearchParams,
+    defaultSort: 'opportunity',
+    validSorts: ['opportunity', 'estimator', 'value', 'status'] as const,
+    resetPageOnSort: false,
+  });
+
+  const sortedShowcaseRows = useMemo(() => {
+    const rows = [...showcaseOpportunityRows];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      switch (sortBy) {
+        case 'estimator':
+          return a.estimator.localeCompare(b.estimator) * dir;
+        case 'value':
+          return (a.value - b.value) * dir;
+        case 'status':
+          return a.status.localeCompare(b.status) * dir;
+        case 'opportunity':
+        default:
+          return a.name.localeCompare(b.name) * dir;
+      }
+    });
+    return rows;
+  }, [sortBy, sortDir]);
+
   const tableRows = useMemo(
     () => [
       [<span key="u1">RC-2044</span>, <span key="n1">Atlas Office Buildout</span>, <AppBadge key="s1" variant="info">In Progress</AppBadge>, <span key="o1">May 26, 2026</span>],
@@ -398,6 +469,173 @@ export default function DesignSystemShowcase() {
               </div>
             </div>
           </div>
+        </AppCard>
+
+        <AppCard
+          title="Sortable entity list (Opportunities pattern)"
+          subtitle="Grid header with URL-backed sort, card rows, and presets — same shell as /opportunities list view."
+        >
+          <p className={uiCx(uiTypography.helper, 'mb-4')}>
+            Use <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">useAppListSort</code> +{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppSortableEntityList*</code> for Business
+            lists. Sort persists in the URL (<code className="text-[11px]">?sort=</code>,{' '}
+            <code className="text-[11px]">dir=</code>). Place{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppListCreateItem</code> first, then header,
+            then rows.
+          </p>
+          <div className={uiCx('mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2', uiRadius.control)}>
+            <p className={uiTypography.helper}>
+              Active sort:{' '}
+              <span className="font-semibold text-gray-800">
+                {sortBy} ({sortDir})
+              </span>
+              {' · '}
+              URL: <code className="text-[11px]">{searchParams.toString() || '(default)'}</code>
+            </p>
+          </div>
+          <AppSortableEntityList>
+            <AppListCreateItem label="New Opportunity" layout="row" onClick={() => undefined} className="min-w-[680px]" />
+            <AppSortableEntityListHeader preset="opportunities">
+              <AppSortableEntityListSortColumn
+                label="Opportunity"
+                column="opportunity"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setSort}
+              />
+              <AppSortableEntityListSortColumn
+                label="Estimator"
+                column="estimator"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setSort}
+              />
+              <AppSortableEntityListSortColumn
+                label="Est. value"
+                column="value"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setSort}
+              />
+              <AppSortableEntityListSortColumn
+                label="Status"
+                column="status"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setSort}
+              />
+              <div className="min-w-0 w-24" aria-hidden />
+            </AppSortableEntityListHeader>
+            {sortedShowcaseRows.map((row) => (
+              <AppSortableEntityListRow key={row.id} as="link" to="#" preset="opportunities" onClick={(e) => e.preventDefault()}>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold text-gray-900 group-hover:text-[#7f1010]">{row.name}</div>
+                  <div className="mt-0.5 flex items-center gap-2 truncate text-xs text-gray-600">
+                    <span>{row.code}</span>
+                    <span className="text-gray-400">•</span>
+                    <span>{row.client}</span>
+                  </div>
+                </div>
+                <div className="flex min-w-0 items-center gap-2">
+                  <AppUserAvatar user={{ name: row.estimator, first_name: row.estimator }} size="sm" />
+                  <span className="truncate text-xs font-semibold text-gray-900">{row.estimator}</span>
+                </div>
+                <div className="min-w-0">
+                  <span className="text-xs font-semibold text-[#7f1010]">
+                    ${row.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <AppBadge variant={row.statusVariant} className="max-w-full truncate">
+                    {row.status}
+                  </AppBadge>
+                </div>
+                <div className="flex w-24 shrink-0 items-center justify-end gap-1.5">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-gray-100 text-sm">
+                    {'\u{1F4C1}'}
+                  </span>
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-gray-100 text-sm">
+                    {'\u{1F4C4}'}
+                  </span>
+                </div>
+              </AppSortableEntityListRow>
+            ))}
+          </AppSortableEntityList>
+          <div className={uiCx('mt-6 border-t border-gray-100 pt-4')}>
+            <p className={uiCx(uiTypography.overline, 'mb-2')}>Flat variant (Customers pattern)</p>
+            <p className={uiCx(uiTypography.helper, 'mb-3')}>
+              <code className="text-[11px]">variant=&quot;flat&quot;</code> +{' '}
+              <code className="text-[11px]">AppSortableEntityListFlatBody</code> inside an{' '}
+              <code className="text-[11px]">AppCard</code> with <code className="text-[11px]">bodyClassName=&quot;!p-0&quot;</code>.
+            </p>
+            <AppSortableEntityList layout="flat">
+              <AppSortableEntityListHeader preset="customers" variant="flat">
+                <AppSortableEntityListSortColumn label="Customer" column="opportunity" sortBy={sortBy} sortDir={sortDir} onSort={setSort} />
+                <AppSortableEntityListSortColumn label="Code" column="estimator" sortBy={sortBy} sortDir={sortDir} onSort={setSort} />
+                <AppSortableEntityListSortColumn label="City" column="value" sortBy={sortBy} sortDir={sortDir} onSort={setSort} />
+                <AppSortableEntityListSortColumn label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={setSort} />
+                <AppSortableEntityListSortColumn label="Type" column="opportunity" sortBy={sortBy} sortDir={sortDir} onSort={setSort} />
+              </AppSortableEntityListHeader>
+              <AppSortableEntityListFlatBody preset="customers">
+                {sortedShowcaseRows.map((row) => (
+                  <AppSortableEntityListRow
+                    key={`flat-${row.id}`}
+                    as="div"
+                    variant="flat"
+                    preset="customers"
+                    role="button"
+                    tabIndex={0}
+                    className="cursor-pointer"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className={uiCx('h-10 w-10 shrink-0 bg-gray-100', uiRadius.control, uiBorders.subtle)} />
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold text-gray-900">{row.client}</div>
+                        <div className="truncate text-[10px] text-gray-600">{row.name}</div>
+                      </div>
+                    </div>
+                    <span className="truncate text-xs text-gray-700">{row.code}</span>
+                    <span className="truncate text-xs text-gray-600">Vancouver, BC</span>
+                    <AppBadge variant={row.statusVariant}>{row.status}</AppBadge>
+                    <AppBadge variant="neutral">Commercial</AppBadge>
+                  </AppSortableEntityListRow>
+                ))}
+              </AppSortableEntityListFlatBody>
+            </AppSortableEntityList>
+          </div>
+          <pre
+            className={uiCx(
+              'mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-gray-900 p-3 text-[11px] leading-relaxed text-gray-100',
+              uiRadius.control,
+            )}
+          >{`import {
+  AppSortableEntityList,
+  AppSortableEntityListHeader,
+  AppSortableEntityListSortColumn,
+  AppSortableEntityListRow,
+  useAppListSort,
+} from '@/components/ui';
+
+const { sortBy, sortDir, setSort } = useAppListSort({
+  searchParams,
+  setSearchParams,
+  defaultSort: 'opportunity',
+  validSorts: ['opportunity', 'estimator', 'value', 'status'],
+});
+
+<AppSortableEntityList>
+  <AppListCreateItem label="New Opportunity" layout="row" href="/projects/new" />
+  <AppSortableEntityListHeader preset="opportunities">
+    <AppSortableEntityListSortColumn label="Opportunity" column="opportunity" sortBy={sortBy} sortDir={sortDir} onSort={setSort} />
+    …
+    <div className="w-24" aria-hidden />
+  </AppSortableEntityListHeader>
+  {items.map((item) => (
+    <AppSortableEntityListRow key={item.id} as="link" to={detailPath(item.id)} preset="opportunities">
+      …cells…
+    </AppSortableEntityListRow>
+  ))}
+</AppSortableEntityList>`}</pre>
         </AppCard>
 
         <div className={uiLayout.sectionGrid2}>

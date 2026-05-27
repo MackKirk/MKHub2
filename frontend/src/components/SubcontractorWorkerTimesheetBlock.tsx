@@ -14,24 +14,36 @@ import {
   scWorkerManualAttendanceQuickInfo,
 } from '@/lib/formModalQuickInfo';
 import {
+  AppBadge,
   AppButton,
   AppCard,
   AppCheckbox,
   AppControlLabelRow,
   AppDatePicker,
+  AppEmptyState,
   AppFieldHint,
   AppFormModal,
   AppInput,
+  AppListCreateItem,
+  AppListRowIconButton,
   AppProjectSelect,
   AppSectionHeader,
   AppSelect,
+  AppSortableEntityList,
+  AppSortableEntityListFlatBody,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
   AppTimePicker,
   appSectionPresetProps,
+  resolveAppSortableListPreset,
+  sortListByAppColumn,
   uiBorders,
   uiCx,
   uiLayout,
   uiSpacing,
   uiTypography,
+  useLocalAppListSort,
 } from '@/components/ui';
 
 const inputClass =
@@ -502,6 +514,36 @@ export default function SubcontractorWorkerTimesheetBlock({
     [attendances],
   );
 
+  type TimesheetSortColumn = 'clock_in' | 'clock_out' | 'project' | 'hours' | 'break' | 'status';
+  const { sortBy, sortDir, setSort } = useLocalAppListSort<TimesheetSortColumn>('clock_in', 'desc');
+
+  const sortedAttendanceEvents = useMemo(
+    () =>
+      sortListByAppColumn(attendanceEvents, sortBy, sortDir, {
+        clock_in: (e) => (e.clock_in_time ? Date.parse(e.clock_in_time) : null),
+        clock_out: (e) => (e.clock_out_time ? Date.parse(e.clock_out_time) : null),
+        project: (e) => e.project_name || '',
+        hours: (e) => e.hours_worked ?? null,
+        break: (e) => e.break_minutes ?? null,
+        status: (e) => {
+          if (!e.clock_out_time) return 'open';
+          return e.hr_status || e.clock_in_status || 'approved';
+        },
+      }),
+    [attendanceEvents, sortBy, sortDir],
+  );
+
+  const timesheetStatusBadge = (event: AttendanceEvent) => {
+    if (!event.clock_out_time) {
+      return <AppBadge variant="warning">Open</AppBadge>;
+    }
+    const status = (event.hr_status || event.clock_in_status || 'approved').toLowerCase();
+    const label = status.charAt(0).toUpperCase() + status.slice(1);
+    if (status === 'approved') return <AppBadge variant="success">{label}</AppBadge>;
+    if (status === 'pending') return <AppBadge variant="warning">{label}</AppBadge>;
+    return <AppBadge variant="danger">{label}</AppBadge>;
+  };
+
   const sigProjectId = projectId || openAttendance?.project_id || '';
 
   const invalidateAll = async () => {
@@ -919,143 +961,163 @@ export default function SubcontractorWorkerTimesheetBlock({
           <p className={uiCx(uiTypography.helper, 'mb-3')}>
             Click a row to view full details, notes, and signatures.
           </p>
-          <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px]">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="p-3 text-left w-12">
-                  {canEdit && (
-                    <input
-                      type="checkbox"
-                      checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
-                      onChange={handleSelectAll}
-                      className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                  )}
-                </th>
-                <th className="p-3 text-left text-xs font-medium text-gray-600">Clock In</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-600">Clock Out</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-600">Project</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-600">Hours</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-600">Break</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-600">Status</th>
-                <th className="p-3 text-left text-xs font-medium text-gray-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {canEdit && (
-                <tr>
-                  <td colSpan={8} className="p-0 align-top">
-                    <button
-                      type="button"
-                      onClick={openNewModal}
-                      className="w-full border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 flex items-center justify-center gap-2 min-h-[52px] text-gray-600 hover:text-brand-red transition-colors"
+          <div className="flex flex-col gap-2 overflow-x-auto">
+            {canEdit && (
+              <AppListCreateItem
+                label="New attendance"
+                layout="row"
+                className={uiCx('w-full', resolveAppSortableListPreset('workerTimesheet').minWidth)}
+                onClick={openNewModal}
+              />
+            )}
+            {isLoading ? (
+              <div
+                className={uiCx(
+                  resolveAppSortableListPreset('workerTimesheet').minWidth,
+                  'px-4 py-4',
+                )}
+              >
+                <div className="h-6 animate-pulse rounded bg-gray-100" />
+              </div>
+            ) : error ? (
+              <p className={uiCx(uiTypography.helper, 'px-1 text-red-600')}>Could not load attendance.</p>
+            ) : attendanceEvents.length === 0 ? (
+              <AppEmptyState
+                title="No attendance records found"
+                className="border-0 bg-transparent p-0 py-6 shadow-none"
+              />
+            ) : (
+              <AppSortableEntityList layout="flat">
+                <AppSortableEntityListHeader preset="workerTimesheet" variant="flat">
+                  <div className="flex w-8 shrink-0 items-center justify-center">
+                    {canEdit && (
+                      <input
+                        type="checkbox"
+                        checked={
+                          attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length
+                        }
+                        onChange={handleSelectAll}
+                        className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    )}
+                  </div>
+                  <AppSortableEntityListSortColumn
+                    label="Clock In"
+                    column="clock_in"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Clock Out"
+                    column="clock_out"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Project"
+                    column="project"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Hours"
+                    column="hours"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Break"
+                    column="break"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Status"
+                    column="status"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <div className="min-w-0 w-24" aria-hidden />
+                </AppSortableEntityListHeader>
+                <AppSortableEntityListFlatBody preset="workerTimesheet">
+                  {sortedAttendanceEvents.map((event) => (
+                    <AppSortableEntityListRow
+                      key={event.event_id}
+                      as="div"
+                      variant="flat"
+                      preset="workerTimesheet"
+                      className="group"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setViewingEvent(event)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setViewingEvent(event);
+                        }
+                      }}
                     >
-                      <span className="text-lg font-medium">+</span>
-                      <span className="text-sm font-medium">New attendance</span>
-                    </button>
-                  </td>
-                </tr>
-              )}
-              {isLoading ? (
-                <tr>
-                  <td colSpan={8} className="p-4">
-                    <div className="h-6 bg-gray-100 animate-pulse rounded" />
-                  </td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={8} className="p-4 text-center text-xs text-red-600">
-                    Could not load attendance.
-                  </td>
-                </tr>
-              ) : attendanceEvents.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-4 text-center text-xs text-gray-500">
-                    No attendance records found
-                  </td>
-                </tr>
-              ) : (
-                attendanceEvents.map((event) => (
-                  <tr
-                    key={event.event_id}
-                    role="button"
-                    tabIndex={0}
-                    className="border-t border-gray-200 hover:bg-gray-50 cursor-pointer"
-                    onClick={() => setViewingEvent(event)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setViewingEvent(event);
-                      }
-                    }}
-                  >
-                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                      {canEdit && (
-                        <input
-                          type="checkbox"
-                          checked={selectedEvents.has(event.event_id)}
-                          onChange={() => handleToggleSelect(event.event_id)}
-                          className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                      )}
-                    </td>
-                    <td className="p-3 text-xs text-gray-900">
-                      {event.clock_in_time ? formatDateTime(event.clock_in_time) : '—'}
-                    </td>
-                    <td className="p-3 text-xs text-gray-900">
-                      {event.clock_out_time ? formatDateTime(event.clock_out_time) : '—'}
-                    </td>
-                    <td className="p-3 text-xs text-gray-900">{event.project_name || '—'}</td>
-                    <td className="p-3 text-xs text-gray-900">{formatHours(event.hours_worked)}</td>
-                    <td className="p-3 text-xs text-gray-900">{formatBreak(event.break_minutes)}</td>
-                    <td className="p-3">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                          event.clock_out_time
-                            ? event.clock_in_status === 'approved'
-                              ? 'bg-green-100 text-green-800'
-                              : event.clock_in_status === 'pending'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}
-                      >
-                        {event.clock_out_time
-                          ? `${(event.hr_status || event.clock_in_status || 'approved').charAt(0).toUpperCase()}${(event.hr_status || event.clock_in_status || 'approved').slice(1)}`
-                          : 'Open'}
-                      </span>
-                    </td>
-                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1.5">
-                        {canEdit ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => openEditModal(event)}
-                              className="text-blue-600 hover:text-blue-800 text-[10px]"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleDeleteEvent(event)}
-                              disabled={deletingId === event.event_id}
-                              className="text-red-600 hover:text-red-800 text-[10px] disabled:opacity-50"
-                            >
-                              {deletingId === event.event_id ? 'Deleting…' : 'Delete'}
-                            </button>
-                          </>
-                        ) : (
-                          <span className="text-[10px] text-gray-500">View only</span>
+                      <div className="flex w-8 shrink-0 items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                        {canEdit && (
+                          <input
+                            type="checkbox"
+                            checked={selectedEvents.has(event.event_id)}
+                            onChange={() => handleToggleSelect(event.event_id)}
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
                         )}
                       </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-900')}>
+                        {event.clock_in_time ? formatDateTime(event.clock_in_time) : '—'}
+                      </span>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-900')}>
+                        {event.clock_out_time ? formatDateTime(event.clock_out_time) : '—'}
+                      </span>
+                      <span
+                        className={uiCx(
+                          'min-w-0 truncate text-sm font-semibold text-gray-900 transition-colors group-hover:text-[#7f1010]',
+                        )}
+                      >
+                        {event.project_name || '—'}
+                      </span>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 text-gray-900')}>
+                        {formatHours(event.hours_worked)}
+                      </span>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 text-gray-900')}>
+                        {formatBreak(event.break_minutes)}
+                      </span>
+                      <div className="min-w-0">{timesheetStatusBadge(event)}</div>
+                      <div
+                        className="flex w-24 shrink-0 items-center justify-end gap-1.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {canEdit ? (
+                          <>
+                            <AppListRowIconButton
+                              preset="edit"
+                              label="Edit attendance"
+                              onClick={() => openEditModal(event)}
+                            />
+                            <AppListRowIconButton
+                              preset="delete"
+                              label="Delete attendance"
+                              loading={deletingId === event.event_id}
+                              onClick={() => void handleDeleteEvent(event)}
+                            />
+                          </>
+                        ) : null}
+                      </div>
+                    </AppSortableEntityListRow>
+                  ))}
+                </AppSortableEntityListFlatBody>
+              </AppSortableEntityList>
+            )}
           </div>
         </div>
         </div>
