@@ -14,6 +14,7 @@ import {
   AppButton,
   AppCard,
   AppDatePicker,
+  AppFieldHint,
   AppFileUpload,
   AppFormModal,
   AppInput,
@@ -27,6 +28,7 @@ import {
   appSectionPresetProps,
   uiBorders,
   uiCx,
+  uiLayout,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
@@ -149,9 +151,11 @@ function buildProjectDepartmentOptions(
 
 function ReportTypeFieldsSection({
   title,
+  fieldHint,
   children,
 }: {
   title: string;
+  fieldHint?: string;
   children: ReactNode;
 }) {
   return (
@@ -163,8 +167,24 @@ function ReportTypeFieldsSection({
         'rounded-lg border bg-gray-50 p-4',
       )}
     >
-      <h4 className={uiCx(uiTypography.sectionTitle)}>{title}</h4>
+      <div className="flex items-center gap-1">
+        <h4 className={uiCx(uiTypography.sectionTitle)}>{title}</h4>
+        {fieldHint ? <AppFieldHint hint={fieldHint} /> : null}
+      </div>
       {children}
+    </div>
+  );
+}
+
+function DetailField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div
+      className={uiCx(
+        'grid grid-cols-1 gap-1 border-b border-gray-100 py-3 last:border-0 sm:grid-cols-[9.5rem_minmax(0,1fr)] sm:items-start sm:gap-x-4 sm:py-2.5',
+      )}
+    >
+      <dt className={uiTypography.helper}>{label}</dt>
+      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
     </div>
   );
 }
@@ -184,9 +204,9 @@ export default function UserReports(props: UserReportsProps) {
   const confirm = useConfirm();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showReportDetail, setShowReportDetail] = useState<string | null>(null);
-  const [editingReportId, setEditingReportId] = useState<string | null>(null);
   const [editingReport, setEditingReport] = useState<ReportDetail | null>(null);
-  
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('');
@@ -251,12 +271,6 @@ export default function UserReports(props: UserReportsProps) {
     });
   }, [reports, searchQuery, filterType, filterStatus, filterSeverity, filterDateFrom, filterDateTo]);
 
-  const { data: reportDetail } = useQuery<ReportDetail>({
-    queryKey: ['report-detail', variant, subjectId, showReportDetail],
-    queryFn: () => api<ReportDetail>('GET', `${reportsPrefix}/${showReportDetail}`),
-    enabled: !!showReportDetail,
-  });
-
   const clearFilters = () => {
     setSearchQuery('');
     setFilterType('');
@@ -270,6 +284,48 @@ export default function UserReports(props: UserReportsProps) {
     ? 'Safety and incident reports linked to this worker.'
     : 'Safety and incident reports for this employee.';
 
+  const openReportDetail = (reportId: string) => {
+    setShowReportDetail(reportId);
+  };
+
+  const openEditReport = async (reportId: string) => {
+    try {
+      const detail = await api<ReportDetail>('GET', `${reportsPrefix}/${reportId}`);
+      setEditingReport(detail);
+      setShowCreateModal(true);
+    } catch {
+      toast.error('Failed to load report details');
+    }
+  };
+
+  const handleDeleteReport = async (report: Report) => {
+    if (!canEdit) {
+      toast.error('You do not have permission to delete reports');
+      return;
+    }
+    const result = await confirm({
+      title: 'Delete report',
+      message: `Delete "${report.title}"? This cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    setDeletingId(report.id);
+    try {
+      await api('DELETE', `${reportsPrefix}/${report.id}`);
+      toast.success('Report deleted');
+      if (showReportDetail === report.id) {
+        setShowReportDetail(null);
+      }
+      await refetchReports();
+      queryClient.invalidateQueries({ queryKey: reportsListQueryKey });
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to delete report');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-24">
       <AppCard>
@@ -277,13 +333,6 @@ export default function UserReports(props: UserReportsProps) {
           title="Reports"
           description={reportsDescription}
           {...appSectionPresetProps('description')}
-          action={
-            canEdit ? (
-              <AppButton type="button" size="sm" onClick={() => setShowCreateModal(true)}>
-                Add report
-              </AppButton>
-            ) : undefined
-          }
         />
         <div className="mt-4 space-y-4">
           <AppInput
@@ -332,8 +381,12 @@ export default function UserReports(props: UserReportsProps) {
             </div>
           </div>
 
-          <div className={uiCx(uiBorders.subtle, 'overflow-hidden rounded-xl border')}>
-            <table className="w-full">
+          <div className={uiCx('rounded-xl border bg-white', uiSpacing.cardPadding)}>
+            <p className={uiCx(uiTypography.helper, 'mb-3')}>
+              Click a row to view full details, attachments, and comments.
+            </p>
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px]">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="p-3 text-left text-xs font-medium text-gray-600">Date</th>
@@ -352,7 +405,7 @@ export default function UserReports(props: UserReportsProps) {
                       <button
                         type="button"
                         onClick={() => setShowCreateModal(true)}
-                        className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-t-xl border-2 border-dashed border-gray-300 p-3 text-gray-600 transition-colors hover:border-brand-red hover:bg-gray-50 hover:text-brand-red"
+                        className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-3 text-gray-600 transition-colors hover:border-brand-red hover:bg-gray-50 hover:text-brand-red"
                       >
                         <span className="text-lg font-medium">+</span>
                         <span className="text-sm font-medium">Add report</span>
@@ -362,7 +415,7 @@ export default function UserReports(props: UserReportsProps) {
                 )}
                 {!reports ? (
                   <tr>
-                    <td colSpan={7} className="p-4 text-center text-xs text-gray-500">
+                    <td colSpan={7} className="p-4">
                       <div className="h-6 animate-pulse rounded bg-gray-100" />
                     </td>
                   </tr>
@@ -374,7 +427,19 @@ export default function UserReports(props: UserReportsProps) {
                   </tr>
                 ) : (
                   filteredReports.map((report) => (
-                    <tr key={report.id} className="border-t border-gray-200 transition-colors hover:bg-gray-50">
+                    <tr
+                      key={report.id}
+                      role="button"
+                      tabIndex={0}
+                      className="cursor-pointer border-t border-gray-200 transition-colors hover:bg-gray-50"
+                      onClick={() => openReportDetail(report.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openReportDetail(report.id);
+                        }
+                      }}
+                    >
                       <td className="p-3 text-xs text-gray-900">{formatDate(report.occurrence_date)}</td>
                       <td className="p-3 text-xs text-gray-900">{report.report_type}</td>
                       <td className="p-3 text-xs font-semibold text-gray-900">{report.title}</td>
@@ -387,31 +452,28 @@ export default function UserReports(props: UserReportsProps) {
                       <td className="p-3 text-xs text-gray-600">
                         {formatDate(report.updated_at || report.created_at)}
                       </td>
-                      <td className="p-3">
-                        <div className="flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setShowReportDetail(report.id)}
-                            className="text-xs font-medium text-brand-red hover:underline"
-                          >
-                            View
-                          </button>
-                          {canEdit && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  const detail = await api<ReportDetail>('GET', `${reportsPrefix}/${report.id}`);
-                                  setEditingReport(detail);
-                                  setShowCreateModal(true);
-                                } catch {
-                                  toast.error('Failed to load report details');
-                                }
-                              }}
-                              className="text-xs font-medium text-gray-600 hover:text-gray-900 hover:underline"
-                            >
-                              Edit
-                            </button>
+                      <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1.5">
+                          {canEdit ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void openEditReport(report.id)}
+                                className="text-[10px] text-blue-600 hover:text-blue-800"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteReport(report)}
+                                disabled={deletingId === report.id}
+                                className="text-[10px] text-red-600 hover:text-red-800 disabled:opacity-50"
+                              >
+                                {deletingId === report.id ? 'Deleting…' : 'Delete'}
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[10px] text-gray-500">View only</span>
                           )}
                         </div>
                       </td>
@@ -420,6 +482,7 @@ export default function UserReports(props: UserReportsProps) {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       </AppCard>
@@ -449,11 +512,9 @@ export default function UserReports(props: UserReportsProps) {
           variant={variant}
           subjectId={subjectId}
           reportId={showReportDetail}
-          isEditing={editingReportId === showReportDetail}
           canEdit={canEdit}
           onClose={() => {
             setShowReportDetail(null);
-            setEditingReportId(null);
             refetchReports();
           }}
           onEdit={(report) => {
@@ -506,8 +567,9 @@ function CreateReportModal({
   // Behavior Note-specific fields
   const [behaviorNoteType, setBehaviorNoteType] = useState<'Positive' | 'Negative' | ''>('');
   
-  // Attachments
+  // Attachments (pending on create; existing + new on edit)
   const [attachments, setAttachments] = useState<Array<{ file_id: string; file_name: string; file_size: number; file_type: string }>>([]);
+  const [existingAttachments, setExistingAttachments] = useState<ReportDetail['attachments']>([]);
   const [uploading, setUploading] = useState(false);
 
   const [saving, setSaving] = useState(false);
@@ -537,68 +599,70 @@ function CreateReportModal({
     [selectedProjectsDepartments, projectDeptOptions],
   );
 
-  // Initialize form when editing
+  // Reset form when opening create modal (not when projects/settings finish loading)
   useEffect(() => {
-    if (report && projects && settings) {
-      setReportType(report.report_type);
-      setTitle(report.title);
-      setDescription(report.description || '');
-      setOccurrenceDate(report.occurrence_date ? report.occurrence_date.split('T')[0] : formatDateLocal(new Date()));
-      setSeverity(report.severity);
-      setStatus(report.status);
-      setVehicle(report.vehicle || '');
-      setTicketNumber(report.ticket_number || '');
-      setFineAmount(report.fine_amount?.toString() || '');
-      setDueDate(report.due_date ? report.due_date.split('T')[0] : '');
-      setSuspensionStartDate(report.suspension_start_date ? report.suspension_start_date.split('T')[0] : '');
-      setSuspensionEndDate(report.suspension_end_date ? report.suspension_end_date.split('T')[0] : '');
-      setBehaviorNoteType((report as any).behavior_note_type || '');
-      
-      // Match saved related_project_department
-      const matchedIds: string[] = [];
-      if (report.related_project_department) {
-        const savedNames = report.related_project_department.split(', ').map(s => s.trim());
-        
-        // Match projects
-        projects.forEach((project: any) => {
-          const name = project.name || project.code || 'Project';
-          const displayName = project.code ? `${project.code} - ${name}` : name;
-          if (savedNames.includes(displayName)) {
-            matchedIds.push(`project-${project.id}`);
+    if (report) return;
+    setReportType('Other');
+    setTitle('');
+    setDescription('');
+    setOccurrenceDate(formatDateLocal(new Date()));
+    setSeverity('Medium');
+    setStatus('Open');
+    setVehicle('');
+    setTicketNumber('');
+    setFineAmount('');
+    setDueDate('');
+    setSuspensionStartDate('');
+    setSuspensionEndDate('');
+    setBehaviorNoteType('');
+    setSelectedProjectsDepartments([]);
+    setAttachments([]);
+    setExistingAttachments([]);
+  }, [report]);
+
+  // Initialize form when editing (wait for projects/settings for project/department matching)
+  useEffect(() => {
+    if (!report || !projects || !settings) return;
+
+    setReportType(report.report_type);
+    setTitle(report.title);
+    setDescription(report.description || '');
+    setOccurrenceDate(report.occurrence_date ? report.occurrence_date.split('T')[0] : formatDateLocal(new Date()));
+    setSeverity(report.severity);
+    setStatus(report.status);
+    setVehicle(report.vehicle || '');
+    setTicketNumber(report.ticket_number || '');
+    setFineAmount(report.fine_amount?.toString() || '');
+    setDueDate(report.due_date ? report.due_date.split('T')[0] : '');
+    setSuspensionStartDate(report.suspension_start_date ? report.suspension_start_date.split('T')[0] : '');
+    setSuspensionEndDate(report.suspension_end_date ? report.suspension_end_date.split('T')[0] : '');
+    setBehaviorNoteType((report as ReportDetail & { behavior_note_type?: string }).behavior_note_type || '');
+
+    const matchedIds: string[] = [];
+    if (report.related_project_department) {
+      const savedNames = report.related_project_department.split(', ').map((s) => s.trim());
+
+      projects.forEach((project: any) => {
+        const name = project.name || project.code || 'Project';
+        const displayName = project.code ? `${project.code} - ${name}` : name;
+        if (savedNames.includes(displayName)) {
+          matchedIds.push(`project-${project.id}`);
+        }
+      });
+
+      if (settings?.divisions) {
+        settings.divisions.forEach((division: any) => {
+          if (savedNames.includes(division.label)) {
+            matchedIds.push(`department-${division.id}`);
           }
         });
-        
-        // Match departments
-        if (settings?.divisions) {
-          settings.divisions.forEach((division: any) => {
-            if (savedNames.includes(division.label)) {
-              matchedIds.push(`department-${division.id}`);
-            }
-          });
-        }
       }
-      setSelectedProjectsDepartments(matchedIds);
-    } else if (!report) {
-      // Reset form when creating new report
-      setReportType('Other');
-      setTitle('');
-      setDescription('');
-      setOccurrenceDate(formatDateLocal(new Date()));
-      setSeverity('Medium');
-      setStatus('Open');
-      setVehicle('');
-      setTicketNumber('');
-      setFineAmount('');
-      setDueDate('');
-      setSuspensionStartDate('');
-      setSuspensionEndDate('');
-      setBehaviorNoteType('');
-      setSelectedProjectsDepartments([]);
-      setAttachments([]);
     }
+    setSelectedProjectsDepartments(matchedIds);
+    setExistingAttachments(report.attachments);
   }, [report, projects, settings]);
 
-  const uploadAttachmentFile = async (file: File) => {
+  const uploadFileToStorage = async (file: File) => {
     const up: any = await api('POST', '/files/upload', {
       project_id: null,
       client_id: null,
@@ -623,15 +687,27 @@ function CreateReportModal({
       content_type: file.type || 'application/octet-stream',
     });
 
-    setAttachments((prev) => [
-      ...prev,
-      {
-        file_id: conf.id,
-        file_name: file.name,
-        file_size: file.size,
-        file_type: file.type || 'application/octet-stream',
-      },
-    ]);
+    return {
+      file_id: conf.id,
+      file_name: file.name,
+      file_size: file.size,
+      file_type: file.type || 'application/octet-stream',
+    };
+  };
+
+  const handleRemovePendingAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleRemoveExistingAttachment = async (attachmentId: string) => {
+    if (!report) return;
+    try {
+      await api('DELETE', `${reportsPrefix}/${report.id}/attachments/${attachmentId}`);
+      setExistingAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+      toast.success('Attachment removed');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to remove attachment');
+    }
   };
 
   const handleFilesSelected = async (added: File[]) => {
@@ -639,7 +715,24 @@ function CreateReportModal({
     setUploading(true);
     try {
       for (const file of added) {
-        await uploadAttachmentFile(file);
+        const meta = await uploadFileToStorage(file);
+        if (report) {
+          const result = await api<{ id: string }>('POST', `${reportsPrefix}/${report.id}/attachments`, meta);
+          setExistingAttachments((prev) => [
+            ...prev,
+            {
+              id: result.id,
+              file_id: meta.file_id,
+              file_name: meta.file_name,
+              file_size: meta.file_size,
+              file_type: meta.file_type,
+              created_at: new Date().toISOString(),
+              created_by: { id: '', username: undefined },
+            },
+          ]);
+        } else {
+          setAttachments((prev) => [...prev, meta]);
+        }
       }
       toast.success(added.length === 1 ? 'File uploaded' : `${added.length} files uploaded`);
     } catch (e: any) {
@@ -739,45 +832,51 @@ function CreateReportModal({
       }
       quickInfo={employeeReportFormQuickInfo({ isWorker, editing: !!report })}
       footer={
-        <>
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
           <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
             Cancel
           </AppButton>
           <AppButton type="button" size="sm" loading={saving} onClick={handleSubmit}>
             {report ? 'Update report' : 'Create report'}
           </AppButton>
-        </>
+        </div>
       }
     >
-      <div className="space-y-4">
         <AppInput
-          label="Title"
+          label="Title *"
           required
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Short title for the report"
+          fieldHint="Title\n\nShort summary shown in the reports list and detail view."
         />
         <AppSelect
-          label="Report type"
+          label="Report type *"
           required
           value={reportType}
           options={REPORT_TYPE_OPTIONS}
           onChange={(e) => setReportType(e.target.value)}
+          fieldHint="Report type\n\nDetermines which extra fields appear (fine, suspension, behavior note, etc.)."
         />
 
         {reportType === 'Fine' && (
-          <ReportTypeFieldsSection title="Fine details">
+          <ReportTypeFieldsSection
+            title="Fine details"
+            fieldHint="Fine details\n\nOptional vehicle, ticket, amount, and due date for traffic or parking fines."
+          >
             <AppInput
               label="Vehicle"
               value={vehicle}
               onChange={(e) => setVehicle(e.target.value)}
               placeholder="Vehicle information"
+              fieldHint="Vehicle\n\nVehicle or plate related to the fine, if applicable."
             />
             <AppInput
               label="Ticket number"
               value={ticketNumber}
               onChange={(e) => setTicketNumber(e.target.value)}
               placeholder="Ticket number"
+              fieldHint="Ticket number\n\nCitation or ticket reference from the authority."
             />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <AppInput
@@ -788,35 +887,45 @@ function CreateReportModal({
                 value={fineAmount}
                 onChange={(e) => setFineAmount(e.target.value)}
                 placeholder="0.00"
+                fieldHint="Fine amount\n\nAmount in USD; optional but useful for HR tracking."
               />
               <AppDatePicker
                 label="Due date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
+                fieldHint="Due date\n\nWhen payment or response to the fine is due."
               />
             </div>
           </ReportTypeFieldsSection>
         )}
 
         {reportType === 'Suspension' && (
-          <ReportTypeFieldsSection title="Suspension period">
+          <ReportTypeFieldsSection
+            title="Suspension period"
+            fieldHint="Suspension period\n\nStart and end dates when the worker is suspended from site or duties."
+          >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <AppDatePicker
                 label="Start date"
                 value={suspensionStartDate}
                 onChange={(e) => setSuspensionStartDate(e.target.value)}
+                fieldHint="Start date\n\nFirst day of the suspension."
               />
               <AppDatePicker
                 label="End date"
                 value={suspensionEndDate}
                 onChange={(e) => setSuspensionEndDate(e.target.value)}
+                fieldHint="End date\n\nLast day of the suspension (leave blank if open-ended)."
               />
             </div>
           </ReportTypeFieldsSection>
         )}
 
         {reportType === 'Behavior Note' && (
-          <ReportTypeFieldsSection title="Behavior note type">
+          <ReportTypeFieldsSection
+            title="Behavior note type"
+            fieldHint="Behavior note type\n\nMark the note as positive recognition or a negative incident."
+          >
             <div className="grid grid-cols-2 gap-3">
               <AppButton
                 type="button"
@@ -846,12 +955,14 @@ function CreateReportModal({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Detailed description of the occurrence"
+          fieldHint="Description\n\nWhat happened, context, and any follow-up needed."
         />
         <AppDatePicker
-          label="Occurrence date"
+          label="Occurrence date *"
           required
           value={occurrenceDate}
           onChange={(e) => setOccurrenceDate(e.target.value)}
+          fieldHint="Occurrence date\n\nWhen the incident happened (not necessarily when this record was filed)."
         />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <AppSelect
@@ -859,12 +970,14 @@ function CreateReportModal({
             value={severity}
             options={REPORT_SEVERITY_OPTIONS}
             onChange={(e) => setSeverity(e.target.value)}
+            fieldHint="Severity\n\nLow, medium, or high — for prioritization and filtering."
           />
           <AppSelect
             label="Status"
             value={status}
             options={REPORT_STATUS_OPTIONS}
             onChange={(e) => setStatus(e.target.value)}
+            fieldHint="Status\n\nOpen, under review, or closed workflow state."
           />
         </div>
         <AppMultiSelect
@@ -875,39 +988,77 @@ function CreateReportModal({
           placeholder="Select projects or departments…"
           searchable
           emptyMessage={!projects ? 'Loading…' : 'No projects or departments available'}
+          fieldHint="Related project / department\n\nLink the report to one or more projects or departments when relevant."
         />
-        {!report && (
-          <>
-            <AppFileUpload
-              mode="multiple"
-              value={[]}
-              onChange={() => {}}
-              onFilesSelected={handleFilesSelected}
-              disabled={uploading}
-              label="Attachments"
-              helperText="Files upload when selected and attach when you save the report."
-            />
-            {attachments.length > 0 && (
-              <ul className="space-y-1">
-                {attachments.map((att, idx) => (
-                  <li key={idx} className="flex items-center gap-2 text-xs text-gray-600">
+        <AppFileUpload
+          mode="multiple"
+          value={[]}
+          onChange={() => {}}
+          onFilesSelected={handleFilesSelected}
+          disabled={uploading}
+          label="Attachments"
+          fieldHint={
+            report
+              ? 'Attachments\n\nFiles attach to this report as soon as they are selected.'
+              : 'Attachments\n\nFiles upload when selected and are saved when you create the report.'
+          }
+          helperText={
+            report
+              ? 'Uploads attach to this report immediately.'
+              : 'Files upload when selected and attach when you save the report.'
+          }
+        />
+        {report ? (
+          existingAttachments.length === 0 ? (
+            <p className={uiTypography.helper}>No attachments</p>
+          ) : (
+            <ul className="space-y-2">
+              {existingAttachments.map((att) => (
+                <li
+                  key={att.id}
+                  className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 p-2 text-xs text-gray-600"
+                >
+                  <a
+                    href={withFileAccessToken(`/files/${att.file_id}`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-w-0 items-center gap-2 text-brand-red hover:underline"
+                  >
                     <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                    <span className="min-w-0 truncate">{att.file_name}</span>
-                    <button
-                      type="button"
-                      className="text-red-600 hover:text-red-800"
-                      aria-label={`Remove ${att.file_name}`}
-                      onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
+                    <span className="truncate">{att.file_name || 'File'}</span>
+                  </a>
+                  <button
+                    type="button"
+                    className="shrink-0 text-red-600 hover:text-red-800"
+                    aria-label={`Remove ${att.file_name || 'file'}`}
+                    onClick={() => void handleRemoveExistingAttachment(att.id)}
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : attachments.length > 0 ? (
+          <ul className="space-y-1">
+            {attachments.map((att, idx) => (
+              <li key={idx} className="flex items-center gap-2 text-xs text-gray-600">
+                <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="min-w-0 truncate">{att.file_name}</span>
+                <button
+                  type="button"
+                  className="text-red-600 hover:text-red-800"
+                  aria-label={`Remove ${att.file_name}`}
+                  onClick={() => handleRemovePendingAttachment(idx)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className={uiTypography.helper}>No attachments yet</p>
         )}
-      </div>
     </AppFormModal>
   );
 }
@@ -919,7 +1070,6 @@ function ReportDetailView({
   variant,
   subjectId,
   reportId,
-  isEditing,
   canEdit,
   onClose,
   onEdit,
@@ -930,105 +1080,24 @@ function ReportDetailView({
   variant: 'user' | 'worker';
   subjectId: string;
   reportId: string;
-  isEditing: boolean;
   canEdit: boolean;
   onClose: () => void;
   onEdit?: (report: ReportDetail) => void;
 }) {
   const queryClient = useQueryClient();
   const isWorker = variant === 'worker';
-  const [editing, setEditing] = useState(isEditing);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editingReportData, setEditingReportData] = useState<ReportDetail | null>(null);
   const [newComment, setNewComment] = useState('');
-  const [uploading, setUploading] = useState(false);
-
-  // Edit form state
-  const [editTitle, setEditTitle] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editSeverity, setEditSeverity] = useState('');
-  const [editStatus, setEditStatus] = useState('');
-  const [editVehicle, setEditVehicle] = useState('');
-  const [editTicketNumber, setEditTicketNumber] = useState('');
-  const [editFineAmount, setEditFineAmount] = useState('');
-  const [editDueDate, setEditDueDate] = useState('');
-  const [editSelectedProjectsDepartments, setEditSelectedProjectsDepartments] = useState<string[]>([]);
-  const [editSuspensionStartDate, setEditSuspensionStartDate] = useState('');
-  const [editSuspensionEndDate, setEditSuspensionEndDate] = useState('');
-  const [editBehaviorNoteType, setEditBehaviorNoteType] = useState<'Positive' | 'Negative' | ''>('');
-
-  // Fetch projects for edit mode
-  const { data: editProjects } = useQuery<any[]>({
-    queryKey: ['projects-list-edit'],
-    queryFn: () => api<any[]>('GET', '/projects'),
-  });
-
-  // Fetch settings to get divisions (departments) for edit mode
-  const { data: editSettings } = useQuery<any>({
-    queryKey: ['settings-edit'],
-    queryFn: () => api<any>('GET', '/settings'),
-  });
-
-  const editProjectDeptOptions = useMemo(
-    () => buildProjectDepartmentOptions(editProjects, editSettings),
-    [editProjects, editSettings],
-  );
-
-  const editSelectedItemsDisplay = useMemo(
-    () =>
-      editSelectedProjectsDepartments
-        .map((id) => editProjectDeptOptions.find((o) => o.value === id)?.label)
-        .filter((label): label is string => Boolean(label)),
-    [editSelectedProjectsDepartments, editProjectDeptOptions],
-  );
 
   const { data: report, refetch: refetchReport } = useQuery<ReportDetail>({
     queryKey: ['report-detail', variant, subjectId, reportId],
     queryFn: () => api<ReportDetail>('GET', `${reportsPrefix}/${reportId}`),
   });
 
-  // Initialize edit form when report loads
-  useEffect(() => {
-    if (report && editProjects && editSettings) {
-      setEditTitle(report.title);
-      setEditDescription(report.description || '');
-      setEditSeverity(report.severity);
-      setEditStatus(report.status);
-      setEditVehicle(report.vehicle || '');
-      setEditTicketNumber(report.ticket_number || '');
-      setEditFineAmount(report.fine_amount?.toString() || '');
-      setEditDueDate(report.due_date ? report.due_date.split('T')[0] : '');
-      
-      // Match saved related_project_department with options
-      const matchedIds: string[] = [];
-      if (report.related_project_department) {
-        const savedNames = report.related_project_department.split(', ').map(s => s.trim());
-        
-        // Match projects
-        editProjects.forEach((project: any) => {
-          const name = project.name || project.code || 'Project';
-          const displayName = project.code ? `${project.code} - ${name}` : name;
-          if (savedNames.includes(displayName)) {
-            matchedIds.push(`project-${project.id}`);
-          }
-        });
-        
-        // Match departments
-        if (editSettings?.divisions) {
-          editSettings.divisions.forEach((division: any) => {
-            if (savedNames.includes(division.label)) {
-              matchedIds.push(`department-${division.id}`);
-            }
-          });
-        }
-      }
-      setEditSelectedProjectsDepartments(matchedIds);
-      
-      setEditSuspensionStartDate(report.suspension_start_date ? report.suspension_start_date.split('T')[0] : '');
-      setEditSuspensionEndDate(report.suspension_end_date ? report.suspension_end_date.split('T')[0] : '');
-      setEditBehaviorNoteType((report as any).behavior_note_type || '');
-    }
-  }, [report, editProjects, editSettings]);
+  const visibleComments = useMemo(() => {
+    if (!report) return [];
+    if (canEdit) return report.comments;
+    return report.comments.filter((c) => c.comment_type === 'comment');
+  }, [report, canEdit]);
 
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
@@ -1047,390 +1116,98 @@ function ReportDetailView({
     }
   };
 
-  const uploadDetailAttachment = async (file: File) => {
-    const up: any = await api('POST', '/files/upload', {
-      project_id: null,
-      client_id: null,
-      employee_id: fileUploadEmployeeId,
-      category_id: 'report-attachment',
-      original_name: file.name,
-      content_type: file.type || 'application/octet-stream',
-    });
-
-    const put = await fetch(up.upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
-      body: file,
-    });
-
-    if (!put.ok) throw new Error('Upload failed');
-
-    const conf: any = await api('POST', '/files/confirm', {
-      key: up.key,
-      size_bytes: file.size,
-      checksum_sha256: 'na',
-      content_type: file.type || 'application/octet-stream',
-    });
-
-    await api('POST', `${reportsPrefix}/${reportId}/attachments`, {
-      file_id: conf.id,
-      file_name: file.name,
-      file_size: file.size,
-      file_type: file.type || 'application/octet-stream',
-    });
-  };
-
-  const handleDetailFilesSelected = async (added: File[]) => {
-    if (!added.length) return;
-    setUploading(true);
-    try {
-      for (const file of added) {
-        await uploadDetailAttachment(file);
-      }
-      toast.success('File uploaded');
-      refetchReport();
-      queryClient.invalidateQueries({ queryKey: ['report-detail', variant, subjectId, reportId] });
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to upload file');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleDeleteAttachment = async (attachmentId: string) => {
-    try {
-      await api('DELETE', `${reportsPrefix}/${reportId}/attachments/${attachmentId}`);
-      toast.success('Attachment removed');
-      refetchReport();
-      queryClient.invalidateQueries({ queryKey: ['report-detail', variant, subjectId, reportId] });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Failed to remove attachment');
-    }
-  };
-
-  const handleSave = async () => {
-    try {
-      const payload: any = {
-        title: editTitle.trim(),
-        description: editDescription || undefined,
-        severity: editSeverity,
-        status: editStatus,
-      };
-
-      if (report?.report_type === 'Fine') {
-        payload.vehicle = editVehicle || undefined;
-        payload.ticket_number = editTicketNumber || undefined;
-        payload.fine_amount = editFineAmount ? parseFloat(editFineAmount) : undefined;
-        payload.due_date = editDueDate || undefined;
-      }
-
-      // Related Project/Department (for all types)
-      if (editSelectedProjectsDepartments.length > 0) {
-        payload.related_project_department = editSelectedItemsDisplay.join(', ');
-      } else {
-        payload.related_project_department = undefined;
-      }
-
-      if (report?.report_type === 'Suspension') {
-        payload.suspension_start_date = editSuspensionStartDate || undefined;
-        payload.suspension_end_date = editSuspensionEndDate || undefined;
-      }
-
-      if (report?.report_type === 'Behavior Note') {
-        payload.behavior_note_type = editBehaviorNoteType || undefined;
-      }
-
-      await api('PATCH', `${reportsPrefix}/${reportId}`, payload);
-      toast.success('Report updated');
-      setEditing(false);
-      refetchReport();
-      queryClient.invalidateQueries({ queryKey: [...reportsListQueryKey] });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Failed to update report');
-    }
-  };
-
-  const detailFooter = !report ? (
-    <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
-      Close
-    </AppButton>
-  ) : editing ? (
-    <>
-      <AppButton type="button" variant="secondary" size="sm" onClick={() => setEditing(false)}>
-        Cancel
-      </AppButton>
-      <AppButton type="button" size="sm" onClick={handleSave}>
-        Save changes
-      </AppButton>
-    </>
-  ) : (
-    <>
-      <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
-        Close
-      </AppButton>
-      {canEdit && !showEditModal && (
-        <AppButton
-          type="button"
-          size="sm"
-          onClick={() => {
-            setEditingReportData(report);
-            setShowEditModal(true);
-          }}
-        >
-          Edit
-        </AppButton>
-      )}
-    </>
-  );
+  const behaviorNoteType = report?.behavior_note_type;
 
   return (
-    <>
-      <AppFormModal
-        open
-        onClose={onClose}
-        layout="detail"
-        title="Report details"
-        description={report ? `${report.report_type}: ${report.title}` : 'Loading…'}
-        quickInfo={report ? employeeReportDetailQuickInfo({ isWorker, canEdit }) : undefined}
-        footer={detailFooter}
-      >
-        {!report ? (
-          <div className="flex items-center justify-center py-12 text-sm text-gray-500">Loading…</div>
-        ) : (
-          <div className="space-y-6">
-          {editing && (
-            <AppInput
-              label="Title"
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              placeholder="Report title"
-            />
-          )}
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              {editing ? (
-                <AppSelect
-                  label="Status"
-                  value={editStatus}
-                  options={REPORT_STATUS_OPTIONS}
-                  onChange={(e) => setEditStatus(e.target.value)}
-                />
-              ) : (
+    <AppFormModal
+      open
+      onClose={onClose}
+      layout="detail"
+      size="md"
+      title="Report details"
+      description={report ? `${report.report_type}: ${report.title}` : 'Loading…'}
+      quickInfo={report ? employeeReportDetailQuickInfo({ isWorker, canEdit }) : undefined}
+      bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
+            Close
+          </AppButton>
+          {canEdit && onEdit && report ? (
+            <AppButton type="button" size="sm" onClick={() => onEdit(report)}>
+              Edit
+            </AppButton>
+          ) : null}
+        </div>
+      }
+    >
+      {!report ? (
+        <div className="flex items-center justify-center py-12 text-sm text-gray-500">Loading…</div>
+      ) : (
+        <div className={uiSpacing.sectionStack}>
+          <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
+            <dl className="min-w-0">
+              <DetailField label="Status">
+                <AppBadge variant={reportStatusVariant(report.status)}>{report.status}</AppBadge>
+              </DetailField>
+              <DetailField label="Severity">
+                <AppBadge variant={reportSeverityVariant(report.severity)}>{report.severity}</AppBadge>
+              </DetailField>
+              <DetailField label="Occurrence date">{formatDate(report.occurrence_date)}</DetailField>
+              <DetailField label="Reported by">{report.reported_by?.username || '—'}</DetailField>
+              <DetailField label="Last updated">{formatDate(report.updated_at || report.created_at)}</DetailField>
+              <DetailField label="Description">
+                {report.description ? (
+                  <span className="whitespace-pre-wrap font-normal text-gray-700">{report.description}</span>
+                ) : (
+                  '—'
+                )}
+              </DetailField>
+              <DetailField label="Related project / department">
+                {report.related_project_department || '—'}
+              </DetailField>
+              {report.report_type === 'Fine' && (
                 <>
-                  <div className={uiCx(uiTypography.sectionSubtitle, 'mb-1.5 text-gray-600')}>Status</div>
-                  <AppBadge variant={reportStatusVariant(report.status)}>{report.status}</AppBadge>
+                  <DetailField label="Vehicle">{report.vehicle || '—'}</DetailField>
+                  <DetailField label="Ticket number">{report.ticket_number || '—'}</DetailField>
+                  <DetailField label="Fine amount">
+                    {report.fine_amount != null ? formatCurrency(report.fine_amount) : '—'}
+                  </DetailField>
+                  <DetailField label="Due date">{formatDate(report.due_date)}</DetailField>
                 </>
               )}
-            </div>
-            <div>
-              {editing ? (
-                <AppSelect
-                  label="Severity"
-                  value={editSeverity}
-                  options={REPORT_SEVERITY_OPTIONS}
-                  onChange={(e) => setEditSeverity(e.target.value)}
-                />
-              ) : (
+              {report.report_type === 'Suspension' && (
                 <>
-                  <div className={uiCx(uiTypography.sectionSubtitle, 'mb-1.5 text-gray-600')}>Severity</div>
-                  <AppBadge variant={reportSeverityVariant(report.severity)}>{report.severity}</AppBadge>
+                  <DetailField label="Suspension start">{formatDate(report.suspension_start_date)}</DetailField>
+                  <DetailField label="Suspension end">{formatDate(report.suspension_end_date)}</DetailField>
                 </>
               )}
-            </div>
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">Occurrence Date</div>
-              <div className="text-sm font-semibold text-gray-900">{formatDate(report.occurrence_date)}</div>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">Reported By</div>
-              <div className="text-sm font-semibold text-gray-900">{report.reported_by?.username || '—'}</div>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">Last Updated</div>
-              <div className="text-sm font-semibold text-gray-900">{formatDate(report.updated_at || report.created_at)}</div>
-            </div>
-          </div>
-
-          {editing ? (
-            <AppTextarea
-              label="Description"
-              rows={4}
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-            />
-          ) : (
-            <div>
-              <div className={uiCx(uiTypography.sectionSubtitle, 'mb-2 font-semibold text-gray-900')}>Description</div>
-              <div className="whitespace-pre-wrap text-xs text-gray-700">{report.description || '—'}</div>
-            </div>
-          )}
-
-          {report.report_type === 'Fine' && (
-            <ReportTypeFieldsSection title="Fine details">
-              {editing ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <AppInput
-                    label="Vehicle"
-                    value={editVehicle}
-                    onChange={(e) => setEditVehicle(e.target.value)}
-                  />
-                  <AppInput
-                    label="Ticket number"
-                    value={editTicketNumber}
-                    onChange={(e) => setEditTicketNumber(e.target.value)}
-                  />
-                  <AppInput
-                    label="Fine amount"
-                    type="number"
-                    step="0.01"
-                    value={editFineAmount}
-                    onChange={(e) => setEditFineAmount(e.target.value)}
-                  />
-                  <AppDatePicker
-                    label="Due date"
-                    value={editDueDate}
-                    onChange={(e) => setEditDueDate(e.target.value)}
-                  />
-                </div>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2 text-sm text-gray-900">
-                  <div>
-                    <div className="text-gray-600">Vehicle</div>
-                    <div>{report.vehicle || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Ticket number</div>
-                    <div>{report.ticket_number || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Fine amount</div>
-                    <div>{report.fine_amount ? formatCurrency(report.fine_amount) : '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Due date</div>
-                    <div>{formatDate(report.due_date)}</div>
-                  </div>
-                </div>
-              )}
-            </ReportTypeFieldsSection>
-          )}
-
-          {editing ? (
-            <AppMultiSelect
-              label="Related project / department"
-              value={editSelectedProjectsDepartments}
-              onChange={setEditSelectedProjectsDepartments}
-              options={editProjectDeptOptions}
-              placeholder="Select projects or departments…"
-              searchable
-              emptyMessage={!editProjects ? 'Loading…' : 'No projects or departments available'}
-            />
-          ) : (
-            <div>
-              <div className={uiCx(uiTypography.sectionSubtitle, 'mb-1 text-gray-600')}>Related project / department</div>
-              <div className="text-sm text-gray-900">{report.related_project_department || '—'}</div>
-            </div>
-          )}
-
-          {report.report_type === 'Suspension' && (
-            <ReportTypeFieldsSection title="Suspension period">
-              {editing ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <AppDatePicker
-                    label="Start date"
-                    value={editSuspensionStartDate}
-                    onChange={(e) => setEditSuspensionStartDate(e.target.value)}
-                  />
-                  <AppDatePicker
-                    label="End date"
-                    value={editSuspensionEndDate}
-                    onChange={(e) => setEditSuspensionEndDate(e.target.value)}
-                  />
-                </div>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2 text-sm text-gray-900">
-                  <div>
-                    <div className="text-gray-600">Start date</div>
-                    <div>{formatDate(report.suspension_start_date)}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">End date</div>
-                    <div>{formatDate(report.suspension_end_date)}</div>
-                  </div>
-                </div>
-              )}
-            </ReportTypeFieldsSection>
-          )}
-
-          {report.report_type === 'Behavior Note' && (
-            <ReportTypeFieldsSection title="Behavior note type">
-              {editing ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <AppButton
-                    type="button"
-                    variant={editBehaviorNoteType === 'Positive' ? 'primary' : 'secondary'}
-                    className="justify-center gap-2 py-3"
-                    onClick={() => setEditBehaviorNoteType('Positive')}
-                  >
-                    <span aria-hidden>😊</span>
-                    Positive
-                  </AppButton>
-                  <AppButton
-                    type="button"
-                    variant={editBehaviorNoteType === 'Negative' ? 'primary' : 'secondary'}
-                    className="justify-center gap-2 py-3"
-                    onClick={() => setEditBehaviorNoteType('Negative')}
-                  >
-                    <span aria-hidden>😞</span>
-                    Negative
-                  </AppButton>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  {(report as any).behavior_note_type === 'Positive' ? (
-                    <>
-                      <span className="text-3xl" aria-hidden>
-                        😊
-                      </span>
-                      <span className="font-medium text-green-700">Positive</span>
-                    </>
-                  ) : (report as any).behavior_note_type === 'Negative' ? (
-                    <>
-                      <span className="text-3xl" aria-hidden>
-                        😞
-                      </span>
-                      <span className="font-medium text-red-700">Negative</span>
-                    </>
+              {report.report_type === 'Behavior Note' && (
+                <DetailField label="Behavior note type">
+                  {behaviorNoteType === 'Positive' ? (
+                    <span className="inline-flex items-center gap-2 font-normal text-green-700">
+                      <span aria-hidden>😊</span>
+                      Positive
+                    </span>
+                  ) : behaviorNoteType === 'Negative' ? (
+                    <span className="inline-flex items-center gap-2 font-normal text-red-700">
+                      <span aria-hidden>😞</span>
+                      Negative
+                    </span>
                   ) : (
-                    <span className="text-gray-500">Not specified</span>
+                    '—'
                   )}
-                </div>
+                </DetailField>
               )}
-            </ReportTypeFieldsSection>
-          )}
+            </dl>
+          </AppCard>
 
-          <div>
-            <div className={uiCx(uiTypography.sectionSubtitle, 'mb-2 font-semibold text-gray-900')}>Attachments</div>
-            {canEdit && (
-              <AppFileUpload
-                mode="multiple"
-                value={[]}
-                onChange={() => {}}
-                onFilesSelected={handleDetailFilesSelected}
-                disabled={uploading}
-                label="Add file"
-                helperText="Uploads attach to this report immediately."
-              />
-            )}
-            {report.attachments.length === 0 ? (
-              <div className="mt-2 text-sm text-gray-500">No attachments</div>
-            ) : (
-              <ul className="mt-2 space-y-2">
+          {report.attachments.length > 0 && (
+            <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
+              <h3 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Attachments</h3>
+              <ul className="space-y-2">
                 {report.attachments.map((att) => (
-                  <li
-                    key={att.id}
-                    className="flex items-center justify-between rounded-lg bg-gray-50 p-2"
-                  >
+                  <li key={att.id} className="rounded-lg bg-gray-50 p-2">
                     <a
                       href={withFileAccessToken(`/files/${att.file_id}`)}
                       target="_blank"
@@ -1440,94 +1217,58 @@ function ReportDetailView({
                       <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden />
                       <span className="truncate">{att.file_name || 'File'}</span>
                     </a>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteAttachment(att.id)}
-                        className="text-xs font-medium text-red-600 hover:text-red-800"
-                      >
-                        Remove
-                      </button>
-                    )}
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
+            </AppCard>
+          )}
 
-          {/* Timeline/Comments */}
-          <div>
-            <div className="text-sm font-medium mb-2">
-              {canEdit ? 'History / Activities' : 'Comments'}
-            </div>
-            <div className="space-y-3 max-h-64 overflow-y-auto">
-              {canEdit ? (
-                // Show all comments (system, status changes, and user comments) when canEdit is true
-                report.comments.map((comment) => (
-                  <div key={comment.id} className="p-3 bg-gray-50 rounded border-l-4 border-gray-300">
-                    <div className="text-xs text-gray-500 mb-1">
+          <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
+            <h3 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>
+              {canEdit ? 'History / activities' : 'Comments'}
+            </h3>
+            <div className="max-h-64 space-y-3 overflow-y-auto">
+              {visibleComments.length === 0 ? (
+                <p className={uiTypography.helper}>No activity yet.</p>
+              ) : (
+                visibleComments.map((comment) => (
+                  <div key={comment.id} className="rounded-lg border-l-4 border-gray-300 bg-gray-50 p-3">
+                    <div className="mb-1 text-xs text-gray-500">
                       {formatDate(comment.created_at)} by {comment.created_by?.username || 'System'}
                       {comment.comment_type !== 'comment' && (
-                        <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
-                          {comment.comment_type === 'status_change' ? 'Status Change' : 'System'}
+                        <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
+                          {comment.comment_type === 'status_change' ? 'Status change' : 'System'}
                         </span>
                       )}
                     </div>
                     <div className="text-sm text-gray-700">{comment.comment_text}</div>
                   </div>
                 ))
-              ) : (
-                // Show only user comments (type 'comment') when canEdit is false (My Information view)
-                report.comments
-                  .filter((comment) => comment.comment_type === 'comment')
-                  .map((comment) => (
-                    <div key={comment.id} className="p-3 bg-gray-50 rounded border-l-4 border-gray-300">
-                      <div className="text-xs text-gray-500 mb-1">
-                        {formatDate(comment.created_at)} by {comment.created_by?.username || 'System'}
-                      </div>
-                      <div className="text-sm text-gray-700">{comment.comment_text}</div>
-                    </div>
-                  ))
               )}
             </div>
-            <div className="mt-4 flex flex-wrap items-end gap-2">
-              <AppInput
-                className="min-w-0 flex-1"
-                placeholder="Add a comment…"
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddComment();
-                  }
-                }}
-              />
-              <AppButton type="button" size="sm" onClick={handleAddComment}>
-                Add
-              </AppButton>
-            </div>
-          </div>
-          </div>
-        )}
-      </AppFormModal>
-
-      {showEditModal && editingReportData && (
-        <CreateReportModal
-          reportsPrefix={reportsPrefix}
-          reportsListQueryKey={reportsListQueryKey}
-          fileUploadEmployeeId={fileUploadEmployeeId}
-          isWorker={isWorker}
-          report={editingReportData}
-          onClose={() => {
-            setShowEditModal(false);
-            setEditingReportData(null);
-            refetchReport();
-            queryClient.invalidateQueries({ queryKey: [...reportsListQueryKey] });
-          }}
-        />
+            {canEdit && (
+              <div className={uiCx(uiLayout.actionsRow, 'mt-4 flex-wrap items-end')}>
+                <AppInput
+                  className="min-w-0 flex-1"
+                  placeholder="Add a comment…"
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleAddComment();
+                    }
+                  }}
+                />
+                <AppButton type="button" size="sm" onClick={() => void handleAddComment()}>
+                  Add
+                </AppButton>
+              </div>
+            )}
+          </AppCard>
+        </div>
       )}
-    </>
+    </AppFormModal>
   );
 }
 

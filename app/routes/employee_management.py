@@ -3099,6 +3099,25 @@ def update_report(
     return {"status": "ok"}
 
 
+@router.delete("/{user_id}/reports/{report_id}")
+def delete_report(
+    user_id: str,
+    report_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write")),
+):
+    """Delete a report and its attachments/comments (cascade)."""
+    report = db.query(EmployeeReport).filter(
+        EmployeeReport.id == report_id,
+        EmployeeReport.user_id == user_id,
+    ).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    db.delete(report)
+    db.commit()
+    return {"status": "ok"}
+
+
 @router.post("/{user_id}/reports/{report_id}/comments")
 def add_report_comment(
     user_id: str,

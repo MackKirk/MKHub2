@@ -2700,6 +2700,22 @@ def update_subcontractor_worker_report(
     return {"status": "ok"}
 
 
+@router.delete("/workers/{worker_id}/reports/{report_id}")
+def delete_subcontractor_worker_report(
+    worker_id: uuid.UUID,
+    report_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(current_user)
+    if not _worker_reports_can_edit(current_user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    report = _subcontractor_worker_report_for_worker_or_404(db, worker_id, report_id)
+    db.delete(report)
+    db.commit()
+    return {"status": "ok"}
+
+
 @router.post("/workers/{worker_id}/reports/{report_id}/comments")
 def add_subcontractor_worker_report_comment(
     worker_id: uuid.UUID,

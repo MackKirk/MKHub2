@@ -236,8 +236,9 @@ export function employeeReportFormQuickInfo(opts: { isWorker: boolean; editing: 
     ),
     behavior: (
       <>
-        Attachments upload when you pick files (create only) and are saved with the new report. After creation, open the
-        report from the list to add more files or comments.
+        {editing
+          ? 'Attachments upload when you pick files and attach to the report immediately. You can remove files before saving other changes.'
+          : 'Attachments upload when you pick files and are saved with the new report when you create it.'}
       </>
     ),
     actions: (
@@ -257,14 +258,14 @@ export function employeeReportDetailQuickInfo(opts: { isWorker: boolean; canEdit
     purpose: <>Review one report filed for this {subject} — status, description, type-specific data, files, and comments.</>,
     howToUse: (
       <>
-        Open a row with {uiLabel('View')}. Use {uiLabel('Edit')} (when allowed) for full changes in the edit window, or{' '}
-        {uiLabel('Save changes')} after quick edits on this screen.
+        Click a row to open this view. Use {uiLabel('Edit')} (when allowed) to change fields or add attachments in the edit
+        window.
       </>
     ),
     behavior: (
       <>
-        Comments and attachments can be added here when you have permission. Closed reports still appear in history and
-        filters.
+        Attachments are view-only here — open files if present. Add comments below when you have permission. Closed
+        reports still appear in history and filters.
       </>
     ),
     actions: (

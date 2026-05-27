@@ -116,8 +116,10 @@ export function AppDatePicker({
   const viewYear = viewMonth.getFullYear();
   const activeMonthIndex = viewMonth.getMonth();
   useEffect(() => {
-    if (parsed) setViewMonth(startOfMonth(parsed));
-  }, [parsed]);
+    if (!value) return;
+    const next = parseIsoDate(value);
+    if (next) setViewMonth(startOfMonth(next));
+  }, [value]);
 
   useEffect(() => {
     if (!open) setPanelView('days');
