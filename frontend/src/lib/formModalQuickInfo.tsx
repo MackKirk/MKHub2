@@ -299,3 +299,132 @@ export const scWorkerAttendanceDetailQuickInfo = formModalQuickInfo({
     </>
   ),
 });
+
+/** Inventory — supplier read-only detail (Suppliers page). */
+export function supplierDetailQuickInfo(canEdit: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        Review a vendor&apos;s company profile, contact people, and products stored in your inventory catalog.
+      </>
+    ),
+    howToUse: (
+      <>
+        Switch between {uiLabel('Overview')}, {uiLabel('Contacts')}, and {uiLabel('Products')}. On{' '}
+        {uiLabel('Contacts')}, click a row to edit or use {uiLabel('New Contact')}. Click the logo to change the supplier
+        photo when you can edit.
+      </>
+    ),
+    behavior: (
+      <>
+        Products open in a separate detail window. Contact rows show email and phone as quick links.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Close')} returns to the supplier list.
+        {canEdit ? (
+          <>
+            {' '}
+            {uiLabel('Edit')} opens the edit form. {uiLabel('Delete')} removes this supplier after you confirm.
+          </>
+        ) : null}
+      </>
+    ),
+  });
+}
+
+/** Inventory — create or edit supplier form. */
+export function supplierFormQuickInfo(editing: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        {editing
+          ? 'Update a vendor’s legal and contact details used across inventory and estimates.'
+          : 'Register a new vendor in two steps: company details, then address.'}
+      </>
+    ),
+    howToUse: (
+      <>
+        Step 1: enter {uiLabel('Name')} (required), then optional legal name, email, phone, and website. Step 2: address
+        lines; city and province fill in when you pick an address from search.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Cancel')} closes without saving. {uiLabel('Next')} and {uiLabel('Back')} move between steps when
+        creating. {uiLabel(editing ? 'Update' : 'Create')} saves the supplier.
+      </>
+    ),
+  });
+}
+
+/** Inventory — product read-only detail from a supplier. */
+export function productDetailQuickInfo(canEdit: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: <>Inspect one catalog product — pricing, units, usage in estimates, and related items.</>,
+    howToUse: (
+      <>
+        Use {uiLabel('Details')}, {uiLabel('Usage')}, and {uiLabel('Related')} to switch sections. Open linked estimates
+        or projects from the usage list when available.
+      </>
+    ),
+    behavior: (
+      <>
+        Related products are bidirectional links for substitutes or companions. Usage lists estimates that reference
+        this SKU.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Close')} returns to the supplier.
+        {canEdit ? (
+          <>
+            {' '}
+            {uiLabel('Edit')} opens the edit form.
+          </>
+        ) : null}
+      </>
+    ),
+  });
+}
+
+/** Inventory — new product on a supplier. */
+export const inventoryNewProductQuickInfo = formModalQuickInfo({
+  purpose: <>Add a product row to this supplier’s catalog for estimates and inventory.</>,
+  howToUse: (
+    <>
+      Enter {uiLabel('Name')} and {uiLabel('Price ($)')}, then unit type and optional category, coverage, image, or
+      technical manual URL.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Create')} adds the product to this supplier.
+    </>
+  ),
+});
+
+/** Inventory — supplier contact create/edit. */
+export function inventoryContactFormQuickInfo(editing: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        {editing
+          ? 'Update a person at this supplier — role, email, phone, and notes.'
+          : 'Add a contact person for this supplier.'}
+      </>
+    ),
+    howToUse: (
+      <>
+        {uiLabel('Name')} is required. Fill email, phone, title, and notes as needed. When editing, use{' '}
+        {uiLabel('Contact photo')} to update the profile image.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Cancel')} closes without saving. {uiLabel(editing ? 'Update' : 'Create')} saves the contact.
+      </>
+    ),
+  });
+}

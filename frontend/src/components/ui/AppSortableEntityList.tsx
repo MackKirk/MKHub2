@@ -17,6 +17,10 @@ export const APP_SORTABLE_LIST_PRESETS = {
     gridCols: 'grid-cols-[40fr_10fr_25fr_10fr_15fr]',
     minWidth: 'min-w-[640px]',
   },
+  suppliers: {
+    gridCols: 'grid-cols-[60fr_20fr_20fr]',
+    minWidth: 'min-w-[640px]',
+  },
   subcontractorWorkers: {
     gridCols: 'grid-cols-[10fr_5fr_6fr_4fr_4fr_4fr]',
     minWidth: 'min-w-[720px]',

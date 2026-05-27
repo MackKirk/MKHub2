@@ -5,13 +5,36 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import { useNavigate } from 'react-router-dom';
+import { ExternalLink, Package, Search, SlidersHorizontal } from 'lucide-react';
 import SupplierSelect from '@/components/SupplierSelect';
 import NewSupplierModal from '@/components/NewSupplierModal';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import LoadingOverlay from '@/components/LoadingOverlay';
-import OverlayPortal from '@/components/OverlayPortal';
+import { inventoryNewProductQuickInfo, productDetailQuickInfo } from '@/lib/formModalQuickInfo';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppControlLabelRow,
+  AppEmptyState,
+  AppFieldHint,
+  AppFormModal,
+  AppInput,
+  AppListCreateItem,
+  AppPageHeader,
+  AppTabs,
+  AppTextarea,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiModalLayer,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
@@ -409,19 +432,6 @@ export default function InventoryProducts(){
   const { data: relCounts } = useQuery({ queryKey:['related-counts', productIds], queryFn: async()=> productIds? await api<Record<string, number>>('GET', `/estimate/related/count?ids=${productIds}`) : {}, enabled: !!productIds });
   useEffect(()=> { if(relCounts) setRelatedCounts(relCounts); }, [relCounts]);
 
-  // ESC key handler for modals
-  useEffect(() => {
-    if (!open && !addRelatedOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (addRelatedOpen) setAddRelatedOpen(false);
-        else if (open) resetModal();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, addRelatedOpen]);
-
   const onCoverageChange = (which: 'sqs'|'ft2'|'m2', val: string)=>{
     if(!val){ setCovSqs(''); setCovFt2(''); setCovM2(''); return; }
     const num = Number(val);
@@ -645,71 +655,171 @@ export default function InventoryProducts(){
     }
   }, [isInitialLoading, hasAnimated]);
 
+  const productTabItems = useMemo(() => {
+    const items = [
+      { key: 'details', label: 'Details' },
+      { key: 'usage', label: productUsage.length > 0 ? `Usage (${productUsage.length})` : 'Usage' },
+    ];
+    if (canEditProducts && viewing) {
+      const count = relatedCounts[viewing.id];
+      items.push({ key: 'related', label: count ? `Related (${count})` : 'Related' });
+    }
+    return items;
+  }, [canEditProducts, viewing, productUsage.length, relatedCounts]);
+
+  const listCardAnimClass = animationComplete
+    ? undefined
+    : uiCx(
+        'transition-[opacity,transform] duration-[400ms] ease-out',
+        hasAnimated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-2 scale-[0.98]',
+      );
+
+  const closeProductModal = () => resetModal();
+
+  const handleProductModalClose = () => {
+    if (editing) {
+      setViewing(editing);
+      setEditing(null);
+      setName('');
+      setNameError(false);
+      setNewSupplier('');
+      setSupplierError(false);
+      setNewCategory('');
+      setUnit('');
+      setPrice('');
+      setPriceDisplay('');
+      setPriceFocused(false);
+      setPriceError(false);
+      setDesc('');
+      setUnitsPerPackage('');
+      setCovSqs('');
+      setCovFt2('');
+      setCovM2('');
+      setUnitType('unitary');
+      setImageDataUrl('');
+      setTechnicalManualUrl('');
+    } else {
+      closeProductModal();
+    }
+  };
+
+  const handleSaveProduct = async () => {
+    if (isSavingProduct) return;
+
+    if (!name.trim()) {
+      setNameError(true);
+      toast.error('Name is required');
+      return;
+    }
+
+    if (!newSupplier.trim()) {
+      setSupplierError(true);
+      toast.error('Supplier is required');
+      return;
+    }
+
+    const priceValue = parseCurrency(price);
+    if (!priceValue || !priceValue.trim() || Number(priceValue) <= 0) {
+      setPriceError(true);
+      toast.error('Price is required');
+      return;
+    }
+
+    try {
+      setIsSavingProduct(true);
+      const payload = {
+        name: name.trim(),
+        supplier_name: newSupplier.trim(),
+        category: newCategory || null,
+        unit: unit || null,
+        price: Number(parseCurrency(price)),
+        description: desc || null,
+        unit_type: unitType,
+        units_per_package:
+          unitType === 'multiple' ? (unitsPerPackage ? Number(unitsPerPackage) : null) : null,
+        coverage_sqs: unitType === 'coverage' ? (covSqs ? Number(covSqs) : null) : null,
+        coverage_ft2: unitType === 'coverage' ? (covFt2 ? Number(covFt2) : null) : null,
+        coverage_m2: unitType === 'coverage' ? (covM2 ? Number(covM2) : null) : null,
+        image_base64: imageDataUrl || null,
+        technical_manual_url: technicalManualUrl || null,
+      };
+      if (editing) {
+        await api('PUT', `/estimate/products/${editing.id}`, payload);
+        toast.success('Updated');
+      } else {
+        await api('POST', '/estimate/products', payload);
+        toast.success('Created');
+      }
+      resetModal();
+      await refetch();
+    } catch (_e) {
+      toast.error('Failed');
+    } finally {
+      setIsSavingProduct(false);
+    }
+  };
+
   // Don't render if still loading or user doesn't have permission
   if (meLoading || !canViewProducts) {
     return null;
   }
 
-  return (
-    <div className="space-y-4 min-w-0 overflow-x-hidden">
-      {/* Title Bar - same layout and font sizes as Schedule / TaskRequests */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Products</div>
-              <div className="text-xs text-gray-500 mt-0.5">Catalog of materials and pricing</div>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-          </div>
-        </div>
-      </div>
+  const showEmptyList = !isLoading && rows.length === 0;
 
-      {/* Filter Bar */}
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <div className="relative">
-                <input 
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-xs bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all" 
-                  placeholder="Search by product name, supplier, or category..." 
-                  value={q} 
-                  onChange={e=>setQ(e.target.value)} 
-                />
-                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-            </div>
-            <button 
-              onClick={()=>setIsFilterModalOpen(true)}
-              className="px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap"
-            >
-              + Filters
-            </button>
-            {hasActiveFilters && (
-              <button 
-                onClick={()=>{
-                  setQ('');
-                  setSearchParams(new URLSearchParams());
-                  refetch();
-                }} 
-                className="px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap"
-              >
-                Clear Filters
-              </button>
-            )}
+  return (
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
+        title="Products"
+        subtitle="Catalog of materials and pricing"
+        icon={<Package className="h-4 w-4" />}
+        actions={
+          <div className="text-right">
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
+        }
+      />
+
+      <AppCard bodyClassName={uiSpacing.cardPadding}>
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+          <div className="min-w-0 flex-1">
+            <AppInput
+              placeholder="Search by product name, supplier, or category..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              leftIcon={<Search className="h-4 w-4" />}
+              aria-label="Search products"
+            />
+          </div>
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<SlidersHorizontal className="h-4 w-4" />}
+            onClick={() => setIsFilterModalOpen(true)}
+          >
+            Filters
+          </AppButton>
+          {hasActiveFilters && (
+            <AppButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setQ('');
+                setSearchParams(new URLSearchParams());
+                refetch();
+              }}
+            >
+              Clear Filters
+            </AppButton>
+          )}
         </div>
-      </div>
+      </AppCard>
 
       {/* Filter Chips */}
       {hasActiveFilters && (
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
           {currentRules.map((rule) => (
             <FilterChip
               key={rule.id}
@@ -729,719 +839,676 @@ export default function InventoryProducts(){
       )}
 
       <LoadingOverlay isLoading={isInitialLoading} text="Loading products...">
-      <div className="rounded-b-xl border border-t-0 border-gray-200 bg-white p-4 min-w-0 overflow-hidden">
-        {isLoading ? (
-          <div className="p-8 text-center text-xs text-gray-500">Loading products...</div>
-        ) : !rows.length ? (
-          <div className="p-8 text-center">
-            <div className="text-xs text-gray-500">No products found</div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
-            {canEditProducts && (
-              <button
-                onClick={() => { resetModal(); setOpen(true); }}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]"
-              >
-                <div className="text-4xl text-gray-400 mb-2">+</div>
-                <div className="font-medium text-xs text-gray-700">New Product</div>
-                <div className="text-xs text-gray-500 mt-1">Add new product to inventory</div>
-              </button>
-            )}
-            {rows.map(p => (
-              <button
-                key={p.id}
-                onClick={() => openViewModal(p)}
-                className="border border-gray-200 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50/50 transition-all bg-white flex flex-col text-left"
-              >
-                <div className="w-full h-24 mb-2 relative">
-                  {p.image_base64 ? (
-                    <img 
-                      src={p.image_base64.startsWith('data:') ? p.image_base64 : `data:image/jpeg;base64,${p.image_base64}`}
-                      alt={p.name}
-                      className="w-full h-full object-contain rounded"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                        const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
-                        if (placeholder) placeholder.style.display = 'flex';
-                      }}
-                    />
-                  ) : null}
-                  <img 
-                    src="/ui/assets/image placeholders/no_image.png" 
-                    alt="No image"
-                    className={`w-full h-full object-contain rounded ${p.image_base64 ? 'hidden' : ''}`}
-                    style={{ display: p.image_base64 ? 'none' : 'block' }}
-                  />
-                </div>
-                <div className="font-medium text-sm mb-1 line-clamp-2">{p.name}</div>
-                {p.supplier_name && (
-                  <div className="text-xs text-gray-500 mb-1">Supplier: {p.supplier_name}</div>
-                )}
-                {p.category && (
-                  <div className="text-xs text-gray-500 mb-1">Category: {p.category}</div>
-                )}
-                <div className="text-xs text-red-600 font-semibold mt-auto">
-                  {typeof p.price === 'number' ? `$${Number(p.price || 0).toFixed(2)}` : '—'}
-                </div>
-                {p.unit && (
-                  <div className="text-xs text-gray-500">Unit: {p.unit}</div>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      </LoadingOverlay>
-
-      {open && (
-        <div className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 ${viewing && !editing ? 'bg-black/50' : 'bg-black/50'}`}>
-          {viewing && !editing ? (
-            // View mode - same as Suppliers product modal (gray container, white bar, tabs, white content card, footer)
-            <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
-                <>
-                {/* Title bar - same style as New Product / Contact (Suppliers) */}
-                <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={resetModal}
-                        className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                        title="Close"
-                      >
-                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                        </svg>
-                      </button>
-                      <div className="w-14 h-14 rounded-xl border border-gray-200 overflow-hidden bg-white flex-shrink-0">
-                        <img
-                          src={viewing.image_base64 || '/ui/assets/placeholders/product.png'}
-                          className="w-full h-full object-cover"
-                          alt={viewing.name}
-                        />
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold text-gray-900">{viewing.name}</div>
-                        <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-3">
-                          {viewing.supplier_name && <span>{viewing.supplier_name}</span>}
-                          {viewing.category && <span>{viewing.category}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Tabs - same as Suppliers */}
-                <div className="flex-shrink-0 px-4 border-b border-gray-200 bg-white">
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => setProductTab('details')}
-                      className={`px-4 py-2 font-medium text-sm transition-colors ${
-                        productTab === 'details'
-                          ? 'text-brand-red border-b-2 border-brand-red'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      Details
-                    </button>
-                    <button
-                      onClick={() => setProductTab('usage')}
-                      className={`px-4 py-2 font-medium text-sm transition-colors ${
-                        productTab === 'usage'
-                          ? 'text-brand-red border-b-2 border-brand-red'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      Usage {productUsage.length > 0 && `(${productUsage.length})`}
-                    </button>
-                    {canEditProducts && viewing && (
-                      <button
-                        onClick={() => {
-                          setProductTab('related');
-                          if (viewing.id && relatedList.length === 0) {
-                            handleViewRelated(viewing.id);
-                          }
-                        }}
-                        className={`px-4 py-2 font-medium text-sm transition-colors ${
-                          productTab === 'related'
-                            ? 'text-brand-red border-b-2 border-brand-red'
-                            : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                      >
-                        Related {relatedCounts[viewing.id] ? `(${relatedCounts[viewing.id]})` : ''}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Product Details, Usage, or Related - same structure as Suppliers */}
-                <div className="overflow-y-auto flex-1 p-4">
-                  {productTab === 'details' ? (
-                    <div className="rounded-xl border bg-white p-4 space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        {viewing.unit && (
-                          <div className="bg-white border rounded-lg p-4">
-                            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Sell Unit</div>
-                            <div className="text-sm text-gray-900">{viewing.unit}</div>
-                          </div>
-                        )}
-                        {viewing.unit_type && (
-                          <div className="bg-white border rounded-lg p-4">
-                            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Unit Type</div>
-                            <div className="text-sm text-gray-900">{viewing.unit_type}</div>
-                          </div>
-                        )}
-                      </div>
-                      {typeof viewing.price === 'number' && (
-                        <div className="bg-white border rounded-lg p-4">
-                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Price</div>
-                          <div className="text-sm text-gray-900 font-semibold">${viewing.price.toFixed(2)}</div>
-                        </div>
-                      )}
-                      {viewing.units_per_package && (
-                        <div className="bg-white border rounded-lg p-4">
-                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Units per Package</div>
-                          <div className="text-sm text-gray-900">{viewing.units_per_package}</div>
-                        </div>
-                      )}
-                      {(viewing.coverage_sqs || viewing.coverage_ft2 || viewing.coverage_m2) && (
-                        <div className="bg-white border rounded-lg p-4">
-                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Coverage Area</div>
-                          <div className="grid grid-cols-3 gap-2 text-sm text-gray-700">
-                            <div>SQS: {viewing.coverage_sqs||'-'}</div>
-                            <div>ft²: {viewing.coverage_ft2||'-'}</div>
-                            <div>m²: {viewing.coverage_m2||'-'}</div>
-                          </div>
-                        </div>
-                      )}
-                      {viewing.description && (
-                        <div className="bg-white border rounded-lg p-4">
-                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Description</div>
-                          <div className="text-sm text-gray-700 whitespace-pre-wrap">{viewing.description}</div>
-                        </div>
-                      )}
-                      {viewing.technical_manual_url && (() => {
-                        const url = viewing.technical_manual_url.trim();
-                        const absoluteUrl = url.match(/^https?:\/\//i) ? url : `https://${url}`;
-                        return (
-                          <div className="bg-white border rounded-lg p-4">
-                            <div className="flex items-center justify-between">
-                              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Technical Manual</div>
-                              <a
-                                href={absoluteUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => {
-                                  if (!absoluteUrl || absoluteUrl === 'https://') e.preventDefault();
-                                }}
-                                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors flex items-center gap-2"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                </svg>
-                                View Manual
-                              </a>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  ) : productTab === 'usage' ? (
-                    <div className="rounded-xl border bg-white p-4">
-                      {loadingUsage ? (
-                        <div className="py-8 text-center text-sm text-gray-500">Loading usage data...</div>
-                      ) : productUsage.length === 0 ? (
-                        <div className="py-8 text-center text-sm text-gray-500">
-                          <div className="text-base mb-2">📦</div>
-                          <div>This product is not being used in any estimates.</div>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div className="text-xs text-gray-600 mb-4">
-                            This product is being used in {productUsage.length} estimate{productUsage.length !== 1 ? 's' : ''}:
-                          </div>
-                          <div className="border rounded-lg divide-y">
-                            {productUsage.map((usage, idx) => (
-                              <div key={idx} className="p-3 hover:bg-gray-50">
-                                {usage.status === 'orphaned' ? (
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <div className="text-sm font-medium text-gray-900">Orphaned Estimate</div>
-                                      <div className="text-xs text-gray-500">Estimate #{usage.estimate_id} (deleted)</div>
-                                    </div>
-                                    <span className="px-2 py-0.5 text-[10px] rounded bg-amber-100 text-amber-800">Orphaned</span>
-                                  </div>
-                                ) : usage.status === 'project_deleted' || usage.project_deleted ? (
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex-1">
-                                      <div className="text-sm font-medium text-gray-900">{usage.project_name || 'Project Deleted'}</div>
-                                      <div className="text-xs text-gray-500">Estimate #{usage.estimate_id} - Project was deleted</div>
-                                      {usage.created_at && (
-                                        <div className="text-[10px] text-gray-400 mt-1">
-                                          Created: {new Date(usage.created_at).toLocaleDateString()}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <span className="px-2 py-0.5 text-[10px] rounded bg-red-100 text-red-800">Project Deleted</span>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex-1">
-                                      {usage.project_name ? (
-                                        <>
-                                          <div className="text-sm font-medium text-gray-900">{usage.project_name}</div>
-                                          {usage.client_name && (
-                                            <div className="text-xs text-gray-500">Client: {usage.client_name}</div>
-                                          )}
-                                          {usage.created_at && (
-                                            <div className="text-[10px] text-gray-400 mt-1">
-                                              Created: {new Date(usage.created_at).toLocaleDateString()}
-                                            </div>
-                                          )}
-                                        </>
-                                      ) : (
-                                        <div className="text-xs text-gray-500">No project associated</div>
-                                      )}
-                                    </div>
-                                    {usage.project_id && !usage.project_deleted && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          navigate(`/projects/${usage.project_id}`);
-                                          resetModal();
-                                        }}
-                                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
-                                      >
-                                        View Project
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : productTab === 'related' && viewing ? (
-                    <div className="rounded-xl border bg-white p-4">
-                      {Array.isArray(relatedList) && relatedList.length ? (
-                        <div className="space-y-3">
-                          <div className="text-xs text-gray-600 mb-4">
-                            This product is related to {relatedList.length} product{relatedList.length !== 1 ? 's' : ''}:
-                          </div>
-                          <div className="border rounded-lg divide-y">
-                            {relatedList.map((r: any, i: number) => (
-                              <div key={i} className="p-3 hover:bg-gray-50 flex items-center gap-3">
-                                <img
-                                  src={r.image_base64 || '/ui/assets/placeholders/product.png'}
-                                  className="w-12 h-12 rounded-lg border object-cover flex-shrink-0"
-                                  alt={r.name}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-gray-900">{r.name}</div>
-                                  {r.supplier_name && (
-                                    <div className="text-xs text-gray-500">Supplier: {r.supplier_name}</div>
-                                  )}
-                                  {typeof r.price === 'number' && (
-                                    <div className="text-xs text-brand-red font-semibold mt-0.5">
-                                      ${r.price.toFixed(2)}
-                                    </div>
-                                  )}
-                                </div>
-                                {canEditProducts && (
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteRelation(viewing.id, r.id)}
-                                    className="px-2 py-1 rounded-lg text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 flex-shrink-0"
-                                  >
-                                    Remove
-                                  </button>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                          {canEditProducts && (
-                            <button
-                              type="button"
-                              onClick={() => handleAddRelated(viewing.id)}
-                              className="w-full mt-4 px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
-                            >
-                              + Add Related Product
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="py-8 text-center text-sm text-gray-500">
-                          <div className="text-base mb-2">🔗</div>
-                          <div>This product has no related products.</div>
-                          {canEditProducts && (
-                            <button
-                              type="button"
-                              onClick={() => handleAddRelated(viewing.id)}
-                              className="mt-4 px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
-                            >
-                              + Add Related Product
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-                {/* Footer - same as Suppliers (Edit only in view mode) */}
-                <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-                  {canEditProducts && (
-                    <button
-                      type="button"
-                      onClick={openEditModal}
-                      className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
-                    >
-                      Edit
-                    </button>
-                  )}
-                </div>
-                </>
+        <AppCard className={uiCx(uiShadows.card, listCardAnimClass)} bodyClassName={uiSpacing.cardPadding}>
+          {isLoading ? (
+            <div className={uiCx(uiTypography.helper, 'py-8 text-center')}>Loading products...</div>
+          ) : showEmptyList ? (
+            <div className={uiCx(uiSpacing.sectionStack, 'min-h-[12rem]')}>
+              {canEditProducts ? (
+                <AppListCreateItem
+                  label="New Product"
+                  layout="card"
+                  className="min-h-[200px] w-full flex-col items-center justify-center"
+                  onClick={() => {
+                    resetModal();
+                    setOpen(true);
+                  }}
+                />
+              ) : null}
+              <AppEmptyState
+                title="No products found"
+                className="border-0 bg-transparent p-0 shadow-none"
+              />
             </div>
           ) : (
-            <div className="w-[900px] max-w-[95vw] max-h-[90vh] rounded-xl overflow-hidden flex flex-col shadow-xl bg-gray-100 border border-gray-200">
-                {/* Edit/Create mode - form inputs */}
-                <>
-                  {/* Title bar - same style as suppliers New Product */}
-                  <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={resetModal}
-                          className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                          title="Close"
-                        >
-                          <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                          </svg>
-                        </button>
-                        <div>
-                          <div className="text-sm font-semibold text-gray-900">{editing ? 'Edit Product' : 'New Product'}</div>
-                          <div className="text-sm text-gray-500 mt-0.5">{editing ? 'Update product information' : 'Add a new product to your inventory'}</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="overflow-y-auto flex-1 p-4">
-                    <div className="rounded-xl border bg-white p-4">
-                      <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                  Name <span className="text-red-600">*</span>
-                </label>
-                <input 
-                  className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${nameError && !name.trim() ? 'border-red-500' : ''}`}
-                  value={name} 
-                  onChange={e=>{
-                    setName(e.target.value);
-                    if (nameError) setNameError(false);
-                  }} 
-                />
-                {nameError && !name.trim() && (
-                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                )}
-              </div>
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                  Supplier <span className="text-red-600">*</span>
-                </label>
-                <div className="mt-1 text-sm">
-                  <SupplierSelect
-                    value={newSupplier}
-                    onChange={(value) => {
-                      setNewSupplier(value);
-                      if (supplierError) setSupplierError(false);
-                    }}
-                    onOpenNewSupplierModal={() => setNewSupplierModalOpen(true)}
-                    error={supplierError && !newSupplier.trim()}
-                    placeholder="Select a supplier"
-                    className="[&_button]:text-sm"
-                  />
-                </div>
-                {supplierError && !newSupplier.trim() && (
-                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                )}
-              </div>
-              <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Category</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
-              <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Sell Unit</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                  Price ($) <span className="text-red-600">*</span>
-                </label>
-                <input 
-                  type="text" 
-                  className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) ? 'border-red-500' : ''}`}
-                  placeholder="$0.00"
-                  value={priceFocused ? priceDisplay : (price ? formatCurrency(price) : '')}
-                  onFocus={() => {
-                    setPriceFocused(true);
-                    setPriceDisplay(price || '');
-                  }}
-                  onBlur={() => {
-                    setPriceFocused(false);
-                    const parsed = parseCurrency(priceDisplay);
-                    setPrice(parsed);
-                    setPriceDisplay(parsed);
-                    if (priceError && parsed && Number(parsed) > 0) setPriceError(false);
-                  }}
-                  onChange={e => {
-                    const raw = e.target.value;
-                    setPriceDisplay(raw);
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7">
+              {canEditProducts && (
+                <AppListCreateItem
+                  label="New Product"
+                  layout="card"
+                  className="min-h-[200px] w-full flex-col items-center justify-center"
+                  onClick={() => {
+                    resetModal();
+                    setOpen(true);
                   }}
                 />
-                {priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) && (
-                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                )}
-              </div>
-              <div className="col-span-2">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit Type</label>
-                <div className="flex items-center gap-6 mt-1">
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type" checked={unitType==='unitary'} onChange={()=>{ setUnitType('unitary'); setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Unitary</label>
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type" checked={unitType==='multiple'} onChange={()=>{ setUnitType('multiple'); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Multiple</label>
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type" checked={unitType==='coverage'} onChange={()=>{ setUnitType('coverage'); setUnitsPerPackage(''); }} /> Coverage</label>
-                </div>
-              </div>
-              {unitType==='multiple' && (
-                <div className="col-span-2">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Units per Package</label>
-                  <input type="number" step="0.01" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={unitsPerPackage} onChange={e=>setUnitsPerPackage(e.target.value)} />
-                </div>
               )}
-              {unitType==='coverage' && (
-                <div className="col-span-2">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Coverage Area</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <div className="flex-1 flex items-center gap-1">
-                      <input 
-                        type="number"
-                        step="any"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                        placeholder="0" 
-                        value={covSqs} 
-                        onChange={e=> onCoverageChange('sqs', e.target.value)} 
-                      />
-                      <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
-                    </div>
-                    <span className="text-gray-400">=</span>
-                    <div className="flex-1 flex items-center gap-1">
-                      <input 
-                        type="number"
-                        step="any"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                        placeholder="0" 
-                        value={covFt2} 
-                        onChange={e=> onCoverageChange('ft2', e.target.value)} 
-                      />
-                      <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
-                    </div>
-                    <span className="text-gray-400">=</span>
-                    <div className="flex-1 flex items-center gap-1">
-                      <input 
-                        type="number"
-                        step="any"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                        placeholder="0" 
-                        value={covM2} 
-                        onChange={e=> onCoverageChange('m2', e.target.value)} 
-                      />
-                      <span className="text-sm text-gray-600 whitespace-nowrap">m²</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className="col-span-2"><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description / Notes</label><textarea className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
-              <div className="col-span-2">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Technical Manual URL</label>
-                <input 
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400" 
-                  type="url"
-                  placeholder="https://supplier.com/manual/product"
-                  value={technicalManualUrl} 
-                  onChange={e=>setTechnicalManualUrl(e.target.value)} 
-                />
-                <div className="text-[10px] text-gray-500 mt-1">Link to the technical manual on the supplier's website</div>
-              </div>
-              <div className="col-span-2">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Product Image</label>
-                <div className="mt-1 space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setImagePickerOpen(true)}
-                    className="px-3 py-2 rounded-lg text-sm bg-gray-100 hover:bg-gray-200">
-                    {imageDataUrl ? 'Change Image' : 'Select Image'}
-                  </button>
-                  {imageDataUrl && (
-                    <div className="mt-2">
-                      <img src={imageDataUrl} className="w-32 h-32 object-contain border border-gray-200 rounded-lg" alt="Preview" />
-                      <button
-                        type="button"
-                        onClick={() => setImageDataUrl('')}
-                        className="mt-2 px-2 py-1.5 text-sm font-medium rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors">
-                        Remove Image
-                      </button>
-                    </div>
+              {rows.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => openViewModal(p)}
+                  className={uiCx(
+                    uiBorders.subtle,
+                    uiRadius.control,
+                    'flex flex-col border bg-white p-3 text-left transition-all hover:border-brand-red hover:bg-gray-50/50',
                   )}
-                </div>
-              </div>
-                      </div>
-                    </div>
+                >
+                  <div className="relative mb-2 h-24 w-full">
+                    {p.image_base64 ? (
+                      <img
+                        src={
+                          p.image_base64.startsWith('data:')
+                            ? p.image_base64
+                            : `data:image/jpeg;base64,${p.image_base64}`
+                        }
+                        alt={p.name}
+                        className="h-full w-full rounded object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                          const placeholder = (e.target as HTMLImageElement)
+                            .nextElementSibling as HTMLElement;
+                          if (placeholder) placeholder.style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    <img
+                      src="/ui/assets/image placeholders/no_image.png"
+                      alt="No image"
+                      className={uiCx(
+                        'h-full w-full rounded object-contain',
+                        p.image_base64 ? 'hidden' : '',
+                      )}
+                      style={{ display: p.image_base64 ? 'none' : 'block' }}
+                    />
                   </div>
-                </>
-              <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-                {/* Edit/Create mode buttons */}
-                <>
-                  <button
-                    type="button"
-                    onClick={()=>{
-                    if(editing){
-                      setViewing(editing);
-                      setEditing(null);
-                      setName(''); setNameError(false); setNewSupplier(''); setSupplierError(false); setNewCategory(''); setUnit('');                       setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
-                      setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary'); setImageDataUrl('');
-                      setTechnicalManualUrl('');
-                    }else{
-                      resetModal();
-                    }
-                  }} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">Cancel</button>
-                  <button
-                    type="button"
-                    onClick={async()=>{
-                    if(isSavingProduct) return;
-                    
-                    // Validate name
-                    if(!name.trim()){
-                      setNameError(true);
-                      toast.error('Name is required');
-                      return;
-                    }
-
-                    // Validate supplier
-                    if(!newSupplier.trim()){
-                      setSupplierError(true);
-                      toast.error('Supplier is required');
-                      return;
-                    }
-                    
-                    // Validate price
-                    const priceValue = parseCurrency(price);
-                    if(!priceValue || !priceValue.trim() || Number(priceValue) <= 0){
-                      setPriceError(true);
-                      toast.error('Price is required');
-                      return;
-                    }
-                    
-                    try{
-                      setIsSavingProduct(true);
-                      const payload = {
-                        name: name.trim(),
-                        supplier_name: newSupplier.trim(),
-                        category: newCategory||null,
-                        unit: unit||null,
-                        price: Number(parseCurrency(price)),
-                        description: desc||null,
-                        unit_type: unitType,
-                        units_per_package: unitType==='multiple'? (unitsPerPackage? Number(unitsPerPackage): null) : null,
-                        coverage_sqs: unitType==='coverage'? (covSqs? Number(covSqs): null) : null,
-                        coverage_ft2: unitType==='coverage'? (covFt2? Number(covFt2): null) : null,
-                        coverage_m2: unitType==='coverage'? (covM2? Number(covM2): null) : null,
-                        image_base64: imageDataUrl || null,
-                        technical_manual_url: technicalManualUrl || null,
-                      };
-                      if(editing){ await api('PUT', `/estimate/products/${editing.id}`, payload); toast.success('Updated'); }
-                      else{ await api('POST','/estimate/products', payload); toast.success('Created'); }
-                      resetModal();
-                      await refetch();
-                    }catch(_e){ toast.error('Failed'); }
-                    finally{ setIsSavingProduct(false); }
-                  }} disabled={isSavingProduct} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">
-                    {isSavingProduct ? (editing ? 'Updating...' : 'Creating...') : (editing ? 'Update' : 'Create')}
-                  </button>
-                </>
-              </div>
+                  <div className={uiCx(uiTypography.sectionTitle, 'mb-1 line-clamp-2')}>{p.name}</div>
+                  {p.supplier_name && (
+                    <div className={uiCx(uiTypography.helper, 'mb-1')}>Supplier: {p.supplier_name}</div>
+                  )}
+                  {p.category && (
+                    <div className={uiCx(uiTypography.helper, 'mb-1')}>Category: {p.category}</div>
+                  )}
+                  <div className={uiCx(uiTypography.body, 'mt-auto font-semibold text-brand-red')}>
+                    {typeof p.price === 'number' ? `$${Number(p.price || 0).toFixed(2)}` : '—'}
+                  </div>
+                  {p.unit && <div className={uiTypography.helper}>Unit: {p.unit}</div>}
+                </button>
+              ))}
             </div>
           )}
-        </div>
-      )}
+        </AppCard>
+      </LoadingOverlay>
 
-
-      {addRelatedOpen && (
-        <OverlayPortal><div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center overflow-y-auto p-4">
-          <div className="w-[600px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
-            <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setAddRelatedOpen(false)}
-                    className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                    title="Close"
-                  >
-                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                  </button>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">Add Related Product</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Search and link a product to this one</div>
-                  </div>
+      <AppFormModal
+        open={open}
+        onClose={handleProductModalClose}
+        layout={viewing && !editing ? 'detail' : 'form'}
+        formWidth="wide"
+        title={
+          viewing && !editing
+            ? 'Product Information'
+            : editing
+              ? 'Edit Product'
+              : 'New Product'
+        }
+        description={
+          viewing && !editing
+            ? `${viewing.name} — pricing, usage, and related items`
+            : editing
+              ? 'Update product information'
+              : 'Add a new product to your inventory'
+        }
+        quickInfo={
+          viewing && !editing
+            ? productDetailQuickInfo(canEditProducts)
+            : !editing
+              ? inventoryNewProductQuickInfo
+              : undefined
+        }
+        bodyClassName={viewing && !editing ? uiCx(uiSpacing.cardPadding, 'min-w-0') : undefined}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            {viewing && !editing ? (
+              <>
+                <AppButton type="button" variant="secondary" size="sm" onClick={closeProductModal}>
+                  Close
+                </AppButton>
+                {canEditProducts ? (
+                  <AppButton type="button" size="sm" onClick={openEditModal}>
+                    Edit
+                  </AppButton>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <AppButton type="button" variant="secondary" size="sm" onClick={handleProductModalClose}>
+                  Cancel
+                </AppButton>
+                <AppButton
+                  type="button"
+                  size="sm"
+                  disabled={isSavingProduct}
+                  loading={isSavingProduct}
+                  onClick={handleSaveProduct}
+                >
+                  {isSavingProduct ? (editing ? 'Updating...' : 'Creating...') : editing ? 'Update' : 'Create'}
+                </AppButton>
+              </>
+            )}
+          </div>
+        }
+      >
+        {viewing && !editing ? (
+          <div className={uiSpacing.sectionStack}>
+            <div className={uiCx(uiLayout.actionsRow, 'items-start gap-4')}>
+              <img
+                src={viewing.image_base64 || '/ui/assets/placeholders/product.png'}
+                className={uiCx('h-16 w-16 shrink-0 object-cover border', uiRadius.control, uiBorders.subtle)}
+                alt={viewing.name}
+              />
+              <div className="min-w-0 flex-1">
+                <h2 className={uiTypography.sectionTitle}>{viewing.name}</h2>
+                <div className={uiCx(uiLayout.actionsRow, 'mt-1 flex-wrap gap-3', uiTypography.helper)}>
+                  {viewing.supplier_name && <span>{viewing.supplier_name}</span>}
+                  {viewing.category && <span>{viewing.category}</span>}
                 </div>
               </div>
             </div>
-            <div className="overflow-y-auto flex-1 p-4">
-              <div className="rounded-xl border bg-white p-4">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search products</label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4"
-                  placeholder="Search products..."
-                  value={addRelatedSearch}
-                  onChange={e => searchRelatedProducts(e.target.value)}
-                />
-                <div>
-                  {Array.isArray(addRelatedResults) && addRelatedResults.length > 0 ? (
-                    addRelatedResults.map(r => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => createRelation(addRelatedTarget!, r.id)}
-                        className="w-full text-left p-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 flex items-center justify-between text-sm"
-                      >
-                        <div>
-                          <div className="font-medium text-gray-900">{r.name}</div>
-                          {r.supplier_name && (
-                            <div className="text-xs text-gray-500">{r.supplier_name}</div>
+
+            <AppTabs
+              tabs={productTabItems}
+              value={productTab}
+              onChange={(key) => {
+                setProductTab(key as typeof productTab);
+                if (key === 'related' && viewing?.id && relatedList.length === 0) {
+                  handleViewRelated(viewing.id);
+                }
+              }}
+            />
+
+            {productTab === 'details' ? (
+              <div className={uiSpacing.sectionStack}>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {viewing.unit && (
+                    <AppCard bodyClassName={uiSpacing.cardPadding}>
+                      <div className={uiTypography.overline}>Sell Unit</div>
+                      <div className={uiTypography.body}>{viewing.unit}</div>
+                    </AppCard>
+                  )}
+                  {viewing.unit_type && (
+                    <AppCard bodyClassName={uiSpacing.cardPadding}>
+                      <div className={uiTypography.overline}>Unit Type</div>
+                      <div className={uiTypography.body}>{viewing.unit_type}</div>
+                    </AppCard>
+                  )}
+                </div>
+                {typeof viewing.price === 'number' && (
+                  <AppCard bodyClassName={uiSpacing.cardPadding}>
+                    <div className={uiTypography.overline}>Price</div>
+                    <div className={uiCx(uiTypography.body, 'font-semibold')}>${viewing.price.toFixed(2)}</div>
+                  </AppCard>
+                )}
+                {viewing.units_per_package && (
+                  <AppCard bodyClassName={uiSpacing.cardPadding}>
+                    <div className={uiTypography.overline}>Units per Package</div>
+                    <div className={uiTypography.body}>{viewing.units_per_package}</div>
+                  </AppCard>
+                )}
+                {(viewing.coverage_sqs || viewing.coverage_ft2 || viewing.coverage_m2) && (
+                  <AppCard bodyClassName={uiSpacing.cardPadding}>
+                    <div className={uiTypography.overline}>Coverage Area</div>
+                    <div className={uiCx('grid grid-cols-3 gap-2', uiTypography.body)}>
+                      <div>SQS: {viewing.coverage_sqs || '-'}</div>
+                      <div>ft²: {viewing.coverage_ft2 || '-'}</div>
+                      <div>m²: {viewing.coverage_m2 || '-'}</div>
+                    </div>
+                  </AppCard>
+                )}
+                {viewing.description && (
+                  <AppCard bodyClassName={uiSpacing.cardPadding}>
+                    <div className={uiTypography.overline}>Description</div>
+                    <div className={uiCx(uiTypography.body, 'whitespace-pre-wrap')}>{viewing.description}</div>
+                  </AppCard>
+                )}
+                {viewing.technical_manual_url &&
+                  (() => {
+                    const url = viewing.technical_manual_url.trim();
+                    const absoluteUrl = url.match(/^https?:\/\//i) ? url : `https://${url}`;
+                    return (
+                      <AppCard bodyClassName={uiSpacing.cardPadding}>
+                        <div className={uiCx(uiLayout.actionsRow, 'items-center justify-between gap-3')}>
+                          <div className={uiTypography.overline}>Technical Manual</div>
+                          <AppButton
+                            type="button"
+                            size="sm"
+                            leftIcon={<ExternalLink className="h-4 w-4" />}
+                            onClick={() => {
+                              if (absoluteUrl && absoluteUrl !== 'https://') {
+                                window.open(absoluteUrl, '_blank', 'noopener,noreferrer');
+                              }
+                            }}
+                          >
+                            View Manual
+                          </AppButton>
+                        </div>
+                      </AppCard>
+                    );
+                  })()}
+              </div>
+            ) : productTab === 'usage' ? (
+              <AppCard bodyClassName={uiSpacing.cardPadding}>
+                {loadingUsage ? (
+                  <div className={uiCx(uiTypography.helper, 'py-8 text-center')}>Loading usage data...</div>
+                ) : productUsage.length === 0 ? (
+                  <AppEmptyState
+                    title="This product is not being used in any estimates."
+                    className="border-0 bg-transparent p-0 shadow-none"
+                  />
+                ) : (
+                  <div className={uiSpacing.sectionStack}>
+                    <p className={uiTypography.helper}>
+                      This product is being used in {productUsage.length} estimate
+                      {productUsage.length !== 1 ? 's' : ''}:
+                    </p>
+                    <div className={uiCx(uiBorders.subtle, uiRadius.control, 'divide-y overflow-hidden border')}>
+                      {productUsage.map((usage, idx) => (
+                        <div key={idx} className="p-3 hover:bg-gray-50">
+                          {usage.status === 'orphaned' ? (
+                            <div className={uiCx(uiLayout.actionsRow, 'items-center justify-between gap-3')}>
+                              <div>
+                                <div className={uiTypography.sectionTitle}>Orphaned Estimate</div>
+                                <div className={uiTypography.helper}>
+                                  Estimate #{usage.estimate_id} (deleted)
+                                </div>
+                              </div>
+                              <AppBadge variant="warning">Orphaned</AppBadge>
+                            </div>
+                          ) : usage.status === 'project_deleted' || usage.project_deleted ? (
+                            <div className={uiCx(uiLayout.actionsRow, 'items-center justify-between gap-3')}>
+                              <div className="min-w-0 flex-1">
+                                <div className={uiTypography.sectionTitle}>
+                                  {usage.project_name || 'Project Deleted'}
+                                </div>
+                                <div className={uiTypography.helper}>
+                                  Estimate #{usage.estimate_id} - Project was deleted
+                                </div>
+                                {usage.created_at && (
+                                  <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-400')}>
+                                    Created: {new Date(usage.created_at).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                              <AppBadge variant="danger">Project Deleted</AppBadge>
+                            </div>
+                          ) : (
+                            <div className={uiCx(uiLayout.actionsRow, 'items-center justify-between gap-3')}>
+                              <div className="min-w-0 flex-1">
+                                {usage.project_name ? (
+                                  <>
+                                    <div className={uiTypography.sectionTitle}>{usage.project_name}</div>
+                                    {usage.client_name && (
+                                      <div className={uiTypography.helper}>Client: {usage.client_name}</div>
+                                    )}
+                                    {usage.created_at && (
+                                      <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-400')}>
+                                        Created: {new Date(usage.created_at).toLocaleDateString()}
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className={uiTypography.helper}>No project associated</div>
+                                )}
+                              </div>
+                              {usage.project_id && !usage.project_deleted && (
+                                <AppButton
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => {
+                                    navigate(`/projects/${usage.project_id}`);
+                                    resetModal();
+                                  }}
+                                >
+                                  View Project
+                                </AppButton>
+                              )}
+                            </div>
                           )}
                         </div>
-                        <div className="text-xs text-brand-red font-semibold">
-                          ${Number(r.price || 0).toFixed(2)}
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </AppCard>
+            ) : productTab === 'related' && viewing ? (
+              <AppCard bodyClassName={uiSpacing.cardPadding}>
+                {Array.isArray(relatedList) && relatedList.length ? (
+                  <div className={uiSpacing.sectionStack}>
+                    <p className={uiTypography.helper}>
+                      This product is related to {relatedList.length} product
+                      {relatedList.length !== 1 ? 's' : ''}:
+                    </p>
+                    <div className={uiCx(uiBorders.subtle, uiRadius.control, 'divide-y overflow-hidden border')}>
+                      {relatedList.map((r: any, i: number) => (
+                        <div key={i} className={uiCx(uiLayout.actionsRow, 'gap-3 p-3 hover:bg-gray-50')}>
+                          <img
+                            src={r.image_base64 || '/ui/assets/placeholders/product.png'}
+                            className={uiCx('h-12 w-12 shrink-0 object-cover border', uiRadius.control)}
+                            alt={r.name}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className={uiTypography.sectionTitle}>{r.name}</div>
+                            {r.supplier_name && (
+                              <div className={uiTypography.helper}>Supplier: {r.supplier_name}</div>
+                            )}
+                            {typeof r.price === 'number' && (
+                              <div className={uiCx(uiTypography.body, 'mt-0.5 font-semibold text-brand-red')}>
+                                ${r.price.toFixed(2)}
+                              </div>
+                            )}
+                          </div>
+                          {canEditProducts && (
+                            <AppButton
+                              type="button"
+                              variant="danger"
+                              size="sm"
+                              onClick={() => deleteRelation(viewing.id, r.id)}
+                            >
+                              Remove
+                            </AppButton>
+                          )}
                         </div>
-                      </button>
-                    ))
-                  ) : addRelatedResults.length === 0 && !addRelatedSearch ? (
-                    <div className="p-3 text-xs text-gray-500 text-center">Start typing to search products...</div>
-                  ) : addRelatedSearch && addRelatedResults.length === 0 ? (
-                    <div className="p-3 text-xs text-gray-500 text-center">No products found</div>
-                  ) : null}
-                </div>
+                      ))}
+                    </div>
+                    {canEditProducts && (
+                      <AppButton type="button" size="sm" onClick={() => handleAddRelated(viewing.id)}>
+                        + Add Related Product
+                      </AppButton>
+                    )}
+                  </div>
+                ) : (
+                  <div className={uiCx(uiSpacing.sectionStack, 'items-center py-6 text-center')}>
+                    <AppEmptyState
+                      title="This product has no related products."
+                      className="border-0 bg-transparent p-0 shadow-none"
+                    />
+                    {canEditProducts && (
+                      <AppButton type="button" size="sm" onClick={() => handleAddRelated(viewing.id)}>
+                        + Add Related Product
+                      </AppButton>
+                    )}
+                  </div>
+                )}
+              </AppCard>
+            ) : null}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <AppInput
+              className="sm:col-span-2"
+              label={
+                <>
+                  Name <span className="text-red-600">*</span>
+                </>
+              }
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (nameError) setNameError(false);
+              }}
+              error={nameError && !name.trim() ? 'This field is required' : undefined}
+              fieldHint="Name\n\nProduct name as shown in estimates and the catalog."
+            />
+            {editing ? (
+              <AppInput
+                label="Supplier *"
+                value={editing.supplier_name || newSupplier}
+                readOnly
+                tabIndex={-1}
+                inputClassName="cursor-default bg-gray-50"
+                fieldHint="Supplier\n\nSupplier cannot be changed from this form."
+              />
+            ) : (
+              <div className="space-y-1.5">
+                <AppControlLabelRow
+                  label={
+                    <>
+                      Supplier <span className="text-red-600">*</span>
+                    </>
+                  }
+                  fieldHint={
+                    <AppFieldHint hint="Supplier *\n\nVendor that supplies this product. Use + New Supplier if missing." />
+                  }
+                />
+                <SupplierSelect
+                  value={newSupplier}
+                  onChange={(value) => {
+                    setNewSupplier(value);
+                    if (supplierError) setSupplierError(false);
+                  }}
+                  onOpenNewSupplierModal={() => setNewSupplierModalOpen(true)}
+                  error={supplierError && !newSupplier.trim()}
+                  placeholder="Select a supplier"
+                  className="[&_button]:text-sm"
+                />
+                {supplierError && !newSupplier.trim() && (
+                  <p className="text-[11px] text-red-600">This field is required</p>
+                )}
+              </div>
+            )}
+            <AppInput
+              label="Category"
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+              fieldHint="Category\n\nOptional grouping (e.g. lumber, fasteners)."
+            />
+            <AppInput
+              label="Sell Unit"
+              placeholder="e.g., Roll, Pail (20L), Box"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              fieldHint="Sell Unit\n\nHow this item is sold (roll, box, each, etc.)."
+            />
+            <AppInput
+              label={
+                <>
+                  Price ($) <span className="text-red-600">*</span>
+                </>
+              }
+              placeholder="$0.00"
+              value={priceFocused ? priceDisplay : price ? formatCurrency(price) : ''}
+              onFocus={() => {
+                setPriceFocused(true);
+                setPriceDisplay(price || '');
+              }}
+              onBlur={() => {
+                setPriceFocused(false);
+                const parsed = parseCurrency(priceDisplay);
+                setPrice(parsed);
+                setPriceDisplay(parsed);
+                if (priceError && parsed && Number(parsed) > 0) setPriceError(false);
+              }}
+              onChange={(e) => setPriceDisplay(e.target.value)}
+              error={
+                priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0)
+                  ? 'This field is required'
+                  : undefined
+              }
+              fieldHint="Price ($)\n\nUnit price in CAD used on estimates."
+            />
+            <div className="sm:col-span-2 space-y-1.5">
+              <AppControlLabelRow
+                label="Unit Type"
+                fieldHint={
+                  <AppFieldHint hint="Unit Type\n\nUnitary = single item; Multiple = sold in packages; Coverage = area-based (SQS, ft², m²)." />
+                }
+              />
+              <div className="mt-1 flex items-center gap-6">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="unit-type-products"
+                    checked={unitType === 'unitary'}
+                    onChange={() => {
+                      setUnitType('unitary');
+                      setUnitsPerPackage('');
+                      setCovSqs('');
+                      setCovFt2('');
+                      setCovM2('');
+                    }}
+                  />
+                  Unitary
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="unit-type-products"
+                    checked={unitType === 'multiple'}
+                    onChange={() => {
+                      setUnitType('multiple');
+                      setCovSqs('');
+                      setCovFt2('');
+                      setCovM2('');
+                    }}
+                  />
+                  Multiple
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="unit-type-products"
+                    checked={unitType === 'coverage'}
+                    onChange={() => {
+                      setUnitType('coverage');
+                      setUnitsPerPackage('');
+                    }}
+                  />
+                  Coverage
+                </label>
               </div>
             </div>
+            {unitType === 'multiple' && (
+              <AppInput
+                className="sm:col-span-2"
+                label="Units per Package"
+                type="number"
+                step="0.01"
+                value={unitsPerPackage}
+                onChange={(e) => setUnitsPerPackage(e.target.value)}
+                fieldHint="Units per Package\n\nHow many units are included in one package."
+              />
+            )}
+            {unitType === 'coverage' && (
+              <div className="sm:col-span-2 space-y-1.5">
+                <AppControlLabelRow
+                  label="Coverage Area"
+                  fieldHint={
+                    <AppFieldHint hint="Coverage Area\n\nEnter one value; the others convert automatically (SQS, ft², m²)." />
+                  }
+                />
+                <div className={uiCx(uiLayout.actionsRow, 'items-center gap-2')}>
+                  <AppInput placeholder="0" value={covSqs} onChange={(e) => onCoverageChange('sqs', e.target.value)} />
+                  <span className={uiTypography.body}>SQS</span>
+                  <span className="text-gray-400">=</span>
+                  <AppInput placeholder="0" value={covFt2} onChange={(e) => onCoverageChange('ft2', e.target.value)} />
+                  <span className={uiTypography.body}>ft²</span>
+                  <span className="text-gray-400">=</span>
+                  <AppInput placeholder="0" value={covM2} onChange={(e) => onCoverageChange('m2', e.target.value)} />
+                  <span className={uiTypography.body}>m²</span>
+                </div>
+              </div>
+            )}
+            <AppTextarea
+              className="sm:col-span-2"
+              label="Description / Notes"
+              rows={3}
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              fieldHint="Description / Notes\n\nOptional product details for estimators."
+            />
+            <AppInput
+              className="sm:col-span-2"
+              label="Technical Manual URL"
+              type="url"
+              placeholder="https://supplier.com/manual/product"
+              value={technicalManualUrl}
+              onChange={(e) => setTechnicalManualUrl(e.target.value)}
+              fieldHint="Technical Manual URL\n\nLink to the technical manual on the supplier's website."
+            />
+            <div className="sm:col-span-2 space-y-2">
+              <AppControlLabelRow
+                label="Product Image"
+                fieldHint={<AppFieldHint hint="Product Image\n\nOptional photo for the catalog tile." />}
+              />
+              <AppButton type="button" variant="secondary" size="sm" onClick={() => setImagePickerOpen(true)}>
+                {imageDataUrl ? 'Change Image' : 'Select Image'}
+              </AppButton>
+              {imageDataUrl && (
+                <div>
+                  <img
+                    src={imageDataUrl}
+                    className={uiCx('h-32 w-32 object-contain border', uiRadius.control)}
+                    alt="Preview"
+                  />
+                  <AppButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 text-red-700"
+                    onClick={() => setImageDataUrl('')}
+                  >
+                    Remove Image
+                  </AppButton>
+                </div>
+              )}
+            </div>
           </div>
-        </div></OverlayPortal>
-      )}
+        )}
+      </AppFormModal>
+      <AppFormModal
+        open={addRelatedOpen}
+        onClose={() => setAddRelatedOpen(false)}
+        overlayClassName="z-[120]"
+        title="Add Related Product"
+        description="Search and link a product to this one"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => setAddRelatedOpen(false)}>
+              Close
+            </AppButton>
+          </div>
+        }
+      >
+        <AppInput
+          label="Search products"
+          placeholder="Search products..."
+          value={addRelatedSearch}
+          onChange={(e) => searchRelatedProducts(e.target.value)}
+          fieldHint="Search products\n\nType to find another catalog product to link as related."
+        />
+        <div className={uiCx(uiBorders.subtle, uiRadius.control, 'mt-4 overflow-hidden border')}>
+          {Array.isArray(addRelatedResults) && addRelatedResults.length > 0 ? (
+            addRelatedResults.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => createRelation(addRelatedTarget!, r.id)}
+                className="flex w-full items-center justify-between border-b border-gray-100 p-3 text-left text-sm last:border-b-0 hover:bg-gray-50"
+              >
+                <div>
+                  <div className={uiTypography.sectionTitle}>{r.name}</div>
+                  {r.supplier_name && <div className={uiTypography.helper}>{r.supplier_name}</div>}
+                </div>
+                <div className={uiCx(uiTypography.body, 'font-semibold text-brand-red')}>
+                  ${Number(r.price || 0).toFixed(2)}
+                </div>
+              </button>
+            ))
+          ) : addRelatedResults.length === 0 && !addRelatedSearch ? (
+            <div className={uiCx(uiTypography.helper, 'p-3 text-center')}>Start typing to search products...</div>
+          ) : addRelatedSearch && addRelatedResults.length === 0 ? (
+            <div className={uiCx(uiTypography.helper, 'p-3 text-center')}>No products found</div>
+          ) : null}
+        </div>
+      </AppFormModal>
+
       <ImagePicker
         isOpen={imagePickerOpen}
         onClose={() => setImagePickerOpen(false)}
         targetWidth={400}
         targetHeight={400}
-        allowEdit={true}
+        allowEdit
+        overlayClassName={uiModalLayer.nestedPicker}
         onConfirm={handleImagePickerConfirm}
       />
       {newSupplierModalOpen && (

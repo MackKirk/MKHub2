@@ -4,13 +4,55 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
-import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, Search, SlidersHorizontal, Trash2, Truck } from 'lucide-react';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import LoadingOverlay from '@/components/LoadingOverlay';
-import OverlayPortal from '@/components/OverlayPortal';
+import SupplierContactsCard from '@/components/SupplierContactsCard';
+import {
+  SupplierAddressFields,
+  SupplierCompanyFields,
+  type SupplierFormFieldsProps,
+  supplierFormStepPills,
+} from '@/components/SupplierFormFields';
+import {
+  inventoryNewProductQuickInfo,
+  productDetailQuickInfo,
+  supplierDetailQuickInfo,
+  supplierFormQuickInfo,
+} from '@/lib/formModalQuickInfo';
+import {
+  AppButton,
+  AppCard,
+  AppControlLabelRow,
+  AppFieldHint,
+  AppEmptyState,
+  AppFormModal,
+  AppInput,
+  AppListCreateItem,
+  AppPageHeader,
+  AppSortableEntityList,
+  AppSortableEntityListFlatBody,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
+  AppTabs,
+  AppTextarea,
+  resolveAppSortableListPreset,
+  useAppListSort,
+  FORM_MODAL_WIDE_DIALOG_COLLAPSED,
+  FORM_MODAL_WIDE_DIALOG_EXPANDED,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiModalLayer,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type Supplier = {
   id: string;
@@ -37,6 +79,9 @@ type SuppliersPageResponse = {
   limit: number;
   total_pages: number;
 };
+
+const SUPPLIER_LIST_SORTS = ['name', 'email', 'phone'] as const;
+type SupplierListSort = (typeof SUPPLIER_LIST_SORTS)[number];
 
 // Helper function to format phone numbers
 const formatPhone = (phone: string | undefined): string => {
@@ -201,8 +246,12 @@ export default function InventorySuppliers() {
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   
   const [searchParams, setSearchParams] = useSearchParams();
-  const sortColumn = searchParams.get('sort') || 'name';
-  const sortDirection = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
+  const { sortBy, sortDir, setSort: setListSort } = useAppListSort<SupplierListSort>({
+    searchParams,
+    setSearchParams,
+    defaultSort: 'name',
+    validSorts: SUPPLIER_LIST_SORTS,
+  });
   const supplierPage = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
   const supplierLimit = 25;
 
@@ -234,11 +283,8 @@ export default function InventorySuppliers() {
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerForContact, setPickerForContact] = useState<string | null>(null);
   const [supplierTab, setSupplierTab] = useState<'overview' | 'contacts' | 'products'>('overview');
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [contactModalOpen, setContactModalOpen] = useState(false);
-  const [editingContact, setEditingContact] = useState<any | null>(null);
+  const [supplierFormStep, setSupplierFormStep] = useState(1);
   const [newProductModalOpen, setNewProductModalOpen] = useState(false);
   const [viewingProduct, setViewingProduct] = useState<any | null>(null);
   const [productModalOpen, setProductModalOpen] = useState(false);
@@ -252,13 +298,6 @@ export default function InventorySuppliers() {
   const [addRelatedSearch, setAddRelatedSearch] = useState('');
   const [addRelatedResults, setAddRelatedResults] = useState<any[]>([]);
   const [relatedCounts, setRelatedCounts] = useState<Record<number, number>>({});
-  
-  // Contact form fields
-  const [contactName, setContactName] = useState('');
-  const [contactEmail, setContactEmail] = useState('');
-  const [contactPhone, setContactPhone] = useState('');
-  const [contactTitle, setContactTitle] = useState('');
-  const [contactNotes, setContactNotes] = useState('');
   
   // New product form fields
   const [productName, setProductName] = useState('');
@@ -301,7 +340,7 @@ export default function InventorySuppliers() {
   const [isSavingEditProduct, setIsSavingEditProduct] = useState(false);
 
   useEffect(() => {
-    if (!open && !contactModalOpen && !newProductModalOpen && !productModalOpen && !addRelatedOpen && !editProductImagePickerOpen) return;
+    if (!open && !newProductModalOpen && !productModalOpen && !addRelatedOpen && !editProductImagePickerOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (editProductImagePickerOpen) {
@@ -318,9 +357,6 @@ export default function InventorySuppliers() {
           }
         } else if (newProductModalOpen) {
           setNewProductModalOpen(false);
-        } else if (contactModalOpen) {
-          setContactModalOpen(false);
-          setEditingContact(null);
         } else if (open) {
           setOpen(false);
           resetForm();
@@ -329,7 +365,7 @@ export default function InventorySuppliers() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, contactModalOpen, newProductModalOpen, productModalOpen, addRelatedOpen, editProductImagePickerOpen, editingProduct]);
+  }, [open, newProductModalOpen, productModalOpen, addRelatedOpen, editProductImagePickerOpen, editingProduct]);
 
   const { data: supplierOptions } = useQuery({
     queryKey: ['invSuppliersOptions-supplier'],
@@ -367,15 +403,15 @@ export default function InventorySuppliers() {
     params.set('envelope', '1');
     params.set('page', String(supplierPage));
     params.set('limit', String(supplierLimit));
-    params.set('sort', sortColumn);
-    params.set('dir', sortDirection);
+    params.set('sort', sortBy);
+    params.set('dir', sortDir);
     searchParams.forEach((value, key) => {
       if (['page', 'limit', 'sort', 'dir', 'envelope'].includes(key)) return;
       params.set(key, value);
     });
     if (q) params.set('q', q);
     return params;
-  }, [q, searchParams, supplierPage, supplierLimit, sortColumn, sortDirection]);
+  }, [q, searchParams, supplierPage, supplierLimit, sortBy, sortDir]);
 
   const { data: suppliersPayload, isLoading, isFetching } = useQuery({
     queryKey: ['suppliers', listQueryParams.toString()],
@@ -434,15 +470,6 @@ export default function InventorySuppliers() {
     const field = filterFields.find(f => f.id === fieldId);
     return field?.label || fieldId;
   };
-
-  const { data: contactsData, refetch: refetchContacts } = useQuery({
-    queryKey: ['supplierContacts', viewing?.id],
-    queryFn: async () => {
-      if (!viewing?.id) return [];
-      return await api<any[]>('GET', `/inventory/suppliers/${viewing.id}/contacts`);
-    },
-    enabled: !!viewing?.id && supplierTab === 'contacts',
-  });
 
   const { data: supplierProducts, isLoading: loadingProducts, refetch: refetchSupplierProducts } = useQuery({
     queryKey: ['supplierProducts', viewing?.id, viewing?.name],
@@ -710,6 +737,7 @@ export default function InventorySuppliers() {
   });
 
   const resetForm = () => {
+    setSupplierFormStep(1);
     setName('');
     setNameError(false);
     setLegalName('');
@@ -820,20 +848,6 @@ export default function InventorySuppliers() {
     }
   };
 
-  const handleSort = (column: string) => {
-    const p = new URLSearchParams(searchParams);
-    const cur = p.get('sort') || 'name';
-    const curDir = p.get('dir') === 'desc' ? 'desc' : 'asc';
-    if (cur === column) {
-      p.set('dir', curDir === 'asc' ? 'desc' : 'asc');
-    } else {
-      p.set('sort', column);
-      p.set('dir', 'asc');
-    }
-    p.set('page', '1');
-    setSearchParams(p, { replace: true });
-  };
-
   // Track if we've loaded data at least once
   useEffect(() => {
     if (suppliersPayload) {
@@ -861,84 +875,183 @@ export default function InventorySuppliers() {
     }
   }, [isInitialLoading, hasAnimated]);
 
+  const supplierTabItems = useMemo(
+    () => [
+      { key: 'overview', label: 'Overview' },
+      { key: 'contacts', label: 'Contacts' },
+      { key: 'products', label: 'Products' },
+    ],
+    [],
+  );
+
+  const productTabItems = useMemo(() => {
+    const items = [
+      { key: 'details', label: 'Details' },
+      { key: 'usage', label: productUsage.length > 0 ? `Usage (${productUsage.length})` : 'Usage' },
+    ];
+    if (canEditProducts && viewingProduct) {
+      const count = relatedCounts[viewingProduct.id];
+      items.push({ key: 'related', label: count ? `Related (${count})` : 'Related' });
+    }
+    return items;
+  }, [canEditProducts, viewingProduct, productUsage.length, relatedCounts]);
+
+  const showEmptyList =
+    suppliersPayload != null && rows.length === 0 && (suppliersTotal === 0 || rows.length === 0);
+
+  const listCardAnimClass = animationComplete
+    ? undefined
+    : uiCx(
+        'transition-[opacity,transform] duration-[400ms] ease-out',
+        hasAnimated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-2 scale-[0.98]',
+      );
+
+  const supplierListPreset = resolveAppSortableListPreset('suppliers');
+
+  const closeSupplierModal = () => {
+    setOpen(false);
+    resetForm();
+  };
+
+  const supplierFieldProps: SupplierFormFieldsProps = useMemo(
+    () => ({
+      name,
+      nameError,
+      legalName,
+      email,
+      phone,
+      website,
+      addressLine1,
+      addressLine1Complement,
+      showAddress2,
+      addressLine2,
+      addressLine2Complement,
+      showAddress3,
+      addressLine3,
+      addressLine3Complement,
+      city,
+      province,
+      postalCode,
+      country,
+      onNameChange: setName,
+      onClearNameError: () => setNameError(false),
+      onLegalNameChange: setLegalName,
+      onEmailChange: setEmail,
+      onPhoneChange: setPhone,
+      onWebsiteChange: setWebsite,
+      onAddressLine1Change: setAddressLine1,
+      onAddressLine1ComplementChange: setAddressLine1Complement,
+      onShowAddress2: setShowAddress2,
+      onAddressLine2Change: setAddressLine2,
+      onAddressLine2ComplementChange: setAddressLine2Complement,
+      onShowAddress3: setShowAddress3,
+      onAddressLine3Change: setAddressLine3,
+      onAddressLine3ComplementChange: setAddressLine3Complement,
+      onCityChange: setCity,
+      onProvinceChange: setProvince,
+      onPostalCodeChange: setPostalCode,
+      onCountryChange: setCountry,
+      onAddressSelect: (address) => {
+        setAddressLine1(address.address_line1 || addressLine1);
+        if (address.city !== undefined) setCity(address.city);
+        if (address.province !== undefined) setProvince(address.province);
+        if (address.postal_code !== undefined) setPostalCode(address.postal_code);
+        if (address.country !== undefined) setCountry(address.country);
+      },
+    }),
+    [
+      name,
+      nameError,
+      legalName,
+      email,
+      phone,
+      website,
+      addressLine1,
+      addressLine1Complement,
+      showAddress2,
+      addressLine2,
+      addressLine2Complement,
+      showAddress3,
+      addressLine3,
+      addressLine3Complement,
+      city,
+      province,
+      postalCode,
+      country,
+      addressLine1,
+    ],
+  );
+
+  const isNewSupplierForm = open && !viewing && !editing;
+
   // Don't render if still loading or user doesn't have permission
   if (meLoading || !canViewSuppliers) {
     return null;
   }
 
   return (
-    <div className="space-y-4 min-w-0 overflow-x-hidden">
-      {/* Title Bar - same layout and font sizes as Products / TaskRequests */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Suppliers</div>
-              <div className="text-xs text-gray-500 mt-0.5">Manage vendors and contact information</div>
-            </div>
-          </div>
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
+        title="Suppliers"
+        subtitle="Manage vendors and contact information"
+        icon={<Truck className="h-4 w-4" />}
+        actions={
           <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Filter Bar */}
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <div className="relative">
-                <input 
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-xs bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all" 
-                  placeholder="Search by supplier name, email, or phone..." 
-                  value={q} 
-                  onChange={e=>setQ(e.target.value)} 
-                />
-                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-            </div>
-            <button 
-              onClick={()=>setIsFilterModalOpen(true)}
-              className="px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap inline-flex items-center gap-1.5"
+      <AppCard bodyClassName={uiSpacing.cardPadding}>
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+          <div className="min-w-0 flex-1">
+            <AppInput
+              placeholder="Search by supplier name, email, or phone..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              leftIcon={<Search className="h-4 w-4" />}
+              aria-label="Search suppliers"
+            />
+          </div>
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<SlidersHorizontal className="h-4 w-4" />}
+            onClick={() => setIsFilterModalOpen(true)}
+          >
+            Filters
+          </AppButton>
+          {hasActiveFilters && (
+            <AppButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setQ('');
+                setSearchParams(new URLSearchParams(), { replace: true });
+              }}
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-              </svg>
-              Filters
-            </button>
-            {hasActiveFilters && (
-              <button 
-                onClick={()=>{
-                  setQ('');
-                  setSearchParams(new URLSearchParams(), { replace: true });
-                }} 
-                className="px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+              Clear
+            </AppButton>
+          )}
         </div>
-      </div>
+      </AppCard>
 
-      {/* Filter Chips */}
       {hasActiveFilters && (
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
           {currentRules.map((rule) => (
             <FilterChip
               key={rule.id}
               rule={rule}
               onRemove={() => {
-                const updatedRules = currentRules.filter(r => r.id !== rule.id);
+                const updatedRules = currentRules.filter((r) => r.id !== rule.id);
                 const params = convertRulesToParams(updatedRules);
                 if (q) params.set('q', q);
                 params.set('page', '1');
-                params.set('sort', searchParams.get('sort') || 'name');
-                params.set('dir', searchParams.get('dir') === 'desc' ? 'desc' : 'asc');
+                params.set('sort', sortBy);
+                params.set('dir', sortDir);
                 setSearchParams(params, { replace: true });
               }}
               getValueLabel={formatRuleValue}
@@ -949,339 +1062,347 @@ export default function InventorySuppliers() {
       )}
 
       <LoadingOverlay isLoading={isInitialLoading} text="Loading suppliers...">
-        <div className="rounded-b-xl border border-t-0 border-gray-200 bg-white overflow-hidden min-w-0">
-          <div className="flex flex-col gap-2 overflow-x-auto">
-            {canEditSuppliers && (
-              <button
-                onClick={() => {
-                  resetForm();
-                  setOpen(true);
-                }}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-[640px]"
-              >
-                <div className="text-lg text-gray-400 mr-2">+</div>
-                <div className="font-medium text-xs text-gray-700">New Supplier</div>
-              </button>
-            )}
-            {!isLoading && Array.isArray(rows) && rows.length > 0 && (
+        <AppCard
+          className={uiCx(uiShadows.card, listCardAnimClass)}
+          bodyClassName="!p-0"
+          footer={
+            suppliersTotal > 0 ? (
+              <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
+                <p className={uiTypography.helper}>
+                  Showing {((supplierPage - 1) * supplierLimit) + 1} to{' '}
+                  {Math.min(supplierPage * supplierLimit, suppliersTotal)} of {suppliersTotal} suppliers
+                </p>
+                <div className={uiCx(uiLayout.actionsRow, 'items-center')}>
+                  <AppButton
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={supplierPage <= 1 || isFetching}
+                    onClick={() => {
+                      const p = new URLSearchParams(searchParams);
+                      p.set('page', String(Math.max(1, supplierPage - 1)));
+                      setSearchParams(p, { replace: true });
+                    }}
+                  >
+                    Previous
+                  </AppButton>
+                  <span className={uiTypography.helper}>
+                    Page {supplierPage} of {suppliersTotalPages}
+                  </span>
+                  <AppButton
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={supplierPage >= suppliersTotalPages || isFetching}
+                    onClick={() => {
+                      const p = new URLSearchParams(searchParams);
+                      p.set('page', String(Math.min(suppliersTotalPages, supplierPage + 1)));
+                      setSearchParams(p, { replace: true });
+                    }}
+                  >
+                    Next
+                  </AppButton>
+                </div>
+              </div>
+            ) : undefined
+          }
+        >
+          <div className="flex flex-col">
+            {showEmptyList ? (
+              <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'min-h-[12rem] pb-10')}>
+                {canEditSuppliers ? (
+                  <AppListCreateItem
+                    label="New Supplier"
+                    layout="row"
+                    className="w-full"
+                    onClick={() => {
+                      resetForm();
+                      setOpen(true);
+                    }}
+                  />
+                ) : null}
+                <AppEmptyState
+                  title="No suppliers found matching your criteria."
+                  className="border-0 bg-transparent p-0 shadow-none"
+                />
+              </div>
+            ) : (
               <>
-                {/* Column headers - sortable */}
-                <div 
-                  className="grid grid-cols-[60fr_20fr_20fr] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 w-full text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200 rounded-t-lg"
-                  role="row"
-                >
-                  <button type="button" onClick={() => handleSort('name')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by supplier name">Supplier{sortColumn === 'name' ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                  <button type="button" onClick={() => handleSort('email')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by email">Email{sortColumn === 'email' ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                  <button type="button" onClick={() => handleSort('phone')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by phone">Phone{sortColumn === 'phone' ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                </div>
-                <div className="rounded-b-lg border border-t-0 border-gray-200 overflow-hidden min-w-0">
-                  {rows.map((s) => (
-                    <div
-                      key={s.id}
-                      className="grid grid-cols-[60fr_20fr_20fr] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-3 w-full hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 min-h-[52px]"
-                      onClick={() => openViewModal(s)}
-                    >
-                      <div className="min-w-0 flex items-center gap-3">
-                        <img
-                          src={s.image_base64 || '/ui/assets/placeholders/supplier.png'}
-                          className="w-10 h-10 rounded-lg border border-gray-200 object-cover flex-shrink-0"
-                          alt={s.name}
-                        />
-                        <div className="min-w-0 flex flex-col justify-center">
-                          <div className="text-xs font-semibold text-gray-900 truncate">{s.name}</div>
-                          {(s as any).address_line1 && <div className="text-[10px] text-gray-500 truncate">{String((s as any).address_line1)}</div>}
-                        </div>
-                      </div>
-                      <div className="min-w-0 flex items-center">
-                        <span className="text-xs text-gray-700 truncate">{s.email || '—'}</span>
-                      </div>
-                      <div className="min-w-0 flex items-center">
-                        <span className="text-xs text-gray-700 truncate">{s.phone ? formatPhone(s.phone) : '—'}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                {canEditSuppliers && (
+                  <div className={uiCx(uiSpacing.cardPadding, rows.length === 0 ? 'pb-10' : 'pb-3')}>
+                    <AppListCreateItem
+                      label="New Supplier"
+                      layout="row"
+                      className={uiCx('w-full', supplierListPreset.minWidth)}
+                      onClick={() => {
+                        resetForm();
+                        setOpen(true);
+                      }}
+                    />
+                  </div>
+                )}
+                {!isLoading && rows.length > 0 ? (
+                  <AppSortableEntityList layout="flat">
+                    <AppSortableEntityListHeader variant="flat" preset="suppliers">
+                      <AppSortableEntityListSortColumn
+                        label="Supplier"
+                        column="name"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                        title="Sort by supplier name"
+                      />
+                      <AppSortableEntityListSortColumn
+                        label="Email"
+                        column="email"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                        title="Sort by email"
+                      />
+                      <AppSortableEntityListSortColumn
+                        label="Phone"
+                        column="phone"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                        title="Sort by phone"
+                      />
+                    </AppSortableEntityListHeader>
+                    <AppSortableEntityListFlatBody preset="suppliers">
+                      {rows.map((s) => (
+                        <SupplierSortableRow key={s.id} s={s} onOpen={() => openViewModal(s)} />
+                      ))}
+                    </AppSortableEntityListFlatBody>
+                  </AppSortableEntityList>
+                ) : null}
               </>
             )}
           </div>
-
-          {!isLoading && (!Array.isArray(rows) || rows.length === 0) && (
-            <div className="p-8 text-center text-xs text-gray-500">
-              No suppliers found matching your criteria.
-            </div>
-          )}
-
-          {suppliersTotal > 0 && (
-            <div className="p-4 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2 bg-white">
-              <div className="text-xs text-gray-600">
-                Showing {((supplierPage - 1) * supplierLimit) + 1} to {Math.min(supplierPage * supplierLimit, suppliersTotal)} of {suppliersTotal} suppliers
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const p = new URLSearchParams(searchParams);
-                    p.set('page', String(Math.max(1, supplierPage - 1)));
-                    setSearchParams(p, { replace: true });
-                  }}
-                  disabled={supplierPage <= 1 || isFetching}
-                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Previous
-                </button>
-                <span className="text-xs text-gray-600 tabular-nums">
-                  Page {supplierPage} of {suppliersTotalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const p = new URLSearchParams(searchParams);
-                    p.set('page', String(Math.min(suppliersTotalPages, supplierPage + 1)));
-                    setSearchParams(p, { replace: true });
-                  }}
-                  disabled={supplierPage >= suppliersTotalPages || isFetching}
-                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        </AppCard>
       </LoadingOverlay>
 
-      {open && (
-        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
-          <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl border border-gray-200 overflow-hidden flex flex-col shadow-xl">
-              {viewing && !editing ? (
-                // View mode - display supplier details
-                <>
-                  {/* Profile Header - new style */}
-                  <div className="flex-shrink-0 p-4 border-b border-gray-200 bg-white">
-                    <div className="flex items-start gap-4">
-                      <button
-                        onClick={() => setPickerOpen(true)}
-                        className="w-16 h-16 rounded-xl border border-gray-200 overflow-hidden hover:border-brand-red transition-colors relative group flex-shrink-0"
-                      >
-                        <img 
-                          src={viewing.image_base64 || '/ui/assets/placeholders/supplier.png'} 
-                          className="w-full h-full object-cover" 
-                          alt={viewing.name}
-                        />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-medium transition-opacity">
-                          Change
-                        </div>
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <h2 className="text-sm font-semibold text-gray-900">{viewing.name}</h2>
-                        {viewing.legal_name && (
-                          <p className="text-xs text-gray-500 mt-0.5">{viewing.legal_name}</p>
-                        )}
-                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
-                          {viewing.email && <span>{viewing.email}</span>}
-                          {viewing.phone && <span>{formatPhone(viewing.phone)}</span>}
-                        </div>
-                        {/* Tab buttons - same style as TaskRequests */}
-                        <div className="flex gap-1 border-b border-gray-200 mt-3 -mb-[-1px]">
-                          <button
-                            onClick={() => setSupplierTab('overview')}
-                            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-                              supplierTab === 'overview' 
-                                ? 'border-brand-red text-brand-red' 
-                                : 'border-transparent text-gray-600 hover:text-gray-900'
-                            }`}
-                          >
-                            Overview
-                          </button>
-                          <button
-                            onClick={() => setSupplierTab('contacts')}
-                            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-                              supplierTab === 'contacts' 
-                                ? 'border-brand-red text-brand-red' 
-                                : 'border-transparent text-gray-600 hover:text-gray-900'
-                            }`}
-                          >
-                            Contacts
-                          </button>
-                          <button
-                            onClick={() => setSupplierTab('products')}
-                            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-                              supplierTab === 'products'
-                                ? 'border-brand-red text-brand-red'
-                                : 'border-transparent text-gray-600 hover:text-gray-900'
-                            }`}
-                          >
-                            Products
-                          </button>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setOpen(false);
-                          resetForm();
-                        }}
-                        className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-xl font-medium leading-none flex-shrink-0"
-                        title="Close"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Tab Content */}
-                  <div className="flex-1 overflow-y-auto">
-                    {supplierTab === 'overview' ? (
-                      <div className="px-4 pt-4 pb-4 space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        {/* Website Card */}
-                        {viewing.website && (
-                          <div className="bg-white border border-gray-200 rounded-lg p-4">
-                            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Website</div>
-                            <a href={viewing.website} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-red hover:underline">
-                              {viewing.website}
-                            </a>
-                          </div>
-                        )}
-
-                        {/* Legal Name Card */}
-                        {viewing.legal_name && (
-                          <div className="bg-white border border-gray-200 rounded-lg p-4">
-                            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Legal Name</div>
-                            <div className="text-xs text-gray-900">{viewing.legal_name}</div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Address Card */}
-                      {((viewing as any).address_line1 || viewing.city || viewing.province || (viewing as any).postal_code || viewing.country) && (
-                        <div className="bg-white border border-gray-200 rounded-lg p-4">
-                          <div className="text-xs font-semibold text-gray-900 mb-2">Address</div>
-                          <div className="space-y-1 text-xs text-gray-700">
-                            {(viewing as any).address_line1 && <div>{(viewing as any).address_line1}</div>}
-                            {(viewing as any).address_line2 && <div>{(viewing as any).address_line2}</div>}
-                            <div>
-                              {[viewing.city, viewing.province, (viewing as any).postal_code].filter(Boolean).join(', ')}
-                            </div>
-                            {viewing.country && <div>{viewing.country}</div>}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : supplierTab === 'contacts' ? (
-                    <div className="px-4 pt-4 pb-4">
-                      <div className="mb-2">
-                        <h4 className="font-semibold">Contacts</h4>
-                      </div>
-                      <div className="grid md:grid-cols-2 gap-4">
-                        {canEditSuppliers && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setContactModalOpen(true);
-                              setEditingContact(null);
-                              setContactName('');
-                              setContactEmail('');
-                              setContactPhone('');
-                              setContactTitle('');
-                              setContactNotes('');
-                            }}
-                            className="rounded-xl border-2 border-dashed border-gray-300 p-4 hover:border-brand-red hover:bg-gray-50 transition-all bg-white flex items-center justify-center min-h-[100px]"
-                          >
-                            <div className="text-lg text-gray-400 mr-2">+</div>
-                            <div className="font-medium text-xs text-gray-700">New Contact</div>
-                          </button>
-                        )}
-                        {contactsData?.length ? (
-                          contactsData.map((contact: any) => (
-                            <div key={contact.id} className="rounded-xl border bg-white overflow-hidden flex group">
-                              <div className="w-28 bg-gray-100 flex items-center justify-center relative">
-                                {contact.image_base64 ? (
-                                  <img 
-                                    className="w-20 h-20 object-cover rounded border" 
-                                    src={contact.image_base64}
-                                    alt={contact.name}
-                                  />
-                                ) : viewing?.image_base64 ? (
-                                  <img 
-                                    className="w-20 h-20 object-cover rounded border" 
-                                    src={viewing.image_base64}
-                                    alt={contact.name}
-                                  />
-                                ) : (
-                                  <div className="w-20 h-20 rounded bg-gray-200 grid place-items-center text-lg font-bold text-gray-600">
-                                    {(contact.name||'?').slice(0,2).toUpperCase()}
-                                  </div>
-                                )}
-                                <button 
-                                  onClick={() => setPickerForContact(contact.id)} 
-                                  className="hidden group-hover:block absolute right-1 bottom-1 text-[11px] px-2 py-0.5 rounded bg-black/70 text-white"
-                                >
-                                  Photo
-                                </button>
-                              </div>
-                              <div className="flex-1 p-3 text-sm">
-                                <div className="flex items-center justify-between">
-                                  <div className="font-semibold">{contact.name}</div>
-                                  {canEditSuppliers && (
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        onClick={() => {
-                                          setEditingContact(contact);
-                                          setContactModalOpen(true);
-                                          setContactName(contact.name || '');
-                                          setContactEmail(contact.email || '');
-                                          setContactPhone(contact.phone || '');
-                                          setContactTitle(contact.title || '');
-                                          setContactNotes(contact.notes || '');
-                                        }}
-                                        className="px-2 py-1 rounded bg-gray-100 text-xs"
-                                      >
-                                        Edit
-                                      </button>
-                                      <button
-                                        onClick={async () => {
-                                          const ok = await confirm({
-                                            title: 'Delete contact',
-                                            message: 'Are you sure you want to delete this contact?',
-                                            confirmText: 'Delete',
-                                            cancelText: 'Cancel'
-                                          });
-                                          if (ok === 'confirm') {
-                                            try {
-                                              await api('DELETE', `/inventory/contacts/${contact.id}`);
-                                              refetchContacts();
-                                              toast.success('Contact deleted');
-                                            } catch (error) {
-                                              toast.error('Failed to delete contact');
-                                            }
-                                          }
-                                        }}
-                                        className="px-2 py-1 rounded bg-gray-100 text-xs"
-                                      >
-                                        Delete
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                                {contact.title && (
-                                  <div className="text-gray-600 text-xs">{contact.title}</div>
-                                )}
-                                <div className="mt-2">
-                                  <div className="text-[11px] uppercase text-gray-500">Email</div>
-                                  <div className="text-gray-700">{contact.email||'-'}</div>
-                                </div>
-                                <div className="mt-2">
-                                  <div className="text-[11px] uppercase text-gray-500">Phone</div>
-                                  <div className="text-gray-700">{contact.phone||'-'}</div>
-                                </div>
-                              </div>
-                            </div>
-                          ))
-                        ) : null}
-                      </div>
-                    </div>
+      <AppFormModal
+        open={open}
+        onClose={closeSupplierModal}
+        layout={viewing && !editing ? 'detail' : 'form'}
+        formWidth="wide"
+        dialogClassName={FORM_MODAL_WIDE_DIALOG_COLLAPSED}
+        dialogClassNameExpanded={FORM_MODAL_WIDE_DIALOG_EXPANDED}
+        title={
+          viewing && !editing
+            ? 'Supplier Information'
+            : editing
+              ? 'Edit Supplier'
+              : 'New Supplier'
+        }
+        description={
+          viewing && !editing
+            ? `${viewing.name} — profile, contacts, and products`
+            : editing
+              ? 'Update supplier information'
+              : supplierFormStep === 1
+                ? 'Company details'
+                : 'Address'
+        }
+        headerExtra={isNewSupplierForm ? supplierFormStepPills(supplierFormStep, 2) : undefined}
+        quickInfo={
+          viewing && !editing
+            ? supplierDetailQuickInfo(canEditSuppliers)
+            : supplierFormQuickInfo(!!editing)
+        }
+        bodyClassName={viewing && !editing ? uiCx(uiSpacing.cardPadding, 'min-w-0') : undefined}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            {viewing && !editing ? (
+              <>
+                <AppButton type="button" variant="secondary" size="sm" onClick={closeSupplierModal}>
+                  Close
+                </AppButton>
+                {canEditSuppliers ? (
+                  <>
+                    <AppButton type="button" variant="danger" size="sm" onClick={async () => {
+                      const ok = await confirm({
+                        title: 'Delete supplier',
+                        message: 'Are you sure you want to delete this supplier? This action cannot be undone.',
+                        confirmText: 'Delete',
+                        cancelText: 'Cancel',
+                      });
+                      if (ok === 'confirm' && viewing) {
+                        deleteMut.mutate(viewing.id);
+                        closeSupplierModal();
+                      }
+                    }}>
+                      Delete
+                    </AppButton>
+                    <AppButton type="button" size="sm" onClick={openEditModal}>
+                      Edit
+                    </AppButton>
+                  </>
+                ) : null}
+              </>
+            ) : editing ? (
+              <>
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setViewing(editing);
+                    setEditing(null);
+                    setName('');
+                    setNameError(false);
+                    setLegalName('');
+                    setEmail('');
+                    setPhone('');
+                    setWebsite('');
+                    setAddressLine1('');
+                    setAddressLine1Complement('');
+                    setShowAddress2(false);
+                    setAddressLine2('');
+                    setAddressLine2Complement('');
+                    setShowAddress3(false);
+                    setAddressLine3('');
+                    setAddressLine3Complement('');
+                    setCity('');
+                    setProvince('');
+                    setPostalCode('');
+                    setCountry('');
+                  }}
+                >
+                  Cancel
+                </AppButton>
+                <AppButton
+                  type="button"
+                  size="sm"
+                  onClick={handleSubmit}
+                  disabled={updateMut.isPending}
+                  loading={updateMut.isPending}
+                >
+                  Update
+                </AppButton>
+              </>
+            ) : (
+              <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
+                <span className={uiTypography.helper}>Step {supplierFormStep} of 2</span>
+                <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+                  <AppButton type="button" variant="secondary" size="sm" onClick={closeSupplierModal}>
+                    Cancel
+                  </AppButton>
+                  {supplierFormStep > 1 ? (
+                    <AppButton type="button" variant="secondary" size="sm" onClick={() => setSupplierFormStep(1)}>
+                      Back
+                    </AppButton>
+                  ) : null}
+                  {supplierFormStep === 1 ? (
+                    <AppButton
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        if (!name.trim()) {
+                          setNameError(true);
+                          toast.error('Name is required');
+                          return;
+                        }
+                        setSupplierFormStep(2);
+                      }}
+                    >
+                      Next
+                    </AppButton>
                   ) : (
-                    <div className="px-4 pt-4 pb-4">
+                    <AppButton
+                      type="button"
+                      size="sm"
+                      onClick={handleSubmit}
+                      disabled={createMut.isPending}
+                      loading={createMut.isPending}
+                    >
+                      Create
+                    </AppButton>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        }
+      >
+        {viewing && !editing ? (
+          <div className={uiSpacing.sectionStack}>
+            <div className={uiCx(uiLayout.actionsRow, 'items-start gap-4')}>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                className={uiCx(
+                  'relative h-16 w-16 shrink-0 overflow-hidden border hover:border-brand-red transition-colors group',
+                  uiRadius.control,
+                  uiBorders.subtle,
+                )}
+              >
+                <img
+                  src={viewing.image_base64 || '/ui/assets/placeholders/supplier.png'}
+                  className="h-full w-full object-cover"
+                  alt={viewing.name}
+                />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                  Change
+                </div>
+              </button>
+              <div className="min-w-0 flex-1">
+                <h2 className={uiTypography.sectionTitle}>{viewing.name}</h2>
+                {viewing.legal_name && viewing.legal_name !== viewing.name ? (
+                  <p className={uiTypography.helper}>{viewing.legal_name}</p>
+                ) : null}
+                <div className={uiCx(uiLayout.actionsRow, 'mt-2 flex-wrap gap-3', uiTypography.body)}>
+                  {viewing.email && <span>{viewing.email}</span>}
+                  {viewing.phone && <span>{formatPhone(viewing.phone)}</span>}
+                </div>
+              </div>
+            </div>
+
+            <AppTabs
+              tabs={supplierTabItems}
+              value={supplierTab}
+              onChange={(key) => setSupplierTab(key as typeof supplierTab)}
+            />
+
+            {supplierTab === 'overview' ? (
+                <div className={uiSpacing.sectionStack}>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {viewing.website && (
+                      <AppCard bodyClassName={uiSpacing.cardPadding}>
+                        <div className={uiTypography.overline}>Website</div>
+                        <a href={viewing.website} target="_blank" rel="noopener noreferrer" className={uiCx(uiTypography.body, 'text-brand-red hover:underline')}>
+                          {viewing.website}
+                        </a>
+                      </AppCard>
+                    )}
+                    {viewing.legal_name && (
+                      <AppCard bodyClassName={uiSpacing.cardPadding}>
+                        <div className={uiTypography.overline}>Legal Name</div>
+                        <div className={uiTypography.body}>{viewing.legal_name}</div>
+                      </AppCard>
+                    )}
+                  </div>
+                  {((viewing as any).address_line1 || viewing.city || viewing.province || (viewing as any).postal_code || viewing.country) && (
+                    <AppCard bodyClassName={uiSpacing.cardPadding}>
+                      <div className={uiCx(uiTypography.sectionTitle, 'mb-2')}>Address</div>
+                      <div className={uiCx(uiSpacing.sectionStack, uiTypography.body)}>
+                        {(viewing as any).address_line1 && <div>{(viewing as any).address_line1}</div>}
+                        {(viewing as any).address_line2 && <div>{(viewing as any).address_line2}</div>}
+                        <div>{[viewing.city, viewing.province, (viewing as any).postal_code].filter(Boolean).join(', ')}</div>
+                        {viewing.country && <div>{viewing.country}</div>}
+                      </div>
+                    </AppCard>
+                  )}
+                </div>
+              ) : supplierTab === 'contacts' && viewing ? (
+                <SupplierContactsCard
+                  supplierId={viewing.id}
+                  supplierDisplayName={viewing.name}
+                  hasEditPermission={canEditSuppliers}
+                />
+              ) : (
+                <div>
                       {loadingProducts ? (
                         <div className="flex items-center justify-center py-12 text-gray-500">
                           Loading products...
@@ -1352,386 +1473,29 @@ export default function InventorySuppliers() {
                           )}
                         </div>
                       )}
-                    </div>
-                  )}
-                  </div>
-                </>
-              ) : (
-                // Edit/Create mode - form inputs
-                <>
-                  {/* Title bar - same style as New Customer */}
-                  <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOpen(false);
-                            resetForm();
-                          }}
-                          className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                          title="Close"
-                        >
-                          <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                          </svg>
-                        </button>
-                        <div>
-                          <div className="text-sm font-semibold text-gray-900">{editing ? 'Edit Supplier' : 'New Supplier'}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {editing ? 'Update supplier information' : 'Add a new supplier to your inventory'}
-                          </div>
-                        </div>
-                      </div>
-                      <div />
-                    </div>
-                  </div>
-                  
-                  <div className="overflow-y-auto flex-1 p-4">
-                    <div className="rounded-xl border bg-white p-4">
-                      <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="text-xs font-medium text-gray-700">Name *</label>
-                  <input
-                    type="text"
-                    className={`w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 ${nameError && !name.trim() ? 'border-red-500' : ''}`}
-                    value={name}
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      if (nameError) setNameError(false);
-                    }}
-                  />
-                  {nameError && !name.trim() && (
-                    <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                  )}
                 </div>
-                <div className="col-span-2">
-                  <label className="text-xs font-medium text-gray-700">Legal Name</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    value={legalName}
-                    onChange={(e) => setLegalName(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-700">Email</label>
-                  <input
-                    type="email"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-700">Phone</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs font-medium text-gray-700">Website</label>
-                  <input
-                    type="url"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    value={website}
-                    onChange={(e) => setWebsite(e.target.value)}
-                  />
-                </div>
-                <div className="col-span-2 grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-medium text-gray-700">Address</label>
-                    <AddressAutocomplete
-                      value={addressLine1}
-                      onChange={(value) => setAddressLine1(value)}
-                      onAddressSelect={(address) => {
-                        setAddressLine1(address.address_line1 || addressLine1);
-                        setCity(address.city !== undefined ? address.city : city);
-                        setProvince(address.province !== undefined ? address.province : province);
-                        setPostalCode(address.postal_code !== undefined ? address.postal_code : postalCode);
-                        setCountry(address.country !== undefined ? address.country : country);
-                      }}
-                      placeholder="Enter address"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-700">Complement</label>
-                    <input
-                      type="text"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                      value={addressLine1Complement}
-                      onChange={(e) => setAddressLine1Complement(e.target.value)}
-                      placeholder="Apartment, Unit, Block, etc (Optional)"
-                    />
-                  </div>
-                </div>
-                {!showAddress2 && !showAddress3 && (
-                  <div className="col-span-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowAddress2(true)}
-                      className="text-xs font-medium text-brand-red hover:underline flex items-center gap-1"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add another Address
-                    </button>
-                  </div>
-                )}
-                {showAddress2 && (
-                  <>
-                    <div className="col-span-2 grid grid-cols-[1fr_0.8fr_auto] gap-4 items-end">
-                      <div>
-                        <label className="text-xs font-medium text-gray-700">Address 2</label>
-                        <AddressAutocomplete
-                          value={addressLine2}
-                          onChange={(value) => setAddressLine2(value)}
-                          onAddressSelect={(address) => {
-                            setAddressLine2(address.address_line1 || addressLine2);
-                          }}
-                          placeholder="Enter address"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-700">Complement</label>
-                        <input
-                          type="text"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                          value={addressLine2Complement}
-                          onChange={(e) => setAddressLine2Complement(e.target.value)}
-                          placeholder="Apartment, Unit, Block, etc (Optional)"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddress2(false);
-                          setAddressLine2('');
-                          setAddressLine2Complement('');
-                          if (showAddress3) {
-                            setAddressLine2(addressLine3);
-                            setAddressLine2Complement(addressLine3Complement);
-                            setAddressLine3('');
-                            setAddressLine3Complement('');
-                            setShowAddress3(false);
-                          }
-                        }}
-                        className="mb-[2px] px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg"
-                        title="Remove Address 2"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                    {!showAddress3 && (
-                      <div className="col-span-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowAddress3(true)}
-                          className="text-xs font-medium text-brand-red hover:underline flex items-center gap-1"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Add another Address
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-                {showAddress3 && (
-                  <>
-                    <div className="col-span-2 grid grid-cols-[1fr_0.8fr_auto] gap-4 items-end">
-                      <div>
-                        <label className="text-xs font-medium text-gray-700">Address 3</label>
-                        <AddressAutocomplete
-                          value={addressLine3}
-                          onChange={(value) => setAddressLine3(value)}
-                          onAddressSelect={(address) => {
-                            setAddressLine3(address.address_line1 || addressLine3);
-                          }}
-                          placeholder="Enter address"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-700">Complement</label>
-                        <input
-                          type="text"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                          value={addressLine3Complement}
-                          onChange={(e) => setAddressLine3Complement(e.target.value)}
-                          placeholder="Apartment, Unit, Block, etc (Optional)"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddress3(false);
-                          setAddressLine3('');
-                          setAddressLine3Complement('');
-                        }}
-                        className="mb-[2px] px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg"
-                        title="Remove Address 3"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  </>
-                )}
-                <div>
-                  <label className="text-xs font-medium text-gray-700">City</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs bg-gray-50 cursor-not-allowed"
-                    value={city}
-                    readOnly
-                    placeholder=""
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-700">Province</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs bg-gray-50 cursor-not-allowed"
-                    value={province}
-                    readOnly
-                    placeholder=""
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-700">Postal Code</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs bg-gray-50 cursor-not-allowed"
-                    value={postalCode}
-                    readOnly
-                    placeholder=""
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-700">Country</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs bg-gray-50 cursor-not-allowed"
-                    value={country}
-                    readOnly
-                    placeholder=""
-                  />
-                </div>
-                      </div>
-                    </div>
-                  </div>
-                </>
               )}
-            <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
-              {viewing && !editing ? (
-                // View mode buttons
-                <>
-                  {canEditSuppliers && (
-                    <>
-                      <button
-                        onClick={openEditModal}
-                        className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={async () => {
-                          const ok = await confirm({ 
-                            title: 'Delete supplier', 
-                            message: 'Are you sure you want to delete this supplier? This action cannot be undone.',
-                            confirmText: 'Delete',
-                            cancelText: 'Cancel'
-                          });
-                          if (ok === 'confirm') {
-                            deleteMut.mutate(viewing.id);
-                            setOpen(false);
-                            resetForm();
-                          }
-                        }}
-                        className="px-3 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:opacity-90 transition-opacity"
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </>
-              ) : (
-                // Edit/Create mode buttons
-                <>
-                  <button
-                    onClick={() => {
-                      if (editing) {
-                        // If editing, go back to view mode
-                        setViewing(editing);
-                        setEditing(null);
-                        // Reset form fields but keep viewing
-                        setName('');
-                        setNameError(false);
-                        setLegalName('');
-                        setEmail('');
-                        setPhone('');
-                        setWebsite('');
-                        setAddressLine1('');
-                        setAddressLine1Complement('');
-                        setShowAddress2(false);
-                        setAddressLine2('');
-                        setAddressLine2Complement('');
-                        setShowAddress3(false);
-                        setAddressLine3('');
-                        setAddressLine3Complement('');
-                        setCity('');
-                        setProvince('');
-                        setPostalCode('');
-                        setCountry('');
-                        setAddressLine1('');
-                        setAddressLine2('');
-                        setCity('');
-                        setProvince('');
-                        setPostalCode('');
-                        setCountry('');
-                      } else {
-                        // If creating new, close modal
-                        setOpen(false);
-                        resetForm();
-                      }
-                    }}
-                    className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={createMut.isPending || updateMut.isPending}
-                    className="px-3 py-2 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
-                  >
-                    {editing ? 'Update' : 'Create'}
-                  </button>
-                </>
-              )}
-            </div>
           </div>
-        </div>
-        </OverlayPortal>
-      )}
+        ) : editing ? (
+          <div className={uiSpacing.sectionStack}>
+            <SupplierCompanyFields {...supplierFieldProps} />
+            <SupplierAddressFields {...supplierFieldProps} />
+          </div>
+        ) : supplierFormStep === 1 ? (
+          <SupplierCompanyFields {...supplierFieldProps} />
+        ) : (
+          <SupplierAddressFields {...supplierFieldProps} />
+        )}
+      </AppFormModal>
 
       {pickerOpen && (
-        <ImagePicker 
-          isOpen={true} 
-          onClose={() => setPickerOpen(false)} 
-          targetWidth={800} 
-          targetHeight={800} 
-          allowEdit={true}
+        <ImagePicker
+          isOpen
+          onClose={() => setPickerOpen(false)}
+          targetWidth={800}
+          targetHeight={800}
+          allowEdit
+          overlayClassName={uiModalLayer.nestedPicker}
           onConfirm={async (blob) => {
             await handleImageUpdate(blob);
             setPickerOpen(false);
@@ -1739,137 +1503,160 @@ export default function InventorySuppliers() {
         />
       )}
 
-      {pickerForContact && viewing && (
-        <ImagePicker 
-          isOpen={true} 
-          onClose={() => setPickerForContact(null)} 
-          targetWidth={400} 
-          targetHeight={400} 
-          allowEdit={true}
-          onConfirm={async (blob) => {
-            try {
-              const reader = new FileReader();
-              reader.onload = async (e) => {
-                const imageBase64 = e.target?.result as string;
-                try {
-                  await api('PUT', `/inventory/contacts/${pickerForContact}`, {
-                    image_base64: imageBase64
-                  });
-                  toast.success('Contact photo updated');
-                  refetchContacts();
-                } catch (error) {
-                  toast.error('Failed to update contact photo');
+      <AppFormModal
+        open={!!(newProductModalOpen && viewing)}
+        onClose={() => setNewProductModalOpen(false)}
+        formWidth="wide"
+        overlayClassName="z-[100]"
+        title="New Product"
+        description={viewing ? `Add new product to ${viewing.name}` : undefined}
+        quickInfo={inventoryNewProductQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => setNewProductModalOpen(false)}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              disabled={isSavingProduct}
+              loading={isSavingProduct}
+              onClick={async () => {
+                if (isSavingProduct || !viewing) return;
+                if (!productName.trim()) {
+                  setProductNameError(true);
+                  toast.error('Name is required');
+                  return;
                 }
-              };
-              reader.readAsDataURL(blob);
-            } catch (error) {
-              toast.error('Failed to process image');
-            } finally {
-              setPickerForContact(null);
-            }
-          }} 
-        />
-      )}
-
-      {newProductModalOpen && viewing && (
-        <>
-          <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center overflow-y-auto p-4">
-            <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
-              <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setNewProductModalOpen(false)}
-                      className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                      title="Close"
-                    >
-                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                      </svg>
-                    </button>
-                    <div>
-                      <div className="text-sm font-semibold text-gray-900">New Product</div>
-                      <div className="text-xs text-gray-500 mt-0.5">Add new product to {viewing.name}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="overflow-y-auto flex-1 p-4">
-                <div className="rounded-xl border bg-white p-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                      Name <span className="text-red-600">*</span>
-                    </label>
-                    <input 
-                      className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${productNameError && !productName.trim() ? 'border-red-500' : ''}`}
-                      value={productName} 
-                      onChange={e=>{
-                        setProductName(e.target.value);
-                        if (productNameError) setProductNameError(false);
-                      }} 
+                const priceValue = parseCurrency(productPrice);
+                if (!priceValue || !priceValue.trim() || Number(priceValue) <= 0) {
+                  setProductPriceError(true);
+                  toast.error('Price is required');
+                  return;
+                }
+                try {
+                  setIsSavingProduct(true);
+                  let finalImageBase64 = productImageDataUrl;
+                  if (!finalImageBase64) {
+                    try {
+                      const response = await fetch('/ui/assets/placeholders/product.png');
+                      if (response.ok) {
+                        const blob = await response.blob();
+                        const reader = new FileReader();
+                        finalImageBase64 = await new Promise<string>((resolve) => {
+                          reader.onload = () => resolve(reader.result as string);
+                          reader.readAsDataURL(blob);
+                        });
+                      }
+                    } catch (e) {
+                      console.warn('Failed to load default product image:', e);
+                    }
+                  }
+                  const payload = {
+                    name: productName.trim(),
+                    supplier_name: viewing.name,
+                    category: productCategory || null,
+                    unit: productUnit || null,
+                    price: Number(parseCurrency(productPrice)),
+                    description: productDesc || null,
+                    unit_type: productUnitType,
+                    units_per_package:
+                      productUnitType === 'multiple' ? (productUnitsPerPackage ? Number(productUnitsPerPackage) : null) : null,
+                    coverage_sqs: productUnitType === 'coverage' ? (productCovSqs ? Number(productCovSqs) : null) : null,
+                    coverage_ft2: productUnitType === 'coverage' ? (productCovFt2 ? Number(productCovFt2) : null) : null,
+                    coverage_m2: productUnitType === 'coverage' ? (productCovM2 ? Number(productCovM2) : null) : null,
+                    image_base64: finalImageBase64 || null,
+                    technical_manual_url: productTechnicalManualUrl || null,
+                  };
+                  await api('POST', '/estimate/products', payload);
+                  toast.success('Product created');
+                  setNewProductModalOpen(false);
+                  await refetchSupplierProducts();
+                  queryClient.invalidateQueries({ queryKey: ['supplierProducts'] });
+                } catch (e: any) {
+                  toast.error(e?.message || 'Failed to create product');
+                } finally {
+                  setIsSavingProduct(false);
+                }
+              }}
+            >
+              {isSavingProduct ? 'Creating...' : 'Create Product'}
+            </AppButton>
+          </div>
+        }
+      >
+        {viewing && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <AppInput
+              className="sm:col-span-2"
+              label={
+                <>
+                  Name <span className="text-red-600">*</span>
+                </>
+              }
+              value={productName}
+              onChange={(e) => {
+                setProductName(e.target.value);
+                if (productNameError) setProductNameError(false);
+              }}
+              error={productNameError && !productName.trim() ? 'This field is required' : undefined}
+              fieldHint="Name\n\nProduct name as shown in estimates and the catalog."
+            />
+            <AppInput
+              label="Supplier"
+              value={viewing.name}
+              readOnly
+              tabIndex={-1}
+              inputClassName="cursor-default bg-gray-50"
+              fieldHint="Supplier\n\nLocked to the supplier you are viewing."
+            />
+            <AppInput
+              label="Category"
+              value={productCategory}
+              onChange={(e) => setProductCategory(e.target.value)}
+              fieldHint="Category\n\nOptional grouping (e.g. lumber, fasteners)."
+            />
+            <AppInput
+              label="Sell Unit"
+              placeholder="e.g., Roll, Pail (20L), Box"
+              value={productUnit}
+              onChange={(e) => setProductUnit(e.target.value)}
+              fieldHint="Sell Unit\n\nHow this item is sold (roll, box, each, etc.)."
+            />
+            <AppInput
+              label={
+                <>
+                  Price ($) <span className="text-red-600">*</span>
+                </>
+              }
+              placeholder="$0.00"
+              value={productPriceFocused ? productPriceDisplay : productPrice ? formatCurrency(productPrice) : ''}
+              onFocus={() => {
+                setProductPriceFocused(true);
+                setProductPriceDisplay(productPrice || '');
+              }}
+              onBlur={() => {
+                setProductPriceFocused(false);
+                const parsed = parseCurrency(productPriceDisplay);
+                setProductPrice(parsed);
+                setProductPriceDisplay(parsed);
+                if (productPriceError && parsed && Number(parsed) > 0) setProductPriceError(false);
+              }}
+              onChange={(e) => setProductPriceDisplay(e.target.value)}
+              error={
+                productPriceError && (!productPrice || !productPrice.trim() || Number(parseCurrency(productPrice)) <= 0)
+                  ? 'This field is required'
+                  : undefined
+              }
+              fieldHint="Price ($)\n\nUnit price in CAD used on estimates."
+            />
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <AppControlLabelRow
+                      label="Unit Type"
+                      fieldHint={
+                        <AppFieldHint hint="Unit Type\n\nUnitary = single item; Multiple = sold in packages; Coverage = area-based (SQS, ft², m²)." />
+                      }
                     />
-                    {productNameError && !productName.trim() && (
-                      <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Supplier</label>
-                    <input 
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed"
-                      value={viewing.name}
-                      readOnly
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Category</label>
-                    <input 
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                      value={productCategory} 
-                      onChange={e=>setProductCategory(e.target.value)} 
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Sell Unit</label>
-                    <input 
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                      placeholder="e.g., Roll, Pail (20L), Box" 
-                      value={productUnit} 
-                      onChange={e=>setProductUnit(e.target.value)} 
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                      Price ($) <span className="text-red-600">*</span>
-                    </label>
-                    <input 
-                      type="text" 
-                      className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${productPriceError && (!productPrice || !productPrice.trim() || Number(parseCurrency(productPrice)) <= 0) ? 'border-red-500' : ''}`}
-                      placeholder="$0.00"
-                      value={productPriceFocused ? productPriceDisplay : (productPrice ? formatCurrency(productPrice) : '')}
-                      onFocus={() => {
-                        setProductPriceFocused(true);
-                        setProductPriceDisplay(productPrice || '');
-                      }}
-                      onBlur={() => {
-                        setProductPriceFocused(false);
-                        const parsed = parseCurrency(productPriceDisplay);
-                        setProductPrice(parsed);
-                        setProductPriceDisplay(parsed);
-                        if (productPriceError && parsed && Number(parsed) > 0) setProductPriceError(false);
-                      }}
-                      onChange={e => {
-                        const raw = e.target.value;
-                        setProductPriceDisplay(raw);
-                      }}
-                    />
-                    {productPriceError && (!productPrice || !productPrice.trim() || Number(parseCurrency(productPrice)) <= 0) && (
-                      <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                    )}
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit Type</label>
                     <div className="flex items-center gap-6 mt-1">
                       <label className="flex items-center gap-2 text-sm">
                         <input 
@@ -1914,291 +1701,284 @@ export default function InventorySuppliers() {
                       </label>
                     </div>
                   </div>
-                  {productUnitType==='multiple' && (
-                    <div className="col-span-2">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Units per Package</label>
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                        value={productUnitsPerPackage} 
-                        onChange={e=>setProductUnitsPerPackage(e.target.value)} 
-                      />
-                    </div>
-                  )}
-                  {productUnitType==='coverage' && (
-                    <div className="col-span-2">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Coverage Area</label>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="flex-1 flex items-center gap-1">
-                          <input 
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                            placeholder="0" 
-                            value={productCovSqs} 
-                            onChange={e=> onProductCoverageChange('sqs', e.target.value)} 
-                          />
-                          <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
-                        </div>
-                        <span className="text-gray-400">=</span>
-                        <div className="flex-1 flex items-center gap-1">
-                          <input 
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                            placeholder="0" 
-                            value={productCovFt2} 
-                            onChange={e=> onProductCoverageChange('ft2', e.target.value)} 
-                          />
-                          <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
-                        </div>
-                        <span className="text-gray-400">=</span>
-                        <div className="flex-1 flex items-center gap-1">
-                          <input 
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                            placeholder="0" 
-                            value={productCovM2} 
-                            onChange={e=> onProductCoverageChange('m2', e.target.value)} 
-                          />
-                          <span className="text-sm text-gray-600 whitespace-nowrap">m²</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description / Notes</label>
-                    <textarea 
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                      rows={3} 
-                      value={productDesc} 
-                      onChange={e=>setProductDesc(e.target.value)} 
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Technical Manual URL</label>
-                    <input 
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                      type="url"
-                      placeholder="https://supplier.com/manual/product"
-                      value={productTechnicalManualUrl} 
-                      onChange={e=>setProductTechnicalManualUrl(e.target.value)} 
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Product Image</label>
-                    <div className="mt-1 space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => setProductImagePickerOpen(true)}
-                        className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm"
-                      >
-                        {productImageDataUrl ? 'Change Image' : 'Select Image'}
-                      </button>
-                      {productImageDataUrl && (
-                        <div className="mt-2">
-                          <img src={productImageDataUrl} className="w-32 h-32 object-contain border rounded" alt="Preview" />
-                          <button
-                            type="button"
-                            onClick={() => setProductImageDataUrl('')}
-                            className="mt-2 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200"
-                          >
-                            Remove Image
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+            {productUnitType === 'multiple' && (
+              <AppInput
+                className="sm:col-span-2"
+                label="Units per Package"
+                type="number"
+                step="0.01"
+                value={productUnitsPerPackage}
+                onChange={(e) => setProductUnitsPerPackage(e.target.value)}
+                fieldHint="Units per Package\n\nHow many units are included in one package."
+              />
+            )}
+            {productUnitType === 'coverage' && (
+              <div className="sm:col-span-2 space-y-1.5">
+                <AppControlLabelRow
+                  label="Coverage Area"
+                  fieldHint={
+                    <AppFieldHint hint="Coverage Area\n\nEnter one value; the others convert automatically (SQS, ft², m²)." />
+                  }
+                />
+                <div className={uiCx(uiLayout.actionsRow, 'items-center gap-2')}>
+                  <AppInput placeholder="0" value={productCovSqs} onChange={(e) => onProductCoverageChange('sqs', e.target.value)} />
+                  <span className={uiTypography.body}>SQS</span>
+                  <span className="text-gray-400">=</span>
+                  <AppInput placeholder="0" value={productCovFt2} onChange={(e) => onProductCoverageChange('ft2', e.target.value)} />
+                  <span className={uiTypography.body}>ft²</span>
+                  <span className="text-gray-400">=</span>
+                  <AppInput placeholder="0" value={productCovM2} onChange={(e) => onProductCoverageChange('m2', e.target.value)} />
+                  <span className={uiTypography.body}>m²</span>
                 </div>
               </div>
-              <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-                <button
+            )}
+            <AppTextarea
+              className="sm:col-span-2"
+              label="Description / Notes"
+              rows={3}
+              value={productDesc}
+              onChange={(e) => setProductDesc(e.target.value)}
+              fieldHint="Description / Notes\n\nOptional product details for estimators."
+            />
+            <AppInput
+              className="sm:col-span-2"
+              label="Technical Manual URL"
+              type="url"
+              placeholder="https://supplier.com/manual/product"
+              value={productTechnicalManualUrl}
+              onChange={(e) => setProductTechnicalManualUrl(e.target.value)}
+              fieldHint="Technical Manual URL\n\nLink to the product manual or spec sheet."
+            />
+            <div className="sm:col-span-2 space-y-2">
+              <AppControlLabelRow
+                label="Product Image"
+                fieldHint={<AppFieldHint hint="Product Image\n\nOptional photo for the catalog tile." />}
+              />
+              <AppButton type="button" variant="secondary" size="sm" onClick={() => setProductImagePickerOpen(true)}>
+                {productImageDataUrl ? 'Change Image' : 'Select Image'}
+              </AppButton>
+              {productImageDataUrl && (
+                <div>
+                  <img src={productImageDataUrl} className={uiCx('h-32 w-32 object-contain border', uiRadius.control)} alt="Preview" />
+                  <AppButton type="button" variant="ghost" size="sm" className="mt-2 text-red-700" onClick={() => setProductImageDataUrl('')}>
+                    Remove Image
+                  </AppButton>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </AppFormModal>
+
+      {productImagePickerOpen && (
+        <ImagePicker
+          isOpen
+          onClose={() => setProductImagePickerOpen(false)}
+          targetWidth={800}
+          targetHeight={800}
+          allowEdit
+          overlayClassName={uiModalLayer.nestedPicker}
+          onConfirm={async (blob) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              setProductImageDataUrl(String(reader.result || ''));
+              setProductImagePickerOpen(false);
+            };
+            reader.readAsDataURL(blob);
+          }}
+        />
+      )}
+
+      <AppFormModal
+        open={productModalOpen && !!(viewingProduct || editingProduct)}
+        onClose={() => {
+          if (editingProduct) {
+            setViewingProduct(editingProduct);
+            setEditingProduct(null);
+          } else {
+            setProductModalOpen(false);
+            setViewingProduct(null);
+          }
+        }}
+        layout={viewingProduct && !editingProduct ? 'detail' : 'form'}
+        formWidth="wide"
+        overlayClassName="z-[110]"
+        title={
+          viewingProduct && !editingProduct
+            ? 'Product Information'
+            : editingProduct
+              ? 'Edit Product'
+              : 'Product'
+        }
+        description={
+          viewingProduct && !editingProduct
+            ? `${viewingProduct.name} — pricing, usage, and related items`
+            : editingProduct
+              ? 'Update product information'
+              : undefined
+        }
+        quickInfo={
+          viewingProduct && !editingProduct ? productDetailQuickInfo(canEditProducts) : undefined
+        }
+        bodyClassName={viewingProduct && !editingProduct ? uiCx(uiSpacing.cardPadding, 'min-w-0') : undefined}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            {viewingProduct && !editingProduct ? (
+              <>
+                <AppButton
                   type="button"
-                  onClick={() => setNewProductModalOpen(false)}
-                  className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setProductModalOpen(false);
+                    setViewingProduct(null);
+                  }}
+                >
+                  Close
+                </AppButton>
+                {canEditProducts ? (
+                  <AppButton type="button" size="sm" onClick={openEditProductModal}>
+                    Edit
+                  </AppButton>
+                ) : null}
+              </>
+            ) : editingProduct ? (
+              <>
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setViewingProduct(editingProduct);
+                    setEditingProduct(null);
+                    setEditProductName('');
+                    setEditProductNameError(false);
+                    setEditProductCategory('');
+                    setEditProductUnit('');
+                    setEditProductPrice('');
+                    setEditProductPriceDisplay('');
+                    setEditProductPriceFocused(false);
+                    setEditProductPriceError(false);
+                    setEditProductDesc('');
+                    setEditProductUnitsPerPackage('');
+                    setEditProductCovSqs('');
+                    setEditProductCovFt2('');
+                    setEditProductCovM2('');
+                    setEditProductUnitType('unitary');
+                    setEditProductImageDataUrl('');
+                    setEditProductTechnicalManualUrl('');
+                  }}
                 >
                   Cancel
-                </button>
-                <button
+                </AppButton>
+                <AppButton
                   type="button"
-                  onClick={async()=>{
-                    if(isSavingProduct) return;
-                    
-                    if(!productName.trim()){
-                      setProductNameError(true);
+                  size="sm"
+                  disabled={isSavingEditProduct}
+                  loading={isSavingEditProduct}
+                  onClick={async () => {
+                    if (isSavingEditProduct) return;
+                    if (!editProductName.trim()) {
+                      setEditProductNameError(true);
                       toast.error('Name is required');
                       return;
                     }
-                    
-                    const priceValue = parseCurrency(productPrice);
-                    if(!priceValue || !priceValue.trim() || Number(priceValue) <= 0){
-                      setProductPriceError(true);
+                    const priceValue = parseCurrency(editProductPrice);
+                    if (!priceValue || !priceValue.trim() || Number(priceValue) <= 0) {
+                      setEditProductPriceError(true);
                       toast.error('Price is required');
                       return;
                     }
-                    
-                    try{
-                      setIsSavingProduct(true);
-                      
-                      // If no image is provided, load the default product placeholder image
-                      let finalImageBase64 = productImageDataUrl;
-                      if (!finalImageBase64) {
-                        try {
-                          const response = await fetch('/ui/assets/placeholders/product.png');
-                          if (response.ok) {
-                            const blob = await response.blob();
-                            const reader = new FileReader();
-                            finalImageBase64 = await new Promise<string>((resolve) => {
-                              reader.onload = () => resolve(reader.result as string);
-                              reader.readAsDataURL(blob);
-                            });
-                          }
-                        } catch (e) {
-                          console.warn('Failed to load default product image:', e);
-                        }
-                      }
-                      
+                    try {
+                      setIsSavingEditProduct(true);
                       const payload = {
-                        name: productName.trim(),
-                        supplier_name: viewing.name,
-                        category: productCategory||null,
-                        unit: productUnit||null,
-                        price: Number(parseCurrency(productPrice)),
-                        description: productDesc||null,
-                        unit_type: productUnitType,
-                        units_per_package: productUnitType==='multiple'? (productUnitsPerPackage? Number(productUnitsPerPackage): null) : null,
-                        coverage_sqs: productUnitType==='coverage'? (productCovSqs? Number(productCovSqs): null) : null,
-                        coverage_ft2: productUnitType==='coverage'? (productCovFt2? Number(productCovFt2): null) : null,
-                        coverage_m2: productUnitType==='coverage'? (productCovM2? Number(productCovM2): null) : null,
-                        image_base64: finalImageBase64 || null,
-                        technical_manual_url: productTechnicalManualUrl || null,
+                        name: editProductName.trim(),
+                        supplier_name: editingProduct.supplier_name,
+                        category: editProductCategory || null,
+                        unit: editProductUnit || null,
+                        price: Number(parseCurrency(editProductPrice)),
+                        description: editProductDesc || null,
+                        unit_type: editProductUnitType,
+                        units_per_package:
+                          editProductUnitType === 'multiple'
+                            ? editProductUnitsPerPackage
+                              ? Number(editProductUnitsPerPackage)
+                              : null
+                            : null,
+                        coverage_sqs:
+                          editProductUnitType === 'coverage' ? (editProductCovSqs ? Number(editProductCovSqs) : null) : null,
+                        coverage_ft2:
+                          editProductUnitType === 'coverage' ? (editProductCovFt2 ? Number(editProductCovFt2) : null) : null,
+                        coverage_m2:
+                          editProductUnitType === 'coverage' ? (editProductCovM2 ? Number(editProductCovM2) : null) : null,
+                        image_base64: editProductImageDataUrl || null,
+                        technical_manual_url: editProductTechnicalManualUrl || null,
                       };
-                      await api('POST','/estimate/products', payload);
-                      toast.success('Product created');
-                      setNewProductModalOpen(false);
-                      // Refetch products to show the new one
+                      const updated = await api('PUT', `/estimate/products/${editingProduct.id}`, payload);
+                      toast.success('Product updated');
+                      setViewingProduct(updated);
+                      setEditingProduct(null);
+                      setEditProductName('');
+                      setEditProductNameError(false);
+                      setEditProductCategory('');
+                      setEditProductUnit('');
+                      setEditProductPrice('');
+                      setEditProductPriceDisplay('');
+                      setEditProductPriceFocused(false);
+                      setEditProductPriceError(false);
+                      setEditProductDesc('');
+                      setEditProductUnitsPerPackage('');
+                      setEditProductCovSqs('');
+                      setEditProductCovFt2('');
+                      setEditProductCovM2('');
+                      setEditProductUnitType('unitary');
+                      setEditProductImageDataUrl('');
+                      setEditProductTechnicalManualUrl('');
                       await refetchSupplierProducts();
                       queryClient.invalidateQueries({ queryKey: ['supplierProducts'] });
-                    }catch(e: any){ 
-                      toast.error(e?.message || 'Failed to create product');
-                    }finally{
-                      setIsSavingProduct(false);
+                    } catch (e: any) {
+                      toast.error(e?.message || 'Failed to update product');
+                    } finally {
+                      setIsSavingEditProduct(false);
                     }
                   }}
-                  disabled={isSavingProduct}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSavingProduct ? 'Creating...' : 'Create Product'}
-                </button>
+                  {isSavingEditProduct ? 'Updating...' : 'Update'}
+                </AppButton>
+              </>
+            ) : null}
+          </div>
+        }
+      >
+        {viewingProduct && !editingProduct ? (
+          <div className={uiSpacing.sectionStack}>
+            <div className={uiCx(uiLayout.actionsRow, 'items-start gap-4')}>
+              <img
+                src={viewingProduct.image_base64 || '/ui/assets/placeholders/product.png'}
+                className={uiCx('h-16 w-16 shrink-0 object-cover border', uiRadius.control, uiBorders.subtle)}
+                alt={viewingProduct.name}
+              />
+              <div className="min-w-0 flex-1">
+                <h2 className={uiTypography.sectionTitle}>{viewingProduct.name}</h2>
+                <div className={uiCx(uiLayout.actionsRow, 'mt-1 flex-wrap gap-3', uiTypography.helper)}>
+                  {viewingProduct.supplier_name && <span>{viewingProduct.supplier_name}</span>}
+                  {viewingProduct.category && <span>{viewingProduct.category}</span>}
+                </div>
               </div>
             </div>
-          </div>
-          {productImagePickerOpen && (
-            <div className="fixed inset-0 z-[130]">
-              <ImagePicker 
-                isOpen={true} 
-                onClose={() => setProductImagePickerOpen(false)} 
-                targetWidth={800} 
-                targetHeight={800} 
-                allowEdit={true}
-                onConfirm={async (blob) => {
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    setProductImageDataUrl(String(reader.result || ''));
-                    setProductImagePickerOpen(false);
-                  };
-                  reader.readAsDataURL(blob);
-                }} 
-              />
-            </div>
-          )}
-        </>
-      )}
 
-      {productModalOpen && (viewingProduct || editingProduct) && (
-        <div className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center overflow-y-auto p-4">
-          <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
-              {viewingProduct && !editingProduct ? (
-                // View mode - display product details
-                <>
-                {/* Title bar - same style as New Product / Contact */}
-                <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProductModalOpen(false);
-                          setViewingProduct(null);
-                        }}
-                        className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                        title="Close"
-                      >
-                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                        </svg>
-                      </button>
-                      <div className="w-14 h-14 rounded-xl border border-gray-200 overflow-hidden bg-white flex-shrink-0">
-                        <img 
-                          src={viewingProduct.image_base64 || '/ui/assets/placeholders/product.png'} 
-                          className="w-full h-full object-cover" 
-                          alt={viewingProduct.name}
-                        />
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold text-gray-900">{viewingProduct.name}</div>
-                        <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-3">
-                          {viewingProduct.supplier_name && <span>{viewingProduct.supplier_name}</span>}
-                          {viewingProduct.category && <span>{viewingProduct.category}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            <AppTabs
+              tabs={productTabItems}
+              value={productTab}
+              onChange={(key) => {
+                setProductTab(key as typeof productTab);
+                if (key === 'related' && viewingProduct?.id) {
+                  handleViewRelated(viewingProduct.id);
+                }
+              }}
+            />
 
-                {/* Tabs */}
-                <div className="flex-shrink-0 px-4 border-b border-gray-200 bg-white">
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => setProductTab('details')}
-                      className={`px-4 py-2 font-medium text-sm transition-colors ${
-                        productTab === 'details'
-                          ? 'text-brand-red border-b-2 border-brand-red'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      Details
-                    </button>
-                    <button
-                      onClick={() => setProductTab('usage')}
-                      className={`px-4 py-2 font-medium text-sm transition-colors ${
-                        productTab === 'usage'
-                          ? 'text-brand-red border-b-2 border-brand-red'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      Usage {productUsage.length > 0 && `(${productUsage.length})`}
-                    </button>
-                    {canEditProducts && viewingProduct && (
-                      <button
-                        onClick={() => {
-                          setProductTab('related');
-                          if (viewingProduct.id) {
-                            handleViewRelated(viewingProduct.id);
-                          }
-                        }}
-                        className={`px-4 py-2 font-medium text-sm transition-colors ${
-                          productTab === 'related'
-                            ? 'text-brand-red border-b-2 border-brand-red'
-                            : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                      >
-                        Related {relatedCounts[viewingProduct.id] ? `(${relatedCounts[viewingProduct.id]})` : ''}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Product Details, Usage, or Related */}
-                <div className="overflow-y-auto flex-1 p-4">
-                {productTab === 'details' ? (
+            {productTab === 'details' ? (
                   <div className="rounded-xl border bg-white p-4 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       {viewingProduct.unit && (
@@ -2413,55 +2193,9 @@ export default function InventorySuppliers() {
                     )}
                   </div>
                 ) : null}
-                </div>
-                </>
-              ) : (
-                // Edit mode - form inputs
-                <>
-                  {/* Edit Header - same style as view mode */}
-                  <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingProduct(null);
-                            setViewingProduct(editingProduct);
-                            setEditProductName('');
-                            setEditProductNameError(false);
-                            setEditProductCategory('');
-                            setEditProductUnit('');
-                            setEditProductPrice('');
-                            setEditProductPriceDisplay('');
-                            setEditProductPriceFocused(false);
-                            setEditProductPriceError(false);
-                            setEditProductDesc('');
-                            setEditProductUnitsPerPackage('');
-                            setEditProductCovSqs('');
-                            setEditProductCovFt2('');
-                            setEditProductCovM2('');
-                            setEditProductUnitType('unitary');
-                            setEditProductImageDataUrl('');
-                            setEditProductTechnicalManualUrl('');
-                          }}
-                          className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                          title="Close"
-                        >
-                          <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                          </svg>
-                        </button>
-                        <div>
-                          <div className="text-sm font-semibold text-gray-900">Edit Product</div>
-                          <div className="text-xs text-gray-500 mt-0.5">Update product information</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="overflow-y-auto flex-1 p-4">
-                    <div className="rounded-xl border bg-white p-4">
-                      <div className="grid grid-cols-2 gap-4">
+          </div>
+        ) : editingProduct ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="col-span-2">
                       <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
                         Name <span className="text-red-600">*</span>
@@ -2669,361 +2403,75 @@ export default function InventorySuppliers() {
                         )}
                       </div>
                     </div>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-              {viewingProduct && !editingProduct ? (
-                // View mode buttons
-                <>
-                    {canEditProducts && (
-                      <>
-                        <button
-                        type="button"
-                        onClick={openEditProductModal}
-                        className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
-                      >
-                        Edit
-                      </button>
-                    </>
-                  )}
-                </>
-              ) : editingProduct ? (
-                // Edit mode buttons
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setViewingProduct(editingProduct);
-                      setEditingProduct(null);
-                      // Reset form fields
-                      setEditProductName('');
-                      setEditProductNameError(false);
-                      setEditProductCategory('');
-                      setEditProductUnit('');
-                      setEditProductPrice('');
-                      setEditProductPriceDisplay('');
-                      setEditProductPriceFocused(false);
-                      setEditProductPriceError(false);
-                      setEditProductDesc('');
-                      setEditProductUnitsPerPackage('');
-                      setEditProductCovSqs('');
-                      setEditProductCovFt2('');
-                      setEditProductCovM2('');
-                      setEditProductUnitType('unitary');
-                      setEditProductImageDataUrl('');
-                      setEditProductTechnicalManualUrl('');
-                    }}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (isSavingEditProduct) return;
-                      
-                      if (!editProductName.trim()) {
-                        setEditProductNameError(true);
-                        toast.error('Name is required');
-                        return;
-                      }
-                      
-                      const priceValue = parseCurrency(editProductPrice);
-                      if (!priceValue || !priceValue.trim() || Number(priceValue) <= 0) {
-                        setEditProductPriceError(true);
-                        toast.error('Price is required');
-                        return;
-                      }
-                      
-                      try {
-                        setIsSavingEditProduct(true);
-                        const payload = {
-                          name: editProductName.trim(),
-                          supplier_name: editingProduct.supplier_name,
-                          category: editProductCategory || null,
-                          unit: editProductUnit || null,
-                          price: Number(parseCurrency(editProductPrice)),
-                          description: editProductDesc || null,
-                          unit_type: editProductUnitType,
-                          units_per_package: editProductUnitType === 'multiple' ? (editProductUnitsPerPackage ? Number(editProductUnitsPerPackage) : null) : null,
-                          coverage_sqs: editProductUnitType === 'coverage' ? (editProductCovSqs ? Number(editProductCovSqs) : null) : null,
-                          coverage_ft2: editProductUnitType === 'coverage' ? (editProductCovFt2 ? Number(editProductCovFt2) : null) : null,
-                          coverage_m2: editProductUnitType === 'coverage' ? (editProductCovM2 ? Number(editProductCovM2) : null) : null,
-                          image_base64: editProductImageDataUrl || null,
-                          technical_manual_url: editProductTechnicalManualUrl || null,
-                        };
-                        const updated = await api('PUT', `/estimate/products/${editingProduct.id}`, payload);
-                        toast.success('Product updated');
-                        setViewingProduct(updated);
-                        setEditingProduct(null);
-                        // Reset form fields
-                        setEditProductName('');
-                        setEditProductNameError(false);
-                        setEditProductCategory('');
-                        setEditProductUnit('');
-                        setEditProductPrice('');
-                        setEditProductPriceDisplay('');
-                        setEditProductPriceFocused(false);
-                        setEditProductPriceError(false);
-                        setEditProductDesc('');
-                        setEditProductUnitsPerPackage('');
-                        setEditProductCovSqs('');
-                        setEditProductCovFt2('');
-                        setEditProductCovM2('');
-                        setEditProductUnitType('unitary');
-                        setEditProductImageDataUrl('');
-                        setEditProductTechnicalManualUrl('');
-                        // Refetch products to show the updated one
-                        await refetchSupplierProducts();
-                        queryClient.invalidateQueries({ queryKey: ['supplierProducts'] });
-                      } catch (e: any) {
-                        toast.error(e?.message || 'Failed to update product');
-                      } finally {
-                        setIsSavingEditProduct(false);
-                      }
-                    }}
-                    disabled={isSavingEditProduct}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSavingEditProduct ? 'Updating...' : 'Update'}
-                  </button>
-                </>
-              ) : null}
-            </div>
           </div>
-        </div>
-      )}
+        ) : null}
+      </AppFormModal>
 
       {editProductImagePickerOpen && (
-        <div className="fixed inset-0 z-[130]">
-          <ImagePicker 
-            isOpen={true} 
-            onClose={() => setEditProductImagePickerOpen(false)} 
-            targetWidth={800} 
-            targetHeight={800} 
-            allowEdit={true}
-            onConfirm={async (blob) => {
-              const reader = new FileReader();
-              reader.onload = () => {
-                setEditProductImageDataUrl(String(reader.result || ''));
-                setEditProductImagePickerOpen(false);
-              };
-              reader.readAsDataURL(blob);
-            }} 
-          />
-        </div>
+        <ImagePicker
+          isOpen
+          onClose={() => setEditProductImagePickerOpen(false)}
+          targetWidth={800}
+          targetHeight={800}
+          allowEdit
+          overlayClassName={uiModalLayer.nestedPicker}
+          onConfirm={async (blob) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              setEditProductImageDataUrl(String(reader.result || ''));
+              setEditProductImagePickerOpen(false);
+            };
+            reader.readAsDataURL(blob);
+          }}
+        />
       )}
 
 
-      {addRelatedOpen && (
-        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center overflow-y-auto p-4">
-          <div className="w-[600px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
-            <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setAddRelatedOpen(false)}
-                    className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                    title="Close"
-                  >
-                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                  </button>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">Add Related Product</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Search and link a product to this one</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="overflow-y-auto flex-1 p-4">
-              <div className="rounded-xl border bg-white p-4">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search products</label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4"
-                  placeholder="Search products..."
-                  value={addRelatedSearch}
-                  onChange={e => searchRelatedProducts(e.target.value)}
-                />
-                <div>
-                  {Array.isArray(addRelatedResults) && addRelatedResults.length > 0 ? (
-                    addRelatedResults.map(r => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => createRelation(addRelatedTarget!, r.id)}
-                        className="w-full text-left p-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 flex items-center justify-between text-sm"
-                      >
-                        <div>
-                          <div className="font-medium text-gray-900">{r.name}</div>
-                          {r.supplier_name && (
-                            <div className="text-xs text-gray-500">{r.supplier_name}</div>
-                          )}
-                        </div>
-                        <div className="text-xs text-brand-red font-semibold">
-                          ${Number(r.price || 0).toFixed(2)}
-                        </div>
-                      </button>
-                    ))
-                  ) : addRelatedResults.length === 0 && !addRelatedSearch ? (
-                    <div className="p-3 text-xs text-gray-500 text-center">Start typing to search products...</div>
-                  ) : addRelatedSearch && addRelatedResults.length === 0 ? (
-                    <div className="p-3 text-xs text-gray-500 text-center">No products found</div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
+      <AppFormModal
+        open={addRelatedOpen}
+        onClose={() => setAddRelatedOpen(false)}
+        overlayClassName="z-[120]"
+        title="Add Related Product"
+        description="Search and link a product to this one"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => setAddRelatedOpen(false)}>
+              Close
+            </AppButton>
           </div>
-        </div>
-      )}
-
-      {contactModalOpen && (
-        <OverlayPortal>
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
-          <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
-            {/* Title bar - same style as customer (ContactsCard) */}
-            <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setContactModalOpen(false);
-                      setEditingContact(null);
-                    }}
-                    className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                    title="Close"
-                  >
-                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                  </button>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">{editingContact ? 'Edit Contact' : 'New Contact'}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">{editingContact ? 'Update contact details' : 'Name, role and contact details'}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="overflow-y-auto flex-1 p-4">
-              <div className="rounded-xl border bg-white p-4 grid md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Name <span className="text-red-600">*</span></label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    value={contactName}
-                    onChange={(e) => setContactName(e.target.value)}
-                    placeholder="Enter contact name"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Email</label>
-                  <input
-                    type="email"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    value={contactEmail}
-                    onChange={(e) => setContactEmail(e.target.value)}
-                    placeholder="Enter email address"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Phone</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    value={contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value)}
-                    placeholder="Enter phone number"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Title / Department</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    value={contactTitle}
-                    onChange={(e) => setContactTitle(e.target.value)}
-                    placeholder="Enter title or department"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Notes</label>
-                  <textarea
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    value={contactNotes}
-                    onChange={(e) => setContactNotes(e.target.value)}
-                    placeholder="Enter notes"
-                    rows={3}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+        }
+      >
+        <AppInput
+          label="Search products"
+          placeholder="Search products..."
+          value={addRelatedSearch}
+          onChange={(e) => searchRelatedProducts(e.target.value)}
+          fieldHint="Search products\n\nType to find another catalog product to link as related."
+        />
+        <div className={uiCx(uiBorders.subtle, uiRadius.control, 'mt-4 overflow-hidden border')}>
+          {Array.isArray(addRelatedResults) && addRelatedResults.length > 0 ? (
+            addRelatedResults.map((r) => (
               <button
+                key={r.id}
                 type="button"
-                onClick={() => {
-                  setContactModalOpen(false);
-                  setEditingContact(null);
-                }}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
+                onClick={() => createRelation(addRelatedTarget!, r.id)}
+                className="flex w-full items-center justify-between border-b border-gray-100 p-3 text-left text-sm last:border-b-0 hover:bg-gray-50"
               >
-                Cancel
+                <div>
+                  <div className={uiTypography.sectionTitle}>{r.name}</div>
+                  {r.supplier_name && <div className={uiTypography.helper}>{r.supplier_name}</div>}
+                </div>
+                <div className={uiCx(uiTypography.body, 'font-semibold text-brand-red')}>${Number(r.price || 0).toFixed(2)}</div>
               </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!contactName.trim()) {
-                    toast.error('Name is required');
-                    return;
-                  }
-                  try {
-                    if (editingContact) {
-                      await api('PUT', `/inventory/contacts/${editingContact.id}`, {
-                        name: contactName,
-                        email: contactEmail || undefined,
-                        phone: contactPhone || undefined,
-                        title: contactTitle || undefined,
-                        notes: contactNotes || undefined,
-                        supplier_id: viewing?.id
-                      });
-                      toast.success('Contact updated');
-                    } else {
-                      await api('POST', '/inventory/contacts', {
-                        name: contactName,
-                        email: contactEmail || undefined,
-                        phone: contactPhone || undefined,
-                        title: contactTitle || undefined,
-                        notes: contactNotes || undefined,
-                        supplier_id: viewing?.id
-                      });
-                      toast.success('Contact created');
-                    }
-                    setContactModalOpen(false);
-                    setEditingContact(null);
-                    refetchContacts();
-                  } catch (error) {
-                    toast.error('Failed to save contact');
-                  }
-                }}
-                className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {editingContact ? 'Update' : 'Create'}
-              </button>
-            </div>
-          </div>
+            ))
+          ) : addRelatedResults.length === 0 && !addRelatedSearch ? (
+            <div className={uiCx(uiTypography.helper, 'p-3 text-center')}>Start typing to search products...</div>
+          ) : addRelatedSearch && addRelatedResults.length === 0 ? (
+            <div className={uiCx(uiTypography.helper, 'p-3 text-center')}>No products found</div>
+          ) : null}
         </div>
-        </OverlayPortal>
-      )}
-      
+      </AppFormModal>
+
       {/* Filter Builder Modal */}
       <FilterBuilderModal
         isOpen={isFilterModalOpen}
@@ -3037,5 +2485,44 @@ export default function InventorySuppliers() {
         }}
       />
     </div>
+  );
+}
+
+function SupplierSortableRow({ s, onOpen }: { s: Supplier; onOpen: () => void }) {
+  return (
+    <AppSortableEntityListRow
+      variant="flat"
+      preset="suppliers"
+      as="div"
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <img
+          src={s.image_base64 || '/ui/assets/placeholders/supplier.png'}
+          className={uiCx('h-10 w-10 shrink-0 object-cover', uiRadius.control, uiBorders.subtle)}
+          alt={s.name}
+        />
+        <div className="flex min-w-0 flex-col justify-center">
+          <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{s.name}</div>
+          {s.address_line1 ? (
+            <div className={uiCx(uiTypography.helper, 'truncate text-[10px]')}>{s.address_line1}</div>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex min-w-0 items-center">
+        <span className={uiCx(uiTypography.body, 'truncate text-xs')}>{s.email || '—'}</span>
+      </div>
+      <div className="flex min-w-0 items-center">
+        <span className={uiCx(uiTypography.body, 'truncate text-xs')}>{s.phone ? formatPhone(s.phone) : '—'}</span>
+      </div>
+    </AppSortableEntityListRow>
   );
 }
