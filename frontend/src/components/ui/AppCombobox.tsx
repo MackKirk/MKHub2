@@ -26,6 +26,8 @@ export type AppComboboxProps = {
   id?: string;
   emptyMessage?: string;
   triggerClassName?: string;
+  /** Fired when the user edits the combobox text (e.g. server-side option refresh). */
+  onInputChange?: (text: string) => void;
 };
 
 export function AppCombobox({
@@ -41,6 +43,7 @@ export function AppCombobox({
   id,
   emptyMessage = 'No matches. Try another search.',
   triggerClassName,
+  onInputChange,
 }: AppComboboxProps) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
@@ -129,6 +132,7 @@ export function AppCombobox({
           onChange={(e) => {
             const v = e.target.value;
             setText(v);
+            onInputChange?.(v);
             if (value) onChange('');
             setOpen(true);
           }}

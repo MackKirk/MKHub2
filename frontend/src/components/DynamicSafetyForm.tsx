@@ -16,8 +16,21 @@ import SafetyDynamicFileField from '@/components/SafetyDynamicFileField';
 import SafetyPdfViewReferenceField from '@/components/SafetyPdfViewReferenceField';
 import { SafetyFieldQuestionLabel as FieldQuestionLabel } from '@/components/SafetyFieldQuestionLabel';
 import { SafetyFieldCommentPanel } from '@/components/SafetyFieldCommentPanel';
-import SafetyDropdownMulti from '@/components/SafetyDropdownMulti';
-import SafetySearchableSingle from '@/components/SafetySearchableSingle';
+import {
+  AppCheckbox,
+  AppCombobox,
+  AppDatePicker,
+  AppInput,
+  AppMultiSelect,
+  AppSelect,
+  AppTextarea,
+  AppTimePicker,
+  AppUserSelect,
+  uiBorders,
+  uiCx,
+  uiRadius,
+  uiSpacing,
+} from '@/components/ui';
 import {
   SafetyHierarchicalCustomListMulti,
   SafetyHierarchicalCustomListSingle,
@@ -76,14 +89,26 @@ const FIELD_QUESTION_CLASS = 'block text-sm font-medium text-gray-600 mb-2';
 /** Inline question text (e.g. checkbox row). */
 const FIELD_QUESTION_INLINE = 'text-sm font-medium text-gray-600';
 
-/** Shared control chrome (tile-adjacent: rounded-xl, border-2). */
-const CONTROL_BASE =
-  'min-h-[2.75rem] px-3 py-2 border-2 border-gray-200 rounded-xl text-sm text-gray-900 bg-white disabled:bg-gray-50 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red';
+const CONTROL_FIELD_WRAP = 'flex-1 min-w-0 block';
 
-const CONTROL_INPUT_FULL = `w-full ${CONTROL_BASE}`;
-const CONTROL_INPUT_FLEX = `flex-1 min-w-0 ${CONTROL_BASE}`;
-const CONTROL_TEXTAREA = `flex-1 min-w-0 min-h-[6rem] w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm text-gray-900 bg-white disabled:bg-gray-50 placeholder:text-gray-400 resize-y focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red`;
-const CONTROL_SELECT_FLEX = `flex-1 min-w-0 min-h-[2.75rem] px-3 py-2 border-2 border-gray-200 rounded-xl text-sm text-gray-900 bg-white cursor-pointer disabled:bg-gray-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red`;
+function ControlLoadingPlaceholder({ message }: { message: string }) {
+  return (
+    <div
+      className={uiCx(
+        'flex min-h-[2.25rem] items-center bg-gray-50 text-sm text-gray-500',
+        uiSpacing.controlX,
+        uiSpacing.controlY,
+        uiRadius.control,
+        uiBorders.input,
+      )}
+    >
+      {message}
+    </div>
+  );
+}
+
+/** Short static enums — AppSelect; longer lists — AppCombobox (search in field). */
+const APP_SELECT_MAX_OPTIONS = 12;
 
 /** Sidecar for optional per-field notes (`_fieldComments`). yes_no_na uses { comments, commentImageIds } on the field value. */
 const SIDE_COMMENT_PAYLOAD_KEY = '_fieldComments';
@@ -459,6 +484,16 @@ export default function DynamicSafetyForm({
     enabled: needFleet,
   });
 
+  const appUserOptions = useMemo(
+    () => employees.map((e) => ({ id: e.id, name: e.name, username: e.username })),
+    [employees],
+  );
+
+  const fleetComboboxOptions = useMemo(
+    () => fleetAssets.map((a) => ({ value: a.id, label: a.label })),
+    [fleetAssets],
+  );
+
   const customListIds = useMemo(() => {
     const s = new Set<string>();
     for (const sec of definition.sections) {
@@ -649,13 +684,12 @@ export default function DynamicSafetyForm({
         <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
-            <input
-              type="text"
+            <AppInput
               value={getStr(formPayload, k)}
               onChange={(e) => setKey(k, e.target.value)}
               disabled={disabled}
               placeholder={field.placeholder}
-              className={CONTROL_INPUT_FLEX}
+              className={CONTROL_FIELD_WRAP}
             />
             {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
@@ -684,13 +718,13 @@ export default function DynamicSafetyForm({
         <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-start gap-2">
-            <textarea
+            <AppTextarea
               value={getStr(formPayload, k)}
               onChange={(e) => setKey(k, e.target.value)}
               disabled={disabled}
               placeholder={field.placeholder}
               rows={4}
-              className={CONTROL_TEXTAREA}
+              className={CONTROL_FIELD_WRAP}
             />
             {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
@@ -722,7 +756,7 @@ export default function DynamicSafetyForm({
         <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
-            <input
+            <AppInput
               type="number"
               value={num === '' ? '' : String(num)}
               onChange={(e) => {
@@ -731,7 +765,7 @@ export default function DynamicSafetyForm({
               }}
               disabled={disabled}
               placeholder={field.placeholder}
-              className={CONTROL_INPUT_FLEX}
+              className={CONTROL_FIELD_WRAP}
             />
             {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
@@ -762,15 +796,12 @@ export default function DynamicSafetyForm({
         <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
-            <div className="flex-1 min-w-0 rounded-xl border-2 border-gray-200 bg-white px-2 py-0.5 focus-within:ring-2 focus-within:ring-brand-red/20 focus-within:border-brand-red">
-              <input
-                type="date"
-                value={iso}
-                onChange={(e) => setKey(k, e.target.value)}
-                disabled={disabled}
-                className="w-full min-h-[2.5rem] bg-transparent text-sm text-gray-900 disabled:opacity-60 focus:outline-none"
-              />
-            </div>
+            <AppDatePicker
+              value={iso}
+              onChange={(e) => setKey(k, e.target.value)}
+              disabled={disabled}
+              className={CONTROL_FIELD_WRAP}
+            />
             {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
@@ -798,15 +829,12 @@ export default function DynamicSafetyForm({
         <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
-            <div className="flex-1 min-w-0 rounded-xl border-2 border-gray-200 bg-white px-2 py-0.5 focus-within:ring-2 focus-within:ring-brand-red/20 focus-within:border-brand-red">
-              <input
-                type="time"
-                value={getStr(formPayload, k)}
-                onChange={(e) => setKey(k, e.target.value)}
-                disabled={disabled}
-                className="w-full min-h-[2.5rem] bg-transparent text-sm text-gray-900 disabled:opacity-60 focus:outline-none"
-              />
-            </div>
+            <AppTimePicker
+              value={getStr(formPayload, k)}
+              onChange={(e) => setKey(k, e.target.value)}
+              disabled={disabled}
+              className={CONTROL_FIELD_WRAP}
+            />
             {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
@@ -834,24 +862,15 @@ export default function DynamicSafetyForm({
       return (
         <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <label
-              className={`inline-flex items-center gap-3 min-w-0 flex-1 cursor-pointer rounded-xl border-2 border-gray-200 bg-white px-3 py-2.5 hover:border-gray-300 transition-colors ${
-                disabled ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={v}
-                disabled={disabled}
-                onChange={(e) => setKey(k, e.target.checked)}
-                className="h-5 w-5 shrink-0 rounded-md border-2 border-gray-300 text-red-600 focus:ring-2 focus:ring-brand-red/30 focus:ring-offset-0"
-              />
-              <FieldQuestionLabel
-                as="span"
-                field={field}
-                className={`${FIELD_QUESTION_INLINE} text-left`}
-              />
-            </label>
+            <AppCheckbox
+              className="min-w-0 flex-1"
+              checked={v}
+              disabled={disabled}
+              onChange={(checked) => setKey(k, checked)}
+              label={
+                <FieldQuestionLabel as="span" field={field} className={`${FIELD_QUESTION_INLINE} text-left`} />
+              }
+            />
             {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
@@ -895,9 +914,7 @@ export default function DynamicSafetyForm({
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             {listId && listLoading ? (
-              <div className={`${CONTROL_SELECT_FLEX} flex items-center text-sm text-gray-500 bg-gray-50`}>
-                Loading options…
-              </div>
+              <ControlLoadingPlaceholder message="Loading options…" />
             ) : hierarchical && runtime ? (
               <div className="flex-1 min-w-0">
                 <SafetyHierarchicalCustomListSingle
@@ -911,19 +928,28 @@ export default function DynamicSafetyForm({
                 />
               </div>
             ) : opts.length === 0 ? (
-              <div className={`${CONTROL_SELECT_FLEX} flex items-center text-sm text-gray-500 bg-gray-50`}>
-                No options
-              </div>
+              <ControlLoadingPlaceholder message="No options" />
             ) : (
               <div className="flex-1 min-w-0">
-                <SafetySearchableSingle
-                  hideLabel
-                  label={field.label}
-                  rows={opts}
-                  value={val}
-                  disabled={disabled}
-                  onChange={(v) => setKey(k, v)}
-                />
+                {opts.length <= APP_SELECT_MAX_OPTIONS ? (
+                  <AppSelect
+                    value={val}
+                    onChange={(e) => setKey(k, e.target.value)}
+                    disabled={disabled}
+                    placeholder="Select…"
+                    options={opts}
+                    className="w-full"
+                  />
+                ) : (
+                  <AppCombobox
+                    value={val}
+                    onChange={(v) => setKey(k, v)}
+                    options={opts}
+                    disabled={disabled}
+                    placeholder="Search…"
+                    triggerClassName="w-full"
+                  />
+                )}
               </div>
             )}
             {!disabled && showPerFieldSideComments && (
@@ -966,9 +992,7 @@ export default function DynamicSafetyForm({
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
               {listId && listLoading ? (
-                <div className="min-h-[2.75rem] px-3 py-2 border-2 border-gray-200 rounded-xl text-sm text-gray-500 bg-gray-50 flex items-center">
-                  Loading options…
-                </div>
+                <ControlLoadingPlaceholder message="Loading options…" />
               ) : hierarchical && runtime ? (
                 <SafetyHierarchicalCustomListMulti
                   hideLabel
@@ -980,15 +1004,18 @@ export default function DynamicSafetyForm({
                   onChange={(next) => setKey(k, next)}
                 />
               ) : (
-                <SafetyDropdownMulti
-                  hideLabel
-                  rows={useCustom ? leafRows! : undefined}
-                  options={useCustom ? undefined : legacyOpts}
-                  preserveOrder={useCustom}
+                <AppMultiSelect
+                  searchable
                   value={sel}
-                  disabled={disabled}
                   onChange={(next) => setKey(k, next)}
-                  label={field.label}
+                  disabled={disabled}
+                  options={
+                    useCustom
+                      ? leafRows!.map((row) => ({ value: row.value, label: row.label }))
+                      : legacyOpts.map((o) => ({ value: o, label: o }))
+                  }
+                  placeholder="Search…"
+                  className="w-full"
                 />
               )}
             </div>
@@ -1152,20 +1179,19 @@ export default function DynamicSafetyForm({
 
     if (field.type === 'user_single') {
       const val = getStr(formPayload, k);
-      const workerRows = employees.map((e) => ({ value: e.id, label: e.name || e.username || e.id }));
       return (
         <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
-              <SafetySearchableSingle
-                hideLabel
-                label={field.label}
-                rows={workerRows}
+              <AppUserSelect
+                mode="single"
+                users={appUserOptions}
                 value={val}
                 disabled={disabled}
                 onChange={(v) => setKey(k, v)}
-                searchPlaceholder="Search workers…"
+                placeholder="Search workers…"
+                triggerClassName="w-full"
               />
             </div>
             {!disabled && showPerFieldSideComments && (
@@ -1192,20 +1218,19 @@ export default function DynamicSafetyForm({
 
     if (field.type === 'user_multi') {
       const sel = getStrArr(formPayload, k);
-      const workerRows = employees.map((e) => ({ value: e.id, label: e.name || e.username || e.id }));
       return (
         <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
-              <SafetyDropdownMulti
-                hideLabel
-                label={field.label}
-                rows={workerRows}
+              <AppUserSelect
+                mode="multiple"
+                users={appUserOptions}
                 value={sel}
                 disabled={disabled}
                 onChange={(next) => setKey(k, next)}
-                searchPlaceholder="Search workers…"
+                placeholder="Search workers…"
+                triggerClassName="w-full"
               />
             </div>
             {!disabled && showPerFieldSideComments && (
@@ -1243,21 +1268,19 @@ export default function DynamicSafetyForm({
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex flex-wrap gap-2 items-end flex-1 min-w-0">
-              <input
-                type="text"
+              <AppInput
                 placeholder="Latitude"
                 value={g.lat}
                 disabled={disabled}
                 onChange={(e) => setGps(e.target.value, g.lng)}
-                className={`w-32 shrink-0 ${CONTROL_BASE}`}
+                className="w-32 shrink-0"
               />
-              <input
-                type="text"
+              <AppInput
                 placeholder="Longitude"
                 value={g.lng}
                 disabled={disabled}
                 onChange={(e) => setGps(g.lat, e.target.value)}
-                className={`w-32 shrink-0 ${CONTROL_BASE}`}
+                className="w-32 shrink-0"
               />
               <button
                 type="button"
@@ -1297,20 +1320,18 @@ export default function DynamicSafetyForm({
 
     if (field.type === 'equipment_single') {
       const val = getStr(formPayload, k);
-      const fleetRows = fleetAssets.map((a) => ({ value: a.id, label: a.label }));
       return (
         <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
-              <SafetySearchableSingle
-                hideLabel
-                label={field.label}
-                rows={fleetRows}
+              <AppCombobox
                 value={val}
-                disabled={disabled}
                 onChange={(v) => setKey(k, v)}
-                searchPlaceholder="Search equipment…"
+                options={fleetComboboxOptions}
+                disabled={disabled}
+                placeholder="Search equipment…"
+                triggerClassName="w-full"
               />
             </div>
             {!disabled && showPerFieldSideComments && (
@@ -1337,20 +1358,19 @@ export default function DynamicSafetyForm({
 
     if (field.type === 'equipment_multi') {
       const sel = getStrArr(formPayload, k);
-      const fleetRows = fleetAssets.map((a) => ({ value: a.id, label: a.label }));
       return (
         <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
-              <SafetyDropdownMulti
-                hideLabel
-                label={field.label}
-                rows={fleetRows}
+              <AppMultiSelect
+                searchable
                 value={sel}
-                disabled={disabled}
                 onChange={(next) => setKey(k, next)}
-                searchPlaceholder="Search equipment…"
+                options={fleetComboboxOptions}
+                disabled={disabled}
+                placeholder="Search equipment…"
+                className="w-full"
               />
             </div>
             {!disabled && showPerFieldSideComments && (
@@ -1535,13 +1555,11 @@ export default function DynamicSafetyForm({
             )}
           </div>
           {(sigMode === 'typed' || sigMode === 'any') && (
-            <input
-              type="text"
+            <AppInput
               value={getStr(formPayload, '_worker_signature')}
               onChange={(e) => setKey('_worker_signature', e.target.value)}
               disabled={disabled}
               placeholder="Type full name to sign"
-              className={CONTROL_INPUT_FULL}
             />
           )}
           {(sigMode === 'drawn' || sigMode === 'any') && projectId && (

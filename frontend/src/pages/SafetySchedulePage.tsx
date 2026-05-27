@@ -1,17 +1,21 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { CalendarDays } from 'lucide-react';
 import SafetyServiceCalendar from './SafetyServiceCalendar';
-import OverlayPortal from '@/components/OverlayPortal';
-import {
-  SAFETY_MODAL_BTN_CANCEL,
-  SAFETY_MODAL_BTN_PRIMARY,
-  SAFETY_MODAL_FIELD_LABEL,
-  SafetyModalOverlayBackdrop,
-  SafetyFormModalLayout,
-} from '@/components/safety/SafetyModalChrome';
-import PageHeaderBar from '@/components/PageHeaderBar';
 import { api } from '@/lib/api';
+import {
+  AppButton,
+  AppCombobox,
+  AppDatePicker,
+  AppFormModal,
+  AppPageHeader,
+  AppSelect,
+  AppTimePicker,
+  uiCx,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type BizProject = { id: string; name: string; code?: string; business_line?: string };
 
@@ -32,15 +36,61 @@ type SafetyInspectionCreated = {
   status?: string;
 };
 
+function localDatePart(value: string): string {
+  if (!value) return '';
+  return value.split('T')[0] || '';
+}
+
+function localTimePart(value: string): string {
+  const timePart = value.split('T')[1] || '';
+  return /^\d{2}:\d{2}/.test(timePart) ? timePart.slice(0, 5) : '';
+}
+
+function PlannedDateTimeFields({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const date = localDatePart(value);
+  const time = localTimePart(value);
+
+  return (
+    <div className={uiSpacing.sectionStack}>
+      <AppDatePicker
+        label="Planned date and time *"
+        value={date}
+        onChange={(e) => {
+          const d = e.target.value;
+          if (!d) {
+            onChange('');
+            return;
+          }
+          onChange(time ? `${d}T${time}` : `${d}T`);
+        }}
+        required
+      />
+      <AppTimePicker
+        label="Time *"
+        value={time}
+        onChange={(e) => {
+          const t = e.target.value;
+          if (!date) return;
+          onChange(t ? `${date}T${t}` : `${date}T`);
+        }}
+        required
+      />
+    </div>
+  );
+}
+
 export default function SafetySchedulePage() {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
-  /** Text in the project combobox: search query or selected project label */
-  const [projectInput, setProjectInput] = useState('');
+  const [projectSearch, setProjectSearch] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
-  const projectComboRef = useRef<HTMLDivElement>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [scheduledLocal, setScheduledLocal] = useState(() => {
     const d = new Date();
@@ -50,21 +100,17 @@ export default function SafetySchedulePage() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   });
 
-  useEffect(() => {
-    const t = window.setTimeout(() => setDebouncedQ(projectInput.trim()), 300);
-    return () => window.clearTimeout(t);
-  }, [projectInput]);
+  const todayLabel = new Date().toLocaleDateString('en-CA', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 
   useEffect(() => {
-    if (!projectDropdownOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      if (projectComboRef.current && !projectComboRef.current.contains(e.target as Node)) {
-        setProjectDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [projectDropdownOpen]);
+    const t = window.setTimeout(() => setDebouncedQ(projectSearch.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [projectSearch]);
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
@@ -89,6 +135,26 @@ export default function SafetySchedulePage() {
 
   const projectItems = projectsRes?.items ?? [];
 
+  const projectOptions = useMemo(
+    () =>
+      projectItems.map((p) => ({
+        value: p.id,
+        label: formatProjectLabel(p),
+      })),
+    [projectItems]
+  );
+
+  const templateOptions = useMemo(
+    () => [
+      { value: '', label: '— Select template —' },
+      ...schedulableTemplates.map((t) => ({
+        value: t.id,
+        label: `${t.name}${(t.version_label || '').trim() ? ` (${(t.version_label || '').trim()})` : ''}`,
+      })),
+    ],
+    [schedulableTemplates]
+  );
+
   const scheduleMutation = useMutation({
     mutationFn: async () => {
       if (!selectedProjectId) throw new Error('Select a project');
@@ -108,24 +174,11 @@ export default function SafetySchedulePage() {
       queryClient.invalidateQueries({ queryKey: ['projectSafetyInspections', row.project_id] });
       setShowModal(false);
       setSelectedProjectId('');
-      setProjectInput('');
+      setProjectSearch('');
       setSelectedTemplateId('');
     },
     onError: () => toast.error('Could not schedule inspection'),
   });
-
-  useEffect(() => {
-    if (!showModal) return;
-    document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowModal(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = '';
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [showModal]);
 
   const canSubmit = useMemo(
     () =>
@@ -136,157 +189,73 @@ export default function SafetySchedulePage() {
     [selectedProjectId, selectedTemplateId, scheduledLocal, scheduleMutation.isPending]
   );
 
+  const resetScheduleForm = () => {
+    setProjectSearch('');
+    setSelectedProjectId('');
+    setDebouncedQ('');
+    setSelectedTemplateId('');
+  };
+
   return (
-    <div className="space-y-4 min-w-0 max-w-6xl mx-auto px-4 pb-16">
-      <PageHeaderBar
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
         title="Safety schedule"
         subtitle="Scheduled site safety inspections on the calendar. Open the project Safety tab to complete forms."
+        icon={<CalendarDays className="h-4 w-4" />}
+        actions={
+          <div className="text-right">
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
+          </div>
+        }
       />
 
       <SafetyServiceCalendar
         embedView
         canSchedule={canSchedule}
         onScheduleNew={() => {
-          setProjectInput('');
-          setSelectedProjectId('');
-          setDebouncedQ('');
-          setProjectDropdownOpen(false);
-          setSelectedTemplateId('');
+          resetScheduleForm();
           setShowModal(true);
         }}
       />
 
-      {showModal && canSchedule && (
-        <OverlayPortal>
-          <SafetyModalOverlayBackdrop onBackdropClick={() => setShowModal(false)}>
-            <SafetyFormModalLayout
-              widthClass="w-full max-w-lg"
-              titleId="schedule-safety-inspection-title"
-              title="Schedule site safety inspection"
-              subtitle="Pick an active form template, an awarded project, and a planned date. Complete the form on the project Safety tab."
-              onClose={() => setShowModal(false)}
-              shellOverflow="visible"
-              bodyClassName="overflow-visible flex-1 p-4 min-h-0 relative z-20"
-              innerCardClassName="overflow-visible"
-              footer={
-                <>
-                  <button type="button" onClick={() => setShowModal(false)} className={SAFETY_MODAL_BTN_CANCEL}>
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!canSubmit}
-                    onClick={() => scheduleMutation.mutate()}
-                    className={SAFETY_MODAL_BTN_PRIMARY}
-                  >
-                    {scheduleMutation.isPending ? 'Scheduling…' : 'Schedule inspection'}
-                  </button>
-                </>
-              }
-            >
-              <div className="space-y-4">
-                <div>
-                  <label className={SAFETY_MODAL_FIELD_LABEL}>
-                    Form template <span className="text-red-600">*</span>
-                  </label>
-                  <select
-                    value={selectedTemplateId}
-                    onChange={(e) => setSelectedTemplateId(e.target.value)}
-                    className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-                  >
-                    <option value="">— Select template —</option>
-                    {schedulableTemplates.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                        {(t.version_label || '').trim() ? ` (${(t.version_label || '').trim()})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div ref={projectComboRef} className="relative z-30">
-                  <label className={SAFETY_MODAL_FIELD_LABEL}>
-                    Project <span className="text-red-600">*</span>
-                  </label>
-                  <div className="relative mt-1">
-                    <svg
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
-                    <input
-                      type="text"
-                      role="combobox"
-                      aria-expanded={projectDropdownOpen}
-                      aria-autocomplete="list"
-                      value={projectInput}
-                      placeholder="Search by name or code…"
-                      autoComplete="off"
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setProjectInput(v);
-                        setSelectedProjectId('');
-                        setProjectDropdownOpen(true);
-                      }}
-                      onFocus={() => setProjectDropdownOpen(true)}
-                      className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-                    />
-                  </div>
-                  {projectDropdownOpen && (
-                    <ul
-                      role="listbox"
-                      className="absolute left-0 right-0 z-[100] mt-1 max-h-52 overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-xl"
-                    >
-                      {projectsLoading ? (
-                        <li className="px-3 py-2 text-sm text-gray-500">Loading…</li>
-                      ) : projectItems.length === 0 ? (
-                        <li className="px-3 py-2 text-sm text-amber-800">No projects match. Try another search.</li>
-                      ) : (
-                        projectItems.map((p) => (
-                          <li key={p.id} role="option">
-                            <button
-                              type="button"
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                                selectedProjectId === p.id ? 'bg-gray-50 font-medium' : ''
-                              }`}
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setSelectedProjectId(p.id);
-                                setProjectInput(formatProjectLabel(p));
-                                setProjectDropdownOpen(false);
-                              }}
-                            >
-                              {formatProjectLabel(p)}
-                            </button>
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                  )}
-                </div>
-                <div>
-                  <label className={SAFETY_MODAL_FIELD_LABEL}>
-                    Planned date and time <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={scheduledLocal}
-                    onChange={(e) => setScheduledLocal(e.target.value)}
-                    className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-                  />
-                </div>
-              </div>
-            </SafetyFormModalLayout>
-          </SafetyModalOverlayBackdrop>
-        </OverlayPortal>
-      )}
+      <AppFormModal
+        open={showModal && canSchedule}
+        onClose={() => setShowModal(false)}
+        title="Schedule site safety inspection"
+        description="Pick an active form template, an awarded project, and a planned date. Complete the form on the project Safety tab."
+        footer={
+          <>
+            <AppButton type="button" variant="secondary" onClick={() => setShowModal(false)}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" disabled={!canSubmit} onClick={() => scheduleMutation.mutate()}>
+              {scheduleMutation.isPending ? 'Scheduling…' : 'Schedule inspection'}
+            </AppButton>
+          </>
+        }
+      >
+        <div className={uiSpacing.sectionStack}>
+          <AppSelect
+            label="Form template *"
+            value={selectedTemplateId}
+            onChange={(e) => setSelectedTemplateId(e.target.value)}
+            options={templateOptions}
+          />
+          <AppCombobox
+            label="Project *"
+            value={selectedProjectId}
+            onChange={setSelectedProjectId}
+            onInputChange={setProjectSearch}
+            options={projectOptions}
+            placeholder="Search by name or code…"
+            emptyMessage={
+              projectsLoading ? 'Loading…' : 'No projects match. Try another search.'
+            }
+          />
+          <PlannedDateTimeFields value={scheduledLocal} onChange={setScheduledLocal} />
+        </div>
+      </AppFormModal>
     </div>
   );
 }

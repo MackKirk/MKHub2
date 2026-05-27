@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -20,19 +20,25 @@ import { fileStartsWithPdfMagic, isPdfFileCandidate } from '@/lib/pdfGuards';
 import { uploadFormTemplateReferencePdf } from '@/lib/formTemplateReferencePdfUpload';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
-import OverlayPortal from '@/components/OverlayPortal';
-import {
-  ModalCloseChevron,
-  SAFETY_MODAL_BTN_CANCEL,
-  SAFETY_MODAL_BTN_PRIMARY,
-  SAFETY_MODAL_FIELD_LABEL,
-  SafetyModalOverlayBackdrop,
-  SafetyFormModalLayout,
-  SafetyFormPdfPreviewShell,
-} from '@/components/safety/SafetyModalChrome';
-import PageHeaderBar from '@/components/PageHeaderBar';
+import { FileStack } from 'lucide-react';
+import { SafetyFormPdfPreviewShell } from '@/components/safety/SafetyModalChrome';
 import SafetyFieldTypeIcon from '@/components/SafetyFieldTypeIcon';
-import SafetySearchableSingle from '@/components/SafetySearchableSingle';
+import {
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppFormModal,
+  AppInput,
+  AppPageHeader,
+  AppSelect,
+  AppTabs,
+  uiBorders,
+  uiCx,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 import DynamicSafetyForm from '@/components/DynamicSafetyForm';
 import {
   DEFAULT_DEFINITION,
@@ -177,7 +183,11 @@ function newField(type: SafetyFormFieldType, order: number): SafetyFormField {
 
 /** Static shell for a section in the main builder column (section reorder happens in the left rail). */
 function BuilderSectionCard({ children }: { children: ReactNode }) {
-  return <div className="rounded-xl border border-gray-200 bg-white overflow-hidden mb-4 last:mb-0">{children}</div>;
+  return (
+    <AppCard className="mb-4 last:mb-0" bodyClassName="!p-0">
+      {children}
+    </AppCard>
+  );
 }
 
 function HamburgerDragIcon({ className }: { className?: string }) {
@@ -252,6 +262,7 @@ function SortableFieldRow({
 
 export default function FormTemplateEditorPage() {
   const { id: templateId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const location = useLocation();
   const isEmployeeReviewEditor = location.pathname.startsWith('/reviews/form-templates');
   const listPath = isEmployeeReviewEditor ? '/reviews/form-templates' : '/safety/form-templates';
@@ -272,7 +283,6 @@ export default function FormTemplateEditorPage() {
   const [modalSelectedType, setModalSelectedType] = useState<SafetyFormFieldType | null>(null);
   const [modalItemName, setModalItemName] = useState('');
   const [modalCustomListId, setModalCustomListId] = useState('');
-  const [modalCustomListSearch, setModalCustomListSearch] = useState('');
   const [sigRequired, setSigRequired] = useState(false);
   const [customListEdit, setCustomListEdit] = useState<{ sectionId: string; fieldId: string } | null>(null);
   const [customListEditDraft, setCustomListEditDraft] = useState('');
@@ -309,11 +319,13 @@ export default function FormTemplateEditorPage() {
     [customListsForPicker]
   );
 
-  const modalFilteredCustomLists = useMemo(() => {
-    const q = modalCustomListSearch.trim().toLowerCase();
-    if (!q) return activeCustomLists;
-    return activeCustomLists.filter((L) => (L.name || '').toLowerCase().includes(q));
-  }, [activeCustomLists, modalCustomListSearch]);
+  const customListSelectOptions = useMemo(
+    () => [
+      { value: '', label: 'None (clear)' },
+      ...activeCustomLists.map((L) => ({ value: L.id, label: L.name })),
+    ],
+    [activeCustomLists]
+  );
 
   useEffect(() => {
     if (!tmpl) return;
@@ -583,7 +595,6 @@ export default function FormTemplateEditorPage() {
     setModalSelectedType(null);
     setModalItemName('');
     setModalCustomListId('');
-    setModalCustomListSearch('');
     setShowTypeModal(true);
   };
 
@@ -591,7 +602,6 @@ export default function FormTemplateEditorPage() {
     setModalSelectedType(type);
     setModalItemName('');
     setModalCustomListId('');
-    setModalCustomListSearch('');
   };
 
   const commitNewField = () => {
@@ -643,7 +653,6 @@ export default function FormTemplateEditorPage() {
     setModalSelectedType(null);
     setModalItemName('');
     setModalCustomListId('');
-    setModalCustomListSearch('');
   };
 
   const closeTypeModal = useCallback(() => {
@@ -652,7 +661,6 @@ export default function FormTemplateEditorPage() {
     setModalSelectedType(null);
     setModalItemName('');
     setModalCustomListId('');
-    setModalCustomListSearch('');
   }, []);
 
   useEffect(() => {
@@ -876,28 +884,21 @@ export default function FormTemplateEditorPage() {
   }, []);
 
   if (!templateId) {
-    return <div className="p-6 text-sm text-gray-600">Missing template id.</div>;
+    return <div className={uiCx(uiSpacing.cardPadding, uiTypography.body, 'text-gray-600')}>Missing template id.</div>;
   }
 
   return (
-    <div className="space-y-4 min-w-0 pb-24">
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50 pb-24')}>
       {isLoading || !tmpl ? (
-        <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-500">Loading…</div>
+        <AppCard>
+          <p className={uiCx(uiTypography.body, 'text-center text-gray-500 py-6')}>Loading…</p>
+        </AppCard>
       ) : (
         <>
-          <PageHeaderBar
-            leading={
-              <Link
-                to={listPath}
-                className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center shrink-0"
-                title="Back to form templates"
-                aria-label="Back to form templates"
-              >
-                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-              </Link>
-            }
+          <AppPageHeader
+            icon={<FileStack className="h-4 w-4" />}
+            onBack={() => navigate(listPath)}
+            backLabel={isEmployeeReviewEditor ? 'Employee review templates' : 'Form templates'}
             title={isEmployeeReviewEditor ? 'Employee review templates' : 'Form Templates'}
             subtitle={
               isEmployeeReviewEditor
@@ -905,8 +906,8 @@ export default function FormTemplateEditorPage() {
                 : 'Build sections in the Builder tab. Save Form stores the current definition for inspections.'
             }
           />
-          <div className="rounded-xl border bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
+          <AppCard bodyClassName="!p-0">
+              <div className={uiCx(uiSpacing.cardPadding, 'border-b', uiBorders.subtle)}>
                 <div className="flex flex-col gap-2 min-w-0">
                   {/* Row 1: name (left) | Version + value (right, same line) */}
                   <div className="flex flex-row items-center justify-between gap-4 min-w-0">
@@ -927,7 +928,15 @@ export default function FormTemplateEditorPage() {
                               cancelTemplateNameEdit();
                             }
                           }}
-                          className="w-full text-lg font-semibold text-gray-900 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
+                          className={uiCx(
+                            'w-full bg-white outline-none transition-colors focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35',
+                            uiSpacing.controlX,
+                            uiSpacing.controlY,
+                            uiRadius.control,
+                            uiBorders.input,
+                            uiTypography.sectionTitle,
+                            '!text-lg',
+                          )}
                         />
                       ) : (
                         <button
@@ -940,7 +949,7 @@ export default function FormTemplateEditorPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0 max-w-[50%] sm:max-w-none">
-                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap">Version</span>
+                      <span className={uiCx(uiTypography.overline, 'whitespace-nowrap')}>Version</span>
                       {editingVersionLabel ? (
                         <input
                           ref={versionLabelInputRef}
@@ -961,7 +970,15 @@ export default function FormTemplateEditorPage() {
                           placeholder="1.0"
                           maxLength={100}
                           aria-label="Version label"
-                          className="w-28 sm:w-32 text-right text-sm font-semibold text-gray-900 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
+                          className={uiCx(
+                            'w-28 sm:w-32 text-right bg-white outline-none transition-colors focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35',
+                            uiSpacing.controlX,
+                            uiSpacing.controlY,
+                            uiRadius.control,
+                            uiBorders.input,
+                            uiTypography.body,
+                            'font-semibold',
+                          )}
                         />
                       ) : (
                         <button
@@ -1030,27 +1047,19 @@ export default function FormTemplateEditorPage() {
                   </div>
                 </div>
               </div>
-            </div>
+          </AppCard>
 
-          <div className="flex gap-2 border-b border-gray-200">
-            <button
-              type="button"
-              className={`px-3 py-2 text-xs font-medium border-b-2 -mb-px ${tab === 'build' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-500'}`}
-              onClick={() => void handleTabChange('build')}
-            >
-              Builder
-            </button>
-            <button
-              type="button"
-              className={`px-3 py-2 text-xs font-medium border-b-2 -mb-px ${tab === 'preview' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-500'}`}
-              onClick={() => void handleTabChange('preview')}
-            >
-              Preview
-            </button>
-          </div>
+          <AppTabs
+            tabs={[
+              { key: 'build', label: 'Builder' },
+              { key: 'preview', label: 'Preview' },
+            ]}
+            value={tab}
+            onChange={(key) => void handleTabChange(key as 'build' | 'preview')}
+          />
 
           {tab === 'preview' ? (
-            <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+            <div className={uiSpacing.sectionStack}>
               {!definition.sections.some((s) => (s.fields || []).length > 0) && (
                 <p className="text-sm text-amber-900 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                   Add at least one field in the Builder tab to preview the form here.
@@ -1075,8 +1084,8 @@ export default function FormTemplateEditorPage() {
               />
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
+            <div className={uiSpacing.sectionStack}>
+              <AppCard bodyClassName={uiSpacing.cardPadding} className="bg-gray-50/50">
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
@@ -1094,17 +1103,22 @@ export default function FormTemplateEditorPage() {
                   >
                     <RequiredAsteriskIcon className="w-5 h-5" />
                   </button>
-                  <span className="text-sm text-gray-700">Require worker signature</span>
+                  <span className={uiTypography.body}>Require worker signature</span>
                 </div>
-              </div>
+              </AppCard>
 
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onSectionDragEnd}>
                 <div className="flex flex-col xl:flex-row gap-4 xl:gap-5 items-start">
-                  <div className="flex-1 min-w-0 w-full space-y-4">
+                  <div className={uiCx('flex-1 min-w-0 w-full', uiSpacing.sectionStack)}>
                     {sorted.map((sec) => (
                       <BuilderSectionCard key={sec.id}>
                         <div id={`form-builder-section-${sec.id}`} className="scroll-mt-6">
-                          <div className="px-3 py-2 bg-gray-200 flex flex-wrap items-center gap-2 border-b border-gray-200">
+                          <div
+                            className={uiCx(
+                              'px-3 py-2 flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-200',
+                              'rounded-t-xl',
+                            )}
+                          >
                             {editingSectionId === sec.id ? (
                               <input
                                 ref={sectionTitleInputRef}
@@ -1321,40 +1335,44 @@ export default function FormTemplateEditorPage() {
                             </SortableContext>
                           </DndContext>
                           <div className="p-2 pt-3 border-t border-gray-50">
-                            <button
+                            <AppButton
                               type="button"
+                              variant="ghost"
                               onClick={() => openAddField(sec.id)}
-                              className="w-full px-4 py-2 text-sm border border-dashed border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
+                              className={uiCx('w-full border border-dashed', uiBorders.subtle, uiRadius.control)}
                             >
                               + Add field
-                            </button>
+                            </AppButton>
                           </div>
                         </div>
                       </BuilderSectionCard>
                     ))}
-                    <button
+                    <AppButton
                       type="button"
+                      variant="ghost"
                       onClick={addSection}
-                      className="w-full px-4 py-2 text-sm border border-dashed border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
+                      className={uiCx('w-full border border-dashed', uiBorders.subtle, uiRadius.control)}
                     >
                       + Add section
-                    </button>
+                    </AppButton>
                   </div>
 
                   <aside
-                    className="w-full xl:w-[15rem] shrink-0 xl:sticky xl:top-2 z-[5] rounded-xl border border-gray-200 bg-gray-50/90 p-3 space-y-2 xl:max-h-[min(78vh,calc(100dvh-10rem))] xl:overflow-y-auto"
+                    className="w-full xl:w-[15rem] shrink-0 xl:sticky xl:top-2 z-[5] xl:max-h-[min(78vh,calc(100dvh-10rem))] xl:overflow-y-auto"
                     aria-label="Form sections"
                   >
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-snug px-0.5 break-words">
+                  <AppCard className="bg-gray-50/90" bodyClassName={uiSpacing.sectionStack}>
+                    <p className={uiCx(uiTypography.overline, 'leading-snug px-0.5 break-words')}>
                       {(localName.trim() || tmpl.name).toUpperCase()} — SECTIONS
                     </p>
-                    <button
+                    <AppButton
                       type="button"
+                      variant="ghost"
                       onClick={addSection}
-                      className="w-full px-3 py-2 text-sm font-medium border border-dashed border-gray-300 rounded-lg text-gray-700 hover:bg-white/80"
+                      className={uiCx('w-full border border-dashed', uiBorders.subtle, uiRadius.control)}
                     >
                       + Add section
-                    </button>
+                    </AppButton>
                     <div className="border-t border-gray-200 pt-2 space-y-1.5">
                       <SortableContext items={sorted.map((s) => s.id)} strategy={verticalListSortingStrategy}>
                         {sorted.map((sec) => (
@@ -1367,268 +1385,235 @@ export default function FormTemplateEditorPage() {
                         ))}
                       </SortableContext>
                     </div>
+                  </AppCard>
                   </aside>
                 </div>
               </DndContext>
             </div>
           )}
 
-          <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200 bg-white/95 backdrop-blur pl-4 pr-[3.75rem] py-3 sm:pr-[4.25rem] flex flex-wrap gap-3 justify-end md:pl-[var(--sidebar-width,0px)]">
-            <button
-              type="button"
-              disabled={saveFormMut.isPending}
-              onClick={() => saveFormMut.mutate()}
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium disabled:opacity-50"
-            >
-              Save form
-            </button>
+          <div
+            className={uiCx(
+              'fixed bottom-0 left-0 right-0 z-30 border-t bg-white/95 backdrop-blur pl-4 pr-[3.75rem] py-3 sm:pr-[4.25rem] flex flex-wrap gap-3 justify-end md:pl-[var(--sidebar-width,0px)]',
+              uiBorders.subtle,
+              uiShadows.card,
+            )}
+          >
+            <AppButton type="button" disabled={saveFormMut.isPending} onClick={() => saveFormMut.mutate()}>
+              {saveFormMut.isPending ? 'Saving…' : 'Save form'}
+            </AppButton>
           </div>
         </>
       )}
 
-      {customListEdit && (
-        <OverlayPortal>
-          <SafetyModalOverlayBackdrop onBackdropClick={closeCustomListModal}>
-            <SafetyFormModalLayout
-              widthClass="w-full max-w-md"
-              titleId="custom-list-modal-title"
-              title="Custom list"
-              subtitle="Choose which reusable list supplies options for this dropdown."
-              shellOverflow="visible"
-              bodyClassName="overflow-visible flex-1 p-4 min-h-0"
-              onClose={closeCustomListModal}
-              footer={
-                <>
-                  <button type="button" onClick={closeCustomListModal} className={SAFETY_MODAL_BTN_CANCEL}>
-                    Cancel
-                  </button>
-                  <button type="button" onClick={saveCustomListModal} className={SAFETY_MODAL_BTN_PRIMARY}>
-                    Save
-                  </button>
-                </>
-              }
-            >
-              <label className="block">
-                <span className={SAFETY_MODAL_FIELD_LABEL}>List</span>
-                <div className="mt-1">
-                  <SafetySearchableSingle
-                    label=""
-                    hideLabel
-                    value={customListEditDraft}
-                    onChange={setCustomListEditDraft}
-                    rows={activeCustomLists.map((L) => ({ value: L.id, label: L.name }))}
-                    emptyLabel="None (clear)"
-                    searchPlaceholder="Search lists…"
-                  />
-                </div>
-              </label>
-              <p className="text-[10px] text-gray-500 mt-3">
-                Create or edit lists under{' '}
-                <Link to="/safety/form-custom-lists" className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
-                  Form Custom Lists
-                </Link>
-                .
-              </p>
-            </SafetyFormModalLayout>
-          </SafetyModalOverlayBackdrop>
-        </OverlayPortal>
-      )}
+      <AppFormModal
+        open={Boolean(customListEdit)}
+        onClose={closeCustomListModal}
+        title="Custom list"
+        description="Choose which reusable list supplies options for this dropdown."
+        footer={
+          <>
+            <AppButton type="button" variant="secondary" onClick={closeCustomListModal}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" onClick={saveCustomListModal}>
+              Save
+            </AppButton>
+          </>
+        }
+      >
+        <div className={uiSpacing.sectionStack}>
+          <AppSelect
+            label="List"
+            searchable
+            value={customListEditDraft}
+            onChange={(e) => setCustomListEditDraft(e.target.value)}
+            options={customListSelectOptions}
+          />
+          <p className={uiTypography.helper}>
+            Create or edit lists under{' '}
+            <Link to="/safety/form-custom-lists" className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
+              Form Custom Lists
+            </Link>
+            .
+          </p>
+        </div>
+      </AppFormModal>
 
-      {imageViewEdit && (
-        <OverlayPortal>
-          <SafetyModalOverlayBackdrop onBackdropClick={closeImageViewModal}>
-            <SafetyFormModalLayout
-              widthClass="w-full max-w-md"
-              titleId="image-view-modal-title"
-              title="View / attach image"
-              subtitle={(() => {
-                const sec = definition.sections.find((s) => s.id === imageViewEdit.sectionId);
-                const f = sec?.fields.find((fld) => fld.id === imageViewEdit.fieldId);
-                return f?.label?.trim() ? `Field: “${f.label.trim()}”` : 'Configure how respondents can attach photos.';
-              })()}
-              onClose={closeImageViewModal}
-              footer={
-                <>
-                  <button type="button" onClick={closeImageViewModal} className={SAFETY_MODAL_BTN_CANCEL}>
-                    Cancel
-                  </button>
-                  <button type="button" onClick={saveImageViewModal} className={SAFETY_MODAL_BTN_PRIMARY}>
-                    Save
-                  </button>
-                </>
-              }
-            >
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900">Attachments</h4>
-                  <p className="text-[10px] text-gray-500 mt-0.5 mb-3">Allow one file or multiple images per response.</p>
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={imageViewDraftMulti}
-                      onChange={(e) => setImageViewDraftMulti(e.target.checked)}
-                      className="rounded border-gray-300 text-brand-red focus:ring-brand-red/30"
-                    />
-                    <span className="text-sm text-gray-800">Allow multiple files</span>
-                  </label>
-                </div>
-                {imageViewDraftMulti && (
-                  <div>
-                    <label className={SAFETY_MODAL_FIELD_LABEL}>Max files (1–50)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={imageViewDraftMax}
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        if (raw === '') {
-                          setImageViewDraftMax(1);
-                          return;
-                        }
-                        const v = parseInt(raw, 10);
-                        if (Number.isNaN(v)) return;
-                        setImageViewDraftMax(Math.min(50, Math.max(1, v)));
-                      }}
-                      className="w-full max-w-[8rem] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-                    />
-                  </div>
-                )}
-              </div>
-            </SafetyFormModalLayout>
-          </SafetyModalOverlayBackdrop>
-        </OverlayPortal>
-      )}
-
-      {pdfViewEdit && (
-        <OverlayPortal>
-          <SafetyModalOverlayBackdrop onBackdropClick={closePdfViewModal}>
-            <SafetyFormModalLayout
-              widthClass="w-full max-w-2xl"
-              titleId="pdf-view-modal-title"
-              title="View PDF — reference documents"
-              subtitle={(() => {
-                const sec = definition.sections.find((s) => s.id === pdfViewEdit.sectionId);
-                const f = sec?.fields.find((fld) => fld.id === pdfViewEdit.fieldId);
-                return f?.label?.trim() ? `Field: “${f.label.trim()}”` : 'Shown read-only to people filling out the form.';
-              })()}
-              onClose={closePdfViewModal}
-              innerCardProps={{
-                onDragEnter: (e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  pdfViewDragDepth.current += 1;
-                  setPdfViewDropActive(true);
-                },
-                onDragLeave: (e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  pdfViewDragDepth.current -= 1;
-                  if (pdfViewDragDepth.current <= 0) {
-                    pdfViewDragDepth.current = 0;
-                    setPdfViewDropActive(false);
-                  }
-                },
-                onDragOver: (e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  e.dataTransfer.dropEffect = 'copy';
-                },
-                onDrop: (e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  pdfViewDragDepth.current = 0;
-                  setPdfViewDropActive(false);
-                  if (pdfViewUploading) return;
-                  const fl = e.dataTransfer.files;
-                  if (fl?.length) void processPdfViewModalFiles(fl);
-                },
+      <AppFormModal
+        open={Boolean(imageViewEdit)}
+        onClose={closeImageViewModal}
+        title="View / attach image"
+        description={(() => {
+          if (!imageViewEdit) return 'Configure how respondents can attach photos.';
+          const sec = definition.sections.find((s) => s.id === imageViewEdit.sectionId);
+          const f = sec?.fields.find((fld) => fld.id === imageViewEdit.fieldId);
+          return f?.label?.trim() ? `Field: “${f.label.trim()}”` : 'Configure how respondents can attach photos.';
+        })()}
+        footer={
+          <>
+            <AppButton type="button" variant="secondary" onClick={closeImageViewModal}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" onClick={saveImageViewModal}>
+              Save
+            </AppButton>
+          </>
+        }
+      >
+        <div className={uiSpacing.sectionStack}>
+          <div>
+            <h4 className={uiTypography.sectionTitle}>Attachments</h4>
+            <p className={uiCx(uiTypography.helper, 'mt-0.5 mb-3')}>Allow one file or multiple images per response.</p>
+            <AppCheckbox
+              label="Allow multiple files"
+              checked={imageViewDraftMulti}
+              onChange={setImageViewDraftMulti}
+            />
+          </div>
+          {imageViewDraftMulti && (
+            <AppInput
+              label="Max files (1–50)"
+              type="number"
+              min={1}
+              max={50}
+              value={imageViewDraftMax}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === '') {
+                  setImageViewDraftMax(1);
+                  return;
+                }
+                const v = parseInt(raw, 10);
+                if (Number.isNaN(v)) return;
+                setImageViewDraftMax(Math.min(50, Math.max(1, v)));
               }}
-              footer={
-                <>
-                  <button type="button" onClick={closePdfViewModal} className={SAFETY_MODAL_BTN_CANCEL}>
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={savePdfViewModal}
-                    disabled={pdfViewUploading}
-                    className={SAFETY_MODAL_BTN_PRIMARY}
-                  >
-                    Save
-                  </button>
-                </>
-              }
-            >
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900">Reference PDFs</h4>
-                  <p className="text-[10px] text-gray-500 mt-0.5">
-                    Upload one or more PDFs. Respondents can open them for reference only.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  disabled={pdfViewUploading}
-                  onClick={() => pdfModalFileRef.current?.click()}
-                  className={`w-full rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
-                    pdfViewDropActive ? 'border-brand-red bg-red-50/40' : 'border-gray-300 bg-gray-50/30 hover:border-gray-400'
-                  }`}
-                >
-                  <p className="text-sm font-medium text-gray-800">
-                    {pdfViewUploading ? 'Uploading…' : 'Drag PDFs here or click to choose'}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">Multiple files allowed.</p>
-                </button>
-                <input
-                  ref={pdfModalFileRef}
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  multiple
-                  className="hidden"
-                  disabled={pdfViewUploading}
-                  onChange={(e) => {
-                    const fl = e.target.files;
-                    if (fl?.length) void processPdfViewModalFiles(fl);
-                    e.target.value = '';
-                  }}
-                />
+              className="max-w-[8rem]"
+            />
+          )}
+        </div>
+      </AppFormModal>
 
-                {pdfViewDraftAttachments.length > 0 && (
-                  <div>
-                    <div className={SAFETY_MODAL_FIELD_LABEL}>Attached ({pdfViewDraftAttachments.length})</div>
-                    <ul className="space-y-2 mt-1">
-                      {pdfViewDraftAttachments.map((a) => (
-                        <li
-                          key={a.id}
-                          className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2"
-                        >
-                          <button
-                            type="button"
-                            className="flex-1 min-w-0 text-left text-sm text-blue-600 hover:underline truncate"
-                            onClick={() => void openPdfBuilderPreview(a.id, a.originalName)}
-                          >
-                            {a.originalName}
-                          </button>
-                          <button
-                            type="button"
-                            className="shrink-0 text-xs text-gray-500 hover:text-red-600 px-2 py-1"
-                            onClick={() =>
-                              setPdfViewDraftAttachments((prev) => prev.filter((x) => x.id !== a.id))
-                            }
-                          >
-                            Remove
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </SafetyFormModalLayout>
-          </SafetyModalOverlayBackdrop>
-        </OverlayPortal>
-      )}
+      <AppFormModal
+        open={Boolean(pdfViewEdit)}
+        onClose={closePdfViewModal}
+        formWidth="comfortable"
+        title="View PDF — reference documents"
+        description={(() => {
+          if (!pdfViewEdit) return 'Shown read-only to people filling out the form.';
+          const sec = definition.sections.find((s) => s.id === pdfViewEdit.sectionId);
+          const f = sec?.fields.find((fld) => fld.id === pdfViewEdit.fieldId);
+          return f?.label?.trim() ? `Field: “${f.label.trim()}”` : 'Shown read-only to people filling out the form.';
+        })()}
+        footer={
+          <>
+            <AppButton type="button" variant="secondary" onClick={closePdfViewModal}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" onClick={savePdfViewModal} disabled={pdfViewUploading}>
+              Save
+            </AppButton>
+          </>
+        }
+      >
+        <div
+          className={uiSpacing.sectionStack}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            pdfViewDragDepth.current += 1;
+            setPdfViewDropActive(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            pdfViewDragDepth.current -= 1;
+            if (pdfViewDragDepth.current <= 0) {
+              pdfViewDragDepth.current = 0;
+              setPdfViewDropActive(false);
+            }
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'copy';
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            pdfViewDragDepth.current = 0;
+            setPdfViewDropActive(false);
+            if (pdfViewUploading) return;
+            const fl = e.dataTransfer.files;
+            if (fl?.length) void processPdfViewModalFiles(fl);
+          }}
+        >
+          <div>
+            <h4 className={uiTypography.sectionTitle}>Reference PDFs</h4>
+            <p className={uiCx(uiTypography.helper, 'mt-0.5')}>
+              Upload one or more PDFs. Respondents can open them for reference only.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={pdfViewUploading}
+            onClick={() => pdfModalFileRef.current?.click()}
+            className={uiCx(
+              'w-full border-2 border-dashed p-6 text-center transition-colors',
+              uiRadius.card,
+              pdfViewDropActive ? 'border-brand-red bg-red-50/40' : uiCx(uiBorders.subtle, 'bg-gray-50/30 hover:border-gray-400'),
+            )}
+          >
+            <p className={uiTypography.body}>
+              {pdfViewUploading ? 'Uploading…' : 'Drag PDFs here or click to choose'}
+            </p>
+            <p className={uiCx(uiTypography.helper, 'mt-1')}>Multiple files allowed.</p>
+          </button>
+          <input
+            ref={pdfModalFileRef}
+            type="file"
+            accept=".pdf,application/pdf"
+            multiple
+            className="hidden"
+            disabled={pdfViewUploading}
+            onChange={(e) => {
+              const fl = e.target.files;
+              if (fl?.length) void processPdfViewModalFiles(fl);
+              e.target.value = '';
+            }}
+          />
+
+          {pdfViewDraftAttachments.length > 0 && (
+            <div>
+              <p className={uiTypography.overline}>Attached ({pdfViewDraftAttachments.length})</p>
+              <ul className={uiCx('space-y-2 mt-1', uiSpacing.sectionStack)}>
+                {pdfViewDraftAttachments.map((a) => (
+                  <li
+                    key={a.id}
+                    className={uiCx('flex items-center gap-2 px-3 py-2', uiRadius.control, uiBorders.subtle, 'bg-gray-50/80')}
+                  >
+                    <button
+                      type="button"
+                      className={uiCx('flex-1 min-w-0 text-left truncate', uiTypography.body, 'text-blue-600 hover:underline')}
+                      onClick={() => void openPdfBuilderPreview(a.id, a.originalName)}
+                    >
+                      {a.originalName}
+                    </button>
+                    <AppButton
+                      type="button"
+                      variant="ghost"
+                      className="shrink-0 !px-2 !py-1 text-xs"
+                      onClick={() => setPdfViewDraftAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                    >
+                      Remove
+                    </AppButton>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </AppFormModal>
 
       {pdfBuilderPreview && (
         <SafetyFormPdfPreviewShell
@@ -1638,164 +1623,95 @@ export default function FormTemplateEditorPage() {
         />
       )}
 
-      {showTypeModal && (
-        <OverlayPortal>
-          <SafetyModalOverlayBackdrop onBackdropClick={closeTypeModal}>
-            <div
-              className="w-full max-w-lg max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
-              onClick={(e) => e.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="add-field-type-title"
-            >
-              <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <ModalCloseChevron onClose={closeTypeModal} />
-                    <div className="min-w-0">
-                      <div id="add-field-type-title" className="text-sm font-semibold text-gray-900">
-                        Create New Item Type
-                      </div>
-                      <div className="text-xs text-gray-500 mt-0.5">Choose a field type and enter a label</div>
-                    </div>
+      <AppFormModal
+        open={showTypeModal}
+        onClose={closeTypeModal}
+        formWidth="comfortable"
+        title="Create New Item Type"
+        description="Choose a field type and enter a label"
+        footer={
+          <AppButton type="button" variant="secondary" onClick={closeTypeModal}>
+            Cancel
+          </AppButton>
+        }
+      >
+        <AppCard bodyClassName="!p-0 overflow-hidden divide-y divide-gray-100">
+          {FIELD_TYPE_OPTIONS.map((opt) => (
+            <div key={opt.type}>
+              {modalSelectedType === opt.type ? (
+                <div className={uiCx('flex flex-col gap-2 px-4 py-3', 'bg-gray-50/90')}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-10 h-10 shrink-0 flex items-center justify-center">
+                      <SafetyFieldTypeIcon type={opt.type} className="w-5 h-5 text-gray-600" />
+                    </span>
+                    <AppInput
+                      autoFocus
+                      value={modalItemName}
+                      onChange={(e) => setModalItemName(e.target.value)}
+                      placeholder="Write your Question"
+                      required
+                      aria-required
+                      className="flex-1 min-w-[140px]"
+                      inputClassName="text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter') return;
+                        const dd = opt.type === 'dropdown_single' || opt.type === 'dropdown_multi';
+                        const can = dd ? modalCustomListId.trim() && modalItemName.trim() : modalItemName.trim();
+                        if (can) {
+                          e.preventDefault();
+                          commitNewField();
+                        }
+                      }}
+                    />
+                    <AppButton
+                      type="button"
+                      onClick={commitNewField}
+                      disabled={(() => {
+                        const dd = opt.type === 'dropdown_single' || opt.type === 'dropdown_multi';
+                        if (dd) return !modalCustomListId.trim() || !modalItemName.trim();
+                        return !modalItemName.trim();
+                      })()}
+                      className="shrink-0"
+                    >
+                      <span aria-hidden>✓</span> Create
+                    </AppButton>
                   </div>
-                </div>
-              </div>
-
-              <div className="overflow-y-auto flex-1 p-4 min-h-0">
-                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden divide-y divide-gray-100">
-                  {FIELD_TYPE_OPTIONS.map((opt) => (
-                    <div key={opt.type}>
-                      {modalSelectedType === opt.type ? (
-                        <div className="flex flex-col gap-2 px-4 py-3 bg-gray-50/90">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="w-10 h-10 shrink-0 flex items-center justify-center">
-                              <SafetyFieldTypeIcon type={opt.type} className="w-5 h-5 text-gray-600" />
-                            </span>
-                            <input
-                              autoFocus
-                              type="text"
-                              value={modalItemName}
-                              onChange={(e) => setModalItemName(e.target.value)}
-                              placeholder="Write your Question"
-                              required
-                              aria-required
-                              onKeyDown={(e) => {
-                                if (e.key !== 'Enter') return;
-                                const dd = opt.type === 'dropdown_single' || opt.type === 'dropdown_multi';
-                                const can = dd
-                                  ? modalCustomListId.trim() && modalItemName.trim()
-                                  : modalItemName.trim();
-                                if (can) {
-                                  e.preventDefault();
-                                  commitNewField();
-                                }
-                              }}
-                              className="flex-1 min-w-[140px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-                            />
-                            <button
-                              type="button"
-                              onClick={commitNewField}
-                              disabled={
-                                (() => {
-                                  const dd = opt.type === 'dropdown_single' || opt.type === 'dropdown_multi';
-                                  if (dd) {
-                                    return !modalCustomListId.trim() || !modalItemName.trim();
-                                  }
-                                  return !modalItemName.trim();
-                                })()
-                              }
-                              className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-red text-white text-sm font-medium hover:bg-[#aa1212] disabled:opacity-40 disabled:pointer-events-none disabled:hover:bg-brand-red"
-                            >
-                              <span aria-hidden>✓</span> Create
-                            </button>
-                          </div>
-                          {(opt.type === 'dropdown_single' || opt.type === 'dropdown_multi') && (
-                            <>
-                              <div className="flex flex-col gap-2 min-w-0 pl-12 w-full">
-                                <label htmlFor="modal-custom-list-search" className="sr-only">
-                                  Search custom lists
-                                </label>
-                                <input
-                                  id="modal-custom-list-search"
-                                  type="search"
-                                  value={modalCustomListSearch}
-                                  onChange={(e) => setModalCustomListSearch(e.target.value)}
-                                  placeholder="Search lists…"
-                                  autoComplete="off"
-                                  onKeyDown={(e) => e.stopPropagation()}
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-                                />
-                                <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
-                                  <button
-                                    type="button"
-                                    onClick={() => setModalCustomListId('')}
-                                    className={`w-full px-3 py-2.5 text-left text-sm ${
-                                      !modalCustomListId.trim()
-                                        ? 'bg-blue-50 text-blue-900 font-medium'
-                                        : 'text-gray-500 hover:bg-gray-50'
-                                    }`}
-                                  >
-                                    Select custom list…
-                                  </button>
-                                  {activeCustomLists.length === 0 ? (
-                                    <div className="px-3 py-2 text-xs text-gray-500">No active lists yet.</div>
-                                  ) : modalFilteredCustomLists.length === 0 ? (
-                                    <div className="px-3 py-2 text-xs text-gray-500">No lists match your search.</div>
-                                  ) : (
-                                    modalFilteredCustomLists.map((L) => (
-                                      <button
-                                        key={L.id}
-                                        type="button"
-                                        onClick={() => setModalCustomListId(L.id)}
-                                        className={`w-full px-3 py-2.5 text-left text-sm truncate ${
-                                          modalCustomListId === L.id
-                                            ? 'bg-blue-50 text-blue-900 font-medium'
-                                            : 'text-gray-800 hover:bg-gray-50'
-                                        }`}
-                                      >
-                                        {L.name}
-                                      </button>
-                                    ))
-                                  )}
-                                </div>
-                              </div>
-                              <p className="text-[10px] text-gray-500 pl-12">
-                                Create lists under{' '}
-                                <Link to="/safety/form-custom-lists" className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
-                                  Form Custom Lists
-                                </Link>{' '}
-                                if none appear here.
-                              </p>
-                            </>
-                          )}
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => selectTypeInModal(opt.type)}
-                          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50/80 transition-colors"
-                        >
-                          <span className="w-10 h-10 shrink-0 flex items-center justify-center">
-                            <SafetyFieldTypeIcon type={opt.type} className="w-5 h-5 text-gray-600" />
-                          </span>
-                          <span className="text-sm text-gray-900">{opt.label}</span>
-                        </button>
-                      )}
+                  {(opt.type === 'dropdown_single' || opt.type === 'dropdown_multi') && (
+                    <div className={uiCx('flex flex-col gap-2 min-w-0 pl-12 w-full', uiSpacing.sectionStack)}>
+                      <AppSelect
+                        label="Custom list *"
+                        searchable
+                        value={modalCustomListId}
+                        onChange={(e) => setModalCustomListId(e.target.value)}
+                        options={activeCustomLists.map((L) => ({ value: L.id, label: L.name }))}
+                        placeholder={activeCustomLists.length === 0 ? 'No active lists yet' : 'Select custom list…'}
+                      />
+                      <p className={uiTypography.helper}>
+                        Create lists under{' '}
+                        <Link to="/safety/form-custom-lists" className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
+                          Form Custom Lists
+                        </Link>{' '}
+                        if none appear here.
+                      </p>
                     </div>
-                  ))}
+                  )}
                 </div>
-              </div>
-
-              <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-2 rounded-b-xl">
-                <button type="button" onClick={closeTypeModal} className={SAFETY_MODAL_BTN_CANCEL}>
-                  Cancel
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => selectTypeInModal(opt.type)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50/80 transition-colors"
+                >
+                  <span className="w-10 h-10 shrink-0 flex items-center justify-center">
+                    <SafetyFieldTypeIcon type={opt.type} className="w-5 h-5 text-gray-600" />
+                  </span>
+                  <span className={uiTypography.body}>{opt.label}</span>
                 </button>
-              </div>
+              )}
             </div>
-          </SafetyModalOverlayBackdrop>
-        </OverlayPortal>
-      )}
+          ))}
+        </AppCard>
+      </AppFormModal>
     </div>
   );
 }

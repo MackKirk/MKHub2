@@ -15,7 +15,7 @@ export function AppCard({ title, subtitle, actions, footer, children, className,
   const hasHeader = Boolean(title || subtitle || actions);
   const hasBody = children != null && children !== false;
   return (
-    <section className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, className)}>
+    <section className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, 'overflow-hidden', className)}>
       {hasHeader ? (
         <header
           className={uiCx(
