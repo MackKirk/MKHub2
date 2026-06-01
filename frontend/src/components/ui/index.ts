@@ -15,6 +15,7 @@ export * from './AppCheckbox';
 export * from './AppInput';
 export * from './AppSelect';
 export * from './AppMultiSelect';
+export * from './AppHierarchicalSelect';
 export * from './AppProjectSelect';
 export * from './projectPickerUtils';
 export * from './SelectDropdownCheckbox';

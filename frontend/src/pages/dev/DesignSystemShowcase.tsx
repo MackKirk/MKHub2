@@ -27,6 +27,8 @@ import {
   AppSectionHeader,
   APP_SECTION_PRESET_KEYS,
   appSectionPresetProps,
+  AppHierarchicalSelectMulti,
+  AppHierarchicalSelectSingle,
   AppMultiSelect,
   AppProjectSelect,
   AppSelect,
@@ -143,6 +145,49 @@ const showcaseOpportunityRows = [
   },
 ] as const;
 
+/** Sample tree for AppHierarchicalSelect* (Safety custom lists with branches). */
+const showcaseHierarchicalTree = [
+  {
+    id: 'west',
+    name: 'Western Canada',
+    children: [
+      {
+        id: 'bc',
+        name: 'BC',
+        children: [
+          { id: 'van', name: 'Vancouver' },
+          { id: 'vic', name: 'Victoria' },
+        ],
+      },
+      {
+        id: 'ab',
+        name: 'Alberta',
+        children: [
+          { id: 'cal', name: 'Calgary' },
+          { id: 'edm', name: 'Edmonton' },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'east',
+    name: 'Eastern Canada',
+    children: [
+      { id: 'tor', name: 'Toronto' },
+      { id: 'mtl', name: 'Montreal' },
+    ],
+  },
+] as const;
+
+const showcaseHierarchicalLeaves = [
+  { value: 'van', label: 'Western Canada › BC › Vancouver' },
+  { value: 'vic', label: 'Western Canada › BC › Victoria' },
+  { value: 'cal', label: 'Western Canada › Alberta › Calgary' },
+  { value: 'edm', label: 'Western Canada › Alberta › Edmonton' },
+  { value: 'tor', label: 'Eastern Canada › Toronto' },
+  { value: 'mtl', label: 'Eastern Canada › Montreal' },
+];
+
 const spacingTokens = [
   { label: 'space-y-2', className: 'h-2' },
   { label: 'space-y-3', className: 'h-3' },
@@ -162,6 +207,8 @@ export default function DesignSystemShowcase() {
   const [showcasePriority, setShowcasePriority] = useState('');
   const [showcaseOperator, setShowcaseOperator] = useState('');
   const [showcaseDepartmentsMulti, setShowcaseDepartmentsMulti] = useState<string[]>([]);
+  const [showcaseHierarchicalSingle, setShowcaseHierarchicalSingle] = useState('');
+  const [showcaseHierarchicalMulti, setShowcaseHierarchicalMulti] = useState<string[]>([]);
   const [showcaseDueDate, setShowcaseDueDate] = useState('');
   const [showcaseCardDate, setShowcaseCardDate] = useState(() => toIsoDateLocal(new Date()));
   const [showcaseTime, setShowcaseTime] = useState('');
@@ -721,6 +768,13 @@ const { sortBy, sortDir, setSort } = useAppListSort({
                 <strong className="font-semibold text-gray-800">Dropdown — without search</strong> —{' '}
                 <code className="text-[11px]">AppSelect</code> (default; do not pass <code className="text-[11px]">searchable</code>).
                 Button + chevron trigger; open the list and pick. Use for short enums (priority, operator, a few statuses).
+                <strong className="font-semibold text-gray-800">Dropdown — hierarchical custom lists</strong> —{' '}
+                <code className="text-[11px]">AppHierarchicalSelectSingle</code> /{' '}
+                <code className="text-[11px]">AppHierarchicalSelectMulti</code> for Safety-style branched lists (drill-down,
+                breadcrumbs, alphabetical at each level). Same <code className="text-[11px]">uiDropdown</code> trigger and portaled panel as{' '}
+                <code className="text-[11px]">AppSelect</code> / <code className="text-[11px]">AppMultiSelect</code>.
+              </p>
+              <p className={uiTypography.helper}>
                 Avoid <code className="text-[11px]">AppSelect searchable</code> on new screens — prefer{' '}
                 <code className="text-[11px]">AppCombobox</code> when search is required.
               </p>
@@ -894,6 +948,31 @@ const { sortBy, sortDir, setSort } = useAppListSort({
                   { value: 'estimating', label: 'Estimating' },
                   { value: 'safety', label: 'Safety' },
                 ]}
+              />
+              <AppSectionHeader
+                title="Hierarchical dropdowns"
+                description="AppHierarchicalSelect* — custom lists with branches (Safety form templates)."
+                className="pt-2"
+              />
+              <AppHierarchicalSelectSingle
+                id="showcase-hierarchical-single"
+                label="Work location (single)"
+                placeholder="Select location…"
+                value={showcaseHierarchicalSingle}
+                onChange={setShowcaseHierarchicalSingle}
+                items={[...showcaseHierarchicalTree]}
+                leafOptions={showcaseHierarchicalLeaves}
+                fieldHint="Work location (single)\n\nDrill into branches (A–Z at each level). No search bar. Same trigger and menu tokens as AppSelect."
+              />
+              <AppHierarchicalSelectMulti
+                id="showcase-hierarchical-multi"
+                label="Work locations (multi)"
+                placeholder="Select locations…"
+                value={showcaseHierarchicalMulti}
+                onChange={setShowcaseHierarchicalMulti}
+                items={[...showcaseHierarchicalTree]}
+                leafOptions={showcaseHierarchicalLeaves}
+                fieldHint="Work locations (multi)\n\nCheckboxes on leaves, chips below trigger (AppMultiSelect pattern). Panel stays open after each pick."
               />
               <AppTextarea
                 id="showcase-notes"

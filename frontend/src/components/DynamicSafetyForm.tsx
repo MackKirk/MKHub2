@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { withSignSessionQuery, type SafetySignSession } from '@/lib/safetySignSessionQuery';
 import SafetySignaturePad, { type SavedSignatureMeta } from '@/components/SafetySignaturePad';
 import SafetyDynamicFileField from '@/components/SafetyDynamicFileField';
@@ -20,6 +21,8 @@ import {
   AppCheckbox,
   AppCombobox,
   AppDatePicker,
+  AppHierarchicalSelectMulti,
+  AppHierarchicalSelectSingle,
   AppInput,
   AppMultiSelect,
   AppSelect,
@@ -32,10 +35,6 @@ import {
   uiSpacing,
 } from '@/components/ui';
 import {
-  SafetyHierarchicalCustomListMulti,
-  SafetyHierarchicalCustomListSingle,
-} from '@/components/SafetyHierarchicalCustomListSelect';
-import {
   collectPassFailNaKeysOrdered,
   computePftAggregate,
   DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY,
@@ -46,7 +45,17 @@ import {
 } from '@/types/safetyFormTemplate';
 import { type FormCustomListTreeNode, treeIsHierarchical } from '@/utils/customListTree';
 
-type EmployeeRow = { id: string; name: string; username?: string };
+type EmployeeRow = {
+  id: string;
+  name: string;
+  username?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  preferred_name?: string | null;
+  department?: string | null;
+  profile_photo_file_id?: string | null;
+  profile?: { profile_photo_file_id?: string | null; first_name?: string | null; last_name?: string | null; preferred_name?: string | null; department?: string | null } | null;
+};
 type FleetPick = { id: string; label: string };
 
 type FormCustomListRuntimeDetail = {
@@ -485,7 +494,7 @@ export default function DynamicSafetyForm({
   });
 
   const appUserOptions = useMemo(
-    () => employees.map((e) => ({ id: e.id, name: e.name, username: e.username })),
+    () => employees.map((e) => mapEmployeeToAppUserSelect(e)),
     [employees],
   );
 
@@ -917,7 +926,7 @@ export default function DynamicSafetyForm({
               <ControlLoadingPlaceholder message="Loading options…" />
             ) : hierarchical && runtime ? (
               <div className="flex-1 min-w-0">
-                <SafetyHierarchicalCustomListSingle
+                <AppHierarchicalSelectSingle
                   hideLabel
                   label={field.label}
                   items={treeItems}
@@ -925,6 +934,8 @@ export default function DynamicSafetyForm({
                   value={val}
                   disabled={disabled}
                   onChange={(v) => setKey(k, v)}
+                  placeholder="Select…"
+                  className="w-full"
                 />
               </div>
             ) : opts.length === 0 ? (
@@ -994,7 +1005,7 @@ export default function DynamicSafetyForm({
               {listId && listLoading ? (
                 <ControlLoadingPlaceholder message="Loading options…" />
               ) : hierarchical && runtime ? (
-                <SafetyHierarchicalCustomListMulti
+                <AppHierarchicalSelectMulti
                   hideLabel
                   label={field.label}
                   items={treeItems}
@@ -1002,6 +1013,8 @@ export default function DynamicSafetyForm({
                   value={sel}
                   disabled={disabled}
                   onChange={(next) => setKey(k, next)}
+                  placeholder="Select…"
+                  className="w-full"
                 />
               ) : (
                 <AppMultiSelect

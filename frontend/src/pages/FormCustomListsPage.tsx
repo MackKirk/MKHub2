@@ -1,4 +1,15 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -17,17 +28,32 @@ import {
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { ChevronRight, GripVertical, ListTree, Minus, Plus, Search } from 'lucide-react';
 import { api } from '@/lib/api';
+import { formCustomListNewQuickInfo } from '@/lib/formModalQuickInfo';
 import { useConfirm } from '@/components/ConfirmProvider';
-import OverlayPortal from '@/components/OverlayPortal';
-import PageHeaderBar from '@/components/PageHeaderBar';
 import {
-  SAFETY_MODAL_BTN_CANCEL,
-  SAFETY_MODAL_BTN_PRIMARY,
-  SAFETY_MODAL_FIELD_LABEL,
-  SafetyModalOverlayBackdrop,
-  SafetyFormModalLayout,
-} from '@/components/safety/SafetyModalChrome';
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppEmptyState,
+  AppFormModal,
+  AppInput,
+  AppListCreateItem,
+  AppListRowIconButton,
+  AppPageHeader,
+  AppSectionHeader,
+  AppTooltip,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiListRowIconButton,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type CustomListRow = {
   id: string;
@@ -67,6 +93,16 @@ type FormCustomListItemApi = {
 type FormCustomListDetail = CustomListRow & { items: TreeNode[]; leaf_options?: { value: string; label: string }[] };
 
 const MAX_DEPTH = 3;
+
+/** Inline rename fields (DnD tree) — same shell as AppInput, needs native ref for focus/select. */
+const inlineControlInputClass = uiCx(
+  'w-full text-xs text-gray-900 outline-none transition-colors',
+  'focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35',
+  uiSpacing.controlX,
+  uiSpacing.controlY,
+  uiRadius.control,
+  uiBorders.input,
+);
 
 function findItemNameInTree(nodes: TreeNode[], id: string): string | null {
   for (const n of nodes) {
@@ -213,47 +249,11 @@ function applyOptimisticMoveItems(
   return next;
 }
 
-function PlusIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className ?? 'w-5 h-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
-
-function MinusIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className ?? 'w-5 h-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
-    </svg>
-  );
-}
-
-function ChevronExpandIcon({ className, expanded }: { className?: string; expanded: boolean }) {
-  return (
-    <svg
-      className={`${className ?? 'w-5 h-5'} transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      strokeWidth={2}
-      aria-hidden
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-    </svg>
-  );
-}
-
-function TrashIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className ?? 'w-5 h-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-      />
-    </svg>
-  );
+function listStatusBadge(status: string) {
+  if (status === 'active') {
+    return <AppBadge variant="success">Active</AppBadge>;
+  }
+  return <AppBadge variant="neutral">Inactive</AppBadge>;
 }
 
 export default function FormCustomListsPage() {
@@ -392,9 +392,28 @@ export default function FormCustomListsPage() {
     void qc.invalidateQueries({ queryKey: ['formCustomList', selectedId] });
   }, [qc, selectedId]);
 
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString('en-CA', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }),
+    []
+  );
+
   return (
-    <div className="flex flex-col gap-4 min-w-0 min-h-0 h-[calc(100dvh-6rem)] max-h-[calc(100dvh-6rem)] overflow-hidden">
-      <PageHeaderBar
+    <div
+      className={uiCx(
+        'w-full min-w-0 flex flex-col min-h-0',
+        uiSpacing.pageStack,
+        'min-h-full bg-gray-50',
+        'h-[calc(100dvh-6rem)] max-h-[calc(100dvh-6rem)] overflow-hidden',
+      )}
+    >
+      <AppPageHeader
+        className="shrink-0"
         title="Form Custom Lists"
         subtitle={
           <>
@@ -404,69 +423,79 @@ export default function FormCustomListsPage() {
             </Link>
           </>
         }
-        className="shrink-0 !mb-0"
+        icon={<ListTree className="h-4 w-4" />}
+        actions={
+          <div className="text-right">
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
+          </div>
+        }
       />
 
-      <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 overflow-hidden grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-1 lg:grid-cols-4 lg:items-stretch">
-        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0 min-h-0 lg:col-span-1 flex flex-col h-full max-h-full">
-          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80 shrink-0">
-            <h2 className="text-sm font-semibold text-gray-800">Lists</h2>
+      <div className="flex-1 min-h-0 grid grid-cols-1 gap-4 overflow-hidden grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-1 lg:grid-cols-4 lg:items-stretch lg:gap-6">
+        <AppCard
+          className={uiCx(uiShadows.card, 'lg:col-span-1 flex flex-col h-full max-h-full min-h-0 min-w-0')}
+          bodyClassName="!p-0 flex flex-col min-h-0 flex-1"
+        >
+          <div className={uiCx('shrink-0 border-b border-gray-100', uiSpacing.cardPadding)}>
+            <AppSectionHeader title="Lists" />
           </div>
-          <div className="p-2 border-b border-gray-100 space-y-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="px-4 py-2 text-sm border border-dashed border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 w-full"
-            >
-              + New list
-            </button>
-            <label className="sr-only" htmlFor="form-custom-lists-search">
-              Search lists
-            </label>
-            <input
+          <div className={uiCx('shrink-0 space-y-2 border-b border-gray-100', uiSpacing.cardPadding)}>
+            <AppListCreateItem label="New list" layout="row" className="w-full" onClick={() => setCreateOpen(true)} />
+            <AppInput
               id="form-custom-lists-search"
               type="search"
               value={listsSearch}
               onChange={(e) => setListsSearch(e.target.value)}
               placeholder="Search lists…"
+              leftIcon={<Search className="h-4 w-4" />}
+              aria-label="Search lists"
               autoComplete="off"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
             />
           </div>
           {isLoading ? (
-            <div className="flex-1 flex items-center justify-center p-8 text-sm text-gray-500 min-h-0">Loading…</div>
+            <div className={uiCx(uiTypography.helper, 'flex-1 flex items-center justify-center p-8 min-h-0')}>
+              Loading…
+            </div>
           ) : sortedLists.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center p-8 text-center text-sm text-gray-500 min-h-0">
-              No custom lists yet. Create one above to use in dropdown fields.
+            <div className={uiCx(uiSpacing.cardPadding, 'flex-1 min-h-0')}>
+              <AppEmptyState
+                title="No custom lists yet."
+                description="Create one above to use in dropdown fields."
+                className="border-0 bg-transparent p-0 shadow-none"
+              />
             </div>
           ) : filteredLists.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center p-6 text-xs text-gray-500 min-h-0">No lists match your search.</div>
+            <div className={uiCx(uiTypography.helper, 'flex-1 flex items-center justify-center p-6 min-h-0')}>
+              No lists match your search.
+            </div>
           ) : (
-            <ul className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+            <ul className="flex-1 min-h-0 overflow-y-auto overscroll-contain list-none">
               {filteredLists.map((row) => {
                 const usedCount = row.used_in_form_count ?? 0;
                 const deleteBlocked = usedCount > 0;
+                const selected = selectedId === row.id;
                 return (
                   <li key={row.id} className="flex items-stretch min-w-0">
                     <button
                       type="button"
                       onClick={() => setSelectedId(row.id)}
-                      className={`flex-1 min-w-0 text-left px-4 py-2.5 hover:bg-gray-50 ${
-                        selectedId === row.id ? 'bg-blue-50/80' : ''
-                      }`}
+                      className={uiCx(
+                        'flex-1 min-w-0 text-left px-4 py-2.5 transition-colors hover:bg-gray-50',
+                        selected && 'bg-gray-50 font-medium',
+                      )}
                     >
-                      <span className="text-[13px] font-bold text-gray-900 truncate block leading-snug">{row.name}</span>
+                      <span className={uiCx(uiTypography.body, 'truncate block')}>{row.name}</span>
                     </button>
                     <div className="flex shrink-0 items-center pr-2">
-                      <button
-                        type="button"
-                        disabled={deleteBlocked || deleteListMut.isPending}
-                        title={
+                      <AppListRowIconButton
+                        preset="delete"
+                        label={
                           deleteBlocked
-                            ? `Cannot delete: used in ${usedCount} form template(s). Remove references in Form Templates first.`
-                            : 'Delete list'
+                            ? `Delete list (disabled: used in ${usedCount} form template(s))`
+                            : `Delete list ${row.name}`
                         }
-                        aria-label={deleteBlocked ? 'Delete list (disabled: in use)' : 'Delete list'}
+                        disabled={deleteBlocked || deleteListMut.isPending}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (deleteBlocked) return;
@@ -481,29 +510,31 @@ export default function FormCustomListsPage() {
                             deleteListMut.mutate(row.id);
                           })();
                         }}
-                        className={`shrink-0 h-9 w-9 inline-flex items-center justify-center rounded-lg border-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 ${
-                          deleteBlocked
-                            ? 'text-gray-300 cursor-not-allowed'
-                            : 'text-gray-400 hover:text-red-600 cursor-pointer'
-                        } disabled:opacity-50`}
-                      >
-                        <TrashIcon className="w-5 h-5" />
-                      </button>
+                      />
                     </div>
                   </li>
                 );
               })}
             </ul>
           )}
-        </div>
+        </AppCard>
 
-        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0 min-h-0 lg:col-span-3 flex flex-col h-full max-h-full">
+        <AppCard
+          className={uiCx(uiShadows.card, 'lg:col-span-3 flex flex-col h-full max-h-full min-h-0 min-w-0')}
+          bodyClassName="!p-0 flex flex-col min-h-0 flex-1"
+        >
           {!selectedId ? (
-            <div className="flex-1 flex items-center justify-center p-8 text-center text-sm text-gray-500 min-h-0">
-              Select a list to edit items and hierarchy.
+            <div className={uiCx(uiSpacing.cardPadding, 'flex-1 flex items-center justify-center min-h-0')}>
+              <AppEmptyState
+                title="Select a list"
+                description="Choose a list on the left to edit items and hierarchy."
+                className="border-0 bg-transparent p-0 shadow-none"
+              />
             </div>
           ) : detailLoading || !detail ? (
-            <div className="flex-1 flex items-center justify-center p-8 text-sm text-gray-500 min-h-0">Loading…</div>
+            <div className={uiCx(uiTypography.helper, 'flex-1 flex items-center justify-center p-8 min-h-0')}>
+              Loading…
+            </div>
           ) : (
             <ListDetailPanel
               detail={detail}
@@ -517,45 +548,41 @@ export default function FormCustomListsPage() {
               isSaving={patchMut.isPending}
             />
           )}
-        </div>
+        </AppCard>
       </div>
 
-      {createOpen && (
-        <OverlayPortal>
-          <SafetyModalOverlayBackdrop onBackdropClick={() => setCreateOpen(false)}>
-            <SafetyFormModalLayout
-              widthClass="w-full max-w-md"
-              titleId="form-custom-list-create-title"
-              title="New custom list"
-              subtitle="Used as options source for dropdown fields in form templates."
-              onClose={() => setCreateOpen(false)}
-              footer={
-                <>
-                  <button type="button" className={SAFETY_MODAL_BTN_CANCEL} onClick={() => setCreateOpen(false)}>
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!newName.trim() || createMut.isPending}
-                    onClick={() => createMut.mutate()}
-                    className={SAFETY_MODAL_BTN_PRIMARY}
-                  >
-                    {createMut.isPending ? 'Creating…' : 'Create'}
-                  </button>
-                </>
-              }
+      <AppFormModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="New custom list"
+        description="Used as options source for dropdown fields in form templates."
+        quickInfo={formCustomListNewQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              disabled={!newName.trim() || createMut.isPending}
+              loading={createMut.isPending}
+              onClick={() => createMut.mutate()}
             >
-              <label className={SAFETY_MODAL_FIELD_LABEL}>Name</label>
-              <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-                placeholder="e.g. Hazard Types"
-              />
-            </SafetyFormModalLayout>
-          </SafetyModalOverlayBackdrop>
-        </OverlayPortal>
-      )}
+              {createMut.isPending ? 'Creating…' : 'Create'}
+            </AppButton>
+          </div>
+        }
+      >
+        <AppInput
+          label="Name *"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="e.g. Hazard Types"
+          autoFocus
+          fieldHint="Name\n\nShort label for this list. It appears when you pick this list in Form Templates and in the list on the left."
+        />
+      </AppFormModal>
     </div>
   );
 }
@@ -756,7 +783,6 @@ function ListDetailPanel({
       const parentO = getParentId(tree, overId);
       if (parentA === undefined || parentO === undefined) return;
 
-      // Collision can still hit the parent row; that would promote a child to sibling of its parent.
       if (parentA !== null && overId === parentA) return;
 
       const destParent = parentO;
@@ -819,7 +845,7 @@ function ListDetailPanel({
 
   return (
     <div key={detail.id} className="flex flex-col h-full min-h-0 flex-1">
-      <div className="px-4 py-3 border-b border-gray-100 shrink-0">
+      <div className={uiCx('shrink-0 border-b border-gray-100', uiSpacing.cardPadding)}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4 min-w-0">
           <div className="flex-1 min-w-0">
             {editingListName ? (
@@ -838,93 +864,108 @@ function ListDetailPanel({
                     cancelListNameEdit();
                   }
                 }}
-                className="w-full text-lg font-semibold text-gray-900 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
+                aria-label="List name"
+                className={uiCx(inlineControlInputClass, uiTypography.sectionTitle, 'font-semibold')}
               />
             ) : (
               <button
                 type="button"
                 onClick={beginEditListName}
-                className="text-left w-full text-lg font-semibold text-gray-900 truncate rounded-lg px-1 py-1 -mx-1 hover:bg-gray-100/80"
+                className={uiCx(
+                  'text-left w-full truncate rounded-lg px-1 py-1 -mx-1 hover:bg-gray-100/80',
+                  uiTypography.sectionTitle,
+                )}
               >
                 {localName || detail.name}
               </button>
             )}
-            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+            <p className={uiCx(uiTypography.helper, 'mt-1')}>
               {detail.used_in_form_names && detail.used_in_form_names.length > 0 ? (
-                <>
-                  Used in: {detail.used_in_form_names.join(', ')}
-                </>
+                <>Used in: {detail.used_in_form_names.join(', ')}</>
               ) : (
                 <>Not used in any form template.</>
               )}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-4 self-end sm:self-auto flex-wrap justify-end">
-            <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-gray-700">
-              <input
-                type="checkbox"
-                className="rounded border-gray-300 text-brand-red focus:ring-brand-red/30"
-                checked={localIncludeOther}
-                disabled={isSaving}
-                onChange={(e) => {
-                  const next = e.target.checked;
-                  setLocalIncludeOther(next);
-                  onPatch({ include_other: next });
-                }}
-              />
-              <span>Include &quot;Other&quot;</span>
-            </label>
-            <label
-              className="flex items-center gap-2.5 cursor-pointer select-none"
-              onClick={(e) => {
-                if ((e.target as HTMLElement).closest('button')) return;
-                if (isSaving) return;
-                const next = localStatus === 'active' ? 'inactive' : 'active';
-                setLocalStatus(next);
-                onPatch({ status: next });
+          <div
+            className={uiCx(
+              'flex shrink-0 flex-wrap items-center gap-y-2 w-full sm:w-auto sm:min-w-[17rem] lg:min-w-[20rem]',
+              'justify-between gap-x-4 sm:gap-x-8',
+            )}
+          >
+            <AppCheckbox
+              label='Include "Other"'
+              checked={localIncludeOther}
+              disabled={isSaving}
+              className="shrink-0"
+              fieldHint='Include "Other"\n\nWhen enabled, any drop-down in a form template that uses this list also adds a long-answer field labeled Other: below it, so users can type a value that is not in the list.'
+              onChange={(next) => {
+                setLocalIncludeOther(next);
+                onPatch({ include_other: next });
               }}
-            >
-              <span className="text-xs text-gray-700">{localStatus === 'active' ? 'Active' : 'Inactive'}</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={localStatus === 'active'}
-                disabled={isSaving}
-                title={localStatus === 'active' ? 'Active' : 'Inactive'}
-                aria-label={localStatus === 'active' ? 'List is active. Click to deactivate.' : 'List is inactive. Click to activate.'}
-                onClick={() => {
+            />
+            <div className={uiCx(uiLayout.actionsRow, 'shrink-0 items-center')}>
+              {listStatusBadge(localStatus)}
+              <label
+                className="flex items-center gap-2.5 cursor-pointer select-none"
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('button')) return;
+                  if (isSaving) return;
                   const next = localStatus === 'active' ? 'inactive' : 'active';
                   setLocalStatus(next);
                   onPatch({ status: next });
                 }}
-                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-1 disabled:opacity-50 ${
-                  localStatus === 'active' ? 'bg-gray-900 border-gray-900' : 'bg-gray-200 border-gray-300'
-                }`}
               >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
-                    localStatus === 'active' ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'
-                  }`}
-                />
-              </button>
-            </label>
-            {isSaving && <span className="text-xs text-gray-400 whitespace-nowrap">Saving…</span>}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={localStatus === 'active'}
+                  disabled={isSaving}
+                  title={localStatus === 'active' ? 'Active' : 'Inactive'}
+                  aria-label={
+                    localStatus === 'active'
+                      ? 'List is active. Click to deactivate.'
+                      : 'List is inactive. Click to activate.'
+                  }
+                  onClick={() => {
+                    const next = localStatus === 'active' ? 'inactive' : 'active';
+                    setLocalStatus(next);
+                    onPatch({ status: next });
+                  }}
+                  className={uiCx(
+                    'relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 focus-visible:ring-offset-1 disabled:opacity-50',
+                    localStatus === 'active' ? 'border-gray-900 bg-gray-900' : 'border-gray-300 bg-gray-200',
+                  )}
+                >
+                  <span
+                    className={uiCx(
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5',
+                      localStatus === 'active' ? 'translate-x-5 ml-0.5' : 'translate-x-0.5',
+                    )}
+                  />
+                </button>
+              </label>
+              {isSaving ? <span className={uiTypography.helper}>Saving…</span> : null}
+            </div>
           </div>
         </div>
       </div>
-      <div className="p-2 border-b border-gray-50 shrink-0">
-        <button
-          type="button"
-          onClick={() => void handleAddRoot()}
+      <div className={uiCx('shrink-0 border-b border-gray-100', uiSpacing.cardPadding)}>
+        <AppListCreateItem
+          label="Add item"
+          layout="row"
+          className="w-full"
           disabled={addItemMut.isPending}
-          className="px-4 py-2 text-sm border border-dashed border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 w-full disabled:opacity-50"
-        >
-          + Add Item
-        </button>
+          onClick={() => void handleAddRoot()}
+        />
       </div>
-      <div className="p-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
+      <div className={uiCx(uiSpacing.cardPadding, 'flex-1 min-h-0 overflow-y-auto overscroll-contain')}>
         {detail.items.length === 0 ? (
-          <p className="text-sm text-gray-500">No items yet. Use + Add Item above to start.</p>
+          <AppEmptyState
+            title="No items yet."
+            description="Use Add item above to start building this list."
+            className="border-0 bg-transparent p-0 shadow-none"
+          />
         ) : (
           <DndContext
             sensors={sensors}
@@ -934,7 +975,7 @@ function ListDetailPanel({
             onDragCancel={() => setDragActiveId(null)}
           >
             <SortableContext items={detail.items.map((n) => n.id)} strategy={verticalListSortingStrategy}>
-              <ul className="space-y-1">
+              <ul className="space-y-1 list-none">
                 {detail.items.map((n) => (
                   <SortableTreeRows
                     key={n.id}
@@ -956,7 +997,13 @@ function ListDetailPanel({
             </SortableContext>
             <DragOverlay>
               {dragActiveId ? (
-                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-lg max-w-md truncate">
+                <div
+                  className={uiCx(
+                    uiRadius.control,
+                    uiBorders.subtle,
+                    'bg-white px-3 py-2 text-sm text-gray-900 shadow-lg max-w-md truncate',
+                  )}
+                >
                   {findItemNameInTree(detail.items, dragActiveId) ?? '…'}
                 </div>
               ) : null}
@@ -965,6 +1012,34 @@ function ListDetailPanel({
         )}
       </div>
     </div>
+  );
+}
+
+function TreeRowIconButton({
+  label,
+  onClick,
+  disabled,
+  children,
+  className,
+}: {
+  label: string;
+  onClick: (e: MouseEvent<HTMLButtonElement>) => void;
+  disabled?: boolean;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <AppTooltip content={label} placement="top" disabled={disabled}>
+      <button
+        type="button"
+        aria-label={label}
+        disabled={disabled}
+        onClick={onClick}
+        className={uiCx(uiListRowIconButton.base, className)}
+      >
+        {children}
+      </button>
+    </AppTooltip>
   );
 }
 
@@ -1012,25 +1087,21 @@ function SortableTreeRows({
   const isEditing = editingItemId === node.id;
   const childIds = node.children?.map((c) => c.id) ?? [];
 
-  const rowBtn =
-    'shrink-0 h-9 w-9 inline-flex items-center justify-center rounded-lg bg-transparent border-0 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25';
-
   const toggleCell = hasChildren ? (
-    <button
-      type="button"
-      className={`${rowBtn} text-gray-500 hover:text-gray-800`}
-      aria-expanded={expanded}
-      title={expanded ? 'Collapse' : 'Expand'}
-      aria-label={expanded ? 'Collapse nested items' : 'Expand nested items'}
+    <TreeRowIconButton
+      label={expanded ? 'Collapse nested items' : 'Expand nested items'}
       onClick={(e) => {
         e.stopPropagation();
         setExpanded((v) => !v);
       }}
     >
-      <ChevronExpandIcon expanded={expanded} className="w-5 h-5" />
-    </button>
+      <ChevronRight
+        className={uiCx('h-4 w-4 text-gray-600 transition-transform duration-150', expanded && 'rotate-90')}
+        aria-hidden
+      />
+    </TreeRowIconButton>
   ) : (
-    <span className="shrink-0 w-9 h-9 inline-block" aria-hidden />
+    <span className="inline-flex h-8 w-8 shrink-0" aria-hidden />
   );
 
   const nameEl = isEditing ? (
@@ -1050,12 +1121,16 @@ function SortableTreeRows({
           onCancelEdit();
         }
       }}
-      className="text-sm text-gray-900 min-w-0 flex-1 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
+      aria-label="Item name"
+      className={uiCx(inlineControlInputClass, 'min-w-0 flex-1')}
     />
   ) : (
     <button
       type="button"
-      className="text-left text-sm text-gray-900 min-w-0 flex-1 truncate rounded-lg px-1 py-1 -mx-1 hover:bg-gray-100/80"
+      className={uiCx(
+        'text-left min-w-0 flex-1 truncate rounded-lg px-1 py-1 -mx-1 hover:bg-gray-100/80',
+        uiTypography.body,
+      )}
       onClick={() => onBeginEdit(node.id, node.name)}
     >
       {node.name}
@@ -1064,58 +1139,59 @@ function SortableTreeRows({
 
   return (
     <li>
-      <div ref={setNodeRef} style={style} className="flex flex-wrap items-center gap-2 py-1.5 border-b border-gray-50">
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={uiCx('flex flex-wrap items-center gap-2 py-1.5 border-b border-gray-100')}
+      >
         <span className="flex min-w-0 flex-1 items-center gap-1">
           <button
             type="button"
             ref={setActivatorNodeRef}
-            className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-700 px-0.5 shrink-0 touch-none inline-flex h-9 w-7 items-center justify-center rounded-lg border-0 bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 disabled:opacity-40"
+            className={uiCx(
+              uiListRowIconButton.base,
+              'h-8 w-7 cursor-grab active:cursor-grabbing touch-none border-0 bg-transparent hover:bg-gray-100',
+            )}
             aria-label="Drag to reorder or change level"
             title="Drag to reorder or change level"
             disabled={reorderPending}
             {...listeners}
             {...attributes}
           >
-            ⋮⋮
+            <GripVertical className="h-4 w-4 text-gray-500" aria-hidden />
           </button>
           {toggleCell}
           {nameEl}
         </span>
-        <span className="text-[10px] uppercase text-gray-400">{node.status === 'active' ? '' : 'off'}</span>
-        <span className="flex shrink-0 items-center gap-0.5">
-          {canAddChild && (
-            <button
-              type="button"
-              aria-label="Add child item"
-              title="Add child item"
+        {node.status !== 'active' ? <AppBadge variant="neutral">off</AppBadge> : null}
+        <span className={uiCx(uiLayout.actionsRow, 'shrink-0')}>
+          {canAddChild ? (
+            <TreeRowIconButton
+              label="Add child item"
               disabled={addItemPending}
               onClick={(e) => {
                 e.stopPropagation();
                 setExpanded(true);
                 void onAddChild(node.id);
               }}
-              className="shrink-0 h-9 w-9 inline-flex items-center justify-center text-gray-400 hover:text-blue-600 rounded-lg bg-transparent border-0 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 disabled:opacity-40"
             >
-              <PlusIcon className="w-5 h-5" />
-            </button>
-          )}
-          <button
-            type="button"
-            aria-label="Remove item"
-            title="Remove item"
+              <Plus className="h-4 w-4 text-gray-600" aria-hidden />
+            </TreeRowIconButton>
+          ) : null}
+          <TreeRowIconButton
+            label="Remove item"
             onClick={(e) => {
               e.stopPropagation();
               onDeleteItem(node.id);
             }}
-            className="shrink-0 h-9 w-9 inline-flex items-center justify-center text-gray-400 hover:text-red-600 rounded-lg bg-transparent border-0 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25"
           >
-            <MinusIcon className="w-5 h-5" />
-          </button>
+            <Minus className="h-4 w-4 text-gray-600" aria-hidden />
+          </TreeRowIconButton>
         </span>
       </div>
       {hasChildren && expanded && (
         <SortableContext items={childIds} strategy={verticalListSortingStrategy}>
-          <ul className="mt-0.5 ml-1 border-l-2 border-gray-200 pl-3 sm:pl-4 list-none">
+          <ul className={uiCx('mt-0.5 ml-1 border-l-2 border-gray-200 pl-3 sm:pl-4 list-none')}>
             {node.children!.map((c) => (
               <SortableTreeRows
                 key={c.id}

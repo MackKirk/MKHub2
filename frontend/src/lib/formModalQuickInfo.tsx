@@ -428,3 +428,31 @@ export function inventoryContactFormQuickInfo(editing: boolean): ReactNode {
     ),
   });
 }
+
+/** Safety — Form Custom Lists: create a new reusable dropdown list. */
+export const formCustomListNewQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Create a named list of options you can attach to drop-down fields in {uiLabel('Form Templates')} — for example
+      hazard types, locations, or equipment categories.
+    </>
+  ),
+  howToUse: (
+    <>
+      Enter a clear {uiLabel('Name')}, then {uiLabel('Create')}. After the list appears on the left, select it to add
+      items, nest children (up to three levels), and turn {uiLabel('Include "Other"')} on if users should type a custom
+      answer below the drop-down.
+    </>
+  ),
+  behavior: (
+    <>
+      Lists used in a published template cannot be deleted until you remove them from that template. You can set a list
+      to {uiLabel('Inactive')} to hide it from new use while keeping existing forms unchanged.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without creating a list. {uiLabel('Create')} saves the list and opens it for editing.
+    </>
+  ),
+});
