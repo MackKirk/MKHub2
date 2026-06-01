@@ -9,6 +9,20 @@ import { DocumentPagePreviewThumbnails } from '@/components/DocumentPagePreviewT
 import DocumentEditor from '@/components/DocumentEditor';
 import { ExpandIcon } from '@/components/document-editor/documentEditorIcons';
 import type { DocumentPage } from '@/types/documentCreator';
+import {
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppListRowIconButton,
+  AppSectionHeader,
+  appSectionPresetProps,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type Template = { id: string; name?: string; background_file_id?: string };
 
@@ -35,9 +49,15 @@ type ProjectDocumentsTabProps = {
   isBidding?: boolean;
   /** If false, user can only view documents (no Create/Delete; Edit button becomes View and opens in read-only). Default true. */
   canEditDocuments?: boolean;
+  designSystem?: boolean;
 };
 
-export default function ProjectDocumentsTab({ projectId, isBidding, canEditDocuments = true }: ProjectDocumentsTabProps) {
+export default function ProjectDocumentsTab({
+  projectId,
+  isBidding,
+  canEditDocuments = true,
+  designSystem = false,
+}: ProjectDocumentsTabProps) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [isCreating, setIsCreating] = useState(false);
@@ -57,6 +77,9 @@ export default function ProjectDocumentsTab({ projectId, isBidding, canEditDocum
     queryKey: ['document-creator-templates'],
     queryFn: () => api<Template[]>('GET', '/document-creator/templates'),
   });
+
+  const subjectLabel = isBidding ? 'opportunity' : 'project';
+  const sectionDescription = `Create and edit documents linked to this ${subjectLabel}. Edit in the document creator; changes auto-save.`;
 
   const handleCreateNew = async (documentTypeId: string | null) => {
     setIsCreating(true);
@@ -143,9 +166,156 @@ export default function ProjectDocumentsTab({ projectId, isBidding, canEditDocum
     queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
   };
 
+  const createDocumentAction = canEditDocuments ? (
+    designSystem ? (
+      <AppButton
+        type="button"
+        size="sm"
+        onClick={() => setShowChooseTypeModal(true)}
+        disabled={isCreating}
+        loading={isCreating}
+      >
+        Create new document
+      </AppButton>
+    ) : (
+      <button
+        type="button"
+        onClick={() => setShowChooseTypeModal(true)}
+        disabled={isCreating}
+        className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90 disabled:opacity-50"
+      >
+        Create new document
+      </button>
+    )
+  ) : null;
+
+  const renderDocumentRow = (doc: UserDocument) => {
+    const rowShellClass = designSystem
+      ? uiCx(
+          uiRadius.card,
+          uiBorders.subtle,
+          uiColors.surface,
+          'flex flex-wrap items-center gap-3 p-3 transition-colors hover:border-gray-300',
+        )
+      : 'flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 hover:border-gray-300';
+
+    return (
+      <li key={doc.id} className={rowShellClass}>
+        <button
+          type="button"
+          onClick={() => handleEdit(doc)}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded text-left focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:ring-offset-1"
+        >
+          <DocumentPagePreviewThumbnails
+            pages={(Array.isArray(doc.pages) ? doc.pages : []) as DocumentPage[]}
+            templates={templates}
+            maxPages={4}
+          />
+          <div className="min-w-0 flex-1">
+            <div className={uiCx(designSystem ? uiTypography.sectionTitle : 'font-medium text-gray-900', 'truncate')}>
+              {doc.title || 'Untitled document'}
+            </div>
+            <div className={uiCx(designSystem ? uiTypography.helper : 'text-xs text-gray-500')}>
+              Updated {formatDate(doc.updated_at ?? doc.created_at)}
+            </div>
+          </div>
+        </button>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {designSystem ? (
+            <>
+              <AppButton type="button" variant="secondary" size="sm" onClick={() => handleEdit(doc)}>
+                {canEditDocuments ? 'Edit' : 'View'}
+              </AppButton>
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => handleExportPdf(doc)}
+                disabled={exportingId === doc.id}
+                loading={exportingId === doc.id}
+              >
+                {exportingId === doc.id ? 'Exporting...' : 'Export PDF'}
+              </AppButton>
+              {canEditDocuments && (
+                <AppListRowIconButton
+                  preset="delete"
+                  label="Delete"
+                  onClick={() => handleDelete(doc)}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => handleEdit(doc)}
+                className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700"
+              >
+                {canEditDocuments ? 'Edit' : 'View'}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportPdf(doc)}
+                disabled={exportingId === doc.id}
+                className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700 disabled:opacity-50"
+              >
+                {exportingId === doc.id ? 'Exporting...' : 'Export PDF'}
+              </button>
+              {canEditDocuments && (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(doc)}
+                  className="px-3 py-1.5 rounded text-red-600 hover:bg-red-50 text-sm"
+                >
+                  Delete
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </li>
+    );
+  };
+
+  const documentsBody = isLoading ? (
+    designSystem ? (
+      <p className={uiCx(uiTypography.helper, 'py-6')}>Loading...</p>
+    ) : (
+      <div className="text-sm text-gray-500 py-6">Loading...</div>
+    )
+  ) : documents.length === 0 ? (
+    designSystem ? (
+      <AppEmptyState
+        className="border-0 shadow-none"
+        title="No documents yet."
+        action={createDocumentAction ?? undefined}
+      />
+    ) : (
+      <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50/50 p-8 text-center">
+        <p className="text-gray-600 mb-3">No documents yet.</p>
+        {createDocumentAction}
+      </div>
+    )
+  ) : (
+    <ul className={designSystem ? uiSpacing.sectionStack : 'space-y-2'}>
+      {documents.map(renderDocumentRow)}
+    </ul>
+  );
+
   // Inline editor (default when a document is open and not expanded)
   if (showModal && modalDocumentId && !isExpanded) {
-    const expandButton = (
+    const expandButton = designSystem ? (
+      <AppButton
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => setIsExpanded(true)}
+        title="Expand to full screen"
+        className="!px-2"
+      >
+        <ExpandIcon className="h-5 w-5" />
+      </AppButton>
+    ) : (
       <button
         type="button"
         onClick={() => setIsExpanded(true)}
@@ -156,116 +326,76 @@ export default function ProjectDocumentsTab({ projectId, isBidding, canEditDocum
       </button>
     );
 
+    const editorShellClass = designSystem
+      ? uiCx(
+          uiRadius.card,
+          uiBorders.subtle,
+          uiColors.surface,
+          'flex h-[calc(100vh-11rem)] min-h-[500px] flex-col overflow-hidden',
+        )
+      : 'rounded-xl border bg-white overflow-hidden flex flex-col h-[calc(100vh-11rem)] min-h-[500px]';
+
     return (
-      <div
-        className="rounded-xl border bg-white overflow-hidden flex flex-col"
-        style={{ height: 'calc(100vh - 11rem)', minHeight: 500 }}
-      >
-        <DocumentEditor
+      <>
+        <div className={editorShellClass}>
+          <DocumentEditor
+            documentId={modalDocumentId}
+            projectId={projectId}
+            onClose={handleCloseModal}
+            readOnly={!canEditDocuments}
+            closeSlotBelow={expandButton}
+          />
+        </div>
+        <ChooseDocumentTypeModal
+          open={showChooseTypeModal}
+          onClose={() => setShowChooseTypeModal(false)}
+          designSystem={designSystem}
+          onSelect={(documentTypeId) => {
+            setShowChooseTypeModal(false);
+            handleCreateNew(documentTypeId);
+          }}
+        />
+        <DocumentCreatorModal
+          open={showModal && isExpanded}
           documentId={modalDocumentId}
           projectId={projectId}
           onClose={handleCloseModal}
           readOnly={!canEditDocuments}
-          closeSlotBelow={expandButton}
+          onCompress={() => setIsExpanded(false)}
         />
-      </div>
+      </>
     );
   }
 
   return (
     <>
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {isBidding ? 'Opportunity' : 'Project'} documents
-          </h2>
-          {canEditDocuments && (
-            <button
-              type="button"
-              onClick={() => setShowChooseTypeModal(true)}
-              disabled={isCreating}
-              className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90 disabled:opacity-50"
-            >
-              Create new document
-            </button>
-          )}
-        </div>
-        <p className="text-sm text-gray-600 mb-4">
-          Create and edit documents linked to this {isBidding ? 'opportunity' : 'project'}. Edit in the document creator; changes auto-save.
-        </p>
-        {isLoading ? (
-          <div className="text-sm text-gray-500 py-6">Loading...</div>
-        ) : documents.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50/50 p-8 text-center">
-            <p className="text-gray-600 mb-3">No documents yet.</p>
-            {canEditDocuments && (
-              <button
-                type="button"
-                onClick={() => setShowChooseTypeModal(true)}
-                disabled={isCreating}
-                className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90 disabled:opacity-50"
-              >
-                Create new document
-              </button>
-            )}
+      {designSystem ? (
+        <AppCard className="!rounded-2xl" bodyClassName={uiSpacing.cardPadding}>
+          <AppSectionHeader
+            title="Documents"
+            description={sectionDescription}
+            {...appSectionPresetProps('documents')}
+            action={createDocumentAction}
+          />
+          <div className="mt-4">{documentsBody}</div>
+        </AppCard>
+      ) : (
+        <div className="rounded-xl border bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {isBidding ? 'Opportunity' : 'Project'} documents
+            </h2>
+            {createDocumentAction}
           </div>
-        ) : (
-          <ul className="space-y-2">
-            {documents.map((doc) => (
-              <li
-                key={doc.id}
-                className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 hover:border-gray-300"
-              >
-                <button
-                  type="button"
-                  onClick={() => handleEdit(doc)}
-                  className="flex items-center gap-3 min-w-0 flex-1 text-left rounded focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:ring-offset-1"
-                >
-                  <DocumentPagePreviewThumbnails
-                    pages={Array.isArray(doc.pages) ? doc.pages : []}
-                    templates={templates}
-                    maxPages={4}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-gray-900 truncate">{doc.title || 'Untitled document'}</div>
-                    <div className="text-xs text-gray-500">Updated {formatDate(doc.updated_at ?? doc.created_at)}</div>
-                  </div>
-                </button>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleEdit(doc)}
-                    className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700"
-                  >
-                    {canEditDocuments ? 'Edit' : 'View'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleExportPdf(doc)}
-                    disabled={exportingId === doc.id}
-                    className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700 disabled:opacity-50"
-                  >
-                    {exportingId === doc.id ? 'Exporting...' : 'Export PDF'}
-                  </button>
-                  {canEditDocuments && (
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(doc)}
-                      className="px-3 py-1.5 rounded text-red-600 hover:bg-red-50 text-sm"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+          <p className="text-sm text-gray-600 mb-4">{sectionDescription}</p>
+          {documentsBody}
+        </div>
+      )}
 
       <ChooseDocumentTypeModal
         open={showChooseTypeModal}
         onClose={() => setShowChooseTypeModal(false)}
+        designSystem={designSystem}
         onSelect={(documentTypeId) => {
           setShowChooseTypeModal(false);
           handleCreateNew(documentTypeId);

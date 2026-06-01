@@ -4,6 +4,7 @@ import {
   BookOpen,
   Briefcase,
   Building2,
+  Clock,
   FileText,
   Heart,
   MapPin,
@@ -26,6 +27,11 @@ export type AppSectionPresetKey =
   | 'emergency'
   | 'documents'
   | 'files'
+  | 'notesHistory'
+  | 'workload'
+  | 'timesheet'
+  | 'proposal'
+  | 'pricing'
   | 'opportunities'
   | 'projects';
 
@@ -46,6 +52,11 @@ const SECTION_PRESETS: Record<AppSectionPresetKey, SectionPresetDef> = {
   emergency: { iconClassName: 'bg-red-100 text-red-800', Icon: Heart },
   documents: { iconClassName: 'bg-purple-100 text-purple-800', Icon: Shield },
   files: { iconClassName: 'bg-purple-100 text-purple-800', Icon: Shield },
+  notesHistory: { iconClassName: 'bg-orange-100 text-orange-800', Icon: FileText },
+  workload: { iconClassName: 'bg-orange-100 text-orange-800', Icon: Briefcase },
+  timesheet: { iconClassName: 'bg-orange-100 text-orange-800', Icon: Clock },
+  proposal: { iconClassName: 'bg-emerald-100 text-emerald-800', Icon: FileText },
+  pricing: { iconClassName: 'bg-emerald-100 text-emerald-800', Icon: Receipt },
   opportunities: { iconClassName: 'bg-indigo-100 text-indigo-800', Icon: Briefcase },
   projects: { iconClassName: 'bg-orange-100 text-orange-800', Icon: Briefcase },
 };

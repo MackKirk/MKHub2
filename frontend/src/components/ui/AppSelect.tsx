@@ -1,9 +1,10 @@
 import {
+  Fragment,
   useMemo,
   useState,
+  type ButtonHTMLAttributes,
   type ChangeEvent,
   type ReactNode,
-  type SelectHTMLAttributes,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
@@ -18,20 +19,52 @@ export type AppSelectOption = {
   label: string;
 };
 
+export type AppSelectOptionGroup = {
+  /** When empty, options render without a section header (e.g. “All” or placeholder row). */
+  label: string;
+  options: AppSelectOption[];
+};
+
 export type AppSelectProps = {
   label?: ReactNode;
   fieldHint?: ReactNode;
   helperText?: ReactNode;
   error?: ReactNode;
-  options: AppSelectOption[];
+  /** Flat list; ignored when `optionGroups` is non-empty. */
+  options?: AppSelectOption[];
+  /**
+   * Grouped sections (order preserved). Options are not re-sorted across groups.
+   * Use `label: ''` for prefix rows without a header (All, placeholder).
+   */
+  optionGroups?: AppSelectOptionGroup[];
   placeholder?: string;
   emptyMessage?: string;
   /** Filter options by label/value while the menu is open. */
   searchable?: boolean;
+  /** When false with `optionGroups`, keeps caller-defined order inside each group. Default: true for flat `options` only. */
+  sortOptions?: boolean;
   /** @deprecated Use triggerClassName */
   selectClassName?: string;
   triggerClassName?: string;
-} & Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children'>;
+  value?: string;
+  defaultValue?: string;
+  onChange?: (e: ChangeEvent<HTMLSelectElement>) => void;
+  disabled?: boolean;
+  required?: boolean;
+  name?: string;
+  id?: string;
+} & Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  | 'children'
+  | 'type'
+  | 'value'
+  | 'defaultValue'
+  | 'onChange'
+  | 'disabled'
+  | 'required'
+  | 'name'
+  | 'id'
+>;
 
 function filterOptions(options: AppSelectOption[], query: string): AppSelectOption[] {
   const q = query.trim().toLowerCase();
@@ -39,6 +72,32 @@ function filterOptions(options: AppSelectOption[], query: string): AppSelectOpti
   return options.filter(
     (o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q),
   );
+}
+
+function filterOptionGroups(
+  groups: AppSelectOptionGroup[],
+  query: string,
+): AppSelectOptionGroup[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return groups;
+  return groups
+    .map((group) => ({
+      ...group,
+      options: filterOptions(group.options, query),
+    }))
+    .filter((group) => group.options.length > 0);
+}
+
+function sortGroupsInPlace(groups: AppSelectOptionGroup[], sortOptions: boolean): AppSelectOptionGroup[] {
+  if (!sortOptions) return groups;
+  return groups.map((group) => ({
+    ...group,
+    options: sortByLabel(group.options, (o) => o.label),
+  }));
+}
+
+function flattenOptionGroups(groups: AppSelectOptionGroup[]): AppSelectOption[] {
+  return groups.flatMap((g) => g.options);
 }
 
 function fireSelectChange(
@@ -62,10 +121,12 @@ export function AppSelect({
   className,
   selectClassName,
   triggerClassName,
-  options,
+  options = [],
+  optionGroups,
   placeholder,
   emptyMessage = 'No options found.',
   searchable = false,
+  sortOptions: sortOptionsProp,
   id,
   value,
   defaultValue,
@@ -73,11 +134,14 @@ export function AppSelect({
   disabled,
   required,
   name,
-  ...rest
+  ...buttonRest
 }: AppSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const { anchorRef, portalListId, menuRect, closeDropdown } = useComboboxDropdown(open, setOpen);
+
+  const isGrouped = Boolean(optionGroups && optionGroups.length > 0);
+  const sortOptions = sortOptionsProp ?? !isGrouped;
 
   const isControlled = value !== undefined;
   const [internalValue, setInternalValue] = useState(() =>
@@ -86,15 +150,36 @@ export function AppSelect({
 
   const currentValue = isControlled ? String(value ?? '') : internalValue;
 
-  const sortedOptions = useMemo(() => sortByLabel(options, (o) => o.label), [options]);
+  const sortedOptions = useMemo(
+    () => (sortOptions ? sortByLabel(options, (o) => o.label) : options),
+    [options, sortOptions],
+  );
+
+  const preparedGroups = useMemo(() => {
+    if (!isGrouped || !optionGroups) return null;
+    return sortGroupsInPlace(optionGroups, sortOptions);
+  }, [isGrouped, optionGroups, sortOptions]);
+
   const filteredOptions = useMemo(() => {
     const list = searchable && open ? filterOptions(sortedOptions, search) : sortedOptions;
-    return sortByLabel(list, (o) => o.label);
-  }, [sortedOptions, searchable, open, search]);
+    return sortOptions ? sortByLabel(list, (o) => o.label) : list;
+  }, [sortedOptions, searchable, open, search, sortOptions]);
+
+  const filteredGroups = useMemo(() => {
+    if (!preparedGroups) return null;
+    const list =
+      searchable && open ? filterOptionGroups(preparedGroups, search) : preparedGroups;
+    return list;
+  }, [preparedGroups, searchable, open, search]);
+
+  const allOptions = useMemo(() => {
+    if (filteredGroups) return flattenOptionGroups(filteredGroups);
+    return filteredOptions;
+  }, [filteredGroups, filteredOptions]);
 
   const selected = useMemo(
-    () => sortedOptions.find((o) => o.value === currentValue) ?? null,
-    [sortedOptions, currentValue],
+    () => allOptions.find((o) => o.value === currentValue) ?? null,
+    [allOptions, currentValue],
   );
 
   const setValue = (next: string) => {
@@ -109,9 +194,47 @@ export function AppSelect({
     ? { top: menuRect.top, left: menuRect.left, width: menuRect.width }
     : undefined;
 
+  const renderOptionButton = (option: AppSelectOption) => (
+    <li key={option.value} role="option" aria-selected={currentValue === option.value}>
+      <button
+        type="button"
+        className={uiCx(
+          uiDropdown.option,
+          currentValue === option.value && uiDropdown.optionSelected,
+        )}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          setValue(option.value);
+          closeDropdown();
+          setSearch('');
+        }}
+      >
+        {option.label}
+      </button>
+    </li>
+  );
+
+  const renderGroupedOptions = () => {
+    if (!filteredGroups?.length) {
+      return <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>;
+    }
+    return filteredGroups.map((group, groupIndex) => (
+      <Fragment key={`${group.label || 'ungrouped'}-${groupIndex}`}>
+        {group.label ? (
+          <li role="presentation">
+            <div className={uiDropdown.optionGroupHeader}>{group.label}</div>
+          </li>
+        ) : null}
+        {group.options.map((option) => (
+          <Fragment key={`${groupIndex}-${option.value}`}>{renderOptionButton(option)}</Fragment>
+        ))}
+      </Fragment>
+    ));
+  };
+
   const optionListContent = (
     <>
-      {!searchable && placeholder ? (
+      {!isGrouped && !searchable && placeholder ? (
         <li role="option" aria-selected={!currentValue}>
           <button
             type="button"
@@ -126,28 +249,16 @@ export function AppSelect({
           </button>
         </li>
       ) : null}
-      {filteredOptions.length === 0 ? (
+      {isGrouped ? (
+        allOptions.length === 0 ? (
+          <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
+        ) : (
+          renderGroupedOptions()
+        )
+      ) : filteredOptions.length === 0 ? (
         <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
       ) : (
-        filteredOptions.map((option) => (
-          <li key={option.value} role="option" aria-selected={currentValue === option.value}>
-            <button
-              type="button"
-              className={uiCx(
-                uiDropdown.option,
-                currentValue === option.value && uiDropdown.optionSelected,
-              )}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                setValue(option.value);
-                closeDropdown();
-                setSearch('');
-              }}
-            >
-              {option.label}
-            </button>
-          </li>
-        ))
+        filteredOptions.map((option) => renderOptionButton(option))
       )}
     </>
   );
@@ -225,7 +336,7 @@ export function AppSelect({
               if (!open) setOpen(true);
             }
           }}
-          {...rest}
+          {...buttonRest}
         >
           <span className="min-w-0 truncate">{triggerLabel}</span>
         </button>

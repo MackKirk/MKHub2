@@ -2,8 +2,21 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
+import { subcontractorProjectClockQuickInfo } from '@/lib/formModalQuickInfo';
 import OverlayPortal from '@/components/OverlayPortal';
 import SubcontractorSimpleSignature from '@/components/SubcontractorSimpleSignature';
+import {
+  AppBadge,
+  AppButton,
+  AppCheckbox,
+  AppFormModal,
+  AppInput,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type ResolveResponse = {
   worker: { id: string; name: string; photo_file_id?: string | null; is_active: boolean };
@@ -44,10 +57,12 @@ export default function SubcontractorClockModal({
   projectId,
   open,
   onClose,
+  designSystem,
 }: {
   projectId: string;
   open: boolean;
   onClose: () => void;
+  designSystem?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [readerDomId] = useState(() => `sc-ts-qr-${Math.random().toString(36).slice(2, 12)}`);
@@ -113,7 +128,7 @@ export default function SubcontractorClockModal({
       }
       setStep('blocked');
     },
-    [projectId]
+    [projectId],
   );
 
   useEffect(() => {
@@ -154,7 +169,7 @@ export default function SubcontractorClockModal({
             scannerRef.current = null;
             await resolve(tok);
           },
-          () => {}
+          () => {},
         );
       } catch {
         /* camera denied */
@@ -199,11 +214,229 @@ export default function SubcontractorClockModal({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const handleManualLookup = async () => {
+    const tok = extractTokenFromText(manualToken);
+    if (!tok) {
+      toast.error('Invalid token');
+      return;
+    }
+    await stopScanner();
+    await resolve(tok);
+  };
+
+  const quickInfoPhase: 'scan' | 'clockIn' | 'clockOut' | 'blocked' =
+    step === 'blocked' ? 'blocked' : step === 'clockOut' ? 'clockOut' : step === 'clockIn' ? 'clockIn' : 'scan';
+
+  const modalDescription =
+    step === 'clockIn'
+      ? 'Optional signature for clock-in.'
+      : step === 'clockOut'
+        ? 'Signature required for clock-out.'
+        : step === 'blocked'
+          ? 'This worker cannot clock in or out on this project yet.'
+          : 'Scan the worker QR code or paste the URL / token.';
+
   if (!open) return null;
 
   const photoUrl = resolved?.worker?.photo_file_id
     ? withFileAccessTokenIfNeeded(`/files/${resolved.worker.photo_file_id}`)
     : null;
+
+  const renderWorkerCard = () =>
+    resolved ? (
+      <div className="flex gap-3">
+        {photoUrl ? (
+          <img src={photoUrl} alt="" className="w-16 h-16 rounded-full object-cover border" />
+        ) : (
+          <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-lg font-medium text-gray-600">
+            {resolved.worker.name?.slice(0, 1) || '?'}
+          </div>
+        )}
+        <div>
+          <div className={designSystem ? uiTypography.sectionTitle : 'font-semibold'}>{resolved.worker.name}</div>
+          <div className={uiCx(uiTypography.helper, 'text-gray-600')}>{resolved.company?.name}</div>
+          <div className={uiCx('mt-1 flex items-center gap-1.5', uiTypography.helper)}>
+            <span>Status:</span>
+            {designSystem ? (
+              <AppBadge variant={resolved.open_attendance ? 'success' : 'neutral'}>
+                {resolved.open_attendance ? 'Clocked in' : 'Not clocked in'}
+              </AppBadge>
+            ) : (
+              <span className={resolved.open_attendance ? 'text-green-700 font-medium' : 'text-gray-700'}>
+                {resolved.open_attendance ? 'Clocked in' : 'Not clocked in'}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    ) : null;
+
+  const renderBlockedBanner = () =>
+    step === 'blocked' && resolved?.open_on_other_project ? (
+      <div
+        className={
+          designSystem
+            ? uiCx(uiRadius.card, 'border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900')
+            : 'p-3 bg-amber-50 border border-amber-200 rounded text-amber-900 text-xs'
+        }
+      >
+        This worker has an open attendance on another project
+        {resolved.other_project_name ? `: ${resolved.other_project_name}` : ''}. Clock out there first.
+      </div>
+    ) : null;
+
+  const renderScanSection = () =>
+    !resolved ? (
+      <>
+        <p className={designSystem ? uiTypography.helper : 'text-gray-600 text-xs'}>
+          Scan the worker QR code or paste the URL / token.
+        </p>
+        <div id={readerDomId} className="rounded border overflow-hidden min-h-[200px] bg-black" />
+        {designSystem ? (
+          <AppInput
+            label="Token or full scan URL"
+            value={manualToken}
+            onChange={(e) => setManualToken(e.target.value)}
+            placeholder="Token or full scan URL"
+            fieldHint="Token or scan URL\n\nPaste the full QR link or the worker token if the camera cannot scan."
+          />
+        ) : (
+          <div className="flex gap-2">
+            <input
+              className="flex-1 border rounded px-2 py-1.5 text-xs"
+              placeholder="Token or full scan URL"
+              value={manualToken}
+              onChange={(e) => setManualToken(e.target.value)}
+            />
+            <button
+              type="button"
+              className="px-3 py-1.5 rounded bg-[#7f1010] text-white text-xs"
+              onClick={() => void handleManualLookup()}
+            >
+              Look up
+            </button>
+          </div>
+        )}
+      </>
+    ) : null;
+
+  const renderClockInSection = () =>
+    step === 'clockIn' && resolved ? (
+      <div className={designSystem ? uiSpacing.sectionStack : 'space-y-2'}>
+        <p className={uiTypography.helper}>Optional signature for clock-in.</p>
+        <SubcontractorSimpleSignature
+          projectId={projectId}
+          disabled={clockInMut.isPending}
+          onUploaded={(id) => setSigFileId(id)}
+          onClear={() => setSigFileId(null)}
+        />
+        {!designSystem ? (
+          <button
+            type="button"
+            className="w-full py-2 rounded bg-green-700 text-white text-sm font-medium disabled:opacity-50"
+            disabled={clockInMut.isPending}
+            onClick={() => clockInMut.mutate()}
+          >
+            {clockInMut.isPending ? 'Saving…' : 'Clock In'}
+          </button>
+        ) : null}
+      </div>
+    ) : null;
+
+  const renderClockOutSection = () =>
+    step === 'clockOut' && resolved?.open_attendance ? (
+      <div className={designSystem ? uiSpacing.sectionStack : 'space-y-2'}>
+        {designSystem ? (
+          <AppCheckbox
+            label="I confirm that the recorded working hours are accurate."
+            checked={hoursConfirm}
+            onChange={setHoursConfirm}
+            fieldHint="Hours confirmation\n\nRequired before clock-out. Confirms the open session times are correct."
+          />
+        ) : (
+          <label className="flex items-start gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hoursConfirm}
+              onChange={(e) => setHoursConfirm(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>I confirm that the recorded working hours are accurate.</span>
+          </label>
+        )}
+        <p className={uiTypography.helper}>Signature required for clock-out.</p>
+        <SubcontractorSimpleSignature
+          projectId={projectId}
+          disabled={clockOutMut.isPending}
+          onUploaded={(id) => setSigFileId(id)}
+          onClear={() => setSigFileId(null)}
+        />
+        {!designSystem ? (
+          <button
+            type="button"
+            className="w-full py-2 rounded bg-red-700 text-white text-sm font-medium disabled:opacity-50"
+            disabled={clockOutMut.isPending || !hoursConfirm || !sigFileId}
+            onClick={() => clockOutMut.mutate()}
+          >
+            {clockOutMut.isPending ? 'Saving…' : 'Clock Out'}
+          </button>
+        ) : null}
+      </div>
+    ) : null;
+
+  const modalBody = (
+    <div className={designSystem ? uiSpacing.sectionStack : 'space-y-4 text-sm'}>
+      {renderScanSection()}
+      {renderWorkerCard()}
+      {renderBlockedBanner()}
+      {renderClockInSection()}
+      {renderClockOutSection()}
+    </div>
+  );
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open={open}
+        onClose={handleClose}
+        title="Subcontractor Clock-In/Out"
+        description={modalDescription}
+        quickInfo={subcontractorProjectClockQuickInfo(quickInfoPhase)}
+        overlayClassName="z-[200]"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton variant="secondary" size="sm" type="button" onClick={handleClose}>
+              Close
+            </AppButton>
+            {!resolved ? (
+              <AppButton size="sm" type="button" onClick={() => void handleManualLookup()} disabled={!manualToken.trim()}>
+                Look up
+              </AppButton>
+            ) : null}
+            {step === 'clockIn' && resolved ? (
+              <AppButton size="sm" type="button" onClick={() => clockInMut.mutate()} loading={clockInMut.isPending}>
+                {clockInMut.isPending ? 'Saving…' : 'Clock In'}
+              </AppButton>
+            ) : null}
+            {step === 'clockOut' && resolved?.open_attendance ? (
+              <AppButton
+                variant="danger"
+                size="sm"
+                type="button"
+                onClick={() => clockOutMut.mutate()}
+                disabled={!hoursConfirm || !sigFileId}
+                loading={clockOutMut.isPending}
+              >
+                {clockOutMut.isPending ? 'Saving…' : 'Clock Out'}
+              </AppButton>
+            ) : null}
+          </div>
+        }
+      >
+        {modalBody}
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal>
@@ -220,109 +453,7 @@ export default function SubcontractorClockModal({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="px-4 py-3 border-b font-semibold text-gray-900">Subcontractor Clock-In/Out</div>
-          <div className="p-4 space-y-4 text-sm">
-            {!resolved && (
-              <>
-                <p className="text-gray-600 text-xs">Scan the worker QR code or paste the URL / token.</p>
-                <div id={readerDomId} className="rounded border overflow-hidden min-h-[200px] bg-black" />
-                <div className="flex gap-2">
-                  <input
-                    className="flex-1 border rounded px-2 py-1.5 text-xs"
-                    placeholder="Token or full scan URL"
-                    value={manualToken}
-                    onChange={(e) => setManualToken(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="px-3 py-1.5 rounded bg-[#7f1010] text-white text-xs"
-                    onClick={async () => {
-                      const tok = extractTokenFromText(manualToken);
-                      if (!tok) {
-                        toast.error('Invalid token');
-                        return;
-                      }
-                      await resolve(tok);
-                    }}
-                  >
-                    Look up
-                  </button>
-                </div>
-              </>
-            )}
-
-            {resolved && (
-              <div className="flex gap-3">
-                {photoUrl ? (
-                  <img src={photoUrl} alt="" className="w-16 h-16 rounded-full object-cover border" />
-                ) : (
-                  <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-lg font-medium text-gray-600">
-                    {resolved.worker.name?.slice(0, 1) || '?'}
-                  </div>
-                )}
-                <div>
-                  <div className="font-semibold">{resolved.worker.name}</div>
-                  <div className="text-xs text-gray-600">{resolved.company?.name}</div>
-                  <div className="text-xs mt-1">
-                    Status:{' '}
-                    <span className={resolved.open_attendance ? 'text-green-700 font-medium' : 'text-gray-700'}>
-                      {resolved.open_attendance ? 'Clocked in' : 'Not clocked in'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {step === 'blocked' && resolved?.open_on_other_project && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded text-amber-900 text-xs">
-                This worker has an open attendance on another project
-                {resolved.other_project_name ? `: ${resolved.other_project_name}` : ''}. Clock out there first.
-              </div>
-            )}
-
-            {step === 'clockIn' && resolved && (
-              <div className="space-y-2">
-                <p className="text-xs text-gray-600">Optional signature for clock-in.</p>
-                <SubcontractorSimpleSignature
-                  projectId={projectId}
-                  disabled={clockInMut.isPending}
-                  onUploaded={(id) => setSigFileId(id)}
-                  onClear={() => setSigFileId(null)}
-                />
-                <button
-                  type="button"
-                  className="w-full py-2 rounded bg-green-700 text-white text-sm font-medium disabled:opacity-50"
-                  disabled={clockInMut.isPending}
-                  onClick={() => clockInMut.mutate()}
-                >
-                  {clockInMut.isPending ? 'Saving…' : 'Clock In'}
-                </button>
-              </div>
-            )}
-
-            {step === 'clockOut' && resolved?.open_attendance && (
-              <div className="space-y-2">
-                <label className="flex items-start gap-2 text-xs cursor-pointer">
-                  <input type="checkbox" checked={hoursConfirm} onChange={(e) => setHoursConfirm(e.target.checked)} className="mt-0.5" />
-                  <span>I confirm that the recorded working hours are accurate.</span>
-                </label>
-                <p className="text-xs text-gray-600">Signature required for clock-out.</p>
-                <SubcontractorSimpleSignature
-                  projectId={projectId}
-                  disabled={clockOutMut.isPending}
-                  onUploaded={(id) => setSigFileId(id)}
-                  onClear={() => setSigFileId(null)}
-                />
-                <button
-                  type="button"
-                  className="w-full py-2 rounded bg-red-700 text-white text-sm font-medium disabled:opacity-50"
-                  disabled={clockOutMut.isPending || !hoursConfirm || !sigFileId}
-                  onClick={() => clockOutMut.mutate()}
-                >
-                  {clockOutMut.isPending ? 'Saving…' : 'Clock Out'}
-                </button>
-              </div>
-            )}
-          </div>
+          <div className="p-4">{modalBody}</div>
           <div className="px-4 py-3 border-t flex justify-end">
             <button type="button" className="px-3 py-1.5 text-sm border rounded" onClick={() => handleClose()}>
               Close

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -6,11 +6,18 @@ import EventModal from './EventModal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { formatDateLocal } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
+import { AppBadge, AppButton, AppCalendarBase, type AppCalendarDay, AppModal, uiCx, uiLayout, uiTypography } from '@/components/ui';
 
 type CalendarMockProps = {
   title?: string;
   projectId?: string;
   hasEditPermission?: boolean;
+  useDesignSystem?: boolean;
+  /** Hide the in-calendar Create Event row (e.g. button lives on AppSectionHeader). */
+  hideCreateButton?: boolean;
+  /** Controlled create-modal open state (optional; pairs with onCreateModalOpenChange). */
+  createModalOpen?: boolean;
+  onCreateModalOpenChange?: (open: boolean) => void;
 };
 
 type Event = {
@@ -74,7 +81,15 @@ function getEventColor(eventId: string): { bg: string; text: string; border: str
   return colors[index];
 }
 
-export default function CalendarMock({ title, projectId, hasEditPermission }: CalendarMockProps){
+export default function CalendarMock({
+  title,
+  projectId,
+  hasEditPermission,
+  useDesignSystem,
+  hideCreateButton,
+  createModalOpen: createModalOpenProp,
+  onCreateModalOpenChange,
+}: CalendarMockProps){
   const [anchorDate, setAnchorDate] = useState<Date>(()=>{
     const d = new Date();
     d.setDate(1);
@@ -92,7 +107,12 @@ export default function CalendarMock({ title, projectId, hasEditPermission }: Ca
     enabled: !!projectId,
   });
 
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddModalInternal, setShowAddModalInternal] = useState(false);
+  const showAddModal = createModalOpenProp ?? showAddModalInternal;
+  const setShowAddModal = (open: boolean) => {
+    if (onCreateModalOpenChange) onCreateModalOpenChange(open);
+    else setShowAddModalInternal(open);
+  };
   const [showViewModal, setShowViewModal] = useState<Event | null>(null);
   const [showEditModal, setShowEditModal] = useState<Event | null>(null);
 
@@ -269,6 +289,41 @@ export default function CalendarMock({ title, projectId, hasEditPermission }: Ca
 
   const weekDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
+  const todayStr = formatDateLocal(new Date());
+
+  const goPrevMonth = () => setAnchorDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+  const goNextMonth = () => setAnchorDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+  const goTodayMonth = () => {
+    const n = new Date();
+    n.setDate(1);
+    n.setHours(0, 0, 0, 0);
+    setAnchorDate(n);
+  };
+
+  const appCalendarDays: AppCalendarDay[] = useMemo(
+    () =>
+      days.map(({ date, key }) => {
+        if (!date) {
+          return { dateLabel: '', isMuted: true };
+        }
+        const ds = formatDateLocal(date);
+        const dayEvents = eventsByDate[ds] || [];
+        const hasEvents = dayEvents.length > 0;
+        return {
+          dateLabel: String(date.getDate()),
+          isToday: todayStr === ds,
+          hasMarker: hasEvents,
+          onClick: hasEvents ? () => setShowViewModal(dayEvents[0]) : undefined,
+          title: hasEvents
+            ? `${dayEvents.length} event(s) — click to view`
+            : todayStr === ds
+              ? 'Today'
+              : undefined,
+        };
+      }),
+    [days, eventsByDate, todayStr],
+  );
+
   // Get events for a specific date with unique colors
   const getEventsForDate = (date: Date | null): Event[] => {
     if (!date) return [];
@@ -343,6 +398,106 @@ export default function CalendarMock({ title, projectId, hasEditPermission }: Ca
     return colorMap;
   };
 
+  if (useDesignSystem) {
+    return (
+      <div>
+        {!hideCreateButton && projectId && hasEditPermission ? (
+          <div className={uiCx(uiLayout.actionsRow, 'mb-3 justify-end gap-2')}>
+            <AppButton type="button" size="sm" onClick={() => setShowAddModal(true)}>
+              + Create Event
+            </AppButton>
+          </div>
+        ) : null}
+        <AppCalendarBase
+          bare
+          monthLabel={monthLabel}
+          days={appCalendarDays}
+          onPrevious={goPrevMonth}
+          onNext={goNextMonth}
+          headerExtra={
+            <AppButton type="button" variant="ghost" size="sm" onClick={goTodayMonth}>
+              Today
+            </AppButton>
+          }
+        />
+
+        {showAddModal && projectId && (
+          <EventModal
+            projectId={projectId}
+            mode="create"
+            designSystem
+            onClose={() => setShowAddModal(false)}
+            onSave={async (eventData) => {
+              try {
+                await api('POST', `/projects/${projectId}/events`, eventData);
+                toast.success('Event created');
+                setShowAddModal(false);
+                refetchEvents();
+                queryClient.invalidateQueries({ queryKey: ['projectEvents', projectId] });
+              } catch (e: any) {
+                toast.error(e?.message || 'Failed to create event');
+              }
+            }}
+          />
+        )}
+
+        {showViewModal && (
+          <EventViewModal
+            event={showViewModal}
+            projectId={projectId || ''}
+            hasEditPermission={hasEditPermission}
+            designSystem
+            onClose={() => setShowViewModal(null)}
+            onEdit={() => {
+              setShowEditModal(showViewModal);
+              setShowViewModal(null);
+            }}
+            onDelete={async () => {
+              if (!projectId || !showViewModal) return;
+              const ok = await confirm({
+                title: 'Delete event',
+                message: `Are you sure you want to delete "${showViewModal.name}"? This action cannot be undone.`,
+                confirmText: 'Delete',
+                cancelText: 'Cancel',
+              });
+              if (!ok) return;
+              try {
+                await api('DELETE', `/projects/${projectId}/events/${showViewModal.id}`);
+                toast.success('Event deleted');
+                setShowViewModal(null);
+                refetchEvents();
+                queryClient.invalidateQueries({ queryKey: ['projectEvents', projectId] });
+              } catch (e: any) {
+                toast.error(e?.message || 'Failed to delete event');
+              }
+            }}
+          />
+        )}
+
+        {showEditModal && projectId && (
+          <EventModal
+            projectId={projectId}
+            mode="edit"
+            event={showEditModal}
+            designSystem
+            onClose={() => setShowEditModal(null)}
+            onSave={async (eventData) => {
+              try {
+                await api('PATCH', `/projects/${projectId}/events/${showEditModal.id}`, eventData);
+                toast.success('Event updated');
+                setShowEditModal(null);
+                refetchEvents();
+                queryClient.invalidateQueries({ queryKey: ['projectEvents', projectId] });
+              } catch (e: any) {
+                toast.error(e?.message || 'Failed to update event');
+              }
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
       <style>{`
@@ -367,10 +522,10 @@ export default function CalendarMock({ title, projectId, hasEditPermission }: Ca
       <div className="flex items-center justify-between mb-3">
         <div className="font-semibold text-lg">{title || 'Calendar'}</div>
         <div className="flex items-center gap-2">
-          <button onClick={()=> setAnchorDate(d=> new Date(d.getFullYear(), d.getMonth()-1, 1))} className="px-2 py-1 rounded bg-gray-100">Prev</button>
+          <button onClick={goPrevMonth} className="px-2 py-1 rounded bg-gray-100">Prev</button>
           <div className="px-2 text-sm text-gray-700 min-w-[140px] text-center">{monthLabel}</div>
-          <button onClick={()=> setAnchorDate(d=> new Date(d.getFullYear(), d.getMonth()+1, 1))} className="px-2 py-1 rounded bg-gray-100">Next</button>
-          <button onClick={()=> setAnchorDate(()=>{ const n=new Date(); n.setDate(1); n.setHours(0,0,0,0); return n; })} className="px-2 py-1 rounded bg-gray-100">Today</button>
+          <button onClick={goNextMonth} className="px-2 py-1 rounded bg-gray-100">Next</button>
+          <button onClick={goTodayMonth} className="px-2 py-1 rounded bg-gray-100">Today</button>
           {projectId && hasEditPermission && (
             <button onClick={()=> setShowAddModal(true)} className="px-3 py-1 rounded bg-brand-red text-white text-sm">+ Create Event</button>
           )}
@@ -389,10 +544,7 @@ export default function CalendarMock({ title, projectId, hasEditPermission }: Ca
           const ds = formatDateLocal(date);
           const dayEvents = getEventsForDate(date);
           const hasEvents = dayEvents.length > 0;
-          const isToday = (()=>{
-            const t = new Date();
-            return formatDateLocal(t) === ds;
-          })();
+          const isToday = todayStr === ds;
           return (
             <div 
               key={key} 
@@ -498,6 +650,7 @@ function EventViewModal({
   event, 
   projectId,
   hasEditPermission,
+  designSystem,
   onClose, 
   onEdit, 
   onDelete 
@@ -505,6 +658,7 @@ function EventViewModal({
   event: Event; 
   projectId: string;
   hasEditPermission?: boolean;
+  designSystem?: boolean;
   onClose: () => void; 
   onEdit: () => void; 
   onDelete: () => Promise<void>;
@@ -581,6 +735,101 @@ function EventViewModal({
 
     return parts.join(', ');
   };
+
+  const readField = (label: string, value: ReactNode) => (
+    <div>
+      <div className={uiTypography.overline}>{label}</div>
+      <div className={uiCx(uiTypography.body, 'mt-0.5 font-medium text-gray-900')}>{value}</div>
+    </div>
+  );
+
+  if (designSystem) {
+    return (
+      <AppModal
+        open
+        onClose={onClose}
+        title={event.name}
+        description="Calendar event details"
+        size="lg"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-between gap-2')}>
+            {hasEditPermission ? (
+              <AppButton type="button" variant="danger" size="sm" onClick={onDelete}>
+                Delete
+              </AppButton>
+            ) : (
+              <span />
+            )}
+            <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+              <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
+                Close
+              </AppButton>
+              {hasEditPermission ? (
+                <AppButton type="button" size="sm" onClick={onEdit}>
+                  Edit
+                </AppButton>
+              ) : null}
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {readField('Event name', event.name)}
+          {event.location ? readField('Location', event.location) : null}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {readField(
+              `Start ${isAllDay ? 'date' : 'date & time'}`,
+              <>
+                {formatDateTime(startDate, !isAllDay)}
+                {!isAllDay ? <span className={uiTypography.helper}> ({timezone})</span> : null}
+              </>,
+            )}
+            {readField(
+              `End ${isAllDay ? 'date' : 'date & time'}`,
+              <>
+                {formatDateTime(endDate, !isAllDay)}
+                {!isAllDay ? <span className={uiTypography.helper}> ({timezone})</span> : null}
+              </>,
+            )}
+          </div>
+          <div className={uiCx(uiLayout.actionsRow, 'gap-2')}>
+            {isAllDay ? <AppBadge variant="info">All-day</AppBadge> : null}
+            {!isAllDay && startDate.toDateString() === endDate.toDateString() ? (
+              <span className={uiTypography.body}>
+                {formatTime(startDate)} – {formatTime(endDate)}
+              </span>
+            ) : null}
+          </div>
+          {readField('Recurrence', getRepeatDescription())}
+          {Array.isArray(event.exceptions) && event.exceptions.length > 0 ? (
+            <div>
+              <div className={uiTypography.overline}>Exception dates</div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {event.exceptions.map((date: string) => (
+                  <AppBadge key={date} variant="danger">
+                    {new Date(date).toLocaleDateString()}
+                  </AppBadge>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {Array.isArray(event.extra_dates) && event.extra_dates.length > 0 ? (
+            <div>
+              <div className={uiTypography.overline}>Extra dates</div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {event.extra_dates.map((date: string) => (
+                  <AppBadge key={date} variant="success">
+                    {new Date(date).toLocaleDateString()}
+                  </AppBadge>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {event.notes ? readField('Notes', <span className="whitespace-pre-wrap">{event.notes}</span>) : null}
+        </div>
+      </AppModal>
+    );
+  }
 
   return (
     <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">

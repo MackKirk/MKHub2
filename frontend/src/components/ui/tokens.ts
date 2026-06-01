@@ -122,6 +122,11 @@ export const uiDropdown = {
   ),
   optionSelected: 'bg-gray-50 font-medium',
   optionMuted: uiCx('text-xs text-gray-500', uiSpacing.controlX, uiSpacing.controlY),
+  optionGroupHeader: uiCx(
+    'sticky top-0 z-[1] border-b border-gray-100 bg-gray-50 text-[11px] font-semibold text-gray-700',
+    uiSpacing.controlX,
+    'py-2',
+  ),
   optionEmpty: uiCx('text-xs text-amber-800', uiSpacing.controlX, uiSpacing.controlY),
 } as const;
 
@@ -219,6 +224,9 @@ export const uiTooltip = {
   shell: 'pointer-events-none fixed z-[9999]',
   panel:
     'relative inline-block whitespace-nowrap rounded px-2 py-1 text-xs text-white shadow-lg bg-gray-900',
+  /** Multi-line explanations (e.g. disabled action reasons). */
+  panelWrap:
+    'relative block max-w-[min(16rem,calc(100vw-2rem))] whitespace-normal text-left leading-snug rounded px-2.5 py-1.5 text-xs text-white shadow-lg bg-gray-900',
   arrowTop: 'absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900',
   arrowBottom: 'absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900',
 } as const;

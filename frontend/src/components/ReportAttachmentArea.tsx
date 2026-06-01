@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { AppFileUpload } from '@/components/ui';
 
 /** @deprecated Use AppFileUpload mode="single" from @/components/ui */
@@ -29,11 +30,13 @@ export function ReportAttachmentAreaMultiple({
   setFiles,
   accept,
   label,
+  fieldHint,
 }: {
   files: File[];
   setFiles: (f: File[] | ((prev: File[]) => File[])) => void;
   accept?: string;
   label?: string;
+  fieldHint?: ReactNode;
 }) {
   return (
     <AppFileUpload
@@ -42,6 +45,7 @@ export function ReportAttachmentAreaMultiple({
       onChange={(next) => setFiles(next)}
       accept={accept}
       label={label}
+      fieldHint={fieldHint}
     />
   );
 }

@@ -92,6 +92,112 @@ export const createRequestQuickInfo = formModalQuickInfo({
   ),
 });
 
+/** Project Timesheet tab — edit an existing time entry. */
+export const editTimeEntryQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Adjust clock times or break minutes for a row already on this project&apos;s timesheet — for example, correct an
+      end time after a supervisor review.
+    </>
+  ),
+  howToUse: (
+    <>
+      Set {uiLabel('Start Time')} and {uiLabel('End Time')}, then enter {uiLabel('Break (minutes)')} if time should be
+      deducted from the total.
+    </>
+  ),
+  behavior: (
+    <>
+      Break cannot be greater than or equal to the span between start and end. Saved changes refresh the list and totals
+      for the selected month.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} updates the entry and refreshes the timesheet table.
+    </>
+  ),
+});
+
+/** Project Timesheet tab — clock in or out for a scheduled shift. */
+export function projectClockInOutQuickInfo(clockType: 'in' | 'out'): ReactNode {
+  return formModalQuickInfo({
+    purpose:
+      clockType === 'in' ? (
+        <>
+          Record when a worker started a scheduled shift on this project — for example, arrival at the site for the day.
+        </>
+      ) : (
+        <>
+          Record when the worker finished the shift — you can add optional break time before the hours are calculated.
+        </>
+      ),
+    howToUse: (
+      <>
+        Choose {uiLabel('Time')}. For clock-out you may check {uiLabel('Insert Break Time')} and set hours and minutes.
+        Add a {uiLabel('Reason')} when required (clocking for someone else). Location may be captured when you submit.
+      </>
+    ),
+    behavior: (
+      <>
+        Future times are limited for your own clock events; supervisors and on-site leads can set times for other workers
+        with a minimum 15-character reason. Geofence messages appear when the shift has a site boundary defined.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Cancel')} closes without submitting. {uiLabel('Submit')} sends the clock event and refreshes shifts and
+        the timesheet list.
+      </>
+    ),
+  });
+}
+
+/** Project Timesheet tab — subcontractor QR clock-in/out (scan badge). */
+export function subcontractorProjectClockQuickInfo(
+  phase: 'scan' | 'clockIn' | 'clockOut' | 'blocked',
+): ReactNode {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        Clock a subcontractor worker on this project using their QR badge — for example, when they arrive at the site
+        or leave for the day.
+      </>
+    ),
+    howToUse: (
+      <>
+        {phase === 'scan' ? (
+          <>
+            Scan the badge with your camera or paste the {uiLabel('Token or full scan URL')}, then tap {uiLabel('Look up')}.
+          </>
+        ) : phase === 'clockIn' ? (
+          <>
+            Review the worker details, add an optional {uiLabel('Signature')}, then {uiLabel('Clock In')}.
+          </>
+        ) : phase === 'clockOut' ? (
+          <>
+            Check {uiLabel('I confirm that the recorded working hours are accurate')}, sign, then {uiLabel('Clock Out')}.
+          </>
+        ) : (
+          <>Resolve the blocking message — for example, clock the worker out on the other project first.</>
+        )}
+      </>
+    ),
+    behavior: (
+      <>
+        Workers with open attendance on another project cannot clock in here until that session is closed. Clock-out
+        requires a signature and the hours confirmation checkbox.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Close')} dismisses without saving. {uiLabel('Look up')} loads the worker from a pasted token.{' '}
+        {uiLabel('Clock In')} or {uiLabel('Clock Out')} records attendance on this project.
+      </>
+    ),
+  });
+}
+
 /** Subcontractor worker — Clock In / Clock Out modal on the Timesheet tab. */
 export function scWorkerClockQuickInfo(clockType: 'in' | 'out'): ReactNode {
   return formModalQuickInfo({
@@ -430,6 +536,341 @@ export function inventoryContactFormQuickInfo(editing: boolean): ReactNode {
 }
 
 /** Safety — Form Custom Lists: create a new reusable dropdown list. */
+/** Opportunity detail — edit workflow status. */
+export const opportunityEditStatusQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Update where this opportunity sits in your sales pipeline — for example, from {uiLabel('Estimating')} to{' '}
+      {uiLabel('Sent to Customer')}.
+    </>
+  ),
+  howToUse: (
+    <>
+      Choose a {uiLabel('Status')} from the list. Optionally add {uiLabel('Notes (optional)')} to explain the change; notes
+      can appear in Notes/History.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} updates the status on this opportunity.
+    </>
+  ),
+});
+
+/** Opportunity detail — rename opportunity. */
+export const opportunityEditNameQuickInfo = formModalQuickInfo({
+  purpose: <>Change the display name shown on the opportunity header, lists, and reports.</>,
+  howToUse: (
+    <>
+      Edit {uiLabel('Project Name')} and save. Use a name your team will recognize in calendars and proposals.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} discards changes. {uiLabel('Save')} applies the new name everywhere this opportunity appears.
+    </>
+  ),
+});
+
+/** Opportunity detail — link a customer site. */
+export const opportunityEditSiteQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Link this opportunity to a job site under the project owner customer — required before converting to a project.
+    </>
+  ),
+  howToUse: (
+    <>
+      Pick {uiLabel('Site')} from sites registered for the owner customer. Review the site summary below the list before
+      saving.
+    </>
+  ),
+  behavior: (
+    <>Changing the site updates location fields shown on the opportunity overview.</>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without changes. {uiLabel('Save')} links the selected site to this opportunity.
+    </>
+  ),
+});
+
+/** Opportunity detail — assign estimators. */
+export const opportunityEditEstimatorsQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Assign who estimates this opportunity — typically people in {uiLabel('Sales / Estimating')}.
+    </>
+  ),
+  howToUse: (
+    <>
+      Use {uiLabel('Estimators')} to search and select one or more team members. At least one estimator is required before
+      converting to a project.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} stores the estimator list on this opportunity.
+    </>
+  ),
+});
+
+/** Opportunity / project calendar — create or edit event. */
+export const projectCalendarEventQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Schedule work on the opportunity calendar — single days, multi-day blocks, or repeating patterns such as
+      weekdays or weekends.
+    </>
+  ),
+  howToUse: (
+    <>
+      Enter {uiLabel('Event Name')}, set {uiLabel('Start Date')} and {uiLabel('End Date')}, then choose{' '}
+      {uiLabel('All-day')} or specific times. Use {uiLabel('Repeat')} for recurring events. Review the summary and
+      preview before saving.
+    </>
+  ),
+  behavior: (
+    <>
+      Exception dates skip a recurrence; extra dates add one-off occurrences. Times use the selected{' '}
+      {uiLabel('Timezone')}.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Create Event')} or {uiLabel('Save Changes')} updates the
+      calendar.
+    </>
+  ),
+});
+
+/** Opportunity detail — lead source. */
+export const opportunityEditLeadSourceQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Record how this opportunity entered your pipeline — for example, referral, repeat customer, or marketing campaign.
+    </>
+  ),
+  howToUse: (
+    <>
+      Choose {uiLabel('Lead source')} from the list configured in system settings. Leave blank only if the source is
+      unknown.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} updates the lead source on this opportunity.
+    </>
+  ),
+});
+
+/** Opportunity detail — convert bidding opportunity to active project. */
+export const opportunityConvertToProjectQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Turn this bidding opportunity into an active project so you can use workload, timesheets, and full project
+      operations.
+    </>
+  ),
+  howToUse: (
+    <>
+      Set {uiLabel('Project admin')}, {uiLabel('Lead source')}, {uiLabel('On-site leads')} per division, and{' '}
+      {uiLabel('Start date')} / {uiLabel('End date')}. If related customers exist, mark bid winners as awarded. Review
+      pricing line items and approve what should carry into the project.
+    </>
+  ),
+  behavior: (
+    <>
+      Required opportunity fields (name, site, estimator, divisions) must already be complete before you can convert.
+      This action cannot be undone.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without converting. {uiLabel('Convert')} creates the active project and opens the
+      project view.
+    </>
+  ),
+});
+
+/** Opportunity detail — create a note on the Notes/History tab. */
+export const opportunityCreateNoteQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Record commercial updates, site visits, or other activity on this opportunity so the team has a shared
+      timeline.
+    </>
+  ),
+  howToUse: (
+    <>
+      Enter a {uiLabel('Title')}, choose a {uiLabel('Category')}, and write a {uiLabel('Description')}. Add
+      attachments if needed. For financial categories, enter the amount when prompted.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Create Note')} saves the note to Notes/History.
+    </>
+  ),
+});
+
+/** Opportunity detail — related customers on a bid. */
+export const opportunityEditRelatedCustomersQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Link other customers involved in this bid besides the project owner — for example, partners or additional owners.
+    </>
+  ),
+  howToUse: (
+    <>
+      Search customers, then check each name to add or remove it from the related list. The owner customer is not shown
+      here.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} updates related customers for this opportunity.
+    </>
+  ),
+});
+
+/** Create Shift (Workload / Dispatch). */
+export const createShiftQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Schedule one or more shifts for workers on this project — for example, a full week of day shifts or a single
+      coverage day.
+    </>
+  ),
+  howToUse: (
+    <>
+      Choose {uiLabel('Workers')}, pick {uiLabel('Single Date')} or {uiLabel('Date Range')}, set start and end times,
+      and optionally assign a {uiLabel('Job Type')}. The button label shows how many shifts will be created.
+    </>
+  ),
+  behavior: (
+    <>
+      In range mode you can {uiLabel('Exclude weekends')} so Saturday and Sunday are skipped. Each worker × date
+      combination becomes its own shift.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without creating shifts. {uiLabel('Create Shift')} (or the plural label) saves all
+      shifts and refreshes the calendar.
+    </>
+  ),
+});
+
+/** Edit Shift (Workload / Dispatch). */
+export const editShiftQuickInfo = formModalQuickInfo({
+  purpose: <>View or update an existing scheduled shift — times and job type only.</>,
+  howToUse: (
+    <>
+      Worker and date are fixed. Change {uiLabel('Start Time')}, {uiLabel('End Time')}, or {uiLabel('Job Type')} when
+      you have edit permission.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save Changes')} updates the shift on the calendar.
+    </>
+  ),
+});
+
+/** Project Files tab — upload files to the library. */
+export const projectFilesUploadQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Add one or more documents to this project&apos;s file library — for example, site photos, submittals, or
+      signed contracts.
+    </>
+  ),
+  howToUse: (
+    <>
+      Pick files with the upload area or drag them in. Files upload to the category and folder you have selected in
+      the file browser.
+    </>
+  ),
+  behavior: (
+    <>
+      You can also drop files directly onto the category sidebar or file list without opening this window. Upload
+      progress appears in the corner while files are sent.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without uploading. Selecting files starts the upload and closes this window.
+    </>
+  ),
+});
+
+/** Project Files tab — create a folder in a category. */
+export const projectFilesNewFolderQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Organize project documents in folders — for example, &quot;Drawings&quot; under Plans or a subfolder for a
+      specific phase.
+    </>
+  ),
+  howToUse: (
+    <>
+      Enter a {uiLabel('Folder name')}. When you are not inside a category yet, choose {uiLabel('Category')} first.
+      Subfolders are created inside the folder shown in the breadcrumb.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without creating a folder. {uiLabel('Create')} adds the folder and refreshes the
+      list.
+    </>
+  ),
+});
+
+/** Project Files tab — move a file to another category. */
+export const projectFilesMoveCategoryQuickInfo = formModalQuickInfo({
+  purpose: <>Move a file from its current category to another — for example, from Uncategorized into Plans.</>,
+  howToUse: (
+    <>
+      Choose {uiLabel('Category')}. The file is placed at the root of that category (not inside a subfolder).
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without moving. {uiLabel('Move')} updates the file location and refreshes the
+      library.
+    </>
+  ),
+});
+
+/** Project Documents tab — pick blank or preset when creating a document. */
+export const projectDocumentsChooseTypeQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Start a new document for this {uiLabel('Opportunity')} — either from a company template (multi-page layouts) or
+      as a single blank page.
+    </>
+  ),
+  howToUse: (
+    <>
+      Pick {uiLabel('Blank (single page)')} for one empty page, or choose a named template to pre-fill pages and
+      backgrounds from {uiLabel('Document Types')} settings.
+    </>
+  ),
+  behavior: (
+    <>
+      Creating opens the document editor inline on this tab. Changes auto-save while you edit. You can expand to
+      full screen from the editor toolbar.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without creating. Selecting a template or blank creates the document and opens the
+      editor.
+    </>
+  ),
+});
+
 export const formCustomListNewQuickInfo = formModalQuickInfo({
   purpose: (
     <>

@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useState, useRef, useCallback, type MutableRefObject } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  useCallback,
+  type InputHTMLAttributes,
+  type MutableRefObject,
+  type ReactNode,
+} from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -10,6 +19,28 @@ import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
+  AppButton,
+  AppCheckbox,
+  AppControlLabel,
+  AppControlLabelRow,
+  AppDatePicker,
+  AppFieldHint,
+  AppFormModal,
+  AppInput,
+  AppListCreateItem,
+  AppModal,
+  AppSelect,
+  AppTextarea,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+  SelectDropdownCheckbox,
+} from '@/components/ui';
+import {
   PROPOSAL_SECTION_IMAGE_EXPORT_SCALE,
   PROPOSAL_SECTION_IMAGE_MAX_EXPORT_LONG_SIDE,
   PROPOSAL_SECTION_IMAGE_TARGET_HEIGHT,
@@ -18,6 +49,145 @@ import {
   SECTION_IMAGE_LIGHTBOX_THUMB_W,
 } from '@/constants/proposalSectionImage';
 // EstimateBuilder removed - now using simple pricing items
+
+/** Opportunity proposal tab — `fieldHint` for App* controls (`Title\n\nBody`). */
+const PROPOSAL_FIELD_HINTS = {
+  documentType: 'Document Type\n\nShown on the proposal cover page (max 44 characters).',
+  typeOfProject: 'Type of Project\n\nBrief scope label on the proposal (e.g. roof replacement).',
+  date: 'Date\n\nProposal date printed on the cover and headers.',
+  primaryContact: 'Primary Contact Name\n\nClient contact shown as Created for on the proposal.',
+  primaryPhone: 'Primary Contact Phone\n\nPrinted on the proposal; editable after selecting a contact.',
+  primaryEmail: 'Primary Contact Email\n\nPrinted on the proposal; editable after selecting a contact.',
+  otherNotes: 'Other Notes\n\nShort note on the cover (max 250 characters).',
+  frontCover: 'Front Cover Image\n\nMain cover photo. Cropped to 566×537 px in the PDF.',
+  insideCover: 'Inside Cover Image\n\nInside cover page image. Cropped to 540×340 px in the PDF.',
+  sectionTitle: 'Section title\n\nHeading for this section in the generated PDF.',
+  sectionText: 'Section text\n\nBody copy for a text section. Press Tab to indent with four spaces.',
+  imageCaption: 'Caption\n\nCaption printed under the image in the PDF.',
+  pricingName: 'Item name\n\nLine item description in the pricing table.',
+  pricingPrice: 'Price\n\nLine price before tax; formatted when you leave the field.',
+  areaDisplayUnit: 'Area display unit\n\nUnit for area totals and cost per area in the summary.',
+  optionalService: 'Service\n\nOptional line the client may accept; does not change the proposal total.',
+  optionalPrice: 'Price\n\nPrice shown for this optional service.',
+  termsTemplate: 'Terms template\n\nLoad standard terms from settings; you can still edit the text below.',
+  termsText: 'Terms text\n\nContract terms printed at the end of the proposal PDF.',
+  pst: 'PST\n\nInclude PST for this line in totals and the PDF when enabled.',
+  gst: 'GST\n\nInclude GST for this line in totals and the PDF when enabled.',
+  showTotalInPdf: 'Show total in PDF\n\nWhen off, the proposal total is hidden in the generated PDF.',
+  contactName: 'Name\n\nContact name saved on the client record.',
+  contactRole: 'Role/Title\n\nJob title on contact lists and documents.',
+  contactDept: 'Department\n\nOptional department for this contact.',
+  contactEmail: 'Email\n\nContact email address.',
+  contactPhone: 'Phone\n\nContact phone; formatted as you type.',
+  contactPrimary: 'Primary contact\n\nPrimary contacts are suggested first on proposals.',
+  contactPhoto: 'Contact Photo\n\nOptional photo for this client contact.',
+  pricingQty: 'Quantity\n\nNumber of units for this line item (minimum 1).',
+  pricingLineTotal: 'Line total\n\nPrice multiplied by quantity for this row.',
+} as const;
+
+/** Matches AppInput control height for aligned pricing / optional-service rows. */
+const PROPOSAL_INLINE_CONTROL_H = 'h-8';
+const PROPOSAL_INLINE_LABEL_ROW = 'mb-1 h-3.5 shrink-0';
+
+function ProposalInlineLabelRow({ label, fieldHint }: { label: string; fieldHint?: string }) {
+  return (
+    <div className={PROPOSAL_INLINE_LABEL_ROW}>
+      {fieldHint ? (
+        <AppControlLabelRow label={label} fieldHint={<AppFieldHint hint={fieldHint} />} />
+      ) : (
+        <AppControlLabel label={label} />
+      )}
+    </div>
+  );
+}
+
+function ProposalInlineInput({
+  label,
+  fieldHint,
+  className,
+  inputClassName,
+  ...props
+}: { label: string; fieldHint: string; inputClassName?: string } & InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div className={uiCx('min-w-0', className)}>
+      <ProposalInlineLabelRow label={label} fieldHint={fieldHint} />
+      <input
+        className={uiCx(
+          'box-border w-full bg-white text-xs text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
+          uiSpacing.controlX,
+          PROPOSAL_INLINE_CONTROL_H,
+          'py-0',
+          uiRadius.control,
+          uiBorders.input,
+          inputClassName,
+        )}
+        {...props}
+      />
+    </div>
+  );
+}
+
+function ProposalInlineCheckbox({
+  label,
+  fieldHint,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  fieldHint: string;
+  checked: boolean;
+  onChange?: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  const interactive = Boolean(onChange) && !disabled;
+  return (
+    <div className="flex shrink-0 flex-col">
+      <ProposalInlineLabelRow label={label} fieldHint={fieldHint} />
+      <label
+        className={uiCx(
+          'flex items-center',
+          PROPOSAL_INLINE_CONTROL_H,
+          interactive ? 'cursor-pointer' : 'cursor-default',
+          disabled && 'cursor-not-allowed opacity-50',
+        )}
+      >
+        <input
+          type="checkbox"
+          className="sr-only"
+          checked={checked}
+          disabled={disabled}
+          readOnly={!onChange}
+          onChange={onChange ? (e) => onChange(e.target.checked) : undefined}
+        />
+        <SelectDropdownCheckbox checked={checked} />
+      </label>
+    </div>
+  );
+}
+
+function ProposalInlineControlSpacer({
+  children,
+  className,
+  label,
+  fieldHint,
+}: {
+  children: ReactNode;
+  className?: string;
+  label?: string;
+  fieldHint?: string;
+}) {
+  return (
+    <div className={uiCx('flex shrink-0 flex-col', className)}>
+      {label ? (
+        <ProposalInlineLabelRow label={label} fieldHint={fieldHint} />
+      ) : (
+        <div className={PROPOSAL_INLINE_LABEL_ROW} aria-hidden />
+      )}
+      <div className={uiCx('flex items-center', PROPOSAL_INLINE_CONTROL_H)}>{children}</div>
+    </div>
+  );
+}
 
 export type AreaUnit = 'sqft' | 'm2' | 'sqs';
 
@@ -146,7 +316,39 @@ function AreaPopover({ value, unit, onSave, onClose }: { value?: number; unit: A
   );
 }
 
-export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage, onPricingItemsChange, showOnlyPricing, saveRef, isBidding, projectStatusLabel }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string, onPricingItemsChange?: (items: any[])=>void, showOnlyPricing?: boolean, saveRef?: MutableRefObject<(() => Promise<void>) | undefined>, isBidding?: boolean, projectStatusLabel?: string }){
+export default function ProposalForm({
+  mode,
+  clientId: clientIdProp,
+  siteId: siteIdProp,
+  projectId: projectIdProp,
+  initial,
+  disabled,
+  onSave,
+  showRestrictionWarning,
+  restrictionMessage,
+  onPricingItemsChange,
+  showOnlyPricing,
+  saveRef,
+  isBidding,
+  projectStatusLabel,
+  designSystem = false,
+}: {
+  mode: 'new' | 'edit';
+  clientId?: string;
+  siteId?: string;
+  projectId?: string;
+  initial?: any;
+  disabled?: boolean;
+  onSave?: () => void;
+  showRestrictionWarning?: boolean;
+  restrictionMessage?: string;
+  onPricingItemsChange?: (items: any[]) => void;
+  showOnlyPricing?: boolean;
+  saveRef?: MutableRefObject<(() => Promise<void>) | undefined>;
+  isBidding?: boolean;
+  projectStatusLabel?: string;
+  designSystem?: boolean;
+}) {
   const nav = useNavigate();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -321,6 +523,113 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     if (d.length<=6) return `(${d.slice(0,3)}) ${d.slice(3)}`;
     if (d.length<=10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
     return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`;
+  };
+  const resetContactModal = () => {
+    setContactModalOpen(false);
+    setNewContactName('');
+    setNewContactEmail('');
+    setNewContactPhone('');
+    setNewContactRole('');
+    setNewContactDept('');
+    setNewContactPrimary('false');
+    setContactNameError(false);
+    setContactPhotoBlob(null);
+  };
+  const handleContactSelectChange = (contactId: string) => {
+    if (contactId === '__new__') {
+      setContactModalOpen(true);
+    } else {
+      setSelectedContactId(contactId);
+      if (contactId && contacts) {
+        const contact = contacts.find((c) => String(c.id) === contactId);
+        if (contact) {
+          setCreatedFor(contact.name || '');
+          setPrimary({
+            name: contact.name || '',
+            phone: contact.phone || '',
+            email: contact.email || '',
+          });
+        }
+      } else {
+        setCreatedFor('');
+        setPrimary({ name: '', phone: '', email: '' });
+      }
+    }
+  };
+  const handleCreateNewContact = async () => {
+    if (isCreatingContact) return;
+    if (!newContactName.trim()) {
+      setContactNameError(true);
+      toast.error('Name is required');
+      return;
+    }
+    if (!clientId) {
+      toast.error('Client ID is required');
+      return;
+    }
+    try {
+      setIsCreatingContact(true);
+      const isFirstContact = !contacts || contacts.length === 0;
+      const willBePrimary = isFirstContact || newContactPrimary === 'true';
+      if (willBePrimary && contacts && contacts.length > 0) {
+        const primaryContact = contacts.find((c: any) => c.is_primary);
+        if (primaryContact) {
+          await api('PATCH', `/clients/${clientId}/contacts/${primaryContact.id}`, {
+            is_primary: false,
+          });
+        }
+      }
+      const payload: any = {
+        name: newContactName,
+        email: newContactEmail,
+        phone: newContactPhone,
+        role_title: newContactRole,
+        department: newContactDept,
+        is_primary: willBePrimary,
+      };
+      const created: any = await api('POST', `/clients/${clientId}/contacts`, payload);
+      if (contactPhotoBlob && created.id) {
+        try {
+          const up: any = await api('POST', '/files/upload', {
+            project_id: null,
+            client_id: clientId,
+            employee_id: null,
+            category_id: 'contact-photo',
+            original_name: `contact-${created.id}.jpg`,
+            content_type: 'image/jpeg',
+          });
+          await fetch(up.upload_url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' },
+            body: contactPhotoBlob,
+          });
+          const conf: any = await api('POST', '/files/confirm', {
+            key: up.key,
+            size_bytes: contactPhotoBlob.size,
+            checksum_sha256: 'na',
+            content_type: 'image/jpeg',
+          });
+          await api(
+            'POST',
+            `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + created.id)}&original_name=${encodeURIComponent('contact-' + created.id + '.jpg')}`,
+          );
+        } catch (e) {
+          console.error('Failed to upload contact photo:', e);
+        }
+      }
+      resetContactModal();
+      await refetchContacts();
+      setSelectedContactId(String(created.id));
+      setCreatedFor(created.name || '');
+      setPrimary({
+        name: created.name || '',
+        phone: created.phone || '',
+        email: created.email || '',
+      });
+    } catch (e) {
+      toast.error('Failed to create contact');
+      setIsCreatingContact(false);
+    }
   };
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -614,8 +923,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       return { type:'text', title: String(sec.title||''), text: String(sec.text||'') };
     }).filter((sec:any)=> sec !== null);
     setSections(normalized);
-    setCoverFoId(d.cover_file_object_id||undefined);
-    setPage2FoId(d.page2_file_object_id||undefined);
+    setCoverFoId(d.cover_file_object_id || undefined);
+    setPage2FoId(d.page2_file_object_id || undefined);
+    setCoverBlob(null);
+    setPage2Blob(null);
     // Update proposal ID ref for auto-save
     if (initial?.id) {
       proposalIdRef.current = initial.id;
@@ -904,14 +1215,38 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     }
   }, [project?.code, nextCode, mode]);
 
-  useEffect(()=>{
-    if (coverFoId) setCoverPreview(withFileAccessToken(`/files/${coverFoId}/thumbnail?w=600`));
-    else if (coverBlob) setCoverPreview(URL.createObjectURL(coverBlob));
-    else setCoverPreview('');
-    if (page2FoId) setPage2Preview(withFileAccessToken(`/files/${page2FoId}/thumbnail?w=600`));
-    else if (page2Blob) setPage2Preview(URL.createObjectURL(page2Blob));
-    else setPage2Preview('');
-    return ()=>{};
+  /** Avoid seeding the cover picker with the opportunity hero — same file id caused re-confirm to keep profile photo. */
+  const projectHeroFileObjectId = project?.image_file_object_id
+    ? String(project.image_file_object_id)
+    : undefined;
+  const coverPickerSeedFileId =
+    coverFoId && coverFoId !== projectHeroFileObjectId ? coverFoId : undefined;
+
+  useEffect(() => {
+    let coverObjectUrl: string | undefined;
+    if (coverBlob) {
+      coverObjectUrl = URL.createObjectURL(coverBlob);
+      setCoverPreview(coverObjectUrl);
+    } else if (coverFoId) {
+      setCoverPreview(withFileAccessToken(`/files/${coverFoId}/thumbnail?w=600&cb=${encodeURIComponent(coverFoId)}`));
+    } else {
+      setCoverPreview('');
+    }
+
+    let page2ObjectUrl: string | undefined;
+    if (page2Blob) {
+      page2ObjectUrl = URL.createObjectURL(page2Blob);
+      setPage2Preview(page2ObjectUrl);
+    } else if (page2FoId) {
+      setPage2Preview(withFileAccessToken(`/files/${page2FoId}/thumbnail?w=600&cb=${encodeURIComponent(page2FoId)}`));
+    } else {
+      setPage2Preview('');
+    }
+
+    return () => {
+      if (coverObjectUrl) URL.revokeObjectURL(coverObjectUrl);
+      if (page2ObjectUrl) URL.revokeObjectURL(page2ObjectUrl);
+    };
   }, [coverFoId, coverBlob, page2FoId, page2Blob]);
 
   
@@ -1489,6 +1824,20 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   };
 
   const renderFingerprint = computeFingerprint();
+  const dsSectionShell = designSystem
+    ? uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, 'overflow-hidden')
+    : 'rounded-xl border bg-white overflow-hidden';
+  const dsSectionHeader = designSystem
+    ? uiCx(
+        'flex w-full cursor-pointer items-center justify-between border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50/80',
+        uiTypography.sectionTitle,
+      )
+    : 'bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity';
+  const dsSectionBodyPad = designSystem ? uiSpacing.cardPadding : 'p-3';
+  const dsSectionBodyPadLg = designSystem ? uiSpacing.cardPadding : 'p-4';
+  const dsFieldLabelClass = designSystem ? undefined : 'text-xs font-medium text-gray-600 mb-1.5';
+  const dsReadonlyClass = designSystem ? uiTypography.sectionTitle : 'text-sm font-semibold text-gray-900';
+
   return (
     <div onKeyDown={!disabled ? (e)=>{
       const tgt = e.target as HTMLElement;
@@ -1530,7 +1879,13 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       {/* Restriction Warning - appears before blocks */}
       {showRestrictionWarning && restrictionMessage && (
         <div className="mb-4">
-          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+          <div
+            className={
+              designSystem
+                ? uiCx(uiRadius.card, 'border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800')
+                : 'p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800'
+            }
+          >
             <strong>Editing Restricted:</strong> {restrictionMessage}
           </div>
         </div>
@@ -1539,9 +1894,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       <div className="space-y-4">
         {/* General Information Block - Hidden for Change Orders or when showOnlyPricing */}
         {!showOnlyPricing && !isChangeOrder && (
-        <div className="rounded-xl border bg-white overflow-hidden">
+        <div className={dsSectionShell}>
           <div 
-            className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className={dsSectionHeader}
             onClick={() => setSectionsExpanded(prev => ({ ...prev, generalInfo: !prev.generalInfo }))}
           >
             <span>General Information</span>
@@ -1555,108 +1910,190 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </svg>
           </div>
           {sectionsExpanded.generalInfo && (
-          <div className="p-3">
+          <div className={dsSectionBodyPad}>
             <div className="grid md:grid-cols-2 gap-3">
               {/* Card 1 - Left Column */}
               <div className="space-y-3">
                 <div>
-                  <div className="text-xs font-medium text-gray-600 mb-1.5">Document Type (Shown on cover page)</div>
                   {disabled ? (
-                    <div className="text-sm font-semibold text-gray-900">{coverTitle || '-'}</div>
+                    <>
+                      <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Document Type (Shown on cover page)</div>
+                      <div className={dsReadonlyClass}>{coverTitle || '-'}</div>
+                    </>
+                  ) : designSystem ? (
+                    <AppInput
+                      label="Document Type (Shown on cover page)"
+                      value={coverTitle}
+                      onChange={(e) => setCoverTitle(e.target.value)}
+                      maxLength={44}
+                      fieldHint={PROPOSAL_FIELD_HINTS.documentType}
+                    />
                   ) : (
                     <div className="relative">
+                      <div className="text-xs font-medium text-gray-600 mb-1.5">Document Type (Shown on cover page)</div>
                       <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 pr-12 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" />
                       <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-500">{coverTitle.length}/44</div>
                     </div>
                   )}
                 </div>
                 <div>
-                  <div className="text-xs font-medium text-gray-600 mb-1.5">Type of Project</div>
                   {disabled ? (
-                    <div className="text-sm font-semibold text-gray-900">{typeOfProject || '-'}</div>
+                    <>
+                      <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Type of Project</div>
+                      <div className={dsReadonlyClass}>{typeOfProject || '-'}</div>
+                    </>
+                  ) : designSystem ? (
+                    <AppInput
+                      label="Type of Project"
+                      value={typeOfProject}
+                      onChange={(e) => setTypeOfProject(e.target.value)}
+                      fieldHint={PROPOSAL_FIELD_HINTS.typeOfProject}
+                    />
                   ) : (
-                    <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} />
+                    <>
+                      <div className="text-xs font-medium text-gray-600 mb-1.5">Type of Project</div>
+                      <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} />
+                    </>
                   )}
                 </div>
                 <div>
-                  <div className="text-xs font-medium text-gray-600 mb-1.5">Date</div>
                   {disabled ? (
-                    <div className="text-sm font-semibold text-gray-900">{date || '-'}</div>
+                    <>
+                      <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Date</div>
+                      <div className={dsReadonlyClass}>{date || '-'}</div>
+                    </>
+                  ) : designSystem ? (
+                    <AppDatePicker
+                      label="Date"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      fieldHint={PROPOSAL_FIELD_HINTS.date}
+                    />
                   ) : (
-                    <input type="date" className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={date} onChange={e=>setDate(e.target.value)} />
+                    <>
+                      <div className="text-xs font-medium text-gray-600 mb-1.5">Date</div>
+                      <input type="date" className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={date} onChange={e=>setDate(e.target.value)} />
+                    </>
                   )}
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Name</div>
                     {disabled ? (
-                      <div className="text-sm font-semibold text-gray-900">{createdFor || '-'}</div>
-                    ) : (
-                      <select 
-                        className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                      <>
+                        <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Primary Contact Name</div>
+                        <div className={dsReadonlyClass}>{createdFor || '-'}</div>
+                      </>
+                    ) : designSystem ? (
+                      <AppSelect
+                        label="Primary Contact Name"
                         value={contactModalOpen ? '__new__' : selectedContactId}
-                        onChange={e=>{
-                          const contactId = e.target.value;
-                          if (contactId === '__new__') {
-                            setContactModalOpen(true);
-                          } else {
-                            setSelectedContactId(contactId);
-                            if (contactId && contacts) {
-                              const contact = contacts.find(c => String(c.id) === contactId);
-                              if (contact) {
-                                setCreatedFor(contact.name || '');
-                                setPrimary({
-                                  name: contact.name || '',
-                                  phone: contact.phone || '',
-                                  email: contact.email || ''
-                                });
-                              }
-                            } else {
-                              setCreatedFor('');
-                              setPrimary({ name: '', phone: '', email: '' });
-                            }
-                          }
-                        }}
-                        disabled={disabled}
-                      >
-                        <option value="">-- Select Contact --</option>
-                        {(contacts||[]).map(contact => (
-                          <option key={contact.id} value={String(contact.id)}>
-                            {contact.name || 'Unnamed Contact'}
-                          </option>
-                        ))}
-                        {!disabled && (
+                        options={[
+                          { value: '', label: '-- Select Contact --' },
+                          ...(contacts || []).map((contact) => ({
+                            value: String(contact.id),
+                            label: contact.name || 'Unnamed Contact',
+                          })),
+                          { value: '__new__', label: '+ New Contact' },
+                        ]}
+                        onChange={(e) => handleContactSelectChange(e.target.value)}
+                        fieldHint={PROPOSAL_FIELD_HINTS.primaryContact}
+                      />
+                    ) : (
+                      <>
+                        <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Name</div>
+                        <select
+                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                          value={contactModalOpen ? '__new__' : selectedContactId}
+                          onChange={(e) => handleContactSelectChange(e.target.value)}
+                        >
+                          <option value="">-- Select Contact --</option>
+                          {(contacts || []).map((contact) => (
+                            <option key={contact.id} value={String(contact.id)}>
+                              {contact.name || 'Unnamed Contact'}
+                            </option>
+                          ))}
                           <option value="__new__">+ New Contact</option>
-                        )}
-                      </select>
+                        </select>
+                      </>
                     )}
                   </div>
                   <div>
-                    <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Phone</div>
                     {disabled ? (
-                      <div className="text-sm font-semibold text-gray-900">{primary.phone || '-'}</div>
+                      <>
+                        <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Primary Contact Phone</div>
+                        <div className={dsReadonlyClass}>{primary.phone || '-'}</div>
+                      </>
+                    ) : designSystem ? (
+                      <AppInput
+                        label="Primary Contact Phone"
+                        value={primary.phone || ''}
+                        onChange={(e) => setPrimary((p) => ({ ...p, phone: e.target.value }))}
+                        fieldHint={PROPOSAL_FIELD_HINTS.primaryPhone}
+                      />
                     ) : (
-                      <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={primary.phone||''} onChange={e=>setPrimary(p=>({ ...p, phone: e.target.value }))} />
+                      <>
+                        <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Phone</div>
+                        <input
+                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                          value={primary.phone || ''}
+                          onChange={(e) => setPrimary((p) => ({ ...p, phone: e.target.value }))}
+                        />
+                      </>
                     )}
                   </div>
                   <div>
-                    <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Email</div>
                     {disabled ? (
-                      <div className="text-sm font-semibold text-gray-900">{primary.email || '-'}</div>
+                      <>
+                        <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Primary Contact Email</div>
+                        <div className={dsReadonlyClass}>{primary.email || '-'}</div>
+                      </>
+                    ) : designSystem ? (
+                      <AppInput
+                        label="Primary Contact Email"
+                        value={primary.email || ''}
+                        onChange={(e) => setPrimary((p) => ({ ...p, email: e.target.value }))}
+                        fieldHint={PROPOSAL_FIELD_HINTS.primaryEmail}
+                      />
                     ) : (
-                      <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={primary.email||''} onChange={e=>setPrimary(p=>({ ...p, email: e.target.value }))} />
+                      <>
+                        <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Email</div>
+                        <input
+                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                          value={primary.email || ''}
+                          onChange={(e) => setPrimary((p) => ({ ...p, email: e.target.value }))}
+                        />
+                      </>
                     )}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs font-medium text-gray-600 mb-1.5">Other Notes</div>
                   {disabled ? (
-                    <div className="text-sm font-semibold text-gray-900">{otherNotes || '-'}</div>
+                    <>
+                      <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Other Notes</div>
+                      <div className={dsReadonlyClass}>{otherNotes || '-'}</div>
+                    </>
+                  ) : designSystem ? (
+                    <AppTextarea
+                      label="Other Notes"
+                      value={otherNotes}
+                      onChange={(e) => setOtherNotes(e.target.value)}
+                      maxLength={250}
+                      helperText={`${otherNotes.length}/250`}
+                      fieldHint={PROPOSAL_FIELD_HINTS.otherNotes}
+                    />
                   ) : (
-                    <div className="relative">
-                      <textarea className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 pr-12 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={otherNotes} onChange={e=>setOtherNotes(e.target.value)} maxLength={250} />
-                      <div className="absolute right-2.5 top-1.5 text-[10px] text-gray-500">{otherNotes.length}/250</div>
-                    </div>
+                    <>
+                      <div className="text-xs font-medium text-gray-600 mb-1.5">Other Notes</div>
+                      <div className="relative">
+                        <textarea
+                          className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 pr-12 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                          value={otherNotes}
+                          onChange={(e) => setOtherNotes(e.target.value)}
+                          maxLength={250}
+                        />
+                        <div className="absolute right-2.5 top-1.5 text-[10px] text-gray-500">{otherNotes.length}/250</div>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -1664,18 +2101,72 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-xs font-medium text-gray-600 mb-1.5">Front Cover Image</div>
-                    {!disabled && (
-                      <button className="px-2 py-1 rounded bg-gray-100 text-xs hover:bg-gray-200" onClick={()=>setPickerFor('cover')}>Choose</button>
+                    {designSystem ? (
+                      <AppControlLabelRow
+                        label="Front Cover Image"
+                        fieldHint={<AppFieldHint hint={PROPOSAL_FIELD_HINTS.frontCover} />}
+                      />
+                    ) : (
+                      <div className={dsFieldLabelClass ?? 'text-xs font-medium text-gray-600 mb-1.5'}>Front Cover Image</div>
                     )}
-                    {coverPreview && <div className="mt-2"><img src={coverPreview} className="w-full rounded border" style={{ aspectRatio: '566/537', objectFit: 'contain' }} /></div>}
+                    {!disabled &&
+                      (designSystem ? (
+                        <AppButton type="button" variant="secondary" size="sm" onClick={() => setPickerFor('cover')}>
+                          Choose
+                        </AppButton>
+                      ) : (
+                        <button
+                          type="button"
+                          className="rounded bg-gray-100 px-2 py-1 text-xs hover:bg-gray-200"
+                          onClick={() => setPickerFor('cover')}
+                        >
+                          Choose
+                        </button>
+                      ))}
+                    {coverPreview && (
+                      <div className="mt-2">
+                        <img
+                          src={coverPreview}
+                          className={uiCx('w-full rounded border', uiBorders.subtle)}
+                          style={{ aspectRatio: '566/537', objectFit: 'contain' }}
+                          alt=""
+                        />
+                      </div>
+                    )}
                   </div>
                   <div>
-                    <div className="text-xs font-medium text-gray-600 mb-1.5">Inside Cover Image</div>
-                    {!disabled && (
-                      <button className="px-2 py-1 rounded bg-gray-100 text-xs hover:bg-gray-200" onClick={()=>setPickerFor('page2')}>Choose</button>
+                    {designSystem ? (
+                      <AppControlLabelRow
+                        label="Inside Cover Image"
+                        fieldHint={<AppFieldHint hint={PROPOSAL_FIELD_HINTS.insideCover} />}
+                      />
+                    ) : (
+                      <div className={dsFieldLabelClass ?? 'text-xs font-medium text-gray-600 mb-1.5'}>Inside Cover Image</div>
                     )}
-                    {page2Preview && <div className="mt-2"><img src={page2Preview} className="w-full rounded border" style={{ aspectRatio: '540/340', objectFit: 'contain' }} /></div>}
+                    {!disabled &&
+                      (designSystem ? (
+                        <AppButton type="button" variant="secondary" size="sm" onClick={() => setPickerFor('page2')}>
+                          Choose
+                        </AppButton>
+                      ) : (
+                        <button
+                          type="button"
+                          className="rounded bg-gray-100 px-2 py-1 text-xs hover:bg-gray-200"
+                          onClick={() => setPickerFor('page2')}
+                        >
+                          Choose
+                        </button>
+                      ))}
+                    {page2Preview && (
+                      <div className="mt-2">
+                        <img
+                          src={page2Preview}
+                          className={uiCx('w-full rounded border', uiBorders.subtle)}
+                          style={{ aspectRatio: '540/340', objectFit: 'contain' }}
+                          alt=""
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1687,9 +2178,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         
         {/* Sections Block - hidden when showOnlyPricing */}
         {!showOnlyPricing && (
-        <div className="rounded-xl border bg-white overflow-hidden">
+        <div className={dsSectionShell}>
           <div 
-            className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className={dsSectionHeader}
             onClick={() => setSectionsExpanded(prev => ({ ...prev, sections: !prev.sections }))}
           >
             <span>Sections</span>
@@ -1703,7 +2194,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </svg>
           </div>
           {sectionsExpanded.sections && (
-          <div className="p-4">
+          <div className={dsSectionBodyPadLg}>
           <div className="space-y-3">
             {sections.map((s:any, idx:number)=> {
               const placeholderPos = getPlaceholderPosition(idx);
@@ -1778,7 +2269,33 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         </svg>
                       </span>
                     )}
-                    <input data-role="section-title" data-sec={idx} onFocus={()=> setActiveSectionIndex(idx)} className={`flex-1 min-w-[240px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} disabled={disabled} readOnly={disabled} />
+                    {designSystem ? (
+                      <AppInput
+                        className="min-w-[240px] flex-1"
+                        label="Section title"
+                        data-role="section-title"
+                        data-sec={idx}
+                        onFocus={() => setActiveSectionIndex(idx)}
+                        placeholder="Section title"
+                        value={s.title || ''}
+                        onChange={(e) => setSections((arr) => arr.map((x, i) => (i === idx ? { ...x, title: e.target.value } : x)))}
+                        disabled={disabled}
+                        readOnly={disabled}
+                        fieldHint={PROPOSAL_FIELD_HINTS.sectionTitle}
+                      />
+                    ) : (
+                      <input
+                        data-role="section-title"
+                        data-sec={idx}
+                        onFocus={() => setActiveSectionIndex(idx)}
+                        className={`min-w-[240px] flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        placeholder="Section title"
+                        value={s.title || ''}
+                        onChange={(e) => setSections((arr) => arr.map((x, i) => (i === idx ? { ...x, title: e.target.value } : x)))}
+                        disabled={disabled}
+                        readOnly={disabled}
+                      />
+                    )}
                   </div>
                   {!disabled && (
                     <div className="flex items-center gap-1">
@@ -1805,34 +2322,64 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   )}
                 </div>
                 {s.type==='text' ? (
-                  <textarea 
-                    className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                    rows={5} 
-                    placeholder="Section text" 
-                    value={s.text||''} 
-                    onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: e.target.value }: x))}
-                    disabled={disabled}
-                    readOnly={disabled}
-                    onKeyDown={!disabled ? (e)=>{
-                      // Handle Tab key to insert indentation (4 spaces)
-                      if (e.key === 'Tab') {
-                        e.preventDefault();
-                        const textarea = e.currentTarget;
-                        const start = textarea.selectionStart;
-                        const end = textarea.selectionEnd;
-                        const value = textarea.value;
-                        
-                        // Insert 4 spaces at cursor position
-                        const newValue = value.substring(0, start) + '    ' + value.substring(end);
-                        setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: newValue }: x));
-                        
-                        // Restore cursor position after the inserted spaces
-                        setTimeout(() => {
-                          textarea.selectionStart = textarea.selectionEnd = start + 4;
-                        }, 0);
+                  designSystem ? (
+                    <AppTextarea
+                      label="Section text"
+                      rows={5}
+                      placeholder="Section text"
+                      value={s.text || ''}
+                      onChange={(e) => setSections((arr) => arr.map((x, i) => (i === idx ? { ...x, text: e.target.value } : x)))}
+                      disabled={disabled}
+                      readOnly={disabled}
+                      fieldHint={PROPOSAL_FIELD_HINTS.sectionText}
+                      onKeyDown={
+                        !disabled
+                          ? (e) => {
+                              if (e.key === 'Tab') {
+                                e.preventDefault();
+                                const textarea = e.currentTarget;
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const value = textarea.value;
+                                const newValue = value.substring(0, start) + '    ' + value.substring(end);
+                                setSections((arr) => arr.map((x, i) => (i === idx ? { ...x, text: newValue } : x)));
+                                setTimeout(() => {
+                                  textarea.selectionStart = textarea.selectionEnd = start + 4;
+                                }, 0);
+                              }
+                            }
+                          : undefined
                       }
-                    } : undefined}
-                  />
+                    />
+                  ) : (
+                    <textarea
+                      className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                      rows={5}
+                      placeholder="Section text"
+                      value={s.text || ''}
+                      onChange={(e) => setSections((arr) => arr.map((x, i) => (i === idx ? { ...x, text: e.target.value } : x)))}
+                      disabled={disabled}
+                      readOnly={disabled}
+                      onKeyDown={
+                        !disabled
+                          ? (e) => {
+                              if (e.key === 'Tab') {
+                                e.preventDefault();
+                                const textarea = e.currentTarget;
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const value = textarea.value;
+                                const newValue = value.substring(0, start) + '    ' + value.substring(end);
+                                setSections((arr) => arr.map((x, i) => (i === idx ? { ...x, text: newValue } : x)));
+                                setTimeout(() => {
+                                  textarea.selectionStart = textarea.selectionEnd = start + 4;
+                                }, 0);
+                              }
+                            }
+                          : undefined
+                      }
+                    />
+                  )
                 ) : (
                   <div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1955,17 +2502,59 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                               </button>
                             ) : null}
                           </div>
-                          <input 
-                            data-role="img-caption" 
-                            data-sec={idx} 
-                            data-img={j} 
-                            className={`mt-2 w-full border rounded px-2 py-1 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
-                            placeholder="Caption" 
-                            value={img.caption||''} 
-                            onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} 
-                            disabled={disabled} 
-                            readOnly={disabled} 
-                          />
+                          {designSystem ? (
+                            <AppInput
+                              className="mt-2"
+                              label="Caption"
+                              data-role="img-caption"
+                              data-sec={idx}
+                              data-img={j}
+                              placeholder="Caption"
+                              value={img.caption || ''}
+                              onChange={(e) =>
+                                setSections((arr) =>
+                                  arr.map((x, i) =>
+                                    i === idx
+                                      ? {
+                                          ...x,
+                                          images: (x.images || []).map((it: any, k: number) =>
+                                            k === j ? { ...it, caption: e.target.value } : it,
+                                          ),
+                                        }
+                                      : x,
+                                  ),
+                                )
+                              }
+                              disabled={disabled}
+                              readOnly={disabled}
+                              fieldHint={PROPOSAL_FIELD_HINTS.imageCaption}
+                            />
+                          ) : (
+                            <input
+                              data-role="img-caption"
+                              data-sec={idx}
+                              data-img={j}
+                              className={`mt-2 w-full rounded border px-2 py-1 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                              placeholder="Caption"
+                              value={img.caption || ''}
+                              onChange={(e) =>
+                                setSections((arr) =>
+                                  arr.map((x, i) =>
+                                    i === idx
+                                      ? {
+                                          ...x,
+                                          images: (x.images || []).map((it: any, k: number) =>
+                                            k === j ? { ...it, caption: e.target.value } : it,
+                                          ),
+                                        }
+                                      : x,
+                                  ),
+                                )
+                              }
+                              disabled={disabled}
+                              readOnly={disabled}
+                            />
+                          )}
                           </div>
                           {/* Insertion line indicator - shown after the image when dragging */}
                           {!disabled && dragOverImage && dragOverImage.secIdx === idx && dragOverImage.imgIdx === j && dragImageInsertPosition === 'after' && draggingImage && (draggingImage.secIdx !== idx || draggingImage.imgIdx !== j) && (
@@ -2027,8 +2616,47 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 }}
                 onDrop={onSectionDrop}
               >
-                <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }])}>+ Text Section</button>
-                <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }])}>+ Images Section</button>
+                {designSystem ? (
+                  <>
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() =>
+                        setShowSectionTypeModal(true)
+                      }
+                    >
+                      + Add Section
+                    </AppButton>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="rounded bg-gray-100 px-3 py-1.5 text-base"
+                      onClick={() =>
+                        setSections((arr) => [
+                          ...arr,
+                          { id: 'sec_' + Math.random().toString(36).slice(2), type: 'text', title: '', text: '' },
+                        ])
+                      }
+                    >
+                      + Text Section
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded bg-gray-100 px-3 py-1.5 text-base"
+                      onClick={() =>
+                        setSections((arr) => [
+                          ...arr,
+                          { id: 'sec_' + Math.random().toString(36).slice(2), type: 'images', title: '', images: [] },
+                        ])
+                      }
+                    >
+                      + Images Section
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -2093,154 +2721,383 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               const isNotApproved = isBidding === false && c.approved === false;
               const rowDisabled = disabled || isNotApproved;
               return (
-                <div key={i} className={`relative flex flex-col sm:flex-row gap-1.5 sm:gap-2 items-stretch sm:items-center w-full min-w-0 rounded-lg p-2 -mx-2 ${isNotApproved ? 'bg-amber-50 border border-amber-200' : ''}`}>
+                <div
+                  key={i}
+                  className={uiCx(
+                    'relative -mx-2 flex w-full min-w-0 flex-col gap-1.5 rounded-lg p-2',
+                    isNotApproved && 'border border-amber-200 bg-amber-50',
+                  )}
+                >
+                  <div
+                    className={uiCx(
+                      'flex w-full min-w-0 flex-col gap-1.5 sm:flex-row sm:gap-2',
+                      designSystem ? 'sm:items-start' : 'items-stretch sm:items-center',
+                    )}
+                  >
                   {isNotApproved && (
                     <span className="inline-flex items-center text-[10px] font-semibold px-2 py-1 rounded-md bg-amber-200 text-amber-900 border border-amber-300 flex-shrink-0 w-fit" title="This item was not approved during conversion and is read-only.">Not approved</span>
                   )}
                   {/* Division Icon */}
-                  {divisionInfo && (
-                    <div className="relative group/divicon flex-shrink-0">
-                      <div className="text-lg cursor-pointer hover:scale-110 transition-transform flex items-center justify-center w-8 h-8">
-                        {divisionInfo.icon}
+                  {divisionInfo &&
+                    (designSystem ? (
+                      <ProposalInlineControlSpacer className="group/divicon relative">
+                        <div
+                          className={uiCx(
+                            'flex w-8 cursor-pointer items-center justify-center text-lg transition-transform hover:scale-110',
+                            PROPOSAL_INLINE_CONTROL_H,
+                          )}
+                        >
+                          {divisionInfo.icon}
+                        </div>
+                        <div className="pointer-events-none absolute bottom-full left-0 z-[9999] mb-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover/divicon:opacity-100">
+                          {divisionInfo.label}
+                          <div className="absolute -bottom-1 left-2 h-2 w-2 rotate-45 bg-gray-900" />
+                        </div>
+                      </ProposalInlineControlSpacer>
+                    ) : (
+                      <div className="group/divicon relative flex-shrink-0">
+                        <div className="flex h-8 w-8 cursor-pointer items-center justify-center text-lg transition-transform hover:scale-110">
+                          {divisionInfo.icon}
+                        </div>
+                        <div className="pointer-events-none absolute bottom-full left-0 z-[9999] mb-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover/divicon:opacity-100">
+                          {divisionInfo.label}
+                          <div className="absolute -bottom-1 left-2 h-2 w-2 rotate-45 bg-gray-900" />
+                        </div>
                       </div>
-                      <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/divicon:opacity-100 transition-opacity pointer-events-none z-[9999] shadow-lg">
-                        {divisionInfo.label}
-                        <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                    ))}
+                  {designSystem ? (
+                    <ProposalInlineInput
+                      className="min-w-0 flex-1"
+                      label="Name"
+                      placeholder="Name"
+                      value={c.name}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, name: v } : x)));
+                      }}
+                      disabled={rowDisabled}
+                      readOnly={rowDisabled}
+                      fieldHint={PROPOSAL_FIELD_HINTS.pricingName}
+                    />
+                  ) : (
+                    <input
+                      className={`min-w-0 flex-1 w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                      placeholder="Name"
+                      value={c.name}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, name: v } : x)));
+                      }}
+                      disabled={rowDisabled}
+                      readOnly={rowDisabled}
+                    />
+                  )}
+                  {!rowDisabled &&
+                    (designSystem ? (
+                      <ProposalInlineControlSpacer className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setAreaPopoverIndex((prev) => (prev === i ? null : i))}
+                          className={uiCx(
+                            'rounded border border-gray-300 bg-white p-1.5 text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 hover:text-gray-900',
+                            PROPOSAL_INLINE_CONTROL_H,
+                            'box-border w-8',
+                          )}
+                          title="Edit area"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                          </svg>
+                        </button>
+                        {areaPopoverIndex === i && (
+                          <AreaPopover
+                            value={c.area_value}
+                            unit={c.area_unit || 'sqft'}
+                            onSave={(value, unit) => {
+                              setPricingItems((arr) =>
+                                arr.map((x, j) => (j === i ? { ...x, area_value: value, area_unit: unit } : x)),
+                              );
+                              setAreaPopoverIndex(null);
+                            }}
+                            onClose={() => setAreaPopoverIndex(null)}
+                          />
+                        )}
+                      </ProposalInlineControlSpacer>
+                    ) : (
+                      <div className="relative flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setAreaPopoverIndex((prev) => (prev === i ? null : i))}
+                          className="rounded border border-gray-300 bg-white p-1.5 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+                          title="Edit area"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                          </svg>
+                        </button>
+                        {areaPopoverIndex === i && (
+                          <AreaPopover
+                            value={c.area_value}
+                            unit={c.area_unit || 'sqft'}
+                            onSave={(value, unit) => {
+                              setPricingItems((arr) =>
+                                arr.map((x, j) => (j === i ? { ...x, area_value: value, area_unit: unit } : x)),
+                              );
+                              setAreaPopoverIndex(null);
+                            }}
+                            onClose={() => setAreaPopoverIndex(null)}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  {designSystem ? (
+                    <ProposalInlineInput
+                      className="min-w-[100px] max-w-[140px] flex-1"
+                      label="Price"
+                      placeholder="Price"
+                      value={c.price}
+                      onChange={(e) => {
+                        const v = parseAccounting(e.target.value);
+                        setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, price: v } : x)));
+                      }}
+                      onBlur={
+                        !rowDisabled
+                          ? () =>
+                              setPricingItems((arr) =>
+                                arr.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x)),
+                              )
+                          : undefined
+                      }
+                      disabled={rowDisabled}
+                      readOnly={rowDisabled}
+                      fieldHint={PROPOSAL_FIELD_HINTS.pricingPrice}
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      className={`min-w-[100px] max-w-[140px] flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                      placeholder="Price"
+                      value={c.price}
+                      onChange={(e) => {
+                        const v = parseAccounting(e.target.value);
+                        setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, price: v } : x)));
+                      }}
+                      onBlur={
+                        !rowDisabled
+                          ? () =>
+                              setPricingItems((arr) =>
+                                arr.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x)),
+                              )
+                          : undefined
+                      }
+                      disabled={rowDisabled}
+                      readOnly={rowDisabled}
+                    />
+                  )}
+                  {designSystem ? (
+                    <div className="min-w-[80px] max-w-[120px] shrink-0">
+                      <ProposalInlineLabelRow label="Qty" fieldHint={PROPOSAL_FIELD_HINTS.pricingQty} />
+                      <div
+                        className={uiCx(
+                          'flex items-center overflow-hidden rounded-lg border border-gray-300 bg-white',
+                          PROPOSAL_INLINE_CONTROL_H,
+                        )}
+                      >
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          className={uiCx(
+                            'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-xs text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+                            rowDisabled && 'cursor-not-allowed bg-gray-100',
+                            PROPOSAL_INLINE_CONTROL_H,
+                            'py-0',
+                          )}
+                          placeholder="Qty"
+                          value={c.quantity || '1'}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            const num = parseInt(v) || 1;
+                            const finalValue = num < 1 ? '1' : String(num);
+                            setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, quantity: finalValue } : x)));
+                          }}
+                          disabled={rowDisabled}
+                          readOnly={rowDisabled}
+                        />
+                        {!rowDisabled && (
+                          <div className="flex w-6 shrink-0 flex-col border-l border-gray-200 bg-white">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentQty = parseInt(c.quantity || '1') || 1;
+                                setPricingItems((arr) =>
+                                  arr.map((x, j) => (j === i ? { ...x, quantity: String(currentQty + 1) } : x)),
+                                );
+                              }}
+                              className="flex flex-1 items-center justify-center border-b border-gray-200 px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100"
+                              title="Increase"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentQty = parseInt(c.quantity || '1') || 1;
+                                setPricingItems((arr) =>
+                                  arr.map((x, j) => (j === i ? { ...x, quantity: String(Math.max(1, currentQty - 1)) } : x)),
+                                );
+                              }}
+                              className="flex flex-1 items-center justify-center px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              title="Decrease"
+                              disabled={parseInt(c.quantity || '1') <= 1}
+                            >
+                              ▼
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
-                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                    <input 
-                      className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
-                      placeholder="Name" 
-                      value={c.name} 
-                      onChange={e=>{ 
-                        const v=e.target.value; 
-                        setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); 
-                      }}
-                      disabled={rowDisabled} 
-                      readOnly={rowDisabled} 
-                    />
-                    {c.area_value != null && c.area_value > 0 && c.area_unit && (
-                      <div className="text-[10px] text-gray-500 truncate">
-                        Area: {Number(c.area_value).toLocaleString('en-US', { maximumFractionDigits: 2 })} {formatAreaLabel(c.area_unit)}
-                      </div>
-                    )}
-                  </div>
-                  {!rowDisabled && (
-                    <div className="relative flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setAreaPopoverIndex(prev => prev === i ? null : i)}
-                        className="p-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-900 transition-colors"
-                        title="Edit area"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
-                      </button>
-                      {areaPopoverIndex === i && (
-                        <AreaPopover
-                          value={c.area_value}
-                          unit={c.area_unit || 'sqft'}
-                          onSave={(value, unit) => {
-                            setPricingItems(arr => arr.map((x, j) => j === i ? { ...x, area_value: value, area_unit: unit } : x));
-                            setAreaPopoverIndex(null);
-                          }}
-                          onClose={() => setAreaPopoverIndex(null)}
-                        />
+                  ) : (
+                    <div className="flex min-w-[80px] max-w-[120px] shrink-0 items-center overflow-hidden rounded-lg border border-gray-300">
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        className={`min-w-0 flex-1 appearance-none border-0 px-2 py-1.5 text-xs text-gray-900 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${rowDisabled ? 'cursor-not-allowed bg-gray-100' : ''}`}
+                        placeholder="Qty"
+                        value={c.quantity || '1'}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const num = parseInt(v) || 1;
+                          const finalValue = num < 1 ? '1' : String(num);
+                          setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, quantity: finalValue } : x)));
+                        }}
+                        disabled={rowDisabled}
+                        readOnly={rowDisabled}
+                      />
+                      {!rowDisabled && (
+                        <div className="flex w-6 shrink-0 flex-col border-l bg-white">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const currentQty = parseInt(c.quantity || '1') || 1;
+                              setPricingItems((arr) =>
+                                arr.map((x, j) => (j === i ? { ...x, quantity: String(currentQty + 1) } : x)),
+                              );
+                            }}
+                            className="flex flex-1 items-center justify-center border-b px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100"
+                            title="Increase"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const currentQty = parseInt(c.quantity || '1') || 1;
+                              setPricingItems((arr) =>
+                                arr.map((x, j) => (j === i ? { ...x, quantity: String(Math.max(1, currentQty - 1)) } : x)),
+                              );
+                            }}
+                            className="flex flex-1 items-center justify-center px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Decrease"
+                            disabled={parseInt(c.quantity || '1') <= 1}
+                          >
+                            ▼
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}
-                  <input 
-                    type="text" 
-                    className={`flex-1 min-w-[100px] max-w-[140px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
-                    placeholder="Price" 
-                    value={c.price} 
-                    onChange={e=>{ 
-                      const v = parseAccounting(e.target.value); 
-                      setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); 
-                    }} 
-                    onBlur={!rowDisabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} 
-                    disabled={rowDisabled} 
-                    readOnly={rowDisabled} 
-                  />
-                  <div className="flex items-center rounded-lg border border-gray-300 overflow-hidden min-w-[80px] max-w-[120px]">
-                    <input 
-                      type="number" 
-                      min="1"
-                      step="1"
-                      className={`flex-1 min-w-0 border-0 rounded-none px-2 py-1.5 text-xs text-gray-900 appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
-                      placeholder="Qty" 
-                      value={c.quantity || '1'} 
-                      onChange={e=>{ 
-                        const v = e.target.value;
-                        const num = parseInt(v) || 1;
-                        const finalValue = num < 1 ? '1' : String(num);
-                        setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: finalValue }: x)); 
-                      }} 
-                      disabled={rowDisabled} 
-                      readOnly={rowDisabled} 
-                    />
-                    {!rowDisabled && (
-                      <div className="flex flex-col flex-none border-l bg-white w-6">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const currentQty = parseInt(c.quantity || '1') || 1;
-                            const newQty = currentQty + 1;
-                            setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x));
-                          }}
-                          className="px-0.5 py-0 text-[9px] leading-tight border-b hover:bg-gray-100 flex items-center justify-center flex-1"
-                          title="Increase"
-                        >
-                          ▲
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const currentQty = parseInt(c.quantity || '1') || 1;
-                            const newQty = Math.max(1, currentQty - 1);
-                            setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x));
-                          }}
-                          className="px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center flex-1"
-                          title="Decrease"
-                          disabled={parseInt(c.quantity || '1') <= 1}
-                        >
-                          ▼
-                        </button>
+                  {designSystem ? (
+                    <ProposalInlineControlSpacer
+                      className="min-w-[100px] max-w-[140px]"
+                      label="Total"
+                      fieldHint={PROPOSAL_FIELD_HINTS.pricingLineTotal}
+                    >
+                      <div
+                        className={uiCx(
+                          'box-border flex w-full min-w-[100px] items-center justify-end rounded-lg border border-gray-300 bg-gray-50 px-2 text-right text-xs font-medium text-gray-700',
+                          PROPOSAL_INLINE_CONTROL_H,
+                          rowDisabled && 'cursor-not-allowed',
+                        )}
+                      >
+                        ${formatAccounting(lineTotal)}
                       </div>
+                    </ProposalInlineControlSpacer>
+                  ) : (
+                    <div
+                      className={`min-w-[100px] max-w-[140px] shrink-0 rounded-lg border border-gray-300 bg-gray-50 px-2 py-1.5 ${rowDisabled ? 'cursor-not-allowed' : ''}`}
+                    >
+                      <div className="overflow-hidden whitespace-nowrap text-right text-xs font-medium text-gray-700">
+                        ${formatAccounting(lineTotal)}
+                      </div>
+                    </div>
+                  )}
+                  <div className={uiCx('flex shrink-0 gap-1.5', designSystem && 'items-start')}>
+                    {designSystem ? (
+                      <>
+                        <ProposalInlineCheckbox
+                          label="PST"
+                          fieldHint={PROPOSAL_FIELD_HINTS.pst}
+                          checked={c.pst === true}
+                          onChange={(checked) =>
+                            setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, pst: checked } : x)))
+                          }
+                          disabled={rowDisabled}
+                        />
+                        <ProposalInlineCheckbox
+                          label="GST"
+                          fieldHint={PROPOSAL_FIELD_HINTS.gst}
+                          checked={c.gst === true}
+                          onChange={(checked) =>
+                            setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, gst: checked } : x)))
+                          }
+                          disabled={rowDisabled}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <label
+                          className={`flex flex-shrink-0 items-center gap-1 text-xs ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={c.pst === true}
+                            onChange={(e) =>
+                              setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, pst: e.target.checked } : x)))
+                            }
+                            className={rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                            disabled={rowDisabled}
+                          />
+                          <span className="whitespace-nowrap text-gray-700">PST</span>
+                        </label>
+                        <label
+                          className={`flex flex-shrink-0 items-center gap-1 text-xs ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={c.gst === true}
+                            onChange={(e) =>
+                              setPricingItems((arr) => arr.map((x, j) => (j === i ? { ...x, gst: e.target.checked } : x)))
+                            }
+                            className={rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                            disabled={rowDisabled}
+                          />
+                          <span className="whitespace-nowrap text-gray-700">GST</span>
+                        </label>
+                      </>
                     )}
                   </div>
-                  <div className={`rounded-lg border border-gray-300 px-2 py-1.5 bg-gray-50 min-w-[100px] max-w-[140px] flex-shrink-0 ${rowDisabled ? 'cursor-not-allowed' : ''}`}>
-                    <div className="text-xs font-medium text-gray-700 text-right whitespace-nowrap overflow-hidden">
-                      ${formatAccounting(lineTotal)}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                      <input 
-                        type="checkbox" 
-                        checked={c.pst === true}
-                        onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, pst: e.target.checked }: x))}
-                        className={rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                        disabled={rowDisabled}
-                      />
-                      <span className="text-gray-700 whitespace-nowrap">PST</span>
-                    </label>
-                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                      <input 
-                        type="checkbox" 
-                        checked={c.gst === true}
-                        onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, gst: e.target.checked }: x))}
-                        className={rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                        disabled={rowDisabled}
-                      />
-                      <span className="text-gray-700 whitespace-nowrap">GST</span>
-                    </label>
-                  </div>
-                  {!rowDisabled && (
-                    <button 
-                      className="p-1 rounded bg-red-100 hover:bg-red-200 flex items-center justify-center transition-colors flex-shrink-0 w-7 h-7" 
-                      onClick={async () => {
+                  {!rowDisabled &&
+                    (designSystem ? (
+                      <ProposalInlineControlSpacer>
+                        <button
+                          type="button"
+                          className={uiCx(
+                            'flex w-8 shrink-0 items-center justify-center rounded bg-red-100 transition-colors hover:bg-red-200',
+                            PROPOSAL_INLINE_CONTROL_H,
+                          )}
+                          onClick={async () => {
                         const isProjectInProgress = isBidding === false && (projectStatusLabel || '').trim().toLowerCase() === 'in progress';
                         if (isProjectInProgress) {
                           const result = await confirm({
@@ -2269,56 +3126,137 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           }
                         }
                       }}
-                      title={isBidding === false && (projectStatusLabel || '').trim().toLowerCase() === 'in progress' ? 'Mark as not approved' : 'Remove'}
-                    >
-                      <svg className="w-4 h-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+                          title={
+                            isBidding === false && (projectStatusLabel || '').trim().toLowerCase() === 'in progress'
+                              ? 'Mark as not approved'
+                              : 'Remove'
+                          }
+                        >
+                          <svg className="h-4 w-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </ProposalInlineControlSpacer>
+                    ) : (
+                      <button
+                        type="button"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-red-100 p-1 transition-colors hover:bg-red-200"
+                        onClick={async () => {
+                        const isProjectInProgress = isBidding === false && (projectStatusLabel || '').trim().toLowerCase() === 'in progress';
+                        if (isProjectInProgress) {
+                          const result = await confirm({
+                            title: 'Mark as not approved',
+                            message: 'Mark this item as not approved? It will remain in the list for tracking but will not count in totals.',
+                            confirmText: 'Mark as "Not approved"',
+                            cancelText: 'Cancel',
+                          });
+                          if (result === 'confirm') {
+                            setPricingItems(arr => arr.map((x, j) => j === i ? { ...x, approved: false } : x));
+                            saveTriggeredByApprovalChangeRef.current = true;
+                          }
+                        } else {
+                          if (isBidding) {
+                            const deleteResult = await confirm({
+                              title: 'Remove item',
+                              message: 'Are you sure you want to remove this item? This action cannot be undone.',
+                              confirmText: 'Remove',
+                              cancelText: 'Cancel',
+                            });
+                            if (deleteResult === 'confirm') {
+                              setPricingItems(arr => arr.filter((_, j) => j !== i));
+                            }
+                          } else {
+                            setPricingItems(arr => arr.filter((_, j) => j !== i));
+                          }
+                        }
+                      }}
+                        title={isBidding === false && (projectStatusLabel || '').trim().toLowerCase() === 'in progress' ? 'Mark as not approved' : 'Remove'}
+                      >
+                        <svg className="h-4 w-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    ))}
+                  </div>
+                  {c.area_value != null && c.area_value > 0 && c.area_unit && (
+                    <div className="text-[10px] text-gray-500 truncate px-0.5">
+                      Area: {Number(c.area_value).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
+                      {formatAreaLabel(c.area_unit)}
+                    </div>
                   )}
                 </div>
               );
             })}
           </div>
-          {!disabled && (
-            <button 
-              className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
-              onClick={()=> {
-                // Only show modal if projectId exists and has divisions
-                if (projectId && project?.project_division_ids && project.project_division_ids.length > 0) {
-                  setShowDivisionModal(true);
-                } else {
-                  // Fallback: add item without division if no project/divisions
-                  setPricingItems(arr=> [...arr, { name:'', price:'', quantity:'1', pst: false, gst: false }]);
-                }
-              }}
-            >
-              <div className="text-lg text-gray-400 mr-2">+</div>
-              <div className="font-medium text-xs text-gray-700">Add Pricing Item</div>
-            </button>
-          )}
+          {!disabled &&
+            (designSystem ? (
+              <AppListCreateItem
+                layout="row"
+                className="mt-3 !min-h-0 py-2.5"
+                label="Add Pricing Item"
+                onClick={() => {
+                  if (projectId && project?.project_division_ids && project.project_division_ids.length > 0) {
+                    setShowDivisionModal(true);
+                  } else {
+                    setPricingItems((arr) => [...arr, { name: '', price: '', quantity: '1', pst: false, gst: false }]);
+                  }
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="mt-3 flex w-full items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50 disabled:opacity-60"
+                onClick={() => {
+                  if (projectId && project?.project_division_ids && project.project_division_ids.length > 0) {
+                    setShowDivisionModal(true);
+                  } else {
+                    setPricingItems((arr) => [...arr, { name: '', price: '', quantity: '1', pst: false, gst: false }]);
+                  }
+                }}
+              >
+                <div className="mr-2 text-lg text-gray-400">+</div>
+                <div className="text-xs font-medium text-gray-700">Add Pricing Item</div>
+              </button>
+            ))}
 
           {/* Summary Section */}
           <div className="mt-6">
-            <div className="rounded-xl border bg-white overflow-hidden">
+            <div className={dsSectionShell}>
               {/* Summary Header - Gray */}
-              <div className="bg-gray-500 p-2.5 text-white font-semibold text-xs">
+              <div className={designSystem ? uiCx('bg-gray-500 px-4 py-3 text-xs font-semibold text-white') : 'bg-gray-500 p-2.5 text-white font-semibold text-xs'}>
                 Summary
               </div>
               
               {/* Area display unit selector */}
               {!disabled && (
-                <div className="px-3 pt-2 pb-1 border-b border-gray-100">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Area display unit</label>
-                  <select
-                    value={areaDisplayUnit}
-                    onChange={e => setAreaDisplayUnit(e.target.value as AreaUnit)}
-                    className="mt-1 block w-full max-w-[120px] rounded border border-gray-300 px-2 py-1.5 text-xs"
-                  >
-                    <option value="sqft">sqft</option>
-                    <option value="m2">m²</option>
-                    <option value="sqs">SQS</option>
-                  </select>
+                <div className={uiCx('border-b border-gray-100 px-3 pt-2 pb-1', designSystem && 'px-4')}>
+                  {designSystem ? (
+                    <AppSelect
+                      label="Area display unit"
+                      className="max-w-[140px]"
+                      value={areaDisplayUnit}
+                      options={[
+                        { value: 'sqft', label: 'sqft' },
+                        { value: 'm2', label: 'm²' },
+                        { value: 'sqs', label: 'SQS' },
+                      ]}
+                      onChange={(e) => setAreaDisplayUnit(e.target.value as AreaUnit)}
+                      fieldHint={PROPOSAL_FIELD_HINTS.areaDisplayUnit}
+                    />
+                  ) : (
+                    <>
+                      <label className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Area display unit</label>
+                      <select
+                        value={areaDisplayUnit}
+                        onChange={(e) => setAreaDisplayUnit(e.target.value as AreaUnit)}
+                        className="mt-1 block w-full max-w-[120px] rounded border border-gray-300 px-2 py-1.5 text-xs"
+                      >
+                        <option value="sqft">sqft</option>
+                        <option value="m2">m²</option>
+                        <option value="sqs">SQS</option>
+                      </select>
+                    </>
+                  )}
                 </div>
               )}
               
@@ -2360,16 +3298,27 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
               <div className="text-xs font-semibold">Total: <span className="text-gray-600">${formatAccounting(grandTotal)}</span></div>
-              <label className={`flex items-center gap-1 text-xs text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                <input 
-                  type="checkbox" 
-                  checked={showTotalInPdf} 
-                  onChange={e=> setShowTotalInPdf(e.target.checked)}
-                  className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+              {designSystem ? (
+                <AppCheckbox
+                  label="Show Total in PDF"
+                  checked={showTotalInPdf}
+                  onChange={(checked) => setShowTotalInPdf(checked)}
                   disabled={disabled}
+                  fieldHint={PROPOSAL_FIELD_HINTS.showTotalInPdf}
+                  className="text-xs"
                 />
-                <span>Show Total in PDF</span>
-              </label>
+              ) : (
+                <label className={`flex items-center gap-1 text-xs text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                  <input 
+                    type="checkbox" 
+                    checked={showTotalInPdf} 
+                    onChange={e=> setShowTotalInPdf(e.target.checked)}
+                    className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                    disabled={disabled}
+                  />
+                  <span>Show Total in PDF</span>
+                </label>
+              )}
             </div>
         </div>
           )}
@@ -2378,9 +3327,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           return showOnlyPricing ? (
             <div className="p-3">{pricingBody}</div>
           ) : (
-            <div className="rounded-xl border bg-white overflow-hidden">
+            <div className={dsSectionShell}>
               <div 
-                className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+                className={dsSectionHeader}
                 onClick={() => setSectionsExpanded(prev => ({ ...prev, pricing: !prev.pricing }))}
               >
                 <span>Pricing</span>
@@ -2401,38 +3350,101 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         })()}
 
         {/* Optional Services Block - shown in both Proposal and Pricing (same data; does not affect total). On Pricing tab: always expanded, same style as Pricing block. */}
-        <div className="rounded-xl border bg-white overflow-hidden">
+        <div className={dsSectionShell}>
           {showOnlyPricing ? (
             <>
-              <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs">Optional Services</div>
-              <div className="p-3">
+              <div className={designSystem ? uiCx('border-b border-gray-100 px-4 py-3', uiTypography.sectionTitle) : 'bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs'}>Optional Services</div>
+              <div className={dsSectionBodyPad}>
                 <div className="text-[10px] text-gray-600 mb-2">Optional services the client can accept or decline. These do not affect the proposal total.</div>
                 <div className="space-y-2">
                   {optionalServices.map((s, i)=> (
-                    <div key={i} className="grid grid-cols-5 gap-2">
-                      <input className={`col-span-3 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
-                      <input type="text" className={`col-span-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
-                      {!disabled && (
-                        <button className="col-span-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-xs" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                    <div key={i} className={uiCx('grid grid-cols-5 gap-2', designSystem && 'items-start')}>
+                      {designSystem ? (
+                        <>
+                          <ProposalInlineInput
+                            className="col-span-3"
+                            label="Service"
+                            placeholder="Service"
+                            value={s.service}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, service: v } : x)));
+                            }}
+                            disabled={disabled}
+                            readOnly={disabled}
+                            fieldHint={PROPOSAL_FIELD_HINTS.optionalService}
+                          />
+                          <ProposalInlineInput
+                            className="col-span-1"
+                            label="Price"
+                            placeholder="Price"
+                            value={s.price}
+                            onChange={(e) => {
+                              const v = parseAccounting(e.target.value);
+                              setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, price: v } : x)));
+                            }}
+                            onBlur={
+                              !disabled
+                                ? () =>
+                                    setOptionalServices((arr) =>
+                                      arr.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x)),
+                                    )
+                                : undefined
+                            }
+                            disabled={disabled}
+                            readOnly={disabled}
+                            fieldHint={PROPOSAL_FIELD_HINTS.optionalPrice}
+                          />
+                          {!disabled && (
+                            <ProposalInlineControlSpacer className="col-span-1">
+                              <AppButton
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2"
+                                onClick={() => setOptionalServices((arr) => arr.filter((_, j) => j !== i))}
+                              >
+                                Remove
+                              </AppButton>
+                            </ProposalInlineControlSpacer>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <input className={`col-span-3 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
+                          <input type="text" className={`col-span-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                          {!disabled && (
+                            <button type="button" className="col-span-1 rounded bg-gray-100 px-2 py-1 text-xs hover:bg-gray-200" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                          )}
+                        </>
                       )}
                     </div>
                   ))}
-                  {!disabled && (
-                    <button 
-                      className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
-                      onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}
-                    >
-                      <div className="text-lg text-gray-400 mr-2">+</div>
-                      <div className="font-medium text-xs text-gray-700">Add Service</div>
-                    </button>
-                  )}
+                  {!disabled &&
+                    (designSystem ? (
+                      <AppListCreateItem
+                        layout="row"
+                        className="mt-3 !min-h-0 py-2.5"
+                        label="Add Service"
+                        onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className="mt-3 flex w-full items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50 disabled:opacity-60"
+                        onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}
+                      >
+                        <div className="mr-2 text-lg text-gray-400">+</div>
+                        <div className="text-xs font-medium text-gray-700">Add Service</div>
+                      </button>
+                    ))}
                 </div>
               </div>
             </>
           ) : (
             <>
               <div 
-                className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+                className={dsSectionHeader}
                 onClick={() => setSectionsExpanded(prev => ({ ...prev, optionalServices: !prev.optionalServices }))}
               >
                 <span>Optional Services</span>
@@ -2446,27 +3458,90 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 </svg>
               </div>
               {sectionsExpanded.optionalServices && (
-              <div className="p-3">
+              <div className={dsSectionBodyPad}>
               <div className="text-[10px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
                 <div className="space-y-2">
                   {optionalServices.map((s, i)=> (
-                    <div key={i} className="grid grid-cols-5 gap-2">
-                      <input className={`col-span-3 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
-                      <input type="text" className={`col-span-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
-                      {!disabled && (
-                        <button className="col-span-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-xs" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                    <div key={i} className={uiCx('grid grid-cols-5 gap-2', designSystem && 'items-start')}>
+                      {designSystem ? (
+                        <>
+                          <ProposalInlineInput
+                            className="col-span-3"
+                            label="Service"
+                            placeholder="Service"
+                            value={s.service}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, service: v } : x)));
+                            }}
+                            disabled={disabled}
+                            readOnly={disabled}
+                            fieldHint={PROPOSAL_FIELD_HINTS.optionalService}
+                          />
+                          <ProposalInlineInput
+                            className="col-span-1"
+                            label="Price"
+                            placeholder="Price"
+                            value={s.price}
+                            onChange={(e) => {
+                              const v = parseAccounting(e.target.value);
+                              setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, price: v } : x)));
+                            }}
+                            onBlur={
+                              !disabled
+                                ? () =>
+                                    setOptionalServices((arr) =>
+                                      arr.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x)),
+                                    )
+                                : undefined
+                            }
+                            disabled={disabled}
+                            readOnly={disabled}
+                            fieldHint={PROPOSAL_FIELD_HINTS.optionalPrice}
+                          />
+                          {!disabled && (
+                            <ProposalInlineControlSpacer className="col-span-1">
+                              <AppButton
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2"
+                                onClick={() => setOptionalServices((arr) => arr.filter((_, j) => j !== i))}
+                              >
+                                Remove
+                              </AppButton>
+                            </ProposalInlineControlSpacer>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <input className={`col-span-3 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
+                          <input type="text" className={`col-span-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                          {!disabled && (
+                            <button type="button" className="col-span-1 rounded bg-gray-100 px-2 py-1 text-xs hover:bg-gray-200" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                          )}
+                        </>
                       )}
                     </div>
                   ))}
-                  {!disabled && (
-                    <button 
-                      className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
-                      onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}
-                    >
-                      <div className="text-lg text-gray-400 mr-2">+</div>
-                      <div className="font-medium text-xs text-gray-700">Add Service</div>
-                    </button>
-                  )}
+                  {!disabled &&
+                    (designSystem ? (
+                      <AppListCreateItem
+                        layout="row"
+                        className="mt-3 !min-h-0 py-2.5"
+                        label="Add Service"
+                        onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className="mt-3 flex w-full items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50 disabled:opacity-60"
+                        onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}
+                      >
+                        <div className="mr-2 text-lg text-gray-400">+</div>
+                        <div className="text-xs font-medium text-gray-700">Add Service</div>
+                      </button>
+                    ))}
                 </div>
               </div>
               )}
@@ -2476,9 +3551,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
 
         {/* Terms Block - hidden when showOnlyPricing */}
         {!showOnlyPricing && (
-        <div className="rounded-xl border bg-white overflow-hidden">
+        <div className={dsSectionShell}>
           <div 
-            className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className={dsSectionHeader}
             onClick={() => setSectionsExpanded(prev => ({ ...prev, terms: !prev.terms }))}
           >
             <span>Terms</span>
@@ -2492,51 +3567,94 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </svg>
           </div>
           {sectionsExpanded.terms && (
-          <div className="p-3 space-y-2">
+          <div className={uiCx(dsSectionBodyPad, 'space-y-2')}>
             {termsTemplates.length > 0 && (
               <div>
-                <div className="text-xs font-medium text-gray-600 mb-1.5">Select Terms Template (optional)</div>
                 {disabled ? (
-                  <div className="text-sm font-semibold text-gray-900">{selectedTermsTemplateId ? termsTemplates.find(t => t.id === selectedTermsTemplateId)?.label || '-' : '-'}</div>
-                ) : (
-                  <select
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                  <>
+                    <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Select Terms Template (optional)</div>
+                    <div className={dsReadonlyClass}>
+                      {selectedTermsTemplateId
+                        ? termsTemplates.find((t) => t.id === selectedTermsTemplateId)?.label || '-'
+                        : '-'}
+                    </div>
+                  </>
+                ) : designSystem ? (
+                  <AppSelect
+                    label="Select Terms Template (optional)"
                     value={selectedTermsTemplateId}
+                    options={[
+                      { value: '', label: 'Custom / No template' },
+                      ...termsTemplates.map((template) => ({
+                        value: template.id,
+                        label: template.label,
+                      })),
+                    ]}
                     onChange={(e) => {
                       const templateId = e.target.value;
                       setSelectedTermsTemplateId(templateId);
                       if (templateId) {
-                        const template = termsTemplates.find(t => t.id === templateId);
+                        const template = termsTemplates.find((t) => t.id === templateId);
                         if (template?.meta?.description) {
                           setTerms(template.meta.description);
                         }
                       }
                     }}
-                  >
-                    <option value="">Custom / No template</option>
-                    {termsTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.label}
-                      </option>
-                    ))}
-                  </select>
+                    fieldHint={PROPOSAL_FIELD_HINTS.termsTemplate}
+                  />
+                ) : (
+                  <>
+                    <div className="text-xs font-medium text-gray-600 mb-1.5">Select Terms Template (optional)</div>
+                    <select
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                      value={selectedTermsTemplateId}
+                      onChange={(e) => {
+                        const templateId = e.target.value;
+                        setSelectedTermsTemplateId(templateId);
+                        if (templateId) {
+                          const template = termsTemplates.find((t) => t.id === templateId);
+                          if (template?.meta?.description) {
+                            setTerms(template.meta.description);
+                          }
+                        }
+                      }}
+                    >
+                      <option value="">Custom / No template</option>
+                      {termsTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.label}
+                        </option>
+                      ))}
+                    </select>
+                  </>
                 )}
               </div>
             )}
             <div>
-              {!disabled && termsTemplates.length > 0 && (
-                <div className="text-xs font-medium text-gray-600 mb-1.5">Terms Text</div>
-              )}
               {disabled ? (
-                <div className="text-sm font-semibold text-gray-900 whitespace-pre-wrap">{terms || '-'}</div>
+                <div className={uiCx(dsReadonlyClass, 'whitespace-pre-wrap')}>{terms || '-'}</div>
+              ) : designSystem ? (
+                <AppTextarea
+                  label="Terms Text"
+                  value={terms}
+                  onChange={(e) => setTerms(e.target.value)}
+                  rows={12}
+                  className="min-h-[250px]"
+                  fieldHint={PROPOSAL_FIELD_HINTS.termsText}
+                />
               ) : (
-                <textarea 
+                <>
+                  {!disabled && termsTemplates.length > 0 && (
+                    <div className="text-xs font-medium text-gray-600 mb-1.5">Terms Text</div>
+                  )}
+                  <textarea 
                   className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
                   value={terms} 
                   onChange={e=>setTerms(e.target.value)} 
                   rows={12}
                   style={{ minHeight: '250px' }}
                 />
+                </>
               )}
             </div>
           </div>
@@ -2555,7 +3673,18 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       {/* Fixed footer bar - always visible, centered and compact */}
       <div className="fixed left-60 right-0 bottom-0 z-40 translate-y-0 flex justify-center">
         <div className="mx-auto max-w-[900px] w-full px-4">
-          <div className="rounded-t-xl border bg-white/95 backdrop-blur p-2.5 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+          <div
+            className={
+              designSystem
+                ? uiCx(
+                    uiRadius.card,
+                    uiBorders.subtle,
+                    uiColors.surface,
+                    'flex items-center justify-between rounded-t-xl border-t bg-white/95 p-2.5 shadow-[0_-6px_16px_rgba(0,0,0,0.08)] backdrop-blur',
+                  )
+                : 'rounded-t-xl border bg-white/95 backdrop-blur p-2.5 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]'
+            }
+          >
             {/* Left: Status indicator */}
             {hasUnsavedChanges ? (
               <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-medium">
@@ -2575,9 +3704,12 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               {/* Submit for Approval button - only for Change Orders that are not approved */}
               {isChangeOrder && !isApproved && !effectiveDisabled && (
                 <>
-                  <button 
-                    className="px-3 py-1 text-xs rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors shadow-sm" 
-                    onClick={async () => {
+                  {designSystem ? (
+                    <AppButton
+                      type="button"
+                      size="sm"
+                      className="border-green-700 bg-green-600 text-white hover:bg-green-700"
+                      onClick={async () => {
                       const result = await confirm({
                         title: 'Submit for Approval',
                         message: 'Are you sure you want to submit this Change Order for approval? Once submitted, it cannot be edited until approved.',
@@ -2606,9 +3738,43 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         toast.error(e?.response?.data?.detail || 'Failed to submit for approval');
                       }
                     }}
-                  >
-                    Submit for Approval
-                  </button>
+                    >
+                      Submit for Approval
+                    </AppButton>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rounded-lg bg-green-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-green-700"
+                      onClick={async () => {
+                      const result = await confirm({
+                        title: 'Submit for Approval',
+                        message: 'Are you sure you want to submit this Change Order for approval? Once submitted, it cannot be edited until approved.',
+                        confirmText: 'Submit',
+                        cancelText: 'Cancel'
+                      });
+                      if (result !== 'confirm') return;
+                      try {
+                        if (initial?.id) {
+                          if (hasUnsavedChanges && handleSaveRef.current) {
+                            await handleSaveRef.current();
+                          }
+                          await api('POST', `/proposals/${encodeURIComponent(initial.id)}/submit-for-approval`);
+                          toast.success('Change Order submitted for approval');
+                          queryClient.invalidateQueries({ queryKey: ['proposal', initial.id] });
+                          queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
+                          if (onSave) {
+                            onSave();
+                          }
+                        }
+                      } catch (e: any) {
+                        console.error('Failed to submit for approval:', e);
+                        toast.error(e?.response?.data?.detail || 'Failed to submit for approval');
+                      }
+                    }}
+                    >
+                      Submit for Approval
+                    </button>
+                  )}
                   <div className="w-px h-4 bg-gray-300"></div>
                 </>
               )}
@@ -2629,91 +3795,204 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   <div className="w-px h-4 bg-gray-300"></div>
                 </>
               )}
-              {!effectiveDisabled && projectId && !window.location.pathname.includes('/proposals/') && (
-                <button 
-                  className="px-2.5 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
-                  onClick={handleClearProposal}
-                  disabled={effectiveDisabled}
-                >
-                  {(showOnlyPricing || isChangeOrder) ? 'Clear Pricing' : 'Clear Proposal'}
-                </button>
-              )}
+              {!effectiveDisabled && projectId && !window.location.pathname.includes('/proposals/') &&
+                (designSystem ? (
+                  <AppButton
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleClearProposal}
+                    disabled={effectiveDisabled}
+                  >
+                    {(showOnlyPricing || isChangeOrder) ? 'Clear Pricing' : 'Clear Proposal'}
+                  </AppButton>
+                ) : (
+                  <button
+                    type="button"
+                    className="rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200"
+                    onClick={handleClearProposal}
+                    disabled={effectiveDisabled}
+                  >
+                    {(showOnlyPricing || isChangeOrder) ? 'Clear Pricing' : 'Clear Proposal'}
+                  </button>
+                ))}
               {/* Delete button for regular proposals or Change Orders that haven't been submitted for approval */}
               {mode === 'edit' && (
                 (isChangeOrder && !isApproved && approvalStatus !== 'pending' && !effectiveDisabled) || // Change Orders not submitted
                 (!isChangeOrder && (!projectId || window.location.pathname.includes('/proposals/')) && !effectiveDisabled) // Regular proposals in standalone view
               ) && (
                 <>
-                  <button 
-                    className="px-2.5 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
-                    onClick={async () => {
-                      const result = await confirm({ 
-                        title: isChangeOrder ? 'Delete Change Order' : 'Delete Proposal', 
-                        message: isChangeOrder 
-                          ? `Are you sure you want to delete Change Order ${initial?.change_order_number || ''}? This action cannot be undone.`
-                          : 'Are you sure you want to delete this proposal? This action cannot be undone.' 
-                      });
-                      if (result !== 'confirm') return;
-                      try {
-                        if (initial?.id) {
-                          await api('DELETE', `/proposals/${encodeURIComponent(initial.id)}`);
-                          toast.success(isChangeOrder ? 'Change Order deleted' : 'Proposal deleted');
-                          queryClient.invalidateQueries({ queryKey: ['proposals'] });
-                          queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
-                          if (!projectId || window.location.pathname.includes('/proposals/')) {
-                            nav(-1);
-                          } else if (projectId && isChangeOrder) {
-                            // For Change Orders in project context, refresh the proposals list
-                            queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
-                            // Call onSave to refresh the parent component (it will handle navigation to Proposal tab)
-                            if (onSave) {
-                              await onSave();
+                  {designSystem ? (
+                    <AppButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        const result = await confirm({
+                          title: isChangeOrder ? 'Delete Change Order' : 'Delete Proposal',
+                          message: isChangeOrder
+                            ? `Are you sure you want to delete Change Order ${initial?.change_order_number || ''}? This action cannot be undone.`
+                            : 'Are you sure you want to delete this proposal? This action cannot be undone.',
+                        });
+                        if (result !== 'confirm') return;
+                        try {
+                          if (initial?.id) {
+                            await api('DELETE', `/proposals/${encodeURIComponent(initial.id)}`);
+                            toast.success(isChangeOrder ? 'Change Order deleted' : 'Proposal deleted');
+                            queryClient.invalidateQueries({ queryKey: ['proposals'] });
+                            queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
+                            if (!projectId || window.location.pathname.includes('/proposals/')) {
+                              nav(-1);
+                            } else if (projectId && isChangeOrder) {
+                              queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
+                              if (onSave) {
+                                await onSave();
+                              }
                             }
                           }
+                        } catch (e: any) {
+                          console.error('Failed to delete:', e);
+                          toast.error(e?.response?.data?.detail || `Failed to delete ${isChangeOrder ? 'Change Order' : 'proposal'}`);
                         }
-                      } catch (e: any) {
-                        console.error('Failed to delete:', e);
-                        toast.error(e?.response?.data?.detail || `Failed to delete ${isChangeOrder ? 'Change Order' : 'proposal'}`);
-                      }
-                    }}
-                  >
-                    {isChangeOrder ? 'Delete Change Order' : 'Delete Proposal'}
-                  </button>
+                      }}
+                    >
+                      {isChangeOrder ? 'Delete Change Order' : 'Delete Proposal'}
+                    </AppButton>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200"
+                      onClick={async () => {
+                        const result = await confirm({
+                          title: isChangeOrder ? 'Delete Change Order' : 'Delete Proposal',
+                          message: isChangeOrder
+                            ? `Are you sure you want to delete Change Order ${initial?.change_order_number || ''}? This action cannot be undone.`
+                            : 'Are you sure you want to delete this proposal? This action cannot be undone.',
+                        });
+                        if (result !== 'confirm') return;
+                        try {
+                          if (initial?.id) {
+                            await api('DELETE', `/proposals/${encodeURIComponent(initial.id)}`);
+                            toast.success(isChangeOrder ? 'Change Order deleted' : 'Proposal deleted');
+                            queryClient.invalidateQueries({ queryKey: ['proposals'] });
+                            queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
+                            if (!projectId || window.location.pathname.includes('/proposals/')) {
+                              nav(-1);
+                            } else if (projectId && isChangeOrder) {
+                              queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
+                              if (onSave) {
+                                await onSave();
+                              }
+                            }
+                          }
+                        } catch (e: any) {
+                          console.error('Failed to delete:', e);
+                          toast.error(e?.response?.data?.detail || `Failed to delete ${isChangeOrder ? 'Change Order' : 'proposal'}`);
+                        }
+                      }}
+                    >
+                      {isChangeOrder ? 'Delete Change Order' : 'Delete Proposal'}
+                    </button>
+                  )}
                   <div className="w-px h-4 bg-gray-300"></div>
                 </>
               )}
               {!effectiveDisabled && !isApproved && (
-                <button 
-                  className={`px-3 py-1 text-xs rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
-                    hasUnsavedChanges
-                      ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:from-red-700 hover:to-red-800' 
-                      : 'bg-gray-400 hover:bg-gray-500'
-                  }`}
-                  onClick={handleSave} 
-                  disabled={effectiveDisabled || isSaving || !hasUnsavedChanges}
-                >
-                  {isSaving ? 'Saving...' : ((showOnlyPricing || isChangeOrder) ? 'Save Pricing' : 'Save Proposal')}
-                </button>
+                designSystem ? (
+                  <AppButton
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={effectiveDisabled || isSaving || !hasUnsavedChanges}
+                    loading={isSaving}
+                  >
+                    {(showOnlyPricing || isChangeOrder) ? 'Save Pricing' : 'Save Proposal'}
+                  </AppButton>
+                ) : (
+                  <button 
+                    className={`px-3 py-1 text-xs rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
+                      hasUnsavedChanges
+                        ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:from-red-700 hover:to-red-800' 
+                        : 'bg-gray-400 hover:bg-gray-500'
+                    }`}
+                    onClick={handleSave} 
+                    disabled={effectiveDisabled || isSaving || !hasUnsavedChanges}
+                  >
+                    {isSaving ? 'Saving...' : ((showOnlyPricing || isChangeOrder) ? 'Save Pricing' : 'Save Proposal')}
+                  </button>
+                )
               )}
               {!showOnlyPricing && !isApproved && (
                 <>
                   <div className="w-px h-4 bg-gray-300"></div>
-                  <button 
-                    className="px-3 py-1 text-xs rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors" 
-                    disabled={isGenerating} 
-                    onClick={handleGenerate}
-                  >
-                    {isGenerating ? 'Generating…' : 'Generate Proposal'}
-                  </button>
+                  {designSystem ? (
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={isGenerating}
+                      loading={isGenerating}
+                      onClick={handleGenerate}
+                    >
+                      {isGenerating ? 'Generating…' : 'Generate Proposal'}
+                    </AppButton>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rounded-lg bg-gray-400 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={isGenerating}
+                      onClick={handleGenerate}
+                    >
+                      {isGenerating ? 'Generating…' : 'Generate Proposal'}
+                    </button>
+                  )}
                 </>
               )}
               {downloadUrl && (
                 <>
                   <div className="w-px h-4 bg-gray-300"></div>
-                  {(renderFingerprint===lastGeneratedHash) ? (
-                    <a className="px-3 py-1 text-xs rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium transition-colors" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>
+                  {renderFingerprint === lastGeneratedHash ? (
+                    designSystem ? (
+                      <AppButton
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          const a = document.createElement('a');
+                          a.href = downloadUrl;
+                          a.download = 'ProjectProposal.pdf';
+                          a.click();
+                        }}
+                      >
+                        Download PDF
+                      </AppButton>
+                    ) : (
+                      <a
+                        className="rounded-lg bg-gray-400 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-500"
+                        href={downloadUrl}
+                        download="ProjectProposal.pdf"
+                      >
+                        Download PDF
+                      </a>
+                    )
+                  ) : designSystem ? (
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled
+                      title="PDF is outdated. Generate again to enable download"
+                    >
+                      Download PDF
+                    </AppButton>
                   ) : (
-                    <button className="px-3 py-1 text-xs rounded-lg bg-gray-200 text-gray-600 cursor-not-allowed font-medium" title="PDF is outdated. Generate again to enable download" disabled>Download PDF</button>
+                    <button
+                      type="button"
+                      className="cursor-not-allowed rounded-lg bg-gray-200 px-3 py-1 text-xs font-medium text-gray-600"
+                      title="PDF is outdated. Generate again to enable download"
+                      disabled
+                    >
+                      Download PDF
+                    </button>
                   )}
                 </>
               )}
@@ -2724,7 +4003,18 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       
 
       {pickerFor && (
-        <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} exportScale={2} fileObjectId={pickerFor==='cover'? coverFoId: page2FoId} editorScaleFactor={pickerFor==='cover'? undefined: 1} hideEditButton={pickerFor==='cover'} onConfirm={async(blob)=>{ 
+        <ImagePicker
+          isOpen={true}
+          onClose={() => setPickerFor(null)}
+          clientId={clientId || undefined}
+          targetWidth={pickerFor === 'cover' ? 566 : 540}
+          targetHeight={pickerFor === 'cover' ? 537 : 340}
+          allowEdit={true}
+          exportScale={2}
+          fileObjectId={pickerFor === 'cover' ? coverPickerSeedFileId : page2FoId}
+          editorScaleFactor={pickerFor === 'cover' ? undefined : 1}
+          hideEditButton={pickerFor === 'cover'}
+          onConfirm={async (blob) => { 
           try{
             if (!blob){ toast.error('No image'); setPickerFor(null); return; }
             const cat = pickerFor==='cover'? 'proposal-cover-derived' : 'proposal-page2-derived';
@@ -2778,207 +4068,186 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       )}
       
       {/* New Contact Modal */}
-      {contactModalOpen && (
-        <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 bg-gradient-to-br from-[#7f1010] to-[#a31414] flex items-center justify-between">
-              <div className="font-semibold text-white">New Contact</div>
-              <button 
-                onClick={() => {
-                  setContactModalOpen(false);
-                  setNewContactName('');
-                  setNewContactEmail('');
-                  setNewContactPhone('');
-                  setNewContactRole('');
-                  setNewContactDept('');
-                  setNewContactPrimary('false');
-                  setContactNameError(false);
-                  setContactPhotoBlob(null);
-                }} 
-                className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" 
-                title="Close"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
+      {contactModalOpen &&
+        (designSystem ? (
+          <AppFormModal
+            open
+            onClose={resetContactModal}
+            title="New Contact"
+            formWidth="comfortable"
+            footer={
+              <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+                <AppButton type="button" variant="secondary" size="sm" onClick={resetContactModal} disabled={isCreatingContact}>
+                  Cancel
+                </AppButton>
+                <AppButton type="button" size="sm" onClick={handleCreateNewContact} disabled={isCreatingContact} loading={isCreatingContact}>
+                  {isCreatingContact ? 'Creating...' : 'Create'}
+                </AppButton>
+              </div>
+            }
+          >
+            <div className="grid items-start gap-3 md:grid-cols-5">
               <div className="md:col-span-2">
-                <div className="text-[11px] uppercase text-gray-500 mb-1">Contact Photo</div>
-                <button 
+                <AppControlLabelRow
+                  label="Contact Photo"
+                  fieldHint={<AppFieldHint hint={PROPOSAL_FIELD_HINTS.contactPhoto} />}
+                />
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  className="mt-1.5 grid h-40 w-full place-items-center"
                   onClick={() => {
                     setContactPhotoBlob(new Blob());
                     setPickerForContact('__new__');
-                  }} 
-                  className="w-full h-40 border rounded grid place-items-center bg-gray-50"
+                  }}
                 >
                   Select Photo
-                </button>
+                </AppButton>
               </div>
-              <div className="md:col-span-3 grid grid-cols-2 gap-2">
-                <div className="col-span-2">
-                  <label className="text-xs text-gray-600">
-                    Name <span className="text-red-600">*</span>
-                  </label>
-                  <input 
-                    className={`border rounded px-3 py-2 w-full ${contactNameError && !newContactName.trim() ? 'border-red-500' : ''}`} 
-                    value={newContactName} 
-                    onChange={e => {
-                      setNewContactName(e.target.value);
-                      if (contactNameError) setContactNameError(false);
-                    }} 
-                  />
-                  {contactNameError && !newContactName.trim() && (
-                    <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                  )}
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Role/Title</label>
-                  <input 
-                    className="border rounded px-3 py-2 w-full" 
-                    value={newContactRole} 
-                    onChange={e => setNewContactRole(e.target.value)} 
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Department</label>
-                  <input 
-                    className="border rounded px-3 py-2 w-full" 
-                    value={newContactDept} 
-                    onChange={e => setNewContactDept(e.target.value)} 
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Email</label>
-                  <input 
-                    className="border rounded px-3 py-2 w-full" 
-                    value={newContactEmail} 
-                    onChange={e => setNewContactEmail(e.target.value)} 
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Phone</label>
-                  <input 
-                    className="border rounded px-3 py-2 w-full" 
-                    value={newContactPhone} 
-                    onChange={e => setNewContactPhone(formatPhone(e.target.value))} 
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Primary</label>
-                  <div className="flex items-center gap-2 mt-2">
-                    <input
-                      type="checkbox"
-                      checked={(!contacts || contacts.length === 0) || newContactPrimary === 'true'}
-                      onChange={e => setNewContactPrimary(e.target.checked ? 'true' : 'false')}
-                      disabled={!contacts || contacts.length === 0}
-                      className="rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                    <span className="text-xs text-gray-600">
-                      {(!contacts || contacts.length === 0) ? 'Primary contact' : 'Set as primary contact'}
-                    </span>
-                  </div>
-                </div>
-                <div className="col-span-2 text-right">
-                  <button 
-                    onClick={async () => {
-                      if (isCreatingContact) return;
-                      if (!newContactName.trim()) {
-                        setContactNameError(true);
-                        toast.error('Name is required');
-                        return;
-                      }
-                      if (!clientId) {
-                        toast.error('Client ID is required');
-                        return;
-                      }
-                      try {
-                        setIsCreatingContact(true);
-                        // If this is the first contact, automatically set as primary
-                        const isFirstContact = !contacts || contacts.length === 0;
-                        const willBePrimary = isFirstContact || newContactPrimary === 'true';
-                        
-                        // If setting as primary, first unset any existing primary contacts
-                        if (willBePrimary && contacts && contacts.length > 0) {
-                          const primaryContact = contacts.find((c: any) => c.is_primary);
-                          if (primaryContact) {
-                            await api('PATCH', `/clients/${clientId}/contacts/${primaryContact.id}`, {
-                              is_primary: false
-                            });
-                          }
-                        }
-                        
-                        const payload: any = {
-                          name: newContactName,
-                          email: newContactEmail,
-                          phone: newContactPhone,
-                          role_title: newContactRole,
-                          department: newContactDept,
-                          is_primary: willBePrimary
-                        };
-                        const created: any = await api('POST', `/clients/${clientId}/contacts`, payload);
-                        // If photo selected, upload it now
-                        if (contactPhotoBlob && created.id) {
-                          try {
-                            const up: any = await api('POST', '/files/upload', { 
-                              project_id: null, 
-                              client_id: clientId, 
-                              employee_id: null, 
-                              category_id: 'contact-photo', 
-                              original_name: `contact-${created.id}.jpg`, 
-                              content_type: 'image/jpeg' 
-                            });
-                            await fetch(up.upload_url, { 
-                              method: 'PUT', 
-                              headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' }, 
-                              body: contactPhotoBlob 
-                            });
-                            const conf: any = await api('POST', '/files/confirm', { 
-                              key: up.key, 
-                              size_bytes: contactPhotoBlob.size, 
-                              checksum_sha256: 'na', 
-                              content_type: 'image/jpeg' 
-                            });
-                            await api('POST', `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + created.id)}&original_name=${encodeURIComponent('contact-' + created.id + '.jpg')}`);
-                          } catch (e) {
-                            console.error('Failed to upload contact photo:', e);
-                            // Don't fail the whole operation if photo upload fails
-                          }
-                        }
-                        setNewContactName('');
-                        setNewContactEmail('');
-                        setNewContactPhone('');
-                        setNewContactRole('');
-                        setNewContactDept('');
-                        setNewContactPrimary('false');
-                        setContactNameError(false);
-                        setContactPhotoBlob(null);
-                        setContactModalOpen(false);
-                        // Refresh contacts list
-                        await refetchContacts();
-                        // Select the newly created contact
-                        setSelectedContactId(String(created.id));
-                        setCreatedFor(created.name || '');
-                        setPrimary({
-                          name: created.name || '',
-                          phone: created.phone || '',
-                          email: created.email || ''
-                        });
-                      } catch (e) {
-                        toast.error('Failed to create contact');
-                        setIsCreatingContact(false);
-                      }
-                    }} 
-                    disabled={isCreatingContact} 
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              <div className="grid grid-cols-2 gap-3 md:col-span-3">
+                <AppInput
+                  className="col-span-2"
+                  label="Name *"
+                  value={newContactName}
+                  error={contactNameError && !newContactName.trim() ? 'This field is required' : undefined}
+                  fieldHint={PROPOSAL_FIELD_HINTS.contactName}
+                  onChange={(e) => {
+                    setNewContactName(e.target.value);
+                    if (contactNameError) setContactNameError(false);
+                  }}
+                />
+                <AppInput
+                  label="Role/Title"
+                  value={newContactRole}
+                  onChange={(e) => setNewContactRole(e.target.value)}
+                  fieldHint={PROPOSAL_FIELD_HINTS.contactRole}
+                />
+                <AppInput
+                  label="Department"
+                  value={newContactDept}
+                  onChange={(e) => setNewContactDept(e.target.value)}
+                  fieldHint={PROPOSAL_FIELD_HINTS.contactDept}
+                />
+                <AppInput
+                  label="Email"
+                  value={newContactEmail}
+                  onChange={(e) => setNewContactEmail(e.target.value)}
+                  fieldHint={PROPOSAL_FIELD_HINTS.contactEmail}
+                />
+                <AppInput
+                  label="Phone"
+                  value={newContactPhone}
+                  onChange={(e) => setNewContactPhone(formatPhone(e.target.value))}
+                  fieldHint={PROPOSAL_FIELD_HINTS.contactPhone}
+                />
+                <AppCheckbox
+                  className="col-span-2"
+                  label={(!contacts || contacts.length === 0) ? 'Primary contact' : 'Set as primary contact'}
+                  checked={(!contacts || contacts.length === 0) || newContactPrimary === 'true'}
+                  onChange={(checked) => setNewContactPrimary(checked ? 'true' : 'false')}
+                  disabled={!contacts || contacts.length === 0}
+                  fieldHint={PROPOSAL_FIELD_HINTS.contactPrimary}
+                />
+              </div>
+            </div>
+          </AppFormModal>
+        ) : (
+          <OverlayPortal>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+              <div className="w-[800px] max-w-[95vw] overflow-hidden rounded-xl bg-white">
+                <div className="flex items-center justify-between bg-gradient-to-br from-[#7f1010] to-[#a31414] px-4 py-3">
+                  <div className="font-semibold text-white">New Contact</div>
+                  <button
+                    type="button"
+                    onClick={resetContactModal}
+                    className="flex h-8 w-8 items-center justify-center rounded text-2xl font-bold text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                    title="Close"
                   >
-                    {isCreatingContact ? 'Creating...' : 'Create'}
+                    ×
                   </button>
+                </div>
+                <div className="grid items-start gap-3 p-4 md:grid-cols-5">
+                  <div className="md:col-span-2">
+                    <div className="mb-1 text-[11px] uppercase text-gray-500">Contact Photo</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setContactPhotoBlob(new Blob());
+                        setPickerForContact('__new__');
+                      }}
+                      className="grid h-40 w-full place-items-center rounded border bg-gray-50"
+                    >
+                      Select Photo
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 md:col-span-3">
+                    <div className="col-span-2">
+                      <label className="text-xs text-gray-600">
+                        Name <span className="text-red-600">*</span>
+                      </label>
+                      <input
+                        className={`w-full rounded border px-3 py-2 ${contactNameError && !newContactName.trim() ? 'border-red-500' : ''}`}
+                        value={newContactName}
+                        onChange={(e) => {
+                          setNewContactName(e.target.value);
+                          if (contactNameError) setContactNameError(false);
+                        }}
+                      />
+                      {contactNameError && !newContactName.trim() && (
+                        <div className="mt-1 text-[11px] text-red-600">This field is required</div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Role/Title</label>
+                      <input className="w-full rounded border px-3 py-2" value={newContactRole} onChange={(e) => setNewContactRole(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Department</label>
+                      <input className="w-full rounded border px-3 py-2" value={newContactDept} onChange={(e) => setNewContactDept(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Email</label>
+                      <input className="w-full rounded border px-3 py-2" value={newContactEmail} onChange={(e) => setNewContactEmail(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Phone</label>
+                      <input
+                        className="w-full rounded border px-3 py-2"
+                        value={newContactPhone}
+                        onChange={(e) => setNewContactPhone(formatPhone(e.target.value))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Primary</label>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={(!contacts || contacts.length === 0) || newContactPrimary === 'true'}
+                          onChange={(e) => setNewContactPrimary(e.target.checked ? 'true' : 'false')}
+                          disabled={!contacts || contacts.length === 0}
+                          className="rounded disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                        <span className="text-xs text-gray-600">
+                          {(!contacts || contacts.length === 0) ? 'Primary contact' : 'Set as primary contact'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="col-span-2 text-right">
+                      <button
+                        type="button"
+                        onClick={handleCreateNewContact}
+                        disabled={isCreatingContact}
+                        className="rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isCreatingContact ? 'Creating...' : 'Create'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+          </OverlayPortal>
+        ))}
       {pickerForContact && (
         <ImagePicker 
           isOpen={true} 
@@ -3029,6 +4298,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       {/* Division Selection Modal */}
       {showDivisionModal && projectId && project?.project_division_ids && (
         <DivisionSelectionModal
+          designSystem={designSystem}
           projectDivisions={projectDivisions || []}
           projectDivisionIds={project.project_division_ids || []}
           onSelect={(divisionId) => {
@@ -3064,6 +4334,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       {/* Section Type Selection Modal */}
       {showSectionTypeModal && (
         <SectionTypeSelectionModal
+          designSystem={designSystem}
           onSelect={(type) => {
             if (type === 'text') {
               setSections(arr => [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }]);
@@ -3084,12 +4355,14 @@ function DivisionSelectionModal({
   projectDivisions, 
   projectDivisionIds, 
   onSelect, 
-  onClose 
+  onClose,
+  designSystem = false,
 }: { 
   projectDivisions: any[]; 
   projectDivisionIds: string[]; 
   onSelect: (divisionId: string) => void; 
   onClose: () => void;
+  designSystem?: boolean;
 }) {
   // Get all available divisions (all divisions assigned to the project, allowing repeats)
   const availableDivisions = useMemo(() => {
@@ -3113,82 +4386,140 @@ function DivisionSelectionModal({
     return divisions;
   }, [projectDivisions, projectDivisionIds]);
 
-  return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between">
-          <span>Select Division</span>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-900 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+  const body = (
+    <div className="max-h-[60vh] overflow-y-auto">
+      {availableDivisions.length > 0 ? (
+        <div
+          className={`grid gap-3 ${availableDivisions.length === 1 ? 'grid-cols-1' : availableDivisions.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}
+        >
+          {availableDivisions.map((div) => (
+            <button
+              key={div.id}
+              type="button"
+              onClick={() => onSelect(div.id)}
+              className={
+                designSystem
+                  ? uiCx(
+                      'flex flex-col items-center gap-2 rounded-lg border p-3 transition-all',
+                      uiBorders.subtle,
+                      'hover:border-brand-red/50 hover:bg-gray-50',
+                    )
+                  : 'flex flex-col items-center gap-2 p-3 border border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-all'
+              }
+            >
+              <span className="text-2xl">{div.icon}</span>
+              <span className={designSystem ? uiCx(uiTypography.helper, 'text-center font-medium') : 'text-xs font-medium text-gray-900 text-center'}>
+                {div.label}
+              </span>
+            </button>
+          ))}
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          {availableDivisions.length > 0 ? (
-            <div className={`grid gap-3 ${availableDivisions.length === 1 ? 'grid-cols-1' : availableDivisions.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
-              {availableDivisions.map((div) => (
-                <button
-                  key={div.id}
-                  onClick={() => onSelect(div.id)}
-                  className="flex flex-col items-center gap-2 p-3 border border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-all"
-                >
-                  <span className="text-2xl">{div.icon}</span>
-                  <span className="text-xs font-medium text-gray-900 text-center">{div.label}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <p className="text-xs">All divisions have been assigned to pricing items.</p>
-            </div>
-          )}
+      ) : (
+        <p className={uiCx(uiTypography.helper, 'py-8 text-center')}>
+          All divisions have been assigned to pricing items.
+        </p>
+      )}
+    </div>
+  );
+
+  if (designSystem) {
+    return (
+      <AppModal open onClose={onClose} title="Select Division" size="md">
+        {body}
+      </AppModal>
+    );
+  }
+
+  return (
+    <OverlayPortal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+        <div
+          className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between bg-slate-200 p-2.5 text-xs font-semibold text-gray-900">
+            <span>Select Division</span>
+            <button type="button" onClick={onClose} className="text-gray-600 hover:text-gray-900 transition-colors">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">{body}</div>
         </div>
       </div>
-    </div></OverlayPortal>
+    </OverlayPortal>
   );
 }
 
 // Section Type Selection Modal Component
 function SectionTypeSelectionModal({ 
   onSelect, 
-  onClose 
+  onClose,
+  designSystem = false,
 }: { 
   onSelect: (type: 'text' | 'images') => void; 
   onClose: () => void;
+  designSystem?: boolean;
 }) {
   const sectionTypes = [
     { type: 'text' as const, label: 'Text Section', icon: '📝' },
     { type: 'images' as const, label: 'Images Section', icon: '🖼️' }
   ];
 
+  const body = (
+    <div className="grid grid-cols-2 gap-3">
+      {sectionTypes.map((section) => (
+        <button
+          key={section.type}
+          type="button"
+          onClick={() => onSelect(section.type)}
+          className={
+            designSystem
+              ? uiCx(
+                  'flex flex-col items-center gap-2 rounded-lg border p-3 transition-all',
+                  uiBorders.subtle,
+                  'hover:border-brand-red/50 hover:bg-gray-50',
+                )
+              : 'flex flex-col items-center gap-2 p-3 border border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-all'
+          }
+        >
+          <span className="text-2xl">{section.icon}</span>
+          <span className={designSystem ? uiCx(uiTypography.helper, 'text-center font-medium') : 'text-xs font-medium text-gray-900 text-center'}>
+            {section.label}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+
+  if (designSystem) {
+    return (
+      <AppModal open onClose={onClose} title="Select Section Type" size="md">
+        {body}
+      </AppModal>
+    );
+  }
+
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-md overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between">
-          <span>Select Section Type</span>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-900 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="grid grid-cols-2 gap-3">
-            {sectionTypes.map((section) => (
-              <button
-                key={section.type}
-                onClick={() => onSelect(section.type)}
-                className="flex flex-col items-center gap-2 p-3 border border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-all"
-              >
-                <span className="text-2xl">{section.icon}</span>
-                <span className="text-xs font-medium text-gray-900 text-center">{section.label}</span>
-              </button>
-            ))}
+    <OverlayPortal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+        <div
+          className="flex w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between bg-slate-200 p-2.5 text-xs font-semibold text-gray-900">
+            <span>Select Section Type</span>
+            <button type="button" onClick={onClose} className="text-gray-600 hover:text-gray-900 transition-colors">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
+          <div className="flex-1 overflow-y-auto p-4">{body}</div>
         </div>
       </div>
-    </div></OverlayPortal>
+    </OverlayPortal>
   );
 }
 

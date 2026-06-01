@@ -1,5 +1,14 @@
-import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useMemo, useState, useEffect, useLayoutEffect, useCallback, useRef, type MutableRefObject } from 'react';
+﻿import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  useMemo,
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useRef,
+  type CSSProperties,
+  type MutableRefObject,
+} from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -14,10 +23,15 @@ import {
 import ImagePicker from '@/components/ImagePicker';
 import EstimateBuilder, { type EstimateBuilderRef } from '@/components/EstimateBuilder';
 import ProposalForm, { toSqft, fromSqft, formatAreaLabel, type AreaUnit } from '@/components/ProposalForm';
+import ProjectProposalTab from '@/components/ProjectProposalTab';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import CalendarMock from '@/components/CalendarMock';
+import { ProjectConvertToProjectModalDsForm } from '@/components/ProjectConvertToProjectModalDsForm';
+import { ProjectReportsTabDs } from '@/components/ProjectReportsTabDs';
 import DispatchTab from '@/components/DispatchTab';
+import ProjectTimesheetTab from '@/components/ProjectTimesheetTab';
+import ProjectFilesTabEnhanced from '@/components/ProjectFilesTabEnhanced';
 import OrdersTab from '@/components/OrdersTab';
 import ProjectDocumentsTab from '@/components/ProjectDocumentsTab';
 import ProjectSafetyTab from '@/components/ProjectSafetyTab';
@@ -25,7 +39,6 @@ import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
 import OverlayPortal from '@/components/OverlayPortal';
-import SubcontractorClockModal from '@/components/SubcontractorClockModal';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 import {
   hasProjectFeaturePermission,
@@ -35,6 +48,59 @@ import {
 } from '@/lib/projectLinePermissionKeys';
 import { filterStatusesForOpportunity, filterStatusesForProject } from '@/lib/projectStatusVisibility';
 import { isHiddenReportCategory, isHiddenReportNote } from '@/lib/reportCategories';
+import { buildReportCategorySelectGroups } from '@/lib/reportCategorySelectGroups';
+import { employeeHasSalesOrEstimatingDepartment, mapEmployeeToAppUserSelect } from '@/lib/clientUi';
+import {
+  opportunityEditEstimatorsQuickInfo,
+  opportunityEditLeadSourceQuickInfo,
+  opportunityEditNameQuickInfo,
+  opportunityConvertToProjectQuickInfo,
+  opportunityCreateNoteQuickInfo,
+  opportunityEditRelatedCustomersQuickInfo,
+  opportunityEditSiteQuickInfo,
+  opportunityEditStatusQuickInfo,
+} from '@/lib/formModalQuickInfo';
+import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppEmptyState,
+  AppHeroEditButton,
+  AppListRowIconButton,
+  AppPageHeader,
+  AppFormModal,
+  AppInput,
+  AppSectionHeader,
+  AppSelect,
+  AppTabs,
+  AppTextarea,
+  AppTooltip,
+  AppUserAvatar,
+  AppUserSelect,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+  uiUserSelect,
+} from '@/components/ui';
+import { Briefcase, ChevronDown, ChevronUp } from 'lucide-react';
+
+/** Hero expand/collapse — same timing as CustomerDetail. */
+const HERO_PANEL_EASE = 'ease-[cubic-bezier(0.22,1,0.36,1)]';
+const HERO_PANEL_TRANSITION_BASE = 'overflow-hidden';
+const HERO_EXPAND_DURATION = 'duration-[1400ms]';
+const HERO_COLLAPSE_DURATION = 'duration-[650ms]';
+const HERO_EXPAND_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+/** CustomerDetail expanded cap — used to scale opportunity expand duration to the same perceived speed. */
+const CUSTOMER_HERO_EXPANDED_MAX_PX = 320;
+const HERO_EXPAND_BASE_MS = 1400;
+const HERO_COLLAPSE_MS = 650;
+const OPPORTUNITY_HERO_COLLAPSED_PX = 72;
 
 function salesListPaths(project: { business_line?: string; is_bidding?: boolean; is_leak_investigation?: boolean } | undefined | null) {
   const rm = project?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
@@ -842,6 +908,10 @@ export default function ProjectDetail(){
   });
   const isLeakInvestigation = !!proj?.is_leak_investigation;
   const isOpportunityStyleTabs = !!(proj?.is_bidding || isLeakInvestigation);
+  const isOpportunityDetailRoute =
+    Boolean(proj?.is_bidding) &&
+    !isLeakInvestigation &&
+    location.pathname.startsWith('/opportunities/');
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`), enabled: !!id && !signOnlySafetySession });
@@ -1017,6 +1087,7 @@ export default function ProjectDetail(){
   const [editLeakInvestigationLinksModal, setEditLeakInvestigationLinksModal] = useState(false);
   const [editRelatedCustomersModal, setEditRelatedCustomersModal] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
+  const [workloadEventCreateOpen, setWorkloadEventCreateOpen] = useState(false);
 
   // Base available tabs (leak investigations use the same strip as opportunities)
   const baseAvailableTabs = isOpportunityStyleTabs
@@ -1099,13 +1170,13 @@ export default function ProjectDetail(){
     setTab(newTab);
     if (newTab === null) {
       nav(location.pathname, { replace: true });
-      setIsHeroCollapsed(false);
+      if (!isOpportunityDetailRoute) setIsHeroCollapsed(false);
     } else {
       nav(`${location.pathname}?tab=${newTab}`, { replace: true });
-      setIsHeroCollapsed(newTab !== 'overview');
+      if (!isOpportunityDetailRoute) setIsHeroCollapsed(newTab !== 'overview');
       invalidateQueriesForTab(newTab);
     }
-  }, [location.pathname, nav, invalidateQueriesForTab]);
+  }, [location.pathname, nav, invalidateQueriesForTab, isOpportunityDetailRoute]);
 
   const handleTabClick = async (newTab: typeof availableTabs[number] | 'estimate' | null) => {
     if (signOnlySafetySession) {
@@ -1227,89 +1298,252 @@ export default function ProjectDetail(){
     return tabDescriptions[activeTab] || '';
   };
 
+  const handlePageBack = () => {
+    if (tab && tab !== 'overview') {
+      handleTabClick(null);
+      return;
+    }
+    const sp = salesListPaths(proj);
+    if (proj?.is_bidding) nav(sp.opportunities);
+    else if (proj?.is_leak_investigation) nav(sp.leakInvestigations);
+    else nav(sp.projects);
+  };
+
+  const pageBackLabel =
+    tab && tab !== 'overview'
+      ? 'Back to Overview'
+      : proj?.is_bidding
+        ? 'Back to Opportunities'
+        : proj?.is_leak_investigation
+          ? 'Back to Leak investigations'
+          : 'Back to Projects';
+
+  const heroCardShell = (extra: string) =>
+    isOpportunityDetailRoute
+      ? uiCx(uiRadius.card, uiBorders.subtle, 'bg-white', extra)
+      : uiCx('rounded-xl border bg-white', extra);
+
+  const opportunityHeroMeasureRef = useRef<HTMLDivElement>(null);
+  const [opportunityHeroExpandedHeight, setOpportunityHeroExpandedHeight] = useState(320);
+
+  useLayoutEffect(() => {
+    if (!isOpportunityDetailRoute) return;
+    const el = opportunityHeroMeasureRef.current;
+    if (!el) return;
+    const measure = () => setOpportunityHeroExpandedHeight(el.scrollHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isOpportunityDetailRoute, proj, cover, livePricingItems, projectDivisions]);
+
+  const opportunityHeroExpandMs = useMemo(
+    () =>
+      Math.min(3200, Math.round((opportunityHeroExpandedHeight / CUSTOMER_HERO_EXPANDED_MAX_PX) * HERO_EXPAND_BASE_MS)),
+    [opportunityHeroExpandedHeight],
+  );
+
+  const opportunityHeroExpandedStyle = useMemo((): CSSProperties | undefined => {
+    if (!isOpportunityDetailRoute) return undefined;
+    return {
+      transitionProperty: 'max-height, opacity',
+      transitionDuration: isHeroCollapsed ? `${HERO_COLLAPSE_MS}ms` : `${opportunityHeroExpandMs}ms`,
+      transitionTimingFunction: HERO_EXPAND_EASING,
+      maxHeight: isHeroCollapsed ? 0 : opportunityHeroExpandedHeight,
+      opacity: isHeroCollapsed ? 0 : 1,
+    };
+  }, [isOpportunityDetailRoute, isHeroCollapsed, opportunityHeroExpandedHeight, opportunityHeroExpandMs]);
+
+  const opportunityHeroCollapsedStyle = useMemo((): CSSProperties | undefined => {
+    if (!isOpportunityDetailRoute) return undefined;
+    return {
+      transitionProperty: 'max-height, opacity',
+      transitionDuration: isHeroCollapsed ? `${HERO_EXPAND_BASE_MS}ms` : `${HERO_COLLAPSE_MS}ms`,
+      transitionTimingFunction: HERO_EXPAND_EASING,
+      maxHeight: isHeroCollapsed ? OPPORTUNITY_HERO_COLLAPSED_PX : 0,
+      opacity: isHeroCollapsed ? 1 : 0,
+    };
+  }, [isOpportunityDetailRoute, isHeroCollapsed]);
+
+  const opportunityConvertHeaderAction = useMemo(() => {
+    if (!isOpportunityDetailRoute || !proj?.is_bidding || !hasEditPermission) return null;
+
+    const hasName = !!proj?.name?.trim();
+    const hasSite = !!proj?.site_id;
+    const hasEstimator = !!proj?.estimator_id;
+    const hasDivisions = Array.isArray(proj?.project_division_ids) && proj.project_division_ids.length > 0;
+    const isComplete = hasName && hasSite && hasEstimator && hasDivisions;
+
+    const missingFields: string[] = [];
+    if (!hasName) missingFields.push('Project Name');
+    if (!hasSite) missingFields.push('Site');
+    if (!hasEstimator) missingFields.push('Estimator');
+    if (!hasDivisions) missingFields.push('Project Divisions');
+
+    const missingMessage =
+      missingFields.length > 0
+        ? `Please complete the following fields before converting: ${missingFields.join(', ')}`
+        : '';
+
+    const convertTooltipContent =
+      missingFields.length > 0 ? (
+        <div>
+          <p>Please complete the following fields before converting:</p>
+          <ul className="mt-1 list-inside list-disc space-y-0.5">
+            {missingFields.map((field) => (
+              <li key={field}>{field}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null;
+
+    const convertButton = (
+      <AppButton
+        type="button"
+        size="sm"
+        variant="secondary"
+        disabled={!isComplete}
+        className={!isComplete ? 'pointer-events-none' : undefined}
+        onClick={() => {
+          if (!isComplete) {
+            toast.error(missingMessage);
+            return;
+          }
+          setShowConvertModal(true);
+        }}
+      >
+        Convert to Project
+      </AppButton>
+    );
+
+    if (!isComplete && convertTooltipContent) {
+      return (
+        <AppTooltip wrap content={convertTooltipContent} placement="top" className="cursor-not-allowed">
+          {convertButton}
+        </AppTooltip>
+      );
+    }
+
+    return convertButton;
+  }, [isOpportunityDetailRoute, proj, hasEditPermission]);
+
   return (
-    <div>
-      {/* Title Bar */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <button
-              onClick={() => {
-                // If on a tab, go back to overview (may show unsaved confirmation); otherwise go to list
-                if (tab && tab !== 'overview') {
-                  handleTabClick(null);
-                } else {
-                  const sp = salesListPaths(proj);
-                  if (proj?.is_bidding) nav(sp.opportunities);
-                  else if (proj?.is_leak_investigation) nav(sp.leakInvestigations);
-                  else nav(sp.projects);
-                }
-              }}
-              className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-              title={
-                tab && tab !== 'overview'
-                  ? 'Back to Overview'
-                  : proj?.is_bidding
-                    ? 'Back to Opportunities'
-                    : proj?.is_leak_investigation
-                      ? 'Back to Leak investigations'
-                      : 'Back to Projects'
-              }
-            >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </button>
-            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
+    <div className={uiCx(isOpportunityDetailRoute && 'w-full min-h-full bg-gray-50', uiSpacing.pageStack)}>
+      {isOpportunityDetailRoute ? (
+        <AppPageHeader
+          title={getPageTitle(proj, tab)}
+          subtitle={getPageDescription(proj, tab)}
+          icon={<Briefcase className="h-4 w-4" />}
+          onBack={handlePageBack}
+          backLabel={pageBackLabel}
+          actions={
+            <div className="text-right">
+              <div className={uiTypography.overline}>Today</div>
+              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
             </div>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">
-                {getPageTitle(proj, tab)}
+          }
+        />
+      ) : (
+        <div className="rounded-xl border bg-white p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 flex-1">
+              <button
+                onClick={handlePageBack}
+                className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+                title={pageBackLabel}
+              >
+                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+              </button>
+              <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">{getPageDescription(proj, tab)}</div>
+              <div>
+                <div className="text-sm font-semibold text-gray-900">{getPageTitle(proj, tab)}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{getPageDescription(proj, tab)}</div>
+              </div>
             </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            <div className="text-right">
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Hero Section - Based on Mockup */}
-      <div className={`transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${isHeroCollapsed ? 'mb-2' : 'mb-4'}`}>
-      <div className="relative" style={{ minHeight: isHeroCollapsed ? 'auto' : 'auto' }}>
-        {/* Expanded View - Full Hero Section (defines container height when expanded) */}
-        <div className={`rounded-xl border bg-white transition-all ${isHeroCollapsed ? 'overflow-hidden duration-[1200ms]' : 'overflow-visible duration-[1800ms]'} ease-in-out ${
-          isHeroCollapsed 
-            ? 'opacity-0 max-h-0 pointer-events-none relative' 
-            : 'opacity-100 max-h-[2000px] pointer-events-auto relative'
-        }`} style={{
-          transitionProperty: 'max-height, opacity',
-          transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
-          transitionTimingFunction: 'ease-in-out, ease-in-out'
-        }}>
-          <div className="p-3 overflow-visible">
-            <div className="flex gap-3 items-start">
+      {/* Hero + tabs — opportunity uses in-flow collapse (CustomerDetail pattern) */}
+      {(() => {
+        const heroPanels = (
+          <>
+        {/* Expanded View - Full Hero Section */}
+        <div
+          className={
+            isOpportunityDetailRoute
+              ? HERO_PANEL_TRANSITION_BASE
+              : heroCardShell(
+                  `transition-all ${isHeroCollapsed ? 'overflow-hidden duration-[1200ms]' : 'overflow-visible duration-[1800ms]'} ease-in-out ${
+                    isHeroCollapsed
+                      ? 'opacity-0 max-h-0 pointer-events-none relative'
+                      : 'opacity-100 max-h-[2000px] pointer-events-auto relative'
+                  }`,
+                )
+          }
+          style={
+            isOpportunityDetailRoute
+              ? opportunityHeroExpandedStyle
+              : {
+                  transitionProperty: 'max-height, opacity',
+                  transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
+                  transitionTimingFunction: 'ease-in-out, ease-in-out',
+                }
+          }
+          aria-hidden={isOpportunityDetailRoute ? isHeroCollapsed : undefined}
+        >
+          <div
+            ref={isOpportunityDetailRoute ? opportunityHeroMeasureRef : undefined}
+            className={uiCx(isOpportunityDetailRoute ? 'p-2.5' : 'p-3', 'overflow-visible')}
+          >
+            <div className={uiCx('flex items-start', isOpportunityDetailRoute ? 'gap-2.5' : 'gap-3')}>
               {/* Left Section - Image and Project Divisions */}
               <div className="w-48 flex-shrink-0 overflow-visible">
                 {/* Image */}
-                <div className="w-48 h-36 rounded-xl border overflow-hidden group relative mb-2 overflow-visible">
-                  <img src={cover} className="w-full h-full object-cover" />
-                  <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity text-xs">✏️ Change</button>
+                <div
+                  className={uiCx(
+                    'h-36 w-48 overflow-hidden group relative overflow-visible',
+                    uiRadius.card,
+                    uiBorders.subtle,
+                    isOpportunityDetailRoute ? 'mb-1.5' : 'mb-2',
+                  )}
+                >
+                  <img src={cover} className="w-full h-full object-cover" alt="" />
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen(true)}
+                    className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  >
+                    Change
+                  </button>
                 </div>
                 
                 {/* Project Divisions below image - with Edit button and modal */}
-                <ProjectDivisionsHeroSection projectId={String(id||'')} proj={proj||{}} hasEditPermission={hasEditPermission} livePricingItems={livePricingItems} />
-                <ProjectHeroPricingArea projectId={String(id||'')} proposals={proposals||[]} />
+                <ProjectDivisionsHeroSection
+                  projectId={String(id || '')}
+                  proj={proj || {}}
+                  hasEditPermission={hasEditPermission}
+                  livePricingItems={livePricingItems}
+                  compact={isOpportunityDetailRoute}
+                />
+                {!isOpportunityDetailRoute ? (
+                  <ProjectHeroPricingArea projectId={String(id || '')} proposals={proposals || []} />
+                ) : null}
               </div>
               
               {/* Right Section - General Information */}
               <div className="flex-1 min-w-0">
-                <div className="mb-2">
+                <div className={isOpportunityDetailRoute ? 'mb-1' : 'mb-2'}>
                 <div className="flex items-center gap-1.5">
                   <h3 
                     className="text-sm font-bold text-gray-900 cursor-text"
@@ -1317,22 +1551,33 @@ export default function ProjectDetail(){
                   >
                     {proj?.name || 'Untitled Project'}
                   </h3>
-                  {hasEditPermission && (
-                    <button
-                      onClick={() => setEditProjectNameModal(true)}
-                      className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                      title="Edit Project Name"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                  )}
+                  {hasEditPermission &&
+                    (isOpportunityDetailRoute ? (
+                      <AppHeroEditButton
+                        onClick={() => setEditProjectNameModal(true)}
+                        title="Edit Project Name"
+                      />
+                    ) : (
+                      <button
+                        onClick={() => setEditProjectNameModal(true)}
+                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                        title="Edit Project Name"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    ))}
                 </div>
               </div>
               
               {/* Align by columns */}
-              <div className="grid grid-cols-3 gap-x-3 gap-y-1.5">
+              <div
+                className={uiCx(
+                  'grid grid-cols-3',
+                  isOpportunityDetailRoute ? 'gap-x-2.5 gap-y-1' : 'gap-x-3 gap-y-1.5',
+                )}
+              >
                   {/* Column 1 */}
                   <div className="min-w-0">
                     {/* Code */}
@@ -1536,9 +1781,15 @@ export default function ProjectDetail(){
                           </button>
                         )}
                       </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>
-                        {statusLabel || '—'}
-                      </span>
+                      {isOpportunityDetailRoute ? (
+                        <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)}>
+                          {statusLabel || '—'}
+                        </AppBadge>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>
+                          {statusLabel || '—'}
+                        </span>
+                      )}
                       {statusLabel && <StatusTimer project={proj} />}
                     </div>
                   </div>
@@ -2110,32 +2361,60 @@ export default function ProjectDetail(){
           </div>
           
           {/* Collapse button - bottom right corner of card */}
-          <button
-            onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-            className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
-            title="Collapse"
-          >
-            <svg 
-              className="w-3 h-3 transition-transform rotate-180" 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
+          {isOpportunityDetailRoute ? (
+            <AppButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute bottom-2 right-2 z-20 p-1"
+              onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
+              title="Collapse"
+              aria-label="Collapse"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+              <ChevronUp className="h-3 w-3" />
+            </AppButton>
+          ) : (
+            <button
+              onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
+              className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+              title="Collapse"
+            >
+              <svg
+                className="w-3 h-3 transition-transform rotate-180"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          )}
         </div>
         
-        {/* Collapsed View - Single Line (defines container height when collapsed, overlays when visible) */}
-        <div className={`rounded-xl border bg-white overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out absolute top-0 left-0 right-0 ${
-          isHeroCollapsed 
-            ? 'opacity-100 min-h-[60px] max-h-[200px] pointer-events-auto z-10' 
-            : 'opacity-0 max-h-0 pointer-events-none z-0'
-        }`} style={{
-          transitionProperty: 'max-height, opacity',
-          transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
-          transitionTimingFunction: 'ease-in-out, ease-in-out'
-        }}>
+        {/* Collapsed View - Single Line */}
+        <div
+          className={
+            isOpportunityDetailRoute
+              ? HERO_PANEL_TRANSITION_BASE
+              : heroCardShell(
+                  `overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out absolute top-0 left-0 right-0 ${
+                    isHeroCollapsed
+                      ? 'opacity-100 min-h-[60px] max-h-[200px] pointer-events-auto z-10'
+                      : 'opacity-0 max-h-0 pointer-events-none z-0'
+                  }`,
+                )
+          }
+          style={
+            isOpportunityDetailRoute
+              ? opportunityHeroCollapsedStyle
+              : {
+                  transitionProperty: 'max-height, opacity',
+                  transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
+                  transitionTimingFunction: 'ease-in-out, ease-in-out',
+                }
+          }
+          aria-hidden={isOpportunityDetailRoute ? !isHeroCollapsed : undefined}
+        >
           <div className="p-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
@@ -2207,30 +2486,85 @@ export default function ProjectDetail(){
           </div>
           
           {/* Expand button - bottom right corner */}
-          <button
-            onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-            className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
-            title="Expand"
-          >
-            <svg 
-              className="w-3 h-3 transition-transform" 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
+          {isOpportunityDetailRoute ? (
+            <AppButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute bottom-2 right-2 z-20 p-1"
+              onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
+              title="Expand"
+              aria-label="Expand"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+              <ChevronDown className="h-3 w-3" />
+            </AppButton>
+          ) : (
+            <button
+              onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
+              className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+              title="Expand"
+            >
+              <svg
+                className="w-3 h-3 transition-transform"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          )}
         </div>
-      </div>
-      </div>
+          </>
+        );
 
-      {/* Tab Cards — hidden for safety sign-only session (external signer) */}
-      {!signOnlySafetySession && (
-        <div className={`mb-4 transition-all duration-[1200ms] ease-in-out ${isHeroCollapsed ? 'mt-16' : 'mt-0'}`}>
-          <ProjectTabCards availableTabs={availableTabs} onTabClick={handleTabClick} proj={proj} currentTab={tab} />
-        </div>
-      )}
+        const tabCards = (
+          <ProjectTabCards
+            availableTabs={availableTabs}
+            onTabClick={handleTabClick}
+            proj={proj}
+            currentTab={tab}
+            useDesignSystem={isOpportunityDetailRoute}
+            isHeroCollapsed={isHeroCollapsed}
+            headerEnd={isOpportunityDetailRoute ? opportunityConvertHeaderAction : undefined}
+          />
+        );
+
+        if (isOpportunityDetailRoute) {
+          return (
+            <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-1.5' : 'gap-2')}>
+              <AppCard
+                className={uiCx('transition-[margin]', HERO_PANEL_EASE)}
+                bodyClassName="relative overflow-hidden p-0"
+              >
+                {heroPanels}
+              </AppCard>
+              {!signOnlySafetySession ? (
+                <div className={!isHeroCollapsed ? '-mt-0.5' : undefined}>{tabCards}</div>
+              ) : null}
+            </div>
+          );
+        }
+
+        return (
+          <>
+            <div
+              className={`transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${isHeroCollapsed ? 'mb-2' : 'mb-4'}`}
+            >
+              <div className="relative" style={{ minHeight: isHeroCollapsed ? 'auto' : 'auto' }}>
+                {heroPanels}
+              </div>
+            </div>
+            {!signOnlySafetySession ? (
+              <div
+                className={`mb-4 transition-all duration-[1200ms] ease-in-out ${isHeroCollapsed ? 'mt-16' : 'mt-0'}`}
+              >
+                {tabCards}
+              </div>
+            ) : null}
+          </>
+        );
+      })()}
       {/* Same offset as tab strip: collapsed hero is position:absolute; without this, Safety content sits under it */}
       {signOnlySafetySession && isHeroCollapsed && (
         <div className="mt-16 mb-4 shrink-0" aria-hidden />
@@ -2259,6 +2593,39 @@ export default function ProjectDetail(){
                 />
               </div>
             </>
+          ) : isOpportunityDetailRoute ? (
+            <div className={uiCx(uiLayout.pageTwoColumn, 'mb-4')}>
+              <AppCard className="flex h-full min-h-0 flex-col">
+                <AppSectionHeader
+                  title="Workload"
+                  description="Calendar events for this opportunity."
+                  action={
+                    hasEditPermission ? (
+                      <AppButton type="button" size="sm" onClick={() => setWorkloadEventCreateOpen(true)}>
+                        + Create Event
+                      </AppButton>
+                    ) : null
+                  }
+                />
+                <div className="mt-3 min-h-0 flex-1">
+                  <CalendarMock
+                    title="Opportunity Calendar"
+                    projectId={String(id)}
+                    hasEditPermission={hasEditPermission}
+                    useDesignSystem
+                    hideCreateButton
+                    createModalOpen={workloadEventCreateOpen}
+                    onCreateModalOpenChange={setWorkloadEventCreateOpen}
+                  />
+                </div>
+              </AppCard>
+              <ProjectTeamCard
+                projectId={String(id)}
+                employees={employees||[]}
+                canManageMembers={isAdmin || permissions.has('business:projects:members:write')}
+                useDesignSystem
+              />
+            </div>
           ) : (
             <div className="mb-4 grid md:grid-cols-2 gap-4">
               <div className="rounded-xl border bg-white p-4">
@@ -2279,53 +2646,49 @@ export default function ProjectDetail(){
         </>
       )}
 
-      {/* Convert to Project Button (for opportunities) */}
-      {!tab && proj?.is_bidding && hasEditPermission && (() => {
-        // Check if all required fields are filled
+      {/* Convert to Project Button (for opportunities — legacy layout only) */}
+      {!isOpportunityDetailRoute && !tab && proj?.is_bidding && hasEditPermission && (() => {
         const hasName = !!proj?.name?.trim();
         const hasSite = !!proj?.site_id;
         const hasEstimator = !!proj?.estimator_id;
         const hasDivisions = Array.isArray(proj?.project_division_ids) && proj.project_division_ids.length > 0;
-        
         const isComplete = hasName && hasSite && hasEstimator && hasDivisions;
-        
-        // Build missing fields message
+
         const missingFields: string[] = [];
         if (!hasName) missingFields.push('Project Name');
         if (!hasSite) missingFields.push('Site');
         if (!hasEstimator) missingFields.push('Estimator');
         if (!hasDivisions) missingFields.push('Project Divisions');
-        
-        const missingMessage = missingFields.length > 0 
-          ? `Please complete the following fields before converting: ${missingFields.join(', ')}`
-          : '';
-        
+
+        const missingMessage =
+          missingFields.length > 0
+            ? `Please complete the following fields before converting: ${missingFields.join(', ')}`
+            : '';
+
         return (
           <div className="mb-4">
-            <button 
-              onClick={()=>{
+            <button
+              onClick={() => {
                 if (!isComplete) {
                   toast.error(missingMessage);
                   return;
                 }
                 setShowConvertModal(true);
-              }} 
+              }}
               disabled={!isComplete}
               className={`w-full border-2 border-dashed rounded-lg p-2.5 transition-all text-center bg-white flex items-center justify-center gap-2 min-h-[60px] ${
-                isComplete 
-                  ? 'border-green-300 hover:border-green-600 hover:bg-green-50 cursor-pointer' 
+                isComplete
+                  ? 'border-green-300 hover:border-green-600 hover:bg-green-50 cursor-pointer'
                   : 'border-gray-300 cursor-not-allowed'
               }`}
               title={missingMessage || 'Convert this opportunity to an active project'}
             >
               <span className={`text-lg ${isComplete ? 'text-green-500' : 'text-gray-400'}`}>+</span>
-              <span className={`font-medium text-xs ${isComplete ? 'text-green-700' : 'text-gray-500'}`}>Convert to Project</span>
+              <span className={`font-medium text-xs ${isComplete ? 'text-green-700' : 'text-gray-500'}`}>
+                Convert to Project
+              </span>
             </button>
-            {!isComplete && (
-              <p className="mt-2 text-xs text-gray-600 text-center">
-                {missingMessage}
-              </p>
-            )}
+            {!isComplete && <p className="mt-2 text-xs text-gray-600 text-center">{missingMessage}</p>}
           </div>
         );
       })()}
@@ -2525,7 +2888,9 @@ export default function ProjectDetail(){
                 <ReportsTabEnhanced
                   projectId={String(id)}
                   businessLine={proj?.business_line}
+                  isBidding={!!proj?.is_bidding}
                   items={reports||[]}
+                  designSystem={isOpportunityDetailRoute}
                   onRefresh={async () => { await refetchReports(); invalidateRecentActivity(); }}
                 />
               )}
@@ -2535,11 +2900,16 @@ export default function ProjectDetail(){
                   projectId={String(id)}
                   statusLabel={proj?.status_label || ''}
                   businessLine={proj?.business_line}
+                  designSystem={isOpportunityDetailRoute}
                 />
               )}
 
               {tab==='timesheet' && (
-                <TimesheetTab projectId={String(id)} statusLabel={proj?.status_label||''} />
+                <ProjectTimesheetTab
+                  projectId={String(id)}
+                  statusLabel={proj?.status_label || ''}
+                  designSystem={isOpportunityDetailRoute}
+                />
               )}
 
               {tab==='files' && (
@@ -2548,19 +2918,49 @@ export default function ProjectDetail(){
                   businessLine={proj?.business_line}
                   files={files||[]}
                   onRefresh={async () => { await refetchFiles(); invalidateRecentActivity(); }}
+                  designSystem={isOpportunityDetailRoute}
                 />
               )}
 
               {tab==='documents' && (
-                <ProjectDocumentsTab projectId={String(id)} isBidding={isOpportunityStyleTabs} canEditDocuments={isAdmin || permissions.has('business:projects:documents:write')} />
+                <ProjectDocumentsTab
+                  projectId={String(id)}
+                  isBidding={isOpportunityStyleTabs}
+                  canEditDocuments={isAdmin || permissions.has('business:projects:documents:write')}
+                  designSystem={isOpportunityDetailRoute}
+                />
               )}
 
               {tab==='proposal' && (
-                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={isOpportunityStyleTabs} onPricingItemsChange={setLivePricingItems} showOnlyPricing={false} proposalFormSaveRef={proposalFormSaveRef} />
+                <ProjectProposalTab
+                  projectId={String(id)}
+                  clientId={String(proj?.client_id || '')}
+                  siteId={String(proj?.site_id || '')}
+                  proposals={proposals || []}
+                  statusLabel={proj?.status_label || ''}
+                  settings={settings || {}}
+                  isBidding={isOpportunityStyleTabs}
+                  onPricingItemsChange={setLivePricingItems}
+                  showOnlyPricing={false}
+                  proposalFormSaveRef={proposalFormSaveRef}
+                  designSystem={isOpportunityDetailRoute}
+                />
               )}
 
               {tab==='pricing' && (
-                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={isOpportunityStyleTabs} onPricingItemsChange={setLivePricingItems} showOnlyPricing={true} proposalFormSaveRef={proposalFormSaveRef} />
+                <ProjectProposalTab
+                  projectId={String(id)}
+                  clientId={String(proj?.client_id || '')}
+                  siteId={String(proj?.site_id || '')}
+                  proposals={proposals || []}
+                  statusLabel={proj?.status_label || ''}
+                  settings={settings || {}}
+                  isBidding={isOpportunityStyleTabs}
+                  onPricingItemsChange={setLivePricingItems}
+                  showOnlyPricing
+                  proposalFormSaveRef={proposalFormSaveRef}
+                  designSystem={isOpportunityDetailRoute}
+                />
               )}
 
               {tab==='estimate' && (
@@ -2652,7 +3052,7 @@ export default function ProjectDetail(){
                 onClick={() => setShowAuditLogModal(false)} 
                 className="text-2xl font-bold text-gray-400 hover:text-gray-600"
               >
-                ×
+                Ã—
               </button>
             </div>
             
@@ -2713,6 +3113,7 @@ export default function ProjectDetail(){
           currentStatusLabel={statusLabel}
           settings={settings}
           isBidding={isOpportunityStyleTabs}
+          designSystem={isOpportunityDetailRoute}
           onClose={() => setEditStatusModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -2741,6 +3142,7 @@ export default function ProjectDetail(){
         <EditProjectNameModal
           projectId={String(id)}
           currentName={proj?.name || ''}
+          designSystem={isOpportunityDetailRoute}
           onClose={() => setEditProjectNameModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -2755,6 +3157,7 @@ export default function ProjectDetail(){
         <EditSiteModal
           projectId={String(id)}
           project={proj}
+          designSystem={isOpportunityDetailRoute}
           onClose={() => setEditSiteModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -2770,6 +3173,7 @@ export default function ProjectDetail(){
           projectId={String(id)}
           currentEstimatorIds={proj?.estimator_ids || (proj?.estimator_id ? [proj.estimator_id] : [])}
           employees={employees||[]}
+          designSystem={isOpportunityDetailRoute}
           onClose={() => setEditEstimatorModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -2840,6 +3244,7 @@ export default function ProjectDetail(){
         <EditLeadSourceModal
           projectId={String(id)}
           currentLeadSource={proj?.lead_source || ''}
+          designSystem={isOpportunityDetailRoute}
           onClose={() => setEditLeadSourceModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -2881,6 +3286,7 @@ export default function ProjectDetail(){
           currentRelatedIds={proj.related_client_ids ?? []}
           currentDisplayNames={proj.related_client_display_names ?? []}
           isBidding={!!proj.is_bidding}
+          designSystem={isOpportunityDetailRoute}
           currentAwardedIdsFromServer={Array.from(projectAwardedRelatedIdsSet(proj))}
           onClose={() => setEditRelatedCustomersModal(false)}
           onSave={async () => {
@@ -2898,6 +3304,7 @@ export default function ProjectDetail(){
           employees={employees || []}
           projectDivisions={projectDivisions || []}
           settings={settings || {}}
+          designSystem={isOpportunityDetailRoute}
           onClose={() => setShowConvertModal(false)}
           onSuccess={async () => {
             queryClient.removeQueries({ queryKey: ['opportunities'] });
@@ -3217,6 +3624,7 @@ function EditRelatedCustomersModal({
   currentRelatedIds,
   currentDisplayNames,
   isBidding,
+  designSystem,
   currentAwardedIdsFromServer,
   onClose,
   onSave,
@@ -3226,6 +3634,7 @@ function EditRelatedCustomersModal({
   currentRelatedIds: string[];
   currentDisplayNames: string[];
   isBidding: boolean;
+  designSystem?: boolean;
   currentAwardedIdsFromServer: string[];
   onClose: () => void;
   onSave: () => Promise<void>;
@@ -3362,6 +3771,97 @@ function EditRelatedCustomersModal({
       setSaving(false);
     }
   };
+
+  if (designSystem && isBidding) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Related Customers"
+        description="Link additional customers to this opportunity"
+        formWidth="comfortable"
+        quickInfo={opportunityEditRelatedCustomersQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : `Save (${selectedIds.size} selected)`}
+            </AppButton>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {orderedSelectedIds.length > 0 && (
+            <div className="space-y-2">
+              <p className={uiTypography.overline}>Selected ({selectedIds.size})</p>
+              <div className={uiCx(uiBorders.subtle, uiRadius.control, 'divide-y max-h-40 overflow-y-auto')}>
+                {orderedSelectedIds.map((rid) => (
+                  <div key={rid} className={uiCx('flex items-center justify-between gap-2 px-3 py-2', uiColors.surface)}>
+                    <span className={uiCx(uiTypography.body, 'truncate')}>{nameForId(rid)}</span>
+                    <AppButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleClientOpportunity({ id: rid } as ClientMini)}
+                    >
+                      Remove
+                    </AppButton>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <AppInput
+            label="Search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Type customer name, city, or address…"
+            autoFocus
+            fieldHint="Search\n\nFind customers to add or remove from the related list. The project owner is not listed here."
+          />
+
+          {list.length > 0 ? (
+            <div className={uiCx(uiBorders.subtle, uiRadius.control, 'max-h-80 overflow-y-auto divide-y')}>
+              {list.map((c) => {
+                const cid = String(c.id);
+                const subtitle = [c.address_line1, c.city, c.province].filter(Boolean).join(', ') || 'No address';
+                return (
+                  <div key={cid} className={uiCx('px-3 py-2', uiColors.surface)}>
+                    <AppCheckbox
+                      label={
+                        <span>
+                          <span className="block font-medium text-gray-900">{c.display_name || c.name || c.id}</span>
+                          <span className="block text-xs text-gray-500">{subtitle}</span>
+                        </span>
+                      }
+                      checked={selectedIds.has(cid)}
+                      onChange={() => {
+                        toggleClientOpportunity(c);
+                      }}
+                    />
+                  </div>
+                );
+              })}
+              {hasMore && (
+                <div className={uiCx('border-t px-3 py-2', uiColors.surface)}>
+                  <AppButton type="button" variant="ghost" size="sm" className="w-full" onClick={() => setDisplayedCount((prev) => prev + 20)}>
+                    Load more ({filteredClients.length - displayedCount} remaining)
+                  </AppButton>
+                </div>
+              )}
+            </div>
+          ) : q.trim() ? (
+            <p className={uiTypography.helper}>No customers found matching &quot;{q}&quot;.</p>
+          ) : (
+            <p className={uiTypography.helper}>No customers available.</p>
+          )}
+        </div>
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div
@@ -3839,9 +4339,10 @@ function EditLeakInvestigationLinksModal({
   );
 }
 
-function EditLeadSourceModal({ projectId, currentLeadSource, onClose, onSave }: {
+function EditLeadSourceModal({ projectId, currentLeadSource, designSystem, onClose, onSave }: {
   projectId: string;
   currentLeadSource: string;
+  designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -3849,6 +4350,15 @@ function EditLeadSourceModal({ projectId, currentLeadSource, onClose, onSave }: 
   const leadSources = (settings?.lead_sources || []) as any[];
   const [leadSource, setLeadSource] = useState(currentLeadSource);
   const [saving, setSaving] = useState(false);
+
+  const leadSourceOptions = useMemo(() => {
+    const opts = sortByLabel(leadSources, (ls: any) => (ls?.label ?? ls?.name ?? '').toString()).map((ls: any) => {
+      const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
+      const label = ls?.label ?? ls?.name ?? String(ls);
+      return { value: String(val), label: String(label) };
+    });
+    return [{ value: '', label: 'Select…' }, ...opts];
+  }, [leadSources]);
 
   useEffect(() => {
     setLeadSource(currentLeadSource);
@@ -3873,6 +4383,38 @@ function EditLeadSourceModal({ projectId, currentLeadSource, onClose, onSave }: 
       setSaving(false);
     }
   };
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Lead Source"
+        description="Set how this opportunity was sourced"
+        formWidth="comfortable"
+        quickInfo={opportunityEditLeadSourceQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <AppSelect
+          label="Lead source"
+          value={leadSource || ''}
+          onChange={(e) => setLeadSource(e.target.value)}
+          options={leadSourceOptions}
+          placeholder="Select…"
+          fieldHint="Lead source\n\nWhere this opportunity originated (referral, campaign, etc.). Options come from system settings."
+        />
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div
@@ -3948,6 +4490,7 @@ function ConvertToProjectModal({
   employees,
   projectDivisions,
   settings,
+  designSystem,
   onClose,
   onSuccess,
 }: {
@@ -3956,6 +4499,7 @@ function ConvertToProjectModal({
   employees: any[];
   projectDivisions: any[];
   settings: any;
+  designSystem?: boolean;
   onClose: () => void;
   onSuccess: () => Promise<void>;
 }) {
@@ -4153,6 +4697,77 @@ function ConvertToProjectModal({
   };
 
   const closeDropdown = useCallback(() => setOpenDropdownId(null), []);
+
+  const handleAwardedRelatedChange = useCallback((index: number, awarded: boolean) => {
+    setAwardedRelatedApprovals((prev) => {
+      const next = [...prev];
+      if (index < next.length) next[index] = awarded;
+      return next;
+    });
+  }, []);
+
+  const handlePricingApprovalChange = useCallback((index: number, approved: boolean) => {
+    setPricingApprovals((prev) => {
+      const next = [...prev];
+      if (index < next.length) next[index] = approved;
+      return next;
+    });
+  }, []);
+
+  const handleDivisionLeadChange = useCallback((divId: string, userId: string) => {
+    setDivisionLeads((prev) => ({ ...prev, [divId]: userId }));
+  }, []);
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Convert to Project"
+        description="General information and pricing approvals"
+        formWidth="wide"
+        quickInfo={opportunityConvertToProjectQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-between gap-3')}>
+            <span className={uiTypography.helper}>Convert opportunity to active project</span>
+            <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+              <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={submitting}>
+                Cancel
+              </AppButton>
+              <AppButton type="button" size="sm" onClick={handleSubmit} disabled={submitting} loading={submitting}>
+                {submitting ? 'Converting…' : 'Convert'}
+              </AppButton>
+            </div>
+          </div>
+        }
+      >
+        <ProjectConvertToProjectModalDsForm
+          proj={proj}
+          employees={employees}
+          leadSourcesList={leadSourcesList}
+          projectAdminId={projectAdminId}
+          onProjectAdminIdChange={setProjectAdminId}
+          leadSource={leadSource}
+          onLeadSourceChange={setLeadSource}
+          divisionIds={divisionIds}
+          divisionLeads={divisionLeads}
+          onDivisionLeadChange={handleDivisionLeadChange}
+          dateStart={dateStart}
+          onDateStartChange={setDateStart}
+          dateEta={dateEta}
+          onDateEtaChange={setDateEta}
+          relatedAwardOptions={relatedAwardOptions}
+          awardedRelatedApprovals={awardedRelatedApprovals}
+          onAwardedRelatedChange={handleAwardedRelatedChange}
+          additionalCosts={additionalCosts}
+          pricingApprovals={pricingApprovals}
+          onPricingApprovalChange={handlePricingApprovalChange}
+          getDivisionLabel={getDivisionLabel}
+          getDivisionMainLabel={getDivisionMainLabel}
+        />
+      </AppFormModal>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -4631,13 +5246,17 @@ function normalizeReportCategoryId(categoryId?: string | null): string {
 function ReportsTabEnhanced({
   projectId,
   businessLine,
+  isBidding: isBiddingProject,
   items,
   onRefresh,
+  designSystem,
 }: {
   projectId: string;
   businessLine?: string;
+  isBidding?: boolean;
   items: Report[];
   onRefresh: () => any;
+  designSystem?: boolean;
 }) {
   const location = useLocation();
   const confirm = useConfirm();
@@ -4855,6 +5474,63 @@ function ReportsTabEnhanced({
     }
   };
 
+  const categoryFilterOptionGroups = useMemo(
+    () =>
+      buildReportCategorySelectGroups({
+        commercialCategories,
+        productionCategories,
+        financialCategories,
+        variant: 'filter',
+        categoryCounts,
+      }),
+    [commercialCategories, productionCategories, financialCategories, categoryCounts],
+  );
+
+  if (designSystem) {
+    return (
+      <>
+        <ProjectReportsTabDs
+          projectId={projectId}
+          sortedReports={sortedReports}
+          selectedReportId={selectedReportId}
+          setSelectedReportId={setSelectedReportId}
+          selectedReport={selectedReport ?? null}
+          canCreateNote={canCreateNote}
+          canWriteReports={canWriteReports}
+          isWriteCategoryAllowed={isWriteCategoryAllowed}
+          categoryFilterOptionGroups={categoryFilterOptionGroups}
+          selectedCategoryFilter={selectedCategoryFilter}
+          onCategoryFilterChange={setSelectedCategoryFilter}
+          reportCategories={reportCategories}
+          getAuthorInfo={getAuthorInfo}
+          getPreviewText={getPreviewText}
+          getAttachmentIcon={getAttachmentIcon}
+          handleAttachmentClick={handleAttachmentClick}
+          onRefresh={onRefresh}
+          confirm={confirm}
+          onNewNote={() => setShowCreateModal(true)}
+          previewAttachment={previewAttachment}
+          onClosePreview={() => setPreviewAttachment(null)}
+        />
+        {showCreateModal && (
+          <CreateReportModal
+            projectId={projectId}
+            reportCategories={reportCategories}
+            isReadCategoryAllowed={isReadCategoryAllowed}
+            isWriteCategoryAllowed={isWriteCategoryAllowed}
+            designSystem
+            onClose={() => setShowCreateModal(false)}
+            onSuccess={async () => {
+              setShowCreateModal(false);
+              await onRefresh();
+              toast.success('Note created');
+            }}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Main Notes/History Section Card */}
@@ -5060,7 +5736,7 @@ function ReportsTabEnhanced({
                           className="px-2.5 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white text-xs font-medium flex-shrink-0"
                           title="Approve note"
                         >
-                          ✓ Approve
+                          âœ“ Approve
                         </button>
                       )}
                       {selectedReport.financial_type === 'estimate-changes' && selectedReport.approval_status && (
@@ -5069,8 +5745,8 @@ function ReportsTabEnhanced({
                           selectedReport.approval_status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
                           'bg-gray-100 text-gray-700'
                         }`}>
-                          {selectedReport.approval_status === 'approved' ? '✓ Approved' :
-                           selectedReport.approval_status === 'pending' ? '⏳ Pending' :
+                          {selectedReport.approval_status === 'approved' ? 'âœ“ Approved' :
+                           selectedReport.approval_status === 'pending' ? 'â³ Pending' :
                            'Rejected'}
                         </span>
                       )}
@@ -5169,7 +5845,7 @@ function ReportsTabEnhanced({
                         <div className="flex items-center justify-between mb-3">
                           <div className="text-xs font-semibold text-gray-700">Change Order Summary</div>
                           {selectedReport.approval_status === 'approved' && (
-                            <span className="text-[10px] text-green-600 font-medium">✓ Items have been added to the project estimate</span>
+                            <span className="text-[10px] text-green-600 font-medium">âœ“ Items have been added to the project estimate</span>
                           )}
                         </div>
                         
@@ -5373,10 +6049,12 @@ function ReportsTabEnhanced({
   );
 }
 
-function CreateReportModal({ projectId, reportCategories, isWriteCategoryAllowed, onClose, onSuccess }: {
+function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed, isWriteCategoryAllowed, designSystem, onClose, onSuccess }: {
   projectId: string,
   reportCategories: any[],
+  isReadCategoryAllowed?: (categoryId?: string | null) => boolean,
   isWriteCategoryAllowed: (categoryId?: string | null) => boolean,
+  designSystem?: boolean,
   onClose: () => void,
   onSuccess: () => Promise<void>
 }){
@@ -5387,7 +6065,18 @@ function CreateReportModal({ projectId, reportCategories, isWriteCategoryAllowed
   const [financialValue, setFinancialValue] = useState<number>(0);
   const [uploading, setUploading] = useState(false);
   const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
-  
+  const isBidding = project?.is_bidding === true;
+
+  const isCategoryListed = useCallback(
+    (categoryId?: string | null) => {
+      if (designSystem && isReadCategoryAllowed) {
+        return isReadCategoryAllowed(categoryId);
+      }
+      return isWriteCategoryAllowed(categoryId);
+    },
+    [designSystem, isReadCategoryAllowed, isWriteCategoryAllowed],
+  );
+
   const commercialCategories = useMemo(() => {
     return reportCategories
       .filter(cat => {
@@ -5395,11 +6084,11 @@ function CreateReportModal({ projectId, reportCategories, isWriteCategoryAllowed
         return (
           meta.group === 'commercial' &&
           !isHiddenReportCategory(cat) &&
-          isWriteCategoryAllowed(cat.value || cat.label)
+          isCategoryListed(cat.value || cat.label)
         );
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
-  }, [reportCategories, isWriteCategoryAllowed]);
+  }, [reportCategories, isCategoryListed]);
   
   const productionCategories = useMemo(() => {
     return reportCategories
@@ -5408,11 +6097,11 @@ function CreateReportModal({ projectId, reportCategories, isWriteCategoryAllowed
         return (
           meta.group === 'production' &&
           !isHiddenReportCategory(cat) &&
-          isWriteCategoryAllowed(cat.value || cat.label)
+          isCategoryListed(cat.value || cat.label)
         );
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
-  }, [reportCategories, isWriteCategoryAllowed]);
+  }, [reportCategories, isCategoryListed]);
   
   const financialCategories = useMemo(() => {
     return reportCategories
@@ -5421,18 +6110,19 @@ function CreateReportModal({ projectId, reportCategories, isWriteCategoryAllowed
         return (
           meta.group === 'financial' &&
           !isHiddenReportCategory(cat) &&
-          isWriteCategoryAllowed(cat.value || cat.label)
+          isCategoryListed(cat.value || cat.label)
         );
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
-  }, [reportCategories, isWriteCategoryAllowed]);
-  
-  // If it's an opportunity (is_bidding), show only commercial categories
-  const isBidding = project?.is_bidding === true;
+  }, [reportCategories, isCategoryListed]);
 
   const handleCreate = async () => {
     if (!title.trim()) {
       toast.error('Please enter a title');
+      return;
+    }
+    if (category && !isWriteCategoryAllowed(category)) {
+      toast.error('You do not have permission to create notes in this category');
       return;
     }
     if ((category === 'additional-income' || category === 'additional-expense') && financialValue <= 0) {
@@ -5501,6 +6191,100 @@ function CreateReportModal({ projectId, reportCategories, isWriteCategoryAllowed
       setUploading(false);
     }
   };
+
+  const categoryOptionGroups = useMemo(
+    () =>
+      buildReportCategorySelectGroups({
+        commercialCategories,
+        productionCategories,
+        financialCategories,
+        variant: 'form',
+      }),
+    [commercialCategories, productionCategories, financialCategories],
+  );
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="New Note"
+        description="Add a note to this opportunity"
+        formWidth="comfortable"
+        quickInfo={opportunityCreateNoteQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={uploading}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              onClick={handleCreate}
+              disabled={uploading}
+              loading={uploading}
+            >
+              {uploading ? 'Creating…' : 'Create Note'}
+            </AppButton>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <AppInput
+            label="Title"
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Enter note title…"
+            fieldHint="Title\n\nShort headline for this note. Shown in the Notes/History list and detail panel."
+          />
+          <AppSelect
+            label="Category"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            optionGroups={categoryOptionGroups}
+            sortOptions={false}
+            fieldHint={
+              isBidding
+                ? 'Category\n\nCommercial note type for this opportunity (site visit, client call, etc.). Options come from system settings.'
+                : 'Category\n\nGroups the note (commercial, production, or financial). Financial categories can update project values when applicable.'
+            }
+          />
+          {(category === 'additional-income' || category === 'additional-expense') && (
+            <AppInput
+              label="Value"
+              required
+              type="number"
+              step="0.01"
+              min="0"
+              value={financialValue > 0 ? String(financialValue) : ''}
+              onChange={(e) =>
+                setFinancialValue(e.target.value ? parseFloat(e.target.value) : 0)
+              }
+              placeholder="Enter amount…"
+              fieldHint="Value\n\nDollar amount for this additional income or expense. Saved with the note on the project timeline."
+            />
+          )}
+          <AppTextarea
+            label="Description"
+            required
+            rows={6}
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            placeholder="Describe what happened, how the day went, or any events on site…"
+            fieldHint="Description\n\nMain body of the note. Describe what happened, decisions, or site activity. Required to create the note."
+          />
+          <ReportAttachmentAreaMultiple
+            files={files}
+            setFiles={setFiles}
+            accept="image/*,.pdf,.doc,.docx"
+            label="Attachments (optional – multiple allowed)"
+            fieldHint="Attachments\n\nDrag, click, or paste (Ctrl+V). Optional images, PDFs, or documents linked to this note."
+          />
+        </div>
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div
@@ -5708,2122 +6492,6 @@ function ProjectFilesTab({ projectId, files, onRefresh }:{ projectId:string, fil
   );
 }
 
-function ProjectFilesTabEnhanced({
-  projectId,
-  businessLine,
-  files,
-  onRefresh,
-}: {
-  projectId: string;
-  businessLine?: string;
-  files: ProjectFile[];
-  onRefresh: () => any;
-}) {
-  const location = useLocation();
-  const nav = useNavigate();
-  const queryClient = useQueryClient();
-  const confirm = useConfirm();
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [isDragging, setIsDragging] = useState(false);
-  const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
-  const [showUpload, setShowUpload] = useState(false);
-  const [uploadQueue, setUploadQueue] = useState<Array<{id:string, file:File, progress:number, status:'pending'|'uploading'|'success'|'error', error?:string}>>([]);
-  const [previewImage, setPreviewImage] = useState<{ url:string, name:string }|null>(null);
-  const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
-  const [previewExcel, setPreviewExcel] = useState<{ url:string, name:string }|null>(null);
-  const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [fileSearchQuery, setFileSearchQuery] = useState('');
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
-  const [newFolderCategory, setNewFolderCategory] = useState<string>('');
-  const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
-  const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
-  const [editingFileNameValue, setEditingFileNameValue] = useState('');
-  const [moveModalFileId, setMoveModalFileId] = useState<string | null>(null);
-  const [moveModalCategory, setMoveModalCategory] = useState<string>('uncategorized');
-  /** Admin-only: library vs soft-deleted files pending purge */
-  const [filesSection, setFilesSection] = useState<'active' | 'deleted'>('active');
-  
-  // Check permissions for files
-  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const isAdmin = isAdminRole(me?.roles);
-  const permissions = new Set(me?.permissions || []);
-  const resolvedBusinessLine = useMemo(
-    () => resolveProjectBusinessLine(businessLine, location.pathname),
-    [businessLine, location.pathname]
-  );
-
-  const canWriteFiles = hasProjectFeatureWritePermission(
-    permissions,
-    resolvedBusinessLine,
-    'files',
-    isAdmin
-  );
-
-  const { data: categories } = useQuery({
-    queryKey: ['file-categories'],
-    queryFn: ()=>api<any[]>('GET', '/clients/file-categories')
-  });
-
-  const { data: categoryPerms } = useQuery({
-    queryKey: ['project-files-category-perms', resolvedBusinessLine],
-    queryFn: () =>
-      api<any>(
-        'GET',
-        `/auth/me/project-files-category-permissions?business_line=${encodeURIComponent(resolvedBusinessLine)}`
-      ),
-    staleTime: 0,
-    refetchOnMount: 'always',
-  });
-
-  type ProjectDeletedFile = ProjectFile & { deleted_at?: string | null; deleted_by_id?: string | null };
-  const { data: deletedFiles = [], refetch: refetchDeletedFiles } = useQuery({
-    queryKey: ['projectDeletedFiles', projectId],
-    queryFn: () => api<ProjectDeletedFile[]>('GET', `/projects/${encodeURIComponent(projectId)}/files/deleted`),
-    enabled: !!projectId && isAdmin && filesSection === 'deleted',
-  });
-
-  useEffect(() => {
-    if (!isAdmin && filesSection === 'deleted') setFilesSection('active');
-  }, [isAdmin, filesSection]);
-
-  const readAllowList: string[] | null = Array.isArray(categoryPerms?.read_categories) ? categoryPerms.read_categories : null;
-  const writeAllowList: string[] | null = Array.isArray(categoryPerms?.write_categories) ? categoryPerms.write_categories : null;
-
-  const isReadCategoryAllowed = useCallback(
-    (categoryId: string) => {
-      if (isAdmin) return true;
-      return readAllowList === null ? true : readAllowList.includes(categoryId);
-    },
-    [readAllowList, isAdmin]
-  );
-
-  const isWriteCategoryAllowed = useCallback(
-    (categoryId: string) => {
-      if (isAdmin) return true;
-      if (!canWriteFiles) return false;
-      return writeAllowList === null ? true : writeAllowList.includes(categoryId);
-    },
-    [writeAllowList, canWriteFiles, isAdmin]
-  );
-
-  // Hide legacy/duplicate category "photos" (Pictures already covers this use-case)
-  const visibleCategories = useMemo(() => {
-    const base = (categories || []).filter((c: any) => String(c?.id || '') !== 'photos');
-    // If a read allow-list is configured, only show allowed categories
-    if (readAllowList !== null) {
-      return base.filter((c: any) => readAllowList.includes(String(c?.id || '')));
-    }
-    return base;
-  }, [categories, readAllowList]);
-  
-  const { data: project } = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: ()=>api<any>('GET', `/projects/${projectId}`)
-  });
-
-  type ProjectFolderItem = { id: string; name: string; category: string; parent_id: string | null; sort_index: number };
-  const { data: projectFoldersRaw } = useQuery({
-    queryKey: ['project-folders', projectId, selectedCategory],
-    queryFn: () => api<ProjectFolderItem[]>('GET', `/projects/${projectId}/folders${selectedCategory && selectedCategory !== 'all' && selectedCategory !== 'uncategorized' ? `?category=${encodeURIComponent(selectedCategory)}` : ''}`),
-    enabled: !!projectId,
-  });
-  const projectFolders = projectFoldersRaw || [];
-
-  // When switching category, clear folder selection if the folder is not in this category
-  useEffect(() => {
-    if (!selectedFolderId) return;
-    const inCategory = projectFolders.some((f: ProjectFolderItem) => f.id === selectedFolderId);
-    if (!inCategory) setSelectedFolderId(null);
-  }, [selectedCategory, projectFolders, selectedFolderId]);
-
-  // Organize files by category
-  const filesByCategory = useMemo(() => {
-    const grouped: Record<string, ProjectFile[]> = { 'all': [], 'uncategorized': [] };
-    files.forEach(f => {
-      const cat = f.category || 'uncategorized';
-      if (!isReadCategoryAllowed(cat)) return;
-      if (!grouped[cat]) grouped[cat] = [];
-      grouped[cat].push(f);
-      grouped['all'].push(f);
-    });
-    return grouped;
-  }, [files, isReadCategoryAllowed]);
-
-  // If the currently selected category becomes unavailable due to permission filtering, reset to All.
-  useEffect(() => {
-    if (selectedCategory === 'all' || selectedCategory === 'uncategorized') return;
-    if (!visibleCategories.find((c: any) => c.id === selectedCategory)) {
-      setSelectedCategory('all');
-    }
-  }, [selectedCategory, visibleCategories]);
-
-  const getFileTypeLabel = (f: ProjectFile): string => {
-    const name = String(f.original_name || '');
-    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
-    const ct = String(f.content_type || '').toLowerCase();
-    if (f.is_image || ct.startsWith('image/')) return 'Image';
-    if (ct.includes('pdf') || ext === 'pdf') return 'PDF';
-    if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return 'Excel';
-    if (['doc', 'docx'].includes(ext) || ct.includes('word')) return 'Word';
-    if (['ppt', 'pptx'].includes(ext) || ct.includes('powerpoint')) return 'PowerPoint';
-    return ext.toUpperCase() || 'File';
-  };
-
-  const currentFiles = useMemo(() => {
-    let files = filesByCategory[selectedCategory] || [];
-    // When a category is selected, filter by folder: root (folder_id null) or selected folder
-    if (selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
-      if (selectedFolderId) {
-        files = files.filter((f: ProjectFile) => (f.folder_id || null) === selectedFolderId);
-      } else {
-        files = files.filter((f: ProjectFile) => !f.folder_id || f.folder_id === '' || f.folder_id === null);
-      }
-    }
-    const q = fileSearchQuery.trim().toLowerCase();
-    const filtered = q
-      ? files.filter((f: ProjectFile) => (f.original_name || f.file_object_id || '').toLowerCase().includes(q))
-      : files;
-    const sorted = [...filtered].sort((a, b) => {
-      let aVal: any;
-      let bVal: any;
-      
-      if (sortBy === 'uploaded_at') {
-        aVal = a.uploaded_at || '';
-        bVal = b.uploaded_at || '';
-      } else if (sortBy === 'name') {
-        aVal = (a.original_name || a.file_object_id || '').toLowerCase();
-        bVal = (b.original_name || b.file_object_id || '').toLowerCase();
-      } else if (sortBy === 'type') {
-        aVal = getFileTypeLabel(a).toLowerCase();
-        bVal = getFileTypeLabel(b).toLowerCase();
-      }
-      
-      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
-    
-    return sorted;
-  }, [filesByCategory, selectedCategory, selectedFolderId, sortBy, sortOrder, fileSearchQuery]);
-
-  // Folders at current level (Windows-style: show in category, click to enter). Root level = parent_id null; inside folder = parent_id = selectedFolderId
-  const currentFolderChildren = useMemo(() => {
-    if (selectedCategory === 'all' || selectedCategory === 'uncategorized') return [];
-    const parentId = selectedFolderId || null;
-    return projectFolders
-      .filter((f: ProjectFolderItem) => (f.parent_id || null) === parentId)
-      .sort((a: ProjectFolderItem, b: ProjectFolderItem) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
-  }, [projectFolders, selectedCategory, selectedFolderId]);
-
-  // Parent folder id when we're inside a folder (for "Up" navigation)
-  const currentParentFolderId = useMemo(() => {
-    if (!selectedFolderId) return null;
-    const folder = projectFolders.find((f: ProjectFolderItem) => f.id === selectedFolderId);
-    return folder?.parent_id || null;
-  }, [projectFolders, selectedFolderId]);
-
-  // Breadcrumb path from root to current folder (for Location bar: "Root > Pasta A > Pasta B")
-  const locationBreadcrumb = useMemo(() => {
-    if (selectedCategory === 'all' || selectedCategory === 'uncategorized') return [];
-    const path: { id: string | null; name: string }[] = [{ id: null, name: 'Root' }];
-    if (!selectedFolderId) return path;
-    let currentId: string | null = selectedFolderId;
-    const chain: ProjectFolderItem[] = [];
-    while (currentId) {
-      const folder = projectFolders.find((f: ProjectFolderItem) => f.id === currentId);
-      if (!folder) break;
-      chain.unshift(folder);
-      currentId = folder.parent_id || null;
-    }
-    chain.forEach((f: ProjectFolderItem) => path.push({ id: f.id, name: f.name }));
-    return path;
-  }, [selectedCategory, selectedFolderId, projectFolders]);
-  
-  const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
-    if (sortBy === column) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(column);
-      setSortOrder('asc');
-    }
-  };
-
-  const iconFor = (f:ProjectFile)=>{
-    const name = String(f.original_name||'');
-    const ext = (name.includes('.')? name.split('.').pop() : '').toLowerCase();
-    const ct = String(f.content_type||'').toLowerCase();
-    const is = (x:string)=> ct.includes(x) || ext===x;
-    if (is('pdf')) return { label:'PDF', color:'bg-red-500' };
-    if (['xlsx','xls','csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return { label:'XLS', color:'bg-green-600' };
-    if (['doc','docx'].includes(ext) || ct.includes('word')) return { label:'DOC', color:'bg-blue-600' };
-    if (['ppt','pptx'].includes(ext) || ct.includes('powerpoint')) return { label:'PPT', color:'bg-orange-500' };
-    if (['zip','rar','7z'].includes(ext) || ct.includes('zip')) return { label:'ZIP', color:'bg-gray-700' };
-    if (is('txt')) return { label:'TXT', color:'bg-gray-500' };
-    return { label: (ext||'FILE').toUpperCase().slice(0,4), color:'bg-gray-600' };
-  };
-
-  const getFileType = (f: ProjectFile): 'image' | 'pdf' | 'excel' | 'other' => {
-    const name = String(f.original_name || '');
-    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
-    const ct = String(f.content_type || '').toLowerCase();
-    const is = (x: string) => ct.includes(x) || ext === x;
-    
-    if (f.is_image || ct.startsWith('image/')) return 'image';
-    if (is('pdf')) return 'pdf';
-    if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return 'excel';
-    return 'other';
-  };
-
-  const handleFilePreview = async (f: ProjectFile) => {
-    const fileType = getFileType(f);
-    const name = f.original_name || f.file_object_id;
-    
-    try {
-      // Prefer /preview (inline SAS / local-inline) so PDFs open in the viewer instead of forcing download.
-      const r: any = await api('GET', withFileAccessToken(`/files/${f.file_object_id}/preview`));
-      const url = String(r.preview_url || r.download_url || '');
-      
-      if (!url) {
-        toast.error('Preview not available');
-        return;
-      }
-
-      if (fileType === 'image') {
-        setPreviewImage({ url, name });
-      } else if (fileType === 'pdf') {
-        setPreviewPdf({ url, name });
-      } else if (fileType === 'excel') {
-        // For Excel files, open in Office Online editor
-        setPreviewExcel({ url, name });
-      } else {
-        // For other files, try to open in new tab
-        window.open(url, '_blank');
-      }
-    } catch (_e) {
-      toast.error('Preview not available');
-    }
-  };
-
-  const fetchDownloadUrl = async (fid:string)=>{
-    try{ const r:any = await api('GET', withFileAccessToken(`/files/${fid}/download`)); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
-  };
-
-  const resolveUploadContext = useCallback(
-    (targetCategory?: string | null, targetFolderId?: string | null) => {
-      const category =
-        targetCategory !== undefined
-          ? targetCategory === 'uncategorized'
-            ? null
-            : targetCategory
-          : selectedCategory === 'all' || selectedCategory === 'uncategorized'
-            ? undefined
-            : selectedCategory;
-
-      const folderId =
-        targetFolderId !== undefined
-          ? targetFolderId
-          : selectedCategory !== 'all' && selectedCategory !== 'uncategorized'
-            ? selectedFolderId
-            : null;
-
-      return { category, folderId };
-    },
-    [selectedCategory, selectedFolderId]
-  );
-
-  const runQueuedUploads = async (
-    pairs: { file: File; folder_id: string | null }[],
-    category: string | null | undefined
-  ) => {
-    if (pairs.length === 0) return;
-
-    const categoryIdForCheck =
-      category === null || category === undefined || category === ''
-        ? 'uncategorized'
-        : String(category);
-    if (!canWriteFiles || !isWriteCategoryAllowed(categoryIdForCheck)) {
-      toast.error('You do not have permission to upload files to this category');
-      return;
-    }
-
-    const newQueue = pairs.map((pair, idx) => ({
-      id: `${Date.now()}-${idx}-${Math.random().toString(36).slice(2)}`,
-      file: pair.file,
-      progress: 0,
-      status: 'pending' as const,
-    }));
-    setUploadQueue((prev) => [...prev, ...newQueue]);
-
-    for (let i = 0; i < newQueue.length; i++) {
-      const item = newQueue[i];
-      const folderId = pairs[i].folder_id;
-      try {
-        setUploadQueue((prev) =>
-          prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading' } : u))
-        );
-
-        const up: any = await api('POST', '/files/upload', {
-          project_id: projectId,
-          client_id: project?.client_id || null,
-          employee_id: null,
-          category_id: 'project-files',
-          original_name: item.file.name,
-          content_type: item.file.type || 'application/octet-stream',
-        });
-
-        await fetch(up.upload_url, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': item.file.type || 'application/octet-stream',
-            'x-ms-blob-type': 'BlockBlob',
-          },
-          body: item.file,
-        });
-
-        const conf: any = await api('POST', '/files/confirm', {
-          key: up.key,
-          size_bytes: item.file.size,
-          checksum_sha256: 'na',
-          content_type: item.file.type || 'application/octet-stream',
-        });
-
-        const params = new URLSearchParams({
-          file_object_id: conf.id,
-          category: category || '',
-          original_name: item.file.name,
-        });
-        if (folderId) params.set('folder_id', folderId);
-        await api('POST', `/projects/${projectId}/files?${params.toString()}`);
-
-        setUploadQueue((prev) =>
-          prev.map((u) =>
-            u.id === item.id ? { ...u, status: 'success', progress: 100 } : u
-          )
-        );
-      } catch (e: any) {
-        setUploadQueue((prev) =>
-          prev.map((u) =>
-            u.id === item.id
-              ? { ...u, status: 'error', error: e.message || 'Upload failed' }
-              : u
-          )
-        );
-      }
-    }
-
-    await onRefresh();
-    setTimeout(() => {
-      setUploadQueue((prev) => prev.filter((u) => !newQueue.find((nq) => nq.id === u.id)));
-    }, 2000);
-  };
-
-  const uploadMultiple = async (
-    fileList: File[],
-    targetCategory?: string | null,
-    targetFolderId?: string | null
-  ) => {
-    const { category, folderId } = resolveUploadContext(targetCategory, targetFolderId);
-
-    const categoryIdForCheck =
-      category === null || category === undefined || category === ''
-        ? 'uncategorized'
-        : String(category);
-    if (!canWriteFiles || !isWriteCategoryAllowed(categoryIdForCheck)) {
-      toast.error('You do not have permission to upload files to this category');
-      return;
-    }
-
-    const pairs = fileList.map((file) => ({ file, folder_id: folderId }));
-    await runQueuedUploads(pairs, category);
-  };
-
-  const uploadFolderTreeFromDrop = async (
-    dt: DataTransfer,
-    targetCategory?: string | null,
-    targetFolderId?: string | null
-  ) => {
-    const { category, folderId: baseFolderId } = resolveUploadContext(targetCategory, targetFolderId);
-
-    const categoryIdForCheck =
-      category === null || category === undefined || category === ''
-        ? 'uncategorized'
-        : String(category);
-    if (!canWriteFiles || !isWriteCategoryAllowed(categoryIdForCheck)) {
-      toast.error('You do not have permission to upload files to this category');
-      return;
-    }
-
-    if (!category || category === 'uncategorized') {
-      toast.error('Choose a single file category (not “All files”) to import folders');
-      return;
-    }
-
-    const folderCache = new Map<string, string>();
-    const cacheKey = (parentId: string | null, name: string) =>
-      `${parentId ?? '__root__'}\n${name.trim()}`;
-
-    for (const f of projectFolders) {
-      if (f.category !== category) continue;
-      folderCache.set(cacheKey(f.parent_id || null, f.name), f.id);
-    }
-
-    let createdDirCount = 0;
-
-    const ensureFolder = async (rawName: string, parentId: string | null): Promise<string> => {
-      const trimmed = rawName.trim();
-      if (!trimmed) throw new Error('Invalid folder name');
-      const key = cacheKey(parentId, trimmed);
-      const existing = folderCache.get(key);
-      if (existing) return existing;
-
-      const res = await api<{ id: string }>('POST', `/projects/${projectId}/folders`, {
-        name: trimmed,
-        category,
-        ...(parentId ? { parent_id: parentId } : {}),
-      });
-      createdDirCount++;
-      folderCache.set(key, res.id);
-      return res.id;
-    };
-
-    const pairs: { file: File; folder_id: string | null }[] = [];
-
-    const walkDirectory = async (
-      dir: FileSystemDirectoryEntry,
-      parentFolderId: string | null
-    ) => {
-      const myId = await ensureFolder(dir.name, parentFolderId);
-      const reader = dir.createReader();
-      const entries = await readAllDirectoryEntries(reader);
-      for (const ent of entries) {
-        if (ent.isFile) {
-          await new Promise<void>((resolve, reject) => {
-            (ent as FileSystemFileEntry).file(
-              (file) => {
-                pairs.push({ file, folder_id: myId });
-                resolve();
-              },
-              reject
-            );
-          });
-        } else if (ent.isDirectory) {
-          await walkDirectory(ent as FileSystemDirectoryEntry, myId);
-        }
-      }
-    };
-
-    const items = Array.from(dt.items || []);
-    const hasWebkitEntry =
-      items.length > 0 &&
-      typeof (items[0] as DataTransferItem & { webkitGetAsEntry?: () => unknown }).webkitGetAsEntry ===
-        'function';
-
-    if (hasWebkitEntry) {
-      try {
-        for (const item of items) {
-          const entry = (
-            item as DataTransferItem & { webkitGetAsEntry?: () => FileSystemEntry | null }
-          ).webkitGetAsEntry?.();
-          if (!entry) continue;
-          if (entry.isFile) {
-            await new Promise<void>((resolve, reject) => {
-              (entry as FileSystemFileEntry).file(
-                (file) => {
-                  pairs.push({ file, folder_id: baseFolderId });
-                  resolve();
-                },
-                reject
-              );
-            });
-          } else if (entry.isDirectory) {
-            await walkDirectory(entry as FileSystemDirectoryEntry, baseFolderId);
-          }
-        }
-      } catch (e) {
-        console.warn('Folder entry walk failed, falling back to path list if available', e);
-      }
-    }
-
-    if (pairs.length === 0) {
-      const files = Array.from(dt.files || []);
-      const sorted = [...files].sort((a, b) => {
-        const pa = getWebkitRelativePath(a).split('/').filter(Boolean).length;
-        const pb = getWebkitRelativePath(b).split('/').filter(Boolean).length;
-        return pa - pb;
-      });
-      for (const file of sorted) {
-        const rel = getWebkitRelativePath(file);
-        if (!rel.includes('/')) {
-          pairs.push({ file, folder_id: baseFolderId });
-          continue;
-        }
-        const segments = rel.split('/').filter(Boolean);
-        const fileName = segments.pop()!;
-        let pid = baseFolderId;
-        for (const seg of segments) {
-          pid = await ensureFolder(seg, pid);
-        }
-        pairs.push({ file, folder_id: pid });
-      }
-    }
-
-    if (pairs.length === 0 && createdDirCount === 0) {
-      toast.error('Nothing to import');
-      return;
-    }
-
-    if (pairs.length === 0 && createdDirCount > 0) {
-      queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
-      await onRefresh();
-      toast.success(createdDirCount === 1 ? 'Folder created' : `${createdDirCount} folders created`);
-      return;
-    }
-
-    await runQueuedUploads(pairs, category);
-    queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
-    const n = pairs.length;
-    toast.success(n === 1 ? '1 file imported' : `${n} files imported`);
-  };
-
-  const uploadFromDrop = async (
-    dt: DataTransfer,
-    targetCategory?: string | null,
-    targetFolderId?: string | null
-  ) => {
-    const tree = dropLooksLikeFolderTree(dt);
-    const hasFiles = (dt.files?.length || 0) > 0;
-    const emptyDirOnly = dataTransferMayContainDirectory(dt) && !hasFiles;
-
-    if (tree || emptyDirOnly) {
-      await uploadFolderTreeFromDrop(dt, targetCategory, targetFolderId);
-      return;
-    }
-
-    if (hasFiles) {
-      await uploadMultiple(Array.from(dt.files || []), targetCategory, targetFolderId);
-    }
-  };
-
-  const handleMoveFile = async (fileId: string, newCategory: string) => {
-    try {
-      if (!canWriteFiles || !isWriteCategoryAllowed(newCategory)) {
-        toast.error('You do not have permission to move files to this category');
-        return;
-      }
-      await api('PUT', `/projects/${projectId}/files/${fileId}`, {
-        category: newCategory === 'uncategorized' ? null : newCategory,
-        folder_id: null, // move to root of the target category
-      });
-      await onRefresh();
-      toast.success('File moved');
-    } catch (_e) {
-      toast.error('Failed to move file');
-    }
-  };
-
-  const handleMoveFileToFolder = async (fileId: string, folderId: string | null) => {
-    try {
-      const file = files.find(f => f.id === fileId);
-      const cat = file?.category || selectedCategory;
-      if (cat === 'all' || cat === 'uncategorized') return;
-      if (!canWriteFiles || !isWriteCategoryAllowed(cat)) {
-        toast.error('You do not have permission to move files');
-        return;
-      }
-      await api('PUT', `/projects/${projectId}/files/${fileId}`, {
-        folder_id: folderId,
-        ...(folderId ? {} : { category: cat })
-      });
-      await onRefresh();
-      toast.success('File moved');
-    } catch (_e) {
-      toast.error('Failed to move file');
-    }
-  };
-
-  const handleCreateFolder = async () => {
-    const name = newFolderName.trim();
-    const category = newFolderCategory || selectedCategory;
-    if (!name) return;
-    if (category === 'all' || category === 'uncategorized' || !category) {
-      toast.error('Select a category for the folder');
-      return;
-    }
-    if (!canWriteFiles || !isWriteCategoryAllowed(category)) {
-      toast.error('No permission to create folder in this category');
-      return;
-    }
-    try {
-      await api('POST', `/projects/${projectId}/folders`, {
-        name,
-        category,
-        ...(selectedFolderId ? { parent_id: selectedFolderId } : {}),
-      });
-      setNewFolderName('');
-      setNewFolderCategory('');
-      setShowNewFolderModal(false);
-      queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
-      await onRefresh();
-      toast.success('Folder created');
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to create folder');
-    }
-  };
-
-  const openNewFolderModal = () => {
-    setNewFolderName('');
-    setNewFolderCategory(selectedCategory === 'all' || selectedCategory === 'uncategorized' ? '' : selectedCategory);
-    setShowNewFolderModal(true);
-  };
-
-  const handleDeleteFolder = async (folderId: string) => {
-    const result = await confirm({
-      title: 'Delete folder',
-      message: 'Delete this folder? It must be empty.',
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
-    });
-    if (result !== 'confirm') return;
-    try {
-      await api('DELETE', `/projects/${projectId}/folders/${folderId}`);
-      if (selectedFolderId === folderId) setSelectedFolderId(null);
-      queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
-      await onRefresh();
-      toast.success('Folder deleted');
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to delete folder');
-    }
-  };
-
-  const handleMoveFolder = async (folderId: string, newParentId: string | null) => {
-    if (!canWriteFiles) return;
-    try {
-      await api('PUT', `/projects/${projectId}/folders/${folderId}`, { parent_id: newParentId });
-      setDraggedFolderId(null);
-      queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
-      await onRefresh();
-      toast.success('Folder moved');
-    } catch (e: any) {
-      setDraggedFolderId(null);
-      toast.error(e?.message || 'Failed to move folder');
-    }
-  };
-
-  const handleMoveFolderToCategory = async (folderId: string, categoryId: string) => {
-    if (!canWriteFiles || !isWriteCategoryAllowed(categoryId)) {
-      toast.error('You do not have permission to move folders to this category');
-      return;
-    }
-    try {
-      await api('PUT', `/projects/${projectId}/folders/${folderId}`, { category: categoryId });
-      setDraggedFolderId(null);
-      queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
-      await onRefresh();
-      toast.success('Folder and its contents moved to category');
-    } catch (e: any) {
-      setDraggedFolderId(null);
-      toast.error(e?.message || 'Failed to move folder');
-    }
-  };
-
-  const handleDeleteFile = async (fileId: string) => {
-    const result = await confirm({
-      title: 'Delete file',
-      message: 'Are you sure you want to remove this file from the project library?',
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
-    });
-    if (result !== 'confirm') return;
-    try {
-      const file = files.find(f => f.id === fileId);
-      const cat = (file?.category || 'uncategorized');
-      if (!canWriteFiles || !isWriteCategoryAllowed(cat)) {
-        toast.error('You do not have permission to delete files in this category');
-        return;
-      }
-      await api('DELETE', `/projects/${projectId}/files/${fileId}`);
-      await queryClient.invalidateQueries({ queryKey: ['projectDeletedFiles', projectId] });
-      await onRefresh();
-      toast.success('Removed from project');
-    } catch (_e) {
-      toast.error('Failed to delete file');
-    }
-  };
-
-  const handleRenameFile = async (fileId: string, newName: string) => {
-    const trimmed = (newName || '').trim();
-    if (!trimmed) {
-      toast.error('File name cannot be empty');
-      return;
-    }
-    if (trimmed.length > 255) {
-      toast.error('File name is too long');
-      return;
-    }
-    const file = files.find(f => f.id === fileId);
-    const cat = (file?.category || 'uncategorized');
-    if (!canWriteFiles || !isWriteCategoryAllowed(cat)) {
-      toast.error('You do not have permission to rename files in this category');
-      return;
-    }
-    try {
-      await api('PUT', `/projects/${projectId}/files/${fileId}`, { original_name: trimmed });
-      setEditingFileNameId(null);
-      setEditingFileNameValue('');
-      await onRefresh();
-      toast.success('File renamed');
-    } catch (_e) {
-      toast.error('Failed to rename file');
-    }
-  };
-
-  const startEditingFileName = (f: ProjectFile) => {
-    setEditingFileNameId(f.id);
-    setEditingFileNameValue(f.original_name || f.file_object_id || '');
-  };
-
-  const openMoveCategoryModal = (fileId: string) => {
-    const f = files.find((x) => x.id === fileId);
-    const cat = f?.category;
-    if (!cat || cat === 'uncategorized') {
-      setMoveModalCategory('uncategorized');
-    } else if (visibleCategories.some((c: any) => c.id === cat)) {
-      setMoveModalCategory(cat);
-    } else {
-      setMoveModalCategory('uncategorized');
-    }
-    setMoveModalFileId(fileId);
-  };
-
-  const handlePermanentDeleteFile = async (fileId: string) => {
-    const result = await confirm({
-      title: 'Delete permanently',
-      message: 'Permanently delete this file from storage? This cannot be undone.',
-      confirmText: 'Delete permanently',
-      cancelText: 'Cancel',
-    });
-    if (result !== 'confirm') return;
-    try {
-      await api('DELETE', `/projects/${encodeURIComponent(projectId)}/files/deleted/${encodeURIComponent(fileId)}`);
-      await refetchDeletedFiles();
-      await onRefresh();
-      toast.success('File permanently deleted');
-    } catch (_e) {
-      toast.error('Failed to delete file');
-    }
-  };
-
-  const handleRestoreDeletedFile = async (fileId: string) => {
-    try {
-      await api('POST', `/projects/${encodeURIComponent(projectId)}/files/deleted/${encodeURIComponent(fileId)}/restore`);
-      await refetchDeletedFiles();
-      await onRefresh();
-      toast.success('File restored to library');
-    } catch (_e) {
-      toast.error('Failed to restore file');
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Main Files Section Card */}
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
-              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-            </div>
-            <h2 className="text-sm font-semibold text-gray-900">Files</h2>
-          </div>
-          {isAdmin && (
-            <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-50" role="tablist" aria-label="File views">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={filesSection === 'active'}
-                onClick={() => setFilesSection('active')}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  filesSection === 'active' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Library
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={filesSection === 'deleted'}
-                onClick={() => setFilesSection('deleted')}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  filesSection === 'deleted' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Deleted files
-              </button>
-            </div>
-          )}
-        </div>
-
-        {isAdmin && filesSection === 'deleted' ? (
-          <div className="rounded-xl border border-amber-100 bg-amber-50/50 overflow-hidden">
-            <p className="text-xs text-amber-900 px-3 py-2 border-b border-amber-100/80">
-              Same previews and downloads as the library. Restore returns the file to the project, or delete permanently to remove it from storage.
-            </p>
-            <div className="flex h-[calc(100vh-400px)] bg-white">
-              <div className="flex-1 overflow-y-auto p-4">
-                {Array.isArray(deletedFiles) && deletedFiles.length > 0 ? (
-                  <div className="overflow-x-auto rounded-lg border border-gray-200">
-                    <table className="w-full">
-                      <thead className="bg-gray-50 border-b">
-                        <tr>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12" aria-hidden />
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Name</th>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Type</th>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Category</th>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Removed</th>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-52">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {deletedFiles.map((df) => {
-                          const icon = iconFor(df);
-                          const isImg = df.is_image || String(df.content_type || '').startsWith('image/');
-                          const name = df.original_name || df.file_object_id;
-                          const pf = df as ProjectFile;
-                          return (
-                            <tr key={df.id} className="hover:bg-gray-50">
-                              <td className="px-3 py-2">
-                                {isImg ? (
-                                  <button
-                                    type="button"
-                                    className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 block"
-                                    onClick={() => handleFilePreview(pf)}
-                                    title="Preview"
-                                  >
-                                    <img
-                                      src={withFileAccessToken(`/files/${df.file_object_id}/thumbnail?w=64`)}
-                                      alt={name}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold`}
-                                    onClick={() => handleFilePreview(pf)}
-                                    title="Open / preview"
-                                  >
-                                    {icon.label}
-                                  </button>
-                                )}
-                              </td>
-                              <td className="px-3 py-2">
-                                <button
-                                  type="button"
-                                  className="text-xs font-semibold text-left text-gray-900 truncate max-w-xs hover:text-brand-red"
-                                  onClick={() => handleFilePreview(pf)}
-                                >
-                                  {name}
-                                </button>
-                              </td>
-                              <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(df)}</td>
-                              <td className="px-3 py-2 text-xs text-gray-600">{df.category || '—'}</td>
-                              <td className="px-3 py-2 text-xs text-gray-600">
-                                {df.deleted_at ? new Date(df.deleted_at).toLocaleString() : '—'}
-                              </td>
-                              <td className="px-3 py-2">
-                                <div className="flex flex-wrap items-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      const url = await fetchDownloadUrl(df.file_object_id);
-                                      if (url) window.open(url, '_blank');
-                                    }}
-                                    title="Download"
-                                    className="p-1 rounded hover:bg-gray-100 text-xs"
-                                  >
-                                    ⬇️
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRestoreDeletedFile(df.id)}
-                                    title="Restore to library"
-                                    className="px-2 py-1 rounded bg-emerald-600 text-white text-[10px] font-medium hover:bg-emerald-700"
-                                  >
-                                    Restore
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handlePermanentDeleteFile(df.id)}
-                                    title="Delete permanently"
-                                    className="px-2 py-1 rounded border border-red-200 text-red-700 text-[10px] font-medium hover:bg-red-50"
-                                  >
-                                    Purge
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-16 text-gray-500 text-sm">
-                    <div className="text-2xl mb-2">📁</div>
-                    <div>No deleted files for this project.</div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : null}
-        
-        {!(isAdmin && filesSection === 'deleted') && (
-        <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="flex h-[calc(100vh-400px)]">
-            {/* Left Sidebar - Categories */}
-            <div className="w-64 border-r bg-gray-50 flex flex-col">
-              <div className="p-3 border-b">
-                <div className="text-xs font-semibold text-gray-700">File Categories</div>
-              </div>
-            <div className="flex-1 overflow-y-auto">
-              <button
-                onClick={() => setSelectedCategory('all')}
-                className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
-                  selectedCategory === 'all' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-xs">📁</span>
-                  <span className="text-xs">All Files</span>
-                  <span className="ml-auto text-[10px] text-gray-500">({filesByCategory['all']?.length || 0})</span>
-                </div>
-              </button>
-              {visibleCategories.map((cat: any) => {
-                const count = filesByCategory[cat.id]?.length || 0;
-                const canEditCategory = canWriteFiles && isWriteCategoryAllowed(String(cat.id));
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id)}
-                    onDragOver={canEditCategory ? (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsDragging(true);
-                    } : undefined}
-                    onDragLeave={canEditCategory ? (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsDragging(false);
-                    } : undefined}
-                    onDrop={canEditCategory ? async (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsDragging(false);
-                      
-                      // OS file / folder drop (folder tree → create project folders + upload)
-                      const dtCat = e.dataTransfer;
-                      if (dropLooksLikeFolderTree(dtCat) || (dtCat.files?.length || 0) > 0) {
-                        await uploadFromDrop(dtCat, cat.id, undefined);
-                        return;
-                      }
-                      
-                      // Check if moving a folder to this category
-                      const folderId = e.dataTransfer.getData('application/x-project-folder-id');
-                      if (folderId) {
-                        await handleMoveFolderToCategory(folderId, cat.id);
-                        return;
-                      }
-                      
-                      // Check if moving existing file to this category
-                      if (draggedFileId) {
-                        await handleMoveFile(draggedFileId, cat.id);
-                        setDraggedFileId(null);
-                      }
-                    } : undefined}
-                    className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
-                      selectedCategory === cat.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
-                    } ${isDragging && canEditCategory ? 'bg-blue-50' : ''} ${!canEditCategory ? 'opacity-70' : ''}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs">{cat.icon || '📁'}</span>
-                      <span className="text-xs">{cat.name}</span>
-                      <span className="ml-auto text-[10px] text-gray-500">({count})</span>
-                    </div>
-                  </button>
-                );
-              })}
-              {filesByCategory['uncategorized']?.length > 0 && (
-                <button
-                  onClick={() => setSelectedCategory('uncategorized')}
-                  onDragOver={canWriteFiles ? (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); } : undefined}
-                  onDragLeave={canWriteFiles ? (e) => { e.preventDefault(); setIsDragging(false); } : undefined}
-                  onDrop={canWriteFiles ? async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setIsDragging(false);
-                    const dtUnc = e.dataTransfer;
-                    if (dropLooksLikeFolderTree(dtUnc) || (dtUnc.files?.length || 0) > 0) {
-                      await uploadFromDrop(dtUnc, 'uncategorized', undefined);
-                      return;
-                    }
-                    const folderId = e.dataTransfer.getData('application/x-project-folder-id');
-                    if (folderId) {
-                      toast.info('Folders must stay in a category; drop on a category instead.');
-                      return;
-                    }
-                    if (draggedFileId) {
-                      await handleMoveFile(draggedFileId, 'uncategorized');
-                      setDraggedFileId(null);
-                    }
-                  } : undefined}
-                  className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
-                    selectedCategory === 'uncategorized' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
-                  } ${isDragging && canWriteFiles ? 'bg-blue-50' : ''}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs">📦</span>
-                    <span className="text-xs">Uncategorized</span>
-                    <span className="ml-auto text-[10px] text-gray-500">({filesByCategory['uncategorized']?.length || 0})</span>
-                  </div>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Right Content Area */}
-          <div 
-            className={`flex-1 overflow-y-auto p-4 ${isDragging && canWriteFiles ? 'bg-blue-50 border-2 border-dashed border-blue-400' : ''}`}
-            onDragOver={canWriteFiles ? (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(true);
-            } : undefined}
-            onDragLeave={canWriteFiles ? (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-            } : undefined}
-            onDrop={canWriteFiles ? async (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-              
-              const dtMain = e.dataTransfer;
-              if (dropLooksLikeFolderTree(dtMain) || (dtMain.files?.length || 0) > 0) {
-                const category =
-                  selectedCategory === 'all'
-                    ? undefined
-                    : selectedCategory === 'uncategorized'
-                      ? null
-                      : selectedCategory;
-                await uploadFromDrop(dtMain, category, undefined);
-                return;
-              }
-              
-              // Check if moving existing file
-              if (draggedFileId && selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
-                await handleMoveFile(draggedFileId, selectedCategory);
-                setDraggedFileId(null);
-              }
-            } : undefined}
-          >
-            <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="relative flex-1 max-w-sm">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                  </span>
-                  <input
-                    type="text"
-                    value={fileSearchQuery}
-                    onChange={(e) => setFileSearchQuery(e.target.value)}
-                    placeholder="Search by file name..."
-                    className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-red focus:border-brand-red"
-                  />
-                  {fileSearchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setFileSearchQuery('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      aria-label="Clear search"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                  )}
-                </div>
-                <div className="text-xs font-semibold text-gray-700 whitespace-nowrap">
-                  {selectedCategory === 'all' ? 'All Files' : 
-                   selectedCategory === 'uncategorized' ? 'Uncategorized' :
-                   visibleCategories.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
-                  <span className="ml-1 text-gray-500">({currentFiles.length})</span>
-                </div>
-              </div>
-              {canWriteFiles && (
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={openNewFolderModal}
-                    className="px-2 py-1.5 rounded border border-gray-300 bg-white text-gray-700 text-xs font-medium hover:bg-gray-50 flex items-center gap-1"
-                    title={
-                      selectedCategory !== 'all' && selectedCategory !== 'uncategorized'
-                        ? (selectedFolderId ? 'Create a subfolder inside the current folder' : 'Create a folder at the category root')
-                        : 'Create subfolder (choose category in modal)'
-                    }
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-10 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
-                    {selectedFolderId ? 'Add subfolder' : 'Add folder'}
-                  </button>
-                  <button
-                    onClick={() => setShowUpload(true)}
-                    className="px-2 py-1.5 rounded bg-brand-red text-white text-xs font-medium"
-                  >
-                    + Upload File
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Location: breadcrumb only (hierarchy of current path) */}
-            {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (
-              <div className="mb-3 flex flex-wrap items-center gap-1">
-                <span className="text-xs text-gray-500">Location:</span>
-                {locationBreadcrumb.map((item, index) => (
-                  <span key={item.id ?? 'root'} className="inline-flex items-center gap-1">
-                    {index > 0 && <span className="text-gray-400 text-xs">/</span>}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedFolderId(item.id)}
-                      className={`px-2 py-1 rounded text-xs font-medium truncate max-w-[140px] ${item.id === selectedFolderId ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                    >
-                      {item.name}
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {showNewFolderModal && (
-              <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowNewFolderModal(false)}>
-                <div className="bg-white rounded-lg shadow-xl p-4 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
-                  <h3 className="text-sm font-semibold mb-2">{selectedFolderId ? 'New subfolder' : 'New folder'}</h3>
-                  {selectedFolderId && selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (
-                    <p className="text-xs text-gray-600 mb-3">
-                      Creating inside{' '}
-                      <span className="font-medium text-gray-900">
-                        {projectFolders.find((f: ProjectFolderItem) => f.id === selectedFolderId)?.name ?? 'folder'}
-                      </span>
-                    </p>
-                  )}
-                  {(selectedCategory === 'all' || selectedCategory === 'uncategorized') && (
-                    <div className="mb-3">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
-                      <select
-                        value={newFolderCategory}
-                        onChange={e => setNewFolderCategory(e.target.value)}
-                        className="w-full border rounded px-3 py-2 text-sm"
-                      >
-                        <option value="">Select category...</option>
-                        {visibleCategories.map((cat: any) => (
-                          <option key={cat.id} value={cat.id}>{cat.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <div className="mb-3">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Folder name</label>
-                    <input
-                      type="text"
-                      value={newFolderName}
-                      onChange={e => setNewFolderName(e.target.value)}
-                      placeholder="Folder name"
-                      className="w-full border rounded px-3 py-2 text-sm"
-                      onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setShowNewFolderModal(false); }}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <button onClick={() => setShowNewFolderModal(false)} className="px-3 py-1.5 text-sm rounded border">Cancel</button>
-                    <button
-                      onClick={handleCreateFolder}
-                      disabled={!newFolderName.trim() || ((selectedCategory === 'all' || selectedCategory === 'uncategorized') && !newFolderCategory)}
-                      className="px-3 py-1.5 text-sm rounded bg-brand-red text-white disabled:opacity-50"
-                    >
-                      Create
-                    </button>
-                  </div>
-                </div>
-              </div></OverlayPortal>
-            )}
-
-            <div className="rounded-lg border overflow-hidden bg-white">
-              {(selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (currentParentFolderId !== null || currentFolderChildren.length > 0 || currentFiles.length > 0)) || (selectedCategory === 'all' || selectedCategory === 'uncategorized') && currentFiles.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12"></th>
-                        <th 
-                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
-                          onClick={() => handleSort('name')}
-                        >
-                          <div className="flex items-center gap-1">
-                            Name
-                            {sortBy === 'name' && (
-                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                            )}
-                          </div>
-                        </th>
-                        <th 
-                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
-                          onClick={() => handleSort('type')}
-                        >
-                          <div className="flex items-center gap-1">
-                            Type
-                            {sortBy === 'type' && (
-                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                            )}
-                          </div>
-                        </th>
-                        <th 
-                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
-                          onClick={() => handleSort('uploaded_at')}
-                        >
-                          <div className="flex items-center gap-1">
-                            Upload Date
-                            {sortBy === 'uploaded_at' && (
-                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                            )}
-                          </div>
-                        </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-24">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {/* Up one level - when inside a folder */}
-                      {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && currentParentFolderId !== null && (
-                        <tr
-                          className="hover:bg-gray-50 cursor-pointer bg-gray-50/50"
-                          onClick={() => setSelectedFolderId(currentParentFolderId)}
-                        >
-                          <td className="px-3 py-2">
-                            <div className="w-8 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="text-xs font-semibold text-gray-600">..</div>
-                          </td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                          <td className="px-3 py-2"></td>
-                        </tr>
-                      )}
-                      {/* Folders first (Windows-style) */}
-                      {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && currentFolderChildren.map((folder: ProjectFolderItem) => (
-                        <tr
-                          key={folder.id}
-                          draggable={canWriteFiles}
-                          onDragStart={canWriteFiles ? (e) => {
-                            e.dataTransfer.setData('application/x-project-folder-id', folder.id);
-                            e.dataTransfer.effectAllowed = 'move';
-                            setDraggedFolderId(folder.id);
-                          } : undefined}
-                          onDragEnd={() => setDraggedFolderId(null)}
-                          className={`hover:bg-gray-50 ${canWriteFiles ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${draggedFolderId === folder.id ? 'opacity-50' : ''}`}
-                          onClick={() => setSelectedFolderId(folder.id)}
-                        >
-                          <td className="px-3 py-2">
-                            <div className="w-8 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="text-xs font-semibold truncate max-w-xs">{folder.name}</div>
-                          </td>
-                          <td className="px-3 py-2 text-xs text-gray-600">Folder</td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                          <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
-                            {canWriteFiles && (
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
-                                className="p-1 rounded hover:bg-red-50 text-red-600 text-xs"
-                                title="Delete folder"
-                              >
-                                🗑️
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                      {/* Files */}
-                      {currentFiles.map((f) => {
-                        const icon = iconFor(f);
-                        const isImg = f.is_image || String(f.content_type || '').startsWith('image/');
-                        const name = f.original_name || f.file_object_id;
-                        
-                        return (
-                          <tr
-                            key={f.id}
-                            draggable={canWriteFiles}
-                            onDragStart={() => canWriteFiles && setDraggedFileId(f.id)}
-                            onDragEnd={() => setDraggedFileId(null)}
-                            className={`hover:bg-gray-50 ${canWriteFiles ? 'cursor-move' : ''}`}
-                          >
-                            <td className="px-3 py-2">
-                              {isImg ? (
-                                <div 
-                                  className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 cursor-pointer flex-shrink-0"
-                                  onClick={() => handleFilePreview(f)}
-                                >
-                                  <img 
-                                    src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=64`)}
-                                    alt={name}
-                                    className="w-full h-full object-cover"
-                                  />
-                                </div>
-                              ) : (
-                                <div 
-                                  className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold select-none flex-shrink-0 cursor-pointer`}
-                                  onClick={() => handleFilePreview(f)}
-                                >
-                                  {icon.label}
-                                </div>
-                              )}
-                            </td>
-                            <td 
-                              className="px-3 py-2"
-                              onClick={(e) => { if (editingFileNameId !== f.id) { e.stopPropagation(); handleFilePreview(f); } }}
-                            >
-                              {editingFileNameId === f.id ? (
-                                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                                  <input
-                                    type="text"
-                                    value={editingFileNameValue}
-                                    onChange={e => setEditingFileNameValue(e.target.value)}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Enter') handleRenameFile(f.id, editingFileNameValue);
-                                      if (e.key === 'Escape') { setEditingFileNameId(null); setEditingFileNameValue(''); }
-                                    }}
-                                    className="text-xs font-semibold border rounded px-2 py-1 max-w-xs flex-1"
-                                    autoFocus
-                                  />
-                                  <button
-                                    onClick={() => handleRenameFile(f.id, editingFileNameValue)}
-                                    title="Save"
-                                    className="p-1 rounded hover:bg-green-100 text-green-700 text-xs"
-                                  >
-                                    ✓
-                                  </button>
-                                  <button
-                                    onClick={() => { setEditingFileNameId(null); setEditingFileNameValue(''); }}
-                                    title="Cancel"
-                                    className="p-1 rounded hover:bg-gray-100 text-xs"
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1">
-                                  <div className="text-xs font-semibold truncate max-w-xs cursor-pointer">{name}</div>
-                                  {canWriteFiles && (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); startEditingFileName(f); }}
-                                      title="Rename"
-                                      className="p-1 rounded hover:bg-gray-100 text-xs flex-shrink-0"
-                                    >
-                                      ✏️
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                            <td 
-                              className="px-3 py-2 cursor-pointer"
-                              onClick={() => handleFilePreview(f)}
-                            >
-                              <div className="text-xs text-gray-600">{getFileTypeLabel(f)}</div>
-                            </td>
-                            <td 
-                              className="px-3 py-2 cursor-pointer"
-                              onClick={() => handleFilePreview(f)}
-                            >
-                              <div className="text-xs text-gray-600">
-                                {f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString('pt-BR') : '-'}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="flex items-center gap-0.5">
-                                <button
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    const url = await fetchDownloadUrl(f.file_object_id);
-                                    if (url) window.open(url, '_blank');
-                                  }}
-                                  title="Download"
-                                  className="p-1 rounded hover:bg-gray-100 text-xs"
-                                >
-                                  ⬇️
-                                </button>
-                                {canWriteFiles && (
-                                  <>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openMoveCategoryModal(f.id);
-                                      }}
-                                      title="Move to category"
-                                      className="p-1 rounded hover:bg-gray-100 text-xs"
-                                    >
-                                      📦
-                                    </button>
-                                    {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (
-                                      <select
-                                        title="Move to folder"
-                                        value={f.folder_id || ''}
-                                        onChange={(e) => {
-                                          const v = e.target.value;
-                                          handleMoveFileToFolder(f.id, v === '' ? null : v);
-                                        }}
-                                        onClick={e => e.stopPropagation()}
-                                        className="p-1 rounded border text-xs max-w-[100px]"
-                                      >
-                                        <option value="">Root</option>
-                                        {projectFolders.map((folder: ProjectFolderItem) => (
-                                          <option key={folder.id} value={folder.id}>{folder.name}</option>
-                                        ))}
-                                      </select>
-                                    )}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteFile(f.id);
-                                      }}
-                                      title="Delete"
-                                      className="p-1 rounded hover:bg-red-50 text-red-600 text-xs"
-                                    >
-                                      🗑️
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="px-3 py-6 text-center text-gray-500">
-                  <div className="text-2xl mb-2">📁</div>
-                  <div className="text-xs">No files in this category</div>
-                  {canWriteFiles && (
-                    <div className="text-[10px] mt-1">Drag and drop files here or click "Upload File"</div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-        )}
-
-      </div>
-
-      {/* Upload Modal */}
-      {showUpload && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
-          <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-sm font-semibold mb-3">Upload Files</div>
-            <div className="space-y-3">
-              <div>
-                <div className="text-xs font-medium text-gray-600 mb-1.5">Files (multiple files supported)</div>
-                <input
-                  type="file"
-                  multiple
-                  onChange={async (e) => {
-                    const fileList = e.target.files;
-                    if (fileList && fileList.length > 0) {
-                      setShowUpload(false);
-                      await uploadMultiple(Array.from(fileList));
-                    }
-                  }}
-                  className="w-full text-xs"
-                />
-              </div>
-              <div className="text-[10px] text-gray-500">
-                You can also drag and drop files directly onto the category area
-              </div>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                onClick={() => setShowUpload(false)}
-                className="px-3 py-1.5 rounded border text-xs"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
-
-      {moveModalFileId && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-            onClick={(e) => e.target === e.currentTarget && setMoveModalFileId(null)}
-            role="presentation"
-          >
-            <div
-              className="w-[480px] max-w-[95vw] bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-              role="dialog"
-              aria-labelledby="project-move-category-title"
-            >
-              <div id="project-move-category-title" className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900">
-                Move to category
-              </div>
-              <div className="p-4 text-xs text-gray-700">
-                <label htmlFor="project-move-category-select" className="block mb-2 font-medium text-gray-800">
-                  Category
-                </label>
-                <select
-                  id="project-move-category-select"
-                  value={moveModalCategory}
-                  onChange={(e) => setMoveModalCategory(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white"
-                >
-                  <option value="uncategorized">Uncategorized</option>
-                  {visibleCategories.map((cat: any) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="p-4 flex items-center justify-end gap-2 border-t border-gray-200">
-                <button
-                  type="button"
-                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all"
-                  onClick={() => setMoveModalFileId(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg px-3 py-2 bg-brand-red text-white text-xs font-medium hover:opacity-90 transition-all"
-                  onClick={async () => {
-                    if (!moveModalFileId) return;
-                    await handleMoveFile(moveModalFileId, moveModalCategory);
-                    setMoveModalFileId(null);
-                  }}
-                >
-                  Move
-                </button>
-              </div>
-            </div>
-          </div>
-        </OverlayPortal>
-      )}
-
-      {/* Upload Progress */}
-      {uploadQueue.length > 0 && (
-        <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-2xl border w-80 max-h-96 overflow-hidden z-50">
-          <div className="p-2.5 border-b bg-gray-50 flex items-center justify-between">
-            <div className="font-semibold text-xs">Upload Progress</div>
-            <button
-              onClick={() => setUploadQueue([])}
-              className="text-gray-500 hover:text-gray-700 text-[10px]"
-            >
-              Clear
-            </button>
-          </div>
-          <div className="overflow-y-auto max-h-80">
-            {uploadQueue.map((u) => (
-              <div key={u.id} className="p-2.5 border-b">
-                <div className="flex items-start gap-2 mb-1">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium truncate" title={u.file.name}>{u.file.name}</div>
-                    <div className="text-[10px] text-gray-500">
-                      {(u.file.size / 1024 / 1024).toFixed(2)} MB
-                    </div>
-                  </div>
-                  <div className="text-xs">
-                    {u.status === 'pending' && '⏳'}
-                    {u.status === 'uploading' && '⏳'}
-                    {u.status === 'success' && '✅'}
-                    {u.status === 'error' && '❌'}
-                  </div>
-                </div>
-                {u.status === 'uploading' && (
-                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                    <div 
-                      className="bg-blue-600 h-1.5 rounded-full transition-all"
-                      style={{ width: `${u.progress}%` }}
-                    />
-                  </div>
-                )}
-                {u.status === 'error' && (
-                  <div className="text-[10px] text-red-600 mt-1" title={u.error}>{u.error || 'Upload failed'}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Image Preview Modal */}
-      {previewImage && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-semibold">{previewImage.name}</h3>
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewImage.url}
-                  download={previewImage.name}
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Download"
-                >
-                  ⬇️
-                </a>
-                <button
-                  onClick={() => {
-                    const printWindow = window.open();
-                    if (printWindow) {
-                      printWindow.document.write(`
-                        <html>
-                          <head><title>${previewImage.name}</title></head>
-                          <body style="margin:0; text-align:center;">
-                            <img src="${previewImage.url}" style="max-width:100%; height:auto;" onload="window.print();" />
-                          </body>
-                        </html>
-                      `);
-                      printWindow.document.close();
-                    }
-                  }}
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Print"
-                >
-                  🖨️
-                </button>
-                <a
-                  href={previewImage.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Open in new tab"
-                >
-                  🔗
-                </a>
-                <button
-                  onClick={() => setPreviewImage(null)}
-                  className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto p-3 min-h-0 flex items-center justify-center">
-              <img
-                src={previewImage.url}
-                alt={previewImage.name}
-                className="max-w-full max-h-full h-auto object-contain"
-              />
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
-
-      {/* PDF Preview Modal */}
-      {previewPdf && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-semibold">{previewPdf.name}</h3>
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewPdf.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Open in new tab"
-                >
-                  🔗
-                </a>
-                <button
-                  onClick={() => setPreviewPdf(null)}
-                  className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-hidden min-h-0">
-              <iframe
-                src={previewPdf.url}
-                className="w-full h-full border-0"
-                title={previewPdf.name}
-              />
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
-
-      {/* Excel Preview/Edit Modal */}
-      {previewExcel && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewExcel(null)}>
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-semibold">{previewExcel.name}</h3>
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewExcel.url}
-                  download={previewExcel.name}
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Download"
-                >
-                  ⬇️
-                </a>
-                <a
-                  href={previewExcel.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Open in new tab"
-                >
-                  🔗
-                </a>
-                <button
-                  onClick={() => setPreviewExcel(null)}
-                  className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-hidden min-h-0">
-              <iframe
-                src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewExcel.url)}`}
-                className="w-full h-full border-0"
-                title={previewExcel.name}
-                allow="fullscreen"
-              />
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
-    </div>
-  );
-}
-
-function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings, isBidding, onPricingItemsChange, showOnlyPricing = false, proposalFormSaveRef }: { projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any, isBidding?:boolean, onPricingItemsChange?: (items: any[])=>void, showOnlyPricing?: boolean, proposalFormSaveRef?: MutableRefObject<(() => Promise<void>) | undefined> }){
-  const queryClient = useQueryClient();
-  const [selectedTab, setSelectedTab] = useState<string>('proposal');
-  
-  // Check permissions for proposals
-  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const isAdmin = (me?.roles||[]).includes('admin');
-  const permissions = new Set(me?.permissions || []);
-  const hasEditProposalPermission = isAdmin || permissions.has('business:projects:proposal:write');
-  
-  // Organize proposals: original first, then Change Orders sorted by number
-  const organizedProposals = useMemo(() => {
-    const original = proposals.find(p => !p.is_change_order);
-    const changeOrders = proposals
-      .filter(p => p.is_change_order)
-      .sort((a, b) => (a.change_order_number || 0) - (b.change_order_number || 0));
-    
-    return {
-      original: original || null,
-      changeOrders: changeOrders
-    };
-  }, [proposals]);
-  
-  // Get the currently selected proposal
-  const selectedProposal = useMemo(() => {
-    if (selectedTab === 'proposal') {
-      return organizedProposals.original;
-    } else if (selectedTab.startsWith('change-order-')) {
-      const orderNum = parseInt(selectedTab.replace('change-order-', ''));
-      return organizedProposals.changeOrders.find(co => co.change_order_number === orderNum);
-    }
-    return null;
-  }, [selectedTab, organizedProposals]);
-  
-  // Fetch full proposal data if it exists
-  const { data: proposalData, isLoading: isLoadingProposal, refetch: refetchProposal } = useQuery({
-    queryKey: ['proposal', selectedProposal?.id],
-    queryFn: () => selectedProposal?.id ? api<any>('GET', `/proposals/${selectedProposal.id}`) : Promise.resolve(null),
-    enabled: !!selectedProposal?.id
-  });
-  
-  // Set default tab when proposals load
-  useEffect(() => {
-    if (organizedProposals.original && selectedTab === 'proposal') {
-      // Already on proposal tab, keep it
-    } else if (organizedProposals.original && !selectedTab) {
-      setSelectedTab('proposal');
-    } else if (organizedProposals.changeOrders.length > 0 && !organizedProposals.original && selectedTab === 'proposal') {
-      // No original, go to first change order
-      setSelectedTab(`change-order-${organizedProposals.changeOrders[0].change_order_number}`);
-    }
-  }, [organizedProposals, selectedTab]);
-  
-  // Refetch proposals list when needed
-  const { refetch: refetchProposals } = useQuery({ 
-    queryKey:['projectProposals', projectId], 
-    queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId||''))}`) 
-  });
-  
-  // Check if editing is allowed based on status and permissions
-  // For opportunities (is_bidding = true): only allow editing if status is "prospecting"
-  // Restrict editing for "Sent to Customer" and "Refused" statuses
-  // For projects (is_bidding = false): use similar logic but check settings
-  // NOTE: Change Orders are editable until approved, then they become read-only
-  const canEdit = useMemo(()=>{
-    if (!hasEditProposalPermission) return false; // No permission = no edit
-    
-    // Check if we're editing a Change Order
-    if (selectedTab.startsWith('change-order-')) {
-      const orderNum = parseInt(selectedTab.replace('change-order-', ''));
-      const changeOrder = organizedProposals.changeOrders.find(co => co.change_order_number === orderNum);
-      if (changeOrder) {
-        // Check if Change Order is approved
-        const approvalStatus = changeOrder.approval_status || (changeOrder.approved_report_id ? 'approved' : null);
-        if (approvalStatus === 'approved') {
-          // Approved Change Orders cannot be edited
-          return false;
-        }
-        // Change Orders that are not approved are editable regardless of project status
-        return true;
-      }
-    }
-    
-    if (selectedTab === 'create-change-order') {
-      // Creating new Change Order is always allowed if we have permission
-      return true;
-    }
-    
-    if (!statusLabel) return true; // Default to allow if no status
-    
-    const statusLabelLower = statusLabel.toLowerCase().trim();
-    
-    // For opportunities (is_bidding = true)
-    if (isBidding) {
-      // Only allow editing if status is "prospecting"
-      // Restrict for "Sent to Customer" and "Refused"
-      if (statusLabelLower === 'prospecting') return true;
-      if (statusLabelLower === 'sent to customer' || statusLabelLower === 'refused') return false;
-      // Default to allow for other statuses (backward compatibility)
-      return true;
-    }
-    
-    // For projects (is_bidding = false), use existing logic
-    // Allow editing for "Prospecting" and "In Progress"
-    return statusLabelLower === 'prospecting' || statusLabelLower === 'in progress';
-  }, [statusLabel, hasEditProposalPermission, isBidding, selectedTab, organizedProposals]);
-  
-  // Handle creating a new Change Order
-  const handleCreateChangeOrder = async () => {
-    try {
-      // Find the original proposal to get General Information
-      const originalProposal = organizedProposals.original;
-      if (!originalProposal) {
-        toast.error('Please create a Proposal first before creating a Change Order');
-        return;
-      }
-
-      // Fetch original proposal data to copy General Information
-      const originalData = await api<any>('GET', `/proposals/${originalProposal.id}`);
-      
-      // Create new Change Order with General Information from original but empty Sections/Pricing
-      const changeOrderData = {
-        ...originalData.data,
-        sections: [],
-        pricing_items: [],
-        optional_services: [],
-        // Keep General Information fields
-      };
-
-      const newChangeOrder = await api<any>('POST', '/proposals', {
-        project_id: projectId,
-        client_id: clientId,
-        site_id: siteId,
-        is_change_order: true,
-        change_order_number: nextChangeOrderNumber,
-        parent_proposal_id: originalProposal.id,
-        title: `Change Order ${nextChangeOrderNumber}`,
-        order_number: originalData.order_number,
-        data: changeOrderData,
-      });
-
-      // Refetch proposals and switch to the new Change Order tab
-      await refetchProposals();
-      queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
-      setSelectedTab(`change-order-${nextChangeOrderNumber}`);
-      toast.success(`Change Order ${nextChangeOrderNumber} created`);
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to create Change Order');
-    }
-  };
-
-  // Calculate next change order number
-  const nextChangeOrderNumber = organizedProposals.changeOrders.length > 0
-    ? Math.max(...organizedProposals.changeOrders.map(co => co.change_order_number || 0)) + 1
-    : 1;
-
-  return (
-    <div className="space-y-4">
-      {/* Main Proposal Section Card */}
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded bg-emerald-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h2 className="text-sm font-semibold text-gray-900">{showOnlyPricing ? 'Pricing' : 'Proposal'}</h2>
-        </div>
-
-        {/* Tabs for proposals - only in projects (hidden in opportunities) */}
-        {!isBidding && (organizedProposals.original || organizedProposals.changeOrders.length > 0 || (hasEditProposalPermission && organizedProposals.original)) && (
-          <div className="border-b border-gray-200 mb-4">
-            <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-              {organizedProposals.original && (
-                <button
-                  onClick={() => setSelectedTab('proposal')}
-                  className={`whitespace-nowrap py-2 px-2 border-b-2 font-semibold text-xs ${
-                    selectedTab === 'proposal'
-                      ? 'border-brand-red text-brand-red'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  {showOnlyPricing ? 'Pricing' : 'Proposal'}
-                </button>
-              )}
-              {organizedProposals.changeOrders.map((co) => {
-                const approvalStatus = co.approval_status || (co.approved_report_id ? 'approved' : null);
-                const isApproved = approvalStatus === 'approved';
-                const isPending = approvalStatus === 'pending';
-                
-                return (
-                  <button
-                    key={co.id}
-                    onClick={() => setSelectedTab(`change-order-${co.change_order_number}`)}
-                    className={`whitespace-nowrap py-2 px-2 border-b-2 font-semibold text-xs flex items-center gap-1.5 ${
-                      selectedTab === `change-order-${co.change_order_number}`
-                        ? 'border-brand-red text-brand-red'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    <span>Change Order {co.change_order_number}</span>
-                    {isApproved && (
-                      <span className="text-[10px] px-1 py-0.5 rounded bg-green-100 text-green-700">✓</span>
-                    )}
-                    {isPending && (
-                      <span className="text-[10px] px-1 py-0.5 rounded bg-yellow-100 text-yellow-700">⏳</span>
-                    )}
-                  </button>
-                );
-              })}
-              {/* Create Change Order tab - hidden for now */}
-              {false && !isBidding && hasEditProposalPermission && organizedProposals.original && (
-                <button
-                  onClick={handleCreateChangeOrder}
-                  className={`whitespace-nowrap py-2 px-2 border-b-2 font-semibold text-xs ${
-                    selectedTab === 'create-change-order'
-                      ? 'border-brand-red text-brand-red'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  + Create Change Order
-                </button>
-              )}
-            </nav>
-          </div>
-        )}
-      
-        {/* Proposal Form */}
-        {selectedTab === 'create-change-order' ? (
-          // Show empty form for creating new Change Order
-          <div className="text-center py-6 text-gray-500">
-            <p className="mb-3 text-xs">Click the "+ Create Change Order" tab to create a new Change Order.</p>
-            <p className="text-[10px]">The Change Order will be created with General Information from the original Proposal.</p>
-          </div>
-        ) : isLoadingProposal && selectedProposal ? (
-          <div className="h-20 bg-gray-100 animate-pulse rounded"/>
-        ) : (
-          <ProposalForm 
-            mode={selectedProposal ? 'edit' : 'new'} 
-            clientId={clientId} 
-            siteId={siteId} 
-            projectId={projectId} 
-            initial={proposalData || null}
-            disabled={!canEdit}
-            showOnlyPricing={showOnlyPricing}
-            saveRef={proposalFormSaveRef}
-            showRestrictionWarning={!canEdit && (!!statusLabel || (selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'))}
-            restrictionMessage={
-              !canEdit && selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'
-                ? 'This Change Order has been approved and cannot be edited.'
-                : !canEdit && statusLabel && !selectedTab.startsWith('change-order-')
-                ? `This project has status "${statusLabel}" which does not allow editing proposals or estimates.`
-                : undefined
-            }
-            onPricingItemsChange={onPricingItemsChange}
-            isBidding={isBidding}
-            projectStatusLabel={statusLabel}
-            onSave={async ()=>{
-              // Always refetch proposals list after save to get the updated/created proposal
-              await refetchProposals();
-              // Force refetch of project proposals to ensure UI updates
-              queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
-              
-              // Check if current tab still exists after refetch
-              const updatedProposals = await api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId))}`);
-              const updatedOrganized = {
-                original: updatedProposals.find(p => !p.is_change_order) || null,
-                changeOrders: updatedProposals
-                  .filter(p => p.is_change_order)
-                  .sort((a, b) => (a.change_order_number || 0) - (b.change_order_number || 0))
-              };
-              
-              // If current Change Order was deleted, switch to Proposal tab
-              if (selectedTab.startsWith('change-order-')) {
-                const orderNum = parseInt(selectedTab.replace('change-order-', ''));
-                const stillExists = updatedOrganized.changeOrders.some(co => co.change_order_number === orderNum);
-                if (!stillExists) {
-                  setSelectedTab('proposal');
-                }
-              }
-              
-              // If we now have a proposal, refetch its full data
-              if (Array.isArray(updatedProposals) && updatedProposals.length > 0) {
-                const updatedProposal = updatedProposals.find(p => p.id === selectedProposal?.id) || updatedProposals[0];
-                // Invalidate the proposal query to trigger refetch
-                queryClient.invalidateQueries({ queryKey: ['proposal', updatedProposal.id] });
-                // Force a refetch of the proposal data
-                queryClient.refetchQueries({ queryKey: ['proposal', updatedProposal.id] });
-              }
-              // Also refetch the proposals list query
-              queryClient.refetchQueries({ queryKey: ['projectProposals', projectId] });
-              // Invalidate project query to refresh division percentages in ProjectDivisionsHeroSection
-              queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-              queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
-            }}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
 function ClientName({ clientId }:{ clientId:string }){
   const { data } = useQuery({ queryKey:['client-name', clientId], queryFn: ()=> clientId? api<any>('GET', `/clients/${clientId}`): Promise.resolve(null) });
   const name = data?.display_name || data?.name || clientId || '-';
@@ -7908,1605 +6576,6 @@ function EmployeeSelect({ label, value, onChange, employees }:{ label:string, va
   );
 }
 
-function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel?: string }){
-  const queryClient = useQueryClient();
-  const confirm = useConfirm();
-  const location = useLocation();
-  const nav = useNavigate();
-  const [month, setMonth] = useState<string>(getCurrentMonthLocal());
-  const [userFilter, setUserFilter] = useState<string>('');
-  
-  // Edit time entry modal state
-  const [editingEntry, setEditingEntry] = useState<any>(null);
-  const [editStartTime, setEditStartTime] = useState<string>('');
-  const [editEndTime, setEditEndTime] = useState<string>('');
-  const [editBreakMinutes, setEditBreakMinutes] = useState<string>('0');
-  const [subcontractorClockOpen, setSubcontractorClockOpen] = useState(false);
-  
-  // Fetch project details for confirmation messages
-  const { data: projectData } = useQuery({ 
-    queryKey: ['project', projectId], 
-    queryFn: () => api<Project>('GET', `/projects/${projectId}`) 
-  });
-  
-  // Check if editing is restricted based on status (On Hold and Finished restrict editing for timesheet)
-  const isEditingRestricted = useMemo(() => {
-    if (!statusLabel) return false;
-    const statusLower = String(statusLabel).trim().toLowerCase();
-    return statusLower === 'on hold' || statusLower === 'finished';
-  }, [statusLabel]);
-  
-  const qs = useMemo(()=>{
-    const p = new URLSearchParams();
-    if (month) p.set('month', month);
-    if (userFilter) p.set('user_id', userFilter);
-    const s = p.toString();
-    return s? ('?'+s): '';
-  }, [month, userFilter]);
-  const { data, refetch } = useQuery({ queryKey:['timesheet', projectId, qs], queryFn: ()=> api<any[]>(`GET`, `/projects/${projectId}/timesheet${qs}`), refetchInterval: 10000 });
-  const entries = data||[];
-  const [workDate, setWorkDate] = useState<string>(formatDateLocal(new Date()));
-  
-  // Get timesheet settings for default break
-  const { data: settings } = useQuery({ queryKey:['settings-bundle'], queryFn: ()=>api<Record<string, any[]>>('GET','/settings') });
-  const defaultBreakMin = useMemo(() => {
-    const timesheetItems = (settings?.timesheet || []) as any[];
-    const breakItem = timesheetItems.find((i: any) => i.label === 'default_break_minutes');
-    return breakItem?.value ? parseInt(breakItem.value, 10) : 30;
-  }, [settings]);
-  
-  // Fetch all shifts for the project to get break minutes for each entry
-  // We need to fetch shifts for the month range to get break minutes
-  const monthRange = useMemo(() => {
-    if (!month) return null;
-    try {
-      const [year, monthNum] = month.split('-').map(Number);
-      const firstDay = new Date(year, monthNum - 1, 1);
-      const lastDay = new Date(year, monthNum, 0);
-      return `${formatDateLocal(firstDay)},${formatDateLocal(lastDay)}`;
-    } catch {
-      return null;
-    }
-  }, [month]);
-  
-  const { data: allShifts } = useQuery({
-    queryKey: ['dispatch-shifts-all', projectId, monthRange],
-    queryFn: () => api<any[]>('GET', `/dispatch/projects/${projectId}/shifts${monthRange ? `?date_range=${monthRange}` : ''}`),
-    enabled: !!projectId
-  });
-
-  // Timesheet audit logs (read-permitted source used as fallback for View Timesheet users)
-  const logsMonth = useMemo(() => {
-    const d = String(workDate || '').slice(0, 7);
-    if (d) return d;
-    return String(month || '').slice(0, 7) || getCurrentMonthLocal();
-  }, [workDate, month]);
-  const logsQs = useMemo(() => {
-    const p = new URLSearchParams();
-    if (logsMonth) p.set('month', logsMonth);
-    p.set('limit', '500');
-    p.set('offset', '0');
-    const s = p.toString();
-    return s ? ('?' + s) : '';
-  }, [logsMonth]);
-  const { data: timesheetLogs } = useQuery({
-    queryKey: ['timesheetLogsMini', projectId, logsQs],
-    queryFn: () => api<any[]>('GET', `/projects/${projectId}/timesheet/logs${logsQs}`),
-    enabled: !!projectId
-  });
-  
-  // Create a map of shifts by user_id and work_date for quick lookup
-  const shiftsByUserAndDate = useMemo(() => {
-    const map: Record<string, any> = {};
-    if (allShifts) {
-      allShifts.forEach((shift: any) => {
-        const key = `${shift.worker_id}_${shift.date}`;
-        if (!map[key] || !Array.isArray(map[key])) {
-          map[key] = [];
-        }
-        map[key].push(shift);
-      });
-    }
-    return map;
-  }, [allShifts]);
-
-  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
-
-  // Find latest attendance-related log for a worker/date/type (clock-in / clock-out)
-  const findAttendanceLog = useCallback((workerId: any, dateStr: string, type: 'in'|'out') => {
-    const logs = (timesheetLogs || []) as any[];
-    if (!logs.length || !workerId || !dateStr) return null;
-    const day = String(dateStr).slice(0, 10);
-    const wantType = type === 'in' ? 'clock-in' : 'clock-out';
-    const worker = (employees || []).find((e: any) => String(e.id) === String(workerId));
-    const workerName = worker?.name || worker?.username || '';
-    const matches = logs.filter((l: any) => {
-      const ch = l?.changes || {};
-      if (!ch?.attendance_type) return false;
-      if (String(ch.attendance_type) !== wantType) return false;
-      if (ch.work_date && String(ch.work_date).slice(0, 10) !== day) return false;
-      if (ch.worker_id && String(ch.worker_id) === String(workerId)) return true;
-      if (workerName && ch.worker_name && String(ch.worker_name).toLowerCase() === String(workerName).toLowerCase()) return true;
-      return false;
-    });
-    if (!matches.length) return null;
-    matches.sort((a: any, b: any) => {
-      const aT = new Date(a?.changes?.time_entered || a?.changes?.time_selected || a?.timestamp || 0).getTime();
-      const bT = new Date(b?.changes?.time_entered || b?.changes?.time_selected || b?.timestamp || 0).getTime();
-      return bT - aT;
-    });
-    return matches[0];
-  }, [timesheetLogs, employees]);
-
-  const formatTimeFromIsoToHHMMSSLocal = (iso: string | null | undefined): string | null => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    return `${hh}:${mm}:00`;
-  };
-
-  // Read-only derived entries from logs (so View Timesheet users can still see history)
-  const displayEntries = useMemo(() => {
-    if (entries && entries.length) return entries;
-    const logs = (timesheetLogs || []) as any[];
-    if (!logs.length) return entries;
-    const rows: any[] = [];
-    const seen = new Set<string>();
-
-    // Prefer shifts (project-scoped) to build per-worker/day rows
-    const keys = Object.keys(shiftsByUserAndDate || {});
-    for (const key of keys) {
-      const parts = key.split('_');
-      const workerId = parts[0];
-      const workDateStr = parts.slice(1).join('_');
-      if (!workerId || !workDateStr) continue;
-      if (month && String(workDateStr).slice(0,7) !== String(month).slice(0,7)) continue;
-      if (userFilter && String(userFilter) !== String(workerId)) continue;
-
-      const clockInLog = findAttendanceLog(workerId, workDateStr, 'in');
-      const clockOutLog = findAttendanceLog(workerId, workDateStr, 'out');
-      if (!clockInLog && !clockOutLog) continue;
-
-      const clockInIso = clockInLog?.changes?.time_selected || clockInLog?.changes?.time_entered || null;
-      const clockOutIso = clockOutLog?.changes?.time_selected || clockOutLog?.changes?.time_entered || null;
-
-      let minutes = 0;
-      if (clockInIso && clockOutIso) {
-        const a = new Date(clockInIso).getTime();
-        const b = new Date(clockOutIso).getTime();
-        if (!Number.isNaN(a) && !Number.isNaN(b) && b > a) minutes = Math.floor((b - a) / 60000);
-      }
-
-      const emp = (employees || []).find((e: any) => String(e.id) === String(workerId));
-      const rowId = `attendance-${workerId}-${String(workDateStr).slice(0,10)}`;
-      if (seen.has(rowId)) continue;
-      seen.add(rowId);
-
-      rows.push({
-        id: rowId,
-        user_id: workerId,
-        user_name: emp?.name || emp?.username || (clockInLog?.changes?.worker_name || clockOutLog?.changes?.worker_name || ''),
-        user_avatar_file_id: emp?.profile_photo_file_id || null,
-        work_date: String(workDateStr).slice(0,10),
-        start_time: formatTimeFromIsoToHHMMSSLocal(clockInIso),
-        end_time: formatTimeFromIsoToHHMMSSLocal(clockOutIso),
-        minutes,
-        break_minutes: 0,
-        is_from_attendance: true,
-        notes: 'Clock-in via attendance system'
-      });
-    }
-
-    return rows;
-  }, [entries, timesheetLogs, shiftsByUserAndDate, employees, month, userFilter, findAttendanceLog]);
-
-  // Calculate total minutes with break deduction
-  // Use break_minutes from backend (already calculated using same function as attendance table)
-  const { minutesTotal, breakTotal } = useMemo(() => {
-    let total = 0;
-    let breakTotal = 0;
-    (displayEntries || []).forEach((e: any) => {
-      // e.minutes is already net minutes (after break deduction) for attendance entries
-      const entryMinutes = Number(e.minutes || 0);
-      total += entryMinutes;
-      const breakMin = e.break_minutes !== undefined && e.break_minutes !== null ? e.break_minutes : 0;
-      breakTotal += breakMin;
-    });
-    return { minutesTotal: total, breakTotal };
-  }, [displayEntries]);
-  
-  const hoursTotalMinutes = minutesTotal; // Already net (after break)
-  
-  // Get current user info to check if supervisor/admin
-  const { data: currentUser } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  
-  // Check permissions for timesheet
-  const isAdmin = (currentUser?.roles||[]).includes('admin');
-  const permissions = new Set(currentUser?.permissions || []);
-  const hasEditTimesheetPermission = isAdmin || permissions.has('business:projects:timesheet:write');
-  const canEditTimesheet = hasEditTimesheetPermission && !isEditingRestricted;
-  const canEditAttendance = isAdmin || permissions.has('hr:attendance:write') || permissions.has('hr:users:edit:timesheet') || permissions.has('users:write');
-  
-  // Check if user is supervisor or admin
-  const isSupervisorOrAdmin = useMemo(() => {
-    if (!currentUser) return false;
-    const roles = currentUser.roles || [];
-    const permissions = currentUser.permissions || [];
-    return roles.includes('admin') || roles.includes('supervisor') || permissions.includes('dispatch:write');
-  }, [currentUser]);
-
-  // Check if user is on-site lead of the project
-  const isOnSiteLead = useMemo(() => {
-    if (!currentUser || !projectData) return false;
-    const userId = String(currentUser.id);
-    
-    // Check division_onsite_leads
-    if (projectData.division_onsite_leads) {
-      for (const divisionId in projectData.division_onsite_leads) {
-        const leadId = projectData.division_onsite_leads[divisionId];
-        if (String(leadId) === userId) {
-          return true;
-        }
-      }
-    }
-    
-    // Check legacy onsite_lead_id field
-    if (projectData.onsite_lead_id && String(projectData.onsite_lead_id) === userId) {
-      return true;
-    }
-    
-    return false;
-  }, [currentUser, projectData]);
-
-  // In Projects > Timesheet, clock-in/out actions are allowed for admins/supervisors/on-site leads
-  // as long as they have attendance edit permissions (or business timesheet write).
-  // Also restricted by project status (On Hold and Finished)
-  const canProjectClockActions = useMemo(() => {
-    if (isEditingRestricted) return false;
-    return !!(canEditTimesheet || (canEditAttendance && (isSupervisorOrAdmin || isOnSiteLead)));
-  }, [canEditTimesheet, canEditAttendance, isSupervisorOrAdmin, isOnSiteLead, isEditingRestricted]);
-  
-  // Fetch shifts for the selected date
-  const dateRange = useMemo(() => {
-    return `${workDate},${workDate}`;
-  }, [workDate]);
-
-  const { data: shifts, refetch: refetchShifts } = useQuery({
-    queryKey: ['shifts', projectId, dateRange],
-    queryFn: async () => {
-      try {
-        const allShifts = await api<any[]>('GET', `/dispatch/projects/${projectId}/shifts?date_range=${dateRange}`);
-        // Return all shifts (not just scheduled) to show all shifts including those with attendances
-        return allShifts;
-      } catch {
-        return [];
-      }
-    },
-    refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
-  });
-
-  // Fetch attendance records for shifts
-  const { data: attendances, refetch: refetchAttendances } = useQuery({
-    queryKey: ['attendances', projectId, workDate, shifts?.map((s: any) => s.id).join(',')],
-    queryFn: async () => {
-      if (!shifts || shifts.length === 0) return [];
-      try {
-        const attendancePromises = shifts.map((shift: any) =>
-          api<any[]>('GET', `/dispatch/shifts/${shift.id}/attendance`).catch(() => [])
-        );
-        const results = await Promise.all(attendancePromises);
-        return results.flat();
-      } catch {
-        return [];
-      }
-    },
-    enabled: !!shifts && shifts.length > 0,
-    refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
-  });
-
-  // Clock-in/out state
-  const [selectedShift, setSelectedShift] = useState<any>(null);
-  const [clockType, setClockType] = useState<'in' | 'out' | null>(null);
-  const [selectedTime, setSelectedTime] = useState<string>(''); // Stores time in 24h format (HH:MM) for backend
-  const [selectedHour12, setSelectedHour12] = useState<string>(''); // Stores hour in 12h format (1-12)
-  const [selectedMinute, setSelectedMinute] = useState<string>(''); // Stores minute in 5-minute increments (00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)
-  const [selectedAmPm, setSelectedAmPm] = useState<'AM' | 'PM'>('AM'); // Stores AM/PM
-  const [reasonText, setReasonText] = useState<string>('');
-  const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
-  const [gpsError, setGpsError] = useState<string>('');
-  const [gpsLoading, setGpsLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [showClockModal, setShowClockModal] = useState(false);
-  const [geofenceStatus, setGeofenceStatus] = useState<{ inside: boolean; distance?: number; radius?: number } | null>(null);
-  
-  // Manual break time (only for clock out)
-  const [insertBreakTime, setInsertBreakTime] = useState<boolean>(false);
-  const [breakHours, setBreakHours] = useState<string>('0');
-  const [breakMinutes, setBreakMinutes] = useState<string>('0');
-
-  const closeClockModal = () => {
-    setShowClockModal(false);
-    setSelectedShift(null);
-    setClockType(null);
-    setSelectedTime('');
-    setSelectedHour12('');
-    setSelectedMinute('');
-    setReasonText('');
-  };
-
-  // Escape to close clock modal
-  useEffect(() => {
-    if (!showClockModal) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeClockModal();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [showClockModal]);
-
-  // Prevent body scroll when clock modal is open
-  useEffect(() => {
-    if (!showClockModal) return;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [showClockModal]);
-
-  // Haversine distance calculation (same as backend)
-  const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371000; // Earth radius in meters
-    const phi1 = (lat1 * Math.PI) / 180;
-    const phi2 = (lat2 * Math.PI) / 180;
-    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
-    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
-    
-    const a =
-      Math.sin(deltaPhi / 2) ** 2 +
-      Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    
-    return R * c;
-  };
-
-  // Check if GPS location is inside geofence
-  const checkGeofence = (lat: number, lng: number, geofences: any[] | null | undefined) => {
-    if (!geofences || geofences.length === 0) {
-      setGeofenceStatus(null); // No geofence - don't set status, message won't show
-      return;
-    }
-
-    for (const geofence of geofences) {
-      const geofenceLat = parseFloat(geofence.lat);
-      const geofenceLng = parseFloat(geofence.lng);
-      const radiusM = parseFloat(geofence.radius_m) || 150;
-      
-      const distance = haversineDistance(lat, lng, geofenceLat, geofenceLng);
-      
-      if (distance <= radiusM) {
-        setGeofenceStatus({ inside: true, distance: Math.round(distance), radius: radiusM });
-        return;
-      }
-    }
-    
-    // Find the closest geofence to show distance
-    let minDistance = Infinity;
-    let closestRadius = 150;
-    for (const geofence of geofences) {
-      const geofenceLat = parseFloat(geofence.lat);
-      const geofenceLng = parseFloat(geofence.lng);
-      const radiusM = parseFloat(geofence.radius_m) || 150;
-      const distance = haversineDistance(lat, lng, geofenceLat, geofenceLng);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestRadius = radiusM;
-      }
-    }
-    
-    setGeofenceStatus({ inside: false, distance: Math.round(minDistance), radius: closestRadius });
-  };
-
-  // Get GPS location
-  const getCurrentLocation = (shiftForGeofence?: any): Promise<{ lat: number; lng: number; accuracy: number }> => {
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('Geolocation is not supported by your browser'));
-        return;
-      }
-
-      setGpsLoading(true);
-      setGpsError('');
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setGpsLoading(false);
-          const location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            accuracy: position.coords.accuracy || 0,
-          };
-          setGpsLocation(location);
-          
-          // Check geofence if shift has geofences
-          // Use shiftForGeofence if provided, otherwise use selectedShift
-          const shiftToCheck = shiftForGeofence || selectedShift;
-          if (shiftToCheck?.geofences && shiftToCheck.geofences.length > 0) {
-            checkGeofence(location.lat, location.lng, shiftToCheck.geofences);
-          } else {
-            setGeofenceStatus(null); // No geofence - don't set status, message won't show
-          }
-          
-          resolve(location);
-        },
-        (error) => {
-          setGpsLoading(false);
-          const errorMsg =
-            error.code === 1
-              ? 'Location permission denied'
-              : error.code === 2
-              ? 'Location unavailable'
-              : error.code === 3
-              ? 'Location request timeout'
-              : 'Failed to get location';
-          setGpsError(errorMsg);
-          setGpsLocation(null);
-          setGeofenceStatus(null);
-          reject(new Error(errorMsg));
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        }
-      );
-    });
-  };
-
-  // Helper function to convert 24h to 12h format
-  const convert24hTo12h = (hour24: number): { hour12: number; amPm: 'AM' | 'PM' } => {
-    if (hour24 === 0) return { hour12: 12, amPm: 'AM' };
-    if (hour24 === 12) return { hour12: 12, amPm: 'PM' };
-    if (hour24 < 12) return { hour12: hour24, amPm: 'AM' };
-    return { hour12: hour24 - 12, amPm: 'PM' };
-  };
-
-  // Helper function to convert 12h to 24h format
-  const convert12hTo24h = (hour12: number, amPm: 'AM' | 'PM'): number => {
-    if (amPm === 'AM') {
-      if (hour12 === 12) return 0;
-      return hour12;
-    } else {
-      if (hour12 === 12) return 12;
-      return hour12 + 12;
-    }
-  };
-
-  // Update selectedTime (24h format) when 12h format changes
-  const updateTimeFrom12h = (hour12: string, minute: string, amPm: 'AM' | 'PM') => {
-    if (hour12 && minute) {
-      const hour12Num = parseInt(hour12, 10);
-      if (!isNaN(hour12Num) && hour12Num >= 1 && hour12Num <= 12) {
-        const hour24 = convert12hTo24h(hour12Num, amPm);
-        const time24h = `${String(hour24).padStart(2, '0')}:${minute}`;
-        setSelectedTime(time24h);
-      }
-    } else {
-      // Clear selectedTime if fields are incomplete
-      setSelectedTime('');
-    }
-  };
-
-  // Handle clock-in/out
-  const handleClockInOut = async (shift: any, type: 'in' | 'out') => {
-    setSelectedShift(shift);
-    setClockType(type);
-    setReasonText('');
-    setGpsError('');
-    setGpsLocation(null); // Clear previous location
-    setGeofenceStatus(null);
-    setInsertBreakTime(false);
-    setBreakHours('0');
-    setBreakMinutes('0');
-
-    // Set default time to now (rounded to 5 min) in 12h format
-    const now = new Date();
-    const hour24 = now.getHours();
-    const minutes = Math.round(now.getMinutes() / 5) * 5;
-    const { hour12, amPm } = convert24hTo12h(hour24);
-    
-    setSelectedHour12(String(hour12));
-    setSelectedMinute(String(minutes).padStart(2, '0'));
-    setSelectedAmPm(amPm);
-    
-    // Also set in 24h format for backend
-    const roundedTime = `${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-    setSelectedTime(roundedTime);
-
-    // Open modal first so user can see it
-    setShowClockModal(true);
-
-    // Try to get GPS location automatically when modal opens
-    // Pass shift directly to ensure geofence check uses the correct shift
-    setGpsLoading(true);
-    try {
-      await getCurrentLocation(shift);
-    } catch (error) {
-      console.warn('GPS location failed:', error);
-      // Error is already set by getCurrentLocation, so user will see it in the modal
-    } finally {
-      setGpsLoading(false);
-    }
-  };
-
-  // Submit attendance
-  const submitAttendance = async () => {
-    if (!selectedShift || !clockType) {
-      toast.error('Invalid shift or clock type');
-      return;
-    }
-
-    if (!selectedTime || !selectedTime.includes(':')) {
-      toast.error('Please select a time');
-      return;
-    }
-
-    // Ensure time is in valid format (HH:MM) with 5-minute increments
-    const [hours, minutes] = selectedTime.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 5 !== 0 || minutes < 0 || minutes > 59) {
-      toast.error('Please select a valid time in 5-minute increments');
-      return;
-    }
-
-    // Use shift date, not workDate, to ensure correct date is used
-    const shiftDate = selectedShift.date; // Format: YYYY-MM-DD
-    const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-    const timeSelectedLocal = `${shiftDate}T${timeStr}:00`;
-
-    // Check if user is supervisor/on-site lead doing clock-in/out for another worker
-    // This check happens before the 4-minute validation to allow supervisors/on-site leads to set future times
-    const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
-    const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
-    const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
-    // For frontend validation, check both supervisor and on-site lead status
-    // Backend will also check on-site lead status, so supervisors and on-site leads can set future times
-    const isAuthorizedSupervisor = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
-
-    // Validate: Allow future times with 4 minute margin
-    // This restriction only applies to personal clock-in/out (not when supervisor/on-site lead is clocking in for another worker)
-    // When supervisor or on-site lead is clocking in for another worker in Projects > Timesheet, allow any future time
-    if (!isAuthorizedSupervisor) {
-      // Create date using local timezone explicitly to avoid timezone issues
-      const [year, month, day] = shiftDate.split('-').map(Number);
-      const selectedDateTime = new Date(year, month - 1, day, hours, minutes, 0);
-      const now = new Date();
-      const maxFutureMs = 4 * 60 * 1000; // 4 minutes buffer for future times
-      if (selectedDateTime.getTime() > (now.getTime() + maxFutureMs)) {
-        toast.error('Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time.');
-        return;
-      }
-    }
-
-    // Validate: If clocking out, check that clock-out time is not before or equal to clock-in time
-    if (clockType === 'out' && selectedShift) {
-      // Find the most recent open clock-in for this shift (one with clock_in_time but no clock_out_time)
-      const openClockIn = attendances?.find(
-        (a: any) => a.shift_id === selectedShift.id && a.clock_in_time && !a.clock_out_time
-      );
-      
-      if (openClockIn && openClockIn.clock_in_time) {
-        const [year, month, day] = shiftDate.split('-').map(Number);
-        const selectedDateTime = new Date(year, month - 1, day, hours, minutes, 0);
-        const clockInDate = new Date(openClockIn.clock_in_time);
-        
-        // Compare dates in the same timezone (both are local)
-        if (selectedDateTime <= clockInDate) {
-          toast.error('Clock-out time must be after clock-in time. Please select a valid time.');
-          return;
-        }
-        
-        // Validate break time: break cannot be greater than or equal to total time
-        if (insertBreakTime) {
-          const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
-          const totalMinutes = Math.floor((selectedDateTime.getTime() - clockInDate.getTime()) / (1000 * 60));
-          
-          if (breakTotalMinutes >= totalMinutes) {
-            toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time.');
-            return;
-          }
-        }
-      }
-    }
-
-    // Prepare confirmation message
-    const time12h = formatTime12h(timeStr);
-    const dateFormatted = formatDate(shiftDate);
-    const projectName = projectData?.name || projectData?.code || 'Unknown Project';
-    
-    // Get worker name if supervisor is doing for another worker
-    let workerName = '';
-    if (isSupervisorDoingForOther && selectedShift?.worker_id) {
-      const worker = employees?.find((e: any) => String(e.id) === String(selectedShift.worker_id));
-      workerName = worker?.display_name || worker?.name || 'Unknown Worker';
-    }
-    
-    // Build confirmation message
-    let confirmationMessage = '';
-    if (clockType === 'out' && selectedShift) {
-      // Find the open clock-in for detailed confirmation
-      const openClockIn = attendances?.find(
-        (a: any) => a.shift_id === selectedShift.id && a.clock_in_time && !a.clock_out_time
-      );
-      
-      if (openClockIn && openClockIn.clock_in_time) {
-        // Detailed confirmation for clock-out
-        const clockInTime = new Date(openClockIn.clock_in_time);
-        // Format clock-in time in local timezone
-        const clockInHour = clockInTime.getHours();
-        const clockInMin = clockInTime.getMinutes();
-        const clockInTime12h = formatTime12h(
-          `${String(clockInHour).padStart(2, '0')}:${String(clockInMin).padStart(2, '0')}`
-        );
-        
-        // Calculate break information first
-        let breakTotalMinutes = 0;
-        let breakInfo = '';
-        if (insertBreakTime) {
-          breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
-          if (breakTotalMinutes > 0) {
-            const breakH = Math.floor(breakTotalMinutes / 60);
-            const breakM = breakTotalMinutes % 60;
-            breakInfo = breakM > 0 ? `Break: ${breakH}h ${breakM}min` : `Break: ${breakH}h`;
-          }
-        }
-        
-        // Calculate hours worked
-        const [year, month, day] = shiftDate.split('-').map(Number);
-        const clockOutDateTime = new Date(year, month - 1, day, hours, minutes, 0);
-        const clockInDateTime = new Date(clockInTime);
-        const diffMs = clockOutDateTime.getTime() - clockInDateTime.getTime();
-        const totalMinutes = Math.floor(diffMs / (1000 * 60));
-        
-        // Subtract break from total minutes to get net hours worked
-        const netMinutes = Math.max(0, totalMinutes - breakTotalMinutes);
-        const workedHours = Math.floor(netMinutes / 60);
-        const workedMinutes = netMinutes % 60;
-        const hoursWorkedStr = workedMinutes > 0 ? `${workedHours}h ${workedMinutes}min` : `${workedHours}h`;
-        
-        // Build message with worker name if supervisor
-        const workerInfo = isSupervisorDoingForOther && workerName ? `Worker: ${workerName}\n` : '';
-        
-        confirmationMessage = `You are about to clock out with the following details:\n\n` +
-          `${workerInfo}Date: ${dateFormatted}\n` +
-          `Clock In: ${clockInTime12h}\n` +
-          `Clock Out: ${time12h}${breakInfo ? `\n${breakInfo}` : ''}\n` +
-          `Hours Worked: ${hoursWorkedStr}\n` +
-          `Project: ${projectName}\n\n` +
-          `Do you want to confirm?`;
-      } else {
-        // Fallback if no open clock-in found
-        if (isSupervisorDoingForOther && workerName) {
-          confirmationMessage = `You are about to clock out for ${workerName} on ${dateFormatted} at ${time12h} for project ${projectName}.\n\nDo you want to confirm?`;
-        } else {
-          confirmationMessage = `You are about to clock out on ${dateFormatted} at ${time12h} for project ${projectName}.\n\nDo you want to confirm?`;
-        }
-      }
-    } else {
-      // Simple confirmation for clock-in
-      if (isSupervisorDoingForOther && workerName) {
-        confirmationMessage = `You are about to clock in for ${workerName} on ${dateFormatted} at ${time12h} for project ${projectName}.\n\nDo you want to confirm?`;
-      } else {
-        confirmationMessage = `You are about to clock in on ${dateFormatted} at ${time12h} for project ${projectName}.\n\nDo you want to confirm?`;
-      }
-    }
-    
-    // Show confirmation dialog
-    const confirmationResult = await confirm({
-      title: `Confirm Clock-${clockType === 'in' ? 'In' : 'Out'}`,
-      message: confirmationMessage,
-      confirmText: 'Confirm',
-      cancelText: 'Cancel'
-    });
-    
-    if (confirmationResult !== 'confirm') {
-      setSubmitting(false);
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      const payload: any = {
-        shift_id: selectedShift.id,
-        type: clockType,
-        time_selected_local: timeSelectedLocal,
-      };
-
-      // Add manual break time if checkbox is checked (only for clock out)
-      if (clockType === 'out' && insertBreakTime) {
-        const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
-        payload.manual_break_minutes = breakTotalMinutes;
-      }
-
-      // Add GPS location if available
-      if (gpsLocation) {
-        payload.gps = {
-          lat: gpsLocation.lat,
-          lng: gpsLocation.lng,
-          accuracy_m: gpsLocation.accuracy,
-          mocked: false,
-        };
-      }
-
-      // Check if supervisor or on-site lead is doing for another worker
-      const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
-      const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
-      const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
-      const isDoingForOther = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
-      
-      // Add reason text if provided
-      if (isDoingForOther) {
-        if (!reasonText || !reasonText.trim() || reasonText.trim().length < 15) {
-          toast.error('Reason text is required (minimum 15 characters) when clocking in/out for another user');
-          setSubmitting(false);
-          return;
-        }
-        payload.reason_text = reasonText.trim();
-      } else if (reasonText && reasonText.trim()) {
-        payload.reason_text = reasonText.trim();
-      }
-
-      // Use regular attendance endpoint
-      const result = await api('POST', '/dispatch/attendance', payload);
-
-      if (result.status === 'approved') {
-        toast.success(`Clock-${clockType} approved successfully`);
-      } else if (result.status === 'pending') {
-        toast.success(`Clock-${clockType} submitted for approval`);
-      }
-
-      setSelectedShift(null);
-      setClockType(null);
-      setSelectedTime('');
-      setSelectedHour12('');
-      setSelectedMinute('');
-      setReasonText('');
-      setInsertBreakTime(false);
-      setBreakHours('0');
-      setBreakMinutes('0');
-      setGpsLocation(null);
-      setGpsError('');
-      closeClockModal();
-
-      // Refetch both shifts and attendances immediately
-      await Promise.all([
-        refetchShifts(),
-        refetchAttendances(),
-        refetch()
-      ]);
-      
-      // Invalidate all related queries to ensure UI updates immediately
-      queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['timesheetLogsMini', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['attendances'] });
-      queryClient.invalidateQueries({ queryKey: ['shifts'] });
-      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
-    } catch (error: any) {
-      console.error('Error submitting attendance:', error);
-      // Extract error message from the error object
-      let errorMsg = 'Failed to submit attendance';
-      if (error.message) {
-        errorMsg = error.message;
-      } else if (error.response?.data?.detail) {
-        errorMsg = error.response.data.detail;
-      } else if (error.response?.data?.message) {
-        errorMsg = error.response.data.message;
-      }
-      toast.error(errorMsg);
-      // Log full error for debugging
-      console.error('Full error object:', error);
-      if (error.response?.data) {
-        console.error('Error response:', error.response.data);
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Get attendance for a shift - NEW MODEL: Each record is a complete event
-  const getAttendanceForShift = (shiftId: string, type: 'in' | 'out'): any => {
-    const att = (attendances || []).find((a: any) => a.shift_id === shiftId);
-    if (!att) return undefined;
-    
-    // Return the attendance if it has the requested time field
-    if (type === 'in' && att.clock_in_time) return att;
-    if (type === 'out' && att.clock_out_time) return att;
-    
-    // For backward compatibility, check type field
-    if (att.type === type) return att;
-    
-    return undefined;
-  };
-
-  // Get status badge
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return <span className="px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-800">Approved</span>;
-      case 'pending':
-        return <span className="px-1.5 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800">Pending</span>;
-      case 'rejected':
-        return <span className="px-1.5 py-0.5 rounded text-xs bg-red-100 text-red-800">Rejected</span>;
-      default:
-        return null;
-    }
-  };
-
-  const csvExport = async()=>{
-    try{
-      const qs = new URLSearchParams();
-      if (month) qs.set('month', month);
-      if (userFilter) qs.set('user_id', userFilter);
-      const rows:any[] = await api('GET', `/projects/${projectId}/timesheet?${qs.toString()}`);
-      const header = ['Date','User','Hours','Break','Hours (after break)','Notes'];
-      const csv = [header.join(',')].concat(rows.map(r=> {
-        const key = `${r.user_id}_${r.work_date}`;
-        const shiftsForEntry = shiftsByUserAndDate[key] || [];
-        const breakMin = shiftsForEntry.length > 0 && shiftsForEntry[0].default_break_min 
-          ? shiftsForEntry[0].default_break_min 
-          : defaultBreakMin;
-        const hoursAfterBreak = Math.max(0, (r.minutes || 0) - breakMin);
-        return [r.work_date, JSON.stringify(r.user_name||''), (r.minutes/60).toFixed(2), breakMin, formatHoursMinutes(hoursAfterBreak), JSON.stringify(r.notes||'')].join(',');
-      })).join('\n');
-      const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = `timesheet_${projectId}_${month||'all'}.csv`; a.click(); URL.revokeObjectURL(url);
-    }catch(_e){ toast.error('Export failed'); }
-  };
-  
-  return (
-    <div className="space-y-4">
-      {/* Editing Restricted Warning */}
-      {isEditingRestricted && statusLabel && (
-        <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
-          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing timesheet.
-        </div>
-      )}
-      
-      <div className="grid md:grid-cols-3 gap-3">
-        <div className="rounded-xl border bg-white p-3">
-        <h4 className="text-sm font-semibold mb-1.5">Add Time Entry</h4>
-        <div className="grid gap-1.5 text-xs">
-          <div><label className="text-[10px] text-gray-600 uppercase tracking-wide block mb-0.5">Date</label><input type="date" className="w-full border rounded px-2.5 py-1.5 text-xs" value={workDate} onChange={e=>setWorkDate(e.target.value)} /></div>
-          
-          {/* Clock In/Out for Shifts */}
-          {shifts && shifts.length > 0 ? (
-            <div>
-              <label className="text-[10px] text-gray-600 uppercase tracking-wide mb-1.5 block font-medium">Clock In/Out</label>
-              <div className="space-y-1.5 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
-                {shifts.map((shift: any) => {
-                  const directClockIn = getAttendanceForShift(shift.id, 'in');
-                  const directClockOut = getAttendanceForShift(shift.id, 'out');
-                  const clockInLog = !directClockIn ? findAttendanceLog(shift.worker_id, shift.date || workDate, 'in') : null;
-                  const clockOutLog = !directClockOut ? findAttendanceLog(shift.worker_id, shift.date || workDate, 'out') : null;
-                  const clockIn = directClockIn || (clockInLog ? {
-                    status: clockInLog?.changes?.status,
-                    source: clockInLog?.changes?.performed_by || clockInLog?.changes?.source || 'system',
-                    clock_in_time: clockInLog?.changes?.time_selected || clockInLog?.changes?.time_entered || null,
-                    time_selected_utc: clockInLog?.changes?.time_selected || null
-                  } : undefined);
-                  const clockOut = directClockOut || (clockOutLog ? {
-                    status: clockOutLog?.changes?.status,
-                    source: clockOutLog?.changes?.performed_by || clockOutLog?.changes?.source || 'system',
-                    clock_out_time: clockOutLog?.changes?.time_selected || clockOutLog?.changes?.time_entered || null,
-                    time_selected_utc: clockOutLog?.changes?.time_selected || null
-                  } : undefined);
-                  const canClockIn = !clockIn || clockIn.status === 'rejected';
-                  const canClockOut = clockIn && (clockIn.status === 'approved' || clockIn.status === 'pending') && (!clockOut || clockOut.status === 'rejected');
-                  const worker = employees?.find((e: any) => e.id === shift.worker_id);
-
-                  return (
-                    <div key={shift.id} className="p-1.5 border rounded bg-gray-50 text-[10px]">
-                      <div className="font-medium mb-1 text-gray-900">
-                        {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
-                        {shift.job_name && <span className="ml-1 text-gray-500 font-normal">({shift.job_name})</span>}
-                        {worker && <span className="ml-1 text-gray-600 font-normal">- {worker.name || worker.username}</span>}
-                      </div>
-                      <div className="space-y-1 mb-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-gray-600 w-8">In:</span>
-                          {clockIn ? (
-                            <div className="flex items-center gap-1.5 flex-1">
-                              {getStatusBadge(clockIn.status)}
-                              <span className="text-gray-700">
-                                {clockIn.clock_in_time ? new Date(clockIn.clock_in_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 
-                                 (clockIn.time_selected_utc ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--')}
-                              </span>
-                              {clockIn.source === 'supervisor' && (
-                                <span className="text-gray-500 text-[10px]">(Supervisor)</span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">Not clocked in</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-gray-600 w-8">Out:</span>
-                          {clockOut ? (
-                            <div className="flex items-center gap-1.5 flex-1">
-                              {getStatusBadge(clockOut.status)}
-                              <span className="text-gray-700">
-                                {clockOut.clock_out_time ? new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 
-                                 (clockOut.time_selected_utc ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--')}
-                              </span>
-                              {clockOut.source === 'supervisor' && (
-                                <span className="text-gray-500 text-[10px]">(Supervisor)</span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">Not clocked out</span>
-                          )}
-                        </div>
-                      </div>
-                      {canProjectClockActions && (
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => handleClockInOut(shift, 'in')}
-                            disabled={!canClockIn || submitting}
-                            className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                              canClockIn
-                                ? 'bg-green-600 hover:bg-green-700 text-white'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                            }`}
-                          >
-                            Clock In
-                          </button>
-                          <button
-                            onClick={() => handleClockInOut(shift, 'out')}
-                            disabled={!canClockOut || submitting}
-                            className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                              canClockOut
-                                ? 'bg-red-600 hover:bg-red-700 text-white'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                            }`}
-                          >
-                            Clock Out
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="text-[10px] text-gray-500 text-center py-3 bg-gray-50 rounded">
-              No shifts scheduled for this date
-            </div>
-          )}
-          <div className="pt-2 mt-1.5 border-t border-gray-100">
-            <label className="text-[10px] text-gray-600 uppercase tracking-wide block mb-0.5">Subcontractor Clock-In/Out</label>
-            <button
-              type="button"
-              onClick={() => setSubcontractorClockOpen(true)}
-              className="w-full border rounded px-2.5 py-1.5 text-xs font-medium bg-white hover:bg-gray-50 text-gray-900"
-            >
-              Subcontractor Clock-In/Out
-            </button>
-          </div>
-        </div>
-        </div>
-        
-        <div className="md:col-span-2 rounded-xl border bg-white">
-        <div className="p-2.5 flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5"><label className="text-[10px] text-gray-600 uppercase tracking-wide">Month</label><input type="month" className="border rounded px-2 py-1 text-xs" value={month} onChange={e=>{ setMonth(e.target.value); }} /></div>
-          <div className="flex items-center gap-1.5"><label className="text-[10px] text-gray-600 uppercase tracking-wide">Employee</label><select className="border rounded px-2 py-1 text-xs" value={userFilter} onChange={e=>setUserFilter(e.target.value)}><option value="">All</option>{sortByLabel(employees||[], (emp:any)=> (emp.name||emp.username||'').toString()).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
-          <div className="flex items-center gap-2">
-            <div className="text-xs text-gray-700">Total: {formatHoursMinutes(hoursTotalMinutes)} <span className="text-[10px] text-gray-500">(after break)</span></div>
-            <button onClick={csvExport} className="px-2 py-1 rounded text-xs font-medium bg-gray-100 hover:bg-gray-200">Export CSV</button>
-          </div>
-        </div>
-        <div className="border-t">
-          {/* Header row */}
-          <div className="px-2.5 py-1.5 text-[10px] font-medium text-gray-600 border-b bg-gray-50 flex items-center gap-2">
-            <div className="w-6"></div>
-            <div className="w-24">Employee</div>
-            <div className="w-12">Date</div>
-            <div className="w-20">Time</div>
-            <div className="w-20">Hours</div>
-            <div className="w-16">Break</div>
-            <div className="flex-1">Notes</div>
-            <div className="w-24"></div>
-          </div>
-        </div>
-        <div className="divide-y">
-          {displayEntries.length? displayEntries.map((e:any)=> {
-            const now = new Date();
-            const endDt = e.end_time? new Date(`${e.work_date}T${e.end_time}`) : new Date(`${e.work_date}T23:59:00`);
-            const created = e.created_at? new Date(e.created_at) : null;
-            const future = endDt.getTime() > now.getTime();
-            let offIcon = '';
-            if(created){
-              const wdEnd = new Date(`${e.work_date}T23:59:00`);
-              const diffH = (created.getTime()-wdEnd.getTime())/3600000;
-              if(diffH>0){ if(diffH<=12) offIcon='🟢'; else if(diffH<=24) offIcon='🟡'; else offIcon='🔴'; }
-            }
-            const futIcon = future? '⏳' : '';
-            // Use break_minutes from backend (already calculated using same function as attendance table)
-            // If not provided (for manual entries), use 0
-            const breakMin = e.break_minutes !== undefined && e.break_minutes !== null ? e.break_minutes : 0;
-            // Hours already has break deducted in the backend (e.minutes is net minutes)
-            const hoursAfterBreak = e.minutes;
-            
-            // Format time - use clock_in_time/clock_out_time if from attendance, otherwise use start_time/end_time
-            let timeDisplay = '--:-- - --:--';
-            if (e.is_from_attendance && e.start_time && e.end_time) {
-              // For attendance entries, times are already in HH:MM:SS format
-              timeDisplay = `${formatTime12h(e.start_time)} - ${formatTime12h(e.end_time)}`;
-            } else if (e.start_time && e.end_time) {
-              // For manual entries, use existing format
-              timeDisplay = `${formatTime12h(e.start_time)} - ${formatTime12h(e.end_time)}`;
-            }
-            
-            return (
-            <div key={e.id} className="px-2.5 py-1.5 text-xs flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {e.user_avatar_file_id? <img src={withFileAccessToken(`/files/${e.user_avatar_file_id}/thumbnail?w=64`)} className="w-5 h-5 rounded-full flex-shrink-0"/> : <span className="w-5 h-5 rounded-full bg-gray-200 inline-block flex-shrink-0"/>}
-                <div className="w-24 text-gray-700 truncate">{e.user_name||''}</div>
-                <div className="w-12 text-gray-600">{String(e.work_date).slice(5,10)}</div>
-                <div className="w-20 text-gray-600">{timeDisplay}</div>
-                <div className="w-20 font-medium">{formatHoursMinutes(hoursAfterBreak)}</div>
-                <div className="w-16 font-medium">{breakMin > 0 ? `${breakMin}m` : '--'}</div>
-                <div className="flex-1 text-gray-600 truncate min-w-0">{e.notes||''}</div>
-                {(futIcon||offIcon) && <span title={future? 'Future time': 'Logged after day end'}>{futIcon}{offIcon}</span>}
-                {e.shift_deleted && (
-                  <span 
-                    className="text-yellow-600 ml-1" 
-                    title={e.shift_deleted_by ? `The shift related to this attendance was deleted by ${e.shift_deleted_by}${e.shift_deleted_at ? ` on ${new Date(e.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
-                  >
-                    <svg className="w-3 h-3 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </span>
-                )}
-              </div>
-              {(() => {
-                const isAttendanceRow = !!e.is_from_attendance;
-                const hasAttendanceId = !!e.attendance_id || (typeof e.id === 'string' && e.id.startsWith('attendance_'));
-                // Also check editing restriction for attendance rows
-                const canModify = isEditingRestricted ? false : (isAttendanceRow ? (canEditAttendance && hasAttendanceId) : canEditTimesheet);
-                if (!canModify) return null;
-                return (
-                <div className="flex items-center gap-1.5">
-                  <button 
-                    onClick={() => {
-                      setEditingEntry(e);
-                      // Extract time from HH:MM:SS format to HH:MM
-                      const startTime = e.start_time ? e.start_time.slice(0, 5) : '';
-                      const endTime = e.end_time ? e.end_time.slice(0, 5) : '';
-                      const breakMin = e.break_minutes !== undefined && e.break_minutes !== null ? String(e.break_minutes) : '0';
-                      setEditStartTime(startTime);
-                      setEditEndTime(endTime);
-                      setEditBreakMinutes(breakMin);
-                    }} 
-                    className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 hover:bg-gray-200"
-                  >
-                    Edit
-                  </button>
-                  <button 
-                    onClick={async() => {
-                      const result = await confirm({
-                        title: 'Delete Time Entry',
-                        message: 'Are you sure you want to delete this time entry?',
-                        confirmText: 'Delete',
-                        cancelText: 'Cancel'
-                      });
-                      if (result !== 'confirm') return;
-                      try {
-                        // Attendance rows come from backend with id "attendance_{uuid}".
-                        // Log-derived placeholder rows don't have a deletable id; those are hidden by canModify above.
-                        await api('DELETE', `/projects/${projectId}/timesheet/${e.id}`);
-                        await refetch();
-                        await refetchAttendances();
-                        await refetchShifts();
-                        queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
-                        queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
-                        toast.success('Time entry deleted');
-                      } catch (err: any) {
-                        const msg = String(err?.message || '');
-                        if (msg.toLowerCase().includes('do not have permission') || msg.includes('403')) {
-                          toast.error('You do not have permission to delete this attendance/time entry');
-                        } else {
-                          toast.error('Failed to delete time entry');
-                        }
-                      }
-                    }} 
-                    className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 hover:bg-gray-200"
-                  >
-                    Delete
-                  </button>
-                </div>
-                );
-              })()}
-            </div>
-          );
-          }) : <div className="p-2.5 text-xs text-gray-600">No time entries</div>}
-        </div>
-        </div>
-      </div>
-      {/* Edit Time Entry Modal */}
-      {editingEntry && (
-        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-lg font-semibold">Edit Time Entry</h3>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start Time *</label>
-              <input
-                type="time"
-                value={editStartTime}
-                onChange={(e) => setEditStartTime(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End Time *</label>
-              <input
-                type="time"
-                value={editEndTime}
-                onChange={(e) => setEditEndTime(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Break (minutes)</label>
-              <input
-                type="number"
-                min="0"
-                value={editBreakMinutes}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === '' || (!isNaN(Number(val)) && Number(val) >= 0)) {
-                    setEditBreakMinutes(val);
-                  }
-                }}
-                className="w-full border rounded px-3 py-2"
-                placeholder="0"
-              />
-              <p className="text-xs text-gray-500 mt-1">Break time in minutes (will be deducted from total hours)</p>
-            </div>
-            
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <button
-                onClick={() => {
-                  setEditingEntry(null);
-                  setEditStartTime('');
-                  setEditEndTime('');
-                  setEditBreakMinutes('0');
-                }}
-                className="px-4 py-2 rounded border bg-gray-100 hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  if (!editStartTime || !editEndTime) {
-                    toast.error('Start time and end time are required');
-                    return;
-                  }
-                  
-                  try {
-                    // Calculate minutes from start and end time
-                    const [startH, startM] = editStartTime.split(':').map(Number);
-                    const [endH, endM] = editEndTime.split(':').map(Number);
-                    const startMinutes = startH * 60 + startM;
-                    const endMinutes = endH * 60 + endM;
-                    const minutes = endMinutes - startMinutes;
-                    
-                    if (minutes <= 0) {
-                      toast.error('End time must be after start time');
-                      return;
-                    }
-                    
-                    // Validate break: break cannot be greater than or equal to total time
-                    const breakMin = editBreakMinutes === '' ? 0 : parseInt(editBreakMinutes, 10);
-                    if (isNaN(breakMin) || breakMin < 0) {
-                      toast.error('Break minutes must be a valid non-negative number');
-                      return;
-                    }
-                    if (breakMin >= minutes) {
-                      toast.error('Break time cannot be greater than or equal to total time');
-                      return;
-                    }
-                    
-                    const payload: any = {
-                      start_time: `${editStartTime}:00`,
-                      end_time: `${editEndTime}:00`,
-                      minutes: minutes
-                    };
-                    
-                    // Only include break_minutes if it's a valid number (even if 0)
-                    if (!isNaN(breakMin)) {
-                      payload.break_minutes = breakMin;
-                    }
-                    
-                    await api('PATCH', `/projects/${projectId}/timesheet/${editingEntry.id}`, payload);
-                    
-                    await refetch();
-                    await refetchAttendances();
-                    await refetchShifts();
-                    queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
-                    queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
-                    toast.success('Time entry updated');
-                    
-                    setEditingEntry(null);
-                    setEditStartTime('');
-                    setEditEndTime('');
-                    setEditBreakMinutes('0');
-                  } catch (_e) {
-                    toast.error('Failed to update time entry');
-                  }
-                }}
-                className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
-
-      {/* Clock In/Out Modal - standardized with EventModal / EditShiftModal */}
-      {showClockModal && selectedShift && clockType && (
-        <OverlayPortal><div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
-          onClick={closeClockModal}
-        >
-          <div
-            className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Title bar */}
-            <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={closeClockModal}
-                  className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-                  title="Close"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-900">
-                    Clock {clockType === 'in' ? 'In' : 'Out'}
-                  </h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {clockType === 'in' ? 'Record start time for this shift' : 'Record end time and optional break'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-                {/* Time selector (12h format with AM/PM) */}
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Time *</label>
-                  <div className="flex gap-2 items-center">
-                    <select
-                      value={selectedHour12}
-                      onChange={(e) => {
-                        const hour12 = e.target.value;
-                        setSelectedHour12(hour12);
-                        updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
-                      }}
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                      required
-                    >
-                      <option value="">Hour</option>
-                      {Array.from({ length: 12 }, (_, i) => (
-                        <option key={i + 1} value={String(i + 1)}>
-                          {i + 1}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-gray-500 font-medium">:</span>
-                    <select
-                      value={selectedMinute}
-                      onChange={(e) => {
-                        const minute = e.target.value;
-                        setSelectedMinute(minute);
-                        updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
-                      }}
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                      required
-                    >
-                      <option value="">Min</option>
-                      {Array.from({ length: 12 }, (_, i) => {
-                        const m = i * 5;
-                        return (
-                          <option key={m} value={String(m).padStart(2, '0')}>
-                            {String(m).padStart(2, '0')}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <select
-                      value={selectedAmPm}
-                      onChange={(e) => {
-                        const amPm = e.target.value as 'AM' | 'PM';
-                        setSelectedAmPm(amPm);
-                        updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
-                      }}
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                      required
-                    >
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Manual Break Time (only for Clock Out) */}
-                {clockType === 'out' && (
-                  <div>
-                    <label className="flex items-center gap-2 mb-2">
-                      <input
-                        type="checkbox"
-                        checked={insertBreakTime}
-                        onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                      />
-                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
-                    </label>
-                    {insertBreakTime && (
-                      <div className="ml-6 space-y-2">
-                        <div className="flex gap-2 items-center">
-                          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide w-12">Hours:</label>
-                          <select
-                            value={breakHours}
-                            onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                          >
-                            {Array.from({ length: 3 }, (_, i) => (
-                              <option key={i} value={String(i)}>
-                                {i}
-                              </option>
-                            ))}
-                          </select>
-                          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide w-12 ml-2">Minutes:</label>
-                          <select
-                            value={breakMinutes}
-                            onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                          >
-                            {Array.from({ length: 12 }, (_, i) => {
-                              const m = i * 5;
-                              return (
-                                <option key={m} value={String(m).padStart(2, '0')}>
-                                  {String(m).padStart(2, '0')}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* GPS Status */}
-                <div>
-                  {gpsLocation ? (
-                    <>
-                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="text-green-800">✓ Location captured</div>
-                            <div className="text-xs text-green-600 mt-1">
-                              Accuracy: {Math.round(gpsLocation.accuracy)}m
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => getCurrentLocation(selectedShift)}
-                            disabled={gpsLoading}
-                            className="text-xs px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 bg-white text-sm font-medium text-gray-700"
-                          >
-                            {gpsLoading ? 'Getting location...' : 'Try GPS again'}
-                          </button>
-                        </div>
-                      </div>
-                      {selectedShift?.geofences && selectedShift.geofences.length > 0 ? (
-                        geofenceStatus && (
-                          <div className={`p-3 border rounded-lg text-sm mt-2 ${
-                            geofenceStatus.inside
-                              ? 'bg-green-50 border-green-200 text-green-800'
-                              : 'bg-orange-50 border-orange-200 text-orange-800'
-                          }`}>
-                            {geofenceStatus.inside ? (
-                              <div>
-                                <div className="font-medium">✓ Great! You are at the right site to clock-in/out</div>
-                                {geofenceStatus.distance !== undefined && (
-                                  <div className="text-xs mt-1 opacity-75">
-                                    Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius)
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <div>
-                                <div className="font-medium">ℹ You are not at the correct site</div>
-                                {geofenceStatus.distance !== undefined && (
-                                  <div className="text-xs mt-1 opacity-75">
-                                    Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius). Location is captured but not mandatory.
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      ) : (
-                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 mt-2">
-                          <div className="font-medium">ℹ Location captured (not mandatory)</div>
-                          <div className="text-xs mt-1 opacity-75">
-                            No geofence is defined for this shift. Your location has been captured but is not mandatory for clock-in/out.
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  ) : gpsLoading ? (
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-800"></div>
-                        <span>Getting location...</span>
-                      </div>
-                    </div>
-                  ) : gpsError ? (
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                      {gpsError}
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
-                      No location data
-                    </div>
-                  )}
-                </div>
-
-                {/* Reason text */}
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                    Reason {
-                      (() => {
-                        const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
-                        const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
-                        const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
-                        const requiresReason = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
-                        return requiresReason && <span className="text-red-500">*</span>;
-                      })()
-                    }
-                  </label>
-                  <textarea
-                    value={reasonText}
-                    onChange={(e) => setReasonText(e.target.value)}
-                    placeholder="Describe the reason for this attendance entry..."
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm h-24 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    minLength={15}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    {(() => {
-                      const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
-                      const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
-                      const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
-                      const isDoingForOther = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
-
-                      if (isDoingForOther) {
-                        return (
-                          <span className="text-red-600 font-medium">
-                            Required (minimum 15 characters): You must provide a reason when clocking in/out for another user.
-                          </span>
-                        );
-                      }
-
-                      let isDifferentDayFromToday = false;
-                      let isFutureTime = false;
-                      if (selectedShift && selectedTime && selectedHour12 && selectedMinute) {
-                        try {
-                          const shiftDate = selectedShift.date;
-                          const hour24 = selectedAmPm === 'PM' && parseInt(selectedHour12) !== 12
-                            ? parseInt(selectedHour12) + 12
-                            : selectedAmPm === 'AM' && parseInt(selectedHour12) === 12
-                            ? 0
-                            : parseInt(selectedHour12);
-                          const [year, month, day] = shiftDate.split('-').map(Number);
-                          const selectedDateTime = new Date(year, month - 1, day, hour24, parseInt(selectedMinute), 0);
-                          const now = new Date();
-                          const todayStr = formatDateLocal(now);
-                          const selectedDateStr = formatDateLocal(selectedDateTime);
-                          isDifferentDayFromToday = selectedDateStr !== todayStr;
-                          const bufferMs = 60 * 1000;
-                          isFutureTime = selectedDateTime.getTime() > (now.getTime() + bufferMs);
-                        } catch (e) {}
-                      }
-
-                      if (isFutureTime) {
-                        return (
-                          <span className="text-red-600 font-medium">
-                            ⚠ Clock-in/out cannot be in the future. Please select a valid time.
-                          </span>
-                        );
-                      }
-                      if (isDifferentDayFromToday) {
-                        return (
-                          <span className="text-orange-600 font-medium">
-                            ℹ Clock-in/out on a different day than today will require supervisor approval. Reason is optional.
-                          </span>
-                        );
-                      }
-                      if (!gpsLocation || gpsError) {
-                        return (
-                          <span className="text-gray-600">
-                            Optional: Location is captured but not mandatory. Reason is optional.
-                          </span>
-                        );
-                      }
-                      return 'Optional: Reason is not required for your own clock-in/out on the same day as the shift.';
-                    })()}
-                  </p>
-                </div>
-
-                {/* Privacy notice */}
-                <p className="text-xs text-gray-500 mt-2">
-                  <strong>Privacy Notice:</strong> Your location is used only for attendance validation at the time of clock-in/out.
-                </p>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-              <button
-                type="button"
-                onClick={closeClockModal}
-                disabled={submitting}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={submitAttendance}
-                disabled={(() => {
-                  if (submitting || !selectedTime || !selectedHour12 || !selectedMinute) return true;
-                  const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
-                  const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
-                  const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
-                  const isReasonRequired = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
-                  if (isReasonRequired && (!reasonText.trim() || reasonText.trim().length < 15)) {
-                    return true;
-                  }
-                  return false;
-                })()}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submitting ? 'Submitting...' : 'Submit'}
-              </button>
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
-      <SubcontractorClockModal projectId={projectId} open={subcontractorClockOpen} onClose={() => setSubcontractorClockOpen(false)} />
-    </div>
-  );
-}
-
-// ===============================================
 // AUDIT LOG SECTIONS
 // ===============================================
 
@@ -9632,7 +6701,7 @@ function AuditLogEntry({ log }: { log: any }) {
               onClick={() => setExpanded(!expanded)}
               className="text-xs text-blue-600 hover:text-blue-800 mt-1"
             >
-              {expanded ? '▼ Hide details' : '▶ Show details'}
+              {expanded ? 'â–¼ Hide details' : 'â–¶ Show details'}
             </button>
           )}
           
@@ -10379,7 +7448,7 @@ function LastReportsCard({ reports }: { reports: Report[] }){
   );
 }
 
-function ProjectTeamCard({ projectId, employees, canManageMembers }: { projectId: string, employees: any[], canManageMembers: boolean }){
+function ProjectTeamCard({ projectId, employees, canManageMembers, useDesignSystem }: { projectId: string, employees: any[], canManageMembers: boolean, useDesignSystem?: boolean }){
   const queryClient = useQueryClient();
   const { data: shifts = [] } = useQuery({
     queryKey: ['projectShifts', projectId],
@@ -10456,18 +7525,141 @@ function ProjectTeamCard({ projectId, employees, canManageMembers }: { projectId
     }
   };
 
-  return (
-    <div className="rounded-xl border bg-white p-4">
+  const memberUserOptions = useMemo(
+    () => availableEmployees.map((e: any) => mapEmployeeToAppUserSelect(e)),
+    [availableEmployees],
+  );
+
+  const resolveMemberUser = useCallback(
+    (member: any) => {
+      const uid = String(member.user_id);
+      const fromDir =
+        employees.find((e: any) => String(e.id) === uid) ||
+        allUsers.find((u: any) => String(u.id) === uid);
+      if (fromDir) return mapEmployeeToAppUserSelect(fromDir);
+      return {
+        id: uid,
+        name: (member.name || member.username || 'User') as string,
+        username: member.username,
+      };
+    },
+    [employees, allUsers],
+  );
+
+  const addPeopleControl = canManageMembers ? (
+    useDesignSystem ? (
+      <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowAddMember((v) => !v)}>
+        {showAddMember ? 'Cancel' : 'Add people'}
+      </AppButton>
+    ) : (
+      <button
+        onClick={() => setShowAddMember((v) => !v)}
+        className="px-2 py-1 rounded border text-xs bg-white hover:bg-gray-50"
+      >
+        Add people
+      </button>
+    )
+  ) : null;
+
+  if (useDesignSystem) {
+    return (
+      <AppCard className="flex h-full min-h-0 flex-col">
+        <AppSectionHeader
+          title="Project Team"
+          description="Members with project access and workers scheduled on shifts."
+          action={addPeopleControl}
+        />
+        <div className={uiCx('mt-3 flex min-h-0 flex-1 flex-col', uiSpacing.sectionStack)}>
+          {showAddMember && canManageMembers && (
+            <div className={uiCx('grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end')}>
+              <AppUserSelect
+                mode="single"
+                label="Team member"
+                users={memberUserOptions}
+                value={selectedUserId}
+                onChange={setSelectedUserId}
+                placeholder="Search user…"
+                fieldHint="Team member\n\nGrant this user access to the opportunity in MK Hub."
+              />
+              <AppButton
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="sm:mb-0.5"
+                disabled={!selectedUserId || savingMember}
+                loading={savingMember}
+                onClick={onAddMember}
+              >
+                Add
+              </AppButton>
+            </div>
+          )}
+
+          {(aclMembers || []).length > 0 ? (
+            <div className={uiCx(uiBorders.subtle, uiRadius.control, uiColors.surface, 'divide-y overflow-hidden')}>
+              {(aclMembers || []).map((member: any) => (
+                <div
+                  key={member.id}
+                  className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-gray-50"
+                >
+                  <AppUserAvatar user={resolveMemberUser(member)} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className={uiCx(uiTypography.body, 'truncate font-medium text-gray-900')}>
+                      {member.name || member.username}
+                    </div>
+                    <AppBadge variant={member.is_creator ? 'info' : 'neutral'} className="mt-1">
+                      {member.is_creator ? 'Creator' : member.member_role || 'Member'}
+                    </AppBadge>
+                  </div>
+                  {canManageMembers && !member.is_creator ? (
+                    <AppListRowIconButton
+                      preset="delete"
+                      label="Remove member"
+                      loading={removingMemberId === String(member.user_id)}
+                      disabled={removingMemberId === String(member.user_id)}
+                      onClick={() => onRemoveMember(member)}
+                    />
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <AppEmptyState
+              title="No team members yet"
+              description="Add people who need access to this opportunity."
+              action={
+                canManageMembers ? (
+                  <AppButton type="button" size="sm" variant="secondary" onClick={() => setShowAddMember(true)}>
+                    Add people
+                  </AppButton>
+                ) : undefined
+              }
+            />
+          )}
+
+          {teamMembers.length > 0 ? (
+            <div className={uiCx('border-t border-gray-100 pt-3', uiSpacing.sectionStack)}>
+              <p className={uiTypography.overline}>Scheduled workers</p>
+              <div className={uiUserSelect.chipRow}>
+                {teamMembers.map((member: any) => (
+                  <span key={member.id} className={uiUserSelect.chip}>
+                    <AppUserAvatar user={mapEmployeeToAppUserSelect(member)} size="sm" className={uiUserSelect.chipAvatar} />
+                    <span className="truncate">{member.name || member.username}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </AppCard>
+    );
+  }
+
+  const teamBody = (
+    <>
       <div className="flex items-center justify-between mb-3">
         <h4 className="font-semibold">Project Team</h4>
-        {canManageMembers && (
-          <button
-            onClick={() => setShowAddMember((v) => !v)}
-            className="px-2 py-1 rounded border text-xs bg-white hover:bg-gray-50"
-          >
-            Add people
-          </button>
-        )}
+        {addPeopleControl}
       </div>
 
       {showAddMember && canManageMembers && (
@@ -10534,15 +7726,20 @@ function ProjectTeamCard({ projectId, employees, canManageMembers }: { projectId
           </div>
         </div>
       )}
-    </div>
+    </>
   );
+
+  return <div className="rounded-xl border bg-white p-4">{teamBody}</div>;
 }
 
-function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: { 
+function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab, useDesignSystem, isHeroCollapsed, headerEnd }: { 
   availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety')[], 
   onTabClick: (tab: typeof availableTabs[number] | 'overview' | null) => void,
   proj: any,
-  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null
+  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null,
+  useDesignSystem?: boolean,
+  isHeroCollapsed?: boolean,
+  headerEnd?: ReactNode,
 }){
   const tabConfig: Record<string, { label: string, icon: string }> = {
     overview: { label: 'Overview', icon: '📊' },
@@ -10560,6 +7757,27 @@ function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: {
 
   // Include 'overview' and filter available tabs (hide 'orders' tab from UI)
   const tabsToShow: (typeof availableTabs[number] | 'overview')[] = ['overview', ...availableTabs.filter(t => t !== 'overview' && t !== 'orders')];
+
+  if (useDesignSystem) {
+    const appTabItems = tabsToShow.map((tabKey) => ({
+      key: tabKey,
+      label: tabConfig[tabKey]?.label || tabKey,
+    }));
+    const activeKey = currentTab === null ? 'overview' : currentTab;
+    return (
+      <AppCard bodyClassName={isHeroCollapsed ? 'p-2.5' : 'p-3'}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <AppTabs
+            className="min-w-0 flex-1"
+            tabs={appTabItems}
+            value={activeKey}
+            onChange={(key) => onTabClick(key === 'overview' ? null : (key as typeof availableTabs[number]))}
+          />
+          {headerEnd ? <div className="shrink-0 sm:ml-auto">{headerEnd}</div> : null}
+        </div>
+      </AppCard>
+    );
+  }
 
   return (
     <div className="rounded-xl border bg-white p-3">
@@ -10645,7 +7863,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
               return (
                 <span key={id} className="px-2 py-1 rounded-full border text-xs flex items-center gap-1" style={{ backgroundColor: bg }}>
                   {ab}
-                  <button onClick={()=> setDivs(prev=> prev.filter(x=>x!==id))} className="ml-1 text-[10px]">✕</button>
+                  <button onClick={()=> setDivs(prev=> prev.filter(x=>x!==id))} className="ml-1 text-[10px]">âœ•</button>
                 </span>
               );
             })}
@@ -10767,12 +7985,13 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
 const getDivisionIcon = (label: string, suppressNativeTitle?: boolean) => <DivisionIcon label={label} size={20} suppressNativeTitle={suppressNativeTitle} />;
 
 // Edit Status Modal Component
-function EditStatusModal({ projectId, currentStatus, currentStatusLabel, settings, isBidding, onClose, onSave }: {
+function EditStatusModal({ projectId, currentStatus, currentStatusLabel, settings, isBidding, designSystem, onClose, onSave }: {
   projectId: string;
   currentStatus: string;
   currentStatusLabel: string;
   settings: any;
   isBidding?: boolean;
+  designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -10848,6 +8067,65 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
       setSaving(false);
     }
   };
+
+  const statusOptions = projectStatuses.map((status: any) => ({
+    value: String(status.id),
+    label: String(status.label || status.id),
+  }));
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Status"
+        description="Update the workflow status for this opportunity"
+        formWidth="comfortable"
+        quickInfo={opportunityEditStatusQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              onClick={handleSave}
+              disabled={saving || projectStatuses.length === 0}
+              loading={saving}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {projectStatuses.length === 0 ? (
+            <p className={uiTypography.helper}>
+              No statuses available. In System Settings → project statuses, enable &quot;Show in{' '}
+              {isBidding ? 'opportunities' : 'projects'}&quot; for at least one status.
+            </p>
+          ) : (
+            <AppSelect
+              label="Status"
+              value={selectedStatusId}
+              onChange={(e) => setSelectedStatusId(e.target.value)}
+              options={statusOptions}
+              fieldHint="Status\n\nPipeline stage for this opportunity. Shown on the overview and in opportunity lists."
+            />
+          )}
+          <AppTextarea
+            label="Notes (optional)"
+            placeholder="Explain why the status is changing…"
+            value={statusNotes}
+            onChange={(e) => setStatusNotes(e.target.value)}
+            rows={4}
+            fieldHint="Notes (optional)\n\nOptional context saved as a note when you change status."
+          />
+        </div>
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div
@@ -10932,9 +8210,10 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
 }
 
 // Edit Project Name Modal Component
-function EditProjectNameModal({ projectId, currentName, onClose, onSave }: {
+function EditProjectNameModal({ projectId, currentName, designSystem, onClose, onSave }: {
   projectId: string;
   currentName: string;
+  designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -10969,6 +8248,42 @@ function EditProjectNameModal({ projectId, currentName, onClose, onSave }: {
       setSaving(false);
     }
   };
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Project Name"
+        description="Rename the opportunity as it appears across the app"
+        formWidth="comfortable"
+        quickInfo={opportunityEditNameQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <AppInput
+          label="Project Name *"
+          value={projectName}
+          onChange={(e) => setProjectName(e.target.value)}
+          placeholder="Enter project name"
+          autoFocus
+          fieldHint="Project Name\n\nPrimary title for this opportunity in MK Hub."
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave();
+            else if (e.key === 'Escape') onClose();
+          }}
+        />
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div
@@ -11058,9 +8373,10 @@ function EditProjectNameModal({ projectId, currentName, onClose, onSave }: {
 }
 
 // Edit Site Modal Component
-function EditSiteModal({ projectId, project, onClose, onSave }: {
+function EditSiteModal({ projectId, project, designSystem, onClose, onSave }: {
   projectId: string;
   project: any;
+  designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -11112,6 +8428,111 @@ function EditSiteModal({ projectId, project, onClose, onSave }: {
       setSaving(false);
     }
   };
+
+  const siteOptions = useMemo(
+    () => [
+      { value: '', label: 'No Site' },
+      ...sortByLabel(sites, (s: any) => (s.site_name || s.site_address_line1 || s.id || '').toString()).map(
+        (site: any) => ({
+          value: String(site.id),
+          label: (site.site_name || site.site_address_line1 || site.id) as string,
+        }),
+      ),
+    ],
+    [sites],
+  );
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Project Site"
+        description="Choose the job site linked to this opportunity"
+        formWidth="comfortable"
+        quickInfo={opportunityEditSiteQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving || loadingSites} loading={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {loadingSites ? (
+            <p className={uiTypography.helper}>Loading sites…</p>
+          ) : (
+            <AppSelect
+              label="Site"
+              value={String(siteId || '')}
+              onChange={(e) => setSiteId(e.target.value)}
+              options={siteOptions}
+              searchable={siteOptions.length > 8}
+              placeholder="Select site…"
+              fieldHint="Site\n\nJob site under the project owner customer. Required before converting to a project."
+            />
+          )}
+
+          {selectedSite && (
+            <AppCard bodyClassName="p-4">
+              <p className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Site information</p>
+              <div className="space-y-2 text-sm">
+                {selectedSite.site_name && (
+                  <div>
+                    <span className={uiTypography.helper}>Name:</span>
+                    <span className="ml-2 text-gray-900">{selectedSite.site_name}</span>
+                  </div>
+                )}
+                {selectedSite.site_address_line1 && (
+                  <div>
+                    <span className={uiTypography.helper}>Address:</span>
+                    <span className="ml-2 text-gray-900">{selectedSite.site_address_line1}</span>
+                    {selectedSite.site_address_line2 && (
+                      <div className="ml-12 text-gray-700">{selectedSite.site_address_line2}</div>
+                    )}
+                  </div>
+                )}
+                {(selectedSite.site_city || selectedSite.site_province || selectedSite.site_postal_code) && (
+                  <div>
+                    <span className={uiTypography.helper}>Location:</span>
+                    <span className="ml-2 text-gray-900">
+                      {[selectedSite.site_city, selectedSite.site_province, selectedSite.site_postal_code]
+                        .filter(Boolean)
+                        .join(', ')}
+                    </span>
+                  </div>
+                )}
+                {selectedSite.site_country && (
+                  <div>
+                    <span className={uiTypography.helper}>Country:</span>
+                    <span className="ml-2 text-gray-900">{selectedSite.site_country}</span>
+                  </div>
+                )}
+                {selectedSite.site_notes && (
+                  <div>
+                    <span className={uiTypography.helper}>Notes:</span>
+                    <div className="ml-2 mt-1 text-gray-900">{selectedSite.site_notes}</div>
+                  </div>
+                )}
+              </div>
+            </AppCard>
+          )}
+
+          {currentSite && siteId !== (project?.site_id || '') && (
+            <p className={uiCx(uiTypography.helper, 'rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900')}>
+              Changing from <strong>{currentSite.site_name || currentSite.site_address_line1 || 'current site'}</strong>{' '}
+              to <strong>{selectedSite?.site_name || selectedSite?.site_address_line1 || 'new site'}</strong> updates
+              location on this opportunity.
+            </p>
+          )}
+        </div>
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div
@@ -11243,10 +8664,11 @@ function EditSiteModal({ projectId, project, onClose, onSave }: {
 }
 
 // Edit Estimator Modal Component
-function EditEstimatorModal({ projectId, currentEstimatorIds, employees, onClose, onSave }: {
+function EditEstimatorModal({ projectId, currentEstimatorIds, employees, designSystem, onClose, onSave }: {
   projectId: string;
   currentEstimatorIds: string[];
   employees: any[];
+  designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -11270,16 +8692,15 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, onClose
     setEstimatorIds(prev => prev.filter(eid => eid !== id));
   };
 
-  // Only show users that have "Sales / Estimating" in their Departments (from User.divisions or department string)
-  const ESTIMATOR_DEPARTMENT = 'Sales / Estimating';
-  const employeesInEstimatingDept = (employees || []).filter((emp: any) => {
-    const target = ESTIMATOR_DEPARTMENT.toLowerCase();
-    if (Array.isArray(emp.divisions) && emp.divisions.length > 0) {
-      return emp.divisions.some((d: any) => String(d?.label || '').trim().toLowerCase() === target);
-    }
-    const dept = String((emp.department || emp.division || '')).trim();
-    return dept.toLowerCase().includes(target);
-  });
+  const employeesInEstimatingDept = useMemo(
+    () => (employees || []).filter((emp: any) => employeeHasSalesOrEstimatingDepartment(emp)),
+    [employees],
+  );
+
+  const estimatorUserOptions = useMemo(
+    () => employeesInEstimatingDept.map((emp: any) => mapEmployeeToAppUserSelect(emp)),
+    [employeesInEstimatingDept],
+  );
 
   const filteredEmployees = employeesInEstimatingDept
     .filter((emp: any) => {
@@ -11313,6 +8734,40 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, onClose
       setSaving(false);
     }
   };
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Estimators"
+        description="Assign estimating team members to this opportunity"
+        formWidth="comfortable"
+        quickInfo={opportunityEditEstimatorsQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <AppUserSelect
+          mode="multiple"
+          label="Estimators"
+          users={estimatorUserOptions}
+          value={estimatorIds.map(String)}
+          onChange={(ids) => setEstimatorIds(ids)}
+          placeholder="Search estimators…"
+          emptyMessage="No employees in Sales / Estimating."
+          fieldHint="Estimators\n\nTeam members responsible for estimating this opportunity. Select one or more."
+        />
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div
@@ -11806,7 +9261,19 @@ function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
   );
 }
 
-function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, livePricingItems }: { projectId: string, proj: any, hasEditPermission?: boolean, livePricingItems?: any[] | null }){
+function ProjectDivisionsHeroSection({
+  projectId,
+  proj,
+  hasEditPermission,
+  livePricingItems,
+  compact,
+}: {
+  projectId: string;
+  proj: any;
+  hasEditPermission?: boolean;
+  livePricingItems?: any[] | null;
+  compact?: boolean;
+}) {
   const queryClient = useQueryClient();
   const [showEditModal, setShowEditModal] = useState(false);
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
@@ -11906,8 +9373,8 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
 
   return (
     <>
-      <div className="mb-6">
-        <div className="flex items-center gap-1.5 mb-2">
+      <div className={compact ? 'mb-0' : 'mb-6'}>
+        <div className={uiCx('flex items-center gap-1.5', compact ? 'mb-1' : 'mb-2')}>
           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Divisions</span>
           {hasEditPermission && (
             <button
@@ -11929,10 +9396,10 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
                   key={div.id}
                   className="relative group/icon flex flex-col items-center"
                 >
-                  <div className="text-2xl transition-transform hover:scale-110">
+                  <div className={compact ? 'text-xl transition-transform hover:scale-110' : 'text-2xl transition-transform hover:scale-110'}>
                     {div.icon}
                   </div>
-                  <div className="text-xs font-bold mt-0.5 text-gray-600">
+                  <div className={uiCx('text-xs font-bold text-gray-600', compact ? 'mt-0' : 'mt-0.5')}>
                     {Math.round(div.percentage || 0)}%
                   </div>
                   {/* Tooltip - below icon, indented right (left edge at icon so it extends right) */}
@@ -12135,7 +9602,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
                       >
                         {hasSubdivisions && (
                           <span className="text-gray-500 text-xs w-4 flex-shrink-0">
-                            {isExpanded ? '▼' : '▶'}
+                            {isExpanded ? 'â–¼' : 'â–¶'}
                           </span>
                         )}
                         {!hasSubdivisions && <span className="w-4 flex-shrink-0" aria-hidden />}
@@ -12877,7 +10344,7 @@ function calculateProposalTotal(proposalData: any): number {
   return subtotal + gst;
 }
 
-// Area conversion: same as ProposalForm. 1 SQS = 100 sqft; 1 m² ≈ 10.7639 sqft
+// Area conversion: same as ProposalForm. 1 SQS = 100 sqft; 1 mÂ² â‰ˆ 10.7639 sqft
 function calculateProposalTotalArea(proposalData: any): number {
   if (!proposalData) return 0;
   const data = proposalData?.data || proposalData || {};

@@ -5,13 +5,38 @@ import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import EditShiftModal from '@/components/EditShiftModal';
-import { JOB_TYPES } from '@/constants/jobTypes';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
   hasProjectFeatureWritePermission,
   isAdminRole,
 } from '@/lib/projectLinePermissionKeys';
+import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
+import { createShiftQuickInfo } from '@/lib/formModalQuickInfo';
+import {
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppDatePicker,
+  AppEmptyState,
+  AppFormModal,
+  AppInput,
+  AppSectionHeader,
+  AppSelect,
+  AppTabs,
+  type AppTabItem,
+  AppTimePicker,
+  AppUserSelect,
+  appSectionPresetProps,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+import { JOB_TYPES } from '@/constants/jobTypes';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -31,10 +56,12 @@ export default function DispatchTab({
   projectId,
   statusLabel,
   businessLine,
+  designSystem,
 }: {
   projectId: string;
   statusLabel?: string;
   businessLine?: string | null;
+  designSystem?: boolean;
 }) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
@@ -186,276 +213,352 @@ export default function DispatchTab({
   const [deleteMode, setDeleteMode] = useState(false);
   const [selectedShiftsForDelete, setSelectedShiftsForDelete] = useState<Set<string>>(new Set());
 
-  return (
-    <div className="space-y-4">
-      {/* Editing Restricted Warning */}
+  const workloadTabs = useMemo((): AppTabItem[] => {
+    const tabs: AppTabItem[] = [{ key: 'calendar', label: 'Calendar' }];
+    if (canEditWorkload) {
+      tabs.push({
+        key: 'pending',
+        label: 'Pending Queue',
+        count: pendingAttendance?.length ?? 0,
+      });
+    }
+    return tabs;
+  }, [canEditWorkload, pendingAttendance?.length]);
+
+  const setWorkloadView = (key: string) => {
+    const next = key as 'calendar' | 'pending';
+    setView(next);
+    const sp = new URLSearchParams(location.search);
+    sp.set('tab', 'dispatch');
+    if (next === 'pending') sp.set('subtab', 'pending');
+    else sp.delete('subtab');
+    nav(`${location.pathname}?${sp.toString()}`, { replace: true });
+  };
+
+  const jobTypeOptions = useMemo(
+    () => [
+      { value: '', label: 'No job type selected' },
+      ...JOB_TYPES.map((job) => ({ value: job.name, label: job.name })),
+    ],
+    [],
+  );
+
+  const alertBanners = (
+    <>
       {isEditingRestricted && statusLabel && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
-          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing workload.
+        <div
+          className={
+            designSystem
+              ? uiCx(
+                  'rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900',
+                )
+              : 'mb-4 rounded border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800'
+          }
+        >
+          <strong>Editing Restricted:</strong> This project has status &quot;{statusLabel}&quot; which
+          does not allow editing workload.
         </div>
       )}
       {!canWriteWorkload && !isEditingRestricted && (
-        <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700">
-          <strong>View only:</strong> You can view the workload calendar but cannot create or edit shifts.
+        <div
+          className={
+            designSystem
+              ? uiCx(uiRadius.card, uiBorders.subtle, uiColors.surfaceSubtle, 'p-3 text-xs text-gray-700')
+              : 'mb-4 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700'
+          }
+        >
+          <strong>View only:</strong> You can view the workload calendar but cannot create or edit
+          shifts.
         </div>
       )}
-      
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setView('calendar')}
-            className={`px-3 py-1.5 rounded text-xs font-medium ${view === 'calendar' ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700'}`}
-          >
-            Calendar
-          </button>
-          {canEditWorkload && (
-            <button
-              onClick={() => setView('pending')}
-              className={`px-3 py-1.5 rounded text-xs font-medium ${view === 'pending' ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700'}`}
-            >
-              Pending Queue
-              {pendingAttendance && pendingAttendance.length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-medium">
-                  {pendingAttendance.length}
-                </span>
-              )}
-            </button>
+    </>
+  );
+
+  const viewTabs = designSystem ? (
+    <AppTabs tabs={workloadTabs} value={view} onChange={setWorkloadView} />
+  ) : (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setView('calendar')}
+        className={`rounded px-3 py-1.5 text-xs font-medium ${view === 'calendar' ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700'}`}
+      >
+        Calendar
+      </button>
+      {canEditWorkload && (
+        <button
+          type="button"
+          onClick={() => setView('pending')}
+          className={`rounded px-3 py-1.5 text-xs font-medium ${view === 'pending' ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700'}`}
+        >
+          Pending Queue
+          {pendingAttendance && pendingAttendance.length > 0 && (
+            <span className="ml-1.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
+              {pendingAttendance.length}
+            </span>
           )}
-        </div>
+        </button>
+      )}
+    </div>
+  );
+
+  const goPrevWeek = () => {
+    const newDate = new Date(anchorDate);
+    newDate.setDate(newDate.getDate() - 7);
+    setAnchorDate(newDate);
+  };
+  const goNextWeek = () => {
+    const newDate = new Date(anchorDate);
+    newDate.setDate(newDate.getDate() + 7);
+    setAnchorDate(newDate);
+  };
+  const goTodayWeek = () => {
+    const n = new Date();
+    const day = n.getDay();
+    n.setDate(n.getDate() - day);
+    n.setHours(0, 0, 0, 0);
+    setAnchorDate(n);
+    setSelectedDate(formatDateLocal(n));
+  };
+  const onWeekDatePick = (selected: string) => {
+    setSelectedDate(selected);
+    const selectedDateObj = new Date(selected);
+    const day = selectedDateObj.getDay();
+    selectedDateObj.setDate(selectedDateObj.getDate() - day);
+    selectedDateObj.setHours(0, 0, 0, 0);
+    setAnchorDate(selectedDateObj);
+  };
+
+  const handleNotifyWorkers = async () => {
+    try {
+      const shiftsInRange = shifts || [];
+      if (shiftsInRange.length === 0) {
+        toast.error('No shifts to notify');
+        return;
+      }
+      const workerIds = [...new Set(shiftsInRange.map((s: any) => s.worker_id))];
+      await api('POST', '/dispatch/projects/' + projectId + '/notify-shifts', {
+        date_range: dateRange,
+        worker_ids: workerIds,
+      });
+      toast.success(
+        `Notifications sent to ${workerIds.length} worker${workerIds.length > 1 ? 's' : ''}`,
+      );
+    } catch (e: any) {
+      toast.error(e.response?.data?.detail || e.message || 'Failed to send notifications');
+    }
+  };
+
+  const toggleDeleteMode = () => {
+    if (deleteMode) {
+      setDeleteMode(false);
+      setSelectedShiftsForDelete(new Set());
+    } else {
+      setDeleteMode(true);
+      setSelectedShiftsForDelete(new Set());
+    }
+  };
+
+  const handleDeleteSelectedShifts = async () => {
+    try {
+      const shiftsToDelete = (shifts || []).filter((s: any) => selectedShiftsForDelete.has(s.id));
+      const pastShifts: any[] = [];
+      if (shiftsToDelete.length === 0) {
+        toast.error('No shifts selected');
+        return;
+      }
+      let messageText = `Are you sure you want to delete ${shiftsToDelete.length} shift(s)? This action cannot be undone.`;
+      if (pastShifts.length > 0) {
+        messageText +=
+          '\n\nNote: ' +
+          pastShifts.length +
+          ' shift(s) from past dates cannot be deleted and were excluded.';
+      }
+      const confirmResult = await confirm({
+        title: 'Delete Shifts',
+        message: messageText,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+      });
+      if (confirmResult !== 'confirm') return;
+      let successCount = 0;
+      let errorCount = 0;
+      for (const shift of shiftsToDelete) {
+        try {
+          await api('DELETE', '/dispatch/shifts/' + shift.id);
+          successCount++;
+        } catch (e: any) {
+          errorCount++;
+          console.error(`Failed to delete shift ${shift.id}:`, e);
+        }
+      }
+      if (errorCount > 0) {
+        toast.error(`${successCount} shift(s) deleted, ${errorCount} failed`);
+      } else {
+        toast.success(`${successCount} shift(s) deleted successfully`);
+      }
+      await refetchShifts();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['attendances'] }),
+        queryClient.invalidateQueries({ queryKey: ['shifts'] }),
+        queryClient.invalidateQueries({ queryKey: ['timesheetLogs'] }),
+        queryClient.invalidateQueries({ queryKey: ['timesheetLogsMini'] }),
+        queryClient.invalidateQueries({ queryKey: ['timesheet'] }),
+        queryClient.invalidateQueries({ queryKey: ['dispatch-shifts-all'] }),
+        queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] }),
+      ]);
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['timesheet'] }),
+        queryClient.refetchQueries({ queryKey: ['timesheetLogsMini'] }),
+        queryClient.refetchQueries({ queryKey: ['dispatch-shifts-all'] }),
+      ]);
+      setDeleteMode(false);
+      setSelectedShiftsForDelete(new Set());
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to delete shifts');
+    }
+  };
+
+  const workloadActionButtons = canEditWorkload ? (
+    designSystem ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <AppButton
+          variant="secondary"
+          size="sm"
+          onClick={handleNotifyWorkers}
+          title="Send push notifications and emails to workers with scheduled shifts"
+        >
+          Notify Workers
+        </AppButton>
+        <AppButton size="sm" onClick={() => setCreateShiftModal(true)} disabled={deleteMode}>
+          + Create Shift
+        </AppButton>
+        <AppButton
+          variant={deleteMode ? 'secondary' : 'danger'}
+          size="sm"
+          onClick={toggleDeleteMode}
+        >
+          {deleteMode ? 'Cancel Delete' : 'Delete Shifts'}
+        </AppButton>
+        {deleteMode && selectedShiftsForDelete.size > 0 && (
+          <AppButton variant="danger" size="sm" onClick={handleDeleteSelectedShifts}>
+            Delete {selectedShiftsForDelete.size} Selected
+          </AppButton>
+        )}
       </div>
+    ) : (
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleNotifyWorkers}
+          className="px-3 py-1.5 rounded text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5"
+          title="Send push notifications and emails to workers with scheduled shifts"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+            />
+          </svg>
+          Notify Workers
+        </button>
+        <button
+          onClick={() => setCreateShiftModal(true)}
+          className="px-3 py-1.5 rounded text-xs font-medium bg-brand-red text-white"
+          disabled={deleteMode}
+        >
+          + Create Shift
+        </button>
+        <button
+          onClick={toggleDeleteMode}
+          className={`px-3 py-1.5 rounded text-xs font-medium text-white ${
+            deleteMode ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-600 hover:bg-red-700'
+          }`}
+        >
+          {deleteMode ? 'Cancel Delete' : 'Delete Shifts'}
+        </button>
+        {deleteMode && selectedShiftsForDelete.size > 0 && (
+          <button
+            onClick={handleDeleteSelectedShifts}
+            className="px-3 py-1.5 rounded text-xs font-medium bg-red-600 hover:bg-red-700 text-white"
+          >
+            Delete {selectedShiftsForDelete.size} Selected
+          </button>
+        )}
+      </div>
+    )
+  ) : null;
+
+  const calendarNavDs = (
+    <div className="flex flex-wrap items-center gap-2">
+      <AppButton variant="secondary" size="sm" onClick={goPrevWeek}>
+        ← Prev
+      </AppButton>
+      <AppDatePicker
+        value={selectedDate}
+        onChange={(e) => onWeekDatePick(e.target.value)}
+        triggerClassName="w-[140px]"
+      />
+      <AppButton variant="secondary" size="sm" onClick={goNextWeek}>
+        Next →
+      </AppButton>
+      <span className={uiCx(uiTypography.body, 'font-semibold text-gray-700 min-w-[180px] text-center')}>
+        {weekLabel}
+      </span>
+      <AppButton variant="secondary" size="sm" onClick={goTodayWeek}>
+        Today
+      </AppButton>
+    </div>
+  );
+
+  const legacyCalendarToolbarStart = !designSystem ? (
+    <div className="flex items-center gap-2">
+      <button onClick={goPrevWeek} className="px-2.5 py-1 rounded border text-xs font-medium">
+        ← Prev
+      </button>
+      <input
+        type="date"
+        value={selectedDate}
+        onChange={(e) => onWeekDatePick(e.target.value)}
+        className="border rounded px-2.5 py-1 text-xs"
+      />
+      <button onClick={goNextWeek} className="px-2.5 py-1 rounded border text-xs font-medium">
+        Next →
+      </button>
+      <span className="text-xs font-semibold text-gray-700 min-w-[180px] text-center">{weekLabel}</span>
+      <button onClick={goTodayWeek} className="px-2.5 py-1 rounded border text-xs font-medium">
+        Today
+      </button>
+    </div>
+  ) : null;
+
+  const workloadInner = (
+    <>
+      {alertBanners}
+      {viewTabs}
 
       {view === 'calendar' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  const newDate = new Date(anchorDate);
-                  newDate.setDate(newDate.getDate() - 7); // Previous week
-                  setAnchorDate(newDate);
-                }}
-                className="px-2.5 py-1 rounded border text-xs font-medium"
-              >
-                ← Prev
-              </button>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => {
-                  const selected = e.target.value;
-                  setSelectedDate(selected);
-                  // Update anchor date to the Sunday of the week containing the selected date
-                  const selectedDateObj = new Date(selected);
-                  const day = selectedDateObj.getDay(); // 0 = Sunday
-                  selectedDateObj.setDate(selectedDateObj.getDate() - day); // Go back to Sunday
-                  selectedDateObj.setHours(0, 0, 0, 0);
-                  setAnchorDate(selectedDateObj);
-                }}
-                className="border rounded px-2.5 py-1 text-xs"
-              />
-              <button
-                onClick={() => {
-                  const newDate = new Date(anchorDate);
-                  newDate.setDate(newDate.getDate() + 7); // Next week
-                  setAnchorDate(newDate);
-                }}
-                className="px-2.5 py-1 rounded border text-xs font-medium"
-              >
-                Next →
-              </button>
-              <span className="text-xs font-semibold text-gray-700 min-w-[180px] text-center">
-                {weekLabel}
-              </span>
-              <button
-                onClick={() => {
-                  const n = new Date();
-                  const day = n.getDay(); // 0 = Sunday
-                  n.setDate(n.getDate() - day); // Go back to Sunday
-                  n.setHours(0, 0, 0, 0);
-                  setAnchorDate(n);
-                  setSelectedDate(formatDateLocal(n));
-                }}
-                className="px-2.5 py-1 rounded border text-xs font-medium"
-              >
-                Today
-              </button>
-            </div>
-            {canEditWorkload && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={async () => {
-                    try {
-                      // Get all shifts in the current date range
-                      const shiftsInRange = shifts || [];
-                      if (shiftsInRange.length === 0) {
-                        toast.error('No shifts to notify');
-                        return;
-                      }
-                      
-                      // Get unique worker IDs
-                      const workerIds = [...new Set(shiftsInRange.map((s: any) => s.worker_id))];
-                      
-                      // Call API to send notifications
-                      await api('POST', '/dispatch/projects/' + projectId + '/notify-shifts', {
-                        date_range: dateRange,
-                        worker_ids: workerIds,
-                      });
-                      
-                      toast.success(`Notifications sent to ${workerIds.length} worker${workerIds.length > 1 ? 's' : ''}`);
-                    } catch (e: any) {
-                      toast.error(e.response?.data?.detail || e.message || 'Failed to send notifications');
-                    }
-                  }}
-                  className="px-3 py-1.5 rounded text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5"
-                  title="Send push notifications and emails to workers with scheduled shifts"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                  </svg>
-                  Notify Workers
-                </button>
-                <button
-                  onClick={() => setCreateShiftModal(true)}
-                  className="px-3 py-1.5 rounded text-xs font-medium bg-brand-red text-white"
-                  disabled={deleteMode}
-                >
-                  + Create Shift
-                </button>
-                <button
-                  onClick={() => {
-                    if (deleteMode) {
-                      // Cancel delete mode
-                      setDeleteMode(false);
-                      setSelectedShiftsForDelete(new Set());
-                    } else {
-                      // Enter delete mode
-                      setDeleteMode(true);
-                      setSelectedShiftsForDelete(new Set());
-                    }
-                  }}
-                  className={`px-3 py-1.5 rounded text-xs font-medium text-white ${
-                    deleteMode 
-                      ? 'bg-gray-600 hover:bg-gray-700' 
-                      : 'bg-red-600 hover:bg-red-700'
-                  }`}
-                >
-                  {deleteMode ? 'Cancel Delete' : 'Delete Shifts'}
-                </button>
-              {deleteMode && selectedShiftsForDelete.size > 0 && (
-                <button
-                  onClick={async () => {
-                    try {
-                      // NOTE: During testing phase, past date validation is disabled
-                      // TODO: Re-enable past date validation for production
-                      // const today = new Date();
-                      // today.setHours(0, 0, 0, 0);
-                      // 
-                      // // Filter out past dates
-                      // const shiftsToDelete = (shifts || []).filter((s: any) => {
-                      //   if (!selectedShiftsForDelete.has(s.id)) return false;
-                      //   const shiftDate = new Date(s.date);
-                      //   shiftDate.setHours(0, 0, 0, 0);
-                      //   return shiftDate >= today;
-                      // });
-                      // 
-                      // const pastShifts = (shifts || []).filter((s: any) => {
-                      //   if (!selectedShiftsForDelete.has(s.id)) return false;
-                      //   const shiftDate = new Date(s.date);
-                      //   shiftDate.setHours(0, 0, 0, 0);
-                      //   return shiftDate < today;
-                      // });
-                      // 
-                      // if (pastShifts.length > 0) {
-                      //   toast.error(`Cannot delete ${pastShifts.length} shift(s) from past dates`);
-                      // }
-                      // 
-                      // if (shiftsToDelete.length === 0) {
-                      //   toast.error('No valid shifts to delete');
-                      //   setDeleteMode(false);
-                      //   setSelectedShiftsForDelete(new Set());
-                      //   return;
-                      // }
-                      
-                      // Allow all selected shifts during testing
-                      const shiftsToDelete = (shifts || []).filter((s: any) => selectedShiftsForDelete.has(s.id));
-                      const pastShifts: any[] = []; // Empty during testing
-                      
-                      if (shiftsToDelete.length === 0) {
-                        toast.error('No shifts selected');
-                        return;
-                      }
-                      
-                      let messageText = `Are you sure you want to delete ${shiftsToDelete.length} shift(s)? This action cannot be undone.`;
-                      if (pastShifts.length > 0) {
-                        messageText += '\n\nNote: ' + pastShifts.length + ' shift(s) from past dates cannot be deleted and were excluded.';
-                      }
-                      const ok = await confirm({
-                        title: 'Delete Shifts',
-                        message: messageText,
-                        confirmText: 'Delete',
-                        cancelText: 'Cancel',
-                      });
-                      
-                      if (!ok) return;
-                      
-                      // Delete shifts
-                      let successCount = 0;
-                      let errorCount = 0;
-                      
-                      for (const shift of shiftsToDelete) {
-                        try {
-                          await api('DELETE', '/dispatch/shifts/' + shift.id);
-                          successCount++;
-                        } catch (e: any) {
-                          errorCount++;
-                          console.error(`Failed to delete shift ${shift.id}:`, e);
-                        }
-                      }
-                      
-                      if (errorCount > 0) {
-                        toast.error(`${successCount} shift(s) deleted, ${errorCount} failed`);
-                      } else {
-                        toast.success(`${successCount} shift(s) deleted successfully`);
-                      }
-                      
-                      await refetchShifts();
-                      
-                      // Invalidate all related queries to ensure UI updates
-                      // Note: Using partial match to invalidate all variations of these query keys
-                      await Promise.all([
-                        queryClient.invalidateQueries({ queryKey: ['attendances'] }),
-                        queryClient.invalidateQueries({ queryKey: ['shifts'] }),
-                        queryClient.invalidateQueries({ queryKey: ['timesheetLogs'] }),
-                        queryClient.invalidateQueries({ queryKey: ['timesheetLogsMini'] }),
-                        queryClient.invalidateQueries({ queryKey: ['timesheet'] }),
-                        queryClient.invalidateQueries({ queryKey: ['dispatch-shifts-all'] }),
-                        queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] }),
-                      ]);
-                      
-                      // Force refetch of timesheet queries to ensure immediate update
-                      await Promise.all([
-                        queryClient.refetchQueries({ queryKey: ['timesheet'] }),
-                        queryClient.refetchQueries({ queryKey: ['timesheetLogsMini'] }),
-                        queryClient.refetchQueries({ queryKey: ['dispatch-shifts-all'] }),
-                      ]);
-                      
-                      setDeleteMode(false);
-                      setSelectedShiftsForDelete(new Set());
-                    } catch (e: any) {
-                      toast.error(e.message || 'Failed to delete shifts');
-                    }
-                  }}
-                  className="px-3 py-1.5 rounded text-xs font-medium bg-red-600 hover:bg-red-700 text-white"
-                >
-                  Delete {selectedShiftsForDelete.size} Selected
-                </button>
-              )}
-              </div>
-            )}
+        <div className={designSystem ? uiSpacing.sectionStack : 'space-y-4'}>
+          <div
+            className={
+              designSystem
+                ? 'flex flex-wrap items-center justify-between gap-3'
+                : 'flex items-center justify-between'
+            }
+          >
+            {designSystem ? calendarNavDs : legacyCalendarToolbarStart}
+            {workloadActionButtons}
           </div>
 
           {deleteMode && (
-            <div className="rounded-xl border border-orange-300 bg-orange-50 p-2.5">
+            <div
+              className={
+                designSystem
+                  ? uiCx(uiRadius.card, 'border border-orange-300 bg-orange-50 p-3')
+                  : 'rounded-xl border border-orange-300 bg-orange-50 p-2.5'
+              }
+            >
               <div className="flex items-center gap-2 text-xs text-orange-800">
                 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -474,11 +577,24 @@ export default function DispatchTab({
             </div>
           )}
 
-          <div className="rounded-xl border bg-white p-3">
+          <div
+            className={
+              designSystem
+                ? uiCx(uiRadius.card, uiBorders.subtle, 'bg-white p-3')
+                : 'rounded-xl border bg-white p-3'
+            }
+          >
             {/* Day headers */}
             <div className="grid grid-cols-7 gap-1.5 mb-1.5">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                <div key={day} className="text-[10px] font-semibold text-gray-600 text-center py-0.5">
+                <div
+                  key={day}
+                  className={
+                    designSystem
+                      ? uiCx(uiTypography.helper, 'font-semibold text-gray-600 text-center py-0.5')
+                      : 'text-[10px] font-semibold text-gray-600 text-center py-0.5'
+                  }
+                >
                   {day}
                 </div>
               ))}
@@ -666,13 +782,13 @@ export default function DispatchTab({
                                         //   return;
                                         // }
                                         
-                                        const ok = await confirm({
+                                        const confirmResult = await confirm({
                                           title: 'Delete Shift',
                                           message: `Are you sure you want to delete this shift for ${worker?.name || shift.worker_id} on ${new Date(shift.date).toLocaleDateString()}?`,
                                           confirmText: 'Delete',
                                           cancelText: 'Cancel',
                                         });
-                                        if (!ok) return;
+                                        if (confirmResult !== 'confirm') return;
                                         try {
                                           await api('DELETE', '/dispatch/shifts/' + shift.id);
                                           toast.success('Shift deleted');
@@ -709,8 +825,22 @@ export default function DispatchTab({
       )}
 
       {view === 'pending' && (
-        <div className="rounded-xl border bg-white">
-          <div className="p-3 border-b text-xs font-semibold text-gray-900">Pending Attendance Approval</div>
+        <div
+          className={
+            designSystem
+              ? uiCx(uiRadius.card, uiBorders.subtle, 'overflow-hidden bg-white')
+              : 'rounded-xl border bg-white'
+          }
+        >
+          <div
+            className={
+              designSystem
+                ? uiCx('border-b px-4 py-3', uiTypography.sectionTitle)
+                : 'p-3 border-b text-xs font-semibold text-gray-900'
+            }
+          >
+            Pending Attendance Approval
+          </div>
           <div className="divide-y">
             {(pendingAttendance || []).length > 0 ? (
               pendingAttendance.map((attendance: any) => (
@@ -718,6 +848,7 @@ export default function DispatchTab({
                   key={attendance.id}
                   attendance={attendance}
                   employees={employees || []}
+                  designSystem={designSystem}
                   onApprove={async () => {
                     try {
                       await api('POST', '/dispatch/attendance/' + attendance.id + '/approve', { note: 'Approved' });
@@ -748,44 +879,77 @@ export default function DispatchTab({
                   }}
                 />
               ))
+            ) : designSystem ? (
+              <AppEmptyState className="py-8" title="No pending attendance" />
             ) : (
               <div className="p-3 text-xs text-gray-600">No pending attendance</div>
             )}
           </div>
         </div>
       )}
+    </>
+  );
 
-          {createShiftModal && project && employees && Array.isArray(employees) && (
-            <CreateShiftModal
-              projectId={projectId}
-              project={project}
-              employees={employees}
-              defaultBreakMin={defaultBreakMin}
-              defaultGeofenceRadius={defaultGeofenceRadius}
-              onClose={() => setCreateShiftModal(false)}
-              onSave={async () => {
-                await refetchShifts();
-                queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
-                setCreateShiftModal(false);
-              }}
-            />
-          )}
+  const modals = (
+    <>
+      {createShiftModal && project && employees && Array.isArray(employees) && (
+        <CreateShiftModal
+          projectId={projectId}
+          project={project}
+          employees={employees}
+          defaultBreakMin={defaultBreakMin}
+          defaultGeofenceRadius={defaultGeofenceRadius}
+          designSystem={designSystem}
+          jobTypeOptions={jobTypeOptions}
+          onClose={() => setCreateShiftModal(false)}
+          onSave={async () => {
+            await refetchShifts();
+            queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
+            setCreateShiftModal(false);
+          }}
+        />
+      )}
 
-          {editShiftModal && project && employees && Array.isArray(employees) && editShiftModal?.id && (
-            <EditShiftModal
-              projectId={projectId}
-              project={project}
-              employees={employees}
-              shift={editShiftModal}
-              canEdit={canEditWorkload}
-              onClose={() => setEditShiftModal(null)}
-              onSave={async () => {
-                await refetchShifts();
-                queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
-                setEditShiftModal(null);
-              }}
-            />
-          )}
+      {editShiftModal && project && employees && Array.isArray(employees) && editShiftModal?.id && (
+        <EditShiftModal
+          projectId={projectId}
+          project={project}
+          employees={employees}
+          shift={editShiftModal}
+          canEdit={canEditWorkload}
+          designSystem={designSystem}
+          jobTypeOptions={jobTypeOptions}
+          onClose={() => setEditShiftModal(null)}
+          onSave={async () => {
+            await refetchShifts();
+            queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
+            setEditShiftModal(null);
+          }}
+        />
+      )}
+    </>
+  );
+
+  if (designSystem) {
+    return (
+      <>
+        <AppCard className="!rounded-2xl" bodyClassName={uiSpacing.cardPadding}>
+          <AppSectionHeader
+            title="Workload"
+            description="Employee shifts and workload scheduling. Use the week calendar to plan shifts or review pending attendance."
+            {...appSectionPresetProps('workload')}
+          />
+          <div className={uiCx('mt-4', uiSpacing.sectionStack)}>{workloadInner}</div>
+        </AppCard>
+        {modals}
+      </>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {workloadInner}
+      {modals}
     </div>
   );
 }
@@ -793,11 +957,13 @@ export default function DispatchTab({
 function PendingAttendanceRow({
   attendance,
   employees,
+  designSystem,
   onApprove,
   onReject,
 }: {
   attendance: any;
   employees: any[];
+  designSystem?: boolean;
   onApprove: () => Promise<void>;
   onReject: (reason: string) => Promise<void>;
 }) {
@@ -832,51 +998,105 @@ function PendingAttendanceRow({
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {!showReject ? (
             <>
-              <button
-                onClick={onApprove}
-                className="px-2.5 py-1 rounded text-xs font-medium bg-green-600 text-white"
-              >
-                Approve
-              </button>
-              <button
-                onClick={() => setShowReject(true)}
-                className="px-2.5 py-1 rounded text-xs font-medium bg-red-600 text-white"
-              >
-                Reject
-              </button>
+              {designSystem ? (
+                <>
+                  <AppButton size="sm" onClick={onApprove}>
+                    Approve
+                  </AppButton>
+                  <AppButton variant="danger" size="sm" onClick={() => setShowReject(true)}>
+                    Reject
+                  </AppButton>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={onApprove}
+                    className="px-2.5 py-1 rounded text-xs font-medium bg-green-600 text-white"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => setShowReject(true)}
+                    className="px-2.5 py-1 rounded text-xs font-medium bg-red-600 text-white"
+                  >
+                    Reject
+                  </button>
+                </>
+              )}
             </>
           ) : (
             <div className="flex items-center gap-1.5">
-              <input
-                type="text"
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Rejection reason"
-                className="border rounded px-2 py-1 text-xs w-32"
-              />
-              <button
-                onClick={async () => {
-                  if (!rejectReason.trim()) {
-                    toast.error('Reason required');
-                    return;
-                  }
-                  await onReject(rejectReason);
-                  setShowReject(false);
-                  setRejectReason('');
-                }}
-                className="px-2.5 py-1 rounded text-xs font-medium bg-red-600 text-white"
-              >
-                Confirm
-              </button>
-              <button
-                onClick={() => {
-                  setShowReject(false);
-                  setRejectReason('');
-                }}
-                className="px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700"
-              >
-                Cancel
-              </button>
+              {designSystem ? (
+                <AppInput
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Rejection reason"
+                  className="w-40"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Rejection reason"
+                  className="border rounded px-2 py-1 text-xs w-32"
+                />
+              )}
+              {designSystem ? (
+                <>
+                  <AppButton
+                    variant="danger"
+                    size="sm"
+                    onClick={async () => {
+                      if (!rejectReason.trim()) {
+                        toast.error('Reason required');
+                        return;
+                      }
+                      await onReject(rejectReason);
+                      setShowReject(false);
+                      setRejectReason('');
+                    }}
+                  >
+                    Confirm
+                  </AppButton>
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setShowReject(false);
+                      setRejectReason('');
+                    }}
+                  >
+                    Cancel
+                  </AppButton>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={async () => {
+                      if (!rejectReason.trim()) {
+                        toast.error('Reason required');
+                        return;
+                      }
+                      await onReject(rejectReason);
+                      setShowReject(false);
+                      setRejectReason('');
+                    }}
+                    className="px-2.5 py-1 rounded text-xs font-medium bg-red-600 text-white"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowReject(false);
+                      setRejectReason('');
+                    }}
+                    className="px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -891,6 +1111,8 @@ function CreateShiftModal({
   employees,
   defaultBreakMin,
   defaultGeofenceRadius,
+  designSystem,
+  jobTypeOptions,
   onClose,
   onSave,
 }: {
@@ -899,6 +1121,8 @@ function CreateShiftModal({
   employees: any[];
   defaultBreakMin: number;
   defaultGeofenceRadius: number;
+  designSystem?: boolean;
+  jobTypeOptions?: { value: string; label: string }[];
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -1097,6 +1321,155 @@ function CreateShiftModal({
   }
 
   const canSubmit = Array.isArray(selectedWorkers) && selectedWorkers.length > 0 && Array.isArray(selectedDates) && selectedDates.length > 0;
+
+  const employeeUsers = useMemo(
+    () => (employees || []).map((e: any) => mapEmployeeToAppUserSelect(e)),
+    [employees],
+  );
+
+  const jobOpts =
+    jobTypeOptions ??
+    [
+      { value: '', label: 'No job type selected' },
+      ...JOB_TYPES.map((job) => ({ value: job.name, label: job.name })),
+    ];
+
+  const shiftCount =
+    (Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) *
+    (Array.isArray(selectedDates) ? selectedDates.length : 0);
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Create Shift"
+        description="Add shifts for workers on the project"
+        quickInfo={createShiftQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton variant="secondary" size="sm" type="button" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton
+              size="sm"
+              type="submit"
+              form="create-shift-form-ds"
+              disabled={!canSubmit || saving}
+              loading={saving}
+            >
+              {saving
+                ? 'Creating...'
+                : canSubmit
+                  ? `Create ${shiftCount} Shift${shiftCount > 1 ? 's' : ''}`
+                  : 'Create Shift'}
+            </AppButton>
+          </div>
+        }
+      >
+        <form
+          id="create-shift-form-ds"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSave();
+          }}
+          className={uiCx(uiSpacing.sectionStack, 'space-y-4')}
+        >
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 whitespace-pre-line">
+              {error}
+            </div>
+          )}
+
+          <AppUserSelect
+            mode="multiple"
+            label="Workers *"
+            users={employeeUsers}
+            value={Array.isArray(selectedWorkers) ? selectedWorkers : []}
+            onChange={setSelectedWorkers}
+            fieldHint="Workers\n\nSelect one or more employees who will be scheduled for the chosen dates."
+          />
+
+          <AppSelect
+            label="Date Selection"
+            value={dateMode}
+            onChange={(e) => setDateMode(e.target.value as 'single' | 'range')}
+            options={[
+              { value: 'single', label: 'Single Date' },
+              { value: 'range', label: 'Date Range' },
+            ]}
+          />
+
+          {dateMode === 'single' ? (
+            <AppDatePicker
+              label="Date *"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <AppDatePicker
+                  label="From *"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                />
+                <AppDatePicker
+                  label="To *"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                />
+              </div>
+              <AppCheckbox
+                label="Exclude weekends"
+                checked={excludeWeekends}
+                onChange={setExcludeWeekends}
+              />
+              {Array.isArray(selectedDates) && selectedDates.length > 0 && (
+                <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
+                  {selectedDates.length} day{selectedDates.length > 1 ? 's' : ''} selected
+                  {selectedDates.length <= 10 && (
+                    <span className="mt-1 block text-gray-500">
+                      {selectedDates
+                        .map((d) =>
+                          new Date(d).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                          }),
+                        )
+                        .join(', ')}
+                    </span>
+                  )}
+                </p>
+              )}
+            </>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <AppTimePicker
+              label="Start Time *"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+            />
+            <AppTimePicker
+              label="End Time *"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+            />
+          </div>
+
+          <AppSelect
+            label="Job Type"
+            value={jobType}
+            onChange={(e) => setJobType(e.target.value)}
+            options={jobOpts}
+            fieldHint="Job Type\n\nOptional label for the type of work during this shift."
+          />
+        </form>
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div

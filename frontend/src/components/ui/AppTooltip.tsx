@@ -13,6 +13,8 @@ export type AppTooltipProps = {
   placement?: AppTooltipPlacement;
   /** When true, tooltip is not shown. */
   disabled?: boolean;
+  /** Wrap long copy instead of single-line `whitespace-nowrap` (disabled actions, hints). */
+  wrap?: boolean;
   className?: string;
 };
 
@@ -52,6 +54,7 @@ export function AppTooltip({
   children,
   placement = 'top',
   disabled = false,
+  wrap = false,
   className,
 }: AppTooltipProps) {
   const tipId = useId();
@@ -94,7 +97,7 @@ export function AppTooltip({
     typeof document !== 'undefined' &&
     createPortal(
       <span id={tipId} role="tooltip" className={uiTooltip.shell} style={shellStyle}>
-        <span className={uiTooltip.panel}>
+        <span className={wrap ? uiTooltip.panelWrap : uiTooltip.panel}>
           {content}
           <span className={coords.arrowClass} aria-hidden />
         </span>

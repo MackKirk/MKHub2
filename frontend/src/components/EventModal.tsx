@@ -1,7 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import OverlayPortal from '@/components/OverlayPortal';
+import { ProjectEventModalDsForm } from '@/components/ProjectEventModalDsForm';
+import { projectCalendarEventQuickInfo } from '@/lib/formModalQuickInfo';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { AppButton, AppFormModal, uiCx, uiLayout } from '@/components/ui';
 
 type Event = {
   id?: string;
@@ -25,6 +28,7 @@ type EventModalProps = {
   projectId: string;
   mode: 'create' | 'edit';
   event?: Event;
+  designSystem?: boolean;
   onClose: () => void;
   onSave: (data: any) => Promise<void>;
 };
@@ -36,7 +40,7 @@ type Occurrence = {
   isAllDay: boolean;
 };
 
-export default function EventModal({ projectId, mode, event, onClose, onSave }: EventModalProps) {
+export default function EventModal({ projectId, mode, event, designSystem, onClose, onSave }: EventModalProps) {
   // Basic event fields
   const [name, setName] = useState(event?.name || '');
   const [location, setLocation] = useState(event?.location || '');
@@ -504,34 +508,34 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
     setRepeatDaysOfWeek(newDays);
   };
 
-  const addException = () => {
-    const date = prompt('Enter date to exclude (YYYY-MM-DD):');
-    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      if (!exceptions.includes(date)) {
-        setExceptions([...exceptions, date].sort());
-      } else {
-        toast.error('This date is already in exceptions');
-      }
-    } else if (date) {
-      toast.error('Invalid date format. Use YYYY-MM-DD');
+  const addExceptionDate = (date: string) => {
+    const trimmed = date.trim();
+    if (!trimmed || !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      toast.error('Select a valid date');
+      return;
     }
+    if (exceptions.includes(trimmed)) {
+      toast.error('This date is already in exceptions');
+      return;
+    }
+    setExceptions([...exceptions, trimmed].sort());
   };
 
   const removeException = (date: string) => {
     setExceptions(exceptions.filter(d => d !== date));
   };
 
-  const addExtraDate = () => {
-    const date = prompt('Enter extra date (YYYY-MM-DD):');
-    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      if (!extraDates.includes(date)) {
-        setExtraDates([...extraDates, date].sort());
-      } else {
-        toast.error('This date is already in extra dates');
-      }
-    } else if (date) {
-      toast.error('Invalid date format. Use YYYY-MM-DD');
+  const addExtraDateValue = (date: string) => {
+    const trimmed = date.trim();
+    if (!trimmed || !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      toast.error('Select a valid date');
+      return;
     }
+    if (extraDates.includes(trimmed)) {
+      toast.error('This date is already in extra dates');
+      return;
+    }
+    setExtraDates([...extraDates, trimmed].sort());
   };
 
   const removeExtraDate = (date: string) => {
@@ -540,6 +544,83 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
 
   // Preview occurrences - show first 30 for preview
   const previewOccurrences = occurrences.slice(0, 30);
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title={mode === 'create' ? 'Create Event' : 'Edit Event'}
+        description={
+          mode === 'create' ? 'Add an event to the project calendar' : 'Update event details on the calendar'
+        }
+        formWidth="wide"
+        quickInfo={projectCalendarEventQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="submit"
+              form="event-form-modal-ds"
+              size="sm"
+              disabled={saving || !name.trim()}
+              loading={saving}
+            >
+              {mode === 'create' ? 'Create Event' : 'Save Changes'}
+            </AppButton>
+          </div>
+        }
+      >
+        <ProjectEventModalDsForm
+          mode={mode}
+          name={name}
+          setName={setName}
+          location={location}
+          setLocation={setLocation}
+          notes={notes}
+          setNotes={setNotes}
+          startDate={startDate}
+          setStartDate={setStartDate}
+          endDate={endDate}
+          setEndDate={setEndDate}
+          isAllDay={isAllDay}
+          setIsAllDay={setIsAllDay}
+          is247={is247}
+          setIs247={setIs247}
+          startTime={startTime}
+          setStartTime={setStartTime}
+          endTime={endTime}
+          setEndTime={setEndTime}
+          timezone={timezone}
+          setTimezone={setTimezone}
+          repeatType={repeatType}
+          setRepeatType={setRepeatType}
+          repeatInterval={repeatInterval}
+          setRepeatInterval={setRepeatInterval}
+          repeatDaysOfWeek={repeatDaysOfWeek}
+          toggleDayOfWeek={toggleDayOfWeek}
+          repeatEnds={repeatEnds}
+          setRepeatEnds={setRepeatEnds}
+          repeatUntilDate={repeatUntilDate}
+          setRepeatUntilDate={setRepeatUntilDate}
+          repeatCount={repeatCount}
+          setRepeatCount={setRepeatCount}
+          summaryText={summaryText}
+          exceptions={exceptions}
+          extraDates={extraDates}
+          onAddExceptionDate={addExceptionDate}
+          onAddExtraDate={addExtraDateValue}
+          removeException={removeException}
+          removeExtraDate={removeExtraDate}
+          previewOccurrences={previewOccurrences}
+          occurrencesLength={occurrences.length}
+          onSubmit={handleSave}
+        />
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal>
