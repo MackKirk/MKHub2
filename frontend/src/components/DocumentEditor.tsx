@@ -106,6 +106,8 @@ type DocumentEditorDocumentProps = {
   extraActions?: React.ReactNode;
   /** Optional element rendered directly below the close/back button in the ribbon (e.g. expand button). */
   closeSlotBelow?: React.ReactNode;
+  /** Pin ribbon to the Hub scrollport while the page scrolls (inline editor on project/opportunity). */
+  stickyToolbar?: boolean;
 };
 
 type DocumentEditorTemplateProps = {
@@ -137,6 +139,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   const readOnly = !isTemplate && !!(props as DocumentEditorDocumentProps).readOnly;
   const extraActions = !isTemplate ? (props as DocumentEditorDocumentProps).extraActions : undefined;
   const closeSlotBelow = !isTemplate ? (props as DocumentEditorDocumentProps).closeSlotBelow : undefined;
+  const stickyToolbar = !isTemplate && !!(props as DocumentEditorDocumentProps).stickyToolbar;
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -153,6 +156,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   const [pages, setPages] = useState<DocumentPage[]>([defaultPage()]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
+  /** Inline text edit active — block selecting other elements until Done / Escape. */
+  const [textEditingElementId, setTextEditingElementId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showAddPageModal, setShowAddPageModal] = useState(false);
   const [pagesPanelCollapsed, setPagesPanelCollapsed] = useState(false);
@@ -171,6 +176,16 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   /** Vertical scroll container when multiple pages are stacked (`DocumentPreview` embedded). */
   const canvasScrollRef = useRef<HTMLDivElement>(null);
   const pageSectionRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const scrollCanvasToTop = useCallback(() => {
+    const root = canvasScrollRef.current;
+    if (!root) return;
+    const run = () => {
+      root.scrollTop = 0;
+    };
+    run();
+    requestAnimationFrame(run);
+  }, []);
   const [zoom, setZoom] = useState<number>(0.75);
   const [dragLayerIndex, setDragLayerIndex] = useState<number | null>(null);
   /** Bumps when undo/redo stacks change so UI (e.g. ribbon buttons) re-renders. */
@@ -350,7 +365,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     redoRef.current = [];
     bumpHistory();
     serverDocHydratedForIdRef.current = id;
-  }, [doc, templates, id, bumpHistory]);
+    requestAnimationFrame(() => scrollCanvasToTop());
+  }, [doc, templates, id, bumpHistory, scrollCanvasToTop]);
 
   // Keep ref updated for history snapshots
   useEffect(() => {
@@ -369,6 +385,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
       const tag = t?.tagName?.toLowerCase();
       const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || (t?.isContentEditable ?? false);
       if (e.key === 'Escape') {
+        if (isTyping) return;
+        if (textEditingElementId) return;
         if (selectedElementIds.length > 0) {
           e.preventDefault();
           setSelectedElementIds([]);
@@ -508,7 +526,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo, redo, newElementId, pushHistory, selectedElementIds]);
+  }, [undo, redo, newElementId, pushHistory, selectedElementIds, textEditingElementId]);
 
   const currentPage = pages[currentPageIndex];
   const currentTemplateId = currentPage?.template_id ?? null;
@@ -555,6 +573,12 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     const idsOnPage = new Set((pages[currentPageIndex]?.elements ?? []).map((e) => e.id));
     setSelectedElementIds((prev) => prev.filter((id) => idsOnPage.has(id)));
   }, [currentPageIndex, pages]);
+
+  useLayoutEffect(() => {
+    if (isTemplate || !id) return;
+    setCurrentPageIndex(0);
+    scrollCanvasToTop();
+  }, [id, isTemplate, scrollCanvasToTop]);
 
   useLayoutEffect(() => {
     if (!useContinuousPageCanvas) return;
@@ -1166,6 +1190,13 @@ export default function DocumentEditor(props: DocumentEditorProps) {
 
   return (
     <div className="flex flex-col h-full min-h-0 max-w-full">
+      <div
+        className={
+          stickyToolbar
+            ? 'sticky top-0 z-40 -mx-5 shrink-0 border-b border-slate-200/90 bg-white px-5 shadow-[0_6px_16px_-6px_rgba(15,23,42,0.18)]'
+            : 'shrink-0'
+        }
+      >
       <DocumentEditorRibbon
         onCloseOrBack={onClose ?? (() => navigate('/documents/create'))}
         useCloseIcon={!!onClose}
@@ -1215,7 +1246,10 @@ export default function DocumentEditor(props: DocumentEditorProps) {
               element={selectedElement && selectedElement.type !== 'block' ? selectedElement : null}
               onUpdate={handleUpdateElementWithHistory}
               onRemove={handleRemoveElement}
-              onDeselect={() => setSelectedElementIds([])}
+              onDeselect={() => {
+                if (textEditingElementId) return;
+                setSelectedElementIds([]);
+              }}
               onReplaceImage={handleReplaceImage}
               onReplaceImageClick={
                 projectId ? openImagePickerForElement : undefined
@@ -1238,6 +1272,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
         extraActions={extraActions}
         closeSlotBelow={closeSlotBelow}
       />
+      </div>
       {!readOnly && <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAddImage} />}
       {pdfPreview && (
         <OverlayPortal><div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -1285,7 +1320,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           </div>
         </div></OverlayPortal>
       )}
-      <div className={`flex min-h-0 flex-1 ${editorSurfaceWorkspaceClass}`}>
+      <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden ${editorSurfaceWorkspaceClass}`}>
         <DocumentPagesStrip
           pages={pages}
           templates={templates}
@@ -1341,7 +1376,9 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                     onCanvasWidthPxChange={setCanvasWidthPxForExport}
                     onBeginUserAction={readOnly ? undefined : pushHistory}
                     zoom={zoom}
+                    onTextEditingChange={setTextEditingElementId}
                     onElementClick={(elementId, e) => {
+                      if (textEditingElementId) return;
                       setCurrentPageIndex(pageIndex);
                       if (e?.ctrlKey || e?.metaKey) {
                         setSelectedElementIds((prev) =>
@@ -1351,7 +1388,10 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                         setSelectedElementIds([elementId]);
                       }
                     }}
-                    onCanvasClick={() => setSelectedElementIds([])}
+                    onCanvasClick={() => {
+                      if (textEditingElementId) return;
+                      setSelectedElementIds([]);
+                    }}
                     selectedElementIds={selectedElementIds}
                     onUpdateElement={
                       readOnly ? undefined : (id, u) => handleUpdateElementAtPage(pageIndex, id, u)
@@ -1368,6 +1408,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           </div>
         ) : (
           <DocumentPreview
+            scrollToTopKey={id ?? null}
             backgroundUrl={backgroundUrl}
             elements={elements}
             margins={effectiveMargins}
@@ -1377,7 +1418,9 @@ export default function DocumentEditor(props: DocumentEditorProps) {
             onCanvasWidthPxChange={setCanvasWidthPxForExport}
             onBeginUserAction={readOnly ? undefined : pushHistory}
             zoom={zoom}
+            onTextEditingChange={setTextEditingElementId}
             onElementClick={(elementId, e) => {
+              if (textEditingElementId) return;
               if (e?.ctrlKey || e?.metaKey) {
                 setSelectedElementIds((prev) =>
                   prev.includes(elementId) ? prev.filter((id) => id !== elementId) : [...prev, elementId]
@@ -1386,7 +1429,10 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                 setSelectedElementIds([elementId]);
               }
             }}
-            onCanvasClick={() => setSelectedElementIds([])}
+            onCanvasClick={() => {
+              if (textEditingElementId) return;
+              setSelectedElementIds([]);
+            }}
             selectedElementIds={selectedElementIds}
             onUpdateElement={readOnly ? undefined : handleUpdateElement}
             onRemoveElement={readOnly ? undefined : handleRemoveElement}
@@ -1509,6 +1555,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                     <button
                       type="button"
                       onClick={(e) => {
+                        if (textEditingElementId) return;
                         if (e.ctrlKey || e.metaKey) {
                           setSelectedElementIds((prev) =>
                             prev.includes(el.id) ? prev.filter((id) => id !== el.id) : [...prev, el.id]

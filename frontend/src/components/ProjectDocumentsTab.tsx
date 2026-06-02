@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback, useLayoutEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -44,6 +44,64 @@ function formatDate(s: string | undefined | null): string {
   }
 }
 
+const INLINE_EDITOR_MIN_HEIGHT_PX = 560;
+/** Reclaim AppShell main `p-5` top + bottom padding (20px × 2) plus a little extra. */
+const INLINE_EDITOR_MAIN_PADDING_RECLAIM_PX = 88;
+
+/** AppShell main scroll container (below the top bar). */
+function findAppMainScrollParent(el: HTMLElement | null): HTMLElement | null {
+  const main = el?.closest('main');
+  if (!main) return null;
+  return main.querySelector<HTMLElement>(':scope > div.overflow-auto');
+}
+
+/** Max vertical space for the inline editor (scrollport + reclaimed page padding). */
+function measureInlineEditorMaxHeightPx(el: HTMLElement | null): number {
+  const scrollParent = findAppMainScrollParent(el);
+  if (scrollParent) {
+    const scrollRect = scrollParent.getBoundingClientRect();
+    const fromScrollport = scrollParent.clientHeight + INLINE_EDITOR_MAIN_PADDING_RECLAIM_PX;
+    const fromViewport = window.innerHeight - scrollRect.top;
+    return Math.max(
+      INLINE_EDITOR_MIN_HEIGHT_PX,
+      Math.floor(Math.max(fromScrollport, fromViewport)),
+    );
+  }
+  return Math.max(INLINE_EDITOR_MIN_HEIGHT_PX, Math.floor(window.innerHeight - 56));
+}
+
+/**
+ * Inline editor fills the AppShell scrollport. Sticky keeps it pinned while scrolling;
+ * height tracks the scrollport (resize / layout), not scroll position pixel-by-pixel.
+ */
+function useInlineDocumentEditorHeight(enabled: boolean) {
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [heightPx, setHeightPx] = useState(INLINE_EDITOR_MIN_HEIGHT_PX);
+
+  const measure = useCallback(() => {
+    setHeightPx(measureInlineEditorMaxHeightPx(shellRef.current));
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!enabled) return;
+
+    measure();
+    const scrollParent = findAppMainScrollParent(shellRef.current);
+
+    window.addEventListener('resize', measure);
+
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (scrollParent) ro?.observe(scrollParent);
+
+    return () => {
+      window.removeEventListener('resize', measure);
+      ro?.disconnect();
+    };
+  }, [enabled, measure]);
+
+  return { shellRef, heightPx };
+}
+
 type ProjectDocumentsTabProps = {
   projectId: string;
   isBidding?: boolean;
@@ -66,6 +124,10 @@ export default function ProjectDocumentsTab({
   const [modalDocumentId, setModalDocumentId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showChooseTypeModal, setShowChooseTypeModal] = useState(false);
+
+  const inlineEditorOpen = !!(showModal && modalDocumentId && !isExpanded);
+  const { shellRef: inlineEditorShellRef, heightPx: inlineEditorHeightPx } =
+    useInlineDocumentEditorHeight(inlineEditorOpen);
 
   const { data: documents = [], isLoading } = useQuery({
     queryKey: ['document-creator-documents', projectId],
@@ -329,21 +391,27 @@ export default function ProjectDocumentsTab({
     const editorShellClass = designSystem
       ? uiCx(
           uiRadius.card,
+          'rounded-t-none',
           uiBorders.subtle,
           uiColors.surface,
-          'flex h-[calc(100vh-11rem)] min-h-[500px] flex-col overflow-hidden',
+          'z-0 -mb-5 flex min-h-0 flex-col overflow-visible overscroll-contain',
         )
-      : 'rounded-xl border bg-white overflow-hidden flex flex-col h-[calc(100vh-11rem)] min-h-[500px]';
+      : 'z-0 -mb-5 flex min-h-0 flex-col overflow-visible overscroll-contain rounded-b-xl border border-t-0 bg-white shadow-sm';
 
     return (
       <>
-        <div className={editorShellClass}>
+        <div
+          ref={inlineEditorShellRef}
+          className={editorShellClass}
+          style={{ height: inlineEditorHeightPx }}
+        >
           <DocumentEditor
             documentId={modalDocumentId}
             projectId={projectId}
             onClose={handleCloseModal}
             readOnly={!canEditDocuments}
             closeSlotBelow={expandButton}
+            stickyToolbar
           />
         </div>
         <ChooseDocumentTypeModal

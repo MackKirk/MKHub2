@@ -56,6 +56,10 @@ type DocumentPreviewProps = {
   embedScrollParentRef?: RefObject<HTMLElement | null>;
   /** Called when user interacts with this page (sync active page in stacked layout). */
   onPageInteraction?: () => void;
+  /** When this value changes, scroll the canvas container back to the top (e.g. document id). */
+  scrollToTopKey?: string | null;
+  /** Fired when inline text edit mode starts or ends (for parent selection guards). */
+  onTextEditingChange?: (elementId: string | null) => void;
 };
 
 const A4_ASPECT = 210 / 297;
@@ -71,6 +75,8 @@ const DOCUMENT_EDITOR_FORMATTING_SELECTOR = '[data-document-editor-formatting]';
 /** Portaled editor panels (color, etc.) — same as formatting strip for “still editing” clicks. */
 const DOCUMENT_EDITOR_OVERLAY_SELECTOR = '[data-document-editor-overlay]';
 const INLINE_TEXT_EDITOR_ATTR = 'data-inline-text-editor';
+/** Done toolbar on the text block — clicks must not steal focus from the editor. */
+const DOCUMENT_TEXT_EDIT_TOOLBAR_SELECTOR = '[data-document-text-edit-toolbar]';
 const TEXT_EDITOR_ROOT_ATTR = 'data-document-text-editor-root';
 const TEXT_EDITOR_LINE_ATTR = 'data-document-text-line-index';
 const TEXT_EDITOR_LINE_STYLE_ATTR = 'data-document-text-line-style';
@@ -1713,6 +1719,8 @@ export default function DocumentPreview({
   embedded = false,
   embedScrollParentRef,
   onPageInteraction,
+  scrollToTopKey = null,
+  onTextEditingChange,
 }: DocumentPreviewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -1749,6 +1757,32 @@ export default function DocumentPreview({
   const [dragGuideLines, setDragGuideLines] = useState<{ v: number[]; h: number[] } | null>(null);
 
   useEffect(() => {
+    onTextEditingChange?.(editingElementId);
+  }, [editingElementId, onTextEditingChange]);
+
+  const isOtherElementWhileEditing = useCallback(
+    (elementId: string) => editingElementId != null && editingElementId !== elementId,
+    [editingElementId],
+  );
+
+  /** Keep caret in the text block when clicking the canvas outside (edit mode stays active). */
+  useEffect(() => {
+    if (!editingElementId) return;
+    const onPointerDownCapture = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest(`[${INLINE_TEXT_EDITOR_ATTR}="${editingElementId}"]`)) return;
+      if (t.closest(DOCUMENT_EDITOR_FORMATTING_SELECTOR)) return;
+      if (t.closest(DOCUMENT_EDITOR_OVERLAY_SELECTOR)) return;
+      if (t.closest(DOCUMENT_TEXT_EDIT_TOOLBAR_SELECTOR)) return;
+      e.preventDefault();
+    };
+    document.addEventListener('pointerdown', onPointerDownCapture, true);
+    return () => document.removeEventListener('pointerdown', onPointerDownCapture, true);
+  }, [editingElementId]);
+
+  useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
     const update = () => {
@@ -1768,6 +1802,18 @@ export default function DocumentPreview({
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, [onCanvasWidthPxChange, zoom]);
+
+  useLayoutEffect(() => {
+    if (!scrollToTopKey) return;
+    const sc =
+      embedded && embedScrollParentRef?.current ? embedScrollParentRef.current : scrollRef.current;
+    if (!sc) return;
+    const scrollToTop = () => {
+      sc.scrollTop = 0;
+    };
+    scrollToTop();
+    requestAnimationFrame(scrollToTop);
+  }, [scrollToTopKey, embedded, embedScrollParentRef]);
 
   // Spacebar pan (like design tools). We don't intercept when typing.
   useEffect(() => {
@@ -1794,10 +1840,15 @@ export default function DocumentPreview({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement) => {
       e.stopPropagation();
+      if (isOtherElementWhileEditing(el.id)) return;
       onPageInteraction?.();
       if (e.button !== 0) return;
       if (el.type === 'block' && lockBlockElements) return;
       const target = e.target as HTMLElement;
+      if (editingElementId === el.id) {
+        if (target.closest('[contenteditable="true"]')) return;
+        return;
+      }
       if (target.closest('textarea') || target.closest('input') || target.closest('[contenteditable="true"]')) return;
       // Locked / position-locked: no drag, but capture pointer so click still selects (unlock, ribbon, etc.).
       const movingIds = el.locked || el.lockPosition
@@ -1823,12 +1874,13 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [lockBlockElements, selectedElementIds, elements, onPageInteraction]
+    [lockBlockElements, selectedElementIds, elements, onPageInteraction, isOtherElementWhileEditing, editingElementId]
   );
 
   const handleResizePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement, handle: ResizeHandle) => {
       e.stopPropagation();
+      if (isOtherElementWhileEditing(el.id)) return;
       onPageInteraction?.();
       if (e.button !== 0) return;
       if (el.locked) return;
@@ -1847,7 +1899,7 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [lockBlockElements, onPageInteraction],
+    [lockBlockElements, onPageInteraction, isOtherElementWhileEditing],
   );
 
   const handlePointerMove = useCallback(
@@ -1902,12 +1954,13 @@ export default function DocumentPreview({
       const drag = dragRef.current;
       dragRef.current = null;
       setDragGuideLines(null);
+      if (isOtherElementWhileEditing(el.id)) return;
       // Select on click: drag of this id, or locked / position-locked (movingIds empty — no drag)
       if (drag && !drag.hasMoved && (drag.movingIds.includes(el.id) || drag.movingIds.length === 0)) {
         onElementClick?.(el.id, e);
       }
     },
-    [onElementClick]
+    [onElementClick, isOtherElementWhileEditing],
   );
 
   const handleResizePointerUp = useCallback((e: React.PointerEvent) => {
@@ -1996,26 +2049,13 @@ export default function DocumentPreview({
   const handleDoubleClick = useCallback((e: React.MouseEvent, el: DocElement) => {
     e.stopPropagation();
     if (el.locked) return;
+    if (editingElementId != null) return;
     if (el.type === 'text') setEditingElementId(el.id);
-  }, []); // lockPosition does not block double-click to edit
+  }, [editingElementId]); // lockPosition does not block double-click to edit
 
   const commitInlineEdit = useCallback(() => {
     setEditingElementId(null);
   }, []);
-
-  useEffect(() => {
-    if (!editingElementId) return;
-    const onPointerDownCapture = (e: PointerEvent) => {
-      const t = e.target;
-      if (!(t instanceof Element)) return;
-      if (t.closest(DOCUMENT_EDITOR_FORMATTING_SELECTOR)) return;
-      if (t.closest(DOCUMENT_EDITOR_OVERLAY_SELECTOR)) return;
-      if (t.closest(`[${INLINE_TEXT_EDITOR_ATTR}="${editingElementId}"]`)) return;
-      commitInlineEdit();
-    };
-    document.addEventListener('pointerdown', onPointerDownCapture, true);
-    return () => document.removeEventListener('pointerdown', onPointerDownCapture, true);
-  }, [editingElementId, commitInlineEdit]);
 
   const selectedElement = selectedElementIds.length === 1 ? elements.find((e) => e.id === selectedElementIds[0]) : null;
 
@@ -2025,8 +2065,8 @@ export default function DocumentPreview({
   }, [embedded, embedScrollParentRef]);
 
   const scrollAreaClassName = embedded
-    ? `flex w-full flex-shrink-0 items-start justify-center px-4 py-8 sm:px-6 ${editorCanvasScrollAreaClass} ${spaceDown ? 'cursor-grab' : ''}`
-    : `flex min-h-0 flex-1 items-start justify-center overflow-auto ${editorCanvasScrollAreaClass} px-8 py-12 sm:px-16 sm:py-16 ${spaceDown ? 'cursor-grab' : ''}`;
+    ? `flex w-full flex-shrink-0 items-start justify-center px-4 pt-4 pb-10 sm:px-6 ${editorCanvasScrollAreaClass} ${spaceDown ? 'cursor-grab' : ''}`
+    : `flex min-h-0 flex-1 items-start justify-center overflow-auto ${editorCanvasScrollAreaClass} px-8 pt-5 pb-12 sm:px-16 sm:pt-6 sm:pb-16 ${spaceDown ? 'cursor-grab' : ''}`;
 
   const outerChromeClass = embedded
     ? 'flex w-full min-w-0 flex-shrink-0 flex-col'
@@ -2064,8 +2104,7 @@ export default function DocumentPreview({
         onClick={(e) => {
           if (e.target === e.currentTarget) {
             if (embedded) onPageInteraction?.();
-            setEditingElementId(null);
-            onCanvasClick?.();
+            if (!editingElementId) onCanvasClick?.();
           }
         }}
         onPointerDown={(e) => {
@@ -2109,8 +2148,7 @@ export default function DocumentPreview({
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               if (embedded) onPageInteraction?.();
-              setEditingElementId(null);
-              onCanvasClick?.();
+              if (!editingElementId) onCanvasClick?.();
             }
           }}
         >
@@ -2188,7 +2226,7 @@ export default function DocumentPreview({
 
             return (
               <Fragment key={el.id}>
-              {showTextEditButton && (
+              {showTextEditButton && !editingElementId && (
                 <div
                   className={`absolute z-[3] w-max ${editorSegmentedControlTrackClass}`}
                   style={textFloatingToolbarStyle}
@@ -2228,6 +2266,7 @@ export default function DocumentPreview({
               )}
               {isEditing && el.type === 'text' && (
                 <div
+                  data-document-text-edit-toolbar
                   className={`absolute z-[3] w-max ${editorSegmentedControlTrackClass}`}
                   style={textFloatingToolbarStyle}
                 >
@@ -2258,6 +2297,8 @@ export default function DocumentPreview({
                 onClick={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => handleDoubleClick(e, el)}
                 className={`absolute rounded-md border transition-[border-color,box-shadow] duration-200 ease-out ${
+                  isOtherElementWhileEditing(el.id) ? 'pointer-events-none' : ''
+                } ${
                   isEditing ? 'cursor-text overflow-hidden' : isLocked ? 'cursor-pointer overflow-hidden' : isPositionLocked ? 'cursor-default overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
                 } ${
                   isEditing
@@ -2290,7 +2331,7 @@ export default function DocumentPreview({
                     const textLines = contentLines(el.content);
                     const lineStyles = effectiveLineListStyles(el);
                     const editHint =
-                      'Enter: new line. Click Done or outside this box to finish. Escape: exit edit.';
+                      'Enter: new line. Click Done or press Escape to finish editing.';
                     return (
                       <div
                         className="relative flex h-full w-full flex-col"
