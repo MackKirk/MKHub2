@@ -176,6 +176,27 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   /** Vertical scroll container when multiple pages are stacked (`DocumentPreview` embedded). */
   const canvasScrollRef = useRef<HTMLDivElement>(null);
   const pageSectionRefs = useRef<(HTMLDivElement | null)[]>([]);
+  /** Suppress IntersectionObserver page sync while sidebar scroll is in flight. */
+  const pageScrollLockRef = useRef(false);
+
+  const handlePreviewElementClick = useCallback(
+    (pageIndex: number | undefined, elementId: string, e?: React.PointerEvent) => {
+      if (pageIndex != null) setCurrentPageIndex(pageIndex);
+      if (textEditingElementId && textEditingElementId !== elementId) {
+        setSelectedElementIds([elementId]);
+        return;
+      }
+      if (textEditingElementId) return;
+      if (e?.ctrlKey || e?.metaKey) {
+        setSelectedElementIds((prev) =>
+          prev.includes(elementId) ? prev.filter((id) => id !== elementId) : [...prev, elementId],
+        );
+      } else {
+        setSelectedElementIds([elementId]);
+      }
+    },
+    [textEditingElementId],
+  );
 
   const scrollCanvasToTop = useCallback(() => {
     const root = canvasScrollRef.current;
@@ -562,12 +583,31 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     pageSectionRefs.current[index] = el;
   }, []);
 
-  const handlePageSelect = useCallback((index: number) => {
-    setCurrentPageIndex(index);
-    requestAnimationFrame(() => {
-      pageSectionRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+  const scrollToPageSection = useCallback((index: number, behavior: ScrollBehavior = 'smooth') => {
+    const root = canvasScrollRef.current;
+    const section = pageSectionRefs.current[index];
+    if (!root || !section) return;
+    const viewportH = root.clientHeight;
+    if (viewportH > 0) {
+      pageSectionRefs.current.forEach((el) => {
+        if (el) el.style.minHeight = `${viewportH}px`;
+      });
+    }
+    pageScrollLockRef.current = true;
+    root.scrollTo({ top: section.offsetTop, behavior });
+    window.setTimeout(() => {
+      pageScrollLockRef.current = false;
+    }, behavior === 'smooth' ? 520 : 0);
   }, []);
+
+  const handlePageSelect = useCallback(
+    (index: number) => {
+      setTextEditingElementId(null);
+      setCurrentPageIndex(index);
+      requestAnimationFrame(() => scrollToPageSection(index, 'smooth'));
+    },
+    [scrollToPageSection],
+  );
 
   useEffect(() => {
     const idsOnPage = new Set((pages[currentPageIndex]?.elements ?? []).map((e) => e.id));
@@ -583,17 +623,39 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   useLayoutEffect(() => {
     if (!useContinuousPageCanvas) return;
     const root = canvasScrollRef.current;
+    if (!root) return;
+    const syncSectionHeights = () => {
+      const h = root.clientHeight;
+      if (h <= 0) return;
+      pageSectionRefs.current.forEach((el) => {
+        if (el) el.style.minHeight = `${h}px`;
+      });
+    };
+    syncSectionHeights();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncSectionHeights) : null;
+    ro?.observe(root);
+    window.addEventListener('resize', syncSectionHeights);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', syncSectionHeights);
+    };
+  }, [useContinuousPageCanvas, pages.length]);
+
+  useLayoutEffect(() => {
+    if (!useContinuousPageCanvas) return;
+    const root = canvasScrollRef.current;
     if (!root || pages.length < 2) return;
     const obs = new IntersectionObserver(
       (entries) => {
-        const candidates = entries.filter((e) => e.isIntersecting && e.intersectionRatio >= 0.18);
+        if (pageScrollLockRef.current) return;
+        const candidates = entries.filter((e) => e.isIntersecting && e.intersectionRatio >= 0.45);
         if (candidates.length === 0) return;
         candidates.sort((a, b) => b.intersectionRatio - a.intersectionRatio);
         const raw = (candidates[0].target as HTMLElement).dataset.pageIndex;
         const n = raw !== undefined ? Number(raw) : NaN;
         if (!Number.isNaN(n)) setCurrentPageIndex(n);
       },
-      { root, rootMargin: '-10% 0px -14% 0px', threshold: [0, 0.15, 0.35, 0.55, 0.75, 1] }
+      { root, threshold: [0, 0.5, 0.75, 1] }
     );
     pageSectionRefs.current.forEach((el) => {
       if (el) obs.observe(el);
@@ -1193,7 +1255,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
       <div
         className={
           stickyToolbar
-            ? 'sticky top-0 z-40 -mx-5 shrink-0 border-b border-slate-200/90 bg-white px-5 shadow-[0_6px_16px_-6px_rgba(15,23,42,0.18)]'
+            ? 'sticky top-0 z-40 shrink-0 border-b border-slate-200/90 bg-white shadow-[0_6px_16px_-6px_rgba(15,23,42,0.18)]'
             : 'shrink-0'
         }
       >
@@ -1343,7 +1405,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
         {useContinuousPageCanvas ? (
           <div
             ref={canvasScrollRef}
-            className={`min-h-0 flex-1 overflow-x-hidden overflow-y-auto ${editorCanvasScrollAreaClass}`}
+            className={`min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-smooth ${editorCanvasScrollAreaClass}`}
           >
             {pages.map((page, pageIndex) => {
               const tmplForPage = templates.find((t) => t.id === (page.template_id ?? ''));
@@ -1361,7 +1423,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                   key={pageIndex}
                   ref={setPageSectionRef(pageIndex)}
                   data-page-index={pageIndex}
-                  className="flex flex-col"
+                  className="box-border flex w-full shrink-0 flex-col items-center justify-center py-6"
                 >
                   <DocumentPreview
                     embedded
@@ -1377,17 +1439,9 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                     onBeginUserAction={readOnly ? undefined : pushHistory}
                     zoom={zoom}
                     onTextEditingChange={setTextEditingElementId}
-                    onElementClick={(elementId, e) => {
-                      if (textEditingElementId) return;
-                      setCurrentPageIndex(pageIndex);
-                      if (e?.ctrlKey || e?.metaKey) {
-                        setSelectedElementIds((prev) =>
-                          prev.includes(elementId) ? prev.filter((id) => id !== elementId) : [...prev, elementId]
-                        );
-                      } else {
-                        setSelectedElementIds([elementId]);
-                      }
-                    }}
+                    editingElementId={textEditingElementId}
+                    onEditingElementIdChange={setTextEditingElementId}
+                    onElementClick={(elementId, e) => handlePreviewElementClick(pageIndex, elementId, e)}
                     onCanvasClick={() => {
                       if (textEditingElementId) return;
                       setSelectedElementIds([]);
@@ -1419,16 +1473,9 @@ export default function DocumentEditor(props: DocumentEditorProps) {
             onBeginUserAction={readOnly ? undefined : pushHistory}
             zoom={zoom}
             onTextEditingChange={setTextEditingElementId}
-            onElementClick={(elementId, e) => {
-              if (textEditingElementId) return;
-              if (e?.ctrlKey || e?.metaKey) {
-                setSelectedElementIds((prev) =>
-                  prev.includes(elementId) ? prev.filter((id) => id !== elementId) : [...prev, elementId]
-                );
-              } else {
-                setSelectedElementIds([elementId]);
-              }
-            }}
+            editingElementId={textEditingElementId}
+            onEditingElementIdChange={setTextEditingElementId}
+            onElementClick={(elementId, e) => handlePreviewElementClick(undefined, elementId, e)}
             onCanvasClick={() => {
               if (textEditingElementId) return;
               setSelectedElementIds([]);

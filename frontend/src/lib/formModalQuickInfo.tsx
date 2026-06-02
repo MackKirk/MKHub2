@@ -734,6 +734,34 @@ export const opportunityEditRelatedCustomersQuickInfo = formModalQuickInfo({
   ),
 });
 
+/** Project Safety tab — start a new inspection from an active form template. */
+export const projectSafetyNewInspectionQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Start a new safety inspection on this project using a published form template — for example, a daily site walk or
+      a formal MKI-style report.
+    </>
+  ),
+  howToUse: (
+    <>
+      Choose a {uiLabel('Form template')} from the list. Only active templates marked for scheduling appear here. After
+      you create the inspection, you fill it out on the Safety tab.
+    </>
+  ),
+  behavior: (
+    <>
+      The inspection opens as a {uiLabel('Draft')} with today&apos;s date. You can save progress, collect signatures,
+      and finalize when the form is complete.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without creating an inspection. {uiLabel('Create')} adds the draft and opens it for
+      editing.
+    </>
+  ),
+});
+
 /** Create Shift (Workload / Dispatch). */
 export const createShiftQuickInfo = formModalQuickInfo({
   purpose: (

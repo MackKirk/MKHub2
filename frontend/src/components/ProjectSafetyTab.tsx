@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { AppButton, AppFormModal, AppSelect, uiCx, uiLayout } from '@/components/ui';
+import { projectSafetyNewInspectionQuickInfo } from '@/lib/formModalQuickInfo';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
   SAFETY_MODAL_BTN_CANCEL,
@@ -668,6 +670,22 @@ export default function ProjectSafetyTab({
     enabled: showCreateModal && canWrite,
   });
 
+  const createTemplateOptions = useMemo(
+    () => [
+      { value: '', label: '— Select template —' },
+      ...schedulableTemplates.map((t) => ({
+        value: t.id,
+        label: `${t.name}${(t.version_label || '').trim() ? ` (${(t.version_label || '').trim()})` : ''}`,
+      })),
+    ],
+    [schedulableTemplates]
+  );
+
+  const closeCreateModal = useCallback(() => {
+    setShowCreateModal(false);
+    setPickedTemplateId('');
+  }, []);
+
   const safetyAccess = canRead || signOnlySession;
 
   const { data: me } = useQuery({
@@ -959,8 +977,7 @@ export default function ProjectSafetyTab({
       qc.invalidateQueries({ queryKey: ['safetyInspections'] });
       qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
       setSelectedId(row.id);
-      setShowCreateModal(false);
-      setPickedTemplateId('');
+      closeCreateModal();
       toast.success('Inspection created');
     },
     onError: () => toast.error('Could not create inspection'),
@@ -1483,65 +1500,37 @@ export default function ProjectSafetyTab({
           )}
         </div>
       </div>
-      {showCreateModal && canWrite && (
-        <OverlayPortal>
-          <SafetyModalOverlayBackdrop
-            overlayClassName="z-[200]"
-            onBackdropClick={() => {
-              setShowCreateModal(false);
-              setPickedTemplateId('');
-            }}
-          >
-            <SafetyFormModalLayout
-              widthClass="w-full max-w-md"
-              titleId="safety-start-template-title"
-              title="Start from template"
-              subtitle="Choose an active form template for a new inspection."
-              onClose={() => {
-                setShowCreateModal(false);
-                setPickedTemplateId('');
-              }}
-              footer={
-                <>
-                  <button
-                    type="button"
-                    className={SAFETY_MODAL_BTN_CANCEL}
-                    onClick={() => {
-                      setShowCreateModal(false);
-                      setPickedTemplateId('');
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!pickedTemplateId || createFromTemplateMutation.isPending}
-                    onClick={() => createFromTemplateMutation.mutate()}
-                    className={SAFETY_MODAL_BTN_PRIMARY}
-                  >
-                    {createFromTemplateMutation.isPending ? 'Creating…' : 'Create'}
-                  </button>
-                </>
-              }
+      <AppFormModal
+        open={showCreateModal && canWrite}
+        onClose={closeCreateModal}
+        title="Start from template"
+        description="Choose an active form template for a new inspection."
+        quickInfo={projectSafetyNewInspectionQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={closeCreateModal}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              disabled={!pickedTemplateId}
+              loading={createFromTemplateMutation.isPending}
+              onClick={() => createFromTemplateMutation.mutate()}
             >
-              <label className={SAFETY_MODAL_FIELD_LABEL}>Form template</label>
-              <select
-                value={pickedTemplateId}
-                onChange={(e) => setPickedTemplateId(e.target.value)}
-                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-              >
-                <option value="">— Select template —</option>
-                {schedulableTemplates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                    {(t.version_label || '').trim() ? ` (${(t.version_label || '').trim()})` : ''}
-                  </option>
-                ))}
-              </select>
-            </SafetyFormModalLayout>
-          </SafetyModalOverlayBackdrop>
-        </OverlayPortal>
-      )}
+              Create
+            </AppButton>
+          </div>
+        }
+      >
+        <AppSelect
+          label="Form template"
+          value={pickedTemplateId}
+          onChange={(e) => setPickedTemplateId(e.target.value)}
+          options={createTemplateOptions}
+          fieldHint="Form template\n\nActive safety form templates you can use for a new inspection on this project. The version label is shown when available."
+        />
+      </AppFormModal>
       </>
     );
   }

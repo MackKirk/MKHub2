@@ -48,6 +48,17 @@ def _font_ascent_descent(font_name: str, font_size: float) -> tuple[float, float
     return font_size * 0.8, -font_size * 0.2
 
 
+def _font_line_height_pt(font_name: str, font_size_pt: float) -> float:
+    """
+    Line box height to match the editor (min-h 1.2em rows + browser line-height: normal).
+    Browsers typically use a line box taller than 1.2× em for Montserrat/Open Sans.
+    """
+    ascent, descent = _font_ascent_descent(font_name, font_size_pt)
+    content_h = ascent + abs(descent)
+    # normal ≈ 1.2–1.35× em; use the larger so PDF text does not sit high vs the preview.
+    return max(font_size_pt * 1.33, content_h * 1.12, font_size_pt * CSS_NORMAL_LINE_HEIGHT)
+
+
 # Register document editor fonts. Returns dict: family -> (regular, bold, italic, bold_italic)
 def _register_fonts():
     import os
@@ -276,6 +287,231 @@ def _run_to_markup_fragment(
     return f'<font name="{r_font_name}" color="{hc}" size="{r_font_pt:.2f}">{inner}</font>'
 
 
+# (font_name, font_size_pt, color, text)
+TextSegment = tuple[str, float, object, str]
+
+
+def _runs_to_segments(
+    runs: Optional[list],
+    line_text: str,
+    fonts_map: dict,
+    font_family: str,
+    font_size_px: float,
+    px_to_pt: float,
+    is_bold: bool,
+    is_italic: bool,
+    default_color,
+) -> list[TextSegment]:
+    """Build drawable segments for one editor content line (preserves spaces)."""
+    line_norm = (line_text or "").replace("\r\n", "\n")
+    if runs:
+        runs_plain = "".join(r.get("text", "") if isinstance(r, dict) else str(r) for r in runs)
+        if runs_plain != line_norm:
+            fn = _pick_font(fonts_map, font_family, is_bold, is_italic)
+            pt = max(1.0, font_size_px * px_to_pt)
+            return [(fn, pt, default_color, line_norm)]
+        out: list[TextSegment] = []
+        for r in runs:
+            if not isinstance(r, dict):
+                continue
+            text = r.get("text", "")
+            if not text:
+                continue
+            r_bold = r.get("bold") if r.get("bold") is not None else is_bold
+            r_italic = r.get("italic") if r.get("italic") is not None else is_italic
+            r_family = r.get("fontFamily") or font_family
+            r_font_px = float(r.get("fontSize") or font_size_px)
+            r_font_pt = max(1.0, r_font_px * px_to_pt)
+            r_font_name = _pick_font(fonts_map, r_family, bool(r_bold), bool(r_italic))
+            r_color = _parse_hex_color(r.get("color")) if r.get("color") else default_color
+            out.append((r_font_name, r_font_pt, r_color, text.replace("\n", " ")))
+        return out or [(_pick_font(fonts_map, font_family, is_bold, is_italic), max(1.0, font_size_px * px_to_pt), default_color, "")]
+    fn = _pick_font(fonts_map, font_family, is_bold, is_italic)
+    pt = max(1.0, font_size_px * px_to_pt)
+    return [(fn, pt, default_color, line_norm)]
+
+
+def _measure_segments(c: canvas.Canvas, segments: list[TextSegment]) -> float:
+    total = 0.0
+    for font_name, size, _color, text in segments:
+        if text:
+            total += c.stringWidth(text, font_name, size)
+    return total
+
+
+def _line_box_metrics(
+    segments: list[TextSegment],
+    fonts_map: dict,
+    font_family: str,
+    font_size_px: float,
+    px_to_pt: float,
+    is_bold: bool,
+    is_italic: bool,
+    fallback_pt: float,
+) -> tuple[float, float, float, float]:
+    """Ascent, |descent|, line height, and half-leading (pt) — matches editor min-h 1.2em + CSS line box."""
+    max_pt = fallback_pt
+    max_ascent = 0.0
+    max_descent = 0.0
+    fallback_font = _pick_font(fonts_map, font_family, is_bold, is_italic)
+    for font_name, size, _color, text in segments:
+        if size:
+            max_pt = max(max_pt, size)
+        a, d = _font_ascent_descent(font_name or fallback_font, size or fallback_pt)
+        max_ascent = max(max_ascent, a)
+        max_descent = max(max_descent, abs(d))
+    if max_ascent <= 0:
+        max_ascent, max_descent = _font_ascent_descent(fallback_font, max_pt)
+        max_descent = abs(max_descent)
+    dominant_font = fallback_font
+    for font_name, size, _color, text in segments:
+        if text:
+            dominant_font = font_name or dominant_font
+            break
+    leading = max(
+        6.0,
+        _font_line_height_pt(dominant_font, max_pt),
+        max_ascent + max_descent + 0.5,
+    )
+    half_leading = max(0.0, (leading - max_ascent - max_descent) / 2.0)
+    return max_ascent, max_descent, leading, half_leading
+
+
+def _draw_segments_at(c: canvas.Canvas, x: float, baseline_y: float, segments: list[TextSegment]) -> None:
+    cx = x
+    for font_name, size, color, text in segments:
+        if not text:
+            continue
+        c.setFont(font_name, size)
+        c.setFillColor(color)
+        c.drawString(cx, baseline_y, text)
+        cx += c.stringWidth(text, font_name, size)
+
+
+def _aligned_line_start_x(
+    box_x: float,
+    box_w: float,
+    line_w: float,
+    align: str,
+    left_indent: float = 0.0,
+) -> float:
+    avail_w = max(1.0, box_w - left_indent)
+    a = (align or "left").strip().lower()
+    if a == "center":
+        return box_x + left_indent + max(0.0, (avail_w - line_w) / 2.0)
+    if a == "right":
+        return box_x + left_indent + max(0.0, avail_w - line_w)
+    return box_x + left_indent
+
+
+def _tokenize_segments_for_wrap(segments: list[TextSegment]) -> list[TextSegment]:
+    """Split segments into word/whitespace tokens (whitespace preserved)."""
+    import re
+
+    tokens: list[TextSegment] = []
+    for font_name, size, color, text in segments:
+        if not text:
+            continue
+        for m in re.finditer(r"\s+|\S+", text):
+            tokens.append((font_name, size, color, m.group()))
+    return tokens
+
+
+def _break_segment_to_width(
+    c: canvas.Canvas, font_name: str, size: float, color, text: str, max_width: float
+) -> list[TextSegment]:
+    if not text:
+        return []
+    if c.stringWidth(text, font_name, size) <= max_width:
+        return [(font_name, size, color, text)]
+    chunks: list[TextSegment] = []
+    buf = ""
+    for ch in text:
+        trial = buf + ch
+        if buf and c.stringWidth(trial, font_name, size) > max_width:
+            chunks.append((font_name, size, color, buf))
+            buf = ch
+        else:
+            buf = trial
+    if buf:
+        chunks.append((font_name, size, color, buf))
+    return chunks
+
+
+def _wrap_segments_to_visual_rows(
+    c: canvas.Canvas, segments: list[TextSegment], max_width: float
+) -> list[list[TextSegment]]:
+    """Wrap like editor `whitespace-pre-wrap` + `break-words` (per content line)."""
+    if max_width <= 0:
+        return [segments]
+    if _measure_segments(c, segments) <= max_width:
+        return [segments]
+
+    tokens = _tokenize_segments_for_wrap(segments)
+    if not tokens:
+        return [segments]
+
+    rows: list[list[TextSegment]] = []
+    current: list[TextSegment] = []
+    current_w = 0.0
+
+    def flush() -> None:
+        nonlocal current, current_w
+        if current:
+            rows.append(current)
+            current = []
+            current_w = 0.0
+
+    for font_name, size, color, token in tokens:
+        tw = c.stringWidth(token, font_name, size) if token else 0.0
+        if tw > max_width:
+            flush()
+            for piece in _break_segment_to_width(c, font_name, size, color, token, max_width):
+                rows.append([piece])
+            continue
+        if current and current_w + tw > max_width + 0.5:
+            flush()
+        if not current:
+            current = [(font_name, size, color, token)]
+            current_w = tw
+        else:
+            last = current[-1]
+            if last[0] == font_name and last[1] == size and last[2] == color:
+                current[-1] = (font_name, size, color, last[3] + token)
+            else:
+                current.append((font_name, size, color, token))
+            current_w += tw
+    flush()
+    return rows or [segments]
+
+
+def _list_prefix_segment(
+    c: canvas.Canvas,
+    ls_val: str,
+    ordinal: int,
+    fonts_map: dict,
+    font_family: str,
+    font_size_px: float,
+    px_to_pt: float,
+    is_bold: bool,
+    is_italic: bool,
+    default_color,
+) -> tuple[Optional[TextSegment], float]:
+    if ls_val not in ("bullet", "numbered", "lettered"):
+        return None, 0.0
+    active_font = _pick_font(fonts_map, font_family, is_bold, is_italic)
+    font_size = max(1.0, font_size_px * px_to_pt)
+    if ls_val == "bullet":
+        prefix = "\u2022 "
+    elif ls_val == "numbered":
+        prefix = f"{ordinal}. "
+    else:
+        prefix = f"{chr(ord('a') + ordinal - 1)}. " if ordinal <= 26 else f"{ordinal}. "
+    gap = max(font_size * 0.35, 3.0)
+    pw = c.stringWidth(prefix, active_font, font_size)
+    return (active_font, font_size, default_color, prefix), pw + gap
+
+
 def _runs_to_paragraph_markup(
     runs: Optional[list],
     line_text: str,
@@ -319,10 +555,10 @@ def _draw_text_in_box(
     content: str,
     rich_lines: Optional[list],
     fonts_map: dict,
-    text_x: float,
-    text_y: float,
-    text_w: float,
-    text_h: float,
+    box_x: float,
+    box_y: float,
+    box_w: float,
+    box_h: float,
     font_size_px: float,
     px_to_pt: float,
     font_family: str,
@@ -335,18 +571,28 @@ def _draw_text_in_box(
     line_list_styles_raw: Optional[list],
     line_text_aligns: Optional[list],
 ) -> None:
-    """Draw text using ReportLab Paragraph (word wrap matches browser block layout)."""
-    if text_w <= 0 or text_h <= 0:
+    """
+    Draw text to match the document editor preview:
+    one row per content newline, whitespace preserved, per-line alignment,
+    wrap only when a line exceeds the box width (like whitespace-pre-wrap + break-words).
+    """
+    if box_w <= 0 or box_h <= 0:
         return
 
-    font_size = max(1.0, font_size_px * px_to_pt)
-    line_height = max(6.0, font_size * CSS_NORMAL_LINE_HEIGHT)
-    active_font = _pick_font(fonts_map, font_family, is_bold, is_italic)
+    pad = TEXT_INNER_PADDING_PX * px_to_pt
+    text_x = box_x + pad
+    text_w = max(1.0, box_w - (pad * 2.0))
+    text_inner_h = max(0.0, box_h - (pad * 2.0))
+    if text_w <= 0 or text_inner_h <= 0:
+        return
+
+    font_size_pt = max(1.0, font_size_px * px_to_pt)
     content_norm = str(content or "").replace("\r\n", "\n")
     content_lines = content_norm.split("\n") if content_norm else [""]
     normalized_rich = _normalize_rich_lines_for_content(content_norm, rich_lines)
 
-    para_items: list[tuple[Paragraph, float]] = []
+    visual_rows: list[tuple[list[TextSegment], float, float, float, str, float]] = []
+
     for li, line_text in enumerate(content_lines):
         runs = normalized_rich[li] if li < len(normalized_rich) else None
         ls_val = "none"
@@ -361,7 +607,7 @@ def _draw_text_in_box(
         if isinstance(line_text_aligns, list) and li < len(line_text_aligns) and line_text_aligns[li]:
             line_align = str(line_text_aligns[li])
 
-        markup_body = _runs_to_paragraph_markup(
+        segments = _runs_to_segments(
             runs,
             line_text,
             fonts_map,
@@ -373,10 +619,8 @@ def _draw_text_in_box(
             el_color,
         )
 
-        left_indent = 0.0
-        prefix_markup = ""
+        ordinal = 1
         if ls_val in ("bullet", "numbered", "lettered"):
-            ordinal = 1
             for prev_li in range(li):
                 prev_ls = "none"
                 if isinstance(line_list_styles_raw, list) and prev_li < len(line_list_styles_raw):
@@ -385,72 +629,93 @@ def _draw_text_in_box(
                     prev_ls = str(list_style).strip().lower()
                 if prev_ls == ls_val:
                     ordinal += 1
-            if ls_val == "bullet":
-                prefix_markup = "&#8226;&nbsp;"
-            elif ls_val == "numbered":
-                prefix_markup = f"{ordinal}.&nbsp;"
-            else:
-                prefix_markup = (
-                    f"{chr(ord('a') + ordinal - 1)}.&nbsp;" if ordinal <= 26 else f"{ordinal}.&nbsp;"
-                )
-            gap = max(font_size * 0.35, 3.0)
-            pw = c.stringWidth(prefix_markup.replace("&nbsp;", " "), active_font, font_size)
-            left_indent = pw + gap
 
-        markup = prefix_markup + markup_body if prefix_markup else markup_body
-
-        max_pt = font_size
-        if runs:
-            for r in runs:
-                if isinstance(r, dict) and r.get("fontSize"):
-                    max_pt = max(max_pt, max(1.0, float(r["fontSize"]) * px_to_pt))
-        leading = max(line_height, max_pt * CSS_NORMAL_LINE_HEIGHT)
-
-        style = ParagraphStyle(
-            name=f"DocTextLine{li}",
-            fontName=active_font,
-            fontSize=font_size,
-            leading=leading,
-            textColor=el_color,
-            alignment=_text_align_to_reportlab(line_align),
-            leftIndent=left_indent,
-            firstLineIndent=0.0,
-            rightIndent=0,
-            spaceBefore=0,
-            spaceAfter=0,
+        prefix_seg, list_indent = _list_prefix_segment(
+            c,
+            ls_val,
+            ordinal,
+            fonts_map,
+            font_family,
+            font_size_px,
+            px_to_pt,
+            is_bold,
+            is_italic,
+            el_color,
         )
-        para = Paragraph(markup, style)
-        _pw, ph = para.wrap(text_w, text_h)
-        para_items.append((para, ph))
+        body_w = max(1.0, text_w - list_indent)
+        wrapped = _wrap_segments_to_visual_rows(c, segments, body_w)
 
-    if not para_items:
+        for wi, row_segments in enumerate(wrapped):
+            draw_segments = list(row_segments)
+            row_indent = list_indent
+            if wi == 0 and prefix_seg:
+                draw_segments = [prefix_seg, *draw_segments]
+                row_indent = 0.0
+            max_ascent, max_descent, leading, half_leading = _line_box_metrics(
+                draw_segments,
+                fonts_map,
+                font_family,
+                font_size_px,
+                px_to_pt,
+                is_bold,
+                is_italic,
+                font_size_pt,
+            )
+            visual_rows.append((draw_segments, leading, max_ascent, half_leading, line_align, row_indent))
+
+    if not visual_rows:
         return
 
-    total_h = sum(ph for _, ph in para_items)
-    if total_h > text_h:
+    full_total_h = sum(leading for _segs, leading, _a, _hl, _align, _indent in visual_rows)
+    total_h = full_total_h
+    if full_total_h > text_inner_h + 0.5:
         acc = 0.0
-        kept: list[tuple[Paragraph, float]] = []
-        for para, ph in para_items:
-            if acc + ph <= text_h + 0.5:
-                kept.append((para, ph))
-                acc += ph
+        kept: list[tuple[list[TextSegment], float, float, float, str, float]] = []
+        for row in visual_rows:
+            if acc + row[1] <= text_inner_h + 0.5:
+                kept.append(row)
+                acc += row[1]
             else:
                 break
-        para_items = kept
-        total_h = sum(ph for _, ph in para_items)
+        if not kept:
+            # Single line taller than the box — still draw it (editor shows it with overflow hidden).
+            segs, leading, max_a, half_l, line_align, row_indent = visual_rows[0]
+            if text_inner_h > 0 and leading > text_inner_h:
+                scale = text_inner_h / leading
+                leading = text_inner_h
+                half_l = half_l * scale
+            kept = [(segs, leading, max_a, half_l, line_align, row_indent)]
+        visual_rows = kept
+        total_h = sum(leading for _segs, leading, _a, _hl, _align, _indent in visual_rows)
 
-    if vertical_align == "bottom":
-        y_cursor = text_y + total_h
-    elif vertical_align == "center":
-        y_cursor = text_y + (text_h + total_h) / 2.0
+    # Match editor: flex on full element box; p-1 padding inside the flex child (TEXT_INNER_PADDING_PX).
+    element_top = box_y + box_h
+    element_bottom = box_y
+    block_h = total_h + (pad * 2.0)
+    full_block_h = full_total_h + (pad * 2.0)
+    va = (vertical_align or "top").strip().lower()
+    # When content overflows the element, editor flex-start + overflow:hidden keeps the top visible.
+    content_overflows = full_block_h > box_h + 0.5
+    if content_overflows or va == "top":
+        content_top = element_top - pad
+    elif va == "bottom":
+        content_top = element_bottom + pad + total_h
+    elif va == "center":
+        content_top = element_bottom + (box_h - block_h) / 2.0 + block_h - pad
     else:
-        y_cursor = text_y + text_h
+        content_top = element_top - pad
 
-    clipped = _clip_text_area(c, text_x, text_y, text_w, text_h)
+    clipped = _clip_text_area(c, text_x, box_y + pad, text_w, text_inner_h)
     try:
-        for para, ph in para_items:
-            y_cursor -= ph
-            para.drawOn(c, text_x, y_cursor)
+        # Stack lines from the content top downward (PDF y grows upward).
+        y_line_top = content_top
+        for draw_segments, leading, max_ascent, half_leading, line_align, row_indent in visual_rows:
+            # CSS line box: half-leading above the content area, then ascent to baseline.
+            baseline_y = y_line_top - half_leading - max_ascent
+            line_w = _measure_segments(c, draw_segments)
+            start_x = _aligned_line_start_x(text_x, text_w, line_w, line_align, row_indent)
+            _draw_segments_at(c, start_x, baseline_y, draw_segments)
+            y_line_top -= leading
     finally:
         if clipped:
             c.restoreState()
@@ -690,11 +955,7 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                         font_family = el.get("fontFamily") or "Montserrat"
                         el_color = _parse_hex_color(el.get("color"))
                         text_align = el.get("textAlign") or "left"
-                        vertical_align = el.get("verticalAlign") or "top"
-                        text_x = x + text_padding
-                        text_y = y + text_padding
-                        text_w = max(1.0, w - (text_padding * 2.0))
-                        text_h = max(0.0, h - (text_padding * 2.0))
+                        vertical_align = el.get("verticalAlign") or el.get("vertical_align") or "top"
 
                         rich_lines = el.get("richLines") or el.get("rich_lines")
                         line_text_aligns = el.get("lineTextAligns") or el.get("line_text_aligns") or []
@@ -703,10 +964,10 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                             content=str(content),
                             rich_lines=rich_lines if isinstance(rich_lines, list) else None,
                             fonts_map=fonts_map,
-                            text_x=text_x,
-                            text_y=text_y,
-                            text_w=text_w,
-                            text_h=text_h,
+                            box_x=x,
+                            box_y=y,
+                            box_w=w,
+                            box_h=h,
                             font_size_px=font_size_px,
                             px_to_pt=px_to_pt,
                             font_family=font_family,

@@ -72,6 +72,7 @@ import {
   AppPageHeader,
   AppFormModal,
   AppInput,
+  AppModal,
   AppSectionHeader,
   AppSelect,
   AppTabs,
@@ -79,6 +80,7 @@ import {
   AppTooltip,
   AppUserAvatar,
   AppUserSelect,
+  AppDatePicker,
   uiBorders,
   uiColors,
   uiCx,
@@ -88,7 +90,7 @@ import {
   uiTypography,
   uiUserSelect,
 } from '@/components/ui';
-import { Briefcase, ChevronDown, ChevronUp } from 'lucide-react';
+import { Briefcase, ChevronDown, ChevronUp, ClipboardList, FolderKanban } from 'lucide-react';
 
 /** Hero expand/collapse — same timing as CustomerDetail. */
 const HERO_PANEL_EASE = 'ease-[cubic-bezier(0.22,1,0.36,1)]';
@@ -559,10 +561,12 @@ function ProjectRecentActivity({
   projectId,
   isOpportunity,
   isLeakInvestigation,
+  useDesignSystem,
 }: {
   projectId: string;
   isOpportunity?: boolean;
   isLeakInvestigation?: boolean;
+  useDesignSystem?: boolean;
 }) {
   const { data: logs = [], isFetching } = useQuery({
     queryKey: ['projectRecentActivity', projectId],
@@ -585,27 +589,48 @@ function ProjectRecentActivity({
     }
   };
 
+  const activityList = (
+    <div className="h-[200px] overflow-y-auto flex-shrink-0 space-y-1.5 pr-1">
+      {isFetching ? (
+        <div className={uiCx(uiTypography.helper, 'py-4')}>Loading...</div>
+      ) : logs.length > 0 ? (
+        logs.map((log: any, idx: number) => (
+          <div
+            key={`${log.id}-${idx}`}
+            className={uiCx(
+              uiTypography.body,
+              'py-1.5 border-b border-gray-100 last:border-0 text-xs',
+            )}
+          >
+            <div className="font-medium">{buildRecentActivityLabel(log, isOpportunity, isLeakInvestigation)}</div>
+            <div className={uiCx(uiTypography.helper, 'text-[11px]')}>
+              {formatTimestamp(log.timestamp)}
+              {log.actor_name ? ` · by ${log.actor_name}` : ''}
+            </div>
+          </div>
+        ))
+      ) : useDesignSystem ? (
+        <AppEmptyState title="No recent activity" className="py-6" />
+      ) : (
+        <div className="text-xs text-gray-400 py-4">No recent activity</div>
+      )}
+    </div>
+  );
+
+  if (useDesignSystem) {
+    return (
+      <AppCard className="flex min-h-0 flex-col">
+        <AppSectionHeader title="Recent Activity" />
+        <div className="mt-3 min-h-0 flex-1">{activityList}</div>
+      </AppCard>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 flex flex-col min-h-0">
       <div className="p-3 flex flex-col flex-1 min-h-0">
         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 flex-shrink-0">Recent Activity</div>
-        <div className="h-[200px] overflow-y-auto flex-shrink-0 space-y-1.5 pr-1">
-          {isFetching ? (
-            <div className="text-xs text-gray-400 py-4">Loading...</div>
-          ) : logs.length > 0 ? (
-            logs.map((log: any, idx: number) => (
-              <div key={`${log.id}-${idx}`} className="text-xs text-gray-700 py-1.5 border-b border-gray-100 last:border-0">
-                <div className="font-medium">{buildRecentActivityLabel(log, isOpportunity, isLeakInvestigation)}</div>
-                <div className="text-[11px] text-gray-500">
-                  {formatTimestamp(log.timestamp)}
-                  {log.actor_name ? ` · by ${log.actor_name}` : ''}
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-xs text-gray-400 py-4">No recent activity</div>
-          )}
-        </div>
+        {activityList}
       </div>
     </div>
   );
@@ -895,8 +920,12 @@ export default function ProjectDetail(){
   const signOnlySafetySession =
     searchParams.get('sign_only') === '1' && Boolean((safetyInspectionFromUrl || '').trim());
 
+  const projectQueryKey =
+    signOnlySafetySession && safetyInspectionFromUrl
+      ? (['project', id, 'sign', safetyInspectionFromUrl] as const)
+      : (['project', id] as const);
   const { data:proj, isLoading } = useQuery({
-    queryKey: ['project', id, signOnlySafetySession ? safetyInspectionFromUrl : ''],
+    queryKey: projectQueryKey,
     queryFn: () =>
       api<Project>(
         'GET',
@@ -908,10 +937,17 @@ export default function ProjectDetail(){
   });
   const isLeakInvestigation = !!proj?.is_leak_investigation;
   const isOpportunityStyleTabs = !!(proj?.is_bidding || isLeakInvestigation);
+  // Route-based layout (not API) so design system renders on first paint — same pattern as projects.
+  const isLeakInvestigationDetailRoute =
+    location.pathname.startsWith('/rm-leak-investigations/');
   const isOpportunityDetailRoute =
-    Boolean(proj?.is_bidding) &&
-    !isLeakInvestigation &&
-    location.pathname.startsWith('/opportunities/');
+    location.pathname.startsWith('/opportunities/') ||
+    location.pathname.startsWith('/rm-opportunities/');
+  const isProjectDetailRoute =
+    location.pathname.startsWith('/projects/') ||
+    location.pathname.startsWith('/rm-projects/');
+  const useDesignSystem =
+    isLeakInvestigationDetailRoute || isOpportunityDetailRoute || isProjectDetailRoute;
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`), enabled: !!id && !signOnlySafetySession });
@@ -1170,13 +1206,13 @@ export default function ProjectDetail(){
     setTab(newTab);
     if (newTab === null) {
       nav(location.pathname, { replace: true });
-      if (!isOpportunityDetailRoute) setIsHeroCollapsed(false);
+      if (!useDesignSystem) setIsHeroCollapsed(false);
     } else {
       nav(`${location.pathname}?tab=${newTab}`, { replace: true });
-      if (!isOpportunityDetailRoute) setIsHeroCollapsed(newTab !== 'overview');
+      if (!useDesignSystem) setIsHeroCollapsed(newTab !== 'overview');
       invalidateQueriesForTab(newTab);
     }
-  }, [location.pathname, nav, invalidateQueriesForTab, isOpportunityDetailRoute]);
+  }, [location.pathname, nav, invalidateQueriesForTab, useDesignSystem]);
 
   const handleTabClick = async (newTab: typeof availableTabs[number] | 'estimate' | null) => {
     if (signOnlySafetySession) {
@@ -1319,7 +1355,7 @@ export default function ProjectDetail(){
           : 'Back to Projects';
 
   const heroCardShell = (extra: string) =>
-    isOpportunityDetailRoute
+    useDesignSystem
       ? uiCx(uiRadius.card, uiBorders.subtle, 'bg-white', extra)
       : uiCx('rounded-xl border bg-white', extra);
 
@@ -1327,7 +1363,7 @@ export default function ProjectDetail(){
   const [opportunityHeroExpandedHeight, setOpportunityHeroExpandedHeight] = useState(320);
 
   useLayoutEffect(() => {
-    if (!isOpportunityDetailRoute) return;
+    if (!useDesignSystem) return;
     const el = opportunityHeroMeasureRef.current;
     if (!el) return;
     const measure = () => setOpportunityHeroExpandedHeight(el.scrollHeight);
@@ -1335,7 +1371,7 @@ export default function ProjectDetail(){
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [isOpportunityDetailRoute, proj, cover, livePricingItems, projectDivisions]);
+  }, [useDesignSystem, proj, cover, livePricingItems, projectDivisions]);
 
   const opportunityHeroExpandMs = useMemo(
     () =>
@@ -1344,7 +1380,7 @@ export default function ProjectDetail(){
   );
 
   const opportunityHeroExpandedStyle = useMemo((): CSSProperties | undefined => {
-    if (!isOpportunityDetailRoute) return undefined;
+    if (!useDesignSystem) return undefined;
     return {
       transitionProperty: 'max-height, opacity',
       transitionDuration: isHeroCollapsed ? `${HERO_COLLAPSE_MS}ms` : `${opportunityHeroExpandMs}ms`,
@@ -1352,10 +1388,10 @@ export default function ProjectDetail(){
       maxHeight: isHeroCollapsed ? 0 : opportunityHeroExpandedHeight,
       opacity: isHeroCollapsed ? 0 : 1,
     };
-  }, [isOpportunityDetailRoute, isHeroCollapsed, opportunityHeroExpandedHeight, opportunityHeroExpandMs]);
+  }, [useDesignSystem, isHeroCollapsed, opportunityHeroExpandedHeight, opportunityHeroExpandMs]);
 
   const opportunityHeroCollapsedStyle = useMemo((): CSSProperties | undefined => {
-    if (!isOpportunityDetailRoute) return undefined;
+    if (!useDesignSystem) return undefined;
     return {
       transitionProperty: 'max-height, opacity',
       transitionDuration: isHeroCollapsed ? `${HERO_EXPAND_BASE_MS}ms` : `${HERO_COLLAPSE_MS}ms`,
@@ -1363,7 +1399,7 @@ export default function ProjectDetail(){
       maxHeight: isHeroCollapsed ? OPPORTUNITY_HERO_COLLAPSED_PX : 0,
       opacity: isHeroCollapsed ? 1 : 0,
     };
-  }, [isOpportunityDetailRoute, isHeroCollapsed]);
+  }, [useDesignSystem, isHeroCollapsed]);
 
   const opportunityConvertHeaderAction = useMemo(() => {
     if (!isOpportunityDetailRoute || !proj?.is_bidding || !hasEditPermission) return null;
@@ -1427,13 +1463,50 @@ export default function ProjectDetail(){
     return convertButton;
   }, [isOpportunityDetailRoute, proj, hasEditPermission]);
 
+  const leakCreateRelatedOpportunityAction = useMemo(() => {
+    if (!isLeakInvestigationDetailRoute || !hasEditPermission || !id) return null;
+    const qs = new URLSearchParams();
+    qs.set('is_bidding', 'true');
+    qs.set('related_leak_investigation_id', String(id));
+    if (proj?.client_id) qs.set('client_id', String(proj.client_id));
+    if (proj?.site_id) qs.set('site_id', String(proj.site_id));
+    if (proj?.estimator_id) qs.set('estimator_id', String(proj.estimator_id));
+    const to = `/rm-projects/new?${qs.toString()}`;
+    return (
+      <AppButton
+        type="button"
+        size="sm"
+        variant="secondary"
+        onClick={() => nav(to)}
+        title="Create a new opportunity linked to this leak investigation"
+      >
+        Create related Opportunity
+      </AppButton>
+    );
+  }, [isLeakInvestigationDetailRoute, hasEditPermission, id, proj?.client_id, proj?.site_id, proj?.estimator_id, nav]);
+
+  const PageShell = useDesignSystem ? 'main' : 'div';
+
   return (
-    <div className={uiCx(isOpportunityDetailRoute && 'w-full min-h-full bg-gray-50', uiSpacing.pageStack)}>
-      {isOpportunityDetailRoute ? (
+    <PageShell
+      className={uiCx(
+        useDesignSystem && 'w-full min-w-0 min-h-full bg-gray-50',
+        uiSpacing.pageStack,
+      )}
+    >
+      {useDesignSystem ? (
         <AppPageHeader
           title={getPageTitle(proj, tab)}
           subtitle={getPageDescription(proj, tab)}
-          icon={<Briefcase className="h-4 w-4" />}
+          icon={
+            isLeakInvestigationDetailRoute ? (
+              <ClipboardList className="h-4 w-4" />
+            ) : isProjectDetailRoute ? (
+              <FolderKanban className="h-4 w-4" />
+            ) : (
+              <Briefcase className="h-4 w-4" />
+            )
+          }
           onBack={handlePageBack}
           backLabel={pageBackLabel}
           actions={
@@ -1481,7 +1554,7 @@ export default function ProjectDetail(){
         {/* Expanded View - Full Hero Section */}
         <div
           className={
-            isOpportunityDetailRoute
+            useDesignSystem
               ? HERO_PANEL_TRANSITION_BASE
               : heroCardShell(
                   `transition-all ${isHeroCollapsed ? 'overflow-hidden duration-[1200ms]' : 'overflow-visible duration-[1800ms]'} ease-in-out ${
@@ -1492,7 +1565,7 @@ export default function ProjectDetail(){
                 )
           }
           style={
-            isOpportunityDetailRoute
+            useDesignSystem
               ? opportunityHeroExpandedStyle
               : {
                   transitionProperty: 'max-height, opacity',
@@ -1500,13 +1573,13 @@ export default function ProjectDetail(){
                   transitionTimingFunction: 'ease-in-out, ease-in-out',
                 }
           }
-          aria-hidden={isOpportunityDetailRoute ? isHeroCollapsed : undefined}
+          aria-hidden={useDesignSystem ? isHeroCollapsed : undefined}
         >
           <div
-            ref={isOpportunityDetailRoute ? opportunityHeroMeasureRef : undefined}
-            className={uiCx(isOpportunityDetailRoute ? 'p-2.5' : 'p-3', 'overflow-visible')}
+            ref={useDesignSystem ? opportunityHeroMeasureRef : undefined}
+            className={uiCx(useDesignSystem ? 'p-2.5' : 'p-3', 'overflow-visible')}
           >
-            <div className={uiCx('flex items-start', isOpportunityDetailRoute ? 'gap-2.5' : 'gap-3')}>
+            <div className={uiCx('flex items-start', useDesignSystem ? 'gap-5' : 'gap-4')}>
               {/* Left Section - Image and Project Divisions */}
               <div className="w-48 flex-shrink-0 overflow-visible">
                 {/* Image */}
@@ -1515,7 +1588,7 @@ export default function ProjectDetail(){
                     'h-36 w-48 overflow-hidden group relative overflow-visible',
                     uiRadius.card,
                     uiBorders.subtle,
-                    isOpportunityDetailRoute ? 'mb-1.5' : 'mb-2',
+                    'mb-3',
                   )}
                 >
                   <img src={cover} className="w-full h-full object-cover" alt="" />
@@ -1534,16 +1607,17 @@ export default function ProjectDetail(){
                   proj={proj || {}}
                   hasEditPermission={hasEditPermission}
                   livePricingItems={livePricingItems}
-                  compact={isOpportunityDetailRoute}
+                  compact={isOpportunityDetailRoute || isProjectDetailRoute}
+                  designSystem={useDesignSystem}
                 />
-                {!isOpportunityDetailRoute ? (
+                {!isOpportunityStyleTabs ? (
                   <ProjectHeroPricingArea projectId={String(id || '')} proposals={proposals || []} />
                 ) : null}
               </div>
               
               {/* Right Section - General Information */}
               <div className="flex-1 min-w-0">
-                <div className={isOpportunityDetailRoute ? 'mb-1' : 'mb-2'}>
+                <div className={useDesignSystem ? 'mb-1' : 'mb-2'}>
                 <div className="flex items-center gap-1.5">
                   <h3 
                     className="text-sm font-bold text-gray-900 cursor-text"
@@ -1552,7 +1626,7 @@ export default function ProjectDetail(){
                     {proj?.name || 'Untitled Project'}
                   </h3>
                   {hasEditPermission &&
-                    (isOpportunityDetailRoute ? (
+                    (useDesignSystem ? (
                       <AppHeroEditButton
                         onClick={() => setEditProjectNameModal(true)}
                         title="Edit Project Name"
@@ -1575,7 +1649,7 @@ export default function ProjectDetail(){
               <div
                 className={uiCx(
                   'grid grid-cols-3',
-                  isOpportunityDetailRoute ? 'gap-x-2.5 gap-y-1' : 'gap-x-3 gap-y-1.5',
+                  useDesignSystem ? 'gap-x-2.5 gap-y-1' : 'gap-x-3 gap-y-1.5',
                 )}
               >
                   {/* Column 1 */}
@@ -1781,7 +1855,7 @@ export default function ProjectDetail(){
                           </button>
                         )}
                       </div>
-                      {isOpportunityDetailRoute ? (
+                      {useDesignSystem ? (
                         <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)}>
                           {statusLabel || '—'}
                         </AppBadge>
@@ -2361,7 +2435,7 @@ export default function ProjectDetail(){
           </div>
           
           {/* Collapse button - bottom right corner of card */}
-          {isOpportunityDetailRoute ? (
+          {useDesignSystem ? (
             <AppButton
               type="button"
               variant="ghost"
@@ -2394,7 +2468,7 @@ export default function ProjectDetail(){
         {/* Collapsed View - Single Line */}
         <div
           className={
-            isOpportunityDetailRoute
+            useDesignSystem
               ? HERO_PANEL_TRANSITION_BASE
               : heroCardShell(
                   `overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out absolute top-0 left-0 right-0 ${
@@ -2405,7 +2479,7 @@ export default function ProjectDetail(){
                 )
           }
           style={
-            isOpportunityDetailRoute
+            useDesignSystem
               ? opportunityHeroCollapsedStyle
               : {
                   transitionProperty: 'max-height, opacity',
@@ -2413,7 +2487,7 @@ export default function ProjectDetail(){
                   transitionTimingFunction: 'ease-in-out, ease-in-out',
                 }
           }
-          aria-hidden={isOpportunityDetailRoute ? !isHeroCollapsed : undefined}
+          aria-hidden={useDesignSystem ? !isHeroCollapsed : undefined}
         >
           <div className="p-3">
             <div className="flex items-center justify-between gap-4">
@@ -2486,7 +2560,7 @@ export default function ProjectDetail(){
           </div>
           
           {/* Expand button - bottom right corner */}
-          {isOpportunityDetailRoute ? (
+          {useDesignSystem ? (
             <AppButton
               type="button"
               variant="ghost"
@@ -2524,13 +2598,19 @@ export default function ProjectDetail(){
             onTabClick={handleTabClick}
             proj={proj}
             currentTab={tab}
-            useDesignSystem={isOpportunityDetailRoute}
+            useDesignSystem={useDesignSystem}
             isHeroCollapsed={isHeroCollapsed}
-            headerEnd={isOpportunityDetailRoute ? opportunityConvertHeaderAction : undefined}
+            headerEnd={
+              isLeakInvestigationDetailRoute
+                ? leakCreateRelatedOpportunityAction
+                : isOpportunityDetailRoute && proj?.is_bidding
+                  ? opportunityConvertHeaderAction
+                  : undefined
+            }
           />
         );
 
-        if (isOpportunityDetailRoute) {
+        if (useDesignSystem) {
           return (
             <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-1.5' : 'gap-2')}>
               <AppCard
@@ -2573,7 +2653,46 @@ export default function ProjectDetail(){
       {/* Calendar / team / costs — overview (primary page, tab null) */}
       {!tab && (
         <>
-          {!isOpportunityStyleTabs ? (
+          {useDesignSystem && !isOpportunityStyleTabs ? (
+            <>
+              <div className={uiCx(uiLayout.pageTwoColumn, 'mb-4')}>
+                <AppCard className="flex h-full min-h-0 flex-col">
+                  <AppSectionHeader
+                    title="Workload"
+                    description="Calendar events for this project."
+                    action={
+                      hasEditPermission ? (
+                        <AppButton type="button" size="sm" onClick={() => setWorkloadEventCreateOpen(true)}>
+                          + Create Event
+                        </AppButton>
+                      ) : null
+                    }
+                  />
+                  <div className="mt-3 min-h-0 flex-1">
+                    <CalendarMock
+                      title="Project Calendar"
+                      projectId={String(id)}
+                      hasEditPermission={hasEditPermission}
+                      useDesignSystem
+                      hideCreateButton
+                      createModalOpen={workloadEventCreateOpen}
+                      onCreateModalOpenChange={setWorkloadEventCreateOpen}
+                    />
+                  </div>
+                </AppCard>
+                <ProjectCostsSummary projectId={String(id)} proposals={proposals || []} useDesignSystem />
+              </div>
+              <div className={uiCx(uiLayout.pageTwoColumn, 'mb-4')}>
+                <LastReportsCard reports={reports || []} useDesignSystem />
+                <ProjectTeamCard
+                  projectId={String(id)}
+                  employees={employees || []}
+                  canManageMembers={isAdmin || permissions.has('business:projects:members:write')}
+                  useDesignSystem
+                />
+              </div>
+            </>
+          ) : !isOpportunityStyleTabs ? (
             <>
               <div className="mb-4 grid md:grid-cols-2 gap-4">
                 <div className="rounded-xl border bg-white p-4">
@@ -2593,12 +2712,14 @@ export default function ProjectDetail(){
                 />
               </div>
             </>
-          ) : isOpportunityDetailRoute ? (
+          ) : useDesignSystem ? (
             <div className={uiCx(uiLayout.pageTwoColumn, 'mb-4')}>
               <AppCard className="flex h-full min-h-0 flex-col">
                 <AppSectionHeader
                   title="Workload"
-                  description="Calendar events for this opportunity."
+                  description={
+                    isLeakInvestigation ? undefined : 'Calendar events for this opportunity.'
+                  }
                   action={
                     hasEditPermission ? (
                       <AppButton type="button" size="sm" onClick={() => setWorkloadEventCreateOpen(true)}>
@@ -2609,7 +2730,13 @@ export default function ProjectDetail(){
                 />
                 <div className="mt-3 min-h-0 flex-1">
                   <CalendarMock
-                    title="Opportunity Calendar"
+                    title={
+                      isLeakInvestigation
+                        ? 'Project Calendar'
+                        : proj?.is_bidding
+                          ? 'Opportunity Calendar'
+                          : 'Project Calendar'
+                    }
                     projectId={String(id)}
                     hasEditPermission={hasEditPermission}
                     useDesignSystem
@@ -2693,39 +2820,52 @@ export default function ProjectDetail(){
         );
       })()}
 
-      {/* Create related opportunity (R&M leak investigations only) */}
-      {!tab && proj?.is_leak_investigation && hasEditPermission && (() => {
-        const qs = new URLSearchParams();
-        qs.set('is_bidding', 'true');
-        if (id) qs.set('related_leak_investigation_id', String(id));
-        if (proj?.client_id) qs.set('client_id', String(proj.client_id));
-        if (proj?.site_id) qs.set('site_id', String(proj.site_id));
-        if (proj?.estimator_id) qs.set('estimator_id', String(proj.estimator_id));
-        const to = `/rm-projects/new?${qs.toString()}`;
-        return (
-          <div className="mb-4">
-            <Link
-              to={to}
-              className="w-full border-2 border-dashed rounded-lg p-2.5 transition-all text-center bg-white flex items-center justify-center gap-2 min-h-[60px] border-blue-300 hover:border-blue-600 hover:bg-blue-50"
-              title="Create a new opportunity linked to this leak investigation"
-            >
-              <span className="text-lg text-blue-500">+</span>
-              <span className="font-medium text-xs text-blue-700">Create related Opportunity</span>
-            </Link>
-          </div>
-        );
-      })()}
+      {/* Create related opportunity — legacy layout only (DS: tab card headerEnd) */}
+      {!isOpportunityDetailRoute &&
+        !tab &&
+        proj?.is_leak_investigation &&
+        hasEditPermission &&
+        (() => {
+          const qs = new URLSearchParams();
+          qs.set('is_bidding', 'true');
+          if (id) qs.set('related_leak_investigation_id', String(id));
+          if (proj?.client_id) qs.set('client_id', String(proj.client_id));
+          if (proj?.site_id) qs.set('site_id', String(proj.site_id));
+          if (proj?.estimator_id) qs.set('estimator_id', String(proj.estimator_id));
+          const to = `/rm-projects/new?${qs.toString()}`;
+          return (
+            <div className="mb-4">
+              <Link
+                to={to}
+                className="w-full border-2 border-dashed rounded-lg p-2.5 transition-all text-center bg-white flex items-center justify-center gap-2 min-h-[60px] border-blue-300 hover:border-blue-600 hover:bg-blue-50"
+                title="Create a new opportunity linked to this leak investigation"
+              >
+                <span className="text-lg text-blue-500">+</span>
+                <span className="font-medium text-xs text-blue-700">Create related Opportunity</span>
+              </Link>
+            </div>
+          );
+        })()}
 
       {/* Description card - only when description exists */}
       {!tab && proj?.description?.trim() && (
-        <div className="mt-6">
-          <div className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80">
-            <div className="p-3">
-              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Description</div>
-              <p className="text-sm text-gray-700 leading-snug whitespace-pre-wrap">{proj.description.trim()}</p>
+        useDesignSystem ? (
+          <AppCard className="mt-6">
+            <AppSectionHeader title="Description" />
+            <p className={uiCx(uiTypography.body, 'mt-3 whitespace-pre-wrap leading-snug')}>
+              {proj.description.trim()}
+            </p>
+          </AppCard>
+        ) : (
+          <div className="mt-6">
+            <div className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80">
+              <div className="p-3">
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Description</div>
+                <p className="text-sm text-gray-700 leading-snug whitespace-pre-wrap">{proj.description.trim()}</p>
+              </div>
             </div>
           </div>
-        </div>
+        )
       )}
 
       {/* Recent Activity */}
@@ -2735,12 +2875,144 @@ export default function ProjectDetail(){
             projectId={String(id || '')}
             isOpportunity={!!proj?.is_bidding}
             isLeakInvestigation={isLeakInvestigation}
+            useDesignSystem={useDesignSystem}
           />
         </div>
       )}
 
       {/* Danger Zone */}
       {!tab && hasAdministratorAccess && (
+        useDesignSystem ? (
+          <AppCard className={uiCx('mt-6', uiBorders.subtle, 'border-red-200 bg-red-50')}>
+            <AppSectionHeader title="Danger Zone" />
+            <div className={uiCx(uiLayout.actionsRow, 'mt-3 flex-wrap')}>
+              <AppButton
+                variant="danger"
+                size="sm"
+                onClick={async () => {
+                  const result = await confirm({
+                    title: proj?.is_bidding
+                      ? 'Delete Opportunity'
+                      : proj?.is_leak_investigation
+                        ? 'Delete Leak investigation'
+                        : 'Delete Project',
+                    message: `Are you sure you want to delete "${proj?.name || (proj?.is_bidding ? 'this opportunity' : proj?.is_leak_investigation ? 'this leak investigation' : 'this project')}"? This action cannot be undone.${proj?.is_bidding || proj?.is_leak_investigation ? '' : ' All related data (updates, notes, timesheets) will also be deleted.'}`,
+                    confirmText: 'Delete',
+                    cancelText: 'Cancel',
+                  });
+                  if (result !== 'confirm') return;
+                  try {
+                    await api('DELETE', `/projects/${encodeURIComponent(String(id || ''))}`);
+                    toast.success(
+                      proj?.is_bidding
+                        ? 'Opportunity deleted'
+                        : proj?.is_leak_investigation
+                          ? 'Leak investigation deleted'
+                          : 'Project deleted',
+                    );
+                    queryClient.removeQueries({ queryKey: ['opportunities'] });
+                    queryClient.removeQueries({ queryKey: ['leak-investigations'] });
+                    queryClient.removeQueries({ queryKey: ['projects'] });
+                    await Promise.all([
+                      queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
+                      queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
+                      queryClient.invalidateQueries({ queryKey: ['clientProjectParticipations'] }),
+                    ]);
+                    if (proj?.client_id) {
+                      nav(`/customers/${encodeURIComponent(String(proj.client_id))}`);
+                    } else {
+                      const sp = salesListPaths(proj);
+                      if (proj?.is_bidding) nav(sp.opportunities);
+                      else if (proj?.is_leak_investigation) nav(sp.leakInvestigations);
+                      else nav(sp.projects);
+                    }
+                  } catch (_e) {
+                    toast.error(
+                      proj?.is_bidding
+                        ? 'Failed to delete opportunity'
+                        : proj?.is_leak_investigation
+                          ? 'Failed to delete leak investigation'
+                          : 'Failed to delete project',
+                    );
+                  }
+                }}
+              >
+                {proj?.is_bidding
+                  ? 'Delete Opportunity'
+                  : proj?.is_leak_investigation
+                    ? 'Delete Leak investigation'
+                    : 'Delete Project'}
+              </AppButton>
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="border-red-300 text-red-700 hover:bg-red-50"
+                onClick={async () => {
+                  const entityLabel = proj?.is_bidding
+                    ? 'Opportunity'
+                    : proj?.is_leak_investigation
+                      ? 'Leak Investigation'
+                      : 'Project';
+                  const result = await confirm({
+                    title: `Duplicate ${entityLabel}`,
+                    message: `This will create a full copy of "${proj?.name || 'this entity'}" with a new code. Proposals, files, folders, updates, reports and events will be cloned. Timesheet, dispatch and audit logs will not. Continue?`,
+                    confirmText: 'Duplicate',
+                    cancelText: 'Cancel',
+                  });
+                  if (result !== 'confirm') return;
+                  try {
+                    const res = await api<{ id: string }>(
+                      'POST',
+                      `/projects/${encodeURIComponent(String(id || ''))}/duplicate`,
+                    );
+                    toast.success(`${entityLabel} duplicated`);
+                    queryClient.removeQueries({ queryKey: ['opportunities'] });
+                    queryClient.removeQueries({ queryKey: ['leak-investigations'] });
+                    queryClient.removeQueries({ queryKey: ['projects'] });
+                    await Promise.all([
+                      queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
+                      queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
+                      queryClient.invalidateQueries({ queryKey: ['clientProjectParticipations'] }),
+                    ]);
+                    const rm = proj?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
+                    const newIdEnc = encodeURIComponent(res.id);
+                    if (proj?.is_leak_investigation) {
+                      nav(rm ? `/rm-leak-investigations/${newIdEnc}` : `/projects/${newIdEnc}`);
+                    } else if (proj?.is_bidding) {
+                      nav(rm ? `/rm-opportunities/${newIdEnc}` : `/opportunities/${newIdEnc}`);
+                    } else {
+                      nav(rm ? `/rm-projects/${newIdEnc}` : `/projects/${newIdEnc}`);
+                    }
+                  } catch (_e) {
+                    toast.error(
+                      proj?.is_bidding
+                        ? 'Failed to duplicate opportunity'
+                        : proj?.is_leak_investigation
+                          ? 'Failed to duplicate leak investigation'
+                          : 'Failed to duplicate project',
+                    );
+                  }
+                }}
+              >
+                {proj?.is_bidding
+                  ? 'Duplicate Opportunity'
+                  : proj?.is_leak_investigation
+                    ? 'Duplicate Leak Investigation'
+                    : 'Duplicate Project'}
+              </AppButton>
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="border-red-300 text-red-700 hover:bg-red-50"
+                onClick={() => setShowAuditLogModal(true)}
+              >
+                Audit Log
+              </AppButton>
+            </div>
+          </AppCard>
+        ) : (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4">
           <h3 className="text-sm font-semibold text-red-900 mb-3">Danger Zone</h3>
           <div className="flex flex-wrap gap-3">
@@ -2844,6 +3116,7 @@ export default function ProjectDetail(){
             </button>
           </div>
         </div>
+        )
       )}
 
       {/* Tab Content */}
@@ -2890,7 +3163,7 @@ export default function ProjectDetail(){
                   businessLine={proj?.business_line}
                   isBidding={!!proj?.is_bidding}
                   items={reports||[]}
-                  designSystem={isOpportunityDetailRoute}
+                  designSystem={useDesignSystem}
                   onRefresh={async () => { await refetchReports(); invalidateRecentActivity(); }}
                 />
               )}
@@ -2900,7 +3173,7 @@ export default function ProjectDetail(){
                   projectId={String(id)}
                   statusLabel={proj?.status_label || ''}
                   businessLine={proj?.business_line}
-                  designSystem={isOpportunityDetailRoute}
+                  designSystem={useDesignSystem}
                 />
               )}
 
@@ -2908,7 +3181,7 @@ export default function ProjectDetail(){
                 <ProjectTimesheetTab
                   projectId={String(id)}
                   statusLabel={proj?.status_label || ''}
-                  designSystem={isOpportunityDetailRoute}
+                  designSystem={useDesignSystem}
                 />
               )}
 
@@ -2918,7 +3191,7 @@ export default function ProjectDetail(){
                   businessLine={proj?.business_line}
                   files={files||[]}
                   onRefresh={async () => { await refetchFiles(); invalidateRecentActivity(); }}
-                  designSystem={isOpportunityDetailRoute}
+                  designSystem={useDesignSystem}
                 />
               )}
 
@@ -2927,7 +3200,7 @@ export default function ProjectDetail(){
                   projectId={String(id)}
                   isBidding={isOpportunityStyleTabs}
                   canEditDocuments={isAdmin || permissions.has('business:projects:documents:write')}
-                  designSystem={isOpportunityDetailRoute}
+                  designSystem={useDesignSystem}
                 />
               )}
 
@@ -2943,7 +3216,7 @@ export default function ProjectDetail(){
                   onPricingItemsChange={setLivePricingItems}
                   showOnlyPricing={false}
                   proposalFormSaveRef={proposalFormSaveRef}
-                  designSystem={isOpportunityDetailRoute}
+                  designSystem={useDesignSystem}
                 />
               )}
 
@@ -2959,7 +3232,7 @@ export default function ProjectDetail(){
                   onPricingItemsChange={setLivePricingItems}
                   showOnlyPricing
                   proposalFormSaveRef={proposalFormSaveRef}
-                  designSystem={isOpportunityDetailRoute}
+                  designSystem={useDesignSystem}
                 />
               )}
 
@@ -3043,67 +3316,104 @@ export default function ProjectDetail(){
       )}
 
       {/* Audit Log Modal */}
-      {showAuditLogModal && (
-        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Audit Log</h2>
-              <button 
-                onClick={() => setShowAuditLogModal(false)} 
-                className="text-2xl font-bold text-gray-400 hover:text-gray-600"
-              >
-                Ã—
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-hidden flex">
-              {/* Left side - Section buttons */}
-              <div className="w-48 border-r bg-gray-50 p-4">
-                <div className="space-y-2">
-                  {(['general', 'timesheet', 'reports', 'workload', 'files', 'proposal', 'pricing'] as const).map((section) => (
-                    <button
-                      key={section}
-                      onClick={() => setAuditLogSection(section as any)}
-                      className={`w-full text-left px-3 py-2 rounded text-sm ${
-                        auditLogSection === section
-                          ? 'bg-blue-100 text-blue-800 font-medium'
-                          : 'bg-white text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      {section === 'general' ? 'General' : section === 'reports' ? 'Notes/History' : section[0].toUpperCase() + section.slice(1)}
-                    </button>
-                  ))}
+      {showAuditLogModal &&
+        (useDesignSystem ? (
+          <AppModal
+            open
+            onClose={() => setShowAuditLogModal(false)}
+            title="Audit Log"
+            size="lg"
+            dialogClassName="!max-w-6xl"
+            bodyClassName="flex min-h-0 flex-1 flex-col p-0"
+            bodyFill
+          >
+            <div className="flex min-h-0 flex-1 overflow-hidden">
+              <div className={uiCx('w-48 shrink-0 border-r p-4', uiColors.surfaceSubtle)}>
+                <div className="space-y-1">
+                  {(['general', 'timesheet', 'reports', 'workload', 'files', 'proposal', 'pricing'] as const).map(
+                    (section) => (
+                      <AppButton
+                        key={section}
+                        type="button"
+                        variant={auditLogSection === section ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="w-full justify-start"
+                        onClick={() => setAuditLogSection(section as typeof auditLogSection)}
+                      >
+                        {section === 'general'
+                          ? 'General'
+                          : section === 'reports'
+                            ? 'Notes/History'
+                            : section[0].toUpperCase() + section.slice(1)}
+                      </AppButton>
+                    ),
+                  )}
                 </div>
               </div>
-              
-              {/* Right side - Log content */}
-              <div className="flex-1 overflow-y-auto p-6">
-                {auditLogSection === 'general' && (
-                  <GeneralAuditSection projectId={String(id)} />
-                )}
-                {auditLogSection === 'timesheet' && (
-                  <TimesheetAuditSection projectId={String(id)} />
-                )}
-                {auditLogSection === 'reports' && (
-                  <ReportsAuditSection projectId={String(id)} />
-                )}
-                {auditLogSection === 'workload' && (
-                  <WorkloadAuditSection projectId={String(id)} />
-                )}
-                {auditLogSection === 'files' && (
-                  <FilesAuditSection projectId={String(id)} />
-                )}
-                {auditLogSection === 'proposal' && (
-                  <ProposalAuditSection projectId={String(id)} />
-                )}
-                {auditLogSection === 'pricing' && (
-                  <PricingAuditSection projectId={String(id)} />
-                )}
+              <div className="min-h-0 flex-1 overflow-y-auto p-6">
+                {auditLogSection === 'general' && <GeneralAuditSection projectId={String(id)} />}
+                {auditLogSection === 'timesheet' && <TimesheetAuditSection projectId={String(id)} />}
+                {auditLogSection === 'reports' && <ReportsAuditSection projectId={String(id)} />}
+                {auditLogSection === 'workload' && <WorkloadAuditSection projectId={String(id)} />}
+                {auditLogSection === 'files' && <FilesAuditSection projectId={String(id)} />}
+                {auditLogSection === 'proposal' && <ProposalAuditSection projectId={String(id)} />}
+                {auditLogSection === 'pricing' && <PricingAuditSection projectId={String(id)} />}
               </div>
             </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+          </AppModal>
+        ) : (
+          <OverlayPortal>
+            <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">Audit Log</h2>
+                  <button
+                    onClick={() => setShowAuditLogModal(false)}
+                    className="text-2xl font-bold text-gray-400 hover:text-gray-600"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-hidden flex">
+                  <div className="w-48 border-r bg-gray-50 p-4">
+                    <div className="space-y-2">
+                      {(['general', 'timesheet', 'reports', 'workload', 'files', 'proposal', 'pricing'] as const).map(
+                        (section) => (
+                          <button
+                            key={section}
+                            onClick={() => setAuditLogSection(section as typeof auditLogSection)}
+                            className={`w-full text-left px-3 py-2 rounded text-sm ${
+                              auditLogSection === section
+                                ? 'bg-blue-100 text-blue-800 font-medium'
+                                : 'bg-white text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            {section === 'general'
+                              ? 'General'
+                              : section === 'reports'
+                                ? 'Notes/History'
+                                : section[0].toUpperCase() + section.slice(1)}
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-6">
+                    {auditLogSection === 'general' && <GeneralAuditSection projectId={String(id)} />}
+                    {auditLogSection === 'timesheet' && <TimesheetAuditSection projectId={String(id)} />}
+                    {auditLogSection === 'reports' && <ReportsAuditSection projectId={String(id)} />}
+                    {auditLogSection === 'workload' && <WorkloadAuditSection projectId={String(id)} />}
+                    {auditLogSection === 'files' && <FilesAuditSection projectId={String(id)} />}
+                    {auditLogSection === 'proposal' && <ProposalAuditSection projectId={String(id)} />}
+                    {auditLogSection === 'pricing' && <PricingAuditSection projectId={String(id)} />}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </OverlayPortal>
+        ))}
 
       {/* Edit Status Modal */}
       {editStatusModal && (
@@ -3113,7 +3423,7 @@ export default function ProjectDetail(){
           currentStatusLabel={statusLabel}
           settings={settings}
           isBidding={isOpportunityStyleTabs}
-          designSystem={isOpportunityDetailRoute}
+          designSystem={useDesignSystem}
           onClose={() => setEditStatusModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -3128,6 +3438,7 @@ export default function ProjectDetail(){
         <EditProgressModal
           projectId={String(id)}
           currentProgress={Number(proj?.progress || 0)}
+          designSystem={useDesignSystem}
           onClose={() => setEditProgressModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -3142,7 +3453,7 @@ export default function ProjectDetail(){
         <EditProjectNameModal
           projectId={String(id)}
           currentName={proj?.name || ''}
-          designSystem={isOpportunityDetailRoute}
+          designSystem={useDesignSystem}
           onClose={() => setEditProjectNameModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -3157,7 +3468,7 @@ export default function ProjectDetail(){
         <EditSiteModal
           projectId={String(id)}
           project={proj}
-          designSystem={isOpportunityDetailRoute}
+          designSystem={useDesignSystem}
           onClose={() => setEditSiteModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -3173,7 +3484,7 @@ export default function ProjectDetail(){
           projectId={String(id)}
           currentEstimatorIds={proj?.estimator_ids || (proj?.estimator_id ? [proj.estimator_id] : [])}
           employees={employees||[]}
-          designSystem={isOpportunityDetailRoute}
+          designSystem={useDesignSystem}
           onClose={() => setEditEstimatorModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -3189,6 +3500,7 @@ export default function ProjectDetail(){
           projectId={String(id)}
           currentAdminId={proj?.project_admin_id || ''}
           employees={employees||[]}
+          designSystem={useDesignSystem}
           onClose={() => setEditProjectAdminModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -3203,6 +3515,7 @@ export default function ProjectDetail(){
         <EditStartDateModal
           projectId={String(id)}
           currentStartDate={proj?.date_start ? proj.date_start.slice(0,10) : ''}
+          designSystem={useDesignSystem}
           onClose={() => setEditStartDateModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -3216,6 +3529,7 @@ export default function ProjectDetail(){
         <EditAwardedDateModal
           projectId={String(id)}
           currentAwardedDate={proj?.date_awarded ? proj.date_awarded.slice(0, 10) : ''}
+          designSystem={useDesignSystem}
           onClose={() => setEditAwardedDateModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -3230,6 +3544,7 @@ export default function ProjectDetail(){
         <EditEtaModal
           projectId={String(id)}
           currentEta={proj?.date_eta ? proj.date_eta.slice(0,10) : ''}
+          designSystem={useDesignSystem}
           onClose={() => setEditEtaModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -3244,7 +3559,7 @@ export default function ProjectDetail(){
         <EditLeadSourceModal
           projectId={String(id)}
           currentLeadSource={proj?.lead_source || ''}
-          designSystem={isOpportunityDetailRoute}
+          designSystem={useDesignSystem}
           onClose={() => setEditLeadSourceModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -3286,7 +3601,8 @@ export default function ProjectDetail(){
           currentRelatedIds={proj.related_client_ids ?? []}
           currentDisplayNames={proj.related_client_display_names ?? []}
           isBidding={!!proj.is_bidding}
-          designSystem={isOpportunityDetailRoute}
+          opportunityStyleCustomers={isOpportunityStyleTabs}
+          designSystem={useDesignSystem}
           currentAwardedIdsFromServer={Array.from(projectAwardedRelatedIdsSet(proj))}
           onClose={() => setEditRelatedCustomersModal(false)}
           onSave={async () => {
@@ -3304,7 +3620,7 @@ export default function ProjectDetail(){
           employees={employees || []}
           projectDivisions={projectDivisions || []}
           settings={settings || {}}
-          designSystem={isOpportunityDetailRoute}
+          designSystem={useDesignSystem}
           onClose={() => setShowConvertModal(false)}
           onSuccess={async () => {
             queryClient.removeQueries({ queryKey: ['opportunities'] });
@@ -3323,13 +3639,14 @@ export default function ProjectDetail(){
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 
-function EditStartDateModal({ projectId, currentStartDate, onClose, onSave }: {
+function EditStartDateModal({ projectId, currentStartDate, designSystem, onClose, onSave }: {
   projectId: string;
   currentStartDate: string;
+  designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -3359,6 +3676,30 @@ function EditStartDateModal({ projectId, currentStartDate, onClose, onSave }: {
       setSaving(false);
     }
   };
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Start Date"
+        description="When work begins or is scheduled to begin"
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <AppDatePicker label="Start Date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div
@@ -3422,9 +3763,10 @@ function EditStartDateModal({ projectId, currentStartDate, onClose, onSave }: {
   );
 }
 
-function EditAwardedDateModal({ projectId, currentAwardedDate, onClose, onSave }: {
+function EditAwardedDateModal({ projectId, currentAwardedDate, designSystem, onClose, onSave }: {
   projectId: string;
   currentAwardedDate: string;
+  designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -3454,6 +3796,30 @@ function EditAwardedDateModal({ projectId, currentAwardedDate, onClose, onSave }
       setSaving(false);
     }
   };
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Awarded Date"
+        description="Date the opportunity was awarded / converted to a project"
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <AppDatePicker label="Awarded date" value={awardedDate} onChange={(e) => setAwardedDate(e.target.value)} />
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div
@@ -3517,9 +3883,10 @@ function EditAwardedDateModal({ projectId, currentAwardedDate, onClose, onSave }
   );
 }
 
-function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
+function EditEtaModal({ projectId, currentEta, designSystem, onClose, onSave }: {
   projectId: string;
   currentEta: string;
+  designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -3549,6 +3916,30 @@ function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
       setSaving(false);
     }
   };
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit End Date"
+        description="Target completion date"
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <AppDatePicker label="End date" value={eta} onChange={(e) => setEta(e.target.value)} />
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div
@@ -3624,6 +4015,7 @@ function EditRelatedCustomersModal({
   currentRelatedIds,
   currentDisplayNames,
   isBidding,
+  opportunityStyleCustomers,
   designSystem,
   currentAwardedIdsFromServer,
   onClose,
@@ -3634,6 +4026,7 @@ function EditRelatedCustomersModal({
   currentRelatedIds: string[];
   currentDisplayNames: string[];
   isBidding: boolean;
+  opportunityStyleCustomers?: boolean;
   designSystem?: boolean;
   currentAwardedIdsFromServer: string[];
   onClose: () => void;
@@ -3772,13 +4165,19 @@ function EditRelatedCustomersModal({
     }
   };
 
-  if (designSystem && isBidding) {
+  const checkboxCustomerUi = isBidding || !!opportunityStyleCustomers;
+
+  if (designSystem && checkboxCustomerUi) {
     return (
       <AppFormModal
         open
         onClose={onClose}
         title="Edit Related Customers"
-        description="Link additional customers to this opportunity"
+        description={
+          isBidding
+            ? 'Link additional customers to this opportunity'
+            : 'Link additional customers to this leak investigation'
+        }
         formWidth="comfortable"
         quickInfo={opportunityEditRelatedCustomersQuickInfo}
         footer={
@@ -3857,6 +4256,126 @@ function EditRelatedCustomersModal({
             <p className={uiTypography.helper}>No customers found matching &quot;{q}&quot;.</p>
           ) : (
             <p className={uiTypography.helper}>No customers available.</p>
+          )}
+        </div>
+      </AppFormModal>
+    );
+  }
+
+  if (designSystem && !isBidding) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Related Customers"
+        description="Use green for Awarded (Bid Winner) and red for Not Awarded."
+        formWidth="comfortable"
+        quickInfo={opportunityEditRelatedCustomersQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : `Save (${selectedIds.size} selected)`}
+            </AppButton>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {orderedSelectedIds.length > 0 && (
+            <div className="space-y-2">
+              <p className={uiTypography.overline}>Related customers on this project</p>
+              <div className={uiCx(uiBorders.subtle, uiRadius.control, 'max-h-56 divide-y overflow-y-auto')}>
+                {orderedSelectedIds.map((rid) => {
+                  const isAwarded = awardedIds.has(rid);
+                  return (
+                    <div
+                      key={rid}
+                      className={uiCx('flex items-center gap-3 px-3 py-2', uiColors.surface, 'hover:bg-gray-50')}
+                    >
+                      <span className={uiCx(uiTypography.body, 'min-w-0 flex-1 truncate font-medium')}>
+                        {nameForId(rid)}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <AppButton
+                          type="button"
+                          variant={isAwarded ? 'secondary' : 'ghost'}
+                          size="sm"
+                          onClick={() => setAwardedForRow(rid)}
+                          title="Awarded"
+                        >
+                          ✓
+                        </AppButton>
+                        <AppButton
+                          type="button"
+                          variant={!isAwarded ? 'danger' : 'ghost'}
+                          size="sm"
+                          onClick={() => setNotAwardedForRow(rid)}
+                          title="Not awarded"
+                        >
+                          ✕
+                        </AppButton>
+                        <AppButton
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => requestRemoveFromRelated(rid)}
+                          title="Remove"
+                        >
+                          Remove
+                        </AppButton>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <AppInput
+            label="Add customers (search)"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Type customer name, city, or address…"
+            autoFocus
+          />
+          {list.length > 0 ? (
+            <div className={uiCx(uiBorders.subtle, uiRadius.control, 'max-h-80 divide-y overflow-y-auto')}>
+              {list.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => addClientFromSearchProject(c)}
+                  className={uiCx(
+                    'w-full px-3 py-2.5 text-left text-sm transition-colors',
+                    uiColors.surface,
+                    'hover:bg-gray-50',
+                  )}
+                >
+                  <div className="font-semibold text-gray-900">{c.display_name || c.name || c.id}</div>
+                  <div className={uiTypography.helper}>
+                    {[c.address_line1, c.city, c.province].filter(Boolean).join(', ') || 'No address'}
+                  </div>
+                </button>
+              ))}
+              {hasMore && (
+                <div className={uiCx('border-t px-3 py-2', uiColors.surface)}>
+                  <AppButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setDisplayedCount((prev) => prev + 20)}
+                  >
+                    Load more ({filteredClients.length - displayedCount} remaining)
+                  </AppButton>
+                </div>
+              )}
+            </div>
+          ) : q.trim() ? (
+            <p className={uiTypography.helper}>No customers found matching &quot;{q}&quot;.</p>
+          ) : (
+            <p className={uiTypography.helper}>Type to search and add customers.</p>
           )}
         </div>
       </AppFormModal>
@@ -4243,99 +4762,99 @@ function EditLeakInvestigationLinksModal({
     }
   };
 
-  return (
-    <OverlayPortal>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-        <div
-          className="max-w-lg w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Related Opportunities / Projects</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Remove linked records here, or search below to add one</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 min-h-0 space-y-3">
-            <div className="rounded-xl border border-gray-200 bg-white p-3">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Linked</div>
-              {currentLinks.length === 0 ? (
-                <div className="text-xs text-gray-500">None yet</div>
-              ) : (
-                <ul className="space-y-2">
-                  {currentLinks.map((row) => (
-                    <li key={row.id} className="flex items-center justify-between gap-2 min-w-0">
-                      <span className="text-xs font-semibold text-gray-900 truncate">
-                        {(row.name || '').trim() || 'Unnamed'}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={removingId === row.id}
-                        onClick={() => unlinkRow(row.id)}
-                        className="flex-shrink-0 text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-50"
-                      >
-                        {removingId === row.id ? '…' : 'Remove'}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-3">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Add link</div>
-              <input
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                placeholder="Search by name..."
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-              />
-            </div>
-            <div className="rounded-xl border border-gray-200 bg-white divide-y max-h-[40vh] overflow-y-auto">
-              {isFetching && <div className="p-3 text-xs text-gray-500">Loading...</div>}
-              {!isFetching && pickable.length === 0 && (
-                <div className="p-3 text-xs text-gray-500">No matches</div>
-              )}
-              {pickable.map((r: any) => {
-                const nameOnly = (r?.name || '').trim();
-                const kind = r?.is_bidding ? 'Opportunity' : 'Project';
-                return (
-                  <div key={String(r.id)} className="flex items-center justify-between gap-2 p-3">
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-gray-900 truncate">{nameOnly || 'Unnamed'}</div>
-                      <div className="text-[10px] text-gray-500">{kind}</div>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={linkingId === String(r.id)}
-                      onClick={() => linkToLeak(String(r.id))}
-                      className="flex-shrink-0 px-2 py-1 rounded-lg text-xs font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50"
-                    >
-                      {linkingId === String(r.id) ? '...' : 'Link'}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-white flex justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 rounded-lg text-sm text-gray-700 border border-gray-200 hover:bg-gray-50"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+  const linkListBody = (
+    <div className="space-y-4">
+      <div>
+        <p className={uiTypography.overline}>Linked</p>
+        {currentLinks.length === 0 ? (
+          <p className={uiCx(uiTypography.helper, 'mt-2')}>None yet</p>
+        ) : (
+          <ul className={uiCx(uiBorders.subtle, uiRadius.control, 'mt-2 divide-y max-h-40 overflow-y-auto')}>
+            {currentLinks.map((row) => (
+              <li
+                key={row.id}
+                className={uiCx('flex items-center justify-between gap-2 px-3 py-2', uiColors.surface)}
+              >
+                <span className={uiCx(uiTypography.body, 'truncate text-xs font-semibold')}>
+                  {(row.name || '').trim() || 'Unnamed'}
+                </span>
+                <AppButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={removingId === row.id}
+                  onClick={() => unlinkRow(row.id)}
+                  className="text-red-600 hover:text-red-800"
+                >
+                  {removingId === row.id ? '…' : 'Remove'}
+                </AppButton>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-    </OverlayPortal>
+
+      <AppInput
+        label="Add link"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search by name..."
+      />
+
+      {isFetching ? (
+        <p className={uiTypography.helper}>Loading...</p>
+      ) : pickable.length === 0 ? (
+        <AppEmptyState title="No matches" className="py-4" />
+      ) : (
+        <div className={uiCx(uiBorders.subtle, uiRadius.control, 'max-h-[40vh] divide-y overflow-y-auto')}>
+          {pickable.map((r: any) => {
+            const nameOnly = (r?.name || '').trim();
+            const kind = r?.is_bidding ? 'Opportunity' : 'Project';
+            return (
+              <div
+                key={String(r.id)}
+                className={uiCx('flex items-center justify-between gap-2 px-3 py-2', uiColors.surface)}
+              >
+                <div className="min-w-0">
+                  <div className={uiCx(uiTypography.body, 'truncate text-xs font-semibold')}>
+                    {nameOnly || 'Unnamed'}
+                  </div>
+                  <div className={uiTypography.helper}>{kind}</div>
+                </div>
+                <AppButton
+                  type="button"
+                  size="sm"
+                  disabled={linkingId === String(r.id)}
+                  loading={linkingId === String(r.id)}
+                  onClick={() => linkToLeak(String(r.id))}
+                >
+                  Link
+                </AppButton>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <AppFormModal
+      open
+      onClose={onClose}
+      title="Related Opportunities / Projects"
+      description="Remove linked records here, or search below to add one"
+      formWidth="comfortable"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
+            Close
+          </AppButton>
+        </div>
+      }
+    >
+      {linkListBody}
+    </AppFormModal>
   );
 }
 
@@ -7319,7 +7838,7 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
   );
 }
 
-function LastReportsCard({ reports }: { reports: Report[] }){
+function LastReportsCard({ reports, useDesignSystem }: { reports: Report[]; useDesignSystem?: boolean }){
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>(''); // Empty string = all categories
   const { data: settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const reportCategories = (settings?.report_categories || []) as any[];
@@ -7377,6 +7896,75 @@ function LastReportsCard({ reports }: { reports: Report[] }){
     }).slice(0, 5);
   }, [visibleReports, selectedCategoryFilter]);
 
+  const categoryFilterOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [
+      { value: '', label: `All (${categoryCounts[''] || 0})` },
+    ];
+    const pushGroup = (label: string, cats: typeof commercialCategories) => {
+      cats.forEach((cat) => {
+        const val = cat.value || cat.label;
+        const count = categoryCounts[val || ''] || 0;
+        opts.push({ value: String(val), label: `${label}: ${cat.label} (${count})` });
+      });
+    };
+    if (commercialCategories.length) pushGroup('Commercial', commercialCategories);
+    if (productionCategories.length) pushGroup('Production', productionCategories);
+    if (financialCategories.length) pushGroup('Financial', financialCategories);
+    return opts;
+  }, [categoryCounts, commercialCategories, productionCategories, financialCategories]);
+
+  const notesBody =
+    recentReports.length > 0 ? (
+      <div className="space-y-2">
+        {recentReports.map((report) => (
+          <div
+            key={report.id}
+            className={uiCx(
+              uiRadius.control,
+              uiBorders.subtle,
+              'p-2 transition-colors hover:bg-gray-50',
+            )}
+          >
+            <div className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>
+              {report.title || 'Untitled Note'}
+            </div>
+            {report.description && (
+              <div className={uiCx(uiTypography.helper, 'mt-1 line-clamp-2')}>{report.description}</div>
+            )}
+            {report.created_at && (
+              <div className={uiCx(uiTypography.helper, 'mt-1')}>
+                {new Date(report.created_at).toLocaleDateString()}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    ) : useDesignSystem ? (
+      <AppEmptyState title="No notes yet" className="py-4" />
+    ) : (
+      <div className="text-sm text-gray-500">No notes yet</div>
+    );
+
+  if (useDesignSystem) {
+    return (
+      <AppCard className="flex h-full min-h-0 flex-col">
+        <AppSectionHeader
+          title="Last Notes"
+          action={
+            <AppSelect
+              label=""
+              value={selectedCategoryFilter}
+              onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+              options={categoryFilterOptions}
+              className="min-w-[10rem]"
+            />
+          }
+        />
+        <div className="mt-3 min-h-0 flex-1">{notesBody}</div>
+      </AppCard>
+    );
+  }
+
   return (
     <div className="rounded-xl border bg-white p-4">
       <div className="flex items-center justify-between mb-3">
@@ -7425,25 +8013,7 @@ function LastReportsCard({ reports }: { reports: Report[] }){
           )}
         </select>
       </div>
-      {recentReports.length > 0 ? (
-        <div className="space-y-2">
-          {recentReports.map((report) => (
-            <div key={report.id} className="p-2 rounded border hover:bg-gray-50 transition-colors">
-              <div className="text-sm font-medium text-gray-900">{report.title || 'Untitled Note'}</div>
-              {report.description && (
-                <div className="text-xs text-gray-600 mt-1 line-clamp-2">{report.description}</div>
-              )}
-              {report.created_at && (
-                <div className="text-xs text-gray-500 mt-1">
-                  {new Date(report.created_at).toLocaleDateString()}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-sm text-gray-500">No notes yet</div>
-      )}
+      {notesBody}
     </div>
   );
 }
@@ -8079,7 +8649,11 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
         open
         onClose={onClose}
         title="Edit Status"
-        description="Update the workflow status for this opportunity"
+        description={
+          isBidding
+            ? 'Update the workflow status for this opportunity'
+            : 'Update the workflow status for this project'
+        }
         formWidth="comfortable"
         quickInfo={opportunityEditStatusQuickInfo}
         footer={
@@ -8898,10 +9472,11 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, designS
 }
 
 // Edit Project Admin Modal Component
-function EditProjectAdminModal({ projectId, currentAdminId, employees, onClose, onSave }: {
+function EditProjectAdminModal({ projectId, currentAdminId, employees, designSystem, onClose, onSave }: {
   projectId: string;
   currentAdminId: string;
   employees: any[];
+  designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -8944,6 +9519,43 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, onClose, 
       setSaving(false);
     }
   };
+
+  const adminUserOptions = useMemo(
+    () => sortByLabel(employees, (e: any) => getUserDisplayName(e)).map((e: any) => mapEmployeeToAppUserSelect(e)),
+    [employees],
+  );
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Project Admin"
+        description="Assign the primary project administrator"
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <AppUserSelect
+          mode="single"
+          label="Project Admin"
+          users={adminUserOptions}
+          value={adminId}
+          onChange={setAdminId}
+          placeholder="Search employee…"
+          fieldHint="Project Admin\n\nPrimary administrator responsible for this project."
+        />
+      </AppFormModal>
+    );
+  }
 
   return (
     <OverlayPortal><div
@@ -9101,9 +9713,10 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, onClose, 
 }
 
 // Edit Progress Modal Component
-function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
+function EditProgressModal({ projectId, currentProgress, designSystem, onClose, onSave }: {
   projectId: string;
   currentProgress: number;
+  designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -9127,6 +9740,48 @@ function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
   };
 
   const progressPct = Math.max(0, Math.min(100, progress));
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Progress"
+        description="Update completion percentage"
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <AppInput
+            label="Progress (%)"
+            type="number"
+            min={0}
+            max={100}
+            value={String(progress)}
+            onChange={(e) => setProgress(Number(e.target.value))}
+          />
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={progressPct}
+            onChange={(e) => setProgress(Number(e.target.value))}
+            className="h-2 w-full cursor-pointer accent-brand-red"
+          />
+        </div>
+      </AppFormModal>
+    );
+  }
+
   const progressModalSliderStyle = `
     .edit-progress-slider {
       -webkit-appearance: none;
@@ -9267,12 +9922,14 @@ function ProjectDivisionsHeroSection({
   hasEditPermission,
   livePricingItems,
   compact,
+  designSystem,
 }: {
   projectId: string;
   proj: any;
   hasEditPermission?: boolean;
   livePricingItems?: any[] | null;
   compact?: boolean;
+  designSystem?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [showEditModal, setShowEditModal] = useState(false);
@@ -9423,6 +10080,7 @@ function ProjectDivisionsHeroSection({
           currentDivisions={projectDivIds}
           currentPercentages={calculatedPercentages}
           projectDivisions={projectDivisions || []}
+          designSystem={designSystem}
           onClose={() => setShowEditModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
@@ -9440,11 +10098,12 @@ function ProjectDivisionsHeroSection({
 }
 
 // Edit Divisions Modal Component
-function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, projectDivisions, onClose, onSave }: {
+function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, projectDivisions, designSystem, onClose, onSave }: {
   projectId: string;
   currentDivisions: string[];
   currentPercentages: { [key: string]: number };
   projectDivisions: any[];
+  designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -9537,42 +10196,8 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
     return null;
   };
 
-  return (
-    <OverlayPortal>
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-        onClick={onClose}
-      >
-        <div
-          className="max-w-5xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Edit Project Divisions</h2>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Select divisions for this project. Expand parents to choose subdivisions.
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 min-h-0">
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-sm text-gray-600">Available divisions</div>
-                {saving && <span className="text-xs text-gray-500">Saving...</span>}
-              </div>
-              <div className="space-y-2">
+  const divisionsBody = (
+    <div className="space-y-2">
                 {projectDivisions.map((div: any) => {
                   const divId = String(div.id);
                   const subdivisions = div.subdivisions || [];
@@ -9642,7 +10267,72 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
                 {projectDivisions.length === 0 && (
                   <div className="text-xs text-gray-500 text-center py-6">No project divisions available.</div>
                 )}
+    </div>
+  );
+
+  const divisionsFooter = (
+    <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+      <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+        Cancel
+      </AppButton>
+      <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+        {saving ? 'Saving…' : 'Save'}
+      </AppButton>
+    </div>
+  );
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Project Divisions"
+        description="Select divisions for this project. Expand parents to choose subdivisions."
+        formWidth="wide"
+        dialogClassName="!max-w-5xl"
+        footer={divisionsFooter}
+      >
+        {divisionsBody}
+      </AppFormModal>
+    );
+  }
+
+  return (
+    <OverlayPortal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        onClick={onClose}
+      >
+        <div
+          className="max-w-5xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Edit Project Divisions</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Select divisions for this project. Expand parents to choose subdivisions.
+                </p>
               </div>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm text-gray-600">Available divisions</div>
+                {saving && <span className="text-xs text-gray-500">Saving...</span>}
+              </div>
+              {divisionsBody}
             </div>
           </div>
           <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl relative z-0">
@@ -10431,7 +11121,7 @@ function ProjectHeroPricingArea({ projectId, proposals }: { projectId: string; p
   );
 }
 
-function ProjectCostsSummary({ projectId, proposals }:{ projectId:string, proposals:any[] }){
+function ProjectCostsSummary({ projectId, proposals, useDesignSystem }: { projectId: string; proposals: any[]; useDesignSystem?: boolean }) {
   // Organize proposals: original first, then Change Orders sorted by number
   const organizedProposals = useMemo(() => {
     const original = proposals.find(p => !p.is_change_order);
@@ -10492,6 +11182,48 @@ function ProjectCostsSummary({ projectId, proposals }:{ projectId:string, propos
   // Check if we have any pricing data
   const hasPricingData = originalTotal > 0 || changeOrderTotals.some(co => co.total > 0);
   
+  const costsInner = !hasPricingData ? (
+    <p className={uiTypography.helper}>No proposal pricing available</p>
+  ) : (
+    <>
+      <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+        {[
+          ...(originalTotal > 0 ? [{ label: 'Total Estimate', value: originalTotal }] : []),
+          ...changeOrderTotals
+            .filter((co) => co.total > 0)
+            .map((co) => ({ label: `Change Order ${co.number}`, value: co.total })),
+        ].map((item, idx) => (
+          <div key={idx} className="text-center">
+            <div className={uiTypography.helper}>{item.label}</div>
+            <div className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>${item.value.toFixed(2)}</div>
+          </div>
+        ))}
+      </div>
+      <div className={uiCx('flex items-center justify-between border-t-2 border-gray-300 pt-3')}>
+        <div className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>Total</div>
+        <div className="text-lg font-bold text-brand-red">${grandTotal.toFixed(2)}</div>
+      </div>
+    </>
+  );
+
+  if (!hasPricingData && !useDesignSystem) {
+    return (
+      <div className="rounded-xl border bg-white p-4">
+        <h4 className="text-sm font-semibold text-gray-900 mb-2">Costs Summary</h4>
+        <div className="text-xs text-gray-600">No proposal pricing available</div>
+      </div>
+    );
+  }
+
+  if (useDesignSystem) {
+    return (
+      <AppCard className="flex h-full min-h-0 flex-col">
+        <AppSectionHeader title="Costs Summary" />
+        <div className="mt-3">{costsInner}</div>
+      </AppCard>
+    );
+  }
+
   if (!hasPricingData) {
     return (
       <div className="rounded-xl border bg-white p-4">
@@ -10500,34 +11232,11 @@ function ProjectCostsSummary({ projectId, proposals }:{ projectId:string, propos
       </div>
     );
   }
-  
-  // Prepare items for display in columns
-  const itemsToDisplay = [
-    ...(originalTotal > 0 ? [{ label: 'Total Estimate', value: originalTotal }] : []),
-    ...changeOrderTotals
-      .filter(co => co.total > 0)
-      .map(co => ({ label: `Change Order ${co.number}`, value: co.total }))
-  ];
-  
+
   return (
     <div className="rounded-xl border bg-white p-4">
       <h4 className="text-sm font-semibold text-gray-900 mb-3">Costs Summary</h4>
-      
-      {/* Items in columns */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
-        {itemsToDisplay.map((item, idx) => (
-          <div key={idx} className="text-center">
-            <div className="text-xs font-medium text-gray-600 mb-1">{item.label}</div>
-            <div className="text-sm font-semibold text-gray-900">${item.value.toFixed(2)}</div>
-          </div>
-        ))}
-      </div>
-      
-      {/* Grand Total in a row below */}
-      <div className="flex items-center justify-between pt-3 border-t-2 border-gray-300">
-        <div className="text-sm font-semibold text-gray-900">Total</div>
-        <div className="text-lg font-bold text-brand-red">${grandTotal.toFixed(2)}</div>
-      </div>
+      {costsInner}
     </div>
   );
 }
