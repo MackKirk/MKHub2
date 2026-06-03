@@ -4,6 +4,7 @@ import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { INSPECTION_RESULT_LABELS } from '@/lib/fleetBadges';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { AppButton, AppCard, AppTextarea, uiCx } from '@/components/ui';
 import {
   BODY_CONDITION_OPTIONS,
   buildBodyFormFromInspection,
@@ -308,16 +309,15 @@ export function ScheduleBodyInlineEditor({
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Observations</label>
-        <textarea
+      <AppCard bodyClassName="p-4">
+        <AppTextarea
+          label="Observations"
           value={bodyForm.notes}
           onChange={(e) => setBodyForm((p) => (p ? { ...p, notes: e.target.value } : p))}
           placeholder="Notes, damage description, or other observations..."
           rows={4}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 resize-y"
         />
-      </div>
+      </AppCard>
 
       <div className="rounded-xl border border-gray-200 bg-white p-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">Photos</label>
@@ -380,29 +380,29 @@ export function ScheduleBodyInlineEditor({
         </div>
       )}
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 flex flex-wrap gap-3">
-        <button
+      <AppCard bodyClassName={uiCx('flex flex-wrap gap-3 p-4')}>
+        <AppButton
           type="button"
           onClick={handleFinishInspection}
           disabled={saveMutation.isPending || !bodyForm}
-          className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+          loading={saveMutation.isPending}
           aria-label="Finish inspection"
         >
-          {saveMutation.isPending ? 'Saving…' : 'Finish inspection'}
-        </button>
-        <button
+          Finish inspection
+        </AppButton>
+        <AppButton
           type="button"
+          variant="secondary"
           onClick={handleSaveDraft}
           disabled={saveMutation.isPending || !bodyForm}
-          className="px-5 py-2.5 border border-gray-300 bg-white rounded-lg font-medium text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
           aria-label="Save draft"
         >
           Save draft
-        </button>
-        <button type="button" onClick={onCancel} className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
+        </AppButton>
+        <AppButton type="button" variant="ghost" onClick={onCancel}>
           Cancel
-        </button>
-      </div>
+        </AppButton>
+      </AppCard>
     </div>
   );
 }
@@ -654,16 +654,15 @@ export function ScheduleMechanicalInlineEditor({
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Observations</label>
-        <textarea
+      <AppCard bodyClassName="p-4">
+        <AppTextarea
+          label="Observations"
           value={mechanicalForm.notes}
           onChange={(e) => setMechanicalForm((p) => (p ? { ...p, notes: e.target.value } : p))}
           placeholder="Notes, issues, or other observations..."
           rows={4}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 resize-y"
         />
-      </div>
+      </AppCard>
 
       <div className="rounded-xl border border-gray-200 bg-white p-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">Photos</label>
@@ -730,29 +729,29 @@ export function ScheduleMechanicalInlineEditor({
         </div>
       )}
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 flex flex-wrap gap-3">
-        <button
+      <AppCard bodyClassName={uiCx('flex flex-wrap gap-3 p-4')}>
+        <AppButton
           type="button"
           onClick={handleFinishInspectionMech}
           disabled={saveMutation.isPending || !mechanicalForm}
-          className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+          loading={saveMutation.isPending}
           aria-label="Finish inspection"
         >
-          {saveMutation.isPending ? 'Saving…' : 'Finish inspection'}
-        </button>
-        <button
+          Finish inspection
+        </AppButton>
+        <AppButton
           type="button"
+          variant="secondary"
           onClick={handleSaveDraftMech}
           disabled={saveMutation.isPending || !mechanicalForm}
-          className="px-5 py-2.5 border border-gray-300 bg-white rounded-lg font-medium text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
           aria-label="Save draft"
         >
           Save draft
-        </button>
-        <button type="button" onClick={onCancel} className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
+        </AppButton>
+        <AppButton type="button" variant="ghost" onClick={onCancel}>
           Cancel
-        </button>
-      </div>
+        </AppButton>
+      </AppCard>
     </div>
   );
 }

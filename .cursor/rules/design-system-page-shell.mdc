@@ -1,0 +1,34 @@
+---
+description: MK Hub design-system page shell — avoid double padding that pushes AppPageHeader down
+globs: frontend/src/pages/**/*.tsx,frontend/src/components/**/*.tsx
+alwaysApply: false
+---
+
+# Design system — page shell (AppShell)
+
+Routes rendered inside `AppShell` already sit in a wrapper with `p-5` (`AppShell.tsx`). Do **not** add extra page gutters on the route root or the header will sit lower than the showcase.
+
+## Correct page root (inside AppShell)
+
+```tsx
+<div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+  <AppPageHeader ... />  {/* first child — no margin-top, no pt/py on wrapper */}
+  ...
+</div>
+```
+
+Reference: `DesignSystemShowcase.tsx`, `Customers.tsx`, `BusinessDashboard.tsx`.
+
+## Forbidden on AppShell routes
+
+- `uiSpacing.pageY` or `uiSpacing.pageX` on the page root (`py-4`, `px-4 md:px-6`, `pt-*`, extra `p-5`/`p-6`)
+- Duplicate outer padding “because the migration checklist says pageY”
+- `mt-*` / `pt-*` on `AppPageHeader` or a wrapper above it
+
+`pageY` / `pageX` are only for layouts **without** AppShell padding (standalone pages, portaled full-bleed UIs).
+
+## Before finishing a visual migration
+
+1. Page root uses `pageStack` + `bg-gray-50` only (optional `main`/`div`, no vertical gutter tokens).
+2. `AppPageHeader` is the first child.
+3. Compare top spacing to `/dev/design-system` in the running app — header top edge should align with showcase, not sit ~16–24px lower.

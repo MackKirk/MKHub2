@@ -2,8 +2,28 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
-import { FleetAssetNewForm } from './FleetAssetNew';
-import OverlayPortal from '@/components/OverlayPortal';
+import NewFleetAssetModal from '@/components/fleet/NewFleetAssetModal';
+import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
+import FilterChip from '@/components/FilterBuilder/FilterChip';
+import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppInput,
+  AppListCreateItem,
+  AppPageHeader,
+  AppTabs,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+import { Search, SlidersHorizontal, Truck } from 'lucide-react';
 
 type FleetAsset = {
   id: string;
@@ -69,16 +89,8 @@ function buildMetaLine(asset: FleetAsset): string {
   return '';
 }
 
-// Filter builder (Opportunities-style)
-type FilterField = 'type' | 'status' | 'division' | 'fuel_type' | 'year' | 'assignment';
-type FilterOperator = 'is' | 'is_not';
-type FilterRule = { id: string; field: FilterField; operator: FilterOperator; value: string };
-
-function getOperatorsForField(): Array<{ value: FilterOperator; label: string }> {
-  return [
-    { value: 'is', label: 'Is' },
-    { value: 'is_not', label: 'Is not' },
-  ];
+function ruleValueStr(rule: FilterRule): string {
+  return typeof rule.value === 'string' ? rule.value : (Array.isArray(rule.value) ? rule.value[0] ?? '' : '');
 }
 
 const FILTER_PARAM_KEYS = [
@@ -92,7 +104,7 @@ function convertRulesToParams(rules: FilterRule[], existing: URLSearchParams): U
     FILTER_PARAM_KEYS.forEach((p) => params.delete(p));
     return params;
   }
-  const fieldsSet = new Set(rules.filter((r) => r.value?.trim()).map((r) => r.field));
+  const fieldsSet = new Set(rules.filter((r) => ruleValueStr(r)?.trim()).map((r) => r.field));
   if (fieldsSet.has('type')) {
     params.delete('type');
     params.delete('type_not');
@@ -117,30 +129,31 @@ function convertRulesToParams(rules: FilterRule[], existing: URLSearchParams): U
     params.delete('assigned');
   }
   for (const rule of rules) {
-    if (!rule.value?.trim()) continue;
+    const v = ruleValueStr(rule);
+    if (!v?.trim()) continue;
     switch (rule.field) {
       case 'type':
-        if (rule.operator === 'is') params.set('type', rule.value);
-        else params.set('type_not', rule.value);
+        if (rule.operator === 'is') params.set('type', v);
+        else params.set('type_not', v);
         break;
       case 'status':
-        if (rule.operator === 'is') params.set('status', rule.value);
-        else params.set('status_not', rule.value);
+        if (rule.operator === 'is') params.set('status', v);
+        else params.set('status_not', v);
         break;
       case 'division':
-        if (rule.operator === 'is') params.set('division_id', rule.value);
-        else params.set('division_id_not', rule.value);
+        if (rule.operator === 'is') params.set('division_id', v);
+        else params.set('division_id_not', v);
         break;
       case 'fuel_type':
-        if (rule.operator === 'is') params.set('fuel_type', rule.value);
-        else params.set('fuel_type_not', rule.value);
+        if (rule.operator === 'is') params.set('fuel_type', v);
+        else params.set('fuel_type_not', v);
         break;
       case 'year':
-        if (rule.operator === 'is') params.set('year', rule.value);
-        else params.set('year_not', rule.value);
+        if (rule.operator === 'is') params.set('year', v);
+        else params.set('year_not', v);
         break;
       case 'assignment':
-        const wantAssigned = rule.value === 'assigned';
+        const wantAssigned = v === 'assigned';
         params.set('assigned', rule.operator === 'is_not' ? (!wantAssigned).toString() : wantAssigned.toString());
         break;
     }
@@ -177,25 +190,6 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
   return rules;
 }
 
-function FilterChip({ label, value, onRemove }: { label: string; value: string; onRemove: () => void }) {
-  return (
-    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-200 text-sm text-gray-800 transition-all duration-200 ease-out">
-      <span className="font-medium text-gray-600">{label}:</span>
-      <span>{value}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="w-5 h-5 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors duration-150"
-        aria-label={`Remove ${label} filter`}
-      >
-        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
@@ -214,282 +208,126 @@ const ASSIGNMENT_OPTIONS = [
   { value: 'available', label: 'Available' },
 ];
 
-function FleetFilterRuleRow({
-  rule,
-  onUpdate,
-  onDelete,
-  fuelTypeOptions,
-  divisions,
-}: {
-  rule: FilterRule;
-  onUpdate: (r: FilterRule) => void;
-  onDelete: () => void;
-  fuelTypeOptions: string[];
-  divisions: { id?: string; label?: string }[];
-}) {
-  const operators = getOperatorsForField();
-  const fieldOptions: Array<{ value: FilterField; label: string }> = [
-    { value: 'type', label: 'Type' },
-    { value: 'status', label: 'Status' },
-    { value: 'division', label: 'Division' },
-    { value: 'fuel_type', label: 'Fuel type' },
-    { value: 'year', label: 'Year' },
-    { value: 'assignment', label: 'Assignment' },
-  ];
-
-  const handleFieldChange = (newField: FilterField) => {
-    onUpdate({ ...rule, field: newField, operator: 'is', value: '' });
-  };
-
-  const handleOperatorChange = (newOp: FilterOperator) => {
-    onUpdate({ ...rule, operator: newOp });
-  };
-
-  const handleValueChange = (value: string) => {
-    onUpdate({ ...rule, value });
-  };
-
-  const renderValueInput = () => {
-    if (rule.field === 'type') {
-      return (
-        <select
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-          value={rule.value}
-          onChange={(e) => handleValueChange(e.target.value)}
-        >
-          <option value="">Select type...</option>
-          {TYPE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      );
-    }
-    if (rule.field === 'status') {
-      return (
-        <select
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-          value={rule.value}
-          onChange={(e) => handleValueChange(e.target.value)}
-        >
-          <option value="">Select status...</option>
-          {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      );
-    }
-    if (rule.field === 'division') {
-      const sorted = [...divisions].sort((a, b) => (a?.label || '').localeCompare(b?.label || '', undefined, { sensitivity: 'base' }));
-      return (
-        <select
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-          value={rule.value}
-          onChange={(e) => handleValueChange(e.target.value)}
-        >
-          <option value="">Select division...</option>
-          {sorted.map((d) => (
-            <option key={d?.id} value={d?.id}>{d?.label ?? d?.id}</option>
-          ))}
-        </select>
-      );
-    }
-    if (rule.field === 'fuel_type') {
-      return (
-        <select
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-          value={rule.value}
-          onChange={(e) => handleValueChange(e.target.value)}
-        >
-          <option value="">Select fuel type...</option>
-          {fuelTypeOptions.length === 0 ? (
-            <option value="" disabled>No options (filter by Vehicles or All to see fuel types)</option>
-          ) : (
-            fuelTypeOptions.map((ft) => (
-              <option key={ft} value={ft}>{ft}</option>
-            ))
-          )}
-        </select>
-      );
-    }
-    if (rule.field === 'year') {
-      const currentYear = new Date().getFullYear();
-      const years = Array.from({ length: 30 }, (_, i) => currentYear - i);
-      return (
-        <select
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-          value={rule.value}
-          onChange={(e) => handleValueChange(e.target.value)}
-        >
-          <option value="">Select year...</option>
-          {years.map((y) => (
-            <option key={y} value={String(y)}>{y}</option>
-          ))}
-        </select>
-      );
-    }
-    if (rule.field === 'assignment') {
-      return (
-        <select
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-          value={rule.value}
-          onChange={(e) => handleValueChange(e.target.value)}
-        >
-          <option value="">Select...</option>
-          {ASSIGNMENT_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      );
-    }
-    return null;
-  };
-
-  return (
-    <div className="flex items-center gap-3">
-      <select
-        className="w-40 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-        value={rule.field}
-        onChange={(e) => handleFieldChange(e.target.value as FilterField)}
-      >
-        {fieldOptions.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
-      <select
-        className="w-36 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-        value={rule.operator}
-        onChange={(e) => handleOperatorChange(e.target.value as FilterOperator)}
-      >
-        {operators.map((op) => (
-          <option key={op.value} value={op.value}>{op.label}</option>
-        ))}
-      </select>
-      <div className="flex-1 min-w-0">{renderValueInput()}</div>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors duration-150 shrink-0"
-        aria-label="Delete rule"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      </button>
-    </div>
-  );
+function buildYearOptions() {
+  const currentYear = new Date().getFullYear();
+  return Array.from({ length: 30 }, (_, i) => {
+    const y = currentYear - i;
+    return { value: String(y), label: String(y) };
+  });
 }
 
-function FleetFilterBuilderModal({
-  isOpen,
-  onClose,
-  onApply,
-  initialRules,
-  fuelTypeOptions,
-  divisions,
+function buildFleetFilterFields(
+  fuelTypeOptions: string[],
+  divisions: { id?: string; label?: string }[],
+): FieldConfig[] {
+  const sortedDivisions = [...divisions]
+    .sort((a, b) => (a?.label || '').localeCompare(b?.label || '', undefined, { sensitivity: 'base' }))
+    .map((d) => ({ value: String(d?.id ?? ''), label: d?.label ?? String(d?.id ?? '') }))
+    .filter((d) => d.value);
+
+  return [
+    { id: 'type', label: 'Type', type: 'select', operators: ['is', 'is_not'], getOptions: () => TYPE_OPTIONS },
+    { id: 'status', label: 'Status', type: 'select', operators: ['is', 'is_not'], getOptions: () => STATUS_OPTIONS },
+    { id: 'division', label: 'Division', type: 'select', operators: ['is', 'is_not'], getOptions: () => sortedDivisions },
+    {
+      id: 'fuel_type',
+      label: 'Fuel type',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => fuelTypeOptions.map((ft) => ({ value: ft, label: ft })),
+    },
+    { id: 'year', label: 'Year', type: 'select', operators: ['is', 'is_not'], getOptions: buildYearOptions },
+    { id: 'assignment', label: 'Assignment', type: 'select', operators: ['is', 'is_not'], getOptions: () => ASSIGNMENT_OPTIONS },
+  ];
+}
+
+function getFleetFieldLabel(fieldId: string): string {
+  const labels: Record<string, string> = {
+    type: 'Type',
+    status: 'Status',
+    division: 'Division',
+    fuel_type: 'Fuel type',
+    year: 'Year',
+    assignment: 'Assignment',
+  };
+  return labels[fieldId] ?? fieldId;
+}
+
+const FLEET_VALUE_LABELS: Record<string, Record<string, string>> = {
+  type: Object.fromEntries(TYPE_OPTIONS.map((o) => [o.value, o.label])),
+  status: Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label])),
+  assignment: Object.fromEntries(ASSIGNMENT_OPTIONS.map((o) => [o.value, o.label])),
+};
+
+function getFleetValueLabel(rule: FilterRule, divisions: { id?: string; label?: string }[]): string {
+  const v = ruleValueStr(rule);
+  if (rule.field === 'division') {
+    const div = divisions.find((d) => String(d?.id) === v);
+    return (div as { label?: string })?.label ?? v;
+  }
+  const map = FLEET_VALUE_LABELS[rule.field];
+  return (map && map[v]) ?? v ?? '';
+}
+
+type FleetAssetStatusVariant = 'success' | 'warning' | 'danger' | 'neutral' | 'info';
+
+function getFleetAssetStatusVariant(status: string): FleetAssetStatusVariant {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'maintenance':
+      return 'warning';
+    case 'retired':
+      return 'danger';
+    case 'inactive':
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+}
+
+function formatFleetAssetStatus(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function getFleetAssetTypeLabel(assetType: string): string {
+  if (assetType === 'vehicle') return 'Vehicle';
+  if (assetType === 'heavy_machinery') return 'Heavy Machinery';
+  return 'Other';
+}
+
+function SortHeader({
+  label,
+  column,
+  sortBy,
+  sortDir,
+  onSort,
+  title,
+  className,
 }: {
-  isOpen: boolean;
-  onClose: () => void;
-  onApply: (rules: FilterRule[]) => void;
-  initialRules: FilterRule[];
-  fuelTypeOptions: string[];
-  divisions: { id?: string; label?: string }[];
+  label: string;
+  column: string;
+  sortBy: string;
+  sortDir: 'asc' | 'desc';
+  onSort: (column: string) => void;
+  title: string;
+  className?: string;
 }) {
-  const [rules, setRules] = useState<FilterRule[]>(initialRules);
-
-  useEffect(() => {
-    if (isOpen) setRules(initialRules);
-  }, [isOpen, initialRules]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onEsc);
-    return () => window.removeEventListener('keydown', onEsc);
-  }, [isOpen, onClose]);
-
-  const handleAddRule = () => {
-    setRules((prev) => [
-      ...prev,
-      { id: `rule-${Date.now()}`, field: 'status', operator: 'is', value: '' },
-    ]);
-  };
-
-  const handleUpdateRule = (updated: FilterRule) => {
-    setRules((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-  };
-
-  const handleDeleteRule = (id: string) => {
-    setRules((prev) => prev.filter((r) => r.id !== id));
-  };
-
-  const handleApply = () => {
-    onApply(rules);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
+  const indicator = sortBy === column ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
   return (
-    <OverlayPortal><div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity duration-200 ease-out"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="bg-white rounded-lg shadow-lg w-full max-w-[720px] max-h-[90vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+    <th className={className}>
+      <AppButton
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={uiCx('h-auto px-0 font-semibold text-gray-700 hover:text-gray-900')}
+        onClick={() => onSort(column)}
+        title={title}
       >
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
-          <button type="button" onClick={onClose} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600" aria-label="Close">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {rules.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 text-sm">No filters applied. Add a filter to get started.</div>
-          ) : (
-            <div className="space-y-3">
-              {rules.map((rule) => (
-                <FleetFilterRuleRow
-                  key={rule.id}
-                  rule={rule}
-                  onUpdate={handleUpdateRule}
-                  onDelete={() => handleDeleteRule(rule.id)}
-                  fuelTypeOptions={fuelTypeOptions}
-                  divisions={divisions}
-                />
-              ))}
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={handleAddRule}
-            className="mt-4 w-full px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-md hover:bg-gray-50 transition-all duration-150"
-          >
-            + Add filter
-          </button>
-        </div>
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between gap-3">
-          <div>
-            {rules.length > 0 && (
-              <button type="button" onClick={() => setRules([])} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
-                Clear All
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
-              Cancel
-            </button>
-            <button type="button" onClick={handleApply} className="px-4 py-2 text-sm font-medium text-white bg-brand-red hover:bg-brand-red/90 rounded-md">
-              Apply Filters
-            </button>
-          </div>
-        </div>
-      </div>
-    </div></OverlayPortal>
+        {label}
+        {indicator}
+      </AppButton>
+    </th>
   );
 }
 
@@ -499,8 +337,6 @@ export default function FleetAssets() {
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get('search') ?? '';
   const [showNewAssetModal, setShowNewAssetModal] = useState(false);
-  const [newAssetCanSubmit, setNewAssetCanSubmit] = useState(false);
-  const [newAssetIsPending, setNewAssetIsPending] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   
   // Get initial type from URL or path
@@ -523,7 +359,7 @@ export default function FleetAssets() {
   type SortColumn = 'unit_number' | 'name' | 'type' | 'year' | 'plate_vin' | 'assignment' | 'status';
   const validSorts: SortColumn[] = ['unit_number', 'name', 'type', 'year', 'plate_vin', 'assignment', 'status'];
   const rawSort = searchParams.get('sort');
-  const sortBy: SortColumn = (rawSort && validSorts.includes(rawSort as SortColumn)) ? (rawSort as SortColumn) : 'name';
+  const sortBy: SortColumn = (rawSort && validSorts.includes(rawSort as SortColumn)) ? (rawSort as SortColumn) : 'unit_number';
   const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
   const setListSort = (column: SortColumn, direction?: 'asc' | 'desc') => {
     const params = new URLSearchParams(searchParams);
@@ -637,19 +473,17 @@ export default function FleetAssets() {
   });
   const divisions = Array.isArray(settings?.divisions) ? settings.divisions : [];
 
+  const filterFields = useMemo(
+    () => buildFleetFilterFields(fuelTypeOptions, divisions),
+    [fuelTypeOptions, divisions],
+  );
+
   const handleApplyFilters = (rules: FilterRule[]) => {
     const params = convertRulesToParams(rules, searchParams);
     params.set('page', '1');
     setPage(1);
     setSearchParams(params, { replace: true });
     setIsFilterModalOpen(false);
-  };
-
-  const statusColors: Record<string, string> = {
-    active: 'bg-green-100 text-green-800',
-    inactive: 'bg-gray-100 text-gray-800',
-    maintenance: 'bg-yellow-100 text-yellow-800',
-    retired: 'bg-red-100 text-red-800',
   };
 
   const typeLabels: Record<string, string> = {
@@ -672,384 +506,314 @@ export default function FleetAssets() {
     });
   }, []);
 
-  // When New Asset modal is open: prevent body scroll and ESC to close
-  useEffect(() => {
-    if (!showNewAssetModal) return;
-    document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowNewAssetModal(false); };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = '';
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [showNewAssetModal]);
+  const typeTabItems = useMemo(
+    () => [
+      { key: 'all', label: 'All' },
+      { key: 'vehicle', label: 'Vehicles' },
+      { key: 'heavy_machinery', label: 'Heavy Machinery' },
+      { key: 'other', label: 'Other Assets' },
+    ],
+    [],
+  );
+
+  const emptyListTitle =
+    typeFilter === 'all' ? 'No assets found' : `No ${getTypeLabel(typeFilter).toLowerCase()} found`;
 
   return (
-    <div className="space-y-4 min-w-0 overflow-x-hidden">
-      {/* Title Bar */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div>
-              <div className="text-sm font-semibold text-gray-900">{getTypeLabel(typeFilter)}</div>
-              <div className="text-xs text-gray-500 mt-0.5">Manage fleet assets</div>
-            </div>
-          </div>
+    <div className={uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
+        title={getTypeLabel(typeFilter)}
+        subtitle="Manage fleet assets"
+        icon={<Truck className="h-4 w-4" />}
+        actions={
           <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Filter Bar - same layout as Customers */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex gap-1 border-b border-gray-200 px-0 pt-0 pb-3 mb-3">
-          <button
-            onClick={() => handleTypeFilterChange('all')}
-            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-              typeFilter === 'all' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => handleTypeFilterChange('vehicle')}
-            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-              typeFilter === 'vehicle' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Vehicles
-          </button>
-          <button
-            onClick={() => handleTypeFilterChange('heavy_machinery')}
-            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-              typeFilter === 'heavy_machinery' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Heavy Machinery
-          </button>
-          <button
-            onClick={() => handleTypeFilterChange('other')}
-            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-              typeFilter === 'other' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Other Assets
-          </button>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search by name, VIN, plate, model, fuel type, type (SUV…), address, assigned user…"
-                value={search}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  const params = new URLSearchParams(searchParams);
-                  if (next) params.set('search', next);
-                  else params.delete('search');
-                  params.set('page', '1');
-                  setPage(1);
-                  setSearchParams(params, { replace: true });
-                }}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150"
-              />
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
+      <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>
+        <AppTabs tabs={typeTabItems} value={typeFilter} onChange={handleTypeFilterChange} />
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+          <div className="min-w-0 flex-1">
+            <AppInput
+              placeholder="Search by name, VIN, plate, model, fuel type, type (SUV…), address, assigned user…"
+              value={search}
+              onChange={(e) => {
+                const next = e.target.value;
+                const params = new URLSearchParams(searchParams);
+                if (next) params.set('search', next);
+                else params.delete('search');
+                params.set('page', '1');
+                setPage(1);
+                setSearchParams(params, { replace: true });
+              }}
+              leftIcon={<Search className="h-4 w-4" />}
+              aria-label="Search fleet assets"
+            />
           </div>
-          <button
+          <AppButton
             type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<SlidersHorizontal className="h-4 w-4" />}
             onClick={() => setIsFilterModalOpen(true)}
-            className="px-3 py-1.5 rounded-full text-sm font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap inline-flex items-center gap-1.5"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
             Filters
-          </button>
-          {hasActiveFilters && (
-            <button
+          </AppButton>
+          {hasActiveFilters ? (
+            <AppButton
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 const params = convertRulesToParams([], searchParams);
                 params.set('page', '1');
                 setPage(1);
                 setSearchParams(params, { replace: true });
               }}
-              className="px-3 py-1.5 rounded-full text-sm font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap"
             >
               Clear
-            </button>
-          )}
+            </AppButton>
+          ) : null}
         </div>
-      </div>
+      </AppCard>
 
-      {/* Filter chips */}
-      {hasActiveFilters && (
-        <div className="mb-4 flex items-center gap-2 flex-wrap">
-          {currentRules.map((rule) => {
-            const fieldLabels: Record<FilterField, string> = {
-              type: 'Type',
-              status: 'Status',
-              division: 'Division',
-              fuel_type: 'Fuel type',
-              year: 'Year',
-              assignment: 'Assignment',
-            };
-            const fieldLabel = fieldLabels[rule.field];
-            let displayValue = rule.value;
-            if (rule.field === 'type') {
-              const opt = TYPE_OPTIONS.find((o) => o.value === rule.value);
-              displayValue = opt?.label ?? rule.value;
-            } else if (rule.field === 'status') {
-              displayValue = rule.value.charAt(0).toUpperCase() + rule.value.slice(1);
-            } else if (rule.field === 'division') {
-              const div = divisions.find((d: { id?: string }) => String(d?.id) === rule.value);
-              displayValue = (div as { label?: string })?.label ?? rule.value;
-            } else if (rule.field === 'assignment') {
-              displayValue = rule.value === 'assigned' ? 'Assigned' : 'Available';
-            }
-            const operatorLabel = rule.operator === 'is_not' ? 'Is not' : '';
-            const label = operatorLabel ? `${fieldLabel} ${operatorLabel}` : fieldLabel;
-            return (
-              <FilterChip
-                key={rule.id}
-                label={label}
-                value={displayValue}
-                onRemove={() => {
-                  const updated = currentRules.filter((r) => r.id !== rule.id);
-                  const params = convertRulesToParams(updated, searchParams);
-                  params.set('page', '1');
-                  setPage(1);
-                  setSearchParams(params, { replace: true });
-                }}
-              />
-            );
-          })}
+      {hasActiveFilters ? (
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
+          {currentRules.map((rule) => (
+            <FilterChip
+              key={rule.id}
+              rule={rule}
+              onRemove={() => {
+                const updated = currentRules.filter((r) => r.id !== rule.id);
+                const params = convertRulesToParams(updated, searchParams);
+                params.set('page', '1');
+                setPage(1);
+                setSearchParams(params, { replace: true });
+              }}
+              getFieldLabel={getFleetFieldLabel}
+              getValueLabel={(r) => getFleetValueLabel(r, divisions)}
+            />
+          ))}
         </div>
-      )}
+      ) : null}
 
-      {/* List - New Asset first row (same pattern as Opportunities) + table */}
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0">
-        <button
-          type="button"
-          onClick={() => setShowNewAssetModal(true)}
-          className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-0"
-        >
-          <div className="text-lg text-gray-400 mr-2">+</div>
-          <div className="font-medium text-xs text-gray-700">New Asset</div>
-        </button>
-        {isLoading ? (
-          <div className="p-8 text-center text-xs text-gray-500">Loading assets...</div>
-        ) : (assets.length > 0 ? (
-          <>
-            <div className="overflow-x-auto min-w-0">
-              <table className="w-full min-w-0 border-collapse">
-                <thead>
-                  <tr className="text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200">
-                    <th className="px-3 py-2 text-left rounded-tl-lg">
-                      <button type="button" onClick={() => setListSort('unit_number')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by unit number">Unit #{sortBy === 'unit_number' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left">
-                      <button type="button" onClick={() => setListSort('name')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by name">Name{sortBy === 'name' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left">
-                      <button type="button" onClick={() => setListSort('type')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by type">Type{sortBy === 'type' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left">
-                      <button type="button" onClick={() => setListSort('year')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by year">Year{sortBy === 'year' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left">
-                      <button type="button" onClick={() => setListSort('plate_vin')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by plate/VIN">Plate/VIN{sortBy === 'plate_vin' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left">
-                      <button type="button" onClick={() => setListSort('assignment')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by assignment">Assignment{sortBy === 'assignment' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left rounded-tr-lg">
-                      <button type="button" onClick={() => setListSort('status')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {assets.map((asset) => {
-                    const primaryName = (asset.name && asset.name.trim()) || [asset.make, asset.model].filter(Boolean).join(' ').trim() || '—';
-                    const metaLine = buildMetaLine(asset);
-                    return (
-                        <tr
-                          key={asset.id}
-                          className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors min-h-[52px]"
-                          onClick={() => nav(`/fleet/assets/${asset.id}`)}
-                          role="link"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              nav(`/fleet/assets/${asset.id}`);
-                            }
-                          }}
-                        >
-                          <td className="px-3 py-3 text-xs text-gray-600 align-top whitespace-nowrap">{asset.unit_number || '—'}</td>
-                          <td className="px-3 py-3 align-top min-w-0">
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                              <span className="text-xs font-medium text-gray-900 truncate">{primaryName}</span>
-                              {metaLine ? <span className="text-[11px] text-gray-500 truncate">{metaLine}</span> : null}
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 align-top">
-                            <span className="inline-flex px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800">
-                              {asset.asset_type === 'vehicle' ? 'Vehicle' : asset.asset_type === 'heavy_machinery' ? 'Heavy Machinery' : 'Other'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-3 text-xs text-gray-600 align-top">{asset.year ?? '—'}</td>
-                          <td className="px-3 py-3 text-xs text-gray-600 align-top truncate max-w-[120px]">{asset.license_plate || asset.vin || '—'}</td>
-                          <td className="px-3 py-3 align-top min-w-0">
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                              <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium w-fit ${asset.driver_id ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                                {asset.driver_id ? 'Assigned' : 'Available'}
-                              </span>
-                              {asset.driver_id && asset.driver_name ? (
-                                <span className="text-[11px] text-gray-500 truncate">{asset.driver_name}</span>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 align-top">
-                            <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${statusColors[asset.status] || 'bg-gray-100 text-gray-800'}`}>
-                              {asset.status}
-                            </span>
-                          </td>
-                        </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Controls */}
-            {data && data.total > 0 && (
-              <div className="p-4 border-t border-gray-200 flex items-center justify-between">
-                <div className="text-xs text-gray-600">
-                  Showing {((data.page - 1) * data.limit) + 1} to {Math.min(data.page * data.limit, data.total)} of {data.total} assets
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      const newPage = Math.max(1, data.page - 1);
-                      setPage(newPage);
-                      const params = new URLSearchParams(searchParams);
-                      params.set('page', String(newPage));
-                      setSearchParams(params);
-                    }}
-                    disabled={data.page <= 1 || isFetching}
-                    className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  >
-                    Previous
-                  </button>
-                  <div className="text-xs text-gray-700 font-medium">
-                    Page {data.page} of {data.total_pages}
-                  </div>
-                  <button
-                    onClick={() => {
-                      const newPage = Math.min(data.total_pages, data.page + 1);
-                      setPage(newPage);
-                      const params = new URLSearchParams(searchParams);
-                      params.set('page', String(newPage));
-                      setSearchParams(params);
-                    }}
-                    disabled={data.page >= data.total_pages || isFetching}
-                    className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  >
-                    Next
-                  </button>
-                </div>
+      <AppCard
+        className={uiShadows.card}
+        bodyClassName="!p-0"
+        footer={
+          data && data.total > 0 ? (
+            <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
+              <p className={uiTypography.helper}>
+                Showing {((data.page - 1) * data.limit) + 1} to {Math.min(data.page * data.limit, data.total)} of{' '}
+                {data.total} assets
+              </p>
+              <div className={uiCx(uiLayout.actionsRow, 'items-center')}>
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={data.page <= 1 || isFetching}
+                  onClick={() => {
+                    const newPage = Math.max(1, data.page - 1);
+                    setPage(newPage);
+                    const params = new URLSearchParams(searchParams);
+                    params.set('page', String(newPage));
+                    setSearchParams(params);
+                  }}
+                >
+                  Previous
+                </AppButton>
+                <span className={uiTypography.helper}>
+                  Page {data.page} of {data.total_pages}
+                </span>
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={data.page >= data.total_pages || isFetching}
+                  onClick={() => {
+                    const newPage = Math.min(data.total_pages, data.page + 1);
+                    setPage(newPage);
+                    const params = new URLSearchParams(searchParams);
+                    params.set('page', String(newPage));
+                    setSearchParams(params);
+                  }}
+                >
+                  Next
+                </AppButton>
               </div>
-            )}
-          </>
-        ) : (
-          <div className="p-8 text-center text-xs text-gray-500">
-            No {typeFilter === 'all' ? 'assets' : getTypeLabel(typeFilter).toLowerCase()} found
+            </div>
+          ) : undefined
+        }
+      >
+        <div className={uiSpacing.cardPadding}>
+          <AppListCreateItem label="New Asset" layout="row" className="w-full" onClick={() => setShowNewAssetModal(true)} />
+        </div>
+        {isLoading ? (
+          <div className={uiCx(uiSpacing.cardPadding, 'text-center')}>
+            <p className={uiTypography.helper}>Loading assets...</p>
           </div>
-        ))}
-      </div>
+        ) : assets.length > 0 ? (
+          <div className="overflow-x-auto min-w-0">
+            <table className={uiCx('w-full min-w-0 border-collapse', uiBorders.subtle)}>
+              <thead>
+                <tr className={uiCx(uiColors.surfaceSubtle, 'border-b border-gray-200')}>
+                  <SortHeader
+                    label="Unit #"
+                    column="unit_number"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={(col) => setListSort(col as SortColumn)}
+                    title="Sort by unit number"
+                    className={uiCx('px-3 py-2 text-left', uiTypography.controlLabel)}
+                  />
+                  <SortHeader
+                    label="Name"
+                    column="name"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={(col) => setListSort(col as SortColumn)}
+                    title="Sort by name"
+                    className={uiCx('px-3 py-2 text-left', uiTypography.controlLabel)}
+                  />
+                  <SortHeader
+                    label="Type"
+                    column="type"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={(col) => setListSort(col as SortColumn)}
+                    title="Sort by type"
+                    className={uiCx('px-3 py-2 text-left', uiTypography.controlLabel)}
+                  />
+                  <SortHeader
+                    label="Year"
+                    column="year"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={(col) => setListSort(col as SortColumn)}
+                    title="Sort by year"
+                    className={uiCx('px-3 py-2 text-left', uiTypography.controlLabel)}
+                  />
+                  <SortHeader
+                    label="Plate/VIN"
+                    column="plate_vin"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={(col) => setListSort(col as SortColumn)}
+                    title="Sort by plate/VIN"
+                    className={uiCx('px-3 py-2 text-left', uiTypography.controlLabel)}
+                  />
+                  <SortHeader
+                    label="Assignment"
+                    column="assignment"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={(col) => setListSort(col as SortColumn)}
+                    title="Sort by assignment"
+                    className={uiCx('px-3 py-2 text-left', uiTypography.controlLabel)}
+                  />
+                  <SortHeader
+                    label="Status"
+                    column="status"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={(col) => setListSort(col as SortColumn)}
+                    title="Sort by status"
+                    className={uiCx('px-3 py-2 text-left', uiTypography.controlLabel)}
+                  />
+                </tr>
+              </thead>
+              <tbody>
+                {assets.map((asset) => {
+                  const primaryName =
+                    (asset.name && asset.name.trim()) ||
+                    [asset.make, asset.model].filter(Boolean).join(' ').trim() ||
+                    '—';
+                  const metaLine = buildMetaLine(asset);
+                  return (
+                    <tr
+                      key={asset.id}
+                      className="cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50 min-h-[52px]"
+                      onClick={() => nav(`/fleet/assets/${asset.id}`)}
+                      role="link"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          nav(`/fleet/assets/${asset.id}`);
+                        }
+                      }}
+                    >
+                      <td className={uiCx('px-3 py-3 align-top whitespace-nowrap', uiTypography.helper)}>
+                        {asset.unit_number || '—'}
+                      </td>
+                      <td className="min-w-0 px-3 py-3 align-top">
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <span className={uiCx('truncate font-medium', uiTypography.helper, uiColors.textStrong)}>
+                            {primaryName}
+                          </span>
+                          {metaLine ? (
+                            <span className={uiCx('truncate', uiTypography.helper)}>{metaLine}</span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <AppBadge variant="info">{getFleetAssetTypeLabel(asset.asset_type)}</AppBadge>
+                      </td>
+                      <td className={uiCx('px-3 py-3 align-top', uiTypography.helper)}>{asset.year ?? '—'}</td>
+                      <td className={uiCx('max-w-[120px] truncate px-3 py-3 align-top', uiTypography.helper)}>
+                        {asset.license_plate || asset.vin || '—'}
+                      </td>
+                      <td className="min-w-0 px-3 py-3 align-top">
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <AppBadge variant={asset.driver_id ? 'warning' : 'success'} className="w-fit">
+                            {asset.driver_id ? 'Assigned' : 'Available'}
+                          </AppBadge>
+                          {asset.driver_id && asset.driver_name ? (
+                            <span className={uiCx('truncate', uiTypography.helper)}>{asset.driver_name}</span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        <AppBadge variant={getFleetAssetStatusVariant(asset.status)}>
+                          {formatFleetAssetStatus(asset.status)}
+                        </AppBadge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className={uiCx(uiSpacing.cardPadding, 'pb-10')}>
+            <AppEmptyState title={emptyListTitle} className="border-0 bg-transparent p-0 shadow-none" />
+          </div>
+        )}
+      </AppCard>
 
-      <FleetFilterBuilderModal
+      <FilterBuilderModal
         isOpen={isFilterModalOpen}
         onClose={() => setIsFilterModalOpen(false)}
         onApply={handleApplyFilters}
         initialRules={currentRules}
-        fuelTypeOptions={fuelTypeOptions}
-        divisions={divisions}
+        fields={filterFields}
+        getFieldData={() => null}
       />
 
-      {/* New Asset Modal - same visual as New Site (SiteDetail) */}
-      {showNewAssetModal && (
-        <OverlayPortal><div
-          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
-          onClick={() => setShowNewAssetModal(false)}
-        >
-          <div
-            className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowNewAssetModal(false)}
-                    className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                    title="Close"
-                  >
-                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                  </button>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">New Asset</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Create a new fleet asset</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="overflow-y-auto flex-1 p-4">
-              <FleetAssetNewForm
-                formId="fleet-new-asset-form-modal"
-                initialAssetType={typeFilter === 'all' ? 'vehicle' : typeFilter}
-                onSuccess={(data) => {
-                  setShowNewAssetModal(false);
-                  queryClient.invalidateQueries({ queryKey: ['fleetAssets'] });
-                  nav(`/fleet/assets/${data.id}`);
-                }}
-                onCancel={() => setShowNewAssetModal(false)}
-                onValidationChange={(canSubmit, isPending) => {
-                  setNewAssetCanSubmit(canSubmit);
-                  setNewAssetIsPending(isPending);
-                }}
-              />
-            </div>
-            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-              <button
-                type="button"
-                onClick={() => setShowNewAssetModal(false)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                form="fleet-new-asset-form-modal"
-                disabled={!newAssetCanSubmit || newAssetIsPending}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {newAssetIsPending ? 'Creating...' : 'Create Asset'}
-              </button>
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+      <NewFleetAssetModal
+        open={showNewAssetModal}
+        onClose={() => setShowNewAssetModal(false)}
+        initialAssetType={typeFilter === 'all' ? 'vehicle' : typeFilter}
+        onSuccess={(data) => {
+          setShowNewAssetModal(false);
+          queryClient.invalidateQueries({ queryKey: ['fleetAssets'] });
+          nav(`/fleet/assets/${data.id}`);
+        }}
+      />
     </div>
   );
 }

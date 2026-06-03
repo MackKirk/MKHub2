@@ -1,12 +1,39 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
+import { ClipboardList, Search, SlidersHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
-import WorkOrderNewModal from '@/components/fleet/WorkOrderNewModal';
+import {
+  CATEGORY_LABELS,
+  URGENCY_LABELS,
+  WORK_ORDER_STATUS_LABELS,
+} from '@/lib/fleetBadges';
+import { getUrgencyBadgeVariant, getWorkOrderStatusBadgeVariant } from '@/lib/fleetUi';
+import WorkOrderListNewModal from '@/components/fleet/WorkOrderListNewModal';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import LoadingOverlay from '@/components/LoadingOverlay';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppInput,
+  AppListCreateItem,
+  AppPageHeader,
+  AppSortableEntityList,
+  AppSortableEntityListFlatBody,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
+  uiCx,
+  uiLayout,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type WorkOrder = {
   id: string;
@@ -36,6 +63,19 @@ type WorkOrderListResponse = {
 
 const DESC_TRUNCATE = 60;
 
+const LIST_GRID_COLS = 'grid-cols-[2fr_5fr_2fr_2fr_2fr_2fr_2fr_2fr]';
+const LIST_MIN_WIDTH = 'min-w-[960px]';
+
+type SortColumn =
+  | 'work_order_number'
+  | 'description'
+  | 'entity_type'
+  | 'category'
+  | 'urgency'
+  | 'status'
+  | 'created_at'
+  | 'scheduled_start_at';
+
 function buildMetaLine(wo: WorkOrder): string {
   const parts: string[] = [];
   if (wo.entity_type) parts.push(wo.entity_type);
@@ -44,7 +84,6 @@ function buildMetaLine(wo: WorkOrder): string {
   return parts.join(' • ');
 }
 
-// Filter builder: status, urgency, entity_type, category — uses shared FilterBuilder
 const FILTER_PARAM_KEYS = ['status', 'status_not', 'urgency', 'urgency_not', 'entity_type', 'entity_type_not', 'category', 'category_not'];
 
 function ruleValueStr(rule: FilterRule): string {
@@ -174,10 +213,19 @@ export default function WorkOrders() {
   const [page, setPage] = useState(pageParam);
   const limit = 15;
 
-  type SortColumn = 'work_order_number' | 'description' | 'entity_type' | 'category' | 'urgency' | 'status' | 'created_at' | 'scheduled_start_at';
-  const validSorts: SortColumn[] = ['work_order_number', 'description', 'entity_type', 'category', 'urgency', 'status', 'created_at', 'scheduled_start_at'];
+  const validSorts: SortColumn[] = [
+    'work_order_number',
+    'description',
+    'entity_type',
+    'category',
+    'urgency',
+    'status',
+    'created_at',
+    'scheduled_start_at',
+  ];
   const rawSort = searchParams.get('sort');
-  const sortBy: SortColumn = (rawSort && validSorts.includes(rawSort as SortColumn)) ? (rawSort as SortColumn) : 'created_at';
+  const sortBy: SortColumn =
+    rawSort && validSorts.includes(rawSort as SortColumn) ? (rawSort as SortColumn) : 'created_at';
   const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
   const setListSort = (column: SortColumn, direction?: 'asc' | 'desc') => {
     const params = new URLSearchParams(searchParams);
@@ -253,20 +301,13 @@ export default function WorkOrders() {
     setIsFilterModalOpen(false);
   };
 
-  const statusColors: Record<string, string> = {
-    open: 'bg-slate-100 text-slate-800',
-    in_progress: 'bg-amber-100 text-amber-800',
-    pending_parts: 'bg-orange-100 text-orange-800',
-    closed: 'bg-green-100 text-green-800',
-    cancelled: 'bg-red-100 text-red-800',
-    not_approved: 'bg-rose-100 text-rose-800',
-  };
-
-  const urgencyColors: Record<string, string> = {
-    low: 'bg-blue-100 text-blue-800',
-    normal: 'bg-gray-100 text-gray-800',
-    high: 'bg-orange-100 text-orange-800',
-    urgent: 'bg-red-100 text-red-800',
+  const handleSearchChange = (value: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (value) params.set('search', value);
+    else params.delete('search');
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params, { replace: true });
   };
 
   const todayLabel = useMemo(() => {
@@ -278,77 +319,63 @@ export default function WorkOrders() {
     });
   }, []);
 
-  return (
-    <div className="space-y-4 min-w-0 overflow-x-hidden">
-      {/* Title Bar */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold text-gray-900">Work Orders</div>
-            <div className="text-xs text-gray-500 mt-0.5">Unified work order management</div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-          </div>
-        </div>
-      </div>
+  const showEmptyList = !isLoading && workOrders.length === 0;
 
-      {/* Filter Bar */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search by description or work order #…"
-                value={search}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  const params = new URLSearchParams(searchParams);
-                  if (next) params.set('search', next);
-                  else params.delete('search');
-                  params.set('page', '1');
-                  setPage(1);
-                  setSearchParams(params, { replace: true });
-                }}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150"
-              />
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
+  return (
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
+        title="Work Orders"
+        subtitle="Unified work order management"
+        icon={<ClipboardList className="h-4 w-4" />}
+        actions={
+          <div className="text-right">
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-          <button
+        }
+      />
+
+      <AppCard bodyClassName={uiSpacing.cardPadding}>
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+          <div className="min-w-0 flex-1">
+            <AppInput
+              placeholder="Search by description or work order #…"
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              leftIcon={<Search className="h-4 w-4" />}
+              fieldHint="Search\n\nMatches work order description or work order number."
+              aria-label="Search work orders"
+            />
+          </div>
+          <AppButton
             type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<SlidersHorizontal className="h-4 w-4" />}
             onClick={() => setIsFilterModalOpen(true)}
-            className="px-3 py-1.5 rounded-full text-sm font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap inline-flex items-center gap-1.5"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
             Filters
-          </button>
+          </AppButton>
           {hasActiveFilters && (
-            <button
+            <AppButton
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 const params = convertRulesToParams([], searchParams);
                 params.set('page', '1');
                 setPage(1);
                 setSearchParams(params, { replace: true });
               }}
-              className="px-3 py-1.5 rounded-full text-sm font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap"
             >
               Clear
-            </button>
+            </AppButton>
           )}
         </div>
-      </div>
+      </AppCard>
 
-      {/* Filter chips */}
       {hasActiveFilters && (
-        <div className="mb-4 flex items-center gap-2 flex-wrap">
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
           {currentRules.map((rule) => (
             <FilterChip
               key={rule.id}
@@ -367,100 +394,23 @@ export default function WorkOrders() {
         </div>
       )}
 
-      {/* List - New Work Order first row + table */}
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0">
-        <button
-          type="button"
-          onClick={() => setShowNewWorkOrderModal(true)}
-          className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-0"
-        >
-          <div className="text-lg text-gray-400 mr-2">+</div>
-          <div className="font-medium text-xs text-gray-700">New Work Order</div>
-        </button>
-        {isLoading ? (
-          <div className="p-8 text-center text-xs text-gray-500">Loading work orders...</div>
-        ) : workOrders.length > 0 ? (
-          <>
-            <div className="overflow-x-auto min-w-0">
-              <table className="w-full min-w-0 border-collapse">
-                <thead>
-                  <tr className="text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200">
-                    <th className="px-3 py-2 text-left rounded-tl-lg">
-                      <button type="button" onClick={() => setListSort('work_order_number')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">WO #{sortBy === 'work_order_number' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left">
-                      <button type="button" onClick={() => setListSort('description')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">Description{sortBy === 'description' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left">
-                      <button type="button" onClick={() => setListSort('entity_type')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">Type{sortBy === 'entity_type' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left">
-                      <button type="button" onClick={() => setListSort('category')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">Category{sortBy === 'category' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left">
-                      <button type="button" onClick={() => setListSort('urgency')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">Urgency{sortBy === 'urgency' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left">
-                      <button type="button" onClick={() => setListSort('status')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left">
-                      <button type="button" onClick={() => setListSort('scheduled_start_at')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">Scheduled{sortBy === 'scheduled_start_at' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                    <th className="px-3 py-2 text-left rounded-tr-lg">
-                      <button type="button" onClick={() => setListSort('created_at')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">Created{sortBy === 'created_at' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workOrders.map((wo) => {
-                    const descLine = (wo.description && wo.description.trim()) || '—';
-                    const descDisplay = descLine.length > DESC_TRUNCATE ? `${descLine.slice(0, DESC_TRUNCATE)}…` : descLine;
-                    const metaLine = buildMetaLine(wo);
-                    return (
-                      <tr
-                        key={wo.id}
-                        className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors min-h-[52px]"
-                        onClick={() => nav(`/fleet/work-orders/${wo.id}`)}
-                      >
-                        <td className="px-3 py-3 text-xs font-medium text-gray-900 align-top whitespace-nowrap">{wo.work_order_number}</td>
-                        <td className="px-3 py-3 align-top min-w-0">
-                          <div className="flex flex-col gap-0.5 min-w-0">
-                            <span className="text-xs text-gray-900 truncate">{descDisplay}</span>
-                            {metaLine ? <span className="text-[11px] text-gray-500 truncate">{metaLine}</span> : null}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3 text-xs text-gray-600 align-top capitalize">{wo.entity_type}</td>
-                        <td className="px-3 py-3 text-xs text-gray-600 align-top capitalize">{wo.category?.replace(/_/g, ' ')}</td>
-                        <td className="px-3 py-3 align-top">
-                          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${urgencyColors[wo.urgency] || 'bg-gray-100 text-gray-800'}`}>
-                            {wo.urgency?.replace(/_/g, ' ')}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 align-top">
-                          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${statusColors[wo.status] || 'bg-gray-100 text-gray-800'}`}>
-                            {STATUS_OPTIONS.find((o) => o.value === wo.status)?.label ?? wo.status?.replace(/_/g, ' ')}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 text-xs text-gray-600 align-top whitespace-nowrap">
-                          {wo.scheduled_start_at ? formatDateLocal(new Date(wo.scheduled_start_at)) : '—'}
-                        </td>
-                        <td className="px-3 py-3 text-xs text-gray-600 align-top whitespace-nowrap">
-                          {wo.created_at ? formatDateLocal(new Date(wo.created_at)) : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {total > 0 && (
-              <div className="p-4 border-t border-gray-200 flex items-center justify-between">
-                <div className="text-xs text-gray-600">
-                  Showing {((currentPage - 1) * limit) + 1} to {Math.min(currentPage * limit, total)} of {total} work orders
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
+      <LoadingOverlay isLoading={isLoading} text="Loading work orders...">
+        <AppCard
+          className={uiShadows.card}
+          bodyClassName="!p-0"
+          footer={
+            total > 0 ? (
+              <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
+                <p className={uiTypography.helper}>
+                  Showing {((currentPage - 1) * limit) + 1} to {Math.min(currentPage * limit, total)} of {total}{' '}
+                  work orders
+                </p>
+                <div className={uiCx(uiLayout.actionsRow, 'items-center')}>
+                  <AppButton
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={currentPage <= 1 || isFetching}
                     onClick={() => {
                       const newPage = Math.max(1, currentPage - 1);
                       setPage(newPage);
@@ -468,15 +418,17 @@ export default function WorkOrders() {
                       params.set('page', String(newPage));
                       setSearchParams(params);
                     }}
-                    disabled={currentPage <= 1 || isFetching}
-                    className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
                     Previous
-                  </button>
-                  <div className="text-xs text-gray-700 font-medium">
+                  </AppButton>
+                  <span className={uiTypography.helper}>
                     Page {currentPage} of {totalPages}
-                  </div>
-                  <button
+                  </span>
+                  <AppButton
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={currentPage >= totalPages || isFetching}
                     onClick={() => {
                       const newPage = Math.min(totalPages, currentPage + 1);
                       setPage(newPage);
@@ -484,19 +436,163 @@ export default function WorkOrders() {
                       params.set('page', String(newPage));
                       setSearchParams(params);
                     }}
-                    disabled={currentPage >= totalPages || isFetching}
-                    className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
                     Next
-                  </button>
+                  </AppButton>
                 </div>
               </div>
+            ) : undefined
+          }
+        >
+          <div className="flex flex-col">
+            {showEmptyList ? (
+              <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'min-h-[12rem] pb-10')}>
+                <AppListCreateItem
+                  label="New Work Order"
+                  layout="row"
+                  className="w-full"
+                  onClick={() => setShowNewWorkOrderModal(true)}
+                />
+                <AppEmptyState
+                  title="No work orders found"
+                  className="border-0 bg-transparent p-0 shadow-none"
+                />
+              </div>
+            ) : (
+              <>
+                <div className={uiCx(uiSpacing.cardPadding, workOrders.length === 0 ? 'pb-10' : 'pb-3')}>
+                  <AppListCreateItem
+                    label="New Work Order"
+                    layout="row"
+                    className="w-full"
+                    onClick={() => setShowNewWorkOrderModal(true)}
+                  />
+                </div>
+                {workOrders.length > 0 ? (
+                  <AppSortableEntityList layout="flat" className="border-t border-gray-100">
+                    <AppSortableEntityListHeader variant="flat" gridCols={LIST_GRID_COLS} minWidth={LIST_MIN_WIDTH}>
+                      <AppSortableEntityListSortColumn
+                        label="WO #"
+                        column="work_order_number"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                      />
+                      <AppSortableEntityListSortColumn
+                        label="Description"
+                        column="description"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                      />
+                      <AppSortableEntityListSortColumn
+                        label="Type"
+                        column="entity_type"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                      />
+                      <AppSortableEntityListSortColumn
+                        label="Category"
+                        column="category"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                      />
+                      <AppSortableEntityListSortColumn
+                        label="Urgency"
+                        column="urgency"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                      />
+                      <AppSortableEntityListSortColumn
+                        label="Status"
+                        column="status"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                      />
+                      <AppSortableEntityListSortColumn
+                        label="Scheduled"
+                        column="scheduled_start_at"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                      />
+                      <AppSortableEntityListSortColumn
+                        label="Created"
+                        column="created_at"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                      />
+                    </AppSortableEntityListHeader>
+                    <AppSortableEntityListFlatBody gridCols={LIST_GRID_COLS} minWidth={LIST_MIN_WIDTH}>
+                      {workOrders.map((wo) => {
+                        const descLine = (wo.description && wo.description.trim()) || '—';
+                        const descDisplay =
+                          descLine.length > DESC_TRUNCATE ? `${descLine.slice(0, DESC_TRUNCATE)}…` : descLine;
+                        const metaLine = buildMetaLine(wo);
+                        const categoryLabel = CATEGORY_LABELS[wo.category] ?? wo.category?.replace(/_/g, ' ');
+                        return (
+                          <AppSortableEntityListRow
+                            key={wo.id}
+                            variant="flat"
+                            as="div"
+                            role="button"
+                            tabIndex={0}
+                            gridCols={LIST_GRID_COLS}
+                            minWidth={LIST_MIN_WIDTH}
+                            className="cursor-pointer"
+                            onClick={() => nav(`/fleet/work-orders/${wo.id}`)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                nav(`/fleet/work-orders/${wo.id}`);
+                              }
+                            }}
+                          >
+                            <span className={uiCx(uiTypography.body, 'whitespace-nowrap font-medium text-gray-900')}>
+                              {wo.work_order_number}
+                            </span>
+                            <div className="min-w-0">
+                              <span className={uiCx(uiTypography.body, 'block truncate text-gray-900')} title={descLine}>
+                                {descDisplay}
+                              </span>
+                              {metaLine ? (
+                                <span className={uiCx(uiTypography.helper, 'block truncate')}>{metaLine}</span>
+                              ) : null}
+                            </div>
+                            <span className={uiCx(uiTypography.body, 'capitalize text-gray-600')}>{wo.entity_type}</span>
+                            <span className={uiCx(uiTypography.body, 'capitalize text-gray-600')}>{categoryLabel}</span>
+                            <div className="min-w-0">
+                              <AppBadge variant={getUrgencyBadgeVariant(wo.urgency)}>
+                                {URGENCY_LABELS[wo.urgency] ?? wo.urgency?.replace(/_/g, ' ')}
+                              </AppBadge>
+                            </div>
+                            <div className="min-w-0">
+                              <AppBadge variant={getWorkOrderStatusBadgeVariant(wo.status)}>
+                                {WORK_ORDER_STATUS_LABELS[wo.status] ?? wo.status?.replace(/_/g, ' ')}
+                              </AppBadge>
+                            </div>
+                            <span className={uiCx(uiTypography.body, 'whitespace-nowrap tabular-nums text-gray-600')}>
+                              {wo.scheduled_start_at ? formatDateLocal(new Date(wo.scheduled_start_at)) : '—'}
+                            </span>
+                            <span className={uiCx(uiTypography.body, 'whitespace-nowrap tabular-nums text-gray-600')}>
+                              {wo.created_at ? formatDateLocal(new Date(wo.created_at)) : '—'}
+                            </span>
+                          </AppSortableEntityListRow>
+                        );
+                      })}
+                    </AppSortableEntityListFlatBody>
+                  </AppSortableEntityList>
+                ) : null}
+              </>
             )}
-          </>
-        ) : (
-          <div className="p-8 text-center text-xs text-gray-500">No work orders found</div>
-        )}
-      </div>
+          </div>
+        </AppCard>
+      </LoadingOverlay>
 
       <FilterBuilderModal
         isOpen={isFilterModalOpen}
@@ -507,8 +603,8 @@ export default function WorkOrders() {
         getFieldData={() => null}
       />
 
-      <WorkOrderNewModal
-        isOpen={showNewWorkOrderModal}
+      <WorkOrderListNewModal
+        open={showNewWorkOrderModal}
         onClose={() => setShowNewWorkOrderModal(false)}
         onCreated={(data) => {
           setShowNewWorkOrderModal(false);

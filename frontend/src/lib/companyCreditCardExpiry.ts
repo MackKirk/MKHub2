@@ -25,3 +25,12 @@ export function expiryBadgeClass(month: number, year: number): string {
   if (expiresWithinDays(month, year, 60)) return 'bg-amber-100 text-amber-900';
   return 'bg-gray-100 text-gray-800';
 }
+
+/** Design-system badge variant for card expiry (detail/list). */
+export type ExpiryBadgeVariant = 'neutral' | 'success' | 'warning' | 'danger';
+
+export function getExpiryBadgeVariant(month: number, year: number): ExpiryBadgeVariant {
+  if (isCardExpired(month, year)) return 'danger';
+  if (expiresWithinDays(month, year, 60)) return 'warning';
+  return 'neutral';
+}

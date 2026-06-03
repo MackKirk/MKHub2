@@ -1,61 +1,92 @@
-import { useMutation } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import {
+  buildExpiryMonthOptions,
+  buildExpiryYearOptions,
+  CompanyCreditCardNewFormFields,
+  type CompanyCreditCardNewFormValues,
+} from '@/components/companyAssets/CompanyCreditCardNewFormFields';
+import { AppButton, AppCard, uiCx, uiLayout, uiSpacing } from '@/components/ui';
 
-const NETWORKS = [
-  { value: 'visa', label: 'Visa' },
-  { value: 'mastercard', label: 'Mastercard' },
-  { value: 'amex', label: 'Amex' },
-  { value: 'other', label: 'Other' },
-];
+function buildInitialForm(): CompanyCreditCardNewFormValues {
+  const now = new Date();
+  return {
+    label: '',
+    network: 'visa',
+    last_four: '',
+    expiry_month: String(now.getMonth() + 1),
+    expiry_year: String(now.getFullYear() + 3),
+    cardholder_name: '',
+    issuer: '',
+    billing_entity: '',
+    notes: '',
+  };
+}
 
-export default function CompanyCreditCardNew() {
-  const nav = useNavigate();
-  const [label, setLabel] = useState('');
-  const [network, setNetwork] = useState('visa');
-  const [lastFour, setLastFour] = useState('');
-  const [expiryMonth, setExpiryMonth] = useState(String(new Date().getMonth() + 1));
-  const [expiryYear, setExpiryYear] = useState(String(new Date().getFullYear() + 3));
-  const [cardholderName, setCardholderName] = useState('');
-  const [issuer, setIssuer] = useState('');
-  const [billingEntity, setBillingEntity] = useState('');
-  const [notes, setNotes] = useState('');
+export function CompanyCreditCardNewForm({
+  onSuccess,
+  onCancel,
+  onValidationChange,
+  formId = 'company-credit-card-new-form',
+}: {
+  onSuccess: (data: { id: string }) => void;
+  onCancel: () => void;
+  onValidationChange?: (canSubmit: boolean, isPending: boolean) => void;
+  formId?: string;
+}) {
+  const [form, setForm] = useState<CompanyCreditCardNewFormValues>(buildInitialForm);
+  const embedInModal = Boolean(onValidationChange);
+
+  const expiryMonthOptions = useMemo(() => buildExpiryMonthOptions(), []);
+  const expiryYearOptions = useMemo(() => buildExpiryYearOptions(), []);
+
+  const updateField = (field: keyof CompanyCreditCardNewFormValues, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      api<{ id: string }>('POST', '/company-credit-cards', {
-        label: label.trim(),
-        network,
-        last_four: lastFour.trim(),
-        expiry_month: parseInt(expiryMonth, 10),
-        expiry_year: parseInt(expiryYear, 10),
-        cardholder_name: cardholderName.trim() || undefined,
-        issuer: issuer.trim() || undefined,
-        billing_entity: billingEntity.trim() || undefined,
+    mutationFn: () => {
+      const em = parseInt(form.expiry_month, 10);
+      const ey = parseInt(form.expiry_year, 10);
+      return api<{ id: string }>('POST', '/company-credit-cards', {
+        label: form.label.trim(),
+        network: form.network,
+        last_four: form.last_four.trim(),
+        expiry_month: em,
+        expiry_year: ey,
+        cardholder_name: form.cardholder_name.trim() || undefined,
+        issuer: form.issuer.trim() || undefined,
+        billing_entity: form.billing_entity.trim() || undefined,
         status: 'active',
-        notes: notes.trim() || undefined,
-      }),
+        notes: form.notes.trim() || undefined,
+      });
+    },
     onSuccess: (data) => {
       toast.success('Card record created');
-      nav(`/company-assets/credit-cards/${data.id}`);
+      onSuccess(data);
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to create'),
+    onError: (e: { message?: string }) => toast.error(e?.message || 'Failed to create'),
   });
 
-  const onSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!label.trim()) {
+  const canSubmit = form.label.trim().length > 0 && /^\d{4}$/.test(form.last_four.trim());
+
+  useEffect(() => {
+    onValidationChange?.(canSubmit, createMutation.isPending);
+  }, [canSubmit, createMutation.isPending, onValidationChange]);
+
+  const handleSubmit = () => {
+    if (!form.label.trim()) {
       toast.error('Label is required');
       return;
     }
-    if (!/^\d{4}$/.test(lastFour.trim())) {
+    if (!/^\d{4}$/.test(form.last_four.trim())) {
       toast.error('Last four must be exactly 4 digits');
       return;
     }
-    const em = parseInt(expiryMonth, 10);
-    const ey = parseInt(expiryYear, 10);
+    const em = parseInt(form.expiry_month, 10);
     if (em < 1 || em > 12) {
       toast.error('Invalid expiry month');
       return;
@@ -63,133 +94,47 @@ export default function CompanyCreditCardNew() {
     createMutation.mutate();
   };
 
-  const years = Array.from({ length: 15 }, (_, i) => String(new Date().getFullYear() + i));
+  const fields = (
+    <CompanyCreditCardNewFormFields
+      formId={formId}
+      values={form}
+      disabled={createMutation.isPending}
+      expiryMonthOptions={expiryMonthOptions}
+      expiryYearOptions={expiryYearOptions}
+      onChange={updateField}
+      onSubmit={handleSubmit}
+    />
+  );
+
+  if (embedInModal) {
+    return fields;
+  }
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-6">
-      <button type="button" onClick={() => nav('/company-assets/credit-cards')} className="text-sm text-brand-red hover:underline mb-4">
-        ← Back to corporate cards
-      </button>
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Add corporate card</h1>
-      <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
-        Enter only the last four digits and expiry — never store full card numbers, CVV, or PIN in MKHub.
-      </p>
-
-      <form onSubmit={onSubmit} className="space-y-4 bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Internal label *</label>
-          <input
-            required
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            placeholder="e.g. Marketing fuel card"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Network *</label>
-            <select
-              value={network}
-              onChange={(e) => setNetwork(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
-              {NETWORKS.map((n) => (
-                <option key={n.value} value={n.value}>
-                  {n.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Last four digits *</label>
-            <input
-              required
-              inputMode="numeric"
-              maxLength={4}
-              value={lastFour}
-              onChange={(e) => setLastFour(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm tracking-widest"
-              placeholder="4242"
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Expiry month *</label>
-            <select
-              value={expiryMonth}
-              onChange={(e) => setExpiryMonth(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                <option key={m} value={m}>
-                  {String(m).padStart(2, '0')}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Expiry year *</label>
-            <select
-              value={expiryYear}
-              onChange={(e) => setExpiryYear(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Name on card</label>
-          <input
-            value={cardholderName}
-            onChange={(e) => setCardholderName(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Issuer / bank</label>
-          <input
-            value={issuer}
-            onChange={(e) => setIssuer(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Billing entity</label>
-          <input
-            value={billingEntity}
-            onChange={(e) => setBillingEntity(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div className="flex gap-3 pt-2">
-          <button
-            type="submit"
-            disabled={createMutation.isPending}
-            className="px-4 py-2 rounded-lg bg-brand-red text-white font-medium disabled:opacity-50"
-          >
-            {createMutation.isPending ? 'Saving…' : 'Create'}
-          </button>
-          <button type="button" onClick={() => nav('/company-assets/credit-cards')} className="px-4 py-2 rounded-lg border border-gray-300">
-            Cancel
-          </button>
-        </div>
-      </form>
-    </div>
+    <AppCard bodyClassName={uiSpacing.cardPadding}>
+      {fields}
+      <div className={uiCx(uiLayout.actionsRow, 'mt-4 justify-end border-t border-gray-200 pt-4')}>
+        <AppButton type="button" variant="secondary" onClick={onCancel} disabled={createMutation.isPending}>
+          Cancel
+        </AppButton>
+        <AppButton
+          type="submit"
+          form={formId}
+          disabled={!canSubmit || createMutation.isPending}
+          loading={createMutation.isPending}
+        >
+          {createMutation.isPending ? 'Saving…' : 'Create'}
+        </AppButton>
+      </div>
+    </AppCard>
   );
+}
+
+/** Legacy route: redirect to list (create opens in modal). */
+export default function CompanyCreditCardNew() {
+  const nav = useNavigate();
+  useEffect(() => {
+    nav('/company-assets/credit-cards?create=1', { replace: true });
+  }, [nav]);
+  return null;
 }

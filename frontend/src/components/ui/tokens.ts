@@ -73,8 +73,11 @@ export const uiPageHeader = {
 } as const;
 
 export const uiSpacing = {
+  /** Horizontal page gutter — do not use on routes inside AppShell (shell already has p-5). */
   pageX: 'px-4 md:px-6',
+  /** Vertical page gutter — do not use on routes inside AppShell (shell already has p-5). */
   pageY: 'py-4 md:py-6',
+  /** Vertical gap between page sections; first child should be AppPageHeader (no extra top padding). */
   pageStack: 'space-y-4',
   sectionStack: 'space-y-3',
   cardPadding: 'p-4',

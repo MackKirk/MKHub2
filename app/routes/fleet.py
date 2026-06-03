@@ -814,6 +814,40 @@ def _fleet_audit_ctx_for_work_order(wo: WorkOrder, extra: Optional[Dict[str, Any
     return ctx
 
 
+def _fleet_log_actor_for_assignment_event(
+    logs: List[FleetLog],
+    log_type: str,
+    event_at: Optional[datetime],
+    db: Session,
+) -> tuple[Optional[str], Optional[str]]:
+    """Match assignment/return fleet_log to synthetic history row by time."""
+    if event_at is None:
+        return None, None
+    event_ts = event_at.timestamp() if hasattr(event_at, "timestamp") else None
+    if event_ts is None:
+        return None, None
+    best: Optional[FleetLog] = None
+    best_delta: Optional[float] = None
+    for log in logs:
+        if (log.log_type or "") != log_type or log.log_date is None:
+            continue
+        try:
+            delta = abs(log.log_date.timestamp() - event_ts)
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if delta > 300:
+            continue
+        if best_delta is None or delta < best_delta:
+            best_delta = delta
+            best = log
+    if not best:
+        return None, None
+    uid = best.user_id or best.created_by
+    if not uid:
+        return None, None
+    return str(uid), get_user_display(db, uid)
+
+
 @router.get("/assets/{asset_id}/history")
 def get_fleet_asset_history(
     asset_id: uuid.UUID,
@@ -888,11 +922,25 @@ def get_fleet_asset_history(
     )
     has_assignments = len(assignments) > 0
 
+    assign_return_logs: List[FleetLog] = []
+    if assignments:
+        assign_return_logs = (
+            db.query(FleetLog)
+            .filter(
+                FleetLog.fleet_asset_id == asset_id,
+                FleetLog.log_type.in_(("assignment", "return")),
+            )
+            .all()
+        )
+
     for a in assignments:
         if str(a.id) in audit_assignment_ids:
             continue
         assignee = (a.assigned_to_name or "").strip() or (
             get_user_display(db, a.assigned_to_user_id) if a.assigned_to_user_id else "Unknown"
+        )
+        checkout_actor_id, checkout_actor_name = _fleet_log_actor_for_assignment_event(
+            assign_return_logs, "assignment", a.assigned_at, db
         )
         items.append(
             {
@@ -903,8 +951,8 @@ def get_fleet_asset_history(
                 "subtitle": f"Assigned to {assignee}",
                 "detail": None,
                 "occurred_at": a.assigned_at.isoformat() if a.assigned_at else "",
-                "actor_id": None,
-                "actor_name": None,
+                "actor_id": checkout_actor_id,
+                "actor_name": checkout_actor_name,
                 "assignment_id": str(a.id),
                 "log_subtype": "assign",
                 "audit_action": None,
@@ -912,6 +960,9 @@ def get_fleet_asset_history(
             }
         )
         if a.returned_at:
+            return_actor_id, return_actor_name = _fleet_log_actor_for_assignment_event(
+                assign_return_logs, "return", a.returned_at, db
+            )
             items.append(
                 {
                     "id": f"assign-in-{a.id}",
@@ -921,8 +972,8 @@ def get_fleet_asset_history(
                     "subtitle": f"Previously with {assignee}",
                     "detail": None,
                     "occurred_at": a.returned_at.isoformat() if a.returned_at else "",
-                    "actor_id": None,
-                    "actor_name": None,
+                    "actor_id": return_actor_id,
+                    "actor_name": return_actor_name,
                     "assignment_id": str(a.id),
                     "log_subtype": "return",
                     "audit_action": None,

@@ -1,8 +1,23 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
+import {
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppPageHeader,
+  AppSectionHeader,
+  appSectionPresetProps,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 type WorkOrderCalendarEvent = {
   type: 'work_order';
@@ -15,7 +30,7 @@ type WorkOrderCalendarEvent = {
   status: string;
   asset_name: string | null;
   unit_number?: string | null;
-  work_order_type?: string | null; // 'body' | 'mechanical'
+  work_order_type?: string | null;
   check_in_at?: string | null;
   check_out_at?: string | null;
   created_at?: string | null;
@@ -40,7 +55,6 @@ function formatTime(iso: string | null): string {
   return d.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-/** Primary line = vehicle name; second line = unit (when set). Falls back to `fallback` if no name. */
 function calendarVehicleLines(
   vehicleName: string | null | undefined,
   unit: string | null | undefined,
@@ -58,11 +72,10 @@ function calendarVehicleLines(
     }
   }
   if (!primary) primary = fallback;
-  const hint = [name || null, u ? `Unit ${u}` : null].filter(Boolean).join(' · ') || fallback;
+  const hint = [name || null, u ? `Unit ${u}` : null].filter(Boolean).join(' \u00b7 ') || fallback;
   return { primary, unitLine, hint };
 }
 
-/** YYYY-MM-DD strings from start to end inclusive */
 function daysInRange(startStr: string, endStr: string): string[] {
   const out: string[] = [];
   const start = new Date(startStr);
@@ -76,9 +89,24 @@ function daysInRange(startStr: string, endStr: string): string[] {
   return out;
 }
 
+const monthNames = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 type FleetServiceCalendarProps = {
   embedView?: boolean;
-  /** When set with onScheduleNew, shows “Schedule new inspection” next to month navigation (dashed style, same as safety calendar). */
   canSchedule?: boolean;
   onScheduleNew?: () => void;
   onNewWorkOrder?: () => void;
@@ -171,9 +199,6 @@ export default function FleetServiceCalendar({
     return days;
   }, [currentMonth]);
 
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
   const goToPreviousMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
   const goToNextMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
   const goToToday = () => {
@@ -185,246 +210,241 @@ export default function FleetServiceCalendar({
   const isToday = (date: Date | null) => date && date.toDateString() === today.toDateString();
   const getDayEvents = (date: Date | null) => (date ? eventsByDay[formatDateLocal(date)] || [] : []);
 
-  return (
-    <div className={embedView ? 'space-y-4' : 'p-4 max-w-6xl mx-auto space-y-4'}>
-      {!embedView && (
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <h1 className="text-xl font-bold text-gray-900">Schedule</h1>
-          <div className="flex items-center gap-2">
-            <Link
-              to="/fleet/inspections/new"
-              className="px-4 py-2 rounded-lg border border-blue-600 text-blue-700 text-sm font-medium hover:bg-blue-50 transition-colors"
-            >
-              Schedule inspection
-            </Link>
-            <Link
-              to="/fleet/work-orders/new?entity_type=fleet"
-              className="px-4 py-2 rounded-lg bg-brand-red text-white text-sm font-medium hover:bg-red-700 transition-colors"
-            >
-              New service
-            </Link>
-            <Link
-              to="/fleet/calendar?view=list"
-              className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
-            >
-              List
-            </Link>
-            <Link
-              to="/fleet/work-orders"
-              className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
-            >
-              Work orders
-            </Link>
-          </div>
-        </div>
-      )}
+  const monthLabel = `${monthNames[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-gray-900 tracking-tight">
-              {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-            </span>
-            {isLoading && <span className="text-xs text-gray-400">Loading…</span>}
-          </div>
-          <div className="flex items-center gap-1 flex-wrap justify-end">
-            <button
-              type="button"
-              onClick={goToPreviousMonth}
-              className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs font-medium text-gray-600"
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              onClick={goToToday}
-              className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs font-medium text-gray-600"
-            >
-              Today
-            </button>
-            <button
-              type="button"
-              onClick={goToNextMonth}
-              className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs font-medium text-gray-600"
-            >
-              →
-            </button>
-            {canSchedule && onScheduleNew && (
-              <button
-                type="button"
-                onClick={onScheduleNew}
-                className="ml-1 px-2.5 py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 text-xs font-medium transition-colors"
-              >
-                Schedule new inspection
-              </button>
-            )}
-            {canSchedule && onNewWorkOrder && (
-              <button
-                type="button"
-                onClick={onNewWorkOrder}
-                className="ml-1 px-2.5 py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 text-xs font-medium transition-colors"
-              >
-                New work order
-              </button>
-            )}
-          </div>
-        </div>
+  const sectionHeaderActions =
+    canSchedule && (onScheduleNew || onNewWorkOrder) ? (
+      <div className={uiCx(uiLayout.actionsRow, 'flex-wrap justify-end')}>
+        {onScheduleNew ? (
+          <AppButton type="button" variant="secondary" size="sm" onClick={onScheduleNew}>
+            Schedule inspection
+          </AppButton>
+        ) : null}
+        {onNewWorkOrder ? (
+          <AppButton type="button" size="sm" onClick={onNewWorkOrder}>
+            New service
+          </AppButton>
+        ) : null}
+      </div>
+    ) : null;
 
-        <div className="grid grid-cols-7 gap-1">
-          {dayNames.map((day) => (
-            <div key={day} className="text-center text-[10px] font-bold text-gray-500 py-1.5 uppercase">
-              {day}
-            </div>
-          ))}
-          {calendarDays.map((date, index) => {
-            if (!date) {
-              return <div key={`empty-${index}`} className="min-h-[100px]" />;
-            }
-            const dayEvents = getDayEvents(date);
-            const dayIsToday = isToday(date);
-            return (
-              <div
-                key={date.toISOString()}
-                className={`min-h-[100px] border rounded-lg p-1.5 flex flex-col ${
-                  dayIsToday ? 'border-2 border-brand-red bg-red-50/30' : 'border-gray-200'
-                }`}
-              >
-                <span className={`text-xs font-medium ${dayIsToday ? 'text-brand-red' : 'text-gray-700'}`}>
-                  {date.getDate()}
-                </span>
-                <div className="mt-1 space-y-1 flex-1 overflow-auto">
-                  {dayEvents.slice(0, 5).map((ev) => {
-                    if (ev.type === 'work_order') {
-                      const woLines = calendarVehicleLines(ev.asset_name, ev.unit_number, ev.work_order_number);
-                      return (
-                        <button
-                          key={`wo-${ev.id}-${date.toISOString()}`}
-                          type="button"
-                          onClick={() => navigate(`/fleet/work-orders/${ev.id}`)}
-                          className={`w-full text-left text-xs px-2 py-1.5 rounded-lg border shadow-sm ${
-                            ev.work_order_type === 'mechanical'
-                              ? 'bg-green-50 hover:bg-green-100 border-green-200/80 text-green-900'
-                              : ev.work_order_type === 'body'
-                                ? 'bg-blue-50 hover:bg-blue-100 border-blue-200/80 text-blue-900'
-                                : 'bg-gray-100 hover:bg-gray-200 border-gray-200/80 text-gray-800'
-                          }`}
-                          title={`Work order · ${
-                            ev.work_order_type === 'mechanical'
-                              ? 'Mechanical'
-                              : ev.work_order_type === 'body'
-                                ? 'Body'
-                                : 'Service'
-                          } · ${ev.work_order_number} — ${woLines.hint}`}
-                        >
-                          <div className="flex items-start gap-1.5 min-w-0">
-                            <div className="flex flex-col items-center gap-0.5 shrink-0" title="Work order">
-                              <span className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-white/80 border border-black/10 text-gray-700 w-full text-center">
-                                WO
-                              </span>
-                              {ev.work_order_type === 'mechanical' && (
-                                <span
-                                  className="rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide leading-none bg-white/80 border border-green-400/50 text-green-900"
-                                  title="Mechanical"
-                                >
-                                  MECH
-                                </span>
-                              )}
-                              {ev.work_order_type === 'body' && (
-                                <span
-                                  className="rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide leading-none bg-white/80 border border-blue-400/50 text-blue-900"
-                                  title="Body (exterior)"
-                                >
-                                  BODY
-                                </span>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1 text-left">
-                              <span className="font-medium block leading-snug line-clamp-2">{woLines.primary}</span>
-                              {woLines.unitLine && (
-                                <span className="text-[10px] leading-tight block opacity-85 line-clamp-1">
-                                  {woLines.unitLine}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    }
-                    const inLines = calendarVehicleLines(ev.fleet_asset_name, ev.unit_number, 'Scheduled');
+  const calendarBody = (
+    <>
+      <div className={uiCx('mb-4 flex flex-wrap items-center justify-between gap-3')}>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={uiTypography.sectionTitle}>{monthLabel}</span>
+          {isLoading ? <span className={uiTypography.helper}>Loading…</span> : null}
+        </div>
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={goToPreviousMonth} aria-label="Previous month">
+            <ChevronLeft className="h-4 w-4" />
+          </AppButton>
+          <AppButton type="button" variant="secondary" size="sm" onClick={goToToday}>
+            Today
+          </AppButton>
+          <AppButton type="button" variant="secondary" size="sm" onClick={goToNextMonth} aria-label="Next month">
+            <ChevronRight className="h-4 w-4" />
+          </AppButton>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {dayNames.map((day) => (
+          <div key={day} className={uiCx(uiTypography.overline, 'py-1.5 text-center')}>
+            {day}
+          </div>
+        ))}
+        {calendarDays.map((date, index) => {
+          if (!date) {
+            return <div key={`empty-${index}`} className="min-h-[100px]" />;
+          }
+          const dayEvents = getDayEvents(date);
+          const dayIsToday = isToday(date);
+          return (
+            <div
+              key={date.toISOString()}
+              className={uiCx(
+                'flex min-h-[100px] flex-col p-1.5',
+                uiRadius.control,
+                dayIsToday ? 'border-2 border-brand-red bg-red-50/30' : uiBorders.subtle,
+                'bg-white',
+              )}
+            >
+              <span className={uiCx('text-xs font-medium', dayIsToday ? 'text-brand-red' : 'text-gray-700')}>
+                {date.getDate()}
+              </span>
+              <div className="mt-1 flex-1 space-y-1 overflow-auto">
+                {dayEvents.slice(0, 5).map((ev) => {
+                  if (ev.type === 'work_order') {
+                    const woLines = calendarVehicleLines(ev.asset_name, ev.unit_number, ev.work_order_number);
                     return (
                       <button
-                        key={`sched-${ev.id}`}
+                        key={`wo-${ev.id}-${date.toISOString()}`}
                         type="button"
-                        onClick={() => navigate(`/fleet/inspections/${ev.id}`)}
-                        className="w-full text-left text-xs px-2 py-1.5 rounded-lg border shadow-sm bg-violet-50 hover:bg-violet-100 border-violet-200/80 text-violet-900"
-                        title={`Inspection schedule — ${inLines.hint} · ${formatTime(ev.scheduled_at)}`}
+                        onClick={() => navigate(`/fleet/work-orders/${ev.id}`)}
+                        className={uiCx(
+                          'w-full rounded-lg border px-2 py-1.5 text-left text-xs shadow-sm',
+                          ev.work_order_type === 'mechanical'
+                            ? 'border-green-200/80 bg-green-50 text-green-900 hover:bg-green-100'
+                            : ev.work_order_type === 'body'
+                              ? 'border-blue-200/80 bg-blue-50 text-blue-900 hover:bg-blue-100'
+                              : 'border-gray-200/80 bg-gray-100 text-gray-800 hover:bg-gray-200',
+                        )}
+                        title={`Work order \u00b7 ${
+                          ev.work_order_type === 'mechanical'
+                            ? 'Mechanical'
+                            : ev.work_order_type === 'body'
+                              ? 'Body'
+                              : 'Service'
+                        } \u00b7 ${ev.work_order_number} — ${woLines.hint}`}
                       >
-                        <div className="flex items-start gap-1.5 min-w-0">
-                          <span
-                            className="shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-white/80 border border-violet-300/60 text-violet-800"
-                            title="Inspection"
-                          >
-                            INSP
-                          </span>
-                          <div className="min-w-0 flex-1 text-left">
-                            <span className="font-medium text-violet-900 block leading-snug line-clamp-2">
-                              {inLines.primary}
+                        <div className="flex min-w-0 items-start gap-1.5">
+                          <div className="flex shrink-0 flex-col items-center gap-0.5" title="Work order">
+                            <span className="w-full rounded border border-black/10 bg-white/80 px-1 py-0.5 text-center text-[9px] font-bold uppercase tracking-wide text-gray-700">
+                              WO
                             </span>
-                            {inLines.unitLine && (
-                              <span className="text-violet-700/90 text-[10px] leading-tight block line-clamp-1">
-                                {inLines.unitLine}
+                            {ev.work_order_type === 'mechanical' && (
+                              <span
+                                className="rounded border border-green-400/50 bg-white/80 px-1 py-0.5 text-[8px] font-bold uppercase leading-none tracking-wide text-green-900"
+                                title="Mechanical"
+                              >
+                                MECH
                               </span>
                             )}
-                            <span className="text-violet-600 text-[10px] block">{formatTime(ev.scheduled_at)}</span>
+                            {ev.work_order_type === 'body' && (
+                              <span
+                                className="rounded border border-blue-400/50 bg-white/80 px-1 py-0.5 text-[8px] font-bold uppercase leading-none tracking-wide text-blue-900"
+                                title="Body (exterior)"
+                              >
+                                BODY
+                              </span>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1 text-left">
+                            <span className="block line-clamp-2 font-medium leading-snug">{woLines.primary}</span>
+                            {woLines.unitLine ? (
+                              <span className="block line-clamp-1 text-[10px] leading-tight opacity-85">
+                                {woLines.unitLine}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </button>
                     );
-                  })}
-                  {dayEvents.length > 5 && (
-                    <span className="text-[10px] text-gray-500">+{dayEvents.length - 5} more</span>
-                  )}
-                </div>
+                  }
+                  const inLines = calendarVehicleLines(ev.fleet_asset_name, ev.unit_number, 'Scheduled');
+                  return (
+                    <button
+                      key={`sched-${ev.id}`}
+                      type="button"
+                      onClick={() => navigate(`/fleet/inspections/${ev.id}`)}
+                      className="w-full rounded-lg border border-violet-200/80 bg-violet-50 px-2 py-1.5 text-left text-xs text-violet-900 shadow-sm hover:bg-violet-100"
+                      title={`Inspection schedule — ${inLines.hint} \u00b7 ${formatTime(ev.scheduled_at)}`}
+                    >
+                      <div className="flex min-w-0 items-start gap-1.5">
+                        <span
+                          className="shrink-0 rounded border border-violet-300/60 bg-white/80 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-800"
+                          title="Inspection"
+                        >
+                          INSP
+                        </span>
+                        <div className="min-w-0 flex-1 text-left">
+                          <span className="block line-clamp-2 font-medium leading-snug text-violet-900">
+                            {inLines.primary}
+                          </span>
+                          {inLines.unitLine ? (
+                            <span className="block line-clamp-1 text-[10px] leading-tight text-violet-700/90">
+                              {inLines.unitLine}
+                            </span>
+                          ) : null}
+                          <span className="block text-[10px] text-violet-600">{formatTime(ev.scheduled_at)}</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+                {dayEvents.length > 5 ? (
+                  <span className={uiTypography.helper}>+{dayEvents.length - 5} more</span>
+                ) : null}
               </div>
-            );
-          })}
-        </div>
-
-        {!isLoading && (
-          <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-center gap-3 sm:gap-6 text-[10px] text-gray-500">
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
-              <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 w-full sm:w-auto text-center sm:text-left sm:mr-1">Work orders</span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded bg-green-100 border border-green-200 shrink-0" />
-                <span>Mechanical</span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded bg-blue-100 border border-blue-200 shrink-0" />
-                <span>Body</span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded bg-gray-200 border border-gray-300 shrink-0" />
-                <span>Other</span>
-              </span>
             </div>
-            <div className="hidden sm:block w-px h-4 bg-gray-200 self-center" aria-hidden />
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <span className="text-[9px] font-bold uppercase tracking-wide text-violet-600/90 mr-1">Inspections</span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded bg-violet-100 border border-violet-200 shrink-0" />
-                <span>Scheduled (INSP)</span>
-              </span>
-            </div>
-          </div>
-        )}
-
-        {!isLoading && woEvents.length === 0 && scheduleEvents.length === 0 && (
-          <div className="mt-5 text-center py-5 text-gray-500 border-t border-gray-100">
-            <div className="text-sm font-medium mb-1">No appointments this month</div>
-            <div className="text-xs text-gray-400">Use Schedule new inspection to add.</div>
-          </div>
-        )}
+          );
+        })}
       </div>
+
+      {!isLoading ? (
+        <div
+          className={uiCx(
+            'mt-3 flex flex-col flex-wrap items-stretch justify-center gap-3 border-t border-gray-100 pt-3 sm:flex-row sm:items-center sm:gap-6',
+            uiTypography.helper,
+          )}
+        >
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap justify-center sm:justify-start')}>
+            <span className={uiCx(uiTypography.overline, 'w-full text-center sm:mr-1 sm:w-auto sm:text-left')}>
+              Work orders
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 shrink-0 rounded border border-green-200 bg-green-100" />
+              <span>Mechanical</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 shrink-0 rounded border border-blue-200 bg-blue-100" />
+              <span>Body</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 shrink-0 rounded border border-gray-300 bg-gray-200" />
+              <span>Other</span>
+            </span>
+          </div>
+          <div className="hidden h-4 w-px self-center bg-gray-200 sm:block" aria-hidden />
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap justify-center')}>
+            <span className={uiCx(uiTypography.overline, 'mr-1 text-violet-600/90')}>Inspections</span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 shrink-0 rounded border border-violet-200 bg-violet-100" />
+              <span>Scheduled (INSP)</span>
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      {!isLoading && woEvents.length === 0 && scheduleEvents.length === 0 ? (
+        <div className="mt-4 border-t border-gray-100 pt-4">
+          <AppEmptyState
+            title="No appointments this month"
+            description="Use Schedule inspection to add."
+            className="border-0 bg-transparent p-0 shadow-none"
+          />
+        </div>
+      ) : null}
+    </>
+  );
+
+  if (embedView) {
+    return (
+      <AppCard className="min-w-0">
+        <AppSectionHeader
+          title="Calendar"
+          description="Work orders and inspection schedules by day. Click an event to open details."
+          action={sectionHeaderActions}
+          {...appSectionPresetProps('workload')}
+        />
+        <div className={uiSpacing.cardPadding}>{calendarBody}</div>
+      </AppCard>
+    );
+  }
+
+  return (
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader title="Schedule" icon={<Calendar className="h-4 w-4" />} />
+      <AppCard className="min-w-0">
+        <AppSectionHeader
+          title="Calendar"
+          description="Work orders and inspection schedules by day. Click an event to open details."
+          action={sectionHeaderActions}
+          {...appSectionPresetProps('workload')}
+        />
+        <div className={uiSpacing.cardPadding}>{calendarBody}</div>
+      </AppCard>
     </div>
   );
 }

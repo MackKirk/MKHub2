@@ -3,10 +3,17 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
-import FleetDetailHeader from '@/components/FleetDetailHeader';
-import { formatDateLocal } from '@/lib/dateUtils';
-import { INSPECTION_RESULT_LABELS, INSPECTION_RESULT_COLORS, SCHEDULE_STATUS_LABELS, CATEGORY_LABELS, URGENCY_LABELS, URGENCY_COLORS } from '@/lib/fleetBadges';
+import {
+  InspectionScheduleHero,
+  InspectionScheduleHeroSkeleton,
+} from '@/components/fleet/InspectionScheduleHero';
+import { INSPECTION_RESULT_LABELS } from '@/lib/fleetBadges';
+import {
+  getInspectionChecklistConditionBadgeVariant,
+  getInspectionResultBadgeVariant,
+} from '@/lib/fleetUi';
 import toast from 'react-hot-toast';
+import { ClipboardCheck } from 'lucide-react';
 import {
   ScheduleBodyInlineEditor,
   ScheduleMechanicalInlineEditor,
@@ -14,6 +21,21 @@ import {
 } from '@/pages/FleetInspectionScheduleInlineEditors';
 import { useConfirm } from '@/components/ConfirmProvider';
 import WorkOrderNewModal from '@/components/fleet/WorkOrderNewModal';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppPageHeader,
+  AppSectionHeader,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type Schedule = {
   id: string;
@@ -55,11 +77,6 @@ type ChecklistTemplate = {
   }>;
 };
 
-const CONDITION_STYLES: Record<string, string> = {
-  ok: 'bg-green-100 text-green-800',
-  damage: 'bg-red-100 text-red-800',
-  conditional: 'bg-amber-100 text-amber-800',
-};
 const CONDITION_LABELS: Record<string, string> = {
   ok: 'OK',
   damage: 'Damage',
@@ -72,6 +89,28 @@ const CONDITION_ICONS: Record<string, string> = {
 };
 
 type ColumnLayout = 'balanced' | 'bodyFocus' | 'mechFocus';
+
+function ChecklistConditionBadge({ condition }: { condition: string }) {
+  if (!condition) return null;
+  return (
+    <span title={CONDITION_LABELS[condition] ?? condition}>
+      <AppBadge
+        variant={getInspectionChecklistConditionBadgeVariant(condition)}
+        className="!h-9 !w-9 shrink-0 !justify-center !rounded-xl !px-0 !py-0 !text-lg !font-bold !normal-case !tracking-normal"
+      >
+        {CONDITION_ICONS[condition] ?? condition}
+      </AppBadge>
+    </span>
+  );
+}
+
+function InspectionResultBadge({ result }: { result: string }) {
+  return (
+    <AppBadge variant={getInspectionResultBadgeVariant(result)}>
+      {INSPECTION_RESULT_LABELS[result] ?? result}
+    </AppBadge>
+  );
+}
 
 /** Narrow gray strip: same »/« chip as column headers + tap to expand to balanced width. */
 function CompressedInspectionRail({
@@ -91,11 +130,18 @@ function CompressedInspectionRail({
     <button
       type="button"
       onClick={onExpand}
-      className="flex flex-1 flex-col items-stretch rounded-lg bg-gradient-to-b from-gray-100 to-gray-50 ring-1 ring-gray-200/90 hover:from-gray-200/80 hover:to-gray-100 min-h-[120px] lg:min-h-[200px] overflow-hidden"
+      className={uiCx(
+        'flex min-h-[120px] flex-1 flex-col items-stretch overflow-hidden bg-gradient-to-b from-gray-100 to-gray-50 lg:min-h-[200px]',
+        uiRadius.card,
+        uiBorders.subtle,
+        'ring-1 ring-gray-200/90 hover:from-gray-200/80 hover:to-gray-100',
+      )}
     >
-      <div className="flex items-center justify-center py-1.5 bg-gray-200/90 border-b border-gray-300/80 shrink-0">
+      <div className={uiCx('flex shrink-0 items-center justify-center border-b border-gray-300/80 bg-gray-200/90 py-1.5')}>
         <span
-          className="inline-flex p-1.5 rounded-md border border-gray-200 bg-white text-gray-600 shadow-sm pointer-events-none"
+          className={uiCx(
+            'pointer-events-none inline-flex rounded-md border border-gray-200 bg-white p-1.5 text-gray-600 shadow-sm',
+          )}
           aria-hidden
         >
           <span className="block text-sm font-bold leading-none tracking-tight">
@@ -103,13 +149,15 @@ function CompressedInspectionRail({
           </span>
         </span>
       </div>
-      <div className="flex flex-1 flex-col items-center justify-center gap-1 py-2 text-center px-0.5">
+      <div className="flex flex-1 flex-col items-center justify-center gap-1 px-0.5 py-2 text-center">
         <span className="text-lg" aria-hidden>
           {icon}
         </span>
-        <span className="text-[10px] font-semibold text-gray-700 [writing-mode:vertical-rl] rotate-180 max-lg:hidden">{shortLabel}</span>
-        <span className="text-[10px] font-semibold text-gray-700 lg:hidden">{wideLabel}</span>
-        <span className="text-[10px] font-medium text-gray-600">Expand</span>
+        <span className={uiCx(uiTypography.overline, 'font-semibold text-gray-700 [writing-mode:vertical-rl] rotate-180 max-lg:hidden')}>
+          {shortLabel}
+        </span>
+        <span className={uiCx(uiTypography.overline, 'font-semibold text-gray-700 lg:hidden')}>{wideLabel}</span>
+        <span className={uiTypography.helper}>Expand</span>
       </div>
     </button>
   );
@@ -289,21 +337,50 @@ export default function InspectionScheduleDetail() {
     setSearchParams,
   ]);
 
+  const pageShellClass = uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50');
+
+  const todayLabel = new Date().toLocaleDateString('en-CA', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+
   if (!id) {
     return (
-      <div className="p-4">
-        <button type="button" onClick={goBackFromSchedule} className="text-brand-red hover:underline">
-          Back to inspections
-        </button>
-        <p className="mt-4 text-gray-500">Invalid schedule ID</p>
+      <div className={pageShellClass}>
+        <AppPageHeader
+          title="Inspection"
+          onBack={goBackFromSchedule}
+          backLabel="Inspections"
+          icon={<ClipboardCheck className="h-4 w-4" />}
+        />
+        <AppCard>
+          <p className={uiTypography.helper}>Invalid schedule ID</p>
+        </AppCard>
       </div>
     );
   }
 
   if (isPending || !schedule) {
     return (
-      <div className="p-4">
-        <div className="animate-pulse rounded-xl border bg-white p-6">Loading…</div>
+      <div className={pageShellClass}>
+        <AppPageHeader
+          title="Inspection"
+          onBack={goBackFromSchedule}
+          backLabel="Inspections"
+          icon={<ClipboardCheck className="h-4 w-4" />}
+          actions={
+            <div className="text-right">
+              <div className={uiTypography.overline}>Today</div>
+              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
+            </div>
+          }
+        />
+        <InspectionScheduleHeroSkeleton />
+        <AppCard>
+          <p className={uiCx(uiTypography.helper, 'py-4 text-center')}>Loading…</p>
+        </AppCard>
       </div>
     );
   }
@@ -341,129 +418,56 @@ export default function InspectionScheduleDetail() {
     fleet_asset_id: schedule.fleet_asset_id,
   });
 
-  const todayLabel = new Date().toLocaleDateString('en-CA', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-
   return (
-    <div className="space-y-4 min-w-0 overflow-x-hidden">
-      <FleetDetailHeader
+    <div className={pageShellClass}>
+      <AppPageHeader
+        title="Inspection"
         onBack={goBackFromSchedule}
-        title={<span className="text-sm font-semibold text-gray-900">Inspection</span>}
-        subtitle={null}
-        actions={isAdmin ? (
-          <button
-            type="button"
-            onClick={async () => {
-              const result = await confirm({
-                title: 'Delete schedule',
-                message:
-                  'Delete this schedule permanently? Linked inspections will also be removed. This action cannot be undone.',
-                confirmText: 'Delete',
-                cancelText: 'Cancel',
-              });
-              if (result !== 'confirm') return;
-              deleteScheduleMutation.mutate();
-            }}
-            disabled={deleteScheduleMutation.isPending}
-            className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
-          >
-            {deleteScheduleMutation.isPending ? 'Deleting…' : 'Delete'}
-          </button>
-        ) : undefined}
-        right={
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+        backLabel="Inspections"
+        icon={<ClipboardCheck className="h-4 w-4" />}
+        actions={
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-3')}>
+            {isAdmin ? (
+              <AppButton
+                variant="danger"
+                size="sm"
+                loading={deleteScheduleMutation.isPending}
+                onClick={async () => {
+                  const result = await confirm({
+                    title: 'Delete schedule',
+                    message:
+                      'Delete this schedule permanently? Linked inspections will also be removed. This action cannot be undone.',
+                    confirmText: 'Delete',
+                    cancelText: 'Cancel',
+                  });
+                  if (result !== 'confirm') return;
+                  deleteScheduleMutation.mutate();
+                }}
+              >
+                Delete
+              </AppButton>
+            ) : null}
+            <div className="text-right">
+              <div className={uiTypography.overline}>Today</div>
+              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
+            </div>
           </div>
         }
       />
 
-      {/* Hero section - same layout as Work Order: asset photo + key info */}
-      <div className="rounded-xl border bg-white overflow-hidden p-4">
-        <div className="flex gap-4 items-start">
-          <div className="w-48 flex-shrink-0">
-            <div className="w-48 h-36 rounded-xl border border-gray-200 overflow-hidden bg-gray-100">
-              {assetPhotoUrl ? (
-                <img src={assetPhotoUrl} alt={asset?.name || 'Vehicle'} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-400">
-                  <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1h-1M4 12a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6m16 4a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6" />
-                  </svg>
-                </div>
-              )}
-            </div>
-            {schedule.fleet_asset_id && (
-              <button
-                type="button"
-                onClick={() => nav(`/fleet/assets/${schedule.fleet_asset_id}`)}
-                className="mt-2 text-xs font-medium text-brand-red hover:underline"
-              >
-                View asset
-              </button>
-            )}
-          </div>
-          <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
-              <div className="mt-0.5">
-                <span
-                  className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                    schedule.status === 'scheduled'
-                      ? 'bg-blue-100 text-blue-800'
-                      : schedule.status === 'in_progress'
-                        ? 'bg-amber-100 text-amber-800'
-                        : schedule.status === 'completed'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
-                  }`}
-                >
-                  {SCHEDULE_STATUS_LABELS[schedule.status] ?? schedule.status}
-                </span>
-              </div>
-            </div>
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Category</span>
-              <div className="text-sm font-semibold text-gray-900 mt-0.5">{CATEGORY_LABELS[schedule.category] ?? schedule.category}</div>
-            </div>
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Urgency</span>
-              <div className="mt-0.5">
-                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${URGENCY_COLORS[schedule.urgency] || 'bg-gray-100 text-gray-800'}`}>
-                  {URGENCY_LABELS[schedule.urgency] ?? schedule.urgency}
-                </span>
-              </div>
-            </div>
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Vehicle</span>
-              <div className="text-sm font-semibold text-gray-900 mt-0.5 truncate" title={schedule.fleet_asset_name || schedule.fleet_asset_id}>
-                {asset?.unit_number || schedule.fleet_asset_name || schedule.fleet_asset_id || '—'}
-              </div>
-            </div>
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Scheduled</span>
-              <div className="text-sm font-semibold text-gray-900 mt-0.5">{formatDateLocal(new Date(schedule.scheduled_at))}</div>
-            </div>
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Created</span>
-              <div className="text-sm font-semibold text-gray-900 mt-0.5">{schedule.created_at ? new Date(schedule.created_at).toLocaleDateString() : '—'}</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <InspectionScheduleHero
+        schedule={schedule}
+        asset={asset}
+        assetPhotoUrl={assetPhotoUrl}
+        onViewAsset={() => nav(`/fleet/assets/${schedule.fleet_asset_id}`)}
+      />
 
-      {/* Inspections: two columns with optional compress + inline editors (no separate page). */}
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
-          <h2 className="text-sm font-semibold text-gray-900">Inspections</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Start opens the checklist here; Body and Mechanical can run together. Chevrons in each header compress the other column; use the narrow gray strip to expand again.
-          </p>
+      <AppCard className={uiShadows.card} bodyClassName="!p-0">
+        <div className={uiCx(uiSpacing.cardPadding, 'border-b border-gray-100')}>
+          <AppSectionHeader
+            title="Inspections"
+            description="Start opens the checklist here; Body and Mechanical can run together. Chevrons in each header compress the other column; use the narrow gray strip to expand again."
+          />
         </div>
         {/* balanced: stack on small screens, two columns on lg+. bodyFocus/mechFocus: always row so one side can compress. */}
         <div
@@ -489,31 +493,27 @@ export default function InspectionScheduleDetail() {
               <>
                 <div className="flex items-start gap-2 mb-3 flex-wrap gap-y-2 min-w-0">
                   {schedule.body_inspection_id && !bodyPending && schedule.body_result && (
-                    <div className="flex items-center shrink-0 self-center">
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded font-medium ${
-                          INSPECTION_RESULT_COLORS[schedule.body_result] || 'bg-gray-200 text-gray-800'
-                        }`}
-                      >
-                        {INSPECTION_RESULT_LABELS[schedule.body_result] ?? schedule.body_result}
-                      </span>
+                    <div className="flex shrink-0 items-center self-center">
+                      <InspectionResultBadge result={schedule.body_result} />
                     </div>
                   )}
                   <div className="flex flex-1 min-w-0 flex-wrap items-center justify-end gap-2">
                     <h3 className="font-semibold text-gray-900">Body / Exterior</h3>
                     <span className="text-xl shrink-0">🚗</span>
                     {columnLayout === 'balanced' && (
-                      <button
+                      <AppButton
                         type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-8 w-8 shrink-0 px-0 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-800"
                         aria-label="Compress Mechanical column"
                         title="Compress Mechanical column (more room for Body)"
                         onClick={() => setColumnLayout('bodyFocus')}
-                        className="p-1.5 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-800 shadow-sm shrink-0"
                       >
                         <span className="block text-sm font-bold leading-none tracking-tight" aria-hidden>
                           »
                         </span>
-                      </button>
+                      </AppButton>
                     )}
                   </div>
                 </div>
@@ -538,23 +538,27 @@ export default function InspectionScheduleDetail() {
                   <>
                     {schedule.body_inspection_id ? (
                       bodyPending ? (
-                        <button
+                        <AppButton
                           type="button"
+                          variant="danger"
+                          className="mb-4 w-full gap-2"
                           disabled={!canEditBodyInspection || !bodyTemplate?.areas}
                           onClick={() => {
                             setBodyInlineOpen(true);
                             setColumnLayout(mechInlineOpen ? 'balanced' : 'bodyFocus');
                           }}
-                          className="w-full mb-4 px-4 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 font-medium text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <span className="text-lg">🚗</span>
+                          <span className="text-lg" aria-hidden>
+                            🚗
+                          </span>
                           <span>{!bodyTemplate?.areas ? 'Loading…' : 'Start'}</span>
-                        </button>
+                        </AppButton>
                       ) : null
                     ) : (
-                      <div className="mb-4 py-3 px-4 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 text-sm text-center">
-                        Body not created
-                      </div>
+                      <AppEmptyState
+                        title="Body not created"
+                        className="mb-4 border border-gray-200 bg-gray-50 py-3 shadow-none"
+                      />
                     )}
                     {schedule.body_inspection_id && bodyInspection && bodyTemplate?.areas && !bodyInlineOpen ? (
                       <div className="space-y-4">
@@ -570,27 +574,22 @@ export default function InspectionScheduleDetail() {
                                   {area.description && <div className="text-xs text-gray-500 mt-0.5">{area.description}</div>}
                                   {issueText && <div className="text-xs text-gray-600 mt-1">{issueText}</div>}
                                 </div>
-                                {cond && (
-                                  <span
-                                    className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-lg font-bold ${CONDITION_STYLES[cond] || 'bg-gray-100 text-gray-700'}`}
-                                    title={CONDITION_LABELS[cond] ?? cond}
-                                  >
-                                    {CONDITION_ICONS[cond] ?? cond}
-                                  </span>
-                                )}
+                                {cond ? <ChecklistConditionBadge condition={cond} /> : null}
                               </div>
                             );
                           })}
                         </div>
                         {bodyInspection.notes && (
-                          <div className="rounded-lg bg-gray-50 p-3">
-                            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Observations</span>
-                            <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{bodyInspection.notes}</p>
+                          <div className={uiCx(uiRadius.card, 'bg-gray-50 p-3')}>
+                            <span className={uiTypography.overline}>Observations</span>
+                            <p className={uiCx(uiTypography.body, 'mt-1 whitespace-pre-wrap text-gray-700')}>
+                              {bodyInspection.notes}
+                            </p>
                           </div>
                         )}
                         {bodyInspection.photos && bodyInspection.photos.length > 0 && (
                           <div>
-                            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Photos</span>
+                            <span className={uiTypography.overline}>Photos</span>
                             <div className="flex flex-wrap gap-2 mt-2">
                               {bodyInspection.photos.map((photoId) => (
                                 <a
@@ -607,57 +606,57 @@ export default function InspectionScheduleDetail() {
                           </div>
                         )}
                         {!bodyPending && (
-                          <div className="pt-3 border-t border-gray-200 flex items-center justify-between">
-                            <span className="text-xs font-medium text-gray-500">Result</span>
-                            <span
-                              className={`inline-flex px-2.5 py-1 rounded-md text-sm font-medium ${INSPECTION_RESULT_COLORS[bodyInspection.result] || 'bg-gray-100 text-gray-800'}`}
-                            >
-                              {INSPECTION_RESULT_LABELS[bodyInspection.result] ?? bodyInspection.result}
-                            </span>
+                          <div className={uiCx('flex items-center justify-between border-t border-gray-200 pt-3')}>
+                            <span className={uiTypography.helper}>Result</span>
+                            <InspectionResultBadge result={bodyInspection.result} />
                           </div>
                         )}
                         {!bodyPending &&
                           isInspectionResultFinal(bodyInspection.result) &&
                           !bodyInspection.auto_generated_work_order_id && (
-                          <div
-                            className={`rounded-lg border p-3 mt-3 ${
+                          <AppCard
+                            className={uiCx(
+                              'mt-3',
                               bodyInspection.result === 'fail'
                                 ? 'border-amber-200 bg-amber-50'
-                                : 'border-slate-200 bg-slate-50'
-                            }`}
+                                : 'border-slate-200 bg-slate-50',
+                            )}
+                            bodyClassName="p-3"
                           >
-                            <div className="text-sm font-medium text-gray-900 mb-1">
+                            <div className={uiCx(uiTypography.sectionTitle, 'mb-1')}>
                               {bodyInspection.result === 'fail'
                                 ? 'Body inspection failed'
                                 : 'Create work order (Body)'}
                             </div>
-                            <p className="text-xs text-gray-600 mb-2">
+                            <p className={uiCx(uiTypography.helper, 'mb-2')}>
                               {bodyInspection.result === 'fail'
                                 ? 'Create a linked work order to address the issues in the shop.'
                                 : 'Inspection is complete. Create a linked work order if you still need shop follow-up.'}
                             </p>
-                            <button
+                            <AppButton
                               type="button"
+                              size="sm"
                               onClick={() =>
                                 schedule.body_inspection_id && setWoModalInspectionId(schedule.body_inspection_id)
                               }
-                              className="px-3 py-1.5 bg-brand-red text-white rounded-lg hover:bg-red-700 text-xs font-medium"
                             >
                               Create work order
-                            </button>
-                          </div>
+                            </AppButton>
+                          </AppCard>
                         )}
                         {!bodyPending && !!bodyInspection.auto_generated_work_order_id && (
-                          <div className="rounded-lg border border-green-200 bg-green-50 p-3 mt-3">
-                            <div className="text-sm font-medium text-gray-900 mb-2">Work order</div>
-                            <button
+                          <AppCard className="mt-3 border-green-200 bg-green-50" bodyClassName="p-3">
+                            <div className={uiCx(uiTypography.sectionTitle, 'mb-2')}>Work order</div>
+                            <AppButton
                               type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-auto px-0 text-brand-red hover:bg-transparent hover:underline"
                               onClick={() => nav(`/fleet/work-orders/${bodyInspection.auto_generated_work_order_id}`)}
-                              className="text-xs font-medium text-brand-red hover:underline"
                             >
                               View work order
-                            </button>
-                          </div>
+                            </AppButton>
+                          </AppCard>
                         )}
                       </div>
                     ) : schedule.body_inspection_id && bodyPending && !canEditBodyInspection ? (
@@ -690,30 +689,26 @@ export default function InspectionScheduleDetail() {
                 <div className="flex items-start gap-2 mb-3 flex-wrap gap-y-2 min-w-0">
                   <div className="flex items-center gap-2 min-w-0 flex-wrap flex-1">
                     {columnLayout === 'balanced' && (
-                      <button
+                      <AppButton
                         type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-8 w-8 shrink-0 px-0 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-800"
                         aria-label="Compress Body column"
                         title="Compress Body column (more room for Mechanical)"
                         onClick={() => setColumnLayout('mechFocus')}
-                        className="p-1.5 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-800 shadow-sm shrink-0"
                       >
                         <span className="block text-sm font-bold leading-none tracking-tight" aria-hidden>
                           «
                         </span>
-                      </button>
+                      </AppButton>
                     )}
                     <span className="text-xl shrink-0">🔧</span>
                     <h3 className="font-semibold text-gray-900">Mechanical</h3>
                   </div>
                   {schedule.mechanical_inspection_id && !mechPending && schedule.mechanical_result && (
-                    <div className="flex items-center shrink-0 sm:ml-auto">
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded font-medium ${
-                          INSPECTION_RESULT_COLORS[schedule.mechanical_result] || 'bg-gray-200 text-gray-800'
-                        }`}
-                      >
-                        {INSPECTION_RESULT_LABELS[schedule.mechanical_result] ?? schedule.mechanical_result}
-                      </span>
+                    <div className="flex shrink-0 items-center sm:ml-auto">
+                      <InspectionResultBadge result={schedule.mechanical_result} />
                     </div>
                   )}
                 </div>
@@ -738,30 +733,36 @@ export default function InspectionScheduleDetail() {
                   <>
                     {schedule.mechanical_inspection_id ? (
                       mechPending ? (
-                        <button
+                        <AppButton
                           type="button"
+                          variant="danger"
+                          className="mb-4 w-full gap-2"
                           disabled={!canEditMechanicalInspection || !mechanicalTemplate?.sections}
                           onClick={() => {
                             setMechInlineOpen(true);
                             setColumnLayout(bodyInlineOpen ? 'balanced' : 'mechFocus');
                           }}
-                          className="w-full mb-4 px-4 py-3 rounded-xl border-2 border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-900 font-medium text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <span className="text-lg">🔧</span>
+                          <span className="text-lg" aria-hidden>
+                            🔧
+                          </span>
                           <span>{!mechanicalTemplate?.sections ? 'Loading…' : 'Start'}</span>
-                        </button>
+                        </AppButton>
                       ) : null
                     ) : (
-                      <div className="mb-4 py-3 px-4 rounded-xl border border-gray-200 bg-gray-50 text-gray-500 text-sm text-center">
-                        Mechanical not created
-                      </div>
+                      <AppEmptyState
+                        title="Mechanical not created"
+                        className="mb-4 border border-gray-200 bg-gray-50 py-3 shadow-none"
+                      />
                     )}
                     {schedule.mechanical_inspection_id && mechanicalInspection && mechanicalTemplate?.sections && !mechInlineOpen ? (
                       <div className="space-y-4">
                         <div className="space-y-3">
                           {mechanicalTemplate.sections.map((section) => (
                             <div key={section.id}>
-                              <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">{section.title}</h4>
+                              <h4 className={uiCx(uiTypography.overline, 'mb-2 font-semibold text-gray-600')}>
+                                {section.title}
+                              </h4>
                               <div className="space-y-1.5">
                                 {section.items.map((item) => {
                                   const val = (mechanicalInspection.checklist_results as any)?.[item.key];
@@ -770,14 +771,7 @@ export default function InspectionScheduleDetail() {
                                   return (
                                     <div key={item.key} className="flex items-center justify-between gap-2 py-1.5 px-2 rounded bg-gray-50/80">
                                       <span className="text-sm text-gray-800">{item.label}</span>
-                                      {norm && (
-                                        <span
-                                          className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-lg font-bold ${CONDITION_STYLES[norm] || 'bg-gray-100 text-gray-700'}`}
-                                          title={CONDITION_LABELS[norm] ?? norm}
-                                        >
-                                          {CONDITION_ICONS[norm] ?? norm}
-                                        </span>
-                                      )}
+                                      {norm ? <ChecklistConditionBadge condition={norm} /> : null}
                                     </div>
                                   );
                                 })}
@@ -786,14 +780,16 @@ export default function InspectionScheduleDetail() {
                           ))}
                         </div>
                         {mechanicalInspection.notes && (
-                          <div className="rounded-lg bg-gray-50 p-3">
-                            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Observations</span>
-                            <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{mechanicalInspection.notes}</p>
+                          <div className={uiCx(uiRadius.card, 'bg-gray-50 p-3')}>
+                            <span className={uiTypography.overline}>Observations</span>
+                            <p className={uiCx(uiTypography.body, 'mt-1 whitespace-pre-wrap text-gray-700')}>
+                              {mechanicalInspection.notes}
+                            </p>
                           </div>
                         )}
                         {mechanicalInspection.photos && mechanicalInspection.photos.length > 0 && (
                           <div>
-                            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Photos</span>
+                            <span className={uiTypography.overline}>Photos</span>
                             <div className="flex flex-wrap gap-2 mt-2">
                               {mechanicalInspection.photos.map((photoId) => (
                                 <a
@@ -810,58 +806,58 @@ export default function InspectionScheduleDetail() {
                           </div>
                         )}
                         {!mechPending && (
-                          <div className="pt-3 border-t border-gray-200 flex items-center justify-between">
-                            <span className="text-xs font-medium text-gray-500">Result</span>
-                            <span
-                              className={`inline-flex px-2.5 py-1 rounded-md text-sm font-medium ${INSPECTION_RESULT_COLORS[mechanicalInspection.result] || 'bg-gray-100 text-gray-800'}`}
-                            >
-                              {INSPECTION_RESULT_LABELS[mechanicalInspection.result] ?? mechanicalInspection.result}
-                            </span>
+                          <div className={uiCx('flex items-center justify-between border-t border-gray-200 pt-3')}>
+                            <span className={uiTypography.helper}>Result</span>
+                            <InspectionResultBadge result={mechanicalInspection.result} />
                           </div>
                         )}
                         {!mechPending &&
                           isInspectionResultFinal(mechanicalInspection.result) &&
                           !mechanicalInspection.auto_generated_work_order_id && (
-                          <div
-                            className={`rounded-lg border p-3 mt-3 ${
+                          <AppCard
+                            className={uiCx(
+                              'mt-3',
                               mechanicalInspection.result === 'fail'
                                 ? 'border-amber-200 bg-amber-50'
-                                : 'border-slate-200 bg-slate-50'
-                            }`}
+                                : 'border-slate-200 bg-slate-50',
+                            )}
+                            bodyClassName="p-3"
                           >
-                            <div className="text-sm font-medium text-gray-900 mb-1">
+                            <div className={uiCx(uiTypography.sectionTitle, 'mb-1')}>
                               {mechanicalInspection.result === 'fail'
                                 ? 'Mechanical inspection failed'
                                 : 'Create work order (Mechanical)'}
                             </div>
-                            <p className="text-xs text-gray-600 mb-2">
+                            <p className={uiCx(uiTypography.helper, 'mb-2')}>
                               {mechanicalInspection.result === 'fail'
                                 ? 'Create a linked work order to address the issues in the shop.'
                                 : 'Inspection is complete. Create a linked work order if you still need shop follow-up.'}
                             </p>
-                            <button
+                            <AppButton
                               type="button"
+                              size="sm"
                               onClick={() =>
                                 schedule.mechanical_inspection_id &&
                                 setWoModalInspectionId(schedule.mechanical_inspection_id)
                               }
-                              className="px-3 py-1.5 bg-brand-red text-white rounded-lg hover:bg-red-700 text-xs font-medium"
                             >
                               Create work order
-                            </button>
-                          </div>
+                            </AppButton>
+                          </AppCard>
                         )}
                         {!mechPending && !!mechanicalInspection.auto_generated_work_order_id && (
-                          <div className="rounded-lg border border-green-200 bg-green-50 p-3 mt-3">
-                            <div className="text-sm font-medium text-gray-900 mb-2">Work order</div>
-                            <button
+                          <AppCard className="mt-3 border-green-200 bg-green-50" bodyClassName="p-3">
+                            <div className={uiCx(uiTypography.sectionTitle, 'mb-2')}>Work order</div>
+                            <AppButton
                               type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-auto px-0 text-brand-red hover:bg-transparent hover:underline"
                               onClick={() => nav(`/fleet/work-orders/${mechanicalInspection.auto_generated_work_order_id}`)}
-                              className="text-xs font-medium text-brand-red hover:underline"
                             >
                               View work order
-                            </button>
-                          </div>
+                            </AppButton>
+                          </AppCard>
                         )}
                       </div>
                     ) : schedule.mechanical_inspection_id && mechPending && !canEditMechanicalInspection ? (
@@ -875,7 +871,7 @@ export default function InspectionScheduleDetail() {
             )}
           </div>
         </div>
-      </div>
+      </AppCard>
 
       <WorkOrderNewModal
         isOpen={!!woModalInspectionId}
