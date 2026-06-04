@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState, type MutableRefObject } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import ProposalForm from '@/components/ProposalForm';
+import {
+  hasProjectFeatureWritePermission,
+  isAdminRole,
+  resolveProjectBusinessLine,
+} from '@/lib/projectLinePermissionKeys';
 import {
   AppCard,
   AppSectionHeader,
@@ -32,6 +38,7 @@ export type ProjectProposalTabProps = {
   siteId?: string;
   proposals: Proposal[];
   statusLabel: string;
+  businessLine?: string | null;
   settings: any;
   isBidding?: boolean;
   onPricingItemsChange?: (items: any[]) => void;
@@ -46,6 +53,7 @@ export default function ProjectProposalTab({
   siteId,
   proposals,
   statusLabel,
+  businessLine,
   settings: _settings,
   isBidding,
   onPricingItemsChange,
@@ -53,13 +61,21 @@ export default function ProjectProposalTab({
   proposalFormSaveRef,
   designSystem = false,
 }: ProjectProposalTabProps) {
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [selectedTab, setSelectedTab] = useState<string>('proposal');
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
-  const isAdmin = (me?.roles || []).includes('admin');
+  const isAdmin = isAdminRole(me?.roles);
   const permissions = new Set<string>(me?.permissions || []);
-  const hasEditProposalPermission = isAdmin || permissions.has('business:projects:proposal:write');
+  const resolvedBusinessLine = resolveProjectBusinessLine(businessLine, location.pathname);
+  const hasEditProposalPermission = hasProjectFeatureWritePermission(
+    permissions,
+    resolvedBusinessLine,
+    'proposal',
+    isAdmin,
+    location.pathname
+  );
 
   const organizedProposals = useMemo(() => {
     const original = proposals.find((p) => !p.is_change_order);
@@ -101,6 +117,15 @@ export default function ProjectProposalTab({
     queryFn: () => api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId || ''))}`),
   });
 
+  const statusAllowsProposalEdit = useMemo(() => {
+    if (!statusLabel?.trim()) return true;
+    const statusLabelLower = statusLabel.toLowerCase().trim();
+    if (isBidding) {
+      return statusLabelLower === 'prospecting';
+    }
+    return statusLabelLower === 'in progress';
+  }, [statusLabel, isBidding]);
+
   const canEdit = useMemo(() => {
     if (!hasEditProposalPermission) return false;
     if (selectedTab.startsWith('change-order-')) {
@@ -113,16 +138,41 @@ export default function ProjectProposalTab({
         return true;
       }
     }
-    if (selectedTab === 'create-change-order') return true;
-    if (!statusLabel) return true;
-    const statusLabelLower = statusLabel.toLowerCase().trim();
-    if (isBidding) {
-      if (statusLabelLower === 'prospecting') return true;
-      if (statusLabelLower === 'sent to customer' || statusLabelLower === 'refused') return false;
-      return true;
+    if (selectedTab === 'create-change-order') return hasEditProposalPermission;
+    return statusAllowsProposalEdit;
+  }, [
+    hasEditProposalPermission,
+    statusAllowsProposalEdit,
+    selectedTab,
+    organizedProposals,
+  ]);
+
+  const restrictionMessage = useMemo(() => {
+    if (canEdit) return undefined;
+    if (
+      selectedTab.startsWith('change-order-') &&
+      selectedProposal?.approval_status === 'approved'
+    ) {
+      return 'This Change Order has been approved and cannot be edited.';
     }
-    return statusLabelLower === 'prospecting' || statusLabelLower === 'in progress';
-  }, [statusLabel, hasEditProposalPermission, isBidding, selectedTab, organizedProposals]);
+    if (!hasEditProposalPermission) {
+      return 'You do not have permission to edit proposals or pricing for this business line.';
+    }
+    if (!statusAllowsProposalEdit && statusLabel && !selectedTab.startsWith('change-order-')) {
+      return isBidding
+        ? `This opportunity has status "${statusLabel}" which does not allow editing proposals or pricing. Editing is allowed while status is Prospecting.`
+        : `This project has status "${statusLabel}" which does not allow editing proposals or estimates. Editing is allowed while status is In Progress.`;
+    }
+    return undefined;
+  }, [
+    canEdit,
+    hasEditProposalPermission,
+    statusAllowsProposalEdit,
+    statusLabel,
+    isBidding,
+    selectedTab,
+    selectedProposal?.approval_status,
+  ]);
 
   const proposalTabs = useMemo(() => {
     const tabs: { key: string; label: string }[] = [];
@@ -160,20 +210,8 @@ export default function ProjectProposalTab({
         disabled={!canEdit}
         showOnlyPricing={showOnlyPricing}
         saveRef={proposalFormSaveRef}
-        showRestrictionWarning={
-          !canEdit &&
-          (!!statusLabel ||
-            (selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'))
-        }
-        restrictionMessage={
-          !canEdit &&
-          selectedTab.startsWith('change-order-') &&
-          selectedProposal?.approval_status === 'approved'
-            ? 'This Change Order has been approved and cannot be edited.'
-            : !canEdit && statusLabel && !selectedTab.startsWith('change-order-')
-              ? `This project has status "${statusLabel}" which does not allow editing proposals or estimates.`
-              : undefined
-        }
+        showRestrictionWarning={!canEdit && !!restrictionMessage}
+        restrictionMessage={restrictionMessage}
         onPricingItemsChange={onPricingItemsChange}
         isBidding={isBidding}
         projectStatusLabel={statusLabel}

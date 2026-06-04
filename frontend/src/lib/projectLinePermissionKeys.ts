@@ -38,6 +38,40 @@ export function resolveProjectBusinessLine(
   return BUSINESS_LINE_CONSTRUCTION;
 }
 
+/** Safety menu / global routes: any business line (legacy keys included). */
+export function hasAnyLineSafetyPermission(
+  permissions: Set<string> | Record<string, boolean> | string[],
+  action: 'read' | 'write',
+  isAdmin = false
+): boolean {
+  if (isAdmin) return true;
+  const set =
+    permissions instanceof Set
+      ? permissions
+      : new Set(
+          Array.isArray(permissions)
+            ? permissions
+            : Object.entries(permissions as Record<string, boolean>)
+                .filter(([, v]) => v)
+                .map(([k]) => k)
+        );
+  if (action === 'read') {
+    return (
+      hasProjectFeatureReadPermission(set, BUSINESS_LINE_CONSTRUCTION, 'safety', false) ||
+      hasProjectFeatureReadPermission(set, BUSINESS_LINE_REPAIRS_MAINTENANCE, 'safety', false) ||
+      hasProjectFeatureWritePermission(set, BUSINESS_LINE_CONSTRUCTION, 'safety', false) ||
+      hasProjectFeatureWritePermission(set, BUSINESS_LINE_REPAIRS_MAINTENANCE, 'safety', false) ||
+      set.has('business:projects:safety:read') ||
+      set.has('business:projects:safety:write')
+    );
+  }
+  return (
+    hasProjectFeatureWritePermission(set, BUSINESS_LINE_CONSTRUCTION, 'safety', false) ||
+    hasProjectFeatureWritePermission(set, BUSINESS_LINE_REPAIRS_MAINTENANCE, 'safety', false) ||
+    set.has('business:projects:safety:write')
+  );
+}
+
 /** View tab/section: line read or line write (write implies read). */
 export function hasProjectFeaturePermission(
   permissions: Set<string> | Record<string, boolean>,
@@ -63,6 +97,18 @@ export function hasProjectFeatureReadPermission(
   if (isAdmin) return true;
   const line = resolveProjectBusinessLine(businessLine, pathname);
   return hasPerm(permissions, projectFeaturePermKey(line, feature, 'read'));
+}
+
+/** Manage Project Members (write-only, line-scoped). */
+export function hasProjectMembersWritePermission(
+  permissions: Set<string> | Record<string, boolean>,
+  businessLine: string | undefined | null,
+  isAdmin = false,
+  pathname?: string
+): boolean {
+  if (isAdmin) return true;
+  const line = projectLineFromBusinessLine(resolveProjectBusinessLine(businessLine, pathname));
+  return hasPerm(permissions, `${PROJECT_LINE_PREFIX[line]}:members:write`);
 }
 
 /** Create/edit/upload: line write only (view-only must not pass). */
@@ -152,6 +198,13 @@ const LEGACY_PROJECT_SUB_FEATURES = [
   'orders',
   'safety',
 ] as const;
+
+/** Sub-features removed from the app — hidden in permission UIs (tab no longer exists). */
+const HIDDEN_LINE_PROJECT_SUB_FEATURES = ['estimate', 'orders'] as const;
+
+export function isHiddenProjectLinePermissionKey(key: string): boolean {
+  return HIDDEN_LINE_PROJECT_SUB_FEATURES.some((feat) => key.includes(`:${feat}:`));
+}
 
 /** Clear legacy business:projects:<feature>:* so line-scoped overrides are authoritative. */
 export function clearLegacyProjectSubPermissions(perms: Record<string, boolean | string[]>): void {

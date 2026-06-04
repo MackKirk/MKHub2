@@ -2,6 +2,7 @@ import { applyPermissionUncheckCascade } from '@/lib/permissionDependencies';
 import {
   PROJECT_LINE_PREFIX,
   clearLegacyProjectSubPermissions,
+  isHiddenProjectLinePermissionKey,
   type ProjectLineCategoryConfigKeys,
 } from '@/lib/projectLinePermissionKeys';
 import {
@@ -21,8 +22,6 @@ const SUB_READ_MARKERS = [
   ':files:',
   ':documents:',
   ':proposal:',
-  ':estimate:',
-  ':orders:',
   ':safety:',
 ] as const;
 
@@ -108,7 +107,9 @@ export function buildProjectLinePermissionRows(
   const rows: ProjectLinePermissionRow[] = [];
   const prefix = linePrefix(line);
 
-  const subViews = areaPerms.filter((p) => isLineSubReadKey(p.key, line));
+  const subViews = areaPerms.filter(
+    (p) => isLineSubReadKey(p.key, line) && !isHiddenProjectLinePermissionKey(p.key)
+  );
   for (const viewPerm of subViews) {
     const writeKey = viewPerm.key.replace(':read', ':write');
     if (!areaPerms.some((p) => p.key === writeKey)) continue;

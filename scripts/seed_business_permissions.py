@@ -290,30 +290,6 @@ def seed_business_permissions():
                 "sort_index": 17,
             },
             {
-                "key": "business:projects:estimate:read",
-                "label": "View Estimate",
-                "description": "Allows viewing the Estimate tab in project details",
-                "sort_index": 18,
-            },
-            {
-                "key": "business:projects:estimate:write",
-                "label": "Edit Estimate",
-                "description": "Allows editing the Estimate tab in project details",
-                "sort_index": 19,
-            },
-            {
-                "key": "business:projects:orders:read",
-                "label": "View Orders",
-                "description": "Allows viewing the Orders tab in project details",
-                "sort_index": 20,
-            },
-            {
-                "key": "business:projects:orders:write",
-                "label": "Edit Orders",
-                "description": "Allows editing the Orders tab in project details",
-                "sort_index": 21,
-            },
-            {
                 "key": "business:projects:safety:read",
                 "label": "View Safety",
                 "description": "Allows viewing the Safety tab in project details (awarded projects only)",
@@ -335,8 +311,6 @@ def seed_business_permissions():
             ("files", "Files", "Files tab in project details"),
             ("documents", "Documents", "Documents tab in project and opportunity details"),
             ("proposal", "Proposal", "Proposal tab in project details"),
-            ("estimate", "Estimate", "Estimate tab in project details"),
-            ("orders", "Orders", "Orders tab in project details"),
             ("safety", "Safety", "Safety tab in project details (awarded projects only)"),
         ]
         line_defs = [
@@ -391,6 +365,26 @@ def seed_business_permissions():
                 db.add(permission)
                 print(f"Created permission: {perm_data['key']}" + (" (inactive)" if not permission.is_active else ""))
         
+        # Removed tabs — deactivate any existing permission rows
+        retired_sub_features = ("estimate", "orders")
+        line_prefixes = (
+            "business:projects",
+            "business:construction:projects",
+            "business:rm:projects",
+        )
+        for prefix in line_prefixes:
+            for feat in retired_sub_features:
+                for action in ("read", "write"):
+                    key = f"{prefix}:{feat}:{action}"
+                    perm = (
+                        db.query(PermissionDefinition)
+                        .filter(PermissionDefinition.key == key)
+                        .first()
+                    )
+                    if perm and perm.is_active:
+                        perm.is_active = False
+                        print(f"Deactivated permission: {key}")
+
         db.commit()
         print(f"\nSuccessfully seeded Business permissions!")
         print(f"Total permissions: {len(business_permissions)}")

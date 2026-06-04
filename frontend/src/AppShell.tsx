@@ -379,6 +379,22 @@ export default function AppShell({ children }: PropsWithChildren){
         permissionsSet.has('fleet:read')
       );
     }
+    if (requiredPermission === 'business:projects:safety:read') {
+      return (
+        has ||
+        permissionsSet.has('business:construction:projects:safety:read') ||
+        permissionsSet.has('business:construction:projects:safety:write') ||
+        permissionsSet.has('business:rm:projects:safety:read') ||
+        permissionsSet.has('business:rm:projects:safety:write')
+      );
+    }
+    if (requiredPermission === 'business:projects:safety:write') {
+      return (
+        has ||
+        permissionsSet.has('business:construction:projects:safety:write') ||
+        permissionsSet.has('business:rm:projects:safety:write')
+      );
+    }
     return has;
   };
 

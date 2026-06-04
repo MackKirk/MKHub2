@@ -42,7 +42,9 @@ import OverlayPortal from '@/components/OverlayPortal';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 import {
   hasProjectFeaturePermission,
+  hasProjectFeatureReadPermission,
   hasProjectFeatureWritePermission,
+  hasProjectMembersWritePermission,
   isAdminRole,
   resolveProjectBusinessLine,
 } from '@/lib/projectLinePermissionKeys';
@@ -981,6 +983,12 @@ export default function ProjectDetail(){
   const hasEditPermission = isAdmin || permissions.has('business:projects:write');
   const canEditEstimate = isAdmin || permissions.has('business:projects:estimate:write');
   const hasAdministratorAccess = isAdmin || permissions.has('users:write');
+  const canManageMembers = hasProjectMembersWritePermission(
+    permissions,
+    projectBusinessLine,
+    isAdmin,
+    location.pathname
+  );
   
   // Helper to check if user has permission for a tab
   const hasTabPermission = useMemo(() => {
@@ -2687,7 +2695,7 @@ export default function ProjectDetail(){
                 <ProjectTeamCard
                   projectId={String(id)}
                   employees={employees || []}
-                  canManageMembers={isAdmin || permissions.has('business:projects:members:write')}
+                  canManageMembers={canManageMembers}
                   useDesignSystem
                 />
               </div>
@@ -2708,7 +2716,7 @@ export default function ProjectDetail(){
                 <ProjectTeamCard
                   projectId={String(id)}
                   employees={employees||[]}
-                  canManageMembers={isAdmin || permissions.has('business:projects:members:write')}
+                  canManageMembers={canManageMembers}
                 />
               </div>
             </>
@@ -2749,7 +2757,7 @@ export default function ProjectDetail(){
               <ProjectTeamCard
                 projectId={String(id)}
                 employees={employees||[]}
-                canManageMembers={isAdmin || permissions.has('business:projects:members:write')}
+                canManageMembers={canManageMembers}
                 useDesignSystem
               />
             </div>
@@ -2766,7 +2774,7 @@ export default function ProjectDetail(){
               <ProjectTeamCard
                 projectId={String(id)}
                 employees={employees||[]}
-                canManageMembers={isAdmin || permissions.has('business:projects:members:write')}
+                canManageMembers={canManageMembers}
               />
             </div>
           )}
@@ -3199,7 +3207,13 @@ export default function ProjectDetail(){
                 <ProjectDocumentsTab
                   projectId={String(id)}
                   isBidding={isOpportunityStyleTabs}
-                  canEditDocuments={isAdmin || permissions.has('business:projects:documents:write')}
+                  canEditDocuments={hasProjectFeatureWritePermission(
+                    permissions,
+                    projectBusinessLine,
+                    'documents',
+                    isAdmin,
+                    location.pathname
+                  )}
                   designSystem={useDesignSystem}
                 />
               )}
@@ -3211,6 +3225,7 @@ export default function ProjectDetail(){
                   siteId={String(proj?.site_id || '')}
                   proposals={proposals || []}
                   statusLabel={proj?.status_label || ''}
+                  businessLine={proj?.business_line}
                   settings={settings || {}}
                   isBidding={isOpportunityStyleTabs}
                   onPricingItemsChange={setLivePricingItems}
@@ -3227,6 +3242,7 @@ export default function ProjectDetail(){
                   siteId={String(proj?.site_id || '')}
                   proposals={proposals || []}
                   statusLabel={proj?.status_label || ''}
+                  businessLine={proj?.business_line}
                   settings={settings || {}}
                   isBidding={isOpportunityStyleTabs}
                   onPricingItemsChange={setLivePricingItems}
@@ -3257,12 +3273,23 @@ export default function ProjectDetail(){
                   }}
                   canRead={
                     signOnlySafetySession ||
-                    isAdmin ||
-                    permissions.has('business:projects:safety:read')
+                    hasProjectFeatureReadPermission(
+                      permissions,
+                      projectBusinessLine,
+                      'safety',
+                      isAdmin,
+                      location.pathname
+                    )
                   }
                   canWrite={
                     !signOnlySafetySession &&
-                    (isAdmin || permissions.has('business:projects:safety:write'))
+                    hasProjectFeatureWritePermission(
+                      permissions,
+                      projectBusinessLine,
+                      'safety',
+                      isAdmin,
+                      location.pathname
+                    )
                   }
                   initialSafetyInspectionId={safetyInspectionFromUrl}
                   flushSaveRef={safetyTabSaveRef}

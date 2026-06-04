@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { CalendarDays } from 'lucide-react';
 import SafetyServiceCalendar from './SafetyServiceCalendar';
 import { api } from '@/lib/api';
+import { hasAnyLineSafetyPermission } from '@/lib/projectLinePermissionKeys';
 import {
   AppButton,
   AppCombobox,
@@ -113,9 +114,9 @@ export default function SafetySchedulePage() {
   }, [projectSearch]);
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
-  const isAdmin = (me?.roles || []).includes('admin');
   const permissions = new Set((me?.permissions || []) as string[]);
-  const canSchedule = isAdmin || permissions.has('business:projects:safety:write');
+  const isAdmin = (me?.roles || []).some((r: unknown) => String(r ?? '').toLowerCase() === 'admin');
+  const canSchedule = hasAnyLineSafetyPermission(permissions, 'write', isAdmin);
 
   const { data: schedulableTemplates = [] } = useQuery({
     queryKey: ['formTemplatesSchedulable', showModal],

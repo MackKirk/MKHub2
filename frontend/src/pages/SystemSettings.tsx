@@ -27,6 +27,7 @@ import {
   applyProjectLineAccessLevelToKeySet,
   type ProjectLinePermissionRow,
 } from '@/lib/projectLinePermissions';
+import { isHiddenProjectLinePermissionKey } from '@/lib/projectLinePermissionKeys';
 import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
@@ -1313,7 +1314,12 @@ function PermissionTemplatesSection() {
           const areaAccessPerm = (cat.permissions || []).find(
             (p) => p.key.endsWith(':access') && p.key !== 'business:access'
           );
-          const subPermissions = (cat.permissions || []).filter((p) => p.key !== 'business:access' && !p.key.endsWith(':access'));
+          const subPermissions = (cat.permissions || []).filter(
+            (p) =>
+              p.key !== 'business:access' &&
+              !p.key.endsWith(':access') &&
+              !isHiddenProjectLinePermissionKey(p.key)
+          );
           const isExpanded = expandedCategories.has(cat.id);
 
           return (

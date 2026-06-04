@@ -562,6 +562,30 @@ def _has_project_feature_permission(
     return _has_permission(user, read_k) or _has_permission(user, write_k)
 
 
+def user_has_any_project_documents_permission(
+    user: User, action: Literal["read", "write"]
+) -> bool:
+    """Global document-creator API guard when project line is unknown."""
+    if _user_is_admin(user):
+        return True
+    keys = list(expand_project_permission_aliases(f"business:projects:documents:{action}"))
+    if action == "read":
+        keys.extend(expand_project_permission_aliases("business:projects:documents:write"))
+    return any(_has_permission(user, k) for k in keys)
+
+
+def user_has_any_project_safety_permission(
+    user: User, action: Literal["read", "write"]
+) -> bool:
+    """Safety module / templates when project business line is unknown."""
+    if _user_is_admin(user):
+        return True
+    keys = list(expand_project_permission_aliases(f"business:projects:safety:{action}"))
+    if action == "read":
+        keys.extend(expand_project_permission_aliases("business:projects:safety:write"))
+    return any(_has_permission(user, k) for k in keys)
+
+
 def _project_category_allow_list(
     perm_map: dict,
     line: Optional[str],

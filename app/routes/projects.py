@@ -2969,7 +2969,9 @@ def get_project_safety_inspection(
     )
     if not row:
         raise HTTPException(status_code=404, detail="Inspection not found")
-    if _has_permission(user, "business:projects:safety:read"):
+    if _has_project_feature_permission(
+        user, getattr(p, "business_line", None), "safety", "read"
+    ):
         _assert_project_line_read(user, p)
     elif user_has_sign_request_for_inspection(db, user, project_id, inspection_id):
         # Invited signer: can read draft, pending_signatures, or finalized (return visits via notification link)
@@ -3334,7 +3336,9 @@ def complete_safety_inspection_signer_signature(
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    if _has_permission(user, "business:projects:safety:read"):
+    if _has_project_feature_permission(
+        user, getattr(p, "business_line", None), "safety", "read"
+    ):
         _assert_project_line_read(user, p)
     elif user_has_pending_safety_sign_request_for_inspection(db, user, project_id, inspection_id):
         pass

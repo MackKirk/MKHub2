@@ -43,6 +43,7 @@ import {
   cloneLineCategoryConfigs,
   syncLineCategoryConfigAfterFilesMacroChange,
   syncLineCategoryConfigAfterReportsMacroChange,
+  isHiddenProjectLinePermissionKey,
 } from '@/lib/projectLinePermissionKeys';
 import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
 import {
@@ -1073,7 +1074,10 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                 (p: any) => p.key.endsWith(':access') && p.key !== 'business:access'
               );
               const subPermissions = cat.permissions.filter(
-                (p: any) => p.key !== 'business:access' && !p.key.endsWith(':access')
+                (p: any) =>
+                  p.key !== 'business:access' &&
+                  !p.key.endsWith(':access') &&
+                  !isHiddenProjectLinePermissionKey(p.key)
               );
               const hasAreaAccess = areaAccessPerm && permissions[areaAccessPerm.key];
               const categoryId = cat.category.id;

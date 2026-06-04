@@ -5,8 +5,6 @@ const LINE_PROJECT_SUB_FEATURES = [
   'files',
   'documents',
   'proposal',
-  'estimate',
-  'orders',
   'safety',
 ] as const;
 
@@ -108,10 +106,6 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'business:projects:documents:write',
   'business:projects:proposal:read',
   'business:projects:proposal:write',
-  'business:projects:estimate:read',
-  'business:projects:estimate:write',
-  'business:projects:orders:read',
-  'business:projects:orders:write',
   'business:projects:safety:read',
   'business:projects:safety:write',
   'sales:access',

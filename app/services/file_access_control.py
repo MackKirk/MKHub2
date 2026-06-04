@@ -13,10 +13,12 @@ from sqlalchemy.orm import Session
 from ..auth.security import (
     User,
     _has_permission,
+    _has_project_feature_permission,
     has_project_files_category_permission,
     has_customer_tab_permission,
     can_access_business_line,
     can_write_business_line,
+    user_has_any_project_documents_permission,
 )
 from ..models.models import (
     FileObject,
@@ -184,6 +186,13 @@ def assert_can_initiate_upload(
             raise HTTPException(status_code=404, detail="Project not found")
         if not can_write_business_line(user, getattr(proj, "business_line", None)):
             raise HTTPException(status_code=403, detail="Forbidden")
+        cat_norm = (category_id or "").strip().lower()
+        if cat_norm in ("document-creator", "document-creator-template"):
+            if not _has_project_feature_permission(
+                user, getattr(proj, "business_line", None), "documents", "write"
+            ):
+                raise HTTPException(status_code=403, detail="Forbidden")
+            return
         if not has_project_files_category_permission(
             user, category_id, action="write", project=proj
         ):
@@ -537,9 +546,8 @@ def _user_has_document_creator_api_read_permission(user: User) -> bool:
     return bool(
         _has_permission(user, "documents:access")
         or _has_permission(user, "documents:read")
-        or _has_permission(user, "business:projects:documents:read")
         or _has_permission(user, "documents:write")
-        or _has_permission(user, "business:projects:documents:write")
+        or user_has_any_project_documents_permission(user, "read")
     )
 
 
@@ -577,9 +585,13 @@ def _can_read_via_document_creator_for_project(
     upload or embedded in a project-linked user document.
     Template backgrounds are handled separately (before this branch).
     """
-    if not _user_has_document_creator_api_read_permission(user):
-        return False
     if not can_access_business_line(user, getattr(proj, "business_line", None)):
+        return False
+    line = getattr(proj, "business_line", None)
+    if not (
+        _has_project_feature_permission(user, line, "documents", "read")
+        or _user_has_document_creator_api_read_permission(user)
+    ):
         return False
     if _is_document_creator_blob(fo):
         return True

@@ -8,8 +8,13 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from ..auth.security import _has_permission
-from ..models.models import ProjectSafetyInspection, ProjectSafetyInspectionSignRequest, User
+from ..auth.security import user_has_any_project_safety_permission, _has_project_feature_permission
+from ..models.models import (
+    Project,
+    ProjectSafetyInspection,
+    ProjectSafetyInspectionSignRequest,
+    User,
+)
 
 
 def assert_safety_read_or_pending_sign_session(
@@ -19,8 +24,18 @@ def assert_safety_read_or_pending_sign_session(
     sign_project_id: Optional[str],
     sign_inspection_id: Optional[str],
 ) -> None:
-    """Same as business:projects:safety:read, or this user was invited to sign this inspection (pending or already signed)."""
-    if _has_permission(user, "business:projects:safety:read"):
+    """Line-scoped safety read, or this user was invited to sign this inspection (pending or already signed)."""
+    if sign_project_id:
+        proj = (
+            db.query(Project)
+            .filter(Project.id == sign_project_id, Project.deleted_at.is_(None))
+            .first()
+        )
+        if proj and _has_project_feature_permission(
+            user, getattr(proj, "business_line", None), "safety", "read"
+        ):
+            return
+    if user_has_any_project_safety_permission(user, "read"):
         return
     if sign_project_id and sign_inspection_id and user_has_sign_request_for_inspection(
         db, user, sign_project_id, sign_inspection_id

@@ -11,7 +11,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from ..auth.security import get_current_user, _has_permission
+from ..auth.security import (
+    get_current_user,
+    _has_permission,
+    user_has_any_project_safety_permission,
+)
 from ..services.safety_sign_request_access import assert_safety_read_or_pending_sign_session
 from ..db import get_db
 from ..models.models import FormCustomList, FormTemplate, FleetAsset, User
@@ -37,7 +41,7 @@ def _ensure_form_template_read(
     """Safety users (or sign session) for inspection templates; HR admins for employee_review only."""
     cat = (t.category or "").strip().lower()
     if cat == EMPLOYEE_REVIEW_CATEGORY:
-        if _has_permission(user, "business:projects:safety:read") or _hr_can_manage_employee_review_templates(user):
+        if user_has_any_project_safety_permission(user, "read") or _hr_can_manage_employee_review_templates(user):
             return
         raise HTTPException(status_code=403, detail="Forbidden")
     assert_safety_read_or_pending_sign_session(
@@ -46,7 +50,7 @@ def _ensure_form_template_read(
 
 
 def _ensure_form_template_write(user: User, t: Optional[FormTemplate], *, new_category: Optional[str] = None) -> None:
-    if _has_permission(user, "business:projects:safety:write"):
+    if user_has_any_project_safety_permission(user, "write"):
         return
     if not _hr_can_manage_employee_review_templates(user):
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -293,14 +297,14 @@ def list_form_templates(
     sort: str = Query("name", description="name | created_at | updated_at"),
     sort_dir: str = Query("asc", description="asc | desc"),
 ):
-    if not _has_permission(user, "business:projects:safety:read"):
+    if not user_has_any_project_safety_permission(user, "read"):
         if not _hr_can_manage_employee_review_templates(user):
             raise HTTPException(status_code=403, detail="Forbidden")
         category = EMPLOYEE_REVIEW_CATEGORY
     q = db.query(FormTemplate)
     if category and category.strip():
         q = q.filter(FormTemplate.category == category.strip())
-    elif _has_permission(user, "business:projects:safety:read"):
+    elif user_has_any_project_safety_permission(user, "read"):
         # General safety lists (e.g. /safety/form-templates, schedulable picker) must not include
         # HR employee-review templates — same URL stores both; only explicit ?category=employee_review shows them.
         q = q.filter(
@@ -334,7 +338,7 @@ def create_form_template(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if _has_permission(user, "business:projects:safety:write"):
+    if user_has_any_project_safety_permission(user, "write"):
         pass
     else:
         _ensure_form_template_write(user, None, new_category=body.category or "")
@@ -403,7 +407,7 @@ def duplicate_form_template(
     src = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not src:
         raise HTTPException(status_code=404, detail="Template not found")
-    if _has_permission(user, "business:projects:safety:write"):
+    if user_has_any_project_safety_permission(user, "write"):
         pass
     else:
         _ensure_form_template_write(user, src)
@@ -450,7 +454,7 @@ def update_form_template(
     t = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
-    if _has_permission(user, "business:projects:safety:write"):
+    if user_has_any_project_safety_permission(user, "write"):
         pass
     else:
         _ensure_form_template_write(user, t)
@@ -490,7 +494,7 @@ def delete_form_template(
     t = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
-    if _has_permission(user, "business:projects:safety:write"):
+    if user_has_any_project_safety_permission(user, "write"):
         pass
     else:
         _ensure_form_template_write(user, t)

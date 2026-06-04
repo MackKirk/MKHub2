@@ -521,12 +521,19 @@ def list_documents(
     _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
 ):
     """List documents. Optionally filter by project_id. With project docs permission, list all docs for that project."""
-    from ..auth.security import _has_permission
-    has_project_docs = _has_permission(user, "business:projects:documents:read") or _has_permission(user, "business:projects:documents:write")
-    if project_id and has_project_docs:
+    from ..auth.security import _has_project_feature_permission
+    if project_id:
         try:
             pid = uuid.UUID(project_id)
-            q = db.query(UserDocument).filter(UserDocument.project_id == pid)
+            proj = db.query(Project).filter(Project.id == pid).first()
+            line = getattr(proj, "business_line", None) if proj else None
+            if proj and _has_project_feature_permission(user, line, "documents", "read"):
+                q = db.query(UserDocument).filter(UserDocument.project_id == pid)
+            else:
+                q = db.query(UserDocument).filter(
+                    UserDocument.created_by == user.id,
+                    UserDocument.project_id == pid,
+                )
         except ValueError:
             q = db.query(UserDocument).filter(UserDocument.created_by == user.id)
     else:
@@ -609,16 +616,27 @@ def create_document(
     return _doc_to_out(doc)
 
 
-def _can_access_document(user: User, doc: UserDocument, require_write: bool = False) -> bool:
+def _can_access_document(
+    user: User,
+    doc: UserDocument,
+    db: Session,
+    require_write: bool = False,
+) -> bool:
     """True if user can access (read or write) this document."""
-    from ..auth.security import _has_permission
+    from ..auth.security import _has_project_feature_permission, _user_is_admin
+
+    if _user_is_admin(user):
+        return True
     if doc.created_by == user.id:
         return True
     if not doc.project_id:
         return False
-    if require_write:
-        return _has_permission(user, "business:projects:documents:write")
-    return _has_permission(user, "business:projects:documents:read") or _has_permission(user, "business:projects:documents:write")
+    proj = db.query(Project).filter(Project.id == doc.project_id).first()
+    if not proj:
+        return False
+    line = getattr(proj, "business_line", None)
+    action = "write" if require_write else "read"
+    return _has_project_feature_permission(user, line, "documents", action)
 
 
 @router.get("/documents/{document_id}", response_model=dict)
@@ -636,7 +654,7 @@ def get_document(
     doc = db.query(UserDocument).filter(UserDocument.id == did).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    if not _can_access_document(user, doc, require_write=False):
+    if not _can_access_document(user, doc, db, require_write=False):
         raise HTTPException(status_code=403, detail="Forbidden")
     return _doc_to_out(doc)
 
@@ -657,7 +675,7 @@ def update_document(
     doc = db.query(UserDocument).filter(UserDocument.id == did).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    if not _can_access_document(user, doc, require_write=True):
+    if not _can_access_document(user, doc, db, require_write=True):
         raise HTTPException(status_code=403, detail="Forbidden")
     if body.title is not None:
         doc.title = body.title
@@ -687,7 +705,7 @@ def delete_document(
     doc = db.query(UserDocument).filter(UserDocument.id == did).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    if not _can_access_document(user, doc, require_write=True):
+    if not _can_access_document(user, doc, db, require_write=True):
         raise HTTPException(status_code=403, detail="Forbidden")
     db.delete(doc)
     db.commit()
@@ -710,7 +728,7 @@ def export_document_pdf(
     doc = db.query(UserDocument).filter(UserDocument.id == did).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    if not _can_access_document(user, doc, require_write=False):
+    if not _can_access_document(user, doc, db, require_write=False):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     try:
