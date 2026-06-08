@@ -7032,7 +7032,7 @@ function UserAssetsSection({
 
   const { data: availableEquipment, isLoading: loadingAvailable } = useQuery({
     queryKey: ['fleet-equipment-available'],
-    queryFn: () => api<any>('GET', '/fleet/equipment?status=available&limit=100'),
+    queryFn: () => api<any>('GET', '/fleet/equipment?assigned=false&status=active&limit=100'),
     enabled: showCheckoutModal && !!userId,
   });
   const availableList = availableEquipment?.items ?? availableEquipment ?? [];

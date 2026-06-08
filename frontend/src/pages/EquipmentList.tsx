@@ -1,10 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useState, useEffect, useMemo, Fragment } from 'react';
-import { ChevronDown, ChevronRight, Search, SlidersHorizontal, Wrench } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Search, SlidersHorizontal, Wrench } from 'lucide-react';
 import { api } from '@/lib/api';
-import { formatDateLocal } from '@/lib/dateUtils';
 import {
+  EQUIPMENT_STATUS_OPTIONS,
   formatEquipmentStatus,
   getEquipmentAssignmentBadgeVariant,
   getEquipmentStatusBadgeVariant,
@@ -22,7 +22,6 @@ import {
   AppInput,
   AppListCreateItem,
   AppPageHeader,
-  AppSectionHeader,
   AppTabs,
   uiBorders,
   uiCx,
@@ -145,13 +144,6 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
   return rules;
 }
 
-const EQUIPMENT_STATUS_OPTIONS = [
-  { value: 'available', label: 'Available' },
-  { value: 'checked_out', label: 'Checked Out' },
-  { value: 'maintenance', label: 'Maintenance' },
-  { value: 'retired', label: 'Retired' },
-];
-
 const CATEGORY_OPTIONS = [
   { value: 'generator', label: 'Generators' },
   { value: 'tool', label: 'Tools' },
@@ -230,49 +222,6 @@ function SortHeader({
   );
 }
 
-function ExpandedEquipmentPanel({ item, onViewDetails }: { item: Equipment; onViewDetails: () => void }) {
-  const detail = (label: string, value: string | number | undefined) =>
-    value !== undefined && value !== null && String(value).trim() !== '' ? (
-      <div className="flex flex-col gap-0.5">
-        <span className={uiTypography.overline}>{label}</span>
-        <span className={uiTypography.body}>{String(value)}</span>
-      </div>
-    ) : null;
-
-  return (
-    <div className={uiCx('border-t border-gray-100 bg-gray-50/80 p-4', uiSpacing.sectionStack)}>
-      <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-left md:grid-cols-3">
-        <div className={uiSpacing.sectionStack}>
-          <AppSectionHeader title="Identity" className="!mb-0" />
-          <div className="space-y-2">
-            {detail('Brand', item.brand)}
-            {detail('Model', item.model)}
-            {detail('Serial', item.serial_number)}
-            {detail('Category', item.category ? item.category.replace(/_/g, ' ') : undefined)}
-          </div>
-        </div>
-        <div className={uiSpacing.sectionStack}>
-          <AppSectionHeader title="Value & Warranty" className="!mb-0" />
-          <div className="space-y-2">
-            {detail('Value', item.value != null ? `$${item.value.toLocaleString()}` : undefined)}
-            {detail('Warranty Expiry', item.warranty_expiry ? formatDateLocal(new Date(item.warranty_expiry)) : undefined)}
-            {detail('Purchase Date', item.purchase_date ? formatDateLocal(new Date(item.purchase_date)) : undefined)}
-          </div>
-        </div>
-        <div className={uiSpacing.sectionStack}>
-          <AppSectionHeader title="Notes" className="!mb-0" />
-          <div className="space-y-2">{detail('Notes', item.notes)}</div>
-        </div>
-      </div>
-      <div className={uiCx('flex items-center gap-2 border-t border-gray-200 pt-3')}>
-        <AppButton type="button" size="sm" onClick={onViewDetails}>
-          View Details
-        </AppButton>
-      </div>
-    </div>
-  );
-}
-
 export default function EquipmentList() {
   const nav = useNavigate();
   const queryClient = useQueryClient();
@@ -280,7 +229,6 @@ export default function EquipmentList() {
   const search = searchParams.get('search') ?? '';
   const [showNewEquipmentModal, setShowNewEquipmentModal] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
-  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   const categoryFilter = searchParams.get('category') || 'all';
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
@@ -499,7 +447,6 @@ export default function EquipmentList() {
                     <table className="w-full min-w-0 border-collapse">
                       <thead className={uiCx(uiBorders.subtle, 'border-b bg-gray-50')}>
                         <tr>
-                          <th className="w-10 rounded-tl-lg px-2 py-2 text-left" scope="col" aria-label="Expand row" />
                           <SortHeader label="Unit #" column="unit_number" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} />
                           <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} />
                           <SortHeader label="Category" column="category" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} />
@@ -513,91 +460,67 @@ export default function EquipmentList() {
                       </thead>
                       <tbody>
                         {equipment.map((item) => {
-                          const isExpanded = expandedRowId === item.id;
                           const primaryName =
                             (item.name && item.name.trim()) ||
                             [item.brand, item.model].filter(Boolean).join(' ').trim() ||
                             '—';
                           const metaLine = buildMetaLine(item);
-                          const isAssigned = item.status === 'checked_out' || !!item.assigned_to_name;
+                          const isAssigned = !!item.assigned_to_name;
 
                           return (
-                            <Fragment key={item.id}>
-                              <tr
-                                className="min-h-[52px] cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50"
-                                onClick={() => setExpandedRowId((prev) => (prev === item.id ? null : item.id))}
-                              >
-                                <td className="w-10 px-2 py-2 align-top" onClick={(e) => e.stopPropagation()}>
-                                  <AppButton
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 px-0"
-                                    aria-expanded={isExpanded}
-                                    aria-label={isExpanded ? 'Collapse row' : 'Expand row'}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setExpandedRowId((prev) => (prev === item.id ? null : item.id));
-                                    }}
-                                  >
-                                    {isExpanded ? (
-                                      <ChevronDown className="h-4 w-4" aria-hidden />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4" aria-hidden />
-                                    )}
-                                  </AppButton>
-                                </td>
-                                <td className={uiCx(uiTypography.body, 'whitespace-nowrap px-3 py-3 align-top text-gray-600')}>
-                                  {item.unit_number || '—'}
-                                </td>
-                                <td className="min-w-0 px-3 py-3 align-top">
-                                  <div className="flex min-w-0 flex-col gap-0.5">
-                                    <span className={uiCx(uiTypography.body, 'truncate font-medium text-gray-900')}>
-                                      {primaryName}
-                                    </span>
-                                    {metaLine ? (
-                                      <span className={uiCx(uiTypography.helper, 'truncate')}>{metaLine}</span>
-                                    ) : null}
-                                  </div>
-                                </td>
-                                <td className="px-3 py-3 align-top">
-                                  <AppBadge variant="info" className="!normal-case">
-                                    {item.category?.replace(/_/g, ' ') || '—'}
+                            <tr
+                              key={item.id}
+                              className="min-h-[52px] cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50"
+                              onClick={() => nav(`/company-assets/equipment/${item.id}`)}
+                              role="link"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  nav(`/company-assets/equipment/${item.id}`);
+                                }
+                              }}
+                            >
+                              <td className={uiCx(uiTypography.body, 'whitespace-nowrap px-3 py-3 align-top text-gray-600')}>
+                                {item.unit_number || '—'}
+                              </td>
+                              <td className="min-w-0 px-3 py-3 align-top">
+                                <div className="flex min-w-0 flex-col gap-0.5">
+                                  <span className={uiCx(uiTypography.body, 'truncate font-medium text-gray-900')}>
+                                    {primaryName}
+                                  </span>
+                                  {metaLine ? (
+                                    <span className={uiCx(uiTypography.helper, 'truncate')}>{metaLine}</span>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 align-top">
+                                <AppBadge variant="info" className="!normal-case">
+                                  {item.category?.replace(/_/g, ' ') || '—'}
+                                </AppBadge>
+                              </td>
+                              <td className={uiCx(uiTypography.body, 'max-w-[140px] truncate px-3 py-3 align-top text-gray-600')}>
+                                {[item.serial_number, item.brand, item.model].filter(Boolean).join(' • ') || '—'}
+                              </td>
+                              <td className={uiCx(uiTypography.body, 'px-3 py-3 align-top text-gray-600')}>
+                                {item.value != null ? `$${item.value.toLocaleString()}` : '—'}
+                              </td>
+                              <td className="min-w-0 px-3 py-3 align-top">
+                                <div className="flex min-w-0 flex-col gap-0.5">
+                                  <AppBadge variant={getEquipmentAssignmentBadgeVariant(isAssigned)} className="w-fit !normal-case">
+                                    {isAssigned ? 'Assigned' : 'Available'}
                                   </AppBadge>
-                                </td>
-                                <td className={uiCx(uiTypography.body, 'max-w-[140px] truncate px-3 py-3 align-top text-gray-600')}>
-                                  {[item.serial_number, item.brand, item.model].filter(Boolean).join(' • ') || '—'}
-                                </td>
-                                <td className={uiCx(uiTypography.body, 'px-3 py-3 align-top text-gray-600')}>
-                                  {item.value != null ? `$${item.value.toLocaleString()}` : '—'}
-                                </td>
-                                <td className="min-w-0 px-3 py-3 align-top">
-                                  <div className="flex min-w-0 flex-col gap-0.5">
-                                    <AppBadge variant={getEquipmentAssignmentBadgeVariant(isAssigned)} className="w-fit !normal-case">
-                                      {isAssigned ? 'Assigned' : 'Available'}
-                                    </AppBadge>
-                                    {isAssigned && item.assigned_to_name ? (
-                                      <span className={uiCx(uiTypography.helper, 'truncate')}>{item.assigned_to_name}</span>
-                                    ) : null}
-                                  </div>
-                                </td>
-                                <td className="px-3 py-3 align-top">
-                                  <AppBadge variant={getEquipmentStatusBadgeVariant(item.status)} className="!normal-case">
-                                    {formatEquipmentStatus(item.status || '—')}
-                                  </AppBadge>
-                                </td>
-                              </tr>
-                              {isExpanded ? (
-                                <tr className="bg-gray-50/50">
-                                  <td colSpan={8} className="p-0 align-top">
-                                    <ExpandedEquipmentPanel
-                                      item={item}
-                                      onViewDetails={() => nav(`/company-assets/equipment/${item.id}`)}
-                                    />
-                                  </td>
-                                </tr>
-                              ) : null}
-                            </Fragment>
+                                  {isAssigned && item.assigned_to_name ? (
+                                    <span className={uiCx(uiTypography.helper, 'truncate')}>{item.assigned_to_name}</span>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 align-top">
+                                <AppBadge variant={getEquipmentStatusBadgeVariant(item.status)} className="!normal-case">
+                                  {formatEquipmentStatus(item.status || '—')}
+                                </AppBadge>
+                              </td>
+                            </tr>
                           );
                         })}
                       </tbody>

@@ -29,7 +29,7 @@ function buildInitialForm(initialCategory: string): EquipmentNewFormValues {
     value: '',
     warranty_expiry: '',
     purchase_date: '',
-    status: 'available',
+    status: 'active',
     notes: '',
   };
 }

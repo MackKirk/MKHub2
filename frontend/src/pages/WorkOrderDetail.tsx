@@ -10,7 +10,7 @@ import { WorkOrderGeneralTab } from '@/components/fleet/WorkOrderGeneralTab';
 import { WorkOrderCostsTab } from '@/components/fleet/WorkOrderCostsTab';
 import { WorkOrderFilesTab } from '@/components/fleet/WorkOrderFilesTab';
 import { WorkOrderActivityTab } from '@/components/fleet/WorkOrderActivityTab';
-import type { CostItem } from '@/components/fleet/WorkOrderCostFormInline';
+import type { CostItem } from '@/components/fleet/WorkOrderCostModal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   AppButton,
@@ -92,6 +92,15 @@ function buildWoHeroAssetOneLine(
   return '';
 }
 
+function formatLocalDateTime(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const totalMinutes = d.getHours() * 60 + d.getMinutes();
+  const rounded = Math.min(23 * 60 + 55, Math.round(totalMinutes / 5) * 5);
+  const hours = Math.floor(rounded / 60);
+  const minutes = rounded % 60;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(hours)}:${pad(minutes)}`;
+}
+
 export default function WorkOrderDetail() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -131,6 +140,20 @@ export default function WorkOrderDetail() {
   useEffect(() => {
     setIsHeroCollapsed(tab !== 'general');
   }, [tab]);
+
+  useEffect(() => {
+    if (!showCheckInModal) return;
+    setCheckInForm((prev) =>
+      prev.check_in_at.trim() ? prev : { ...prev, check_in_at: formatLocalDateTime(new Date()) },
+    );
+  }, [showCheckInModal]);
+
+  useEffect(() => {
+    if (!showCheckOutModal) return;
+    setCheckOutForm((prev) =>
+      prev.check_out_at.trim() ? prev : { ...prev, check_out_at: formatLocalDateTime(new Date()) },
+    );
+  }, [showCheckOutModal]);
 
   const { data: workOrder, isLoading } = useQuery({
     queryKey: ['workOrder', id],
@@ -559,6 +582,7 @@ export default function WorkOrderDetail() {
             canEditCosts={canEditCosts}
             showCostForm={showCostForm}
             editingCost={editingCost}
+            isSaving={updateCostsMutation.isPending}
             onStartAdd={(category) => {
               setEditingCost({ category });
               setShowCostForm(true);

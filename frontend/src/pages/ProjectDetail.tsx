@@ -53,6 +53,7 @@ import { isHiddenReportCategory, isHiddenReportNote } from '@/lib/reportCategori
 import { buildReportCategorySelectGroups } from '@/lib/reportCategorySelectGroups';
 import { employeeHasSalesOrEstimatingDepartment, mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import {
+  editProjectDivisionsQuickInfo,
   opportunityEditEstimatorsQuickInfo,
   opportunityEditLeadSourceQuickInfo,
   opportunityEditNameQuickInfo,
@@ -7247,7 +7248,7 @@ function AuditLogEntry({ log }: { log: any }) {
               onClick={() => setExpanded(!expanded)}
               className="text-xs text-blue-600 hover:text-blue-800 mt-1"
             >
-              {expanded ? 'â–¼ Hide details' : 'â–¶ Show details'}
+              {expanded ? '▼ Hide details' : '▶ Show details'}
             </button>
           )}
           
@@ -10076,9 +10077,11 @@ function ProjectDivisionsHeroSection({
           {divisionIcons.length > 0 ? (
             <div className="flex items-center gap-2 flex-wrap">
               {divisionIcons.map((div) => (
-                <div
+                <AppTooltip
                   key={div.id}
-                  className="relative group/icon flex flex-col items-center"
+                  content={div.label}
+                  placement="bottom"
+                  className="flex flex-col items-center"
                 >
                   <div className={compact ? 'text-xl transition-transform hover:scale-110' : 'text-2xl transition-transform hover:scale-110'}>
                     {div.icon}
@@ -10086,12 +10089,7 @@ function ProjectDivisionsHeroSection({
                   <div className={uiCx('text-xs font-bold text-gray-600', compact ? 'mt-0' : 'mt-0.5')}>
                     {Math.round(div.percentage || 0)}%
                   </div>
-                  {/* Tooltip - below icon, indented right (left edge at icon so it extends right) */}
-                  <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-[100] shadow-lg">
-                    {div.label}
-                    <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
-                  </div>
-                </div>
+                </AppTooltip>
               ))}
             </div>
           ) : (
@@ -10254,7 +10252,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
                       >
                         {hasSubdivisions && (
                           <span className="text-gray-500 text-xs w-4 flex-shrink-0">
-                            {isExpanded ? 'â–¼' : 'â–¶'}
+                            {isExpanded ? '▼' : '▶'}
                           </span>
                         )}
                         {!hasSubdivisions && <span className="w-4 flex-shrink-0" aria-hidden />}
@@ -10315,8 +10313,8 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
         onClose={onClose}
         title="Edit Project Divisions"
         description="Select divisions for this project. Expand parents to choose subdivisions."
-        formWidth="wide"
-        dialogClassName="!max-w-5xl"
+        formWidth="comfortable"
+        quickInfo={editProjectDivisionsQuickInfo}
         footer={divisionsFooter}
       >
         {divisionsBody}
@@ -10331,7 +10329,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
         onClick={onClose}
       >
         <div
-          className="max-w-5xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+          className="max-w-lg w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
@@ -10570,19 +10568,11 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
         {divisionIcons.length > 0 && (
           <div className="flex items-center gap-2 flex-shrink-0">
             {divisionIcons.map((div) => (
-              <div
-                key={div.id}
-                className="relative group/icon"
-              >
+              <AppTooltip key={div.id} content={div.label} placement="bottom">
                 <div className="text-2xl cursor-pointer hover:scale-110 transition-transform">
                   {div.icon}
                 </div>
-                {/* Tooltip - below icon, indented right (left edge at icon so it extends right) */}
-                <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-[100] shadow-lg">
-                  {div.label}
-                  <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
-                </div>
-              </div>
+              </AppTooltip>
             ))}
           </div>
         )}

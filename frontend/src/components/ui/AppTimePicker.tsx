@@ -67,6 +67,8 @@ export function AppTimePicker({
   const [open, setOpen] = useState(false);
   const { anchorRef, portalListId, menuRect, closeDropdown } = useComboboxDropdown(open, setOpen, {
     menuWidth: TIME_PICKER_PANEL_WIDTH,
+    shouldIgnoreClose: (target) =>
+      target instanceof Element && target.closest('[role="listbox"]') != null,
   });
 
   const parsed = parseHhmm(value);

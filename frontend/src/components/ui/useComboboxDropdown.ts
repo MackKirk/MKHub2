@@ -5,6 +5,8 @@ export type ComboboxDropdownOptions = {
   menuWidth?: number;
   /** `start` — menu left aligns with anchor left; `end` — menu right aligns with anchor right. */
   menuAlign?: 'start' | 'end';
+  /** Clicks on these targets do not close the dropdown (e.g. nested portaled AppSelect menus). */
+  shouldIgnoreClose?: (target: Node) => boolean;
 };
 
 const VIEWPORT_EDGE_MARGIN = 8;
@@ -54,11 +56,12 @@ export function useComboboxDropdown(
       if (anchorRef.current?.contains(t)) return;
       const portal = document.getElementById(portalListId);
       if (portal?.contains(t)) return;
+      if (options?.shouldIgnoreClose?.(t)) return;
       closeDropdown();
     };
     document.addEventListener('mousedown', onDoc, true);
     return () => document.removeEventListener('mousedown', onDoc, true);
-  }, [open, portalListId, closeDropdown]);
+  }, [open, portalListId, closeDropdown, options?.shouldIgnoreClose]);
 
   return { anchorRef, portalListId, menuRect, closeDropdown };
 }

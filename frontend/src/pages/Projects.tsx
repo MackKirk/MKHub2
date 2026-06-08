@@ -1505,29 +1505,29 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
             {divisionIcons.length > 0 ? (
               <div className="flex items-center gap-2 flex-wrap">
                 {divisionIcons.map((div, idx) => (
-                  <div key={idx} className="relative group/icon flex flex-col items-center">
+                  <AppTooltip
+                    key={idx}
+                    content={div.label}
+                    placement="bottom"
+                    className="flex flex-col items-center"
+                  >
                     <div className="flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
                       {div.icon}
                     </div>
                     <div className="text-[10px] font-semibold text-gray-600 mt-0.5">
                       {Math.round(div.percentage || 0)}%
                     </div>
-                    <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-[100] shadow-lg">
-                      {div.label}
-                      <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
-                    </div>
-                  </div>
+                  </AppTooltip>
                 ))}
                 {projectDivIds.length > 5 && (
-                  <div className="relative group/icon">
+                  <AppTooltip
+                    content={`${projectDivIds.length - 5} more divisions`}
+                    placement="bottom"
+                  >
                     <div className="text-sm text-gray-400 cursor-pointer">
                       +{projectDivIds.length - 5}
                     </div>
-                    <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-[100] shadow-lg">
-                      {projectDivIds.length - 5} more divisions
-                      <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
-                    </div>
-                  </div>
+                  </AppTooltip>
                 )}
               </div>
             ) : (

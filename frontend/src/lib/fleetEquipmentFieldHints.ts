@@ -11,6 +11,6 @@ export const FLEET_EQUIPMENT_FIELD_HINTS = {
   warranty_expiry: 'Warranty Expiry\n\nDate warranty coverage ends, if applicable.',
   purchase_date: 'Purchase Date\n\nDate the item was acquired.',
   status:
-    'Status\n\nAvailable items can be checked out. Maintenance or retired limits use.',
+    'Status\n\nActive items can be assigned. Inactive, maintenance, or retired limits use.',
   notes: 'Notes\n\nOptional details, location, or maintenance notes.',
 } as const;

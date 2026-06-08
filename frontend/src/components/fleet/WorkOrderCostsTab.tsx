@@ -11,7 +11,7 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
-import { WorkOrderCostFormInline, type CostItem } from '@/components/fleet/WorkOrderCostFormInline';
+import { WorkOrderCostModal, type CostItem } from '@/components/fleet/WorkOrderCostModal';
 
 const EM_DASH = '—';
 
@@ -70,14 +70,10 @@ type CategorySectionProps = {
   category: CostCategory;
   items: CostItem[];
   categoryTotal: number;
-  workOrderId: string;
   canEdit: boolean;
-  showCostForm: boolean;
-  editingCost: EditingCost;
+  isFormOpenForCategory: boolean;
   onStartAdd: (category: CostCategory) => void;
   onStartEdit: (category: CostCategory, index: number) => void;
-  onCancelForm: () => void;
-  onSaveCosts: (costs: WorkOrderCosts) => void;
   onRemoveCost: (category: CostCategory, index: number) => void;
 };
 
@@ -85,19 +81,13 @@ function WorkOrderCostCategorySection({
   category,
   items,
   categoryTotal,
-  workOrderId,
   canEdit,
-  showCostForm,
-  editingCost,
+  isFormOpenForCategory,
   onStartAdd,
   onStartEdit,
-  onCancelForm,
-  onSaveCosts,
   onRemoveCost,
 }: CategorySectionProps) {
   const meta = CATEGORY_META[category];
-  const isEditingThisCategory = showCostForm && editingCost?.category === category;
-  const existingIndex = editingCost?.category === category ? editingCost.index : undefined;
 
   return (
     <AppCard className="min-w-0 h-full">
@@ -112,22 +102,12 @@ function WorkOrderCostCategorySection({
         }
       />
       <div className="mt-4 space-y-3">
-        {canEdit && !isEditingThisCategory ? (
+        {canEdit && !isFormOpenForCategory ? (
           <AppListCreateItem
             label={meta.createLabel}
             layout="row"
             className="w-full"
             onClick={() => onStartAdd(category)}
-          />
-        ) : null}
-        {isEditingThisCategory ? (
-          <WorkOrderCostFormInline
-            workOrderId={workOrderId}
-            category={category}
-            existingCostIndex={existingIndex}
-            existingCost={existingIndex !== undefined ? items[existingIndex] : undefined}
-            onSuccess={onSaveCosts}
-            onCancel={onCancelForm}
           />
         ) : null}
         {items.length === 0 ? (
@@ -172,6 +152,7 @@ type Props = {
   canEditCosts: boolean;
   showCostForm: boolean;
   editingCost: EditingCost;
+  isSaving?: boolean;
   onStartAdd: (category: CostCategory) => void;
   onStartEdit: (category: CostCategory, index: number) => void;
   onCancelForm: () => void;
@@ -190,6 +171,7 @@ export function WorkOrderCostsTab({
   canEditCosts,
   showCostForm,
   editingCost,
+  isSaving = false,
   onStartAdd,
   onStartEdit,
   onCancelForm,
@@ -199,16 +181,18 @@ export function WorkOrderCostsTab({
   getTotalCost,
 }: Props) {
   const sectionProps = {
-    workOrderId,
     canEdit: canEditCosts,
-    showCostForm,
-    editingCost,
     onStartAdd,
     onStartEdit,
-    onCancelForm,
-    onSaveCosts,
     onRemoveCost,
   };
+
+  const editingExistingCost =
+    editingCost?.index !== undefined
+      ? ({ labor: laborCosts, parts: partsCosts, other: otherCosts }[editingCost.category]?.[editingCost.index] as
+          | CostItem
+          | undefined)
+      : undefined;
 
   return (
     <div className={uiSpacing.sectionStack}>
@@ -217,18 +201,21 @@ export function WorkOrderCostsTab({
           category="labor"
           items={laborCosts}
           categoryTotal={getCostTotal(costs, 'labor')}
+          isFormOpenForCategory={showCostForm && editingCost?.category === 'labor'}
           {...sectionProps}
         />
         <WorkOrderCostCategorySection
           category="parts"
           items={partsCosts}
           categoryTotal={getCostTotal(costs, 'parts')}
+          isFormOpenForCategory={showCostForm && editingCost?.category === 'parts'}
           {...sectionProps}
         />
         <WorkOrderCostCategorySection
           category="other"
           items={otherCosts}
           categoryTotal={getCostTotal(costs, 'other')}
+          isFormOpenForCategory={showCostForm && editingCost?.category === 'other'}
           {...sectionProps}
         />
       </div>
@@ -249,6 +236,19 @@ export function WorkOrderCostsTab({
           <p className={uiCx(uiTypography.sectionTitle, 'text-brand-red')}>${getTotalCost(costs).toFixed(2)}</p>
         </div>
       </AppCard>
+
+      {showCostForm && editingCost ? (
+        <WorkOrderCostModal
+          open
+          workOrderId={workOrderId}
+          category={editingCost.category}
+          existingCost={editingExistingCost}
+          existingCostIndex={editingCost.index}
+          isSaving={isSaving}
+          onSuccess={onSaveCosts}
+          onClose={onCancelForm}
+        />
+      ) : null}
     </div>
   );
 }

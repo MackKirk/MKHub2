@@ -1,24 +1,31 @@
-import type { FleetBadgeVariant } from '@/lib/fleetUi';
+import {
+  formatFleetAssetStatus,
+  getFleetAssetStatusVariant,
+  type FleetBadgeVariant,
+} from '@/lib/fleetUi';
 
-export function getEquipmentStatusBadgeVariant(status: string): FleetBadgeVariant {
-  switch (status) {
-    case 'available':
-      return 'success';
-    case 'checked_out':
-      return 'info';
-    case 'maintenance':
-      return 'warning';
-    case 'retired':
-      return 'danger';
-    default:
-      return 'neutral';
-  }
+/** Same operational statuses as fleet assets. */
+export const EQUIPMENT_STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'maintenance', label: 'Maintenance' },
+  { value: 'retired', label: 'Retired' },
+] as const;
+
+/** Legacy DB values before fleet-aligned status migration. */
+export function normalizeEquipmentOperationalStatus(status: string): string {
+  if (status === 'available' || status === 'checked_out') return 'active';
+  return status;
 }
 
-export function getEquipmentAssignmentBadgeVariant(isAssigned: boolean): FleetBadgeVariant {
-  return isAssigned ? 'warning' : 'success';
+export function getEquipmentStatusBadgeVariant(status: string): FleetBadgeVariant {
+  return getFleetAssetStatusVariant(normalizeEquipmentOperationalStatus(status));
 }
 
 export function formatEquipmentStatus(status: string): string {
-  return status.replace(/_/g, ' ');
+  return formatFleetAssetStatus(normalizeEquipmentOperationalStatus(status));
+}
+
+export function getEquipmentAssignmentBadgeVariant(isAssigned: boolean): FleetBadgeVariant {
+  return isAssigned ? 'info' : 'success';
 }

@@ -615,6 +615,35 @@ export const opportunityEditEstimatorsQuickInfo = formModalQuickInfo({
   ),
 });
 
+/** Project / opportunity detail — edit project divisions. */
+export const editProjectDivisionsQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Choose which work divisions apply to this record — for example, {uiLabel('Roofing')},{' '}
+      {uiLabel('Mechanical')}, or {uiLabel('Electrical')}. Divisions drive pricing splits and how work is categorized
+      across the app.
+    </>
+  ),
+  howToUse: (
+    <>
+      Tap a division to select or clear it. When a parent has subdivisions, use the arrow to expand the list and pick
+      the specific trade. Selected divisions are highlighted.
+    </>
+  ),
+  behavior: (
+    <>
+      Percentages shown beside each icon are calculated from approved pricing items — you do not set them here. Removing a
+      division may affect pricing approval on linked proposal lines.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} updates the division list on this project or
+      opportunity.
+    </>
+  ),
+});
+
 /** Opportunity / project calendar — create or edit event. */
 export const projectCalendarEventQuickInfo = formModalQuickInfo({
   purpose: (

@@ -29,8 +29,8 @@ class EquipmentCategory(str, Enum):
 
 
 class EquipmentStatus(str, Enum):
-    available = "available"
-    checked_out = "checked_out"
+    active = "active"
+    inactive = "inactive"
     maintenance = "maintenance"
     retired = "retired"
 
@@ -193,7 +193,7 @@ class EquipmentBase(BaseModel):
     value: Optional[float] = None
     warranty_expiry: Optional[datetime] = None
     purchase_date: Optional[datetime] = None
-    status: EquipmentStatus = EquipmentStatus.available
+    status: EquipmentStatus = EquipmentStatus.active
     photos: Optional[List[uuid.UUID]] = None
     documents: Optional[List[uuid.UUID]] = None
     notes: Optional[str] = None

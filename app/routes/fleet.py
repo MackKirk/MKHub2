@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
-from sqlalchemy import or_, and_, func, case, cast, BigInteger
+from sqlalchemy import or_, and_, func, case, cast, BigInteger, exists
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session, joinedload
@@ -848,6 +848,40 @@ def _fleet_log_actor_for_assignment_event(
     return str(uid), get_user_display(db, uid)
 
 
+def _equipment_log_actor_for_assignment_event(
+    logs: List[EquipmentLog],
+    log_type: str,
+    event_at: Optional[datetime],
+    db: Session,
+) -> tuple[Optional[str], Optional[str]]:
+    """Match checkout/checkin equipment_log to synthetic history row by time."""
+    if event_at is None:
+        return None, None
+    event_ts = event_at.timestamp() if hasattr(event_at, "timestamp") else None
+    if event_ts is None:
+        return None, None
+    best: Optional[EquipmentLog] = None
+    best_delta: Optional[float] = None
+    for log in logs:
+        if (log.log_type or "") != log_type or log.log_date is None:
+            continue
+        try:
+            delta = abs(log.log_date.timestamp() - event_ts)
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if delta > 300:
+            continue
+        if best_delta is None or delta < best_delta:
+            best_delta = delta
+            best = log
+    if not best:
+        return None, None
+    uid = best.user_id or best.created_by
+    if not uid:
+        return None, None
+    return str(uid), get_user_display(db, uid)
+
+
 @router.get("/assets/{asset_id}/history")
 def get_fleet_asset_history(
     asset_id: uuid.UUID,
@@ -1143,7 +1177,7 @@ def delete_compliance(
 
 
 # ---------- EQUIPMENT ----------
-def _equipment_order(sort: Optional[str], direction: str):
+def _equipment_order(sort: Optional[str], direction: str, _db: Session):
     """Return SQLAlchemy order_by clause for equipment list."""
     is_asc = (direction or "asc").lower() == "asc"
     if sort == "unit_number":
@@ -1159,8 +1193,29 @@ def _equipment_order(sort: Optional[str], direction: str):
     if sort == "value":
         return Equipment.value.asc().nulls_last() if is_asc else Equipment.value.desc().nulls_last()
     if sort == "assignment":
-        # checked_out first when asc = "assigned" first
-        return Equipment.status.asc() if is_asc else Equipment.status.desc()
+        has_asset_assignment = exists().where(
+            and_(
+                AssetAssignment.equipment_id == Equipment.id,
+                AssetAssignment.returned_at.is_(None),
+            )
+        )
+        has_legacy_assignment = exists().where(
+            and_(
+                EquipmentAssignment.equipment_id == Equipment.id,
+                EquipmentAssignment.is_active == True,
+            )
+        )
+        has_checkout = exists().where(
+            and_(
+                EquipmentCheckout.equipment_id == Equipment.id,
+                EquipmentCheckout.status == "checked_out",
+            )
+        )
+        assigned_flag = case(
+            (or_(has_asset_assignment, has_legacy_assignment, has_checkout), 1),
+            else_=0,
+        )
+        return assigned_flag.asc() if is_asc else assigned_flag.desc()
     if sort == "status":
         return Equipment.status.asc() if is_asc else Equipment.status.desc()
     return Equipment.created_at.desc()
@@ -1194,19 +1249,29 @@ def list_equipment(
     if status_not:
         query = query.filter(Equipment.status != status_not)
     if assigned is not None:
-        active_assignment_equipment_ids = db.query(EquipmentAssignment.equipment_id).filter(
+        open_asset_assignment_ids = db.query(AssetAssignment.equipment_id).filter(
+            AssetAssignment.equipment_id.isnot(None),
+            AssetAssignment.returned_at.is_(None),
+        ).distinct()
+        open_legacy_assignment_ids = db.query(EquipmentAssignment.equipment_id).filter(
             EquipmentAssignment.is_active == True
+        ).distinct()
+        open_checkout_ids = db.query(EquipmentCheckout.equipment_id).filter(
+            EquipmentCheckout.status == "checked_out"
         ).distinct()
         if assigned:
             query = query.filter(
                 or_(
-                    Equipment.status == "checked_out",
-                    Equipment.id.in_(active_assignment_equipment_ids)
+                    Equipment.id.in_(open_asset_assignment_ids),
+                    Equipment.id.in_(open_legacy_assignment_ids),
+                    Equipment.id.in_(open_checkout_ids),
                 )
             )
         else:
-            query = query.filter(Equipment.status != "checked_out").filter(
-                ~Equipment.id.in_(active_assignment_equipment_ids)
+            query = query.filter(
+                ~Equipment.id.in_(open_asset_assignment_ids),
+                ~Equipment.id.in_(open_legacy_assignment_ids),
+                ~Equipment.id.in_(open_checkout_ids),
             )
     if search:
         search_term = f"%{search}%"
@@ -1221,7 +1286,7 @@ def list_equipment(
             )
         )
 
-    order_clause = _equipment_order(sort, dir or "asc")
+    order_clause = _equipment_order(sort, dir or "asc", db)
     if isinstance(order_clause, tuple):
         query = query.order_by(*order_clause)
     else:
@@ -1235,7 +1300,30 @@ def list_equipment(
     for eq in equipment_list:
         d = EquipmentResponse.model_validate(eq).model_dump(mode="json")
         assigned_user_id = None
-        if eq.status == "checked_out":
+        asset_assignment = (
+            db.query(AssetAssignment)
+            .filter(
+                AssetAssignment.equipment_id == eq.id,
+                AssetAssignment.returned_at.is_(None),
+            )
+            .order_by(AssetAssignment.assigned_at.desc())
+            .first()
+        )
+        if asset_assignment:
+            assigned_user_id = asset_assignment.assigned_to_user_id
+        if assigned_user_id is None:
+            legacy_assignment = (
+                db.query(EquipmentAssignment)
+                .filter(
+                    EquipmentAssignment.equipment_id == eq.id,
+                    EquipmentAssignment.is_active == True
+                )
+                .order_by(EquipmentAssignment.assigned_at.desc())
+                .first()
+            )
+            if legacy_assignment:
+                assigned_user_id = legacy_assignment.assigned_to_user_id
+        if assigned_user_id is None:
             checkout = (
                 db.query(EquipmentCheckout)
                 .filter(
@@ -1247,18 +1335,6 @@ def list_equipment(
             )
             if checkout:
                 assigned_user_id = checkout.checked_out_by_user_id
-        if assigned_user_id is None:
-            assignment = (
-                db.query(EquipmentAssignment)
-                .filter(
-                    EquipmentAssignment.equipment_id == eq.id,
-                    EquipmentAssignment.is_active == True
-                )
-                .order_by(EquipmentAssignment.assigned_at.desc())
-                .first()
-            )
-            if assignment:
-                assigned_user_id = assignment.assigned_to_user_id
         d["assigned_to_name"] = get_user_display(db, assigned_user_id) if assigned_user_id else None
         items.append(d)
 
@@ -1423,9 +1499,15 @@ def checkout_equipment(
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")
     
-    if equipment.status == "checked_out":
+    open_checkout = db.query(EquipmentCheckout).filter(
+        EquipmentCheckout.equipment_id == equipment_id,
+        EquipmentCheckout.status == "checked_out",
+    ).first()
+    if open_checkout:
         raise HTTPException(status_code=400, detail="Equipment is already checked out")
-    
+    if equipment.status in ("retired", "maintenance", "inactive"):
+        raise HTTPException(status_code=400, detail=f"Equipment is {equipment.status} and cannot be checked out")
+
     new_checkout = EquipmentCheckout(
         equipment_id=equipment_id,
         checked_out_by_user_id=checkout.checked_out_by_user_id,
@@ -1438,10 +1520,8 @@ def checkout_equipment(
     )
     db.add(new_checkout)
     
-    # Update equipment status
-    equipment.status = "checked_out"
     equipment.updated_at = datetime.now(timezone.utc)
-    
+
     # Create log entry
     log = EquipmentLog(
         equipment_id=equipment_id,
@@ -1502,10 +1582,10 @@ def checkin_equipment(
     checkout.status = "returned"
     checkout.updated_at = datetime.now(timezone.utc)
     
-    # Update equipment status
-    equipment.status = "available"
+    if equipment.status not in ("retired", "maintenance", "inactive"):
+        equipment.status = "active"
     equipment.updated_at = datetime.now(timezone.utc)
-    
+
     # Create log entry
     log = EquipmentLog(
         equipment_id=equipment_id,
@@ -1556,6 +1636,190 @@ def get_equipment_logs(
     return db.query(EquipmentLog).filter(
         EquipmentLog.equipment_id == equipment_id
     ).order_by(EquipmentLog.log_date.desc()).all()
+
+
+@router.get("/equipment/{equipment_id}/history")
+def get_equipment_history(
+    equipment_id: uuid.UUID,
+    limit: int = Query(300, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("equipment:read")),
+):
+    """
+    Unified timeline: assignments (when no matching assignment audit), equipment logs,
+    and audit entries for this equipment (edits, work orders, assignments).
+    """
+    equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+    if not equipment:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+
+    eq_str = str(equipment_id)
+    wo_ids = [
+        row[0]
+        for row in db.query(WorkOrder.id)
+        .filter(WorkOrder.entity_type == "equipment", WorkOrder.entity_id == equipment_id)
+        .all()
+    ]
+
+    try:
+        bind = db.get_bind()
+        dialect = getattr(bind.dialect, "name", "") or ""
+    except Exception:
+        dialect = ""
+
+    equipment_entity_match = and_(AuditLog.entity_type == "equipment", AuditLog.entity_id == equipment_id)
+    audit_parts = [equipment_entity_match]
+    if dialect == "postgresql":
+        audit_parts.append(AuditLog.context.op("->>")("equipment_id") == eq_str)
+        if wo_ids:
+            audit_parts.append(and_(AuditLog.entity_type == "work_order", AuditLog.entity_id.in_(wo_ids)))
+            audit_parts.append(
+                and_(
+                    AuditLog.entity_type == "work_order_file",
+                    AuditLog.context.op("->>")("work_order_id").in_([str(w) for w in wo_ids]),
+                )
+            )
+    else:
+        eq_ctx = func.json_extract(AuditLog.context, "$.equipment_id")
+        audit_parts.append(eq_ctx == eq_str)
+        if wo_ids:
+            wos = [str(w) for w in wo_ids]
+            audit_parts.append(and_(AuditLog.entity_type == "work_order", AuditLog.entity_id.in_(wo_ids)))
+            wof_wo = func.json_extract(AuditLog.context, "$.work_order_id")
+            audit_parts.append(and_(AuditLog.entity_type == "work_order_file", wof_wo.in_(wos)))
+
+    audit_rows = (
+        db.query(AuditLog)
+        .filter(or_(*audit_parts))
+        .order_by(AuditLog.timestamp_utc.desc())
+        .limit(450)
+        .all()
+    )
+    audit_assignment_ids = {
+        str(row.entity_id) for row in audit_rows if (row.entity_type or "") == "asset_assignment"
+    }
+
+    items: List[dict] = []
+
+    assignments = (
+        db.query(AssetAssignment)
+        .filter(AssetAssignment.equipment_id == equipment_id)
+        .order_by(AssetAssignment.assigned_at.desc())
+        .all()
+    )
+    has_assignments = len(assignments) > 0
+
+    assign_return_logs: List[EquipmentLog] = []
+    if assignments:
+        assign_return_logs = (
+            db.query(EquipmentLog)
+            .filter(
+                EquipmentLog.equipment_id == equipment_id,
+                EquipmentLog.log_type.in_(("checkout", "checkin")),
+            )
+            .all()
+        )
+
+    for a in assignments:
+        if str(a.id) in audit_assignment_ids:
+            continue
+        assignee = (a.assigned_to_name or "").strip() or (
+            get_user_display(db, a.assigned_to_user_id) if a.assigned_to_user_id else "Unknown"
+        )
+        checkout_actor_id, checkout_actor_name = _equipment_log_actor_for_assignment_event(
+            assign_return_logs, "checkout", a.assigned_at, db
+        )
+        items.append(
+            {
+                "id": f"assign-out-{a.id}",
+                "source": "assignment",
+                "kind": "checkout",
+                "title": "Checked out",
+                "subtitle": f"Assigned to {assignee}",
+                "detail": None,
+                "occurred_at": a.assigned_at.isoformat() if a.assigned_at else "",
+                "actor_id": checkout_actor_id,
+                "actor_name": checkout_actor_name,
+                "assignment_id": str(a.id),
+                "log_subtype": "assign",
+                "audit_action": None,
+                "changes_json": None,
+            }
+        )
+        if a.returned_at:
+            return_actor_id, return_actor_name = _equipment_log_actor_for_assignment_event(
+                assign_return_logs, "checkin", a.returned_at, db
+            )
+            items.append(
+                {
+                    "id": f"assign-in-{a.id}",
+                    "source": "assignment",
+                    "kind": "return",
+                    "title": "Returned",
+                    "subtitle": f"Previously with {assignee}",
+                    "detail": None,
+                    "occurred_at": a.returned_at.isoformat() if a.returned_at else "",
+                    "actor_id": return_actor_id,
+                    "actor_name": return_actor_name,
+                    "assignment_id": str(a.id),
+                    "log_subtype": "return",
+                    "audit_action": None,
+                    "changes_json": None,
+                }
+            )
+
+    for row in audit_rows:
+        items.append(
+            {
+                "id": f"audit-{row.id}",
+                "source": "audit",
+                "kind": (row.action or "audit").lower(),
+                "title": (row.entity_type or "audit").replace("_", " "),
+                "subtitle": None,
+                "detail": None,
+                "occurred_at": row.timestamp_utc.isoformat() if row.timestamp_utc else "",
+                "actor_id": str(row.actor_id) if row.actor_id else None,
+                "actor_name": get_user_display(db, row.actor_id) if row.actor_id else None,
+                "assignment_id": None,
+                "log_subtype": None,
+                "audit_action": row.action,
+                "changes_json": row.changes_json,
+                "entity_type": row.entity_type,
+                "entity_id": str(row.entity_id) if row.entity_id is not None else None,
+                "audit_context": row.context,
+            }
+        )
+
+    equipment_logs = (
+        db.query(EquipmentLog)
+        .filter(EquipmentLog.equipment_id == equipment_id)
+        .order_by(EquipmentLog.log_date.desc())
+        .all()
+    )
+    for log in equipment_logs:
+        if has_assignments and log.log_type in ("checkout", "checkin"):
+            continue
+        actor_uid = log.user_id or log.created_by
+        items.append(
+            {
+                "id": f"log-{log.id}",
+                "source": "fleet_log",
+                "kind": log.log_type,
+                "title": log.log_type.replace("_", " ").title(),
+                "subtitle": None,
+                "detail": log.description,
+                "occurred_at": log.log_date.isoformat() if log.log_date else "",
+                "actor_id": str(actor_uid) if actor_uid else None,
+                "actor_name": get_user_display(db, actor_uid) if actor_uid else None,
+                "assignment_id": None,
+                "log_subtype": None,
+                "audit_action": None,
+                "changes_json": None,
+            }
+        )
+
+    items.sort(key=lambda x: x.get("occurred_at") or "", reverse=True)
+    return {"items": items[:limit]}
 
 
 @router.get("/equipment/{equipment_id}/checkouts", response_model=List[EquipmentCheckoutResponse])
@@ -1755,11 +2019,6 @@ def delete_user_assets_history(
     ).all()
     for co in deleted_checkouts:
         # Reset equipment status if it was checked out
-        if co.status == "checked_out":
-            equipment = db.query(Equipment).filter(Equipment.id == co.equipment_id).first()
-            if equipment:
-                equipment.status = "available"
-                equipment.updated_at = datetime.now(timezone.utc)
         db.delete(co)
     
     # Delete all assignment history (including active assignments)
@@ -1808,13 +2067,6 @@ def delete_equipment_checkout(
         raise HTTPException(status_code=404, detail="Checkout not found")
 
     eq_id = checkout.equipment_id
-    # Reset equipment status if it was checked out
-    if checkout.status == "checked_out":
-        equipment = db.query(Equipment).filter(Equipment.id == checkout.equipment_id).first()
-        if equipment:
-            equipment.status = "available"
-            equipment.updated_at = datetime.now(timezone.utc)
-
     db.delete(checkout)
     db.commit()
     audit_fleet(

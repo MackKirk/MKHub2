@@ -1,4 +1,5 @@
 import { FLEET_EQUIPMENT_FIELD_HINTS as H } from '@/lib/fleetEquipmentFieldHints';
+import { EQUIPMENT_STATUS_OPTIONS } from '@/lib/equipmentUi';
 import {
   AppDatePicker,
   AppInput,
@@ -15,13 +16,6 @@ export const EQUIPMENT_CATEGORY_OPTIONS = [
   { value: 'electronics', label: 'Electronics' },
   { value: 'small_tool', label: 'Small Tool' },
   { value: 'safety', label: 'Safety Equipment' },
-];
-
-export const EQUIPMENT_STATUS_OPTIONS = [
-  { value: 'available', label: 'Available' },
-  { value: 'checked_out', label: 'Checked Out' },
-  { value: 'maintenance', label: 'Maintenance' },
-  { value: 'retired', label: 'Retired' },
 ];
 
 export type EquipmentNewFormValues = {

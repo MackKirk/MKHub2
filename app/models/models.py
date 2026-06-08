@@ -2602,7 +2602,7 @@ class Equipment(Base):
     value: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))
     warranty_expiry: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     purchase_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    status: Mapped[str] = mapped_column(String(50), default="available", index=True)  # available|checked_out|maintenance|retired
+    status: Mapped[str] = mapped_column(String(50), default="active", index=True)  # active|inactive|maintenance|retired
     photos: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
     documents: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
     notes: Mapped[Optional[str]] = mapped_column(Text)
