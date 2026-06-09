@@ -412,6 +412,53 @@ function assetAssignmentLines(action: string, changes: Record<string, unknown>):
   return `Assignment · ${action}`;
 }
 
+const COMPANY_CREDIT_CARD_FIELD_LABELS: Record<string, string> = {
+  label: 'Internal label',
+  network: 'Network',
+  last_four: 'Last four',
+  expiry_month: 'Expiry month',
+  expiry_year: 'Expiry year',
+  status: 'Status',
+  cardholder_name: 'Name on card',
+  issuer: 'Issuer / bank',
+  billing_entity: 'Billing entity',
+  notes: 'Notes',
+};
+
+function companyCreditCardLines(action: string, changes: Record<string, unknown>, ctx: Record<string, unknown>): string {
+  const act = action.toUpperCase();
+  const after = (changes.after as Record<string, unknown>) || {};
+  const before = (changes.before as Record<string, unknown>) || {};
+  const cf = Array.isArray(ctx.changed_fields) ? (ctx.changed_fields as string[]) : undefined;
+
+  if (act === 'CREATE') {
+    const label = after.label ? String(after.label) : '';
+    return label ? `Corporate card created · ${label}` : 'Corporate card created';
+  }
+  if (act === 'UPDATE') {
+    const fieldLabels = diffChangedFieldLabels(COMPANY_CREDIT_CARD_FIELD_LABELS, before, after, cf);
+    const phrase = joinFieldLabelsForUpdatePhrase(fieldLabels);
+    return phrase ? `Corporate card ${phrase} updated` : 'Corporate card updated';
+  }
+  if (act === 'DELETE') {
+    return 'Corporate card removed';
+  }
+  return `Corporate card · ${action}`;
+}
+
+function companyCreditCardAssignmentLines(action: string, changes: Record<string, unknown>): string {
+  const act = action.toUpperCase();
+  const name = (changes.assigned_to_name as string) || '';
+  const ret = changes.returned === true;
+  if (act === 'CREATE') {
+    return name ? `Custody assigned · ${name}` : 'Custody assigned';
+  }
+  if (act === 'UPDATE' && ret) {
+    return name ? `Custody return recorded · ${name}` : 'Custody return recorded';
+  }
+  return `Custody · ${action}`;
+}
+
 /** Audit-backed activity row (fleet asset history tab). */
 export type FleetHistoryAuditItem = {
   source: string;
@@ -504,6 +551,7 @@ export function fleetHistoryChangeDetailEligible(item: FleetHistoryAuditItem): b
     'fleet_compliance_record',
     'work_order_file',
     'asset_assignment',
+    'company_credit_card',
   ]);
   if (!allowed.has(et)) return false;
 
@@ -581,6 +629,12 @@ export function buildFleetHistoryListSummary(item: FleetHistoryAuditItem): strin
       return 'Work order file updated';
     case 'asset_assignment':
       return 'Assignment updated';
+    case 'company_credit_card': {
+      const action = (item.audit_action || '').toUpperCase();
+      if (action === 'CREATE') return 'Corporate card created';
+      if (action === 'DELETE') return 'Corporate card removed';
+      return 'Corporate card updated';
+    }
     default:
       return `${formatFleetAuditEntityTitle(item.entity_type)} updated`;
   }
@@ -620,6 +674,10 @@ export function buildFleetHistoryDescription(item: FleetHistoryAuditItem): strin
         return workOrderFileLines(action, changes);
       case 'asset_assignment':
         return assetAssignmentLines(action, changes);
+      case 'company_credit_card':
+        return companyCreditCardLines(action, changes, ctx);
+      case 'company_credit_card_assignment':
+        return companyCreditCardAssignmentLines(action, changes);
       default:
         return `${(item.entity_type || 'Record').replace(/_/g, ' ')} · ${action}`;
     }
@@ -658,6 +716,8 @@ export function formatFleetAuditEntityTitle(entityType: string | null | undefine
     work_order: 'Work order',
     work_order_file: 'Work order file',
     asset_assignment: 'Assignment',
+    company_credit_card: 'Corporate card',
+    company_credit_card_assignment: 'Custody',
   };
   return map[t] || (entityType || 'Record').replace(/_/g, ' ');
 }
@@ -686,6 +746,13 @@ function labelForFleetAuditField(entityType: string, fieldKey: string): string {
     work_order: WORK_ORDER_LABELS,
     work_order_file: WORK_ORDER_FILE_LABELS,
     asset_assignment: ASSET_ASSIGNMENT_CHANGE_LABELS,
+    company_credit_card: COMPANY_CREDIT_CARD_FIELD_LABELS,
+    company_credit_card_assignment: {
+      company_credit_card_id: 'Corporate card',
+      assigned_to_user_id: 'Assigned user',
+      assigned_to_name: 'Assigned to',
+      returned: 'Return completed',
+    },
   };
   const m = maps[t];
   if (m?.[fieldKey]) return m[fieldKey];

@@ -1,4 +1,12 @@
 import { type ReactNode, useMemo } from 'react';
+import {
+  AppButton,
+  AppCalendarBase,
+  type AppCalendarDay,
+  type AppCalendarDayBadgeTone,
+  uiCx,
+  uiTypography,
+} from '@/components/ui';
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
@@ -41,6 +49,21 @@ type Props = {
   footerNote?: ReactNode;
 };
 
+const BADGE_TONE_MAP: Record<DayBadgeTone, AppCalendarDayBadgeTone> = {
+  booked: 'accent',
+  draft: 'emphasis',
+  neutral: 'neutral',
+};
+
+function isTodayDate(date: Date) {
+  const todayRef = new Date();
+  return (
+    date.getFullYear() === todayRef.getFullYear() &&
+    date.getMonth() === todayRef.getMonth() &&
+    date.getDate() === todayRef.getDate()
+  );
+}
+
 export default function DirectorMeetingMonthCalendar({
   compact = true,
   visibleMonth,
@@ -67,124 +90,59 @@ export default function DirectorMeetingMonthCalendar({
     return out;
   }, [visibleMonth]);
 
-  const calWrap = compact ? 'w-full max-w-[26rem] sm:max-w-[34rem] mx-auto' : 'max-w-lg mx-auto';
-  const cellAspect = compact ? 'aspect-[5/3] min-h-[2.6rem]' : 'aspect-[5/3] min-h-[3rem]';
-  const dayNumCls = compact ? 'text-sm tabular-nums leading-none' : 'text-base tabular-nums leading-none';
-  const dayHead = compact ? 'text-[10px] py-1' : 'text-[10px] py-1.5';
-  const navBtn = compact ? 'px-2 py-1 text-xs' : 'px-2.5 py-1.5 text-xs';
-  const monthTitle = 'text-sm';
-  const badgeCls = compact ? 'h-6 min-w-[1.25rem] px-1 text-[10px]' : 'h-7 min-w-[1.5rem] px-1 text-xs';
-  const gridGap = 'gap-1.5';
-  const cellRound = 'rounded-xl';
+  const days: AppCalendarDay[] = useMemo(
+    () =>
+      cells.map((cell) => {
+        if (!cell) return { dateLabel: '', isMuted: true };
+        const meta = getDayProps(cell.ymd, cell.date);
+        const showBadge =
+          !meta.disabled && meta.badge != null && (meta.badge > 0 || meta.badgeTone === 'booked');
+        const isSelected = selectedYmd === cell.ymd;
+        const isTodayCell = isTodayDate(cell.date);
+        return {
+          dateLabel: String(cell.date.getDate()),
+          isMuted: meta.disabled,
+          isToday: isTodayCell && !meta.disabled,
+          isSelected: isSelected && !meta.disabled,
+          badge: showBadge ? meta.badge : undefined,
+          badgeTone: showBadge ? BADGE_TONE_MAP[meta.badgeTone] : undefined,
+          onClick: meta.disabled ? undefined : () => onSelectYmd(cell.ymd),
+          title: meta.disabled ? undefined : getDayTitle?.(cell.ymd, cell.date),
+        };
+      }),
+    [cells, getDayProps, getDayTitle, onSelectYmd, selectedYmd],
+  );
 
-  const badgeToneClass = (tone: DayBadgeTone) => {
-    if (tone === 'booked') return 'bg-brand-red text-white shadow-sm';
-    if (tone === 'draft') return 'bg-slate-700 text-white shadow-sm';
-    return 'border border-slate-300 bg-white text-slate-600';
-  };
+  const monthLabel = visibleMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+  const weekDayLabels = compact
+    ? ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
-    <div className={`rounded-xl border border-slate-200 bg-slate-50/50 p-4 ${calWrap}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <div className={`font-semibold text-slate-900 capitalize ${monthTitle}`}>
-          {visibleMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
-        </div>
-        <div className="flex items-center gap-1">
-          <button
+    <AppCalendarBase
+        className="h-full min-h-0 w-full"
+        compact={compact}
+        compactCellProfile="flat"
+        monthLabel={monthLabel}
+        weekDayLabels={weekDayLabels}
+        days={days}
+        onPrevious={() => onVisibleMonthChange(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))}
+        onNext={() => onVisibleMonthChange(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))}
+        headerExtra={
+          <AppButton
             type="button"
-            onClick={() => onVisibleMonthChange(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))}
-            className={`rounded-md border border-slate-200 bg-white font-medium text-slate-600 hover:bg-slate-50 ${navBtn}`}
-            aria-label="Previous month"
-          >
-            ←
-          </button>
-          <button
-            type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => {
               const t = new Date();
               onVisibleMonthChange(new Date(t.getFullYear(), t.getMonth(), 1));
             }}
-            className={`rounded-md border border-slate-200 bg-white font-medium text-slate-600 hover:bg-slate-50 ${navBtn}`}
+            className={compact ? 'h-6 min-h-0 px-1.5 text-[10px]' : undefined}
           >
             Today
-          </button>
-          <button
-            type="button"
-            onClick={() => onVisibleMonthChange(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))}
-            className={`rounded-md border border-slate-200 bg-white font-medium text-slate-600 hover:bg-slate-50 ${navBtn}`}
-            aria-label="Next month"
-          >
-            →
-          </button>
-        </div>
-      </div>
-      <div className={`grid grid-cols-7 ${gridGap}`}>
-        {(compact ? ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']).map(
-          (d, i) => (
-            <div
-              key={`${d}-${i}`}
-              className={`text-center font-semibold uppercase tracking-wide text-slate-500 ${dayHead}`}
-            >
-              {d}
-            </div>
-          )
-        )}
-        {cells.map((cell, index) => {
-          if (!cell) return <div key={`pad-${index}`} className={`${cellAspect} ${cellRound}`} />;
-          const meta = getDayProps(cell.ymd, cell.date);
-          /** Show count when >0, or 0 when day has slots but none left (booked tone). */
-          const showBadge =
-            !meta.disabled &&
-            meta.badge != null &&
-            (meta.badge > 0 || meta.badgeTone === 'booked');
-          const isSelected = selectedYmd === cell.ymd;
-          const todayRef = new Date();
-          const isTodayCell =
-            cell.date.getFullYear() === todayRef.getFullYear() &&
-            cell.date.getMonth() === todayRef.getMonth() &&
-            cell.date.getDate() === todayRef.getDate();
-          return (
-            <button
-              key={cell.ymd}
-              type="button"
-              disabled={meta.disabled}
-              onClick={() => onSelectYmd(cell.ymd)}
-              title={
-                meta.disabled
-                  ? undefined
-                  : getDayTitle?.(cell.ymd, cell.date) ?? undefined
-              }
-              className={`${cellAspect} ${cellRound} border relative flex w-full min-w-0 flex-col overflow-hidden text-left transition-colors ${
-                meta.disabled
-                  ? 'cursor-not-allowed border-slate-100 bg-slate-50/50 text-slate-300'
-                  : 'cursor-pointer border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
-              } ${
-                isSelected && !meta.disabled ? 'ring-2 ring-brand-red border-brand-red/50 bg-red-50/50 shadow-sm' : ''
-              } ${isTodayCell && !meta.disabled && !isSelected ? 'ring-1 ring-slate-300' : ''}`}
-            >
-              <span
-                className={`self-start pl-1.5 pt-1 ${dayNumCls} ${isTodayCell ? 'font-semibold text-slate-900' : ''}`}
-              >
-                {cell.date.getDate()}
-              </span>
-              <div className="flex min-h-0 flex-1 items-center justify-center px-0.5 pb-1">
-                {showBadge ? (
-                  <span
-                    className={`inline-flex items-center justify-center rounded-full font-bold leading-none ${badgeCls} ${badgeToneClass(
-                      meta.badgeTone
-                    )}`}
-                  >
-                    {meta.badge}
-                  </span>
-                ) : null}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-      {footerNote ? (
-        <div className="text-slate-500 leading-relaxed mt-3 text-[11px]">{footerNote}</div>
-      ) : null}
-    </div>
+          </AppButton>
+        }
+        footer={footerNote ? <div className={uiCx(uiTypography.helper, 'text-[11px]')}>{footerNote}</div> : undefined}
+    />
   );
 }

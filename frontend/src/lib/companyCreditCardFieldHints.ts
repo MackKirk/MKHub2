@@ -11,4 +11,8 @@ export const COMPANY_CREDIT_CARD_FIELD_HINTS = {
   issuer: 'Issuer / bank\n\nIssuing bank or financial institution (optional).',
   billing_entity: 'Billing entity\n\nCompany entity billed for this card (optional).',
   notes: 'Notes\n\nOptional internal notes about use or limits.',
+  assign_employee: 'Employee\n\nThe team member who will physically hold this corporate card.',
+  assign_notes: 'Notes\n\nOptional context for this assignment (e.g. project, vehicle, or travel).',
+  return_notes:
+    'Notes\n\nOptional notes about the return (e.g. card received at the office or handoff details).',
 } as const;

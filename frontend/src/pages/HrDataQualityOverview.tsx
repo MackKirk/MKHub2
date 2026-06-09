@@ -1,7 +1,43 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppPageHeader,
+  AppSortableEntityList,
+  AppSortableEntityListFlatBody,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
+  sortListByAppColumn,
+  useLocalAppListSort,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+
+type SortCol = 'employee' | 'issues' | 'job_title' | 'department' | 'project_divisions' | 'profile_updated';
+
+const LIST_GRID_COLS =
+  'grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1.4fr)]';
+const LIST_MIN_WIDTH = 'min-w-[900px]';
+
+const ROW_SORT_GETTERS: Record<SortCol, (row: Row) => string | number | null | undefined> = {
+  employee: (r) => r.name || r.username,
+  issues: (r) => r.issues.length,
+  job_title: (r) => r.job_title,
+  department: (r) => r.department,
+  project_divisions: (r) => (r.project_division_labels?.length ? r.project_division_labels.join(', ') : null),
+  profile_updated: (r) => r.profile_updated_at,
+};
 
 type Row = {
   user_id: string;
@@ -73,6 +109,7 @@ export default function HrDataQualityOverview() {
     queryFn: () => api<Payload>('GET', '/users/hr-data-quality'),
   });
   const [filter, setFilter] = useState<string | null>(null);
+  const { sortBy, sortDir, setSort } = useLocalAppListSort<SortCol>('employee', 'asc');
 
   const filteredRows = useMemo(() => {
     if (!data?.rows) return [];
@@ -80,36 +117,55 @@ export default function HrDataQualityOverview() {
     return data.rows.filter((r) => r.issues.includes(filter));
   }, [data, filter]);
 
+  const sortedRows = useMemo(
+    () => sortListByAppColumn(filteredRows, sortBy, sortDir, ROW_SORT_GETTERS),
+    [filteredRows, sortBy, sortDir],
+  );
+
+  const filterLabel = filter ? ISSUE_LABELS[filter as (typeof ISSUE_KEYS)[number]] : null;
+
   if (error) {
     return (
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <p className="text-red-600 text-sm">Could not load HR overview. You may not have permission.</p>
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+        <AppPageHeader
+          icon={<Users className="h-4 w-4" />}
+          title="HR overview"
+          subtitle="Active employees with incomplete HR records — filter by gap type and open a profile to fix."
+        />
+        <AppEmptyState
+          title="Could not load HR overview."
+          description="You may not have permission."
+          className="border-red-200 bg-red-50 text-red-800"
+        />
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">HR overview</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          Active employees with gaps in org/job data, sick-leave records, employment type, or uploaded files (Docs tab).
-          Open a user to fix supervisor, departments, project divisions, titles, time off, and documents. Pay/compensation
-          gaps are counted on the card only (no amounts in the table).
-        </p>
-        {data && (
-          <p className="text-xs text-gray-500 mt-2">
-            {data.total_with_gaps} of {data.total_eligible} active employees have at least one gap
-            {data.truncated ? ' (showing first 500 rows below; expand filters in the API if needed).' : '.'}
-          </p>
-        )}
-      </div>
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
+        icon={<Users className="h-4 w-4" />}
+        title="HR overview"
+        subtitle={
+          <>
+            Active employees with incomplete HR records — filter by gap type and open a profile to fix.
+            {data ? (
+              <span className={uiCx('mt-2 block', uiTypography.helper)}>
+                {data.total_with_gaps} of {data.total_eligible} have at least one gap
+                {data.truncated ? ' (first 500 rows shown).' : '.'}
+              </span>
+            ) : null}
+          </>
+        }
+      />
 
-      {isLoading && <div className="text-gray-500 text-sm">Loading…</div>}
+      {isLoading ? (
+        <p className={uiTypography.helper}>Loading…</p>
+      ) : null}
 
-      {data && (
+      {data ? (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mb-8">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {ISSUE_KEYS.map((key) => {
               const count = data.summary[key] ?? 0;
               const active = filter === key;
@@ -118,92 +174,155 @@ export default function HrDataQualityOverview() {
                   key={key}
                   type="button"
                   onClick={() => setFilter(active ? null : key)}
-                  className={`text-left rounded-xl border p-4 transition shadow-sm hover:shadow ${
-                    active ? 'ring-2 ring-brand-red border-brand-red/40 bg-red-50/50' : 'bg-white border-gray-200'
-                  }`}
+                  className="block w-full text-left"
+                  aria-pressed={active}
                 >
-                  <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">{ISSUE_LABELS[key]}</div>
-                  <div className="text-2xl font-semibold text-gray-900 mt-1">{count}</div>
-                  <div className="text-xs text-gray-500 mt-2">{active ? 'Click to clear filter' : 'Filter table'}</div>
+                  <AppCard
+                    className={uiCx(
+                      uiShadows.card,
+                      'transition-shadow hover:shadow-md',
+                      active && 'ring-2 ring-brand-red border-brand-red/40 bg-red-50/50',
+                    )}
+                    bodyClassName={uiSpacing.cardPadding}
+                  >
+                    <div className={uiTypography.overline}>{ISSUE_LABELS[key]}</div>
+                    <div className={uiCx('mt-1 text-2xl font-semibold tabular-nums', uiColors.textStrong)}>
+                      {count}
+                    </div>
+                    <div className={uiCx(uiTypography.helper, 'mt-2')}>
+                      {active ? 'Click to clear filter' : 'Filter table'}
+                    </div>
+                  </AppCard>
                 </button>
               );
             })}
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-            <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-gray-800">
-                {filter ? `Showing: ${ISSUE_LABELS[filter as (typeof ISSUE_KEYS)[number]]}` : 'All gaps (combined list)'}
-              </span>
-              <span className="text-xs text-gray-500">· {filteredRows.length} rows</span>
-              {filter && (
-                <button
-                  type="button"
-                  className="text-xs text-brand-red font-medium ml-auto"
-                  onClick={() => setFilter(null)}
+          <AppCard bodyClassName="!p-0">
+            <AppSortableEntityList layout="flat">
+              <div className={uiCx(uiColors.surfaceSubtle, 'px-4 pt-3')}>
+                <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-2 pb-2')}>
+                  <span className={uiTypography.sectionTitle}>
+                    {filterLabel ? `Showing: ${filterLabel}` : 'All gaps (combined list)'}
+                  </span>
+                  <AppBadge variant="neutral" className="normal-case !tracking-normal">
+                    {sortedRows.length} rows
+                  </AppBadge>
+                  {filter ? (
+                    <AppButton variant="ghost" size="sm" onClick={() => setFilter(null)} className="ml-auto">
+                      Clear filter
+                    </AppButton>
+                  ) : null}
+                </div>
+                <AppSortableEntityListHeader
+                  variant="flat"
+                  gridCols={LIST_GRID_COLS}
+                  minWidth={LIST_MIN_WIDTH}
+                  className="!rounded-none !border-0 !bg-transparent !px-0 !py-2.5"
                 >
-                  Clear filter
-                </button>
-              )}
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    <th className="px-4 py-3">Employee</th>
-                    <th className="px-4 py-3">Issues</th>
-                    <th className="px-4 py-3">Job title</th>
-                    <th className="px-4 py-3">Department</th>
-                    <th className="px-4 py-3">Project divisions</th>
-                    <th className="px-4 py-3">Last profile update</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredRows.map((r) => (
-                    <tr key={r.user_id} className="hover:bg-gray-50/80">
-                      <td className="px-4 py-3">
+                <AppSortableEntityListSortColumn
+                  label="Employee"
+                  column="employee"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Issues"
+                  column="issues"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Job title"
+                  column="job_title"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Department"
+                  column="department"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Project divisions"
+                  column="project_divisions"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Last profile update"
+                  column="profile_updated"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                </AppSortableEntityListHeader>
+              </div>
+              {sortedRows.length === 0 ? (
+                <AppEmptyState
+                  title="No rows match this filter."
+                  className="border-0 bg-transparent shadow-none"
+                />
+              ) : (
+                <AppSortableEntityListFlatBody gridCols={LIST_GRID_COLS} minWidth={LIST_MIN_WIDTH}>
+                  {sortedRows.map((r) => (
+                    <AppSortableEntityListRow
+                      key={r.user_id}
+                      variant="flat"
+                      as="div"
+                      gridCols={LIST_GRID_COLS}
+                      minWidth={LIST_MIN_WIDTH}
+                    >
+                      <div className="min-w-0">
                         <Link
                           to={`/users/${encodeURIComponent(r.user_id)}`}
-                          className="font-medium text-brand-red hover:underline"
+                          className={uiCx(uiTypography.sectionTitle, 'truncate hover:text-brand-red hover:underline')}
                         >
                           {r.name || r.username}
                         </Link>
-                        <div className="text-xs text-gray-500">{r.email || r.username}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {r.issues.map((issue) => (
-                            <span
-                              key={issue}
-                              className="inline-flex px-2 py-0.5 rounded-full text-xs bg-amber-50 text-amber-900 border border-amber-200"
-                            >
-                              {ISSUE_LABELS[issue as (typeof ISSUE_KEYS)[number]] || issue}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-800">{r.job_title || '—'}</td>
-                      <td className="px-4 py-3 text-gray-800">{r.department || '—'}</td>
-                      <td className="px-4 py-3 text-gray-800">
+                        <div className={uiCx(uiTypography.helper, 'truncate')}>{r.email || r.username}</div>
+                      </div>
+                      <div className="flex min-w-0 flex-wrap gap-1">
+                        {r.issues.map((issue) => (
+                          <AppBadge key={issue} variant="warning" className="normal-case !tracking-normal">
+                            {ISSUE_LABELS[issue as (typeof ISSUE_KEYS)[number]] || issue}
+                          </AppBadge>
+                        ))}
+                      </div>
+                      <span className={uiCx(uiTypography.body, 'truncate')} title={r.job_title || undefined}>
+                        {r.job_title || '—'}
+                      </span>
+                      <span className={uiCx(uiTypography.body, 'truncate')} title={r.department || undefined}>
+                        {r.department || '—'}
+                      </span>
+                      <span
+                        className={uiCx(uiTypography.body, 'truncate')}
+                        title={r.project_division_labels?.join(', ') || undefined}
+                      >
                         {r.project_division_labels?.length ? r.project_division_labels.join(', ') : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700 text-xs">
-                        {fmtDate(r.profile_updated_at)}
+                      </span>
+                      <div className="min-w-0">
+                        <span className={uiTypography.body}>{fmtDate(r.profile_updated_at)}</span>
                         {r.profile_updated_by_name ? (
-                          <div className="text-gray-500 mt-0.5">by {r.profile_updated_by_name}</div>
+                          <div className={uiCx(uiTypography.helper, 'mt-0.5 truncate')}>
+                            by {r.profile_updated_by_name}
+                          </div>
                         ) : null}
-                      </td>
-                    </tr>
+                      </div>
+                    </AppSortableEntityListRow>
                   ))}
-                </tbody>
-              </table>
-              {filteredRows.length === 0 && (
-                <div className="px-4 py-12 text-center text-gray-500 text-sm">No rows match this filter.</div>
+                </AppSortableEntityListFlatBody>
               )}
-            </div>
-          </div>
+            </AppSortableEntityList>
+          </AppCard>
         </>
-      )}
+      ) : null}
     </div>
   );
 }

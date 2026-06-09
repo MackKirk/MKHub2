@@ -3,6 +3,7 @@ import DirectorMeetingMonthCalendar, {
   formatYMD,
   formatYmdHeading,
 } from '@/components/DirectorMeetingMonthCalendar';
+import { AppBadge } from '@/components/ui';
 
 export type SlotPickerSlot = {
   starts_at: string;
@@ -229,7 +230,7 @@ export default function DirectorMeetingSlotPicker({
       <div
         className={
           wideSplit
-            ? 'w-full max-w-[26rem] sm:max-w-[34rem] shrink-0 mx-auto lg:mx-0'
+            ? 'w-full min-w-0 shrink-0 lg:max-w-[min(100%,42rem)] xl:max-w-[min(100%,48rem)]'
             : 'contents'
         }
       >
@@ -261,28 +262,33 @@ export default function DirectorMeetingSlotPicker({
                   className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 sm:px-4 py-2.5 sm:py-3 bg-white hover:bg-gray-50/80"
                 >
                   <div className="min-w-0">
-                    <div className="font-semibold tabular-nums text-gray-900 text-sm">
-                      {formatTimeOnly(slot.starts_at, slot.ends_at)}
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="font-semibold tabular-nums text-gray-900 text-sm">
+                        {formatTimeOnly(slot.starts_at, slot.ends_at)}
+                      </span>
+                      {!taken ? (
+                        <AppBadge
+                          variant="success"
+                          className="!px-1.5 !py-px !text-[10px] !leading-none normal-case !tracking-normal"
+                        >
+                          Available
+                        </AppBadge>
+                      ) : null}
                     </div>
                     <div className="text-xs text-gray-500 mt-0.5">{durationMinutes} min meeting</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <span className="text-xs">
-                      {taken ? (
-                        <span className="text-gray-700">
-                          {hideOtherBookedNames && !isMine ? (
-                            <span className="font-medium">Booked</span>
-                          ) : (
-                            <>
-                              Booked —{' '}
-                              <span className="font-medium">{bookedColleagueLabel(slot)}</span>
-                            </>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="font-medium text-emerald-700">Available</span>
-                      )}
-                    </span>
+                    {taken ? (
+                      <span className="text-xs text-gray-700">
+                        {hideOtherBookedNames && !isMine ? (
+                          <span className="font-medium">Booked</span>
+                        ) : (
+                          <>
+                            Booked — <span className="font-medium">{bookedColleagueLabel(slot)}</span>
+                          </>
+                        )}
+                      </span>
+                    ) : null}
                     {canTake ? (
                       <button
                         type="button"

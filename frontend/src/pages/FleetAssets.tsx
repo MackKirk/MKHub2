@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
@@ -14,7 +14,7 @@ import {
   AppInput,
   AppListCreateItem,
   AppPageHeader,
-  AppTabs,
+  AppQuickFilterRow,
   uiBorders,
   uiColors,
   uiCx,
@@ -203,10 +203,64 @@ const TYPE_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
+const TYPE_QUICK_FILTER_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'vehicle', label: 'Vehicles' },
+  { value: 'heavy_machinery', label: 'Heavy Machinery' },
+  { value: 'other', label: 'Other Assets' },
+];
+
 const ASSIGNMENT_OPTIONS = [
   { value: 'assigned', label: 'Assigned' },
   { value: 'available', label: 'Available' },
 ];
+
+function buildFleetAssetsApiParams(
+  searchParams: URLSearchParams,
+  typeFilter: string,
+  sortBy: string,
+  sortDir: string,
+  page: number,
+  limit: number,
+  search: string,
+  opts?: { omitQuickFilters?: boolean; page?: number; limit?: number },
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (search) params.append('search', search);
+
+  if (!opts?.omitQuickFilters) {
+    const typeVal = searchParams.get('type');
+    const typeNot = searchParams.get('type_not');
+    if (typeVal) params.append('asset_type', typeVal);
+    else if (typeFilter !== 'all' && !typeNot) params.append('asset_type', typeFilter);
+    if (typeNot) params.append('asset_type_not', typeNot);
+    const status = searchParams.get('status');
+    const statusNot = searchParams.get('status_not');
+    const assigned = searchParams.get('assigned');
+    if (status) params.append('status', status);
+    if (statusNot) params.append('status_not', statusNot);
+    if (assigned === 'true' || assigned === 'false') params.append('assigned', assigned);
+  }
+
+  const divisionId = searchParams.get('division_id');
+  const divisionIdNot = searchParams.get('division_id_not');
+  const fuelType = searchParams.get('fuel_type');
+  const fuelTypeNot = searchParams.get('fuel_type_not');
+  const year = searchParams.get('year');
+  const yearNot = searchParams.get('year_not');
+  if (divisionId) params.append('division_id', divisionId);
+  if (divisionIdNot) params.append('division_id_not', divisionIdNot);
+  if (fuelType) params.append('fuel_type', fuelType);
+  if (fuelTypeNot) params.append('fuel_type_not', fuelTypeNot);
+  if (year) params.append('year', year);
+  if (yearNot) params.append('year_not', yearNot);
+
+  params.set('sort', sortBy);
+  params.set('dir', sortDir);
+  params.set('page', String(opts?.page ?? page));
+  params.set('limit', String(opts?.limit ?? limit));
+  return params;
+}
 
 function buildYearOptions() {
   const currentYear = new Date().getFullYear();
@@ -410,6 +464,117 @@ export default function FleetAssets() {
   const currentRules = useMemo(() => convertParamsToRules(searchParams), [searchParams]);
   const hasActiveFilters = currentRules.length > 0;
 
+  const toggleStatusQuickFilter = (statusValue: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (params.get('status') === statusValue) {
+      params.delete('status');
+    } else {
+      params.delete('status_not');
+      params.set('status', statusValue);
+    }
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params, { replace: true });
+  };
+
+  const toggleAssignedQuickFilter = (assignedValue: 'true' | 'false') => {
+    const params = new URLSearchParams(searchParams);
+    if (params.get('assigned') === assignedValue) {
+      params.delete('assigned');
+    } else {
+      params.set('assigned', assignedValue);
+    }
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params, { replace: true });
+  };
+
+  const quickFilterSegments = useMemo(
+    () => [
+      ...TYPE_QUICK_FILTER_OPTIONS.map((opt) => ({
+        key: `type:${opt.value}`,
+        label: opt.label,
+        active: typeFilter === opt.value,
+        onClick: () => handleTypeFilterChange(opt.value),
+      })),
+      ...STATUS_OPTIONS.map((opt) => ({
+        key: `status:${opt.value}`,
+        label: opt.label,
+        active: searchParams.get('status') === opt.value,
+        onClick: () => toggleStatusQuickFilter(opt.value),
+      })),
+      {
+        key: 'assigned:true',
+        label: 'Assigned',
+        active: searchParams.get('assigned') === 'true',
+        onClick: () => toggleAssignedQuickFilter('true'),
+      },
+      {
+        key: 'assigned:false',
+        label: 'Available',
+        active: searchParams.get('assigned') === 'false',
+        onClick: () => toggleAssignedQuickFilter('false'),
+      },
+    ],
+    [searchParams, typeFilter],
+  );
+
+  const quickFilterCountBaseQs = useMemo(
+    () =>
+      buildFleetAssetsApiParams(searchParams, typeFilter, sortBy, sortDir, page, limit, search, {
+        omitQuickFilters: true,
+        page: 1,
+        limit: 1,
+      }).toString(),
+    [searchParams, typeFilter, sortBy, sortDir, page, limit, search],
+  );
+
+  const quickFilterCountTargets = useMemo(() => {
+    const targets: Array<{ key: string; qs: string }> = [];
+    for (const opt of TYPE_QUICK_FILTER_OPTIONS) {
+      const p = new URLSearchParams(quickFilterCountBaseQs);
+      if (opt.value !== 'all') p.set('asset_type', opt.value);
+      targets.push({ key: `type:${opt.value}`, qs: p.toString() });
+    }
+    for (const opt of STATUS_OPTIONS) {
+      const p = new URLSearchParams(quickFilterCountBaseQs);
+      p.set('status', opt.value);
+      targets.push({ key: `status:${opt.value}`, qs: p.toString() });
+    }
+    for (const assignedValue of ['true', 'false'] as const) {
+      const p = new URLSearchParams(quickFilterCountBaseQs);
+      p.set('assigned', assignedValue);
+      targets.push({ key: `assigned:${assignedValue}`, qs: p.toString() });
+    }
+    return targets;
+  }, [quickFilterCountBaseQs]);
+
+  const quickFilterCountQueries = useQueries({
+    queries: quickFilterCountTargets.map((target) => ({
+      queryKey: ['fleetAssets', 'quick-filter-count', target.key, target.qs],
+      queryFn: () => api<FleetAssetsResponse>('GET', `/fleet/assets?${target.qs}`).then((r) => r.total),
+      staleTime: 60_000,
+    })),
+  });
+
+  const quickFilterCountsByKey = useMemo(() => {
+    const counts: Record<string, number> = {};
+    quickFilterCountTargets.forEach((target, index) => {
+      const total = quickFilterCountQueries[index]?.data;
+      if (typeof total === 'number') counts[target.key] = total;
+    });
+    return counts;
+  }, [quickFilterCountTargets, quickFilterCountQueries]);
+
+  const quickFilterSegmentsWithCounts = useMemo(
+    () =>
+      quickFilterSegments.map((segment) => ({
+        ...segment,
+        count: quickFilterCountsByKey[segment.key],
+      })),
+    [quickFilterSegments, quickFilterCountsByKey],
+  );
+
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       'fleetAssets',
@@ -431,35 +596,15 @@ export default function FleetAssets() {
       searchParams.get('assigned'),
     ],
     queryFn: () => {
-      const params = new URLSearchParams();
-      const typeVal = searchParams.get('type');
-      const typeNot = searchParams.get('type_not');
-      if (typeVal) params.append('asset_type', typeVal);
-      else if (typeFilter !== 'all' && !typeNot) params.append('asset_type', typeFilter);
-      if (typeNot) params.append('asset_type_not', typeNot);
-      if (search) params.append('search', search);
-      const status = searchParams.get('status');
-      const statusNot = searchParams.get('status_not');
-      const divisionId = searchParams.get('division_id');
-      const divisionIdNot = searchParams.get('division_id_not');
-      const fuelType = searchParams.get('fuel_type');
-      const fuelTypeNot = searchParams.get('fuel_type_not');
-      const year = searchParams.get('year');
-      const yearNot = searchParams.get('year_not');
-      const assigned = searchParams.get('assigned');
-      if (status) params.append('status', status);
-      if (statusNot) params.append('status_not', statusNot);
-      if (divisionId) params.append('division_id', divisionId);
-      if (divisionIdNot) params.append('division_id_not', divisionIdNot);
-      if (fuelType) params.append('fuel_type', fuelType);
-      if (fuelTypeNot) params.append('fuel_type_not', fuelTypeNot);
-      if (year) params.append('year', year);
-      if (yearNot) params.append('year_not', yearNot);
-      if (assigned === 'true' || assigned === 'false') params.append('assigned', assigned);
-      params.set('sort', sortBy);
-      params.set('dir', sortDir);
-      params.set('page', String(page));
-      params.set('limit', String(limit));
+      const params = buildFleetAssetsApiParams(
+        searchParams,
+        typeFilter,
+        sortBy,
+        sortDir,
+        page,
+        limit,
+        search,
+      );
       return api<FleetAssetsResponse>('GET', `/fleet/assets?${params.toString()}`);
     },
   });
@@ -506,23 +651,13 @@ export default function FleetAssets() {
     });
   }, []);
 
-  const typeTabItems = useMemo(
-    () => [
-      { key: 'all', label: 'All' },
-      { key: 'vehicle', label: 'Vehicles' },
-      { key: 'heavy_machinery', label: 'Heavy Machinery' },
-      { key: 'other', label: 'Other Assets' },
-    ],
-    [],
-  );
-
   const emptyListTitle =
     typeFilter === 'all' ? 'No assets found' : `No ${getTypeLabel(typeFilter).toLowerCase()} found`;
 
   return (
     <div className={uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <AppPageHeader
-        title={getTypeLabel(typeFilter)}
+        title="Fleet Assets"
         subtitle="Manage fleet assets"
         icon={<Truck className="h-4 w-4" />}
         actions={
@@ -534,7 +669,6 @@ export default function FleetAssets() {
       />
 
       <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>
-        <AppTabs tabs={typeTabItems} value={typeFilter} onChange={handleTypeFilterChange} />
         <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
           <div className="min-w-0 flex-1">
             <AppInput
@@ -578,6 +712,7 @@ export default function FleetAssets() {
             </AppButton>
           ) : null}
         </div>
+        <AppQuickFilterRow segments={quickFilterSegmentsWithCounts} />
       </AppCard>
 
       {hasActiveFilters ? (

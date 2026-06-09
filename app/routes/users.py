@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from pydantic import BaseModel
-from sqlalchemy import update, or_, func as sa_func
+from sqlalchemy import update, or_, func as sa_func, func, literal
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import Optional, List, Any, Tuple, Literal, Dict
@@ -490,11 +490,60 @@ def _user_to_dict(u: User, ep: Optional[EmployeeProfile]) -> dict:
     }
 
 
+def _user_list_display_name_expr():
+    """Matches Users list display: preferred name → first+last → username."""
+    full_name = func.nullif(
+        func.trim(
+            func.concat(
+                func.coalesce(EmployeeProfile.first_name, literal("")),
+                literal(" "),
+                func.coalesce(EmployeeProfile.last_name, literal("")),
+            )
+        ),
+        literal(""),
+    )
+    preferred = func.nullif(func.trim(EmployeeProfile.preferred_name), literal(""))
+    return func.lower(func.coalesce(preferred, full_name, User.username, literal("")))
+
+
+def _users_list_order_parts(sort: Optional[str], sort_dir: Optional[str]):
+    asc = (sort_dir or "asc").lower() != "desc"
+    s = (sort or "user").strip().lower()
+    display_name = _user_list_display_name_expr()
+    tie = User.id.asc()
+
+    if s == "user":
+        if asc:
+            return (display_name.asc().nulls_last(), tie)
+        return (display_name.desc().nulls_last(), tie)
+    if s == "job_title":
+        jt = func.lower(
+            func.nullif(func.trim(func.coalesce(EmployeeProfile.job_title, literal(""))), literal(""))
+        )
+        if asc:
+            return (jt.asc().nulls_last(), display_name.asc().nulls_last(), tie)
+        return (jt.desc().nulls_last(), display_name.asc().nulls_last(), tie)
+    if s == "email":
+        em = func.lower(
+            func.nullif(func.trim(func.coalesce(User.email_personal, literal(""))), literal(""))
+        )
+        if asc:
+            return (em.asc().nulls_last(), display_name.asc().nulls_last(), tie)
+        return (em.desc().nulls_last(), display_name.asc().nulls_last(), tie)
+    if s == "status":
+        if asc:
+            return (User.is_active.asc(), display_name.asc().nulls_last(), tie)
+        return (User.is_active.desc(), display_name.asc().nulls_last(), tie)
+    return (User.created_at.desc(), tie)
+
+
 @router.get("")
 def list_users(
     q: Optional[str] = None,
     page: int = 1,
     limit: int = 50,
+    sort: Optional[str] = None,
+    sort_dir: Optional[str] = Query("asc", alias="dir"),
     db: Session = Depends(get_db),
     _=Depends(require_permissions("hr:users:read", "users:read"))  # New HR permission or legacy
 ):
@@ -505,6 +554,8 @@ def list_users(
         q: Search query (username, email, or name)
         page: Page number (1-indexed)
         limit: Number of items per page (default 50, max 2000)
+        sort: Sort column (user, job_title, email, status)
+        sort_dir: Sort direction (asc or desc), passed as query param `dir`
     """
     # Ensure reasonable limits
     limit = min(max(1, limit), 2000)
@@ -525,8 +576,8 @@ def list_users(
     # Get total count for pagination
     total_count = query.count()
     
-    # Get paginated results
-    rows = query.order_by(User.created_at.desc()).offset(offset).limit(limit).all()
+    order_parts = _users_list_order_parts(sort, sort_dir)
+    rows = query.order_by(*order_parts).offset(offset).limit(limit).all()
     
     return {
         "items": [_user_to_dict(u, ep) for u, ep in rows],

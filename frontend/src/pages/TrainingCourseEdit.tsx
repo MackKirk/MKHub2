@@ -2,14 +2,63 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import { uploadTrainingContentFile } from '@/lib/trainingFileUpload';
+import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import toast from 'react-hot-toast';
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import CourseBuilderPanel from '@/pages/training/CourseBuilderPanel';
+import { Plus, Settings } from 'lucide-react';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppCombobox,
+  AppEmptyState,
+  AppFileUpload,
+  AppInput,
+  AppMultiSelect,
+  AppPageHeader,
+  AppSectionHeader,
+  AppSelect,
+  AppTabs,
+  AppTextarea,
+  AppUserSelect,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
-const FIELD =
-  'w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20';
-const FIELD_MULTI = `${FIELD} h-32`;
+const PAGE_TABS = [
+  { key: 'setup', label: 'Setup' },
+  { key: 'requirements', label: 'Requirements' },
+  { key: 'certificate', label: 'Certificate' },
+  { key: 'builder', label: 'Content builder' },
+] as const;
+
+const PUBLICATION_TABS = [
+  { key: 'draft', label: 'Draft' },
+  { key: 'published', label: 'Published' },
+] as const;
+
+const PREVIEW_MODE_TABS = [
+  { key: 'live', label: 'Live' },
+  { key: 'pdf', label: 'Final PDF' },
+] as const;
+
+const RENEWAL_FREQUENCY_OPTIONS = [
+  { value: 'none', label: 'No renewal' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'annual', label: 'Annual' },
+  { value: 'days_X', label: 'Custom (X days)' },
+  { value: 'every_new_job', label: 'Every New Job' },
+] as const;
 
 type Course = {
   id: string;
@@ -149,6 +198,113 @@ function fillCertificatePreviewPlaceholders(
   return template.replace(/\{([a-z_]+)\}/g, (_, k) => map[k] ?? `{${k}}`);
 }
 
+const CERT_PAGE_W = 792;
+const CERT_PAGE_H = 612;
+
+function CertificateHtmlPreview({
+  layout,
+  bgUrl,
+  logoFileId,
+  headingPrimary,
+  headingSecondary,
+  bodyText,
+  instructorName,
+  scale,
+}: {
+  layout: CertificateLayout;
+  bgUrl: string | null;
+  logoFileId?: string;
+  headingPrimary: string;
+  headingSecondary: string;
+  bodyText: string;
+  instructorName: string;
+  scale: number;
+}) {
+  const safeScale = Math.max(0.1, scale);
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-slate-100">
+      <div
+        className="relative overflow-hidden bg-white shadow-sm"
+        style={{ width: CERT_PAGE_W * safeScale, height: CERT_PAGE_H * safeScale }}
+      >
+        <div
+          className="absolute left-0 top-0 origin-top-left bg-white"
+          style={{
+            width: CERT_PAGE_W,
+            height: CERT_PAGE_H,
+            transform: `scale(${safeScale})`,
+          }}
+        >
+          {bgUrl ? (
+            <img src={bgUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          ) : (
+            <>
+              <div className="absolute inset-0 bg-[#ededed]" />
+              <div
+                className="pointer-events-none absolute border border-[#b08d57]"
+                style={{ left: 28, top: 28, right: 28, bottom: 28 }}
+              />
+            </>
+          )}
+          {logoFileId ? (
+            <img
+              src={withFileAccessToken(`/files/${logoFileId}`)}
+              alt=""
+              className="absolute object-contain"
+              style={{
+                left: layout.logoX,
+                top: layout.logoY,
+                width: layout.logoW,
+                height: layout.logoH,
+              }}
+            />
+          ) : null}
+          <div
+            className="absolute text-center text-[#7f1010]"
+            style={{
+              left: layout.contentSide,
+              right: layout.contentSide,
+              top: layout.contentTop,
+            }}
+          >
+            <div style={{ fontSize: layout.h1Size, fontWeight: 700, lineHeight: 1.1 }}>{headingPrimary}</div>
+            <div style={{ fontSize: layout.h2Size, fontWeight: 600, lineHeight: 1.2, marginTop: 4 }}>
+              {headingSecondary}
+            </div>
+            <div
+              className="whitespace-pre-wrap text-left text-[#2d2d2d]"
+              style={{ fontSize: layout.bodySize, marginTop: layout.titleBodyGap, lineHeight: 1.45 }}
+            >
+              {bodyText}
+            </div>
+          </div>
+          <div
+            className="absolute inset-x-0 flex justify-between text-[#555555]"
+            style={{
+              bottom: 72,
+              paddingLeft: layout.signatureSideInset,
+              paddingRight: layout.signatureSideInset,
+            }}
+          >
+            <div className="flex-1 text-center">
+              <div className="mx-auto h-px w-40 bg-[#b08d57]" style={{ marginBottom: layout.signatureNameGap }} />
+              <div style={{ fontSize: Math.max(10, layout.bodySize - 2) }}>{instructorName}</div>
+            </div>
+            <div className="flex-1 text-center">
+              <div
+                className="mx-auto h-px w-40 bg-[#b08d57]"
+                style={{ marginBottom: layout.signatureNameGap, marginTop: layout.signatureGap }}
+              />
+              <div style={{ fontSize: Math.max(10, layout.bodySize - 2) }}>Participant name</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TrainingCourseEdit() {
   const { courseId: courseIdParam } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
@@ -184,9 +340,6 @@ export default function TrainingCourseEdit() {
   });
 
   const [activeTab, setActiveTab] = useState<'setup' | 'requirements' | 'certificate' | 'builder'>('setup');
-  const [roleSearch, setRoleSearch] = useState('');
-  const [divisionSearch, setDivisionSearch] = useState('');
-  const [userSearch, setUserSearch] = useState('');
 
   const { data: bgPresetsRes } = useQuery<{ presets: CertificateBgPreset[] }>({
     queryKey: ['training-certificate-bg-presets'],
@@ -430,24 +583,47 @@ export default function TrainingCourseEdit() {
 
   const categories = (settings?.training_categories as any[]) || [];
   const divisions = (settings?.divisions as any[]) || [];
-  const roleOptions = ((roles as any[]) || []).map((r) => ({ id: String(r.id), label: String(r.name || 'Role') }));
-  const divisionOptions = (divisions || []).map((d: any) => ({ id: String(d.id), label: String(d.label || 'Division') }));
-  const userOptions = ((employees as any[]) || []).map((e) => ({
-    id: String(e.id),
-    label: String(e.name || e.username || 'User'),
-  }));
-  const matches = (label: string, q: string) => label.toLowerCase().includes(q.trim().toLowerCase());
-  const filteredRoleOptions = roleOptions.filter((o) => matches(o.label, roleSearch));
-  const filteredDivisionOptions = divisionOptions.filter((o) => matches(o.label, divisionSearch));
-  const filteredUserOptions = userOptions.filter((o) => matches(o.label, userSearch));
+  const categoryOptions = useMemo(
+    () => [
+      { value: '', label: 'Select a category' },
+      ...categories.map((cat: { id: string; label: string }) => ({
+        value: String(cat.id),
+        label: String(cat.label),
+      })),
+    ],
+    [categories],
+  );
+  const matrixOptions = useMemo(
+    () => [
+      { value: '', label: 'None — internal only' },
+      ...(matrixCatalog?.items || []).map((it) => ({ value: it.id, label: it.label })),
+    ],
+    [matrixCatalog?.items],
+  );
+  const roleMultiOptions = useMemo(
+    () =>
+      ((roles as any[]) || []).map((r) => ({
+        value: String(r.id),
+        label: String(r.name || 'Role'),
+      })),
+    [roles],
+  );
+  const divisionMultiOptions = useMemo(
+    () =>
+      (divisions || []).map((d: { id: string; label: string }) => ({
+        value: String(d.id),
+        label: String(d.label || 'Division'),
+      })),
+    [divisions],
+  );
+  const employeeUsers = useMemo(
+    () => ((employees as any[]) || []).map((e) => mapEmployeeToAppUserSelect(e)),
+    [employees],
+  );
   const selectedRoleIds = formData.required_role_ids || [];
   const selectedDivisionIds = formData.required_division_ids || [];
   const selectedUserIds = formData.required_user_ids || [];
-  const toggleSelect = (key: 'required_role_ids' | 'required_division_ids' | 'required_user_ids', id: string) => {
-    const prev = (formData[key] as string[] | undefined) || [];
-    const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-    setFormData({ ...formData, [key]: next });
-  };
+  const publicationStatus = (formData.status || 'draft') as 'draft' | 'published';
 
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
@@ -499,8 +675,9 @@ export default function TrainingCourseEdit() {
     `${url}#page=1&view=Fit&zoom=page-fit&toolbar=0&navpanes=0&scrollbar=0&pagemode=none`;
   const certLayout = useMemo(() => normalizeCertificateLayout(formData.certificate_layout), [formData.certificate_layout]);
   const previewFrameRef = useRef<HTMLDivElement | null>(null);
-  const [previewSize, setPreviewSize] = useState({ w: 792, h: 612 });
+  const [previewSize, setPreviewSize] = useState({ w: CERT_PAGE_W, h: CERT_PAGE_H });
   useLayoutEffect(() => {
+    if (activeTab !== 'certificate' || !formData.generates_certificate) return;
     const el = previewFrameRef.current;
     if (!el) return;
     const update = () => {
@@ -513,9 +690,8 @@ export default function TrainingCourseEdit() {
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-  const sx = previewSize.w / 792;
-  const sy = previewSize.h / 612;
+  }, [activeTab, formData.generates_certificate]);
+  const previewScale = Math.min(previewSize.w / CERT_PAGE_W, previewSize.h / CERT_PAGE_H);
   const setCertLayout = (key: keyof CertificateLayout, value: number) => {
     setFormData((fd) => ({
       ...fd,
@@ -572,277 +748,182 @@ export default function TrainingCourseEdit() {
 
   if (isLoading && !isNew) {
     return (
-      <div className="flex min-h-[240px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 px-6 py-12">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-brand-red" />
-        <p className="mt-4 text-sm font-medium text-gray-600">Loading course…</p>
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+        <AppCard className={uiShadows.card} bodyClassName={uiCx(uiSpacing.cardPadding, 'flex min-h-[240px] flex-col items-center justify-center')}>
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-brand-red" />
+          <p className={uiCx('mt-4', uiTypography.body, 'font-medium')}>Loading course…</p>
+        </AppCard>
       </div>
     );
   }
 
-  const tabLabel: Record<string, string> = {
-    setup: 'Setup',
-    requirements: 'Requirements',
-    certificate: 'Certificate',
-    builder: 'Content builder',
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white px-6 py-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-bold tracking-tight text-gray-900">
-              {isNew ? 'Create new course' : `Edit: ${course?.title || 'Course'}`}
-            </h1>
-            <p className="mt-1 text-sm font-medium text-gray-500">
-              {isNew ? 'Set up your training course' : 'Manage course content and settings'}
-            </p>
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
+        title={isNew ? 'Create new course' : `Edit: ${course?.title || 'Course'}`}
+        subtitle={isNew ? 'Set up your training course' : 'Manage course content and settings'}
+        icon={<Settings className="h-4 w-4" />}
+        onBack={() => navigate('/training/admin')}
+        backLabel="Back to list"
+        actions={
+          <div className="text-right">
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
-            <div className="flex flex-col gap-2 sm:items-end">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Publication</span>
-              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <span
-                  className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-bold tracking-wide ${
-                    (formData.status || 'draft') === 'published'
-                      ? 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200/80'
-                      : 'bg-slate-200/90 text-slate-800 ring-1 ring-slate-300/60'
-                  }`}
-                >
-                  {(formData.status || 'draft') === 'published' ? 'Published' : 'Draft'}
-                </span>
-                <div className="inline-flex gap-0.5 rounded-xl border border-slate-200/90 bg-slate-100/90 p-1 shadow-inner">
-                  {(['draft', 'published'] as const).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, status: s })}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition-all sm:px-4 sm:py-2 sm:text-sm ${
-                        (formData.status || 'draft') === s
-                          ? 'bg-white text-brand-red shadow-sm ring-1 ring-slate-200/80'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      {s === 'draft' ? 'Draft' : 'Published'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <p className="max-w-md text-right text-[11px] leading-snug text-gray-500 sm:max-w-xs">
-                {(formData.status || 'draft') === 'published'
-                  ? 'Visible to learners per Requirements.'
-                  : 'Hidden from the catalog until you publish.'}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-4 border-t border-slate-200/70 pt-3 sm:border-t-0 sm:pt-0">
-              <div className="text-right">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Today</div>
-                <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/training/admin')}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25"
-              >
-                ← Back to list
-              </button>
-            </div>
+        }
+      />
+
+      <AppCard className={uiShadows.card} bodyClassName={uiSpacing.cardPadding}>
+        <div
+          className={uiCx(
+            uiLayout.actionsRow,
+            'flex-col flex-wrap items-stretch justify-between gap-3 lg:flex-row lg:items-center',
+          )}
+        >
+          <AppTabs
+            tabs={[...PAGE_TABS]}
+            value={activeTab}
+            onChange={(key) => setActiveTab(key as typeof activeTab)}
+          />
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-3 lg:shrink-0')}>
+            <span className={uiTypography.overline}>Publication</span>
+            <AppBadge variant={publicationStatus === 'published' ? 'success' : 'neutral'}>
+              {publicationStatus === 'published' ? 'Published' : 'Draft'}
+            </AppBadge>
+            <AppTabs
+              tabs={[...PUBLICATION_TABS]}
+              value={publicationStatus}
+              onChange={(key) => setFormData({ ...formData, status: key as 'draft' | 'published' })}
+            />
           </div>
         </div>
-      </div>
+        <p className={uiCx('mt-3', uiTypography.helper, 'lg:text-right')}>
+          {publicationStatus === 'published'
+            ? 'Visible to learners per Requirements.'
+            : 'Hidden from the catalog until you publish.'}
+        </p>
+      </AppCard>
 
-      <div className="inline-flex flex-wrap gap-1 rounded-xl border border-slate-200/80 bg-slate-100/90 p-1 shadow-inner">
-        {(['setup', 'requirements', 'certificate', 'builder'] as const).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setActiveTab(tab)}
-            className={`rounded-lg px-4 py-2 text-sm font-semibold capitalize transition-all ${
-              activeTab === tab
-                ? 'bg-white text-brand-red shadow-sm ring-1 ring-slate-200/80'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            {tabLabel[tab] ?? tab}
-          </button>
-        ))}
-      </div>
-
-      <div className="rounded-xl border border-slate-200/90 bg-white p-6 shadow-sm sm:p-8">
+      <AppCard className={uiShadows.card} bodyClassName={uiCx(uiSpacing.cardPadding, 'sm:p-6')}>
         {activeTab === 'setup' && (
-          <div className="space-y-6">
-            <div className="rounded-xl border border-slate-200/90 bg-gradient-to-br from-slate-50/95 via-white to-slate-50/50 px-5 py-4 shadow-sm sm:px-6">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Course landing</p>
-              <h2 className="mt-1 text-lg font-bold tracking-tight text-gray-900">Basics & visibility</h2>
-              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-600">
-                Set how this course appears in the catalog—like the first screen on a platform such as Udemy—then
-                fine-tune HR reporting below. Use <span className="font-semibold text-gray-700">Publication</span> in
-                the header to switch Draft or Published.
-              </p>
-            </div>
+          <div className={uiSpacing.sectionStack}>
+            <AppCard bodyClassName={uiSpacing.cardPadding}>
+              <AppSectionHeader
+                title="Basics & visibility"
+                description="Set how this course appears in the catalog—like the first screen on a platform such as Udemy—then fine-tune HR reporting below. Use Publication in the tab bar to switch Draft or Published."
+              />
+            </AppCard>
 
-            <section className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm">
-              <header className="border-b border-slate-100 bg-gradient-to-r from-slate-50/90 to-white px-5 py-3.5 sm:px-6">
-                <h3 className="text-sm font-bold text-gray-900">Course information</h3>
-                <p className="mt-0.5 text-xs text-gray-500">
-                  Title, summary, category, and duration—aligned with how you structure lessons in Content builder.
-                </p>
-              </header>
-              <div className="space-y-5 p-5 sm:p-6">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Title <span className="font-bold text-brand-red">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.title || ''}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    className={FIELD}
-                    placeholder="Clear, specific course title"
-                  />
-                </div>
+            <AppCard bodyClassName="!p-0">
+              <div className={uiCx(uiSpacing.cardPadding, 'border-b border-gray-100')}>
+                <AppSectionHeader
+                  title="Course information"
+                  description="Title, summary, category, and duration—aligned with how you structure lessons in Content builder."
+                />
+              </div>
+              <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>
+                <AppInput
+                  label="Title *"
+                  value={formData.title || ''}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Clear, specific course title"
+                />
 
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Description
-                  </label>
-                  <textarea
-                    value={formData.description || ''}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className={FIELD_MULTI}
-                    rows={4}
-                    placeholder="What learners will get out of this course—outcomes, audience, and format."
-                  />
-                </div>
+                <AppTextarea
+                  label="Description"
+                  value={formData.description || ''}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={4}
+                  placeholder="What learners will get out of this course—outcomes, audience, and format."
+                />
 
                 <div className="grid gap-5 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Category
-                    </label>
-                    <select
-                      value={formData.category_id || ''}
-                      onChange={(e) => setFormData({ ...formData, category_id: e.target.value || undefined })}
-                      className={FIELD}
-                    >
-                      <option value="">Select a category</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <AppSelect
+                    label="Category"
+                    value={formData.category_id || ''}
+                    onChange={(e) => setFormData({ ...formData, category_id: e.target.value || undefined })}
+                    options={categoryOptions}
+                  />
 
-                  <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Estimated duration
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        min={0}
-                        value={formData.estimated_duration_minutes ?? ''}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            estimated_duration_minutes: e.target.value ? parseInt(e.target.value, 10) : undefined,
-                          })
-                        }
-                        className={`${FIELD} pr-16`}
-                        placeholder="e.g. 60"
-                      />
-                      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-400">
-                        minutes
-                      </span>
-                    </div>
-                    <p className="mt-1.5 text-xs text-gray-500">Approximate time to complete all lessons.</p>
-                  </div>
+                  <AppInput
+                    label="Estimated duration (minutes)"
+                    type="number"
+                    min={0}
+                    value={formData.estimated_duration_minutes ?? ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        estimated_duration_minutes: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                      })
+                    }
+                    placeholder="e.g. 60"
+                    helperText="Approximate time to complete all lessons."
+                  />
                 </div>
               </div>
-            </section>
+            </AppCard>
 
-            <section className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm">
-              <header className="border-b border-slate-100 bg-gradient-to-r from-slate-50/90 to-white px-5 py-3.5 sm:px-6">
-                <h3 className="text-sm font-bold text-gray-900">HR profile & training matrix</h3>
-                <p className="mt-0.5 text-xs text-gray-500">
-                  Optional: sync completions into employee training history and the standard matrix column.
-                </p>
-              </header>
-              <div className="space-y-4 p-5 sm:p-6">
-                <p className="text-sm leading-relaxed text-gray-600">
+            <AppCard bodyClassName="!p-0">
+              <div className={uiCx(uiSpacing.cardPadding, 'border-b border-gray-100')}>
+                <AppSectionHeader
+                  title="HR profile & training matrix"
+                  description="Optional: sync completions into employee training history and the standard matrix column."
+                />
+              </div>
+              <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>
+                <p className={uiTypography.body}>
                   When a learner completes this course, you can write a row to their HR training history and fill the
                   matrix column (only if the slot is free or was created by a previous LMS sync for this course).
                 </p>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Matrix column
-                  </label>
-                  <select
-                    value={formData.matrix_training_id || ''}
-                    onChange={(e) => setFormData({ ...formData, matrix_training_id: e.target.value })}
-                    className={FIELD}
-                  >
-                    <option value="">None — internal only</option>
-                    {(matrixCatalog?.items || []).map((it) => (
-                      <option key={it.id} value={it.id}>
-                        {it.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200/80 bg-white px-4 py-3 transition-colors hover:border-slate-300 hover:bg-slate-50/40">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-red focus:ring-brand-red/30"
-                    checked={!!formData.sync_completion_to_employee_record}
-                    onChange={(e) =>
-                      setFormData({ ...formData, sync_completion_to_employee_record: e.target.checked })
-                    }
-                  />
-                  <span className="text-sm font-medium leading-snug text-gray-800">
-                    Sync completion to employee training record / matrix
-                  </span>
-                </label>
+                <AppCombobox
+                  label="Matrix column"
+                  value={formData.matrix_training_id || ''}
+                  onChange={(value) => setFormData({ ...formData, matrix_training_id: value })}
+                  options={matrixOptions}
+                  placeholder="Search matrix columns…"
+                />
+                <AppCheckbox
+                  className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surface, 'px-4 py-3 hover:bg-gray-50')}
+                  label="Sync completion to employee training record / matrix"
+                  checked={!!formData.sync_completion_to_employee_record}
+                  onChange={(checked) =>
+                    setFormData({ ...formData, sync_completion_to_employee_record: checked })
+                  }
+                />
               </div>
-            </section>
+            </AppCard>
           </div>
         )}
 
         {activeTab === 'requirements' && (
-          <div className="space-y-5">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={formData.is_required || false}
-                  onChange={(e) => setFormData({ ...formData, is_required: e.target.checked })}
-                />
-                <div>
-                  <span className="font-semibold text-gray-900">This course is required</span>
-                  <p className="text-xs text-gray-500">Assign required audiences and renewal policy.</p>
-                </div>
-              </label>
-            </div>
+          <div className={uiSpacing.sectionStack}>
+            <AppCard bodyClassName={uiSpacing.cardPadding}>
+              <AppCheckbox
+                label={
+                  <span>
+                    <span className="font-semibold text-gray-900">This course is required</span>
+                    <span className={uiCx('mt-0.5 block', uiTypography.helper)}>
+                      Assign required audiences and renewal policy.
+                    </span>
+                  </span>
+                }
+                checked={formData.is_required || false}
+                onChange={(checked) => setFormData({ ...formData, is_required: checked })}
+              />
+            </AppCard>
 
             {formData.is_required && (
               <>
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <label className="block text-sm font-semibold mb-2">Renewal Frequency</label>
+                <AppCard bodyClassName={uiSpacing.sectionStack}>
                   <div className="grid gap-3 md:grid-cols-[1fr_180px]">
-                    <select
+                    <AppSelect
+                      label="Renewal Frequency"
                       value={formData.renewal_frequency || 'none'}
                       onChange={(e) => setFormData({ ...formData, renewal_frequency: e.target.value })}
-                      className={FIELD}
-                    >
-                      <option value="none">No renewal</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
-                      <option value="annual">Annual</option>
-                      <option value="days_X">Custom (X days)</option>
-                      <option value="every_new_job">Every New Job</option>
-                    </select>
-                    <input
+                      options={[...RENEWAL_FREQUENCY_OPTIONS]}
+                    />
+                    <AppInput
+                      label="Custom renewal (days)"
                       type="number"
                       disabled={formData.renewal_frequency !== 'days_X'}
                       value={formData.renewal_frequency_days || ''}
@@ -852,81 +933,48 @@ export default function TrainingCourseEdit() {
                           renewal_frequency_days: e.target.value ? parseInt(e.target.value) : undefined,
                         })
                       }
-                      className={FIELD}
                       placeholder="Days"
                     />
                   </div>
-                </div>
+                </AppCard>
 
                 <div className="grid gap-4 xl:grid-cols-3">
-                  {[
-                    ['Roles', 'required_role_ids', selectedRoleIds, roleSearch, setRoleSearch, filteredRoleOptions],
-                    ['Divisions', 'required_division_ids', selectedDivisionIds, divisionSearch, setDivisionSearch, filteredDivisionOptions],
-                    ['Users', 'required_user_ids', selectedUserIds, userSearch, setUserSearch, filteredUserOptions],
-                  ].map(([title, key, selected, search, setSearch, options]) => (
-                    <div key={String(key)} className="rounded-xl border border-slate-200 bg-white p-4">
-                      <div className="mb-2 flex items-center justify-between">
-                        <p className="text-sm font-semibold text-gray-900">{String(title)}</p>
-                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                          {(selected as string[]).length} selected
-                        </span>
-                      </div>
-                      <input
-                        type="text"
-                        value={String(search)}
-                        onChange={(e) => (setSearch as (v: string) => void)(e.target.value)}
-                        className={FIELD}
-                        placeholder={`Search ${String(title).toLowerCase()}...`}
-                      />
-                      <div className="mt-3 max-h-56 space-y-1 overflow-auto rounded-lg border border-slate-200 bg-slate-50/60 p-2">
-                        {(options as Array<{ id: string; label: string }>).map((opt) => (
-                          <label
-                            key={opt.id}
-                            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-white"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={(selected as string[]).includes(opt.id)}
-                              onChange={() =>
-                                toggleSelect(key as 'required_role_ids' | 'required_division_ids' | 'required_user_ids', opt.id)
-                              }
-                            />
-                            <span className="truncate">{opt.label}</span>
-                          </label>
-                        ))}
-                        {(options as Array<{ id: string; label: string }>).length === 0 ? (
-                          <p className="px-2 py-2 text-xs text-slate-500">No matches.</p>
-                        ) : null}
-                      </div>
-                      {(selected as string[]).length > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {(selected as string[]).slice(0, 8).map((id) => {
-                            const label = (
-                              [...roleOptions, ...divisionOptions, ...userOptions].find((o) => o.id === id)?.label || id
-                            );
-                            return (
-                              <button
-                                key={id}
-                                type="button"
-                                onClick={() =>
-                                  toggleSelect(key as 'required_role_ids' | 'required_division_ids' | 'required_user_ids', id)
-                                }
-                                className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-100"
-                                title="Remove"
-                              >
-                                {label} ×
-                              </button>
-                            );
-                          })}
-                          {(selected as string[]).length > 8 ? (
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                              +{(selected as string[]).length - 8} more
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
+                  <AppCard bodyClassName={uiSpacing.sectionStack}>
+                    <AppMultiSelect
+                      searchable
+                      label="Roles"
+                      value={selectedRoleIds}
+                      onChange={(ids) => setFormData({ ...formData, required_role_ids: ids })}
+                      options={roleMultiOptions}
+                      placeholder="Search roles…"
+                      showSelectedChips
+                      helperText={`${selectedRoleIds.length} selected`}
+                    />
+                  </AppCard>
+                  <AppCard bodyClassName={uiSpacing.sectionStack}>
+                    <AppMultiSelect
+                      searchable
+                      label="Divisions"
+                      value={selectedDivisionIds}
+                      onChange={(ids) => setFormData({ ...formData, required_division_ids: ids })}
+                      options={divisionMultiOptions}
+                      placeholder="Search divisions…"
+                      showSelectedChips
+                      helperText={`${selectedDivisionIds.length} selected`}
+                    />
+                  </AppCard>
+                  <AppCard bodyClassName={uiSpacing.sectionStack}>
+                    <AppUserSelect
+                      mode="multiple"
+                      label="Users"
+                      users={employeeUsers}
+                      value={selectedUserIds}
+                      onChange={(ids) => setFormData({ ...formData, required_user_ids: ids })}
+                      placeholder="Search users…"
+                      showSelectedChips
+                      helperText={`${selectedUserIds.length} selected`}
+                    />
+                  </AppCard>
                 </div>
               </>
             )}
@@ -934,49 +982,48 @@ export default function TrainingCourseEdit() {
         )}
 
         {activeTab === 'certificate' && (
-          <div className="space-y-4">
-            <div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={formData.generates_certificate || false}
-                  onChange={(e) => setFormData({ ...formData, generates_certificate: e.target.checked })}
-                />
-                <span className="font-semibold">Generate certificate upon completion</span>
-              </label>
-            </div>
+          <div className={uiSpacing.sectionStack}>
+            <AppCheckbox
+              label="Generate certificate upon completion"
+              checked={!!formData.generates_certificate}
+              onChange={(checked) => setFormData({ ...formData, generates_certificate: checked })}
+            />
 
             {formData.generates_certificate && (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_min(460px,54vw)] xl:grid-cols-[minmax(0,1fr)_min(600px,58%)]">
-                <div className="min-w-0 space-y-4">
-                  <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-sm">
-                    <p className="text-sm font-bold text-gray-900">Certificate format</p>
-                    <p className="mt-1 text-xs font-medium leading-relaxed text-gray-600">
-                      Choose the layout family for this course. The standard option matches the current PDF engine;
-                      future formats may use different text positions and artwork regions.
-                    </p>
+                <div className={uiCx('min-w-0', uiSpacing.sectionStack)}>
+                  <AppCard className={uiShadows.card} bodyClassName={uiSpacing.cardPadding}>
+                    <AppSectionHeader
+                      title="Certificate format"
+                      description="Choose the layout family for this course. The standard option matches the current PDF engine; future formats may use different text positions and artwork regions."
+                    />
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <label className="flex cursor-default gap-3 rounded-xl border-2 border-brand-red bg-red-50/30 p-4 ring-1 ring-brand-red/20">
+                      <label
+                        className={uiCx(
+                          'flex cursor-default gap-3 border-2 border-brand-red bg-red-50/30 p-4 ring-1 ring-brand-red/20',
+                          uiRadius.card,
+                        )}
+                      >
                         <input type="radio" name="cert-layout" className="mt-1" checked readOnly />
                         <div>
-                          <div className="text-sm font-bold text-gray-900">Standard — landscape letter</div>
-                          <p className="mt-1 text-[11px] leading-snug text-gray-600">
+                          <div className={uiTypography.sectionTitle}>Standard — landscape letter</div>
+                          <p className={uiCx('mt-1 leading-snug', uiTypography.helper)}>
                             US Letter landscape (11&quot; × 8.5&quot;). Optional full-page background; optional logo
                             top-left next to titles.
                           </p>
                         </div>
                       </label>
-                      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-4">
-                        <p className="text-sm font-semibold text-gray-500">More formats</p>
-                        <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+                      <div className={uiCx(uiBorders.createDashed, uiColors.surfaceSubtle, uiRadius.card, 'p-4')}>
+                        <p className={uiTypography.sectionTitle}>More formats</p>
+                        <p className={uiCx('mt-1 leading-relaxed', uiTypography.helper)}>
                           Additional certificate types and layout presets will appear here later.
                         </p>
                       </div>
                     </div>
 
-                    <div className="mt-8 border-t border-slate-100 pt-6">
-                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Page artwork</p>
-                      <p className="mt-1 text-xs font-medium text-gray-600">
+                    <div className="mt-8 border-t border-gray-100 pt-6">
+                      <p className={uiTypography.overline}>Page artwork</p>
+                      <p className={uiCx('mt-1', uiTypography.helper)}>
                         Background and logo side by side. Shared backgrounds come from System Settings → Files →
                         Certificate backgrounds. Use the live preview and PDF generation button to validate final output.
                       </p>
@@ -1055,7 +1102,7 @@ export default function TrainingCourseEdit() {
                           </div>
                         </div>
 
-                        <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/90 p-4">
+                        <div className={uiCx('min-w-0', uiRadius.card, uiBorders.subtle, uiColors.surfaceSubtle, 'p-4')}>
                           <label className="block text-sm font-semibold text-gray-800">Logo (optional)</label>
                           <p className="mt-0.5 text-[11px] text-gray-500">
                             Presets from System Settings → Files → Organization logos, or a one-off upload for this
@@ -1131,38 +1178,35 @@ export default function TrainingCourseEdit() {
                               No library logos yet. Add them under System Settings → Files → Organization logos.
                             </p>
                           ) : null}
-                          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200/80 pt-3">
-                            <span className="text-[11px] font-medium text-slate-600">Course-only override:</span>
-                            <label className="cursor-pointer">
-                              <input
-                                type="file"
-                                accept="image/jpeg,image/png,image/webp"
-                                className="sr-only"
-                                onChange={async (e) => {
-                                  const f = e.target.files?.[0];
-                                  e.target.value = '';
-                                  if (!f) return;
-                                  try {
-                                    const id = await uploadTrainingContentFile(f);
-                                    setFormData((fd) => ({
-                                      ...fd,
-                                      certificate_logo_file_id: id,
-                                      certificate_logo_setting_item_id: undefined,
-                                    }));
-                                    toast.success('Logo uploaded');
-                                  } catch {
-                                    toast.error('Upload failed');
-                                  }
-                                }}
-                              />
-                              <span className="inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 shadow-sm hover:bg-slate-50">
-                                Upload file…
-                              </span>
-                            </label>
+                          <div className={uiCx('mt-3 flex flex-wrap items-center gap-2 border-t border-gray-200/80 pt-3')}>
+                            <AppFileUpload
+                              accept="image/jpeg,image/png,image/webp"
+                              label="Course-only override"
+                              helperText="Upload a logo for this course only."
+                              value={null}
+                              onChange={() => undefined}
+                              onFilesSelected={async (files) => {
+                                const f = files[0];
+                                if (!f) return;
+                                try {
+                                  const id = await uploadTrainingContentFile(f);
+                                  setFormData((fd) => ({
+                                    ...fd,
+                                    certificate_logo_file_id: id,
+                                    certificate_logo_setting_item_id: undefined,
+                                  }));
+                                  toast.success('Logo uploaded');
+                                } catch {
+                                  toast.error('Upload failed');
+                                }
+                              }}
+                            />
                             {formData.certificate_logo_file_id ? (
-                              <button
+                              <AppButton
                                 type="button"
-                                className="text-xs font-semibold text-red-600 hover:underline"
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700"
                                 onClick={() =>
                                   setFormData((fd) => ({
                                     ...fd,
@@ -1171,96 +1215,67 @@ export default function TrainingCourseEdit() {
                                 }
                               >
                                 Remove file
-                              </button>
+                              </AppButton>
                             ) : null}
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </AppCard>
 
-                  <div className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-sm">
-                    <p className="text-sm font-bold text-gray-900">Certificate wording</p>
-                    <p className="mt-1 text-xs font-medium leading-relaxed text-gray-600">
-                      Landscape PDF. Two title lines are centered at the top; the body supports placeholders for name,
-                      course, date, and instructor. The learner&apos;s name on the issued certificate always comes from
-                      the employee record; the instructor name prints above the left signature line (script font in the
-                      PDF).
-                    </p>
-                    <div className="mt-4 space-y-3">
-                      <div>
-                        <label className="mb-1.5 block text-sm font-semibold text-gray-800">First title line</label>
-                        <input
-                          type="text"
-                          value={formData.certificate_heading_primary ?? ''}
-                          onChange={(e) =>
-                            setFormData({ ...formData, certificate_heading_primary: e.target.value || undefined })
-                          }
-                          className={FIELD}
-                          placeholder="CERTIFICATE"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1.5 block text-sm font-semibold text-gray-800">Second title line</label>
-                        <input
-                          type="text"
-                          value={formData.certificate_heading_secondary ?? ''}
-                          onChange={(e) =>
-                            setFormData({ ...formData, certificate_heading_secondary: e.target.value || undefined })
-                          }
-                          className={FIELD}
-                          placeholder="OF COMPLETION"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1.5 block text-sm font-semibold text-gray-800">Body paragraph</label>
-                        <textarea
-                          value={formData.certificate_body_template ?? ''}
-                          onChange={(e) =>
-                            setFormData({ ...formData, certificate_body_template: e.target.value || undefined })
-                          }
-                          className={`${FIELD} min-h-[180px]`}
-                          rows={8}
-                          placeholder={
-                            'Placeholders: {user_name}, {course_title}, {completion_date}, {instructor_name}, {certificate_number}, {expiry_date}. Leave blank for the default Mack Kirk paragraph.'
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1.5 block text-sm font-semibold text-gray-800">
-                          Instructor name (signature line)
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.certificate_instructor_name ?? ''}
-                          onChange={(e) =>
-                            setFormData({ ...formData, certificate_instructor_name: e.target.value || undefined })
-                          }
-                          className={FIELD}
-                          placeholder="Printed above the left gold line"
-                        />
-                      </div>
-                    </div>
-                  </div>
+                  <AppCard className={uiShadows.card} bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>
+                    <AppSectionHeader
+                      title="Certificate wording"
+                      description="Landscape PDF. Two title lines are centered at the top; the body supports placeholders for name, course, date, and instructor. The learner's name on the issued certificate always comes from the employee record; the instructor name prints above the left signature line (script font in the PDF)."
+                    />
+                    <AppInput
+                      label="First title line"
+                      value={formData.certificate_heading_primary ?? ''}
+                      onChange={(e) =>
+                        setFormData({ ...formData, certificate_heading_primary: e.target.value || undefined })
+                      }
+                      placeholder="CERTIFICATE"
+                    />
+                    <AppInput
+                      label="Second title line"
+                      value={formData.certificate_heading_secondary ?? ''}
+                      onChange={(e) =>
+                        setFormData({ ...formData, certificate_heading_secondary: e.target.value || undefined })
+                      }
+                      placeholder="OF COMPLETION"
+                    />
+                    <AppTextarea
+                      label="Body paragraph"
+                      value={formData.certificate_body_template ?? ''}
+                      onChange={(e) =>
+                        setFormData({ ...formData, certificate_body_template: e.target.value || undefined })
+                      }
+                      rows={8}
+                      placeholder="Placeholders: {user_name}, {course_title}, {completion_date}, {instructor_name}, {certificate_number}, {expiry_date}. Leave blank for the default Mack Kirk paragraph."
+                    />
+                    <AppInput
+                      label="Instructor name (signature line)"
+                      value={formData.certificate_instructor_name ?? ''}
+                      onChange={(e) =>
+                        setFormData({ ...formData, certificate_instructor_name: e.target.value || undefined })
+                      }
+                      placeholder="Printed above the left gold line"
+                    />
+                  </AppCard>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold">Certificate validity (days)</label>
-                    <label className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={!formData.certificate_validity_days}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            certificate_validity_days: e.target.checked
-                              ? undefined
-                              : formData.certificate_validity_days || 365,
-                          })
-                        }
-                      />
-                      Never expires
-                    </label>
-                    <input
+                  <AppCard bodyClassName={uiSpacing.sectionStack}>
+                    <AppCheckbox
+                      label="Never expires"
+                      checked={!formData.certificate_validity_days}
+                      onChange={(checked) =>
+                        setFormData({
+                          ...formData,
+                          certificate_validity_days: checked ? undefined : formData.certificate_validity_days || 365,
+                        })
+                      }
+                    />
+                    <AppInput
+                      label="Certificate validity (days)"
                       type="number"
                       value={formData.certificate_validity_days || ''}
                       onChange={(e) =>
@@ -1269,49 +1284,36 @@ export default function TrainingCourseEdit() {
                           certificate_validity_days: e.target.value ? parseInt(e.target.value) : undefined,
                         })
                       }
-                      className={FIELD}
                       placeholder="365"
                       disabled={!formData.certificate_validity_days}
                     />
-                  </div>
+                  </AppCard>
                 </div>
 
-                <div className="lg:sticky lg:top-4 h-max min-h-0 space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Live preview</p>
-                  <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewMode('live')}
-                      className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
-                        previewMode === 'live' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      Live
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewMode('pdf')}
-                      className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
-                        previewMode === 'pdf' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      Final PDF
-                    </button>
-                  </div>
+                <div className={uiCx('lg:sticky lg:top-4 h-max min-h-0', uiSpacing.sectionStack)}>
+                  <p className={uiTypography.overline}>Live preview</p>
+                  <AppTabs
+                    tabs={[...PREVIEW_MODE_TABS]}
+                    value={previewMode}
+                    onChange={(key) => setPreviewMode(key as 'live' | 'pdf')}
+                  />
                   <div
-                    className="overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-100 shadow-lg lg:min-h-[320px]"
-                    style={{ aspectRatio: '11 / 8.5' }}
                     ref={previewFrameRef}
+                    className={uiCx(
+                      'relative w-full overflow-hidden border-2 border-gray-200 bg-gray-100 shadow-lg',
+                      uiRadius.card,
+                    )}
+                    style={{ aspectRatio: '11 / 8.5', minHeight: 320 }}
                   >
                     {previewMode === 'pdf' ? (
                       pdfPreviewUrl ? (
                         <iframe
                           title="Generated certificate preview"
                           src={cleanPdfViewerSrc(pdfPreviewUrl)}
-                          className="block h-full w-full border-0 bg-white"
+                          className="absolute inset-0 block h-full w-full border-0 bg-white"
                         />
                       ) : (
-                        <div className="flex h-full items-center justify-center bg-slate-50 text-center">
+                        <div className="absolute inset-0 flex h-full items-center justify-center bg-slate-50 text-center">
                           <div className="px-6">
                             <p className="text-sm font-semibold text-slate-700">No PDF preview yet</p>
                             <p className="mt-1 text-xs text-slate-500">
@@ -1321,17 +1323,24 @@ export default function TrainingCourseEdit() {
                         </div>
                       )
                     ) : (
-                      <div className="relative h-full w-full">
-                        {livePdfPreviewUrl ? (
+                      <div className="absolute inset-0">
+                        {!isNew && livePdfPreviewUrl ? (
                           <iframe
                             title="Live generated certificate preview"
                             src={cleanPdfViewerSrc(livePdfPreviewUrl)}
-                            className="block h-full w-full border-0 bg-white"
+                            className="absolute inset-0 block h-full w-full border-0 bg-white"
                           />
                         ) : (
-                          <div className="absolute inset-0 flex items-center justify-center bg-slate-50 text-xs text-slate-500">
-                            Adjust sliders to render live preview
-                          </div>
+                          <CertificateHtmlPreview
+                            layout={certLayout}
+                            bgUrl={previewBgUrl}
+                            logoFileId={previewLogoFileId}
+                            headingPrimary={previewH1}
+                            headingSecondary={previewH2}
+                            bodyText={previewBodyText}
+                            instructorName={previewInstructor}
+                            scale={previewScale}
+                          />
                         )}
                         {isLiveRendering ? (
                           <div className="pointer-events-none absolute right-2 top-2 rounded bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-600 shadow">
@@ -1341,12 +1350,12 @@ export default function TrainingCourseEdit() {
                       </div>
                     )}
                   </div>
-                  <p className="text-[11px] leading-relaxed text-slate-500">
+                  <p className={uiTypography.helper}>
                     Use <strong>Live</strong> while adjusting sliders. Switch to <strong>Final PDF</strong> after generating
                     to compare exact output.
                   </p>
-                  <div className="rounded-xl border border-slate-200 bg-white p-3">
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Layout editor</p>
+                  <AppCard bodyClassName={uiSpacing.compactCardPadding}>
+                    <p className={uiTypography.overline}>Layout editor</p>
                     <div className="mt-2 grid gap-2">
                       {[
                         ['Logo X', 'logoX', 0, 760],
@@ -1363,8 +1372,11 @@ export default function TrainingCourseEdit() {
                         ['Sign-Name Gap', 'signatureNameGap', 0, 36],
                         ['Sign Side Inset', 'signatureSideInset', 0, 160],
                       ].map(([label, key, min, max]) => (
-                        <label key={String(key)} className="grid grid-cols-[94px_1fr_50px] items-center gap-2 text-[11px]">
-                          <span className="font-medium text-slate-700">{label}</span>
+                        <label
+                          key={String(key)}
+                          className={uiCx('grid grid-cols-[94px_1fr_50px] items-center gap-2', uiTypography.helper)}
+                        >
+                          <span className="font-medium text-gray-700">{label}</span>
                           <input
                             type="range"
                             min={Number(min)}
@@ -1372,29 +1384,33 @@ export default function TrainingCourseEdit() {
                             value={Math.round(certLayout[key as keyof CertificateLayout])}
                             onChange={(e) => setCertLayout(key as keyof CertificateLayout, Number(e.target.value))}
                           />
-                          <span className="text-right text-slate-500">{Math.round(certLayout[key as keyof CertificateLayout])}</span>
+                          <span className="text-right text-gray-500">
+                            {Math.round(certLayout[key as keyof CertificateLayout])}
+                          </span>
                         </label>
                       ))}
                     </div>
                     <div className="mt-2 flex justify-end">
-                      <button
+                      <AppButton
                         type="button"
-                        className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        variant="secondary"
+                        size="sm"
                         onClick={() => setFormData((fd) => ({ ...fd, certificate_layout: { ...DEFAULT_CERT_LAYOUT } }))}
                       >
                         Reset layout
-                      </button>
+                      </AppButton>
                     </div>
-                  </div>
-                  <button
+                  </AppCard>
+                  <AppButton
                     type="button"
+                    className="w-full"
                     onClick={() => void handleGenerateCertificatePdf()}
                     disabled={saveMutation.isPending || !formData.generates_certificate || isNew}
-                    className="w-full rounded-lg bg-brand-red px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30 disabled:cursor-not-allowed disabled:opacity-50"
+                    loading={saveMutation.isPending}
                   >
                     {saveMutation.isPending ? 'Saving…' : 'Generate PDF'}
-                  </button>
-                  <p className="text-[11px] text-slate-500">
+                  </AppButton>
+                  <p className={uiTypography.helper}>
                     Saves current certificate settings and opens the generated PDF preview in a new tab.
                   </p>
                 </div>
@@ -1406,72 +1422,65 @@ export default function TrainingCourseEdit() {
         {activeTab === 'builder' && (
           <div>
             {isNew ? (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-14 text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                    />
-                  </svg>
-                </div>
-                <p className="text-sm font-semibold text-gray-800">Content builder unlocks after save</p>
-                <p className="mt-1 max-w-sm text-sm text-gray-500">
-                  Save this course as a draft first. You can then add modules, lessons, and quizzes from the outline.
-                </p>
-              </div>
+              <AppEmptyState
+                title="Content builder unlocks after save"
+                description="Save this course as a draft first. You can then add modules, lessons, and quizzes from the outline."
+                icon={<Plus className="h-5 w-5" />}
+                className="border-0 bg-transparent shadow-none"
+              />
             ) : courseId ? (
               <CourseBuilderPanel courseId={courseId} />
             ) : null}
           </div>
         )}
-      </div>
+      </AppCard>
 
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <button
-          type="button"
-          onClick={() => navigate('/training/admin')}
-          className="w-full rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 sm:w-auto"
-        >
+      <AppCard
+        className={uiShadows.card}
+        bodyClassName={uiCx(uiSpacing.cardPadding, uiLayout.actionsRow, 'flex-col flex-wrap sm:flex-row sm:items-center sm:justify-between')}
+      >
+        <AppButton type="button" variant="secondary" onClick={() => navigate('/training/admin')} className="w-full sm:w-auto">
           Cancel
-        </button>
-        <div className="flex flex-wrap items-center justify-stretch gap-2 sm:justify-end sm:gap-3">
-          <button
+        </AppButton>
+        <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-stretch sm:w-auto sm:justify-end')}>
+          <AppButton
             type="button"
+            variant="secondary"
             onClick={handleSave}
             disabled={saveMutation.isPending}
-            className="min-h-[42px] flex-1 rounded-lg bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 disabled:opacity-50 sm:flex-none sm:px-5"
+            loading={saveMutation.isPending}
+            className="min-h-[42px] flex-1 sm:flex-none"
           >
             {saveMutation.isPending ? 'Saving…' : 'Save draft'}
-          </button>
+          </AppButton>
           {!isNew && course?.status === 'draft' && (
-            <button
+            <AppButton
               type="button"
               onClick={handlePublish}
               disabled={publishMutation.isPending}
-              className="min-h-[42px] flex-1 rounded-lg bg-brand-red px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40 disabled:opacity-50 sm:flex-none sm:px-5"
+              loading={publishMutation.isPending}
+              className="min-h-[42px] flex-1 sm:flex-none"
             >
               {publishMutation.isPending ? 'Publishing…' : 'Publish'}
-            </button>
+            </AppButton>
           )}
           {!isNew && (
-            <button
+            <AppButton
               type="button"
+              variant="secondary"
+              className="min-h-[42px] w-full sm:w-auto"
               onClick={() => {
                 const newTitle = prompt('Enter new course title:', `${course?.title} (Copy)`);
                 if (newTitle) {
                   duplicateMutation.mutate(newTitle);
                 }
               }}
-              className="min-h-[42px] w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 sm:w-auto sm:px-5"
             >
               Duplicate
-            </button>
+            </AppButton>
           )}
         </div>
-      </div>
+      </AppCard>
     </div>
   );
 }

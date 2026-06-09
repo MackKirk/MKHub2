@@ -4,6 +4,7 @@ import {
   useId,
   useMemo,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -13,7 +14,7 @@ import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
 import { SelectDropdownCheckbox } from './SelectDropdownCheckbox';
 import { uiCx, uiDropdown, uiTypography, uiUserSelect } from './tokens';
-import { useComboboxDropdown } from './useComboboxDropdown';
+import { comboboxMenuStyle, useComboboxDropdown, type ComboboxMenuRect } from './useComboboxDropdown';
 import {
   type FormCustomListTreeNode,
   getChildrenAtPath,
@@ -70,7 +71,7 @@ type HierarchicalPickerPanelProps = {
   pathIds: string[];
   setPathIds: (p: string[]) => void;
   portalListId: string;
-  menuPosition: { top: number; left: number; width: number };
+  menuPosition: CSSProperties;
   children: ReactNode;
 };
 
@@ -198,9 +199,7 @@ export function AppHierarchicalSelectSingle({
     resetNavigation();
   }, [onChange, closeDropdown, resetNavigation]);
 
-  const menuPosition = menuRect
-    ? { top: menuRect.top, left: menuRect.left, width: menuRect.width }
-    : undefined;
+  const menuPosition = comboboxMenuStyle(menuRect);
 
   const listContent = (
     <>
@@ -423,9 +422,7 @@ export function AppHierarchicalSelectMulti({
     [onChange, value, selectedSet, resetNavigation],
   );
 
-  const menuPosition = menuRect
-    ? { top: menuRect.top, left: menuRect.left, width: menuRect.width }
-    : undefined;
+  const menuPosition = comboboxMenuStyle(menuRect);
 
   const renderLeafRow = (leafId: string, displayLabel: string) => {
     const isSelected = selectedSet.has(leafId);

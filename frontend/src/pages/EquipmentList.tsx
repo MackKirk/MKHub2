@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { Search, SlidersHorizontal, Wrench } from 'lucide-react';
@@ -22,14 +22,13 @@ import {
   AppInput,
   AppListCreateItem,
   AppPageHeader,
-  AppTabs,
+  AppQuickFilterRow,
   uiBorders,
   uiCx,
   uiLayout,
   uiShadows,
   uiSpacing,
   uiTypography,
-  type AppTabItem,
 } from '@/components/ui';
 
 type Equipment = {
@@ -152,10 +151,47 @@ const CATEGORY_OPTIONS = [
   { value: 'safety', label: 'Safety Equipment' },
 ];
 
+const CATEGORY_QUICK_FILTER_OPTIONS = [
+  { value: 'all', label: 'All' },
+  ...CATEGORY_OPTIONS,
+];
+
 const ASSIGNMENT_OPTIONS = [
   { value: 'assigned', label: 'Assigned' },
   { value: 'available', label: 'Available' },
 ];
+
+function buildEquipmentApiParams(
+  searchParams: URLSearchParams,
+  categoryFilter: string,
+  sortBy: SortColumn,
+  sortDir: 'asc' | 'desc',
+  page: number,
+  limit: number,
+  search: string,
+  opts?: { omitQuickFilters?: boolean; page?: number; limit?: number },
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+
+  if (!opts?.omitQuickFilters) {
+    if (categoryFilter !== 'all') params.set('category', categoryFilter);
+    const status = searchParams.get('status');
+    const statusNot = searchParams.get('status_not');
+    const assigned = searchParams.get('assigned');
+    if (status) params.set('status', status);
+    if (statusNot) params.set('status_not', statusNot);
+    if (assigned === 'true' || assigned === 'false') params.set('assigned', assigned);
+  }
+
+  const categoryNot = searchParams.get('category_not');
+  if (categoryNot) params.set('category_not', categoryNot);
+  params.set('sort', sortBy);
+  params.set('dir', sortDir);
+  params.set('page', String(opts?.page ?? page));
+  params.set('limit', String(opts?.limit ?? limit));
+  return params;
+}
 
 const EQUIPMENT_FILTER_FIELDS: FieldConfig[] = [
   { id: 'category', label: 'Category', type: 'select', operators: ['is', 'is_not'], getOptions: () => CATEGORY_OPTIONS },
@@ -179,15 +215,6 @@ function getEquipmentValueLabel(rule: FilterRule): string {
   const map = EQUIPMENT_VALUE_LABELS[rule.field];
   return (map && map[v]) ?? v ?? '';
 }
-
-const CATEGORY_TAB_ITEMS: AppTabItem[] = [
-  { key: 'all', label: 'All' },
-  { key: 'generator', label: 'Generators' },
-  { key: 'tool', label: 'Tools' },
-  { key: 'electronics', label: 'Electronics' },
-  { key: 'small_tool', label: 'Small Tools' },
-  { key: 'safety', label: 'Safety' },
-];
 
 type SortColumn = 'unit_number' | 'name' | 'category' | 'value' | 'assignment' | 'status';
 
@@ -270,6 +297,117 @@ export default function EquipmentList() {
   const currentRules = useMemo(() => convertParamsToRules(searchParams), [searchParams]);
   const hasActiveFilters = currentRules.length > 0;
 
+  const toggleStatusQuickFilter = (statusValue: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (params.get('status') === statusValue) {
+      params.delete('status');
+    } else {
+      params.delete('status_not');
+      params.set('status', statusValue);
+    }
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params, { replace: true });
+  };
+
+  const toggleAssignedQuickFilter = (assignedValue: 'true' | 'false') => {
+    const params = new URLSearchParams(searchParams);
+    if (params.get('assigned') === assignedValue) {
+      params.delete('assigned');
+    } else {
+      params.set('assigned', assignedValue);
+    }
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params, { replace: true });
+  };
+
+  const quickFilterSegments = useMemo(
+    () => [
+      ...CATEGORY_QUICK_FILTER_OPTIONS.map((opt) => ({
+        key: `category:${opt.value}`,
+        label: opt.label,
+        active: categoryFilter === opt.value,
+        onClick: () => handleCategoryChange(opt.value),
+      })),
+      ...EQUIPMENT_STATUS_OPTIONS.map((opt) => ({
+        key: `status:${opt.value}`,
+        label: opt.label,
+        active: searchParams.get('status') === opt.value,
+        onClick: () => toggleStatusQuickFilter(opt.value),
+      })),
+      {
+        key: 'assigned:true',
+        label: 'Assigned',
+        active: searchParams.get('assigned') === 'true',
+        onClick: () => toggleAssignedQuickFilter('true'),
+      },
+      {
+        key: 'assigned:false',
+        label: 'Available',
+        active: searchParams.get('assigned') === 'false',
+        onClick: () => toggleAssignedQuickFilter('false'),
+      },
+    ],
+    [searchParams, categoryFilter],
+  );
+
+  const quickFilterCountBaseQs = useMemo(
+    () =>
+      buildEquipmentApiParams(searchParams, categoryFilter, sortBy, sortDir, page, limit, search, {
+        omitQuickFilters: true,
+        page: 1,
+        limit: 1,
+      }).toString(),
+    [searchParams, categoryFilter, sortBy, sortDir, page, limit, search],
+  );
+
+  const quickFilterCountTargets = useMemo(() => {
+    const targets: Array<{ key: string; qs: string }> = [];
+    for (const opt of CATEGORY_QUICK_FILTER_OPTIONS) {
+      const p = new URLSearchParams(quickFilterCountBaseQs);
+      if (opt.value !== 'all') p.set('category', opt.value);
+      targets.push({ key: `category:${opt.value}`, qs: p.toString() });
+    }
+    for (const opt of EQUIPMENT_STATUS_OPTIONS) {
+      const p = new URLSearchParams(quickFilterCountBaseQs);
+      p.set('status', opt.value);
+      targets.push({ key: `status:${opt.value}`, qs: p.toString() });
+    }
+    for (const assignedValue of ['true', 'false'] as const) {
+      const p = new URLSearchParams(quickFilterCountBaseQs);
+      p.set('assigned', assignedValue);
+      targets.push({ key: `assigned:${assignedValue}`, qs: p.toString() });
+    }
+    return targets;
+  }, [quickFilterCountBaseQs]);
+
+  const quickFilterCountQueries = useQueries({
+    queries: quickFilterCountTargets.map((target) => ({
+      queryKey: ['equipment', 'quick-filter-count', target.key, target.qs],
+      queryFn: () => api<EquipmentListResponse>('GET', `/fleet/equipment?${target.qs}`).then((r) => r.total),
+      staleTime: 60_000,
+    })),
+  });
+
+  const quickFilterCountsByKey = useMemo(() => {
+    const counts: Record<string, number> = {};
+    quickFilterCountTargets.forEach((target, index) => {
+      const total = quickFilterCountQueries[index]?.data;
+      if (typeof total === 'number') counts[target.key] = total;
+    });
+    return counts;
+  }, [quickFilterCountTargets, quickFilterCountQueries]);
+
+  const quickFilterSegmentsWithCounts = useMemo(
+    () =>
+      quickFilterSegments.map((segment) => ({
+        ...segment,
+        count: quickFilterCountsByKey[segment.key],
+      })),
+    [quickFilterSegments, quickFilterCountsByKey],
+  );
+
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       'equipment',
@@ -285,21 +423,15 @@ export default function EquipmentList() {
       searchParams.get('assigned'),
     ],
     queryFn: () => {
-      const params = new URLSearchParams();
-      if (search) params.set('search', search);
-      if (categoryFilter !== 'all') params.set('category', categoryFilter);
-      const status = searchParams.get('status');
-      const statusNot = searchParams.get('status_not');
-      const categoryNot = searchParams.get('category_not');
-      const assigned = searchParams.get('assigned');
-      if (status) params.set('status', status);
-      if (statusNot) params.set('status_not', statusNot);
-      if (categoryNot) params.set('category_not', categoryNot);
-      if (assigned === 'true' || assigned === 'false') params.set('assigned', assigned);
-      params.set('sort', sortBy);
-      params.set('dir', sortDir);
-      params.set('page', String(page));
-      params.set('limit', String(limit));
+      const params = buildEquipmentApiParams(
+        searchParams,
+        categoryFilter,
+        sortBy,
+        sortDir,
+        page,
+        limit,
+        search,
+      );
       return api<EquipmentListResponse>('GET', `/fleet/equipment?${params.toString()}`);
     },
   });
@@ -336,12 +468,10 @@ export default function EquipmentList() {
   }, []);
 
   const showEmptyList = !isLoading && equipment.length === 0;
-  const pageTitle = categoryLabels[categoryFilter] || 'Equipment';
-
   return (
     <div className={uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <AppPageHeader
-        title={pageTitle}
+        title="Equipment"
         subtitle="Manage tools and equipment"
         icon={<Wrench className="h-4 w-4" />}
         actions={
@@ -352,13 +482,7 @@ export default function EquipmentList() {
         }
       />
 
-      <AppCard bodyClassName={uiSpacing.cardPadding}>
-        <AppTabs
-          tabs={CATEGORY_TAB_ITEMS}
-          value={categoryFilter}
-          onChange={handleCategoryChange}
-          className="mb-3"
-        />
+      <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>
         <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
           <div className="min-w-0 flex-1">
             <AppInput
@@ -394,6 +518,7 @@ export default function EquipmentList() {
             </AppButton>
           ) : null}
         </div>
+        <AppQuickFilterRow segments={quickFilterSegmentsWithCounts} />
       </AppCard>
 
       {hasActiveFilters ? (

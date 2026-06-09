@@ -42,9 +42,9 @@ export type FleetAssetHistoryItem = {
   audit_context?: Record<string, unknown> | null;
 };
 
-function historyEntryBorderClass(item: FleetAssetHistoryItem): string {
+function historyEntryBorderClass(item: FleetAssetHistoryItem, assignmentAuditEntityType: string): string {
   const isAssignmentAudit =
-    item.source === 'audit' && item.entity_type === 'asset_assignment' && !!item.entity_id;
+    item.source === 'audit' && item.entity_type === assignmentAuditEntityType && !!item.entity_id;
   if (item.source === 'assignment' && item.kind === 'checkout') return 'border-brand-red';
   if (item.source === 'assignment' && item.kind === 'return') return 'border-sky-500';
   if (isAssignmentAudit && item.audit_action === 'CREATE') return 'border-brand-red';
@@ -53,9 +53,9 @@ function historyEntryBorderClass(item: FleetAssetHistoryItem): string {
   return 'border-gray-300';
 }
 
-function historyEntryBadge(item: FleetAssetHistoryItem): string {
+function historyEntryBadge(item: FleetAssetHistoryItem, assignmentAuditEntityType: string): string {
   const isAssignmentAudit =
-    item.source === 'audit' && item.entity_type === 'asset_assignment' && !!item.entity_id;
+    item.source === 'audit' && item.entity_type === assignmentAuditEntityType && !!item.entity_id;
   if (item.source === 'assignment' && item.kind === 'checkout') return 'Check-out';
   if (item.source === 'assignment' && item.kind === 'return') return 'Return';
   if (isAssignmentAudit && item.audit_action === 'CREATE') return 'Check-out';
@@ -67,6 +67,8 @@ function historyEntryBadge(item: FleetAssetHistoryItem): string {
 type Props = {
   historyItems: FleetAssetHistoryItem[];
   assignments: FleetAssignmentLogRecord[];
+  assignmentAuditEntityType?: string;
+  activityDescription?: string;
   onOpenAssignmentDetail: (
     assignment: FleetAssignmentLogRecord,
     logType: 'assignment' | 'return',
@@ -78,6 +80,8 @@ type Props = {
 export function FleetAssetLogsTab({
   historyItems,
   assignments,
+  assignmentAuditEntityType = 'asset_assignment',
+  activityDescription = 'Check-outs and returns, edits to this asset, and other fleet log entries (newest first).',
   onOpenAssignmentDetail,
   onOpenAuditDetail,
 }: Props) {
@@ -87,7 +91,7 @@ export function FleetAssetLogsTab({
     <div className={uiSpacing.sectionStack}>
       <AppSectionHeader
         title="Activity history"
-        description="Check-outs and returns, edits to this asset, and other fleet log entries (newest first)."
+        description={activityDescription}
         {...appSectionPresetProps('workload')}
       />
 
@@ -102,7 +106,7 @@ export function FleetAssetLogsTab({
             {historyItems.map((item) => {
               const isAssignmentAudit =
                 item.source === 'audit' &&
-                item.entity_type === 'asset_assignment' &&
+                item.entity_type === assignmentAuditEntityType &&
                 !!item.entity_id;
               const assign =
                 item.assignment_id && item.log_subtype
@@ -128,9 +132,9 @@ export function FleetAssetLogsTab({
                 !(isAssignmentAudit && assign);
               const openAuditDetail =
                 openAuditDetailBase && fleetHistoryChangeDetailEligible(item);
-              const borderClass = historyEntryBorderClass(item);
+              const borderClass = historyEntryBorderClass(item, assignmentAuditEntityType);
               const clickable = openAssignDetail || !!openAuditDetail;
-              const badge = historyEntryBadge(item);
+              const badge = historyEntryBadge(item, assignmentAuditEntityType);
               const summaryFull = buildFleetHistoryDescription(item);
               const summaryList =
                 openAuditDetail && item.source === 'audit'

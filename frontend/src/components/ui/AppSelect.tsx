@@ -12,7 +12,7 @@ import { sortByLabel } from '@/lib/sortOptions';
 import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
 import { uiCx, uiDropdown, uiTypography } from './tokens';
-import { useComboboxDropdown } from './useComboboxDropdown';
+import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 export type AppSelectOption = {
   value: string;
@@ -190,9 +190,7 @@ export function AppSelect({
   const showPlaceholder = !!placeholder && !currentValue;
   const triggerLabel = selected?.label ?? placeholder ?? 'Select…';
 
-  const menuPosition = menuRect
-    ? { top: menuRect.top, left: menuRect.left, width: menuRect.width }
-    : undefined;
+  const menuPosition = comboboxMenuStyle(menuRect);
 
   const renderOptionButton = (option: AppSelectOption) => (
     <li key={option.value} role="option" aria-selected={currentValue === option.value}>

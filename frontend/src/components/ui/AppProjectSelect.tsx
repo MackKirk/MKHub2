@@ -12,7 +12,7 @@ import {
   type ProjectPickerItem,
 } from './projectPickerUtils';
 import { uiCx, uiDropdown, uiTypography } from './tokens';
-import { useComboboxDropdown } from './useComboboxDropdown';
+import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 export type { ProjectPickerItem } from './projectPickerUtils';
 export { formatProjectAddressLine, formatProjectPrimaryLine } from './projectPickerUtils';
@@ -137,7 +137,7 @@ export function AppProjectSelect({
         id={portalListId}
         role="listbox"
         className={uiDropdown.menu}
-        style={{ top: menuRect.top, left: menuRect.left, width: menuRect.width }}
+        style={comboboxMenuStyle(menuRect)}
       >
         {allowEmpty ? (
           <li role="option" aria-selected={!value}>

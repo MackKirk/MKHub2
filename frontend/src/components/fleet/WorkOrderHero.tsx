@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronUp, Pencil, Truck } from 'lucide-react';
+import { ChevronDown, ChevronUp, Truck } from 'lucide-react';
 import { WORK_ORDER_STATUS_LABELS, URGENCY_LABELS, CATEGORY_LABELS } from '@/lib/fleetBadges';
 import { getUrgencyBadgeVariant, getWorkOrderStatusBadgeVariant } from '@/lib/fleetUi';
 import {
@@ -8,7 +8,7 @@ import {
   fleetHeroValueClass,
   fleetHeroValueMutedClass,
 } from '@/components/fleet/FleetAssetHero';
-import { AppBadge, AppButton, AppCard, uiBorders, uiCx, uiRadius } from '@/components/ui';
+import { AppBadge, AppButton, AppCard, AppHeroEditButton, uiBorders, uiCx, uiRadius } from '@/components/ui';
 
 const woCheckInTileClass =
   'h-24 w-24 sm:h-28 sm:w-28 rounded-xl border-2 border-sky-400 bg-sky-50 text-sky-950 text-sm font-semibold shadow-sm hover:bg-sky-100 active:scale-[0.98] transition flex flex-col items-center justify-center gap-1 px-1 py-2 text-center leading-tight';
@@ -135,26 +135,22 @@ function WorkOrderHeroBody({
               <FleetHeroStat label="Entity">
                 <div className={uiCx(fleetHeroValueClass, 'truncate capitalize')}>{workOrder.entity_type}</div>
               </FleetHeroStat>
-              <FleetHeroStat label="Status">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <AppBadge variant={getWorkOrderStatusBadgeVariant(workOrder.status)}>
-                    {WORK_ORDER_STATUS_LABELS[workOrder.status] || workOrder.status}
-                  </AppBadge>
-                  {statusOptionsCount > 1 ? (
-                    <AppButton
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="!h-7 !w-7 !min-w-0 !p-0"
+              <FleetHeroStat
+                label="Status"
+                labelAction={
+                  statusOptionsCount > 1 ? (
+                    <AppHeroEditButton
+                      title="Edit status"
+                      aria-label="Edit status"
                       onClick={onEditStatus}
                       disabled={statusEditPending}
-                      aria-label="Edit status"
-                      title="Edit status"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </AppButton>
-                  ) : null}
-                </div>
+                    />
+                  ) : null
+                }
+              >
+                <AppBadge variant={getWorkOrderStatusBadgeVariant(workOrder.status)}>
+                  {WORK_ORDER_STATUS_LABELS[workOrder.status] || workOrder.status}
+                </AppBadge>
               </FleetHeroStat>
               <FleetHeroStat label="Number">
                 <div className={uiCx(fleetHeroValueClass, 'truncate')}>{workOrder.work_order_number}</div>

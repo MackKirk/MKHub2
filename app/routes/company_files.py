@@ -4,15 +4,16 @@ Handles company-wide files organized by departments.
 Uses a special approach: we'll create a "Company" client or use department-based organization.
 For now, we'll use department_id to organize files.
 """
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
-from typing import Optional, List
+from typing import Optional, List, Dict, Set
 import uuid
 
 from ..db import get_db
 from ..models.models import ClientFolder, ClientDocument, FileObject, SettingItem, SettingList, User, EmployeeProfile
-from ..auth.security import require_permissions, get_current_user
+from ..auth.security import require_permissions, get_current_user, require_roles
 
 router = APIRouter(prefix="/company/files", tags=["company-files"])
 
@@ -128,6 +129,83 @@ def user_has_folder_access(db: Session, user: User, folder: ClientFolder) -> boo
     return False
 
 
+def get_or_create_department_root_folder(db: Session, company_id: uuid.UUID, department_id: str) -> Optional[ClientFolder]:
+    """Find or create the root folder for a department setting item."""
+    dept_list = db.query(SettingList).filter(SettingList.name == "departments").first()
+    if not dept_list:
+        return None
+    dept = db.query(SettingItem).filter(
+        SettingItem.id == department_id,
+        SettingItem.list_id == dept_list.id
+    ).first()
+    if not dept:
+        return None
+    dept_root = db.query(ClientFolder).filter(
+        ClientFolder.client_id == company_id,
+        ClientFolder.name == dept.label,
+        ClientFolder.parent_id == None
+    ).first()
+    if not dept_root:
+        dept_root = ClientFolder(
+            client_id=company_id,
+            name=dept.label,
+            parent_id=None
+        )
+        db.add(dept_root)
+        db.commit()
+        db.refresh(dept_root)
+    return dept_root
+
+
+def collect_descendant_folder_ids(db: Session, company_id: uuid.UUID, root_id: uuid.UUID) -> Set[uuid.UUID]:
+    """Collect root folder id and all descendant folder ids."""
+    all_folders = db.query(ClientFolder).filter(ClientFolder.client_id == company_id).all()
+    by_parent: Dict[Optional[uuid.UUID], List[uuid.UUID]] = {}
+    for f in all_folders:
+        pid = getattr(f, "parent_id", None)
+        by_parent.setdefault(pid, []).append(f.id)
+    out: Set[uuid.UUID] = {root_id}
+    stack = [root_id]
+    while stack:
+        current = stack.pop()
+        for child_id in by_parent.get(current, []):
+            if child_id not in out:
+                out.add(child_id)
+                stack.append(child_id)
+    return out
+
+
+def serialize_company_document(db: Session, d: ClientDocument, include_deleted: bool = False) -> Optional[dict]:
+    if not include_deleted and getattr(d, "deleted_at", None) is not None:
+        return None
+    fid = None
+    try:
+        if (d.doc_type or "").startswith("folder:"):
+            fid = d.doc_type.split(":", 1)[1]
+    except Exception:
+        fid = None
+    fo = db.query(FileObject).filter(FileObject.id == d.file_id).first() if getattr(d, "file_id", None) else None
+    title = d.title or ""
+    ct = getattr(fo, "content_type", None) if fo else None
+    name = title or (getattr(fo, "original_name", None) if fo else "") or ""
+    ext = (name.rsplit(".", 1)[-1] if "." in name else "").lower()
+    is_img_ext = ext in {"png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif"}
+    is_image = (ct or "").startswith("image/") or is_img_ext
+    return {
+        "id": str(d.id),
+        "folder_id": fid,
+        "title": d.title,
+        "notes": d.notes,
+        "file_id": str(d.file_id) if getattr(d, "file_id", None) else None,
+        "created_at": d.created_at.isoformat() if getattr(d, "created_at", None) else None,
+        "deleted_at": d.deleted_at.isoformat() if getattr(d, "deleted_at", None) else None,
+        "deleted_by": str(d.deleted_by) if getattr(d, "deleted_by", None) else None,
+        "content_type": ct,
+        "is_image": is_image,
+        "original_name": name or None,
+    }
+
+
 @router.get("/folders")
 def list_company_folders(
     department_id: Optional[str] = None,
@@ -139,35 +217,11 @@ def list_company_folders(
     """List folders for company files, optionally filtered by department and parent. Filters by user permissions."""
     company_id = get_company_client_id(db)
     
-    # If department_id is provided and no parent_id, we need to get or create the department root folder
     dept_root_folder_id = None
     if department_id and not parent_id:
-        dept_list = db.query(SettingList).filter(SettingList.name == "departments").first()
-        if dept_list:
-            dept = db.query(SettingItem).filter(
-                SettingItem.id == department_id,
-                SettingItem.list_id == dept_list.id
-            ).first()
-            if dept:
-                # Find or create the root folder for this department
-                dept_root = db.query(ClientFolder).filter(
-                    ClientFolder.client_id == company_id,
-                    ClientFolder.name == dept.label,
-                    ClientFolder.parent_id == None
-                ).first()
-                
-                if not dept_root:
-                    # Create the department root folder if it doesn't exist
-                    dept_root = ClientFolder(
-                        client_id=company_id,
-                        name=dept.label,
-                        parent_id=None
-                    )
-                    db.add(dept_root)
-                    db.commit()
-                    db.refresh(dept_root)
-                
-                dept_root_folder_id = dept_root.id
+        dept_root = get_or_create_department_root_folder(db, company_id, department_id)
+        if dept_root:
+            dept_root_folder_id = dept_root.id
     
     query = db.query(ClientFolder).filter(ClientFolder.client_id == company_id)
     
@@ -216,6 +270,43 @@ def list_company_folders(
     return out
 
 
+@router.get("/folders/tree")
+def list_company_folder_tree(
+    department_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
+):
+    """Return all folders in a department subtree plus the department root folder id."""
+    company_id = get_company_client_id(db)
+    dept_root = get_or_create_department_root_folder(db, company_id, department_id)
+    if not dept_root:
+        raise HTTPException(status_code=404, detail="Department not found")
+    subtree_ids = collect_descendant_folder_ids(db, company_id, dept_root.id)
+    rows = (
+        db.query(ClientFolder)
+        .filter(ClientFolder.client_id == company_id, ClientFolder.id.in_(subtree_ids))
+        .order_by(ClientFolder.sort_index.asc(), ClientFolder.name.asc())
+        .all()
+    )
+    folders = []
+    for f in rows:
+        if not user_has_folder_access(db, user, f):
+            continue
+        folders.append({
+            "id": str(f.id),
+            "name": f.name,
+            "parent_id": str(f.parent_id) if getattr(f, "parent_id", None) else None,
+            "sort_index": f.sort_index,
+            "access_permissions": getattr(f, "access_permissions", None),
+            "created_at": f.created_at.isoformat() if getattr(f, "created_at", None) else None,
+        })
+    return {
+        "root_folder_id": str(dept_root.id),
+        "folders": folders,
+    }
+
+
 @router.post("/folders")
 def create_company_folder(
     name: str = Body(...),
@@ -234,33 +325,9 @@ def create_company_folder(
         except Exception:
             pass
     elif department_id:
-        # If no parent_id but department_id is provided, create folder inside department root
-        dept_list = db.query(SettingList).filter(SettingList.name == "departments").first()
-        if dept_list:
-            dept = db.query(SettingItem).filter(
-                SettingItem.id == department_id,
-                SettingItem.list_id == dept_list.id
-            ).first()
-            if dept:
-                # Find or create the root folder for this department
-                dept_root = db.query(ClientFolder).filter(
-                    ClientFolder.client_id == company_id,
-                    ClientFolder.name == dept.label,
-                    ClientFolder.parent_id == None
-                ).first()
-                
-                if not dept_root:
-                    # Create the department root folder if it doesn't exist
-                    dept_root = ClientFolder(
-                        client_id=company_id,
-                        name=dept.label,
-                        parent_id=None
-                    )
-                    db.add(dept_root)
-                    db.commit()
-                    db.refresh(dept_root)
-                
-                pid = dept_root.id
+        dept_root = get_or_create_department_root_folder(db, company_id, department_id)
+        if dept_root:
+            pid = dept_root.id
     
     folder = ClientFolder(
         client_id=company_id,
@@ -357,13 +424,15 @@ def list_company_documents(
     """List documents in company files. Only shows documents in folders the user has access to."""
     company_id = get_company_client_id(db)
     
-    query = db.query(ClientDocument).filter(ClientDocument.client_id == company_id)
+    query = db.query(ClientDocument).filter(
+        ClientDocument.client_id == company_id,
+        ClientDocument.deleted_at.is_(None),
+    )
     
     if folder_id:
         tag = f"folder:{folder_id}"
         query = query.filter(ClientDocument.doc_type == tag)
         
-        # Check if user has access to this folder
         try:
             fid = uuid.UUID(str(folder_id))
             folder = db.query(ClientFolder).filter(
@@ -376,6 +445,13 @@ def list_company_documents(
             raise
         except Exception:
             pass
+    elif department_id:
+        dept_root = get_or_create_department_root_folder(db, company_id, department_id)
+        if not dept_root:
+            return []
+        subtree_ids = collect_descendant_folder_ids(db, company_id, dept_root.id)
+        tags = [f"folder:{fid}" for fid in subtree_ids]
+        query = query.filter(ClientDocument.doc_type.in_(tags))
     
     rows = query.order_by(ClientDocument.created_at.desc()).all()
     
@@ -385,7 +461,6 @@ def list_company_documents(
         try:
             if (d.doc_type or '').startswith('folder:'):
                 fid = d.doc_type.split(':', 1)[1]
-                # Verify user has access to the folder containing this document
                 if fid:
                     try:
                         folder_uuid = uuid.UUID(str(fid))
@@ -394,20 +469,15 @@ def list_company_documents(
                             ClientFolder.id == folder_uuid
                         ).first()
                         if folder and not user_has_folder_access(db, user, folder):
-                            continue  # Skip this document
+                            continue
                     except Exception:
                         pass
         except Exception:
             fid = None
         
-        out.append({
-            "id": str(d.id),
-            "folder_id": fid,
-            "title": d.title,
-            "notes": d.notes,
-            "file_id": str(d.file_id) if getattr(d, 'file_id', None) else None,
-            "created_at": d.created_at.isoformat() if getattr(d, 'created_at', None) else None,
-        })
+        serialized = serialize_company_document(db, d)
+        if serialized:
+            out.append(serialized)
     return out
 
 
@@ -469,15 +539,98 @@ def update_company_document(
 def delete_company_document(
     doc_id: str,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
     _=Depends(require_permissions("documents:delete", "documents:access", "clients:write"))
 ):
-    """Delete a company document."""
+    """Soft-delete a company document (admin can restore or purge from Deleted files tab)."""
     company_id = get_company_client_id(db)
     
-    db.query(ClientDocument).filter(
+    doc = db.query(ClientDocument).filter(
         ClientDocument.client_id == company_id,
         ClientDocument.id == doc_id
-    ).delete()
+    ).first()
+    if not doc:
+        return {"status": "ok"}
+    if getattr(doc, "deleted_at", None) is not None:
+        return {"status": "ok"}
+    doc.deleted_at = datetime.now(timezone.utc)
+    doc.deleted_by = user.id
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/documents/deleted")
+def list_deleted_company_documents(
+    department_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
+):
+    """Admin-only: company documents soft-deleted from the library."""
+    company_id = get_company_client_id(db)
+    query = db.query(ClientDocument).filter(
+        ClientDocument.client_id == company_id,
+        ClientDocument.deleted_at.isnot(None),
+    )
+    if department_id:
+        dept_root = get_or_create_department_root_folder(db, company_id, department_id)
+        if dept_root:
+            subtree_ids = collect_descendant_folder_ids(db, company_id, dept_root.id)
+            tags = [f"folder:{fid}" for fid in subtree_ids]
+            query = query.filter(ClientDocument.doc_type.in_(tags))
+    rows = query.order_by(ClientDocument.deleted_at.desc()).all()
+    out = []
+    for d in rows:
+        serialized = serialize_company_document(db, d, include_deleted=True)
+        if serialized:
+            dept_label = None
+            try:
+                if (d.doc_type or "").startswith("folder:"):
+                    folder_uuid = uuid.UUID(str(d.doc_type.split(":", 1)[1]))
+                    folder = db.query(ClientFolder).filter(ClientFolder.id == folder_uuid).first()
+                    if folder:
+                        dept_label = folder.name
+            except Exception:
+                pass
+            serialized["department_label"] = dept_label
+            out.append(serialized)
+    return out
+
+
+@router.post("/documents/deleted/{doc_id}/restore")
+def restore_deleted_company_document(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
+):
+    """Admin-only: restore a soft-deleted company document to the library."""
+    company_id = get_company_client_id(db)
+    doc = db.query(ClientDocument).filter(
+        ClientDocument.client_id == company_id,
+        ClientDocument.id == doc_id,
+    ).first()
+    if not doc or doc.deleted_at is None:
+        raise HTTPException(status_code=404, detail="Deleted document not found")
+    doc.deleted_at = None
+    doc.deleted_by = None
+    db.commit()
+    return {"status": "ok", "id": str(doc.id)}
+
+
+@router.delete("/documents/deleted/{doc_id}")
+def permanently_delete_company_document(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
+):
+    """Admin-only: permanently remove a soft-deleted company document row."""
+    company_id = get_company_client_id(db)
+    doc = db.query(ClientDocument).filter(
+        ClientDocument.client_id == company_id,
+        ClientDocument.id == doc_id,
+    ).first()
+    if not doc or doc.deleted_at is None:
+        raise HTTPException(status_code=404, detail="Deleted document not found")
+    db.delete(doc)
     db.commit()
     return {"status": "ok"}
 

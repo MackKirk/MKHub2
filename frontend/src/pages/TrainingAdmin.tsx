@@ -1,7 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useState, useMemo } from 'react';
+import { BookOpen, Settings } from 'lucide-react';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppListCreateItem,
+  AppPageHeader,
+  AppTabCountBadge,
+  getAppTabButtonClassName,
+  uiColors,
+  uiCx,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type Course = {
   id: string;
@@ -24,10 +40,12 @@ type StatusData = {
   overdue_certificates: number;
 };
 
-const statCard =
-  'rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm transition-shadow hover:shadow-md';
+function courseStatusVariant(status: string): 'success' | 'neutral' {
+  return status === 'published' ? 'success' : 'neutral';
+}
 
 export default function TrainingAdmin() {
+  const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<string>('');
   const { data: courses, isLoading } = useQuery<Course[]>({
     queryKey: ['training-admin-courses', statusFilter],
@@ -49,91 +67,121 @@ export default function TrainingAdmin() {
     });
   }, []);
 
-  const filterBtn = (active: boolean) =>
-    `px-4 py-2 rounded-full text-sm font-semibold transition-all border ${
-      active
-        ? 'border-brand-red bg-brand-red text-white shadow-sm'
-        : 'border-slate-200 bg-white text-gray-700 hover:border-slate-300 hover:bg-slate-50'
-    }`;
+  const quickFilterSegments = useMemo(
+    () => [
+      {
+        key: 'all',
+        label: 'All',
+        active: statusFilter === '',
+        count: status?.total_courses,
+        onClick: () => setStatusFilter(''),
+      },
+      {
+        key: 'published',
+        label: 'Published',
+        active: statusFilter === 'published',
+        count: status?.published_courses,
+        onClick: () => setStatusFilter('published'),
+      },
+      {
+        key: 'draft',
+        label: 'Drafts',
+        active: statusFilter === 'draft',
+        count: status?.draft_courses,
+        onClick: () => setStatusFilter('draft'),
+      },
+    ],
+    [statusFilter, status],
+  );
+
+  const statItems = status
+    ? [
+        { label: 'Total courses', value: status.total_courses, valueClass: uiColors.textStrong },
+        { label: 'Published', value: status.published_courses, valueClass: 'text-emerald-600' },
+        { label: 'Drafts', value: status.draft_courses, valueClass: 'text-slate-600' },
+        { label: 'Completions', value: status.total_completions, valueClass: 'text-sky-600' },
+        { label: 'Overdue certs', value: status.overdue_certificates, valueClass: 'text-amber-600' },
+      ]
+    : [];
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white px-6 py-5 shadow-sm">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-gray-900">Training administration</h1>
-            <p className="mt-1 text-sm font-medium text-gray-500">
-              Manage courses, modules, and content for your team.
-            </p>
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
+        title="Training administration"
+        subtitle="Manage courses, modules, and content for your team."
+        icon={<Settings className="h-4 w-4" />}
+        actions={
+          <div className="text-right">
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="text-right">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Today</div>
-              <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-            </div>
-            <Link
-              to="/training/admin/new"
-              className="inline-flex items-center justify-center rounded-lg bg-brand-red px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-red700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
-            >
-              + Create course
-            </Link>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
-      {status && (
+      {status ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <div className={statCard}>
-            <div className="text-2xl font-bold tabular-nums text-gray-900">{status.total_courses}</div>
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total courses</div>
-          </div>
-          <div className={statCard}>
-            <div className="text-2xl font-bold tabular-nums text-emerald-600">{status.published_courses}</div>
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Published</div>
-          </div>
-          <div className={statCard}>
-            <div className="text-2xl font-bold tabular-nums text-slate-600">{status.draft_courses}</div>
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Drafts</div>
-          </div>
-          <div className={statCard}>
-            <div className="text-2xl font-bold tabular-nums text-sky-600">{status.total_completions}</div>
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Completions</div>
-          </div>
-          <div className={statCard}>
-            <div className="text-2xl font-bold tabular-nums text-amber-600">{status.overdue_certificates}</div>
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Overdue certs</div>
+          {statItems.map((item) => (
+            <AppCard key={item.label} className={uiShadows.card} bodyClassName={uiSpacing.cardPadding}>
+              <div className={uiCx('text-2xl font-bold tabular-nums', item.valueClass)}>{item.value}</div>
+              <div className={uiCx(uiTypography.overline, 'mt-1')}>{item.label}</div>
+            </AppCard>
+          ))}
+        </div>
+      ) : null}
+
+      <AppCard bodyClassName="!p-0">
+        <div className="flex items-center gap-2 px-3 py-2.5">
+          <span className={uiCx(uiTypography.overline, 'shrink-0 leading-none')}>Status:</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {quickFilterSegments.map((segment) => (
+              <button
+                key={segment.key}
+                type="button"
+                onClick={segment.onClick}
+                className={getAppTabButtonClassName(segment.active)}
+                aria-pressed={segment.active}
+              >
+                <span>{segment.label}</span>
+                {typeof segment.count === 'number' ? (
+                  <AppTabCountBadge count={segment.count} isActive={segment.active} />
+                ) : null}
+              </button>
+            ))}
           </div>
         </div>
-      )}
-
-      <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => setStatusFilter('')} className={filterBtn(statusFilter === '')}>
-          All
-        </button>
-        <button
-          type="button"
-          onClick={() => setStatusFilter('published')}
-          className={filterBtn(statusFilter === 'published')}
-        >
-          Published
-        </button>
-        <button type="button" onClick={() => setStatusFilter('draft')} className={filterBtn(statusFilter === 'draft')}>
-          Drafts
-        </button>
-      </div>
+      </AppCard>
 
       {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-64 animate-pulse rounded-xl border border-slate-200 bg-slate-100/80" />
+            <AppCard key={i} className="h-64 animate-pulse" bodyClassName="h-full bg-gray-100" />
           ))}
         </div>
       ) : courses && courses.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <AppListCreateItem
+            label="Create course"
+            layout="card"
+            className="min-h-[200px]"
+            onClick={() => navigate('/training/admin/new')}
+          />
           {courses.map((course) => (
-            <article
+            <AppCard
               key={course.id}
-              className="group flex flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+              className={uiCx(
+                uiShadows.card,
+                'group flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md',
+              )}
+              bodyClassName="!p-0 flex flex-1 flex-col"
+              footer={
+                <AppButton
+                  type="button"
+                  className="w-full"
+                  onClick={() => navigate(`/training/admin/${course.id}`)}
+                >
+                  Edit course
+                </AppButton>
+              }
             >
               {course.thumbnail_file_id ? (
                 <img
@@ -142,64 +190,50 @@ export default function TrainingAdmin() {
                   className="h-40 w-full object-cover"
                 />
               ) : (
-                <div className="flex h-40 w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200/80">
-                  <span className="text-4xl opacity-40" aria-hidden>
-                    📚
-                  </span>
+                <div
+                  className={uiCx(
+                    'flex h-40 w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200/80',
+                  )}
+                >
+                  <BookOpen className="h-10 w-10 text-gray-400 opacity-60" aria-hidden />
                 </div>
               )}
-              <div className="flex flex-1 flex-col p-4">
+              <div className={uiCx(uiSpacing.cardPadding, 'flex flex-1 flex-col')}>
                 <div className="mb-2 flex items-start justify-between gap-2">
                   {course.category_label ? (
-                    <span className="rounded-md bg-brand-red/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-red">
-                      {course.category_label}
-                    </span>
+                    <AppBadge className="bg-brand-red/10 text-brand-red">{course.category_label}</AppBadge>
                   ) : (
                     <span />
                   )}
-                  <span
-                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                      course.status === 'published'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-100 text-slate-700'
-                    }`}
-                  >
-                    {course.status}
-                  </span>
+                  <AppBadge variant={courseStatusVariant(course.status)}>{course.status}</AppBadge>
                 </div>
-                <h2 className="mb-1 line-clamp-2 text-lg font-bold text-gray-900">{course.title}</h2>
+                <h2 className={uiCx(uiTypography.sectionTitle, 'mb-1 line-clamp-2 text-lg')}>{course.title}</h2>
                 {course.description ? (
-                  <p className="mb-3 line-clamp-2 text-sm text-gray-600">{course.description}</p>
+                  <p className={uiCx(uiTypography.body, 'mb-3 line-clamp-2 text-gray-600')}>{course.description}</p>
                 ) : (
-                  <p className="mb-3 text-sm italic text-gray-400">No description</p>
+                  <p className={uiCx(uiTypography.helper, 'mb-3 italic text-gray-400')}>No description</p>
                 )}
-                <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-gray-500">
+                <div
+                  className={uiCx(
+                    'mt-auto flex items-center justify-between border-t border-gray-100 pt-3',
+                    uiTypography.helper,
+                  )}
+                >
                   <span>{course.module_count} modules</span>
                   <span>{course.lesson_count} lessons</span>
                 </div>
-                <Link
-                  to={`/training/admin/${course.id}`}
-                  className="mt-3 block w-full rounded-lg bg-brand-red py-2.5 text-center text-sm font-semibold text-white transition-colors hover:bg-brand-red700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
-                >
-                  Edit course
-                </Link>
               </div>
-            </article>
+            </AppCard>
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-16 text-center">
-          <p className="text-lg font-medium text-gray-700">No courses yet</p>
-          <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
-            Create a course to add modules, lessons, quizzes, and publish to your team.
-          </p>
-          <Link
-            to="/training/admin/new"
-            className="mt-6 inline-flex items-center justify-center rounded-lg bg-brand-red px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-red700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
-          >
-            Create your first course
-          </Link>
-        </div>
+        <AppEmptyState
+          title="No courses yet"
+          description="Create a course to add modules, lessons, quizzes, and publish to your team."
+          action={
+            <AppButton onClick={() => navigate('/training/admin/new')}>Create your first course</AppButton>
+          }
+        />
       )}
     </div>
   );

@@ -192,7 +192,7 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
           <AppListCreateItem
             label={createMut.isPending ? 'Creating…' : 'New template'}
             layout="row"
-            className={LIST_MIN_WIDTH}
+            className="w-full"
             disabled={createMut.isPending}
             onClick={() => createMut.mutate()}
           />
@@ -200,13 +200,15 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
         </div>
       ) : (
         <AppSortableEntityList layout="flat">
-          <AppListCreateItem
-            label={createMut.isPending ? 'Creating…' : 'New template'}
-            layout="row"
-            className={LIST_MIN_WIDTH}
-            disabled={createMut.isPending}
-            onClick={() => createMut.mutate()}
-          />
+          <div className={uiSpacing.cardPadding}>
+            <AppListCreateItem
+              label={createMut.isPending ? 'Creating…' : 'New template'}
+              layout="row"
+              className="w-full"
+              disabled={createMut.isPending}
+              onClick={() => createMut.mutate()}
+            />
+          </div>
           <AppSortableEntityListHeader variant="flat" gridCols={LIST_GRID_COLS} minWidth={LIST_MIN_WIDTH}>
             <AppSortableEntityListSortColumn
               label="Name"

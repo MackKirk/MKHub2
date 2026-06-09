@@ -6,7 +6,7 @@ import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
 import { SelectDropdownCheckbox } from './SelectDropdownCheckbox';
 import { uiCx, uiDropdown, uiUserSelect } from './tokens';
-import { useComboboxDropdown } from './useComboboxDropdown';
+import { comboboxMenuStyle, useComboboxDropdown, type ComboboxMenuRect } from './useComboboxDropdown';
 import {
   getClientPickerLabel,
   getClientSubtitle,
@@ -440,7 +440,7 @@ function AppClientSelectMultiple({
 type ClientListboxParams = {
   listRef: React.RefObject<HTMLUListElement>;
   portalListId: string;
-  menuRect: { top: number; left: number; width: number } | null;
+  menuRect: ComboboxMenuRect | null;
   open: boolean;
   listClients: AppClientSelectClient[];
   isMultiple: boolean;
@@ -483,7 +483,7 @@ function renderClientListbox({
       role="listbox"
       aria-multiselectable={isMultiple || undefined}
       className={uiDropdown.menu}
-      style={{ top: menuRect.top, left: menuRect.left, width: menuRect.width }}
+      style={comboboxMenuStyle(menuRect)}
     >
       {showLoading ? (
         <li className={uiDropdown.optionMuted}>Loading customers…</li>

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Building2, Search, Users } from 'lucide-react';
 import { api } from '@/lib/api';
+import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { sortByLabel } from '@/lib/sortOptions';
 import {
   employeeDivisionKeys,
@@ -9,7 +11,31 @@ import {
   type ReviewParticipantEmp,
 } from '@/lib/reviewParticipantScope';
 import toast from 'react-hot-toast';
-import OverlayPortal from '@/components/OverlayPortal';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppCombobox,
+  AppDatePicker,
+  AppFormModal,
+  AppInput,
+  AppModal,
+  AppMultiSelect,
+  AppSectionHeader,
+  AppTable,
+  AppUserSelect,
+  FORM_MODAL_WIDE_DIALOG_COLLAPSED,
+  FORM_MODAL_WIDE_DIALOG_EXPANDED,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiModalLayer,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type DivisionOption = { id: string; label: string };
 
@@ -19,6 +45,22 @@ type EmpRow = ReviewParticipantEmp & {
 };
 
 const NO_DEPT_LABEL = '(no department)';
+
+const FIELD_HINTS = {
+  cycleName: 'Cycle name\n\nShort title for this review period (e.g. H1 Review). Shown in the cycles list and on assignments.',
+  periodStart: 'Start date\n\nOptional beginning of the review period. Used for reporting and cycle context.',
+  periodEnd: 'End date\n\nOptional end of the review period. Should be on or after the start date when both are set.',
+  activateNow:
+    'Activate immediately\n\nWhen enabled, the cycle is active as soon as it is created. When off, it stays in draft until you activate it later.',
+  scopePeople:
+    'People\n\nAdd specific employees to the cycle. Combined with HR departments and project divisions using OR — any match includes someone. At least one scope rule is required in custom mode.',
+  scopeDepts:
+    'HR departments\n\nInclude everyone whose HR department label matches. Labels come from Settings. At least one scope rule is required in custom mode.',
+  scopeProj:
+    'Project divisions\n\nInclude everyone assigned to these project divisions on their employee profile. At least one scope rule is required in custom mode.',
+  deptTemplate:
+    'Form template\n\nActive employee-review template for everyone with this HR department label in the cycle. Required for each label that appears in scope.',
+} as const;
 
 const STEP_LABELS = [
   'Cycle details',
@@ -50,7 +92,6 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
   const [participantUserIds, setParticipantUserIds] = useState<string[]>([]);
   const [participantDeptIds, setParticipantDeptIds] = useState<string[]>([]);
   const [participantProjIds, setParticipantProjIds] = useState<string[]>([]);
-  const [employeePickSearch, setEmployeePickSearch] = useState('');
   const [templateByDepartment, setTemplateByDepartment] = useState<{ division_key: string; template_id: string }[]>([]);
   const [scopePeopleModalOpen, setScopePeopleModalOpen] = useState(false);
   const [scopeModalSearch, setScopeModalSearch] = useState('');
@@ -89,7 +130,6 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
     setParticipantUserIds([]);
     setParticipantDeptIds([]);
     setParticipantProjIds([]);
-    setEmployeePickSearch('');
     setTemplateByDepartment([]);
     setScopePeopleModalOpen(false);
     setScopeModalSearch('');
@@ -98,23 +138,14 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (scopePeopleModalOpen) setScopePeopleModalOpen(false);
-        else onClose();
-      }
+      if (e.key !== 'Escape' || !scopePeopleModalOpen) return;
+      e.stopImmediatePropagation();
+      setScopePeopleModalOpen(false);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose, scopePeopleModalOpen]);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open, scopePeopleModalOpen]);
 
   const projectDivisionOptions: DivisionOption[] = useMemo(() => {
     const out: DivisionOption[] = [];
@@ -274,17 +305,30 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [scopedEmployees]);
 
-  const employeesForPicker = useMemo(() => {
-    const q = employeePickSearch.trim().toLowerCase();
-    const rows = sortByLabel(employees as EmpRow[], (e) => (e.name || e.username || e.id).toString());
-    if (!q) return rows;
-    return rows.filter(
-      (e) =>
-        (e.name || '').toLowerCase().includes(q) ||
-        (e.username || '').toLowerCase().includes(q) ||
-        e.id.toLowerCase().includes(q)
-    );
-  }, [employees, employeePickSearch]);
+  const divisionMultiOptions = useMemo(
+    () => divisionOptions.map((d) => ({ value: d.id, label: d.label })),
+    [divisionOptions],
+  );
+
+  const projectDivisionMultiOptions = useMemo(
+    () => projectDivisionOptions.map((d) => ({ value: d.id, label: d.label })),
+    [projectDivisionOptions],
+  );
+
+  const templateComboboxOptions = useMemo(
+    () =>
+      (templates as any[]).map((t: any) => ({
+        value: String(t.id),
+        label: `${t.name}${(t.version_label || '').trim() ? ` — ${(t.version_label || '').trim()}` : ''}`,
+      })),
+    [templates],
+  );
+
+  const userSelectEmployees = useMemo(
+    () =>
+      (employees as EmpRow[]).map((e) => mapEmployeeToAppUserSelect(e as Record<string, unknown>)),
+    [employees],
+  );
 
   const scopedEmployeesSorted = useMemo(
     () => sortByLabel(scopedEmployees as EmpRow[], (e) => (e.name || e.username || e.id).toString()),
@@ -299,11 +343,6 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
       return blob.includes(q);
     });
   }, [scopedEmployeesSorted, scopeModalSearch]);
-
-  const toggleId = (arr: string[], setArr: (v: string[]) => void, id: string) => {
-    if (arr.includes(id)) setArr(arr.filter((x) => x !== id));
-    else setArr([...arr, id]);
-  };
 
   const templateLabel = (id: string) => {
     const t = (templates as any[]).find((x: any) => String(x.id) === String(id));
@@ -336,6 +375,29 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
       })
       .join(', ');
   };
+
+  const scopeTableRows = useMemo(
+    () =>
+      scopedEmployeesModalRows.map((e) => [
+        <Link
+          key={`${e.id}-name`}
+          to={`/users/${encodeURIComponent(e.id)}`}
+          className="font-medium text-brand-red hover:underline"
+          onClick={() => {
+            setScopePeopleModalOpen(false);
+            onClose();
+          }}
+        >
+          {e.name || e.username || e.id}
+        </Link>,
+        e.username || '—',
+        primaryHrLabel(e),
+        <span key={`${e.id}-div`} className="line-clamp-2 max-w-[200px]" title={projectDivLabelsLine(e)}>
+          {projectDivLabelsLine(e)}
+        </span>,
+      ]),
+    [scopedEmployeesModalRows, onClose],
+  );
 
   const goNext = () => {
     if (step === 1 && !step1Valid) {
@@ -397,548 +459,394 @@ export default function CreateReviewCycleWizardModal({ open, onClose }: Props) {
 
   if (!open) return null;
 
+  const stepPillClass = (n: number) =>
+    uiCx(
+      'rounded-full px-2 py-1 text-[10px] font-medium',
+      step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
+    );
+
+  const stepIndicators = (
+    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-[10px] font-medium')}>
+      {[1, 2, 3, 4].map((n, index) => (
+        <Fragment key={n}>
+          {index > 0 ? <span className="text-gray-400">→</span> : null}
+          <span className={stepPillClass(n)}>Step {n}</span>
+        </Fragment>
+      ))}
+    </div>
+  );
+
+  const scopeCardClass = (selected: boolean) =>
+    uiCx(
+      'text-left border-2 p-4 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2',
+      uiRadius.card,
+      selected
+        ? 'border-gray-900 bg-gradient-to-br from-gray-50 to-white shadow-sm'
+        : uiCx(uiBorders.subtle, uiColors.surface, 'hover:border-gray-300 hover:bg-gray-50/60'),
+    );
+
+  const modalFooter = (
+    <div className={uiCx('flex w-full flex-wrap items-center justify-between gap-3')}>
+      <div className={uiTypography.helper}>
+        Step {step} of 4 · {STEP_LABELS[step - 1]}
+      </div>
+      <div className={uiCx(uiLayout.actionsRow)}>
+        <AppButton variant="secondary" onClick={onClose}>
+          Cancel
+        </AppButton>
+        {step > 1 ? (
+          <AppButton variant="secondary" onClick={goBack} disabled={submitting}>
+            Back
+          </AppButton>
+        ) : null}
+        {step < 4 ? (
+          <AppButton
+            onClick={goNext}
+            disabled={
+              submitting ||
+              (step === 1 && !step1Valid) ||
+              (step === 2 && !step2Valid) ||
+              (step === 3 && !step3Valid)
+            }
+          >
+            Next
+          </AppButton>
+        ) : (
+          <AppButton disabled={submitting || !primaryFormTemplateId || !step3Valid} onClick={submit}>
+            {submitting ? 'Creating…' : 'Create cycle'}
+          </AppButton>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <>
-      <OverlayPortal>
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
-          <div
-            className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-3 min-w-0">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center shrink-0"
-                    title="Close"
-                  >
-                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                  </button>
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-gray-900">New review cycle</div>
-                    <div className="text-xs text-gray-500 mt-0.5 truncate">{STEP_SUBTITLES[step - 1]}</div>
-                  </div>
-                </div>
-                <div className="inline-flex items-center gap-1.5 text-[10px] font-medium text-gray-500 flex-wrap justify-end">
-                  {[1, 2, 3, 4].map((n) => (
-                    <span key={n} className="inline-flex items-center gap-1.5">
-                      <span
-                        className={
-                          step === n
-                            ? 'px-2 py-1 rounded-full bg-gray-900 text-white'
-                            : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'
-                        }
-                      >
-                        Step {n}
-                      </span>
-                      {n < 4 ? <span className="text-gray-400">→</span> : null}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="overflow-y-auto flex-1 p-4 min-h-0">
-              <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm space-y-4">
-                {step === 1 && (
-                  <>
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                        Cycle name *
-                      </label>
-                      <input
-                        className={`w-full border rounded-lg px-3 py-2 text-sm ${!(cycleName || '').trim() ? 'border-red-300' : 'border-gray-200'}`}
-                        value={cycleName}
-                        onChange={(e) => setCycleName(e.target.value)}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Start
-                        </label>
-                        <input
-                          type="date"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                          value={periodStart}
-                          onChange={(e) => setPeriodStart(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          End
-                        </label>
-                        <input
-                          type="date"
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                          value={periodEnd}
-                          onChange={(e) => setPeriodEnd(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2.5 text-xs text-gray-600 leading-relaxed">
-                      Employee-review forms are chosen in{' '}
-                      <span className="font-medium text-gray-800">step 3</span>, one template per HR department label
-                      that appears in this cycle. Manage definitions in{' '}
-                      <Link to="/reviews/form-templates" className="text-brand-red font-medium hover:underline">
-                        Form templates
-                      </Link>
-                      .
-                    </div>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={activateNow} onChange={(e) => setActivateNow(e.target.checked)} />
-                      <span className="text-gray-800">Activate immediately</span>
-                    </label>
-                  </>
-                )}
-
-                {step === 2 && (
-                  <>
-                    <div>
-                      <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">
-                        Who participates
-                      </p>
-                      <p className="text-xs text-gray-600 leading-relaxed">
-                        Choose whether the cycle covers everyone or a custom group. For custom scope, criteria combine
-                        with <span className="font-medium text-gray-800">OR</span> (any match includes someone). HR
-                        departments follow Settings; project divisions come from each employee profile.
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Participant scope">
-                      <button
-                        type="button"
-                        role="radio"
-                        aria-checked={scopeMode === 'all'}
-                        onClick={() => setScopeMode('all')}
-                        className={`text-left rounded-xl border-2 p-4 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 ${
-                          scopeMode === 'all'
-                            ? 'border-gray-900 bg-gradient-to-br from-gray-50 to-white shadow-sm'
-                            : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/60'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div
-                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                              scopeMode === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'
-                            }`}
-                          >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                              />
-                            </svg>
-                          </div>
-                          <div className="min-w-0 flex-1 pt-0.5">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold text-gray-900">Entire company</span>
-                              {scopeMode === 'all' && (
-                                <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white">
-                                  Selected
-                                </span>
-                              )}
-                            </div>
-                            <p className="mt-1 text-xs text-gray-600 leading-snug">
-                              All people in the directory can receive self-review and manager assignments for this cycle.
-                            </p>
-                          </div>
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        role="radio"
-                        aria-checked={scopeMode === 'explicit'}
-                        onClick={() => setScopeMode('explicit')}
-                        className={`text-left rounded-xl border-2 p-4 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 ${
-                          scopeMode === 'explicit'
-                            ? 'border-gray-900 bg-gradient-to-br from-gray-50 to-white shadow-sm'
-                            : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/60'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div
-                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                              scopeMode === 'explicit' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'
-                            }`}
-                          >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                              />
-                            </svg>
-                          </div>
-                          <div className="min-w-0 flex-1 pt-0.5">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-semibold text-gray-900">Custom scope</span>
-                              {scopeMode === 'explicit' && (
-                                <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white">
-                                  Selected
-                                </span>
-                              )}
-                            </div>
-                            <p className="mt-1 text-xs text-gray-600 leading-snug">
-                              Limit to selected people, HR departments, and/or project divisions. Refine with the lists
-                              below.
-                            </p>
-                          </div>
-                        </div>
-                      </button>
-                    </div>
-                    {scopeMode === 'explicit' && (
-                      <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/90 p-4 shadow-inner">
-                        <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
-                          Scope rules
-                        </p>
-                        <div>
-                          <div className="text-xs font-medium text-gray-700 mb-1">
-                            People ({participantUserIds.length})
-                          </div>
-                          <input
-                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm mb-1 bg-white"
-                            placeholder="Search by name…"
-                            value={employeePickSearch}
-                            onChange={(e) => setEmployeePickSearch(e.target.value)}
-                          />
-                          <div className="max-h-32 overflow-y-auto rounded border border-gray-200 bg-white text-sm">
-                            {employeesForPicker.map((e) => (
-                              <label
-                                key={e.id}
-                                className="flex items-center gap-2 px-2 py-1 border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={participantUserIds.includes(e.id)}
-                                  onChange={() => toggleId(participantUserIds, setParticipantUserIds, e.id)}
-                                />
-                                <span className="truncate">{e.name || e.username || e.id}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-700 mb-1">
-                            HR departments ({participantDeptIds.length})
-                          </div>
-                          <div className="max-h-28 overflow-y-auto rounded border border-gray-200 bg-white p-1 space-y-0.5">
-                            {divisionOptions.map((d) => (
-                              <label
-                                key={d.id}
-                                className="flex items-center gap-2 px-2 py-0.5 hover:bg-gray-50 cursor-pointer"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={participantDeptIds.includes(d.id)}
-                                  onChange={() => toggleId(participantDeptIds, setParticipantDeptIds, d.id)}
-                                />
-                                <span className="truncate">{d.label}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-700 mb-1">
-                            Project divisions ({participantProjIds.length})
-                          </div>
-                          <div className="max-h-28 overflow-y-auto rounded border border-gray-200 bg-white p-1 space-y-0.5">
-                            {projectDivisionOptions.map((d) => (
-                              <label
-                                key={d.id}
-                                className="flex items-center gap-2 px-2 py-0.5 hover:bg-gray-50 cursor-pointer"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={participantProjIds.includes(d.id)}
-                                  onChange={() => toggleId(participantProjIds, setParticipantProjIds, d.id)}
-                                />
-                                <span className="truncate">{d.label}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700">
-                      <span>
-                        <span className="font-semibold text-gray-900 tabular-nums">{scopedEmployees.length}</span> people
-                        in scope
-                        {scopeMode === 'all' ? (
-                          <span className="text-gray-500">
-                            {' '}
-                            (of <span className="tabular-nums">{employees.length}</span> in directory)
-                          </span>
-                        ) : null}
-                      </span>
-                      {divisionEmployeeCounts.length > 0 && (
-                        <span className="text-gray-500">
-                          · {divisionEmployeeCounts.length} primary-dept. groups
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        disabled={scopedEmployees.length === 0}
-                        onClick={() => {
-                          setScopeModalSearch('');
-                          setScopePeopleModalOpen(true);
-                        }}
-                        className="px-3 py-1 rounded-lg border border-gray-300 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        View list
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                {step === 3 && (
-                  <>
-                    <p className="text-xs text-gray-600 leading-relaxed">
-                      Each label below appears on at least one person in this cycle (from HR departments / profile).
-                      Choose an <span className="font-medium text-gray-800">active</span> employee-review template for
-                      every row. For people with several labels, the first matching label in their profile order wins.
-                    </p>
-                    {departmentsInScope.length === 0 ? (
-                      <p className="text-sm text-amber-700">No one in scope yet — go back and fix step 2.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {departmentsInScope.map((label) => {
-                          const row = templateByDepartment.find((r) => r.division_key === label);
-                          const tid = row?.template_id || '';
-                          const n = departmentHeadcount.get(label) ?? 0;
-                          return (
-                            <div
-                              key={label}
-                              className="flex flex-wrap gap-3 items-center rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2"
-                            >
-                              <div className="flex-1 min-w-[160px]">
-                                <div className="text-sm font-medium text-gray-900">{label}</div>
-                                <div className="text-[11px] text-gray-500">
-                                  {n} {n === 1 ? 'person' : 'people'} with this label
-                                </div>
-                              </div>
-                              <select
-                                className={`flex-1 min-w-[200px] border rounded-lg px-2 py-1.5 text-sm bg-white ${
-                                  !tid ? 'border-red-300' : 'border-gray-200'
-                                }`}
-                                value={tid}
-                                onChange={(e) => {
-                                  const v = e.target.value;
-                                  setTemplateByDepartment((prev) =>
-                                    departmentsInScope.map((lab) => {
-                                      if (lab === label) return { division_key: lab, template_id: v };
-                                      const ex = prev.find((r) => r.division_key === lab);
-                                      return ex || { division_key: lab, template_id: '' };
-                                    })
-                                  );
-                                }}
-                              >
-                                <option value="">Select template…</option>
-                                {(templates as any[]).map((t: any) => (
-                                  <option key={t.id} value={t.id}>
-                                    {t.name}
-                                    {(t.version_label || '').trim() ? ` — ${(t.version_label || '').trim()}` : ''}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {step === 4 && coveragePreview && (
-                  <>
-                    <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">
-                      <div className="font-medium text-gray-800 mb-2">Template distribution (preview)</div>
-                      <ul className="space-y-1 text-gray-600 text-sm">
-                        {Object.entries(coveragePreview.byTemplate).map(([tid, n]) => (
-                          <li key={tid}>
-                            <span className="font-medium text-gray-900">{n}</span> → {templateLabel(tid)}
-                          </li>
-                        ))}
-                      </ul>
-                      {coveragePreview.unresolved.length > 0 && (
-                        <p className="mt-2 text-red-700 text-xs">
-                          Could not resolve: {coveragePreview.unresolved.slice(0, 8).join('; ')}
-                          {coveragePreview.unresolved.length > 8
-                            ? ` … +${coveragePreview.unresolved.length - 8} more`
-                            : ''}
-                        </p>
-                      )}
-                    </div>
-                    <div className="text-sm text-gray-700">
-                      <span className="font-semibold">{scopedEmployees.length}</span> reviewees ·{' '}
-                      <span className={activateNow ? 'text-green-700 font-medium' : 'text-amber-700 font-medium'}>
-                        {activateNow ? 'Active' : 'Draft'}
-                      </span>{' '}
-                      · {(cycleName || '').trim() || 'Untitled'}
-                    </div>
-                  </>
-                )}
-                {step === 4 && !coveragePreview && (
-                  <p className="text-sm text-amber-700">
-                    Complete step 3 with a template for each department in scope to see the preview.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex flex-wrap items-center justify-between gap-3 rounded-b-xl relative z-0">
-              <div className="text-xs text-gray-500">
-                Step {step} of 4 · {STEP_LABELS[step - 1]}
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                {step > 1 && (
-                  <button
-                    type="button"
-                    onClick={goBack}
-                    disabled={submitting}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Back
-                  </button>
-                )}
-                {step < 4 && (
-                  <button
-                    type="button"
-                    onClick={goNext}
-                    disabled={
-                      submitting ||
-                      (step === 1 && !step1Valid) ||
-                      (step === 2 && !step2Valid) ||
-                      (step === 3 && !step3Valid)
-                    }
-                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
-                )}
-                {step === 4 && (
-                  <button
-                    type="button"
-                    disabled={submitting || !primaryFormTemplateId || !step3Valid}
-                    onClick={submit}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {submitting ? 'Creating…' : 'Create cycle'}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </OverlayPortal>
-
-      {scopePeopleModalOpen && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-            role="dialog"
-            aria-modal="true"
-            onClick={() => setScopePeopleModalOpen(false)}
-          >
-            <div
-              className="w-full max-w-3xl max-h-[85vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="rounded-t-xl border-b border-gray-200 bg-white px-5 py-4 flex items-start justify-between gap-3 shrink-0">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900">People in scope</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    <span className="tabular-nums">{scopedEmployees.length}</span> people
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setScopePeopleModalOpen(false)}
-                  className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
-                  aria-label="Close"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            <div className="px-4 py-3 border-b border-gray-200 bg-white shrink-0">
-              <input
-                type="search"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                placeholder="Filter…"
-                value={scopeModalSearch}
-                onChange={(e) => setScopeModalSearch(e.target.value)}
+      <AppFormModal
+        open={open}
+        onClose={onClose}
+        formWidth="wide"
+        dialogClassName={FORM_MODAL_WIDE_DIALOG_COLLAPSED}
+        dialogClassNameExpanded={FORM_MODAL_WIDE_DIALOG_EXPANDED}
+        title="New review cycle"
+        description={STEP_SUBTITLES[step - 1]}
+        headerExtra={stepIndicators}
+        quickInfo={
+          <>
+            <p>Four steps: cycle details, participants, form templates by department, then review and create.</p>
+            <p>Custom scope combines people, HR departments, and project divisions with OR logic.</p>
+            <p>Each HR department label in scope needs its own employee-review template in step 3.</p>
+          </>
+        }
+        footer={modalFooter}
+      >
+        {step === 1 && (
+          <div className={uiSpacing.sectionStack}>
+            <AppInput
+              label="Cycle name *"
+              fieldHint={FIELD_HINTS.cycleName}
+              value={cycleName}
+              onChange={(e) => setCycleName(e.target.value)}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <AppDatePicker
+                label="Start"
+                fieldHint={FIELD_HINTS.periodStart}
+                value={periodStart}
+                onChange={(e) => setPeriodStart(e.target.value)}
+              />
+              <AppDatePicker
+                label="End"
+                fieldHint={FIELD_HINTS.periodEnd}
+                value={periodEnd}
+                onChange={(e) => setPeriodEnd(e.target.value)}
               />
             </div>
-            <div className="overflow-y-auto flex-1 min-h-0 p-4 bg-gray-100">
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 sticky top-0">
-                  <tr className="text-left text-xs font-medium text-gray-600 uppercase">
-                    <th className="px-4 py-2">Name</th>
-                    <th className="px-4 py-2">Username</th>
-                    <th className="px-4 py-2">Primary HR</th>
-                    <th className="px-4 py-2">Project div.</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {scopedEmployeesModalRows.map((e) => (
-                    <tr key={e.id} className="hover:bg-gray-50/80">
-                      <td className="px-4 py-2 font-medium text-gray-900">
-                        <Link
-                          to={`/users/${encodeURIComponent(e.id)}`}
-                          className="text-brand-red hover:underline"
-                          onClick={() => {
-                            setScopePeopleModalOpen(false);
-                            onClose();
-                          }}
-                        >
-                          {e.name || e.username || e.id}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-2 text-gray-600">{e.username || '—'}</td>
-                      <td className="px-4 py-2 text-gray-700">{primaryHrLabel(e)}</td>
-                      <td className="px-4 py-2 text-gray-600 text-xs max-w-[200px]">
-                        <span className="line-clamp-2" title={projectDivLabelsLine(e)}>
-                          {projectDivLabelsLine(e)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                </table>
-                {scopedEmployeesModalRows.length === 0 && (
-                  <div className="px-5 py-10 text-center text-sm text-gray-500">No matches.</div>
-                )}
-              </div>
-            </div>
-            <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-white flex justify-end rounded-b-xl">
+            <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiTypography.helper, 'leading-relaxed text-gray-600')}>
+              Employee-review forms are chosen in{' '}
+              <span className={uiColors.textStrong}>step 3</span>, one template per HR department label that appears in
+              this cycle. Manage definitions in{' '}
+              <Link to="/reviews/form-templates" className="font-medium text-brand-red hover:underline">
+                Form templates
+              </Link>
+              .
+            </AppCard>
+            <AppCheckbox
+              label="Activate immediately"
+              fieldHint={FIELD_HINTS.activateNow}
+              checked={activateNow}
+              onChange={setActivateNow}
+            />
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className={uiSpacing.sectionStack}>
+            <AppSectionHeader
+              title="Who participates"
+              description="Choose whether the cycle covers everyone or a custom group. For custom scope, criteria combine with OR (any match includes someone). HR departments follow Settings; project divisions come from each employee profile."
+            />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Participant scope">
               <button
                 type="button"
-                onClick={() => setScopePeopleModalOpen(false)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+                role="radio"
+                aria-checked={scopeMode === 'all'}
+                onClick={() => setScopeMode('all')}
+                className={scopeCardClass(scopeMode === 'all')}
               >
-                Close
+                <div className="flex items-start gap-3">
+                  <div
+                    className={uiCx(
+                      'flex h-10 w-10 shrink-0 items-center justify-center',
+                      uiRadius.control,
+                      scopeMode === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600',
+                    )}
+                  >
+                    <Building2 className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className={uiTypography.sectionTitle}>Entire company</span>
+                      {scopeMode === 'all' ? <AppBadge variant="neutral">Selected</AppBadge> : null}
+                    </div>
+                    <p className={uiCx('mt-1 leading-snug', uiTypography.helper)}>
+                      All people in the directory can receive self-review and manager assignments for this cycle.
+                    </p>
+                  </div>
+                </div>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={scopeMode === 'explicit'}
+                onClick={() => setScopeMode('explicit')}
+                className={scopeCardClass(scopeMode === 'explicit')}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={uiCx(
+                      'flex h-10 w-10 shrink-0 items-center justify-center',
+                      uiRadius.control,
+                      scopeMode === 'explicit' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600',
+                    )}
+                  >
+                    <Users className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={uiTypography.sectionTitle}>Custom scope</span>
+                      {scopeMode === 'explicit' ? <AppBadge variant="neutral">Selected</AppBadge> : null}
+                    </div>
+                    <p className={uiCx('mt-1 leading-snug', uiTypography.helper)}>
+                      Limit to selected people, HR departments, and/or project divisions. Refine with the lists below.
+                    </p>
+                  </div>
+                </div>
               </button>
             </div>
+            {scopeMode === 'explicit' ? (
+              <AppCard bodyClassName={uiSpacing.sectionStack}>
+                <AppSectionHeader title="Scope rules" />
+                <AppUserSelect
+                  mode="multiple"
+                  label={
+                    <>
+                      People
+                      {scopeMode === 'explicit' ? <span className="text-brand-red"> *</span> : null}
+                    </>
+                  }
+                  fieldHint={FIELD_HINTS.scopePeople}
+                  users={userSelectEmployees}
+                  value={participantUserIds}
+                  onChange={setParticipantUserIds}
+                  placeholder="Search by name…"
+                  showSelectedChips
+                />
+                <AppMultiSelect
+                  searchable
+                  label={
+                    <>
+                      HR departments
+                      {scopeMode === 'explicit' ? <span className="text-brand-red"> *</span> : null}
+                    </>
+                  }
+                  fieldHint={FIELD_HINTS.scopeDepts}
+                  value={participantDeptIds}
+                  onChange={setParticipantDeptIds}
+                  options={divisionMultiOptions}
+                  placeholder="Search departments…"
+                  showSelectedChips
+                />
+                <AppMultiSelect
+                  searchable
+                  label={
+                    <>
+                      Project divisions
+                      {scopeMode === 'explicit' ? <span className="text-brand-red"> *</span> : null}
+                    </>
+                  }
+                  fieldHint={FIELD_HINTS.scopeProj}
+                  value={participantProjIds}
+                  onChange={setParticipantProjIds}
+                  options={projectDivisionMultiOptions}
+                  placeholder="Search divisions…"
+                  showSelectedChips
+                />
+              </AppCard>
+            ) : null}
+            <div className={uiCx('flex flex-wrap items-center gap-3', uiTypography.helper, 'text-gray-700')}>
+              <span>
+                <span className={uiColors.textStrong}>{scopedEmployees.length}</span> people in scope
+                {scopeMode === 'all' ? (
+                  <span className="text-gray-500">
+                    {' '}
+                    (of <span className="tabular-nums">{employees.length}</span> in directory)
+                  </span>
+                ) : null}
+              </span>
+              {divisionEmployeeCounts.length > 0 ? (
+                <span className="text-gray-500">· {divisionEmployeeCounts.length} primary-dept. groups</span>
+              ) : null}
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={scopedEmployees.length === 0}
+                onClick={() => {
+                  setScopeModalSearch('');
+                  setScopePeopleModalOpen(true);
+                }}
+              >
+                View list
+              </AppButton>
+            </div>
           </div>
-        </div>
-        </OverlayPortal>
-      )}
+        )}
+
+        {step === 3 && (
+          <div className={uiSpacing.sectionStack}>
+            <p className={uiCx(uiTypography.helper, 'leading-relaxed')}>
+              Each label below appears on at least one person in this cycle (from HR departments / profile). Choose an{' '}
+              <span className={uiColors.textStrong}>active</span> employee-review template for every row. For people
+              with several labels, the first matching label in their profile order wins.
+            </p>
+            {departmentsInScope.length === 0 ? (
+              <p className="text-sm text-amber-700">No one in scope yet — go back and fix step 2.</p>
+            ) : (
+              <div className={uiSpacing.sectionStack}>
+                {departmentsInScope.map((label) => {
+                  const row = templateByDepartment.find((r) => r.division_key === label);
+                  const tid = row?.template_id || '';
+                  const n = departmentHeadcount.get(label) ?? 0;
+                  return (
+                    <AppCard
+                      key={label}
+                      bodyClassName={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-3 bg-gray-50/60')}
+                    >
+                      <div className="min-w-[160px] flex-1">
+                        <div className={uiTypography.sectionTitle}>{label}</div>
+                        <div className={uiTypography.helper}>
+                          {n} {n === 1 ? 'person' : 'people'} with this label
+                        </div>
+                      </div>
+                      <div className="min-w-[200px] flex-1">
+                        <AppCombobox
+                          label="Form template *"
+                          fieldHint={FIELD_HINTS.deptTemplate}
+                          value={tid}
+                          onChange={(v) => {
+                            setTemplateByDepartment((prev) =>
+                              departmentsInScope.map((lab) => {
+                                if (lab === label) return { division_key: lab, template_id: v };
+                                const ex = prev.find((r) => r.division_key === lab);
+                                return ex || { division_key: lab, template_id: '' };
+                              }),
+                            );
+                          }}
+                          options={templateComboboxOptions}
+                          placeholder="Select template…"
+                          leftIcon={<Search className="h-4 w-4" />}
+                          triggerClassName={!tid ? 'border-red-300' : undefined}
+                        />
+                      </div>
+                    </AppCard>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === 4 && coveragePreview ? (
+          <div className={uiSpacing.sectionStack}>
+            <AppCard bodyClassName={uiSpacing.sectionStack}>
+              <div className={uiTypography.sectionTitle}>Template distribution (preview)</div>
+              <ul className={uiCx(uiSpacing.sectionStack, uiTypography.helper, 'text-gray-600')}>
+                {Object.entries(coveragePreview.byTemplate).map(([tid, n]) => (
+                  <li key={tid}>
+                    <span className={uiColors.textStrong}>{n}</span> → {templateLabel(tid)}
+                  </li>
+                ))}
+              </ul>
+              {coveragePreview.unresolved.length > 0 ? (
+                <p className="text-xs text-red-700">
+                  Could not resolve: {coveragePreview.unresolved.slice(0, 8).join('; ')}
+                  {coveragePreview.unresolved.length > 8
+                    ? ` … +${coveragePreview.unresolved.length - 8} more`
+                    : ''}
+                </p>
+              ) : null}
+            </AppCard>
+            <div className={uiTypography.helper}>
+              <span className={uiColors.textStrong}>{scopedEmployees.length}</span> reviewees ·{' '}
+              <span className={activateNow ? 'font-medium text-green-700' : 'font-medium text-amber-700'}>
+                {activateNow ? 'Active' : 'Draft'}
+              </span>{' '}
+              · {(cycleName || '').trim() || 'Untitled'}
+            </div>
+          </div>
+        ) : null}
+        {step === 4 && !coveragePreview ? (
+          <p className="text-sm text-amber-700">
+            Complete step 3 with a template for each department in scope to see the preview.
+          </p>
+        ) : null}
+      </AppFormModal>
+
+      <AppModal
+        open={scopePeopleModalOpen}
+        onClose={() => setScopePeopleModalOpen(false)}
+        title="People in scope"
+        description={
+          <>
+            <span className="tabular-nums">{scopedEmployees.length}</span> people
+          </>
+        }
+        size="lg"
+        dialogClassName="!max-w-3xl"
+        overlayClassName={uiModalLayer.stacked}
+        bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'max-h-[min(68vh,40rem)] overflow-y-auto')}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton variant="secondary" onClick={() => setScopePeopleModalOpen(false)}>
+              Close
+            </AppButton>
+          </div>
+        }
+      >
+        <AppInput
+          placeholder="Filter…"
+          value={scopeModalSearch}
+          onChange={(e) => setScopeModalSearch(e.target.value)}
+          leftIcon={<Search className="h-4 w-4" />}
+          aria-label="Filter people in scope"
+        />
+        <AppTable
+          columns={['Name', 'Username', 'Primary HR', 'Project div.']}
+          rows={scopeTableRows}
+          emptyState="No matches."
+        />
+      </AppModal>
     </>
   );
 }

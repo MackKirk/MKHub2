@@ -13,7 +13,7 @@ import { AppFieldHint } from './AppFieldHint';
 import { AppUserAvatar } from './AppUserAvatar';
 import { SelectDropdownCheckbox } from './SelectDropdownCheckbox';
 import { uiCx, uiDropdown, uiUserSelect } from './tokens';
-import { useComboboxDropdown } from './useComboboxDropdown';
+import { comboboxMenuStyle, useComboboxDropdown, type ComboboxMenuRect } from './useComboboxDropdown';
 import { useAppUserSelectCatalog } from './useAppUserSelectCatalog';
 
 export type AppUserSelectUser = UserDisplaySource & { id: string };
@@ -482,7 +482,7 @@ function AppUserSelectMultiple({
 type UserListboxParams = {
   listRef: React.RefObject<HTMLUListElement>;
   portalListId: string;
-  menuRect: { top: number; left: number; width: number } | null;
+  menuRect: ComboboxMenuRect | null;
   open: boolean;
   listUsers: AppUserSelectUser[];
   isMultiple: boolean;
@@ -525,7 +525,7 @@ function renderUserListbox({
       role="listbox"
       aria-multiselectable={isMultiple || undefined}
       className={uiDropdown.menu}
-      style={{ top: menuRect.top, left: menuRect.left, width: menuRect.width }}
+      style={comboboxMenuStyle(menuRect)}
     >
       {showLoading ? (
         <li className={uiDropdown.optionMuted}>Loading users…</li>

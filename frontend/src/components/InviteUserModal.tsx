@@ -1,7 +1,22 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import OverlayPortal from '@/components/OverlayPortal';
+import {
+  AppButton,
+  AppCheckbox,
+  AppDatePicker,
+  AppFormModal,
+  AppInput,
+  AppMultiSelect,
+  AppSelect,
+  AppTextarea,
+  AppUserSelect,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type InviteModalProps = {
   isOpen: boolean;
@@ -12,14 +27,16 @@ type Division = { id: string; label: string; value?: string };
 
 export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   const queryClient = useQueryClient();
-  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => api<any>('GET', '/settings') });
-  const { data: usersOptions } = useQuery({ queryKey: ['usersOptions'], queryFn: () => api<any[]>('GET', '/auth/users/options?limit=100') });
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api<any>('GET', '/settings'),
+    enabled: isOpen,
+  });
   const divisions: Division[] = (settings?.divisions || []) as Division[];
   const employmentTypes = (settings?.employment_types || []) as any[];
-  
+
   const [email, setEmail] = useState('');
   const [selectedDivisionIds, setSelectedDivisionIds] = useState<string[]>([]);
-  const [divisionDropdownOpen, setDivisionDropdownOpen] = useState(false);
   const [documentIds, setDocumentIds] = useState<string[]>([]);
   const [needsEmail, setNeedsEmail] = useState(false);
   const [needsBusinessCard, setNeedsBusinessCard] = useState(false);
@@ -27,7 +44,6 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   const [needsVehicle, setNeedsVehicle] = useState(false);
   const [needsEquipment, setNeedsEquipment] = useState(false);
   const [equipmentList, setEquipmentList] = useState('');
-  // Job fields
   const [hireDate, setHireDate] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [workEmail, setWorkEmail] = useState('');
@@ -38,17 +54,34 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   const [employmentType, setEmploymentType] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [divisionTouched, setDivisionTouched] = useState(false);
+
+  const divisionOptions = divisions.map((div) => ({
+    value: String(div.id),
+    label: div.label,
+  }));
+
+  const payTypeOptions = [
+    { value: 'hourly', label: 'Hourly' },
+    { value: 'salary', label: 'Salary' },
+    { value: 'contract', label: 'Contract' },
+  ];
+
+  const employmentTypeOptions = employmentTypes.map((et: any) => ({
+    value: et.label,
+    label: et.label,
+  }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    // Validate that at least one department is selected
+    setDivisionTouched(true);
+
     if (selectedDivisionIds.length === 0) {
       setError('Please select at least one department');
       return;
     }
-    
+
     setLoading(true);
 
     try {
@@ -62,7 +95,6 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
         needs_vehicle: needsVehicle,
         needs_equipment: needsEquipment,
         equipment_list: needsEquipment && equipmentList ? equipmentList : null,
-        // Job information
         hire_date: hireDate || null,
         job_title: jobTitle || null,
         work_email: workEmail || null,
@@ -72,8 +104,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
         pay_type: payType || null,
         employment_type: employmentType || null,
       });
-      
-      // Reset form
+
       setEmail('');
       setSelectedDivisionIds([]);
       setDocumentIds([]);
@@ -91,7 +122,8 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
       setPayRate('');
       setPayType('');
       setEmploymentType('');
-      
+      setDivisionTouched(false);
+
       queryClient.invalidateQueries({ queryKey: ['users'] });
       onClose();
     } catch (err: any) {
@@ -101,327 +133,205 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
     }
   };
 
-  if (!isOpen) return null;
+  const divisionError =
+    divisionTouched && selectedDivisionIds.length === 0 ? 'At least one department is required' : undefined;
 
   return (
-    <OverlayPortal>
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="p-6 border-b">
-          <h2 className="text-2xl font-bold text-gray-900">Invite New User</h2>
-          <p className="text-sm text-gray-600 mt-1">Send an invitation to a new employee</p>
+    <AppFormModal
+      open={isOpen}
+      onClose={onClose}
+      size="lg"
+      title="Invite New User"
+      description="Send an invitation to a new employee"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={loading}>
+            Cancel
+          </AppButton>
+          <AppButton type="submit" form="invite-user-form" size="sm" loading={loading} disabled={loading}>
+            {loading ? 'Sending...' : 'Send Invite'}
+          </AppButton>
         </div>
-        
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address *
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-              placeholder="user@example.com"
-            />
+      }
+    >
+      <form id="invite-user-form" onSubmit={handleSubmit} className={uiSpacing.sectionStack}>
+        {error ? (
+          <div className={uiCx(uiRadius.control, 'border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700')}>
+            {error}
           </div>
+        ) : null}
 
-          <div className="relative">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Department *
-            </label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setDivisionDropdownOpen(!divisionDropdownOpen)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-left bg-white flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-              >
-                <span className={selectedDivisionIds.length === 0 ? 'text-gray-400' : ''}>
-                  {selectedDivisionIds.length === 0 
-                    ? 'Select departments...' 
-                    : selectedDivisionIds.map((id: string) => {
-                        const division = divisions.find((d: any) => String(d.id) === id);
-                        return division?.label || '';
-                      }).filter(Boolean).join(', ') || 'No departments selected'}
-                </span>
-                <span className="text-gray-400">▼</span>
-              </button>
-              {divisionDropdownOpen && (
-                <>
-                  <div 
-                    className="fixed inset-0 z-10" 
-                    onClick={() => setDivisionDropdownOpen(false)}
-                  />
-                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    {divisions.map((div: any) => (
-                      <label
-                        key={div.id}
-                        className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedDivisionIds.includes(String(div.id))}
-                          onChange={() => {
-                            const newSelection = selectedDivisionIds.includes(String(div.id))
-                              ? selectedDivisionIds.filter(id => id !== String(div.id))
-                              : [...selectedDivisionIds, String(div.id)];
-                            setSelectedDivisionIds(newSelection);
-                          }}
-                          className="rounded border-gray-300 text-[#d11616] focus:ring-[#d11616]"
-                        />
-                        <span className="text-sm">{div.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-            {selectedDivisionIds.length === 0 && (
-              <p className="text-xs text-red-600 mt-1">At least one department is required</p>
-            )}
-          </div>
+        <AppInput
+          type="email"
+          label="Email Address *"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="user@example.com"
+          disabled={loading}
+        />
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Documents to Sign (optional)
-            </label>
-            <input
-              type="text"
-              value={documentIds.join(', ')}
-              onChange={(e) => setDocumentIds(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-              placeholder="Comma-separated document IDs"
-            />
-            <p className="text-xs text-gray-500 mt-1">Enter document IDs separated by commas</p>
-          </div>
+        <AppMultiSelect
+          label="Department *"
+          value={selectedDivisionIds}
+          onChange={(values) => {
+            setSelectedDivisionIds(values);
+            setDivisionTouched(true);
+          }}
+          options={divisionOptions}
+          placeholder="Select departments..."
+          searchable
+          disabled={loading}
+          error={divisionError}
+        />
 
-          <div className="border-t pt-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Job Information</h3>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Hire Date (optional)
-                </label>
-                <input
-                  type="date"
-                  value={hireDate}
-                  onChange={(e) => setHireDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Job Title (optional)
-                </label>
-                <input
-                  type="text"
-                  value={jobTitle}
-                  onChange={(e) => setJobTitle(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-                  placeholder="e.g., Software Engineer"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Work Email (optional)
-                </label>
-                <input
-                  type="email"
-                  value={workEmail}
-                  onChange={(e) => setWorkEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-                  placeholder="work@company.com"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Work Phone (optional)
-                </label>
-                <input
-                  type="tel"
-                  value={workPhone}
-                  onChange={(e) => setWorkPhone(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-                  placeholder="+1 (555) 123-4567"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Manager (optional)
-                </label>
-                <select
-                  value={managerUserId}
-                  onChange={(e) => setManagerUserId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-                >
-                  <option value="">Select a manager...</option>
-                  {(usersOptions || []).map((u: any) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name || u.username}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Employment Type (optional)
-                </label>
-                {employmentTypes.length > 0 ? (
-                  <select
-                    value={employmentType}
-                    onChange={(e) => setEmploymentType(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-                  >
-                    <option value="">Select type...</option>
-                    {employmentTypes.map((et: any) => (
-                      <option key={et.id} value={et.label}>
-                        {et.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={employmentType}
-                    onChange={(e) => setEmploymentType(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-                    placeholder="e.g., full-time, part-time"
-                  />
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Pay Rate (optional)
-                </label>
-                <input
-                  type="text"
-                  value={payRate}
-                  onChange={(e) => setPayRate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-                  placeholder="e.g., $50/hour or $100,000/year"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Pay Type (optional)
-                </label>
-                <select
-                  value={payType}
-                  onChange={(e) => setPayType(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-                >
-                  <option value="">Select type...</option>
-                  <option value="hourly">Hourly</option>
-                  <option value="salary">Salary</option>
-                  <option value="contract">Contract</option>
-                </select>
-              </div>
-            </div>
-          </div>
+        <AppInput
+          label="Documents to Sign (optional)"
+          value={documentIds.join(', ')}
+          onChange={(e) =>
+            setDocumentIds(
+              e.target.value
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean),
+            )
+          }
+          placeholder="Comma-separated document IDs"
+          helperText="Enter document IDs separated by commas"
+          disabled={loading}
+        />
 
-          <div className="border-t pt-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Onboarding Requirements</h3>
-            
-            <div className="space-y-3">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={needsEmail}
-                  onChange={(e) => setNeedsEmail(e.target.checked)}
-                  className="w-4 h-4 text-[#d11616] border-gray-300 rounded focus:ring-[#d11616]"
-                />
-                <span className="ml-2 text-sm text-gray-700">This user will need an email account</span>
-              </label>
+        <div className={uiCx('border-t border-gray-100 pt-4', uiSpacing.sectionStack)}>
+          <h3 className={uiTypography.sectionTitle}>Job Information</h3>
 
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={needsBusinessCard}
-                  onChange={(e) => setNeedsBusinessCard(e.target.checked)}
-                  className="w-4 h-4 text-[#d11616] border-gray-300 rounded focus:ring-[#d11616]"
-                />
-                <span className="ml-2 text-sm text-gray-700">This user will need business cards</span>
-              </label>
-
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={needsPhone}
-                  onChange={(e) => setNeedsPhone(e.target.checked)}
-                  className="w-4 h-4 text-[#d11616] border-gray-300 rounded focus:ring-[#d11616]"
-                />
-                <span className="ml-2 text-sm text-gray-700">This user will need a phone</span>
-              </label>
-
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={needsVehicle}
-                  onChange={(e) => setNeedsVehicle(e.target.checked)}
-                  className="w-4 h-4 text-[#d11616] border-gray-300 rounded focus:ring-[#d11616]"
-                />
-                <span className="ml-2 text-sm text-gray-700">This user will receive a vehicle</span>
-              </label>
-
-              <div>
-                <label className="flex items-center mb-2">
-                  <input
-                    type="checkbox"
-                    checked={needsEquipment}
-                    onChange={(e) => setNeedsEquipment(e.target.checked)}
-                    className="w-4 h-4 text-[#d11616] border-gray-300 rounded focus:ring-[#d11616]"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">This user will need equipment or tools</span>
-                </label>
-                {needsEquipment && (
-                  <textarea
-                    value={equipmentList}
-                    onChange={(e) => setEquipmentList(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616] mt-2"
-                    placeholder="Please list the equipment/tools needed..."
-                    rows={3}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#d11616]"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <AppDatePicker
+              id="invite-hire-date"
+              label="Hire Date (optional)"
+              value={hireDate}
+              onChange={(e) => setHireDate(e.target.value)}
               disabled={loading}
-              className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-[#d11616] to-[#ee2b2b] rounded-md hover:from-[#a90f0f] hover:to-[#d11616] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#d11616] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Sending...' : 'Send Invite'}
-            </button>
+            />
+
+            <AppInput
+              label="Job Title (optional)"
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+              placeholder="e.g., Software Engineer"
+              disabled={loading}
+            />
+
+            <AppInput
+              type="email"
+              label="Work Email (optional)"
+              value={workEmail}
+              onChange={(e) => setWorkEmail(e.target.value)}
+              placeholder="work@company.com"
+              disabled={loading}
+            />
+
+            <AppInput
+              type="tel"
+              label="Work Phone (optional)"
+              value={workPhone}
+              onChange={(e) => setWorkPhone(e.target.value)}
+              placeholder="+1 (555) 123-4567"
+              disabled={loading}
+            />
+
+            <AppUserSelect
+              mode="single"
+              label="Manager (optional)"
+              value={managerUserId}
+              onChange={setManagerUserId}
+              placeholder="Select a manager..."
+              disabled={loading}
+            />
+
+            {employmentTypes.length > 0 ? (
+              <AppSelect
+                label="Employment Type (optional)"
+                value={employmentType}
+                onChange={(e) => setEmploymentType(e.target.value)}
+                options={employmentTypeOptions}
+                placeholder="Select type..."
+                disabled={loading}
+              />
+            ) : (
+              <AppInput
+                label="Employment Type (optional)"
+                value={employmentType}
+                onChange={(e) => setEmploymentType(e.target.value)}
+                placeholder="e.g., full-time, part-time"
+                disabled={loading}
+              />
+            )}
+
+            <AppInput
+              label="Pay Rate (optional)"
+              value={payRate}
+              onChange={(e) => setPayRate(e.target.value)}
+              placeholder="e.g., $50/hour or $100,000/year"
+              disabled={loading}
+            />
+
+            <AppSelect
+              label="Pay Type (optional)"
+              value={payType}
+              onChange={(e) => setPayType(e.target.value)}
+              options={payTypeOptions}
+              placeholder="Select type..."
+              disabled={loading}
+            />
           </div>
-        </form>
-      </div>
-    </div>
-    </OverlayPortal>
+        </div>
+
+        <div className={uiCx('border-t border-gray-100 pt-4', uiSpacing.sectionStack)}>
+          <h3 className={uiTypography.sectionTitle}>Onboarding Requirements</h3>
+
+          <div className={uiSpacing.sectionStack}>
+            <AppCheckbox
+              label="This user will need an email account"
+              checked={needsEmail}
+              onChange={setNeedsEmail}
+              disabled={loading}
+            />
+            <AppCheckbox
+              label="This user will need business cards"
+              checked={needsBusinessCard}
+              onChange={setNeedsBusinessCard}
+              disabled={loading}
+            />
+            <AppCheckbox
+              label="This user will need a phone"
+              checked={needsPhone}
+              onChange={setNeedsPhone}
+              disabled={loading}
+            />
+            <AppCheckbox
+              label="This user will receive a vehicle"
+              checked={needsVehicle}
+              onChange={setNeedsVehicle}
+              disabled={loading}
+            />
+            <AppCheckbox
+              label="This user will need equipment or tools"
+              checked={needsEquipment}
+              onChange={setNeedsEquipment}
+              disabled={loading}
+            />
+            {needsEquipment ? (
+              <AppTextarea
+                value={equipmentList}
+                onChange={(e) => setEquipmentList(e.target.value)}
+                placeholder="Please list the equipment/tools needed..."
+                rows={3}
+                disabled={loading}
+              />
+            ) : null}
+          </div>
+        </div>
+      </form>
+    </AppFormModal>
   );
 }
-

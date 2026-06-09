@@ -3,12 +3,12 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session
 
 from ..auth.security import get_current_user, require_permissions
 from ..db import get_db
-from ..models.models import CompanyCreditCard, CompanyCreditCardAssignment
+from ..models.models import AuditLog, CompanyCreditCard, CompanyCreditCardAssignment
 from ..schemas.company_credit_cards import (
     CompanyCreditCardAssignmentCreate,
     CompanyCreditCardAssignmentReturn,
@@ -253,6 +253,142 @@ def list_card_assignments(
     return out
 
 
+@router.get("/{card_id}/history")
+def get_company_credit_card_history(
+    card_id: uuid.UUID,
+    limit: int = Query(300, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("company_cards:read")),
+):
+    """
+    Unified timeline: custody assignments (when no matching assignment audit) and audit entries
+    for this card (edits, assign/return, create/delete).
+    """
+    card = db.query(CompanyCreditCard).filter(CompanyCreditCard.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Credit card record not found")
+
+    card_str = str(card_id)
+
+    try:
+        bind = db.get_bind()
+        dialect = getattr(bind.dialect, "name", "") or ""
+    except Exception:
+        dialect = ""
+
+    card_entity_match = and_(AuditLog.entity_type == "company_credit_card", AuditLog.entity_id == card_id)
+    audit_parts = [card_entity_match]
+    if dialect == "postgresql":
+        audit_parts.append(AuditLog.context.op("->>")("company_credit_card_id") == card_str)
+    else:
+        card_ctx = func.json_extract(AuditLog.context, "$.company_credit_card_id")
+        audit_parts.append(card_ctx == card_str)
+
+    audit_rows = (
+        db.query(AuditLog)
+        .filter(or_(*audit_parts))
+        .order_by(AuditLog.timestamp_utc.desc())
+        .limit(450)
+        .all()
+    )
+    audit_assignment_ids = {
+        str(row.entity_id) for row in audit_rows if (row.entity_type or "") == "company_credit_card_assignment"
+    }
+
+    items: List[dict] = []
+
+    assignments = (
+        db.query(CompanyCreditCardAssignment)
+        .filter(CompanyCreditCardAssignment.company_credit_card_id == card_id)
+        .order_by(CompanyCreditCardAssignment.assigned_at.desc())
+        .all()
+    )
+
+    for a in assignments:
+        if str(a.id) in audit_assignment_ids:
+            continue
+        assignee = get_user_display(db, a.assigned_to_user_id) if a.assigned_to_user_id else "Unknown"
+        checkout_actor_id = str(a.created_by) if a.created_by else None
+        checkout_actor_name = get_user_display(db, a.created_by) if a.created_by else None
+        items.append(
+            {
+                "id": f"assign-out-{a.id}",
+                "source": "assignment",
+                "kind": "checkout",
+                "title": "Checked out",
+                "subtitle": f"Assigned to {assignee}",
+                "detail": None,
+                "occurred_at": a.assigned_at.isoformat() if a.assigned_at else "",
+                "actor_id": checkout_actor_id,
+                "actor_name": checkout_actor_name,
+                "assignment_id": str(a.id),
+                "log_subtype": "assign",
+                "audit_action": None,
+                "changes_json": None,
+            }
+        )
+        if a.returned_at:
+            return_actor_id = str(a.returned_to_user_id) if a.returned_to_user_id else None
+            return_actor_name = get_user_display(db, a.returned_to_user_id) if a.returned_to_user_id else None
+            items.append(
+                {
+                    "id": f"assign-in-{a.id}",
+                    "source": "assignment",
+                    "kind": "return",
+                    "title": "Returned",
+                    "subtitle": f"Previously with {assignee}",
+                    "detail": None,
+                    "occurred_at": a.returned_at.isoformat() if a.returned_at else "",
+                    "actor_id": return_actor_id,
+                    "actor_name": return_actor_name,
+                    "assignment_id": str(a.id),
+                    "log_subtype": "return",
+                    "audit_action": None,
+                    "changes_json": None,
+                }
+            )
+
+    for row in audit_rows:
+        changes_json = row.changes_json
+        if (row.entity_type or "") == "company_credit_card_assignment" and row.entity_id:
+            cj = dict(changes_json or {})
+            if not cj.get("assigned_to_name"):
+                assignment = (
+                    db.query(CompanyCreditCardAssignment)
+                    .filter(CompanyCreditCardAssignment.id == row.entity_id)
+                    .first()
+                )
+                if assignment and assignment.assigned_to_user_id:
+                    assignee_name = get_user_display(db, assignment.assigned_to_user_id)
+                    if assignee_name:
+                        cj["assigned_to_name"] = assignee_name
+            changes_json = cj
+
+        items.append(
+            {
+                "id": f"audit-{row.id}",
+                "source": "audit",
+                "kind": (row.action or "audit").lower(),
+                "title": (row.entity_type or "audit").replace("_", " "),
+                "subtitle": None,
+                "detail": None,
+                "occurred_at": row.timestamp_utc.isoformat() if row.timestamp_utc else "",
+                "actor_id": str(row.actor_id) if row.actor_id else None,
+                "actor_name": get_user_display(db, row.actor_id) if row.actor_id else None,
+                "assignment_id": None,
+                "log_subtype": None,
+                "audit_action": row.action,
+                "changes_json": changes_json,
+                "entity_type": row.entity_type,
+                "entity_id": str(row.entity_id) if row.entity_id is not None else None,
+                "audit_context": row.context,
+            }
+        )
+
+    items.sort(key=lambda x: x.get("occurred_at") or "", reverse=True)
+    return {"items": items[:limit]}
+
+
 @router.post("/{card_id}/assign", response_model=CompanyCreditCardAssignmentResponse)
 def assign_company_credit_card(
     card_id: uuid.UUID,
@@ -293,6 +429,8 @@ def assign_company_credit_card(
     db.commit()
     db.refresh(new_a)
 
+    assignee_name = get_user_display(db, payload.assigned_to_user_id)
+
     audit_fleet(
         db,
         user,
@@ -302,6 +440,7 @@ def assign_company_credit_card(
         changes_json={
             "company_credit_card_id": str(card_id),
             "assigned_to_user_id": str(payload.assigned_to_user_id),
+            "assigned_to_name": assignee_name,
         },
         context={"company_credit_card_id": str(card_id)},
     )
@@ -356,13 +495,19 @@ def return_company_credit_card(
     db.commit()
     db.refresh(active)
 
+    assignee_name = get_user_display(db, active.assigned_to_user_id)
+
     audit_fleet(
         db,
         user,
         entity_type="company_credit_card_assignment",
         entity_id=active.id,
         action="UPDATE",
-        changes_json={"company_credit_card_id": str(card_id), "returned": True},
+        changes_json={
+            "company_credit_card_id": str(card_id),
+            "returned": True,
+            "assigned_to_name": assignee_name,
+        },
         context={"company_credit_card_id": str(card_id)},
     )
 

@@ -6,7 +6,7 @@ import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
 import { SelectDropdownCheckbox } from './SelectDropdownCheckbox';
 import { uiCx, uiDropdown, uiTypography, uiUserSelect } from './tokens';
-import { useComboboxDropdown } from './useComboboxDropdown';
+import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 export type AppMultiSelectOption = {
   value: string;
@@ -125,9 +125,7 @@ export function AppMultiSelect({
     onChange([...value, optionValue]);
   };
 
-  const menuPosition = menuRect
-    ? { top: menuRect.top, left: menuRect.left, width: menuRect.width }
-    : undefined;
+  const menuPosition = comboboxMenuStyle(menuRect);
 
   const optionListContent =
     filteredOptions.length === 0 ? (

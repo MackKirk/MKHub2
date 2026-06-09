@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
+import { COMPANY_CREDIT_CARD_FIELD_HINTS as H } from '@/lib/companyCreditCardFieldHints';
+import { formModalQuickInfo, uiLabel } from '@/lib/formModalQuickInfo';
 import {
   AppButton,
   AppFormModal,
@@ -13,6 +15,20 @@ import {
 } from '@/components/ui';
 
 const FORM_ID = 'company-credit-card-assign-custody-form';
+
+const ASSIGN_CUSTODY_QUICK_INFO = formModalQuickInfo({
+  purpose: <>Record who is taking physical custody of this corporate card.</>,
+  howToUse: (
+    <>
+      Select {uiLabel('Employee')}, add optional {uiLabel('Notes')} if helpful, then confirm the assignment.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Assign')} saves custody and appears in History. {uiLabel('Cancel')} closes without changes.
+    </>
+  ),
+});
 
 export type CompanyCreditCardAssignCustodyModalProps = {
   open: boolean;
@@ -58,6 +74,7 @@ export default function CompanyCreditCardAssignCustodyModal({
       title={title}
       description="The employee who will physically hold this card."
       formWidth="comfortable"
+      quickInfo={ASSIGN_CUSTODY_QUICK_INFO}
       footer={
         <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
           <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={isPending}>
@@ -95,7 +112,7 @@ export default function CompanyCreditCardAssignCustodyModal({
           onChange={(userId) => setAssignUserId(userId ?? '')}
           placeholder="Search or select user…"
           disabled={isPending}
-          fieldHint="Employee\n\nThe team member who will physically hold this corporate card."
+          fieldHint={H.assign_employee}
         />
         <AppTextarea
           label="Notes"
@@ -103,7 +120,7 @@ export default function CompanyCreditCardAssignCustodyModal({
           onChange={(e) => setAssignNotes(e.target.value)}
           rows={2}
           disabled={isPending}
-          fieldHint="Notes\n\nOptional context for this assignment (e.g. project or vehicle)."
+          fieldHint={H.assign_notes}
         />
       </form>
     </AppFormModal>

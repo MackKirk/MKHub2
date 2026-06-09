@@ -1656,6 +1656,37 @@ def create_app() -> FastAPI:
                     except Exception as _e:
                         print(f"[startup] client_files soft-delete columns (non-critical): {_e}")
 
+                    # Soft-delete columns for company file documents (ClientDocument rows)
+                    try:
+                        _cd_cols = db.execute(
+                            text(
+                                "SELECT column_name FROM information_schema.columns "
+                                "WHERE table_schema = 'public' AND table_name = 'client_documents' "
+                                "AND column_name IN ('deleted_at', 'deleted_by')"
+                            )
+                        ).fetchall()
+                        _cd_have = {str(r[0]) for r in _cd_cols}
+                        if "deleted_at" not in _cd_have:
+                            db.execute(text("ALTER TABLE client_documents ADD COLUMN deleted_at TIMESTAMPTZ NULL"))
+                            db.commit()
+                            print("[startup] Added client_documents.deleted_at")
+                        if "deleted_by" not in _cd_have:
+                            db.execute(
+                                text(
+                                    "ALTER TABLE client_documents ADD COLUMN deleted_by UUID NULL "
+                                    "REFERENCES users(id) ON DELETE SET NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added client_documents.deleted_by")
+                        try:
+                            db.execute(text("CREATE INDEX IF NOT EXISTS idx_client_documents_deleted_at ON client_documents(deleted_at)"))
+                            db.commit()
+                        except Exception:
+                            pass
+                    except Exception as _e:
+                        print(f"[startup] client_documents soft-delete columns (non-critical): {_e}")
+
                     # Ensure permission_templates table exists
                     rows = db.execute(
                         text(

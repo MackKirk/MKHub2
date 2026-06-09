@@ -5,7 +5,7 @@ import { sortByLabel } from '@/lib/sortOptions';
 import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
 import { uiCx, uiDropdown } from './tokens';
-import { useComboboxDropdown } from './useComboboxDropdown';
+import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 export type AppComboboxOption = {
   value: string;
@@ -82,7 +82,7 @@ export function AppCombobox({
         id={portalListId}
         role="listbox"
         className={uiDropdown.menu}
-        style={{ top: menuRect.top, left: menuRect.left, width: menuRect.width }}
+        style={comboboxMenuStyle(menuRect)}
       >
         {filtered.length === 0 ? (
           <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>

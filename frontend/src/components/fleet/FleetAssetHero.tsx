@@ -30,10 +30,21 @@ const HERO_EXPAND_BASE_MS = 1400;
 const HERO_COLLAPSE_MS = 650;
 const FLEET_HERO_COLLAPSED_PX = 72;
 
-export function FleetHeroStat({ label, children }: { label: string; children: ReactNode }) {
+export function FleetHeroStat({
+  label,
+  labelAction,
+  children,
+}: {
+  label: string;
+  labelAction?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <div className="min-w-0">
-      <span className={fleetHeroLabelClass}>{label}</span>
+      <div className="flex items-center gap-1.5">
+        <span className={fleetHeroLabelClass}>{label}</span>
+        {labelAction}
+      </div>
       <div className="mt-0.5">{children}</div>
     </div>
   );

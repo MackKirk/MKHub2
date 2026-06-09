@@ -650,6 +650,8 @@ class ClientDocument(Base):
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 class DocumentTemplate(Base):

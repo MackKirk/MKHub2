@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Calendar } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import DirectorMeetingMonthCalendar, {
@@ -10,11 +11,64 @@ import DirectorMeetingSlotPicker, {
   normalizeDirectorMeetingSlots,
   revieweeUserIdsEqual,
 } from '@/components/DirectorMeetingSlotPicker';
-import OverlayPortal from '@/components/OverlayPortal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
-import { FieldHint } from '@/components/FieldHint';
 import { api } from '@/lib/api';
+import { formModalQuickInfo, uiLabel } from '@/lib/formModalQuickInfo';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppControlLabelRow,
+  AppDatePicker,
+  AppEmptyState,
+  AppFieldHint,
+  AppFormModal,
+  FORM_MODAL_COMFORTABLE_DIALOG_EXPANDED,
+  AppModal,
+  AppPageHeader,
+  AppSectionHeader,
+  AppSelect,
+  AppTabs,
+  AppTextarea,
+  AppTimePicker,
+  getAppTabButtonClassName,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+
+const NEW_SCHEDULE_QUICK_INFO = formModalQuickInfo({
+  purpose: (
+    <>
+      Assign a director meeting slot to an employee when you book on their behalf — for example, after they ask HR to
+      reserve a time.
+    </>
+  ),
+  howToUse: (
+    <>
+      Open {uiLabel('Not scheduled')} for people without a meeting yet, or {uiLabel('Reschedule')} for those who already
+      have one (their current time is shown). Click a name to book this slot for that person.
+    </>
+  ),
+  behavior: (
+    <>
+      Reschedule replaces the person&apos;s existing booking with the slot you selected. The numbers on each tab show how
+      many people are in that group.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without booking. Choosing a person confirms the slot for them immediately.
+    </>
+  ),
+});
 
 type BoardSlot = {
   starts_at: string;
@@ -927,199 +981,187 @@ export default function DirectorMeetingsPage() {
     });
   }, []);
 
+  const pageTabItems = useMemo(
+    () =>
+      [
+        { key: 'build', label: 'Build schedule' },
+        { key: 'book', label: 'Book times' },
+      ] as const,
+    [],
+  );
+
+  const bookModalTabItems = useMemo(
+    () => [
+      { key: 'new', label: 'Not scheduled', count: peopleWithoutSchedule.length },
+      { key: 'reschedule', label: 'Reschedule', count: peopleWithSchedule.length },
+    ],
+    [peopleWithoutSchedule.length, peopleWithSchedule.length],
+  );
+
+  const bookingCycleOptions = useMemo(
+    () =>
+      (cycleOptions as { id: string; name?: string }[]).map((c) => ({
+        value: String(c.id),
+        label: String(c.name || c.id),
+      })),
+    [cycleOptions],
+  );
+
   return (
     <>
-    <div className={`w-full min-w-0 max-w-none space-y-4 ${showScheduleFooterBar ? 'pb-28' : 'pb-12'}`}>
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
-              <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <h5 className="text-sm font-semibold text-purple-900">Director meeting schedule</h5>
-              <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">
-                Publish availability and book director closing 1:1s for the performance review cycle.
-              </p>
-            </div>
+    <div
+      className={uiCx(
+        'w-full min-w-0',
+        uiSpacing.pageStack,
+        'min-h-full bg-gray-50',
+        showScheduleFooterBar ? 'pb-28' : 'pb-12',
+      )}
+    >
+      <AppPageHeader
+        icon={<Calendar className="h-4 w-4" />}
+        title="Director meeting schedule"
+        subtitle="Publish availability and book director closing 1:1s for the performance review cycle."
+        actions={
+          <div className="text-right">
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-          <div className="flex flex-wrap items-center gap-3 justify-end shrink-0 lg:pl-4">
-            <div className="text-right">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-            </div>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       {!canonicalCycleId ? (
-        <div className="rounded-xl border bg-white py-12 text-center text-xs text-gray-500">
-          {cycleOptions.length === 0
-            ? 'No review cycles available for your account.'
-            : 'Loading review cycles…'}
-        </div>
+        <AppEmptyState
+          title={
+            cycleOptions.length === 0
+              ? 'No review cycles available for your account.'
+              : 'Loading review cycles…'
+          }
+        />
       ) : (
         <>
           {canConfigure ? (
-            <div className="rounded-xl border bg-white p-3">
-              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Director meetings">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={pageTab === 'build'}
-                  onClick={() => void handlePageTabRequest('build')}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                    pageTab === 'build'
-                      ? 'bg-brand-red text-white border-brand-red'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-                  }`}
-                >
-                  Build schedule
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={pageTab === 'book'}
-                  onClick={() => void handlePageTabRequest('book')}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                    pageTab === 'book'
-                      ? 'bg-brand-red text-white border-brand-red'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-                  }`}
-                >
-                  Book times
-                </button>
-              </div>
-            </div>
+            <AppCard bodyClassName="!py-3">
+              <AppTabs
+                tabs={[...pageTabItems]}
+                value={pageTab}
+                onChange={(key) => void handlePageTabRequest(key as PageTab)}
+              />
+            </AppCard>
           ) : null}
 
           {canConfigure && pageTab === 'build' ? (
-            <section className="rounded-xl border bg-white p-4 sm:p-5">
-              <h2 className="text-sm font-semibold text-gray-900 mb-4">Publish availability</h2>
+            <AppCard>
+              <AppSectionHeader title="Publish availability" className="mb-4" />
 
-              <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5 mb-6">
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
-                  <div className="min-w-0 flex-1 shrink-0">
-                    <div className="mb-2 flex items-center gap-1.5">
-                      <span className="text-xs font-semibold text-gray-800">Calendar</span>
-                      <FieldHint
-                        hint={
-                          'Calendar\n\nClick a day to sync start and end dates in the form. The badge is how many schedule rows fall on that date.'
+              <div className={uiSpacing.sectionStack}>
+                <div className={uiCx(uiLayout.pageTwoColumn, 'items-stretch')}>
+                  <div className="flex min-w-0 flex-1 flex-col lg:min-w-[min(100%,42rem)] xl:min-w-[min(100%,48rem)]">
+                    <div className="mb-2 shrink-0">
+                      <AppControlLabelRow
+                        label="Calendar"
+                        fieldHint={
+                          <AppFieldHint
+                            hint={
+                              'Calendar\n\nClick a day to sync start and end dates in the form. The badge is how many schedule rows fall on that date.'
+                            }
+                          />
                         }
                       />
                     </div>
-                    <DirectorMeetingMonthCalendar
-                      compact
-                      visibleMonth={scheduleCalendarMonth}
-                      onVisibleMonthChange={setScheduleCalendarMonth}
-                      selectedYmd={scheduleSelectedYmd}
-                      onSelectYmd={(ymd) => {
-                        setScheduleSelectedYmd(ymd);
-                        setBulkDateFrom(ymd);
-                        setBulkDateTo(ymd);
-                      }}
-                      getDayProps={(ymd) => {
-                        const n = draftCountByYmd.get(ymd) ?? 0;
-                        return {
-                          disabled: false,
-                          badge: n > 0 ? n : undefined,
-                          badgeTone: n > 0 ? 'draft' : 'neutral',
-                        };
-                      }}
-                    />
+                    <div className="flex min-h-0 flex-1 flex-col">
+                      <DirectorMeetingMonthCalendar
+                        compact
+                        visibleMonth={scheduleCalendarMonth}
+                        onVisibleMonthChange={setScheduleCalendarMonth}
+                        selectedYmd={scheduleSelectedYmd}
+                        onSelectYmd={(ymd) => {
+                          setScheduleSelectedYmd(ymd);
+                          setBulkDateFrom(ymd);
+                          setBulkDateTo(ymd);
+                        }}
+                        getDayProps={(ymd) => {
+                          const n = draftCountByYmd.get(ymd) ?? 0;
+                          return {
+                            disabled: false,
+                            badge: n > 0 ? n : undefined,
+                            badgeTone: n > 0 ? 'draft' : 'neutral',
+                          };
+                        }}
+                      />
+                    </div>
                   </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-2 flex items-center gap-1.5">
-                      <span className="text-xs font-semibold text-gray-800">Dates & times</span>
-                      <FieldHint
-                        hint={
-                          'Dates & times\n\nSet the day range and daily open hours. The same From–To window applies to each day in the range when you add rows.'
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="mb-2 shrink-0">
+                      <AppControlLabelRow
+                        label="Dates & times"
+                        fieldHint={
+                          <AppFieldHint
+                            hint={
+                              'Dates & times\n\nSet the day range and daily open hours. The same From–To window applies to each day in the range when you add rows.'
+                            }
+                          />
                         }
                       />
                     </div>
-                    <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50/60 p-4">
-                    <div className="space-y-3">
+                    <div
+                      className={uiCx(
+                        uiSpacing.sectionStack,
+                        uiColors.surfaceSubtle,
+                        uiRadius.card,
+                        'flex-1 border border-gray-200 p-4',
+                      )}
+                    >
+                    <div className={uiSpacing.sectionStack}>
                       <div className="flex flex-wrap gap-3">
-                        <div>
-                          <div className="mb-1 flex items-center gap-1">
-                            <span className="text-xs font-medium text-gray-600">Start date</span>
-                            <FieldHint hint="First day included when you generate rows from the range (bulk add)." />
-                          </div>
-                          <input
-                            type="date"
-                            className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 min-w-[10rem] focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                            value={bulkDateFrom}
-                            onChange={(e) => setBulkDateFrom(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <div className="mb-1 flex items-center gap-1">
-                            <span className="text-xs font-medium text-gray-600">End date</span>
-                            <FieldHint hint="Last day included (inclusive). Use the same as start for a single day, or extend for multiple days." />
-                          </div>
-                          <input
-                            type="date"
-                            className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 min-w-[10rem] focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                            value={bulkDateTo}
-                            onChange={(e) => setBulkDateTo(e.target.value)}
-                          />
-                        </div>
+                        <AppDatePicker
+                          label="Start date"
+                          fieldHint="First day included when you generate rows from the range (bulk add)."
+                          className="min-w-[10rem]"
+                          value={bulkDateFrom}
+                          onChange={(e) => setBulkDateFrom(e.target.value)}
+                        />
+                        <AppDatePicker
+                          label="End date"
+                          fieldHint="Last day included (inclusive). Use the same as start for a single day, or extend for multiple days."
+                          className="min-w-[10rem]"
+                          value={bulkDateTo}
+                          onChange={(e) => setBulkDateTo(e.target.value)}
+                        />
                       </div>
                       <div className="flex flex-wrap gap-3">
-                        <div>
-                          <div className="mb-1 flex items-center gap-1">
-                            <span className="text-xs font-medium text-gray-600">From time</span>
-                            <FieldHint hint="Start of the daily open window. The same From–To times apply to each day between start and end date." />
-                          </div>
-                          <input
-                            type="time"
-                            step={60}
-                            className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 min-w-[7rem] focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                            value={bulkTimeFrom}
-                            onChange={(e) => setBulkTimeFrom(normalizeTimeValue(e.target.value))}
-                          />
-                        </div>
-                        <div>
-                          <div className="mb-1 flex items-center gap-1">
-                            <span className="text-xs font-medium text-gray-600">To time</span>
-                            <FieldHint hint="End of the daily window. Must be after From time; the span is split into meeting-length slots." />
-                          </div>
-                          <input
-                            type="time"
-                            step={60}
-                            className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 min-w-[7rem] focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                            value={bulkTimeTo}
-                            onChange={(e) => setBulkTimeTo(normalizeTimeValue(e.target.value))}
-                          />
-                        </div>
+                        <AppTimePicker
+                          label="From time"
+                          fieldHint="Start of the daily open window. The same From–To times apply to each day between start and end date."
+                          className="min-w-[7rem]"
+                          value={bulkTimeFrom}
+                          onChange={(e) => setBulkTimeFrom(normalizeTimeValue(e.target.value))}
+                        />
+                        <AppTimePicker
+                          label="To time"
+                          fieldHint="End of the daily window. Must be after From time; the span is split into meeting-length slots."
+                          className="min-w-[7rem]"
+                          value={bulkTimeTo}
+                          onChange={(e) => setBulkTimeTo(normalizeTimeValue(e.target.value))}
+                        />
                       </div>
                     </div>
 
-                    <label className="flex items-start gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 rounded border-gray-300"
-                        checked={bulkReplaceDraft}
-                        onChange={(e) => setBulkReplaceDraft(e.target.checked)}
-                      />
-                      <span className="flex flex-wrap items-center gap-1 text-xs text-gray-700">
-                        Replace current Schedule
-                        <FieldHint hint="When checked, your next Add replaces the whole schedule. When off, new rows are appended to what you already have." />
-                      </span>
-                    </label>
+                    <AppCheckbox
+                      label="Replace current Schedule"
+                      fieldHint="When checked, your next Add replaces the whole schedule. When off, new rows are appended to what you already have."
+                      checked={bulkReplaceDraft}
+                      onChange={(checked) => setBulkReplaceDraft(checked)}
+                    />
 
                     <div>
-                      <div className="mb-2 flex items-center gap-1">
-                        <span className="text-xs font-medium text-gray-600">Each meeting slot lasts</span>
-                        <FieldHint hint="Length of each bookable slot. The From–To window is divided into consecutive segments of this length." />
+                      <div className="mb-2">
+                        <AppControlLabelRow
+                          label="Each meeting slot lasts"
+                          fieldHint={
+                            <AppFieldHint hint="Length of each bookable slot. The From–To window is divided into consecutive segments of this length." />
+                          }
+                        />
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {DURATION_PRESETS.map((p) => (
@@ -1127,11 +1169,7 @@ export default function DirectorMeetingsPage() {
                             key={`slot-${p.minutes}`}
                             type="button"
                             onClick={() => setMeetingDurationDraft(p.minutes)}
-                            className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors ${
-                              meetingDurationDraft === p.minutes
-                                ? 'border-brand-red bg-brand-red text-white hover:bg-[#aa1212]'
-                                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                            }`}
+                            className={getAppTabButtonClassName(meetingDurationDraft === p.minutes)}
                           >
                             {p.label}
                           </button>
@@ -1139,7 +1177,7 @@ export default function DirectorMeetingsPage() {
                       </div>
                     </div>
 
-                    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+                    <div className={uiCx(uiRadius.control, 'border border-gray-200 bg-white px-3 py-2', uiTypography.helper)}>
                       Preview: ~<span className="font-semibold text-gray-900">{bulkPreviewSlots}</span> row
                       {bulkPreviewSlots === 1 ? '' : 's'} per day · ~{' '}
                       <span className="font-semibold text-gray-900">{bulkDayCount * bulkPreviewSlots}</span> total for{' '}
@@ -1148,13 +1186,9 @@ export default function DirectorMeetingsPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={addTimeRangeToDraft}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-red px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#aa1212] sm:px-3 sm:py-1.5"
-                      >
+                      <AppButton type="button" onClick={addTimeRangeToDraft} className="w-full sm:w-auto">
                         {bulkReplaceDraft ? 'Replace schedule from range' : 'Add range to schedule'}
-                      </button>
+                      </AppButton>
                     </div>
 
                     {bulkHint ? (
@@ -1170,18 +1204,22 @@ export default function DirectorMeetingsPage() {
                 </div>
 
                 {scheduleSelectedYmd ? (
-                  <div className="mt-6 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                  <div className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, 'overflow-hidden')}>
                     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-gray-100 bg-gray-50 px-4 py-3">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <h4 className="text-sm font-semibold text-gray-900">Current schedule</h4>
-                          <FieldHint hint="Shows availability rows for the selected day in your current schedule. Remove a row if needed; if someone already booked in that window, you can notify them before removing." />
-                        </div>
-                        <p className="mt-0.5 text-xs font-medium text-gray-600">{formatYmdHeading(scheduleSelectedYmd)}</p>
+                        <AppControlLabelRow
+                          label="Current schedule"
+                          fieldHint={
+                            <AppFieldHint hint="Shows availability rows for the selected day in your current schedule. Remove a row if needed; if someone already booked in that window, you can notify them before removing." />
+                          }
+                        />
+                        <p className={uiCx(uiTypography.helper, 'mt-0.5 font-medium')}>
+                          {formatYmdHeading(scheduleSelectedYmd)}
+                        </p>
                       </div>
-                      <span className="rounded-full bg-gray-200/90 px-2.5 py-0.5 text-[10px] font-semibold tabular-nums text-gray-800">
+                      <AppBadge variant="neutral">
                         {draftRowsForSelectedDay.length} row{draftRowsForSelectedDay.length === 1 ? '' : 's'} this day
-                      </span>
+                      </AppBadge>
                     </div>
                     <div className="max-h-[min(22rem,55vh)] overflow-y-auto p-4">
                       {draftRowsForSelectedDay.length > 0 ? (
@@ -1193,7 +1231,13 @@ export default function DirectorMeetingsPage() {
                             return (
                               <li
                                 key={row.id}
-                                className="flex flex-col gap-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
+                                className={uiCx(
+                                  'flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between',
+                                  uiRadius.control,
+                                  uiColors.surfaceSubtle,
+                                  'border border-gray-100',
+                                  uiTypography.helper,
+                                )}
                               >
                                 <div className="min-w-0 flex-1">
                                   <div className="tabular-nums text-gray-800">
@@ -1216,68 +1260,63 @@ export default function DirectorMeetingsPage() {
                                     </p>
                                   ) : null}
                                 </div>
-                                <button
+                                <AppButton
                                   type="button"
+                                  variant="ghost"
+                                  size="sm"
                                   onClick={() => void requestRemoveDraftRow(idx, bookedHere)}
-                                  className="shrink-0 self-start rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:text-red-600 hover:border-red-200 sm:self-center"
+                                  className="shrink-0 self-start sm:self-center"
                                 >
                                   Remove
-                                </button>
+                                </AppButton>
                               </li>
                             );
                           })}
                         </ul>
                       ) : availabilityDraft.length === 0 ? (
-                        <p className="py-8 text-center text-xs leading-relaxed text-gray-500">
-                          Nothing in the schedule yet. Use the calendar and time range above. Saving while empty clears published
-                          availability for every review cycle.
-                        </p>
+                        <AppEmptyState
+                          title="Nothing in the schedule yet."
+                          description="Use the calendar and time range above. Saving while empty clears published availability for every review cycle."
+                        />
                       ) : (
-                        <p className="py-8 text-center text-xs leading-relaxed text-gray-500">
-                          No windows for this day in the current schedule. Choose another day on the calendar or add a range that
-                          includes this date.
-                        </p>
+                        <AppEmptyState
+                          title="No windows for this day in the current schedule."
+                          description="Choose another day on the calendar or add a range that includes this date."
+                        />
                       )}
                     </div>
                   </div>
                 ) : null}
               </div>
-            </section>
+            </AppCard>
           ) : null}
 
           {(!canConfigure || pageTab === 'book') ? (
-          <section className="rounded-xl border bg-white p-4 sm:p-5">
+          <AppCard>
             {canHrBook ? (
-              <div className="mb-5 space-y-4">
+              <div className={uiCx(uiSpacing.sectionStack, 'mb-5')}>
                 {cycleOptions.length > 1 ? (
-                  <div>
-                    <div className="mb-1.5 flex items-center gap-1">
-                      <label className="text-xs font-medium text-gray-700">Review cycle (assignments)</label>
-                      <FieldHint hint="Open times are identical for every cycle; this only picks which cycle’s assignment list and bookings you are acting on." />
-                    </div>
-                    <select
-                      className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 min-w-[min(100%,320px)] focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                      value={bookingCycleId}
-                      onChange={(e) => setBookingCycleId(e.target.value)}
-                    >
-                      {(cycleOptions as { id: string; name?: string }[]).map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name || c.id}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Open times are shared across cycles; this only chooses which cycle’s employee list and bookings you are
-                      working with.
-                    </p>
-                  </div>
+                  <AppSelect
+                    label="Review cycle (assignments)"
+                    fieldHint="Open times are identical for every cycle; this only picks which cycle’s assignment list and bookings you are acting on."
+                    className="min-w-[min(100%,320px)]"
+                    value={bookingCycleId}
+                    onChange={(e) => setBookingCycleId(e.target.value)}
+                    options={bookingCycleOptions}
+                    helperText="Open times are shared across cycles; this only chooses which cycle’s employee list and bookings you are working with."
+                  />
                 ) : null}
               </div>
             ) : (
-              <p className="text-xs text-gray-600 mb-4 leading-relaxed">
+              <p className={uiCx(uiTypography.helper, 'mb-4 leading-relaxed')}>
                 Booking for <span className="font-semibold text-gray-900">your account</span>.
                 {activeBookingSlot ? (
-                  <span className="block mt-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-800">
+                  <span
+                    className={uiCx(
+                      'mt-2 block rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-green-800',
+                      uiTypography.helper,
+                    )}
+                  >
                     <span className="font-medium">Scheduled:</span>{' '}
                     {formatDayHeading(activeBookingSlot.starts_at)} ·{' '}
                     {formatTimeOnly(activeBookingSlot.starts_at, activeBookingSlot.ends_at)}
@@ -1287,27 +1326,34 @@ export default function DirectorMeetingsPage() {
             )}
 
             {boardLoading ? (
-              <p className="text-xs text-gray-500 py-8 text-center">Loading open times…</p>
+              <p className={uiCx(uiTypography.helper, 'py-8 text-center')}>Loading open times…</p>
             ) : !hasConfiguredWindows ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-8 text-center text-xs text-amber-950">
-                {canConfigure ? (
+              <AppEmptyState
+                title="No schedule published yet."
+                description={
                   <>
-                    No schedule published yet. Open the <span className="font-semibold">Build schedule</span> tab to add
-                    availability, or configure under{' '}
+                    {canConfigure ? (
+                      <>
+                        Open the <span className="font-semibold">Build schedule</span> tab to add availability, or configure
+                        under{' '}
+                      </>
+                    ) : (
+                      <>An admin must publish availability under </>
+                    )}
+                    <Link to="/reviews/director-meetings" className="font-semibold underline">
+                      Employee Review → Meeting schedule
+                    </Link>
+                    .
                   </>
-                ) : (
-                  <>No schedule published yet. An admin must publish availability under </>
-                )}
-                <Link to="/reviews/director-meetings" className="font-semibold underline">
-                  Employee Review → Meeting schedule
-                </Link>
-                .
-              </div>
+                }
+                className="border-amber-200 bg-amber-50 text-amber-950"
+              />
             ) : !boardSlotsNorm.length ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-8 text-center text-xs text-amber-950">
-                No bookable times yet — try a longer block or shorter meeting length so at least one slot fits inside the
-                window.
-              </div>
+              <AppEmptyState
+                title="No bookable times yet"
+                description="Try a longer block or shorter meeting length so at least one slot fits inside the window."
+                className="border-amber-200 bg-amber-50 text-amber-950"
+              />
             ) : (
               <DirectorMeetingSlotPicker
                 cycleId={bookingCycleId || canonicalCycleId}
@@ -1323,306 +1369,230 @@ export default function DirectorMeetingsPage() {
                 allowReserveWithoutTarget={canHrBook}
               />
             )}
-          </section>
+          </AppCard>
           ) : null}
         </>
       )}
     </div>
 
-    {bookPersonModalOpen ? (
-      <OverlayPortal>
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="book-person-modal-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeBookPersonModal();
-          }}
-        >
-          <div
-            className="flex max-h-[min(88vh,32rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="shrink-0 border-b border-gray-100 bg-gray-50 px-5 py-4">
-              <h2 id="book-person-modal-title" className="text-sm font-semibold text-gray-900">
-                New schedule
-              </h2>
-              <p className="mt-1.5 text-xs leading-relaxed text-gray-600">
-                Pick who this slot is for. People who already have a meeting are under{' '}
-                <span className="font-medium text-gray-800">Reschedule</span>, with their current time shown.
-              </p>
-              {pendingBookSlotStartsAt ? (
-                <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700">
-                  <span className="font-medium text-gray-500">Time:</span>
-                  <span className="font-semibold tabular-nums text-gray-900">
-                    {formatSlotStartLabel(pendingBookSlotStartsAt)}
-                  </span>
-                </p>
-              ) : null}
-            </div>
-
-            <div className="shrink-0 border-b border-gray-100 px-4 pt-3 pb-3">
-              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Booking type">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={bookPersonModalTab === 'new'}
-                  onClick={() => setBookPersonModalTab('new')}
-                  className={`inline-flex flex-1 min-w-0 items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors sm:flex-initial ${
-                    bookPersonModalTab === 'new'
-                      ? 'bg-brand-red text-white border-brand-red'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-                  }`}
-                >
-                  Not scheduled
-                  <span
-                    className={`min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                      bookPersonModalTab === 'new' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {peopleWithoutSchedule.length}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={bookPersonModalTab === 'reschedule'}
-                  onClick={() => setBookPersonModalTab('reschedule')}
-                  className={`inline-flex flex-1 min-w-0 items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors sm:flex-initial ${
-                    bookPersonModalTab === 'reschedule'
-                      ? 'bg-brand-red text-white border-brand-red'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-                  }`}
-                >
-                  Reschedule
-                  <span
-                    className={`min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                      bookPersonModalTab === 'reschedule' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {peopleWithSchedule.length}
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-              {bookPersonModalTab === 'new' ? (
-                peopleWithoutSchedule.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-8 text-center">
-                    <p className="text-xs font-medium text-gray-700">No one without a meeting</p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Everyone eligible already has a time. Use the Reschedule tab to change it.
-                    </p>
-                  </div>
-                ) : (
-                  <ul className="space-y-2">
-                    {peopleWithoutSchedule.map((r: any) => (
-                      <li key={r.user_id}>
-                        <button
-                          type="button"
-                          onClick={() => pickPendingPersonForBooking(String(r.user_id))}
-                          disabled={bookMutation.isPending}
-                          className="group w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition-all hover:border-gray-300 hover:bg-gray-50 disabled:pointer-events-none disabled:opacity-50"
-                        >
-                          <span className="text-xs font-semibold text-gray-900 group-hover:text-brand-red">
-                            {r.display_name || r.name || r.user_id}
-                          </span>
-                          <span className="mt-0.5 block text-[11px] text-gray-500">Click to book this slot</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )
-              ) : peopleWithSchedule.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-8 text-center">
-                  <p className="text-xs font-medium text-gray-700">No one to reschedule</p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    No eligible people with a meeting booked in this cycle yet.
-                  </p>
-                </div>
-              ) : (
-                <ul className="space-y-2">
-                  {peopleWithSchedule.map((r: any) => {
-                    const startsAt = r.director_meeting_scheduled_at as string | null;
-                    const endsAt =
-                      (r.director_meeting_scheduled_until as string | null) ||
-                      (r.director_meeting_scheduled_at as string | null);
-                    return (
-                      <li key={r.user_id}>
-                        <button
-                          type="button"
-                          onClick={() => pickPendingPersonForBooking(String(r.user_id))}
-                          disabled={bookMutation.isPending}
-                          className="group w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition-all hover:border-gray-300 hover:bg-gray-50 disabled:pointer-events-none disabled:opacity-50"
-                        >
-                          <div className="text-xs font-semibold text-gray-900 group-hover:text-brand-red">
-                            {r.display_name || r.name || r.user_id}
-                          </div>
-                          {startsAt ? (
-                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-600">
-                              <span className="rounded-md bg-gray-100 px-1.5 py-0.5 font-medium text-gray-700">
-                                Current: {formatDayHeading(startsAt)}
-                              </span>
-                              {endsAt ? (
-                                <span className="tabular-nums text-gray-600">{formatTimeOnly(startsAt, endsAt)}</span>
-                              ) : null}
-                            </div>
-                          ) : null}
-                          <span className="mt-1.5 block text-[11px] text-gray-500">
-                            The current booking will be replaced with this slot
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+    <AppFormModal
+      open={bookPersonModalOpen}
+      onClose={() => {
+        if (!bookMutation.isPending) closeBookPersonModal();
+      }}
+      title="New schedule"
+      description={
+        <div className="space-y-1.5">
+          <span>
+            Pick who this slot is for. People who already have a meeting are under{' '}
+            <span className="font-medium text-gray-800">Reschedule</span>, with their current time shown.
+          </span>
+          {pendingBookSlotStartsAt ? (
+            <span
+              className={uiCx(
+                'inline-flex w-fit items-center gap-1.5 border border-gray-200 bg-white px-2.5 py-1.5',
+                uiRadius.control,
+                uiTypography.helper,
               )}
-            </div>
-
-            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-gray-100 bg-gray-50 px-4 py-3">
-              <button
-                type="button"
-                onClick={() => closeBookPersonModal()}
-                disabled={bookMutation.isPending}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      </OverlayPortal>
-    ) : null}
-
-    {pendingDirectorNotifyModal ? (
-      <OverlayPortal>
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="remove-booking-modal-title"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !removeNotifyPending) closeDirectorNotifyModal();
-          }}
-        >
-          <div
-            className="w-full max-w-lg rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              id="remove-booking-modal-title"
-              className="border-b border-gray-200 px-4 py-3 text-sm font-semibold text-gray-900"
             >
-              {pendingDirectorNotifyModal.kind === 'remove_row'
-                ? 'Remove schedule row — colleagues will be notified'
-                : 'Cancel booking — colleagues will be notified'}
-            </div>
-            <div className="max-h-[min(70vh,28rem)] overflow-y-auto p-4 space-y-3">
-              <p className="text-xs text-gray-700 leading-relaxed">
-                {pendingDirectorNotifyModal.kind === 'remove_row' ? (
-                  <>
-                    This row overlaps published slots that are already booked. If you continue, an{' '}
-                    <span className="font-medium text-gray-900">in-app notification</span> will be sent to each affected
-                    person with your message below. Then the row is removed from your current schedule (publish to apply
-                    availability).
-                  </>
-                ) : (
-                  <>
-                    This cancels the director meeting slot for this person. If you continue, an{' '}
-                    <span className="font-medium text-gray-900">in-app notification</span> will be sent with your message
-                    below, then the booking is cleared.
-                  </>
-                )}
-              </p>
-              {directorNotifyModalRecipients.length > 0 ? (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-800">
-                  <span className="font-medium text-gray-900">Notify: </span>
-                  {directorNotifyModalRecipients.map((r) => r.label).join(' · ')}
-                </div>
-              ) : null}
-              <div>
-                <label htmlFor="remove-booking-justification" className="block text-xs font-medium text-gray-700 mb-1">
-                  Message to colleagues <span className="text-red-600">*</span>
-                </label>
-                <textarea
-                  id="remove-booking-justification"
-                  rows={4}
-                  maxLength={4000}
-                  value={removeBookingJustification}
-                  onChange={(e) => setRemoveBookingJustification(e.target.value)}
-                  placeholder="Explain why the time is changing or what they should do next…"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-400 focus:ring-1 focus:ring-gray-400"
-                  disabled={removeNotifyPending}
-                />
-                <p className="mt-1 text-[11px] text-gray-500">{removeBookingJustification.length}/4000</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-200 px-4 py-3">
-              <button
-                type="button"
-                onClick={() => closeDirectorNotifyModal()}
-                disabled={removeNotifyPending}
-                className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void submitDirectorNotifyModal()}
-                disabled={
-                  removeNotifyPending ||
-                  !removeBookingJustification.trim() ||
-                  directorNotifyModalRecipients.length === 0
-                }
-                className="rounded-lg px-3 py-2 bg-brand-red text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
-              >
-                {removeNotifyPending
-                  ? 'Sending…'
-                  : pendingDirectorNotifyModal.kind === 'remove_row'
-                    ? 'Send notification & remove row'
-                    : 'Send notification & cancel booking'}
-              </button>
-            </div>
-          </div>
+              <span className="font-medium text-gray-500">Time:</span>
+              <span className="font-semibold tabular-nums text-gray-900">
+                {formatSlotStartLabel(pendingBookSlotStartsAt)}
+              </span>
+            </span>
+          ) : null}
         </div>
-      </OverlayPortal>
-    ) : null}
+      }
+      formWidth="comfortable"
+      quickInfo={NEW_SCHEDULE_QUICK_INFO}
+      dialogClassName="!max-w-lg !max-h-[min(88vh,32rem)]"
+      dialogClassNameExpanded={uiCx(FORM_MODAL_COMFORTABLE_DIALOG_EXPANDED, '!max-h-[min(88vh,32rem)]')}
+      overlayClassName="z-[60]"
+      scrollBody={false}
+      bodyClassName="!p-0 flex min-h-0 flex-1 flex-col"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+          <AppButton
+            variant="secondary"
+            onClick={() => closeBookPersonModal()}
+            disabled={bookMutation.isPending}
+          >
+            Cancel
+          </AppButton>
+        </div>
+      }
+    >
+      <div className="shrink-0 border-b border-gray-100 px-4 pb-3 pt-1">
+        <AppTabs
+          tabs={bookModalTabItems}
+          value={bookPersonModalTab}
+          onChange={(key) => setBookPersonModalTab(key as 'new' | 'reschedule')}
+          className="[&>button]:flex-1 [&>button]:min-w-0 [&>button]:justify-center sm:[&>button]:flex-initial"
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {bookPersonModalTab === 'new' ? (
+          peopleWithoutSchedule.length === 0 ? (
+            <AppEmptyState
+              title="No one without a meeting"
+              description="Everyone eligible already has a time. Use the Reschedule tab to change it."
+            />
+          ) : (
+            <ul className="space-y-2">
+              {peopleWithoutSchedule.map((r: any) => (
+                <li key={r.user_id}>
+                  <AppButton
+                    type="button"
+                    variant="secondary"
+                    onClick={() => pickPendingPersonForBooking(String(r.user_id))}
+                    disabled={bookMutation.isPending}
+                    className="h-auto w-full flex-col items-start gap-0.5 px-4 py-3 text-left"
+                  >
+                    <span className={uiTypography.controlLabel}>{r.display_name || r.name || r.user_id}</span>
+                    <span className={uiTypography.helper}>Click to book this slot</span>
+                  </AppButton>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : peopleWithSchedule.length === 0 ? (
+          <AppEmptyState
+            title="No one to reschedule"
+            description="No eligible people with a meeting booked in this cycle yet."
+          />
+        ) : (
+          <ul className="space-y-2">
+            {peopleWithSchedule.map((r: any) => {
+              const startsAt = r.director_meeting_scheduled_at as string | null;
+              const endsAt =
+                (r.director_meeting_scheduled_until as string | null) ||
+                (r.director_meeting_scheduled_at as string | null);
+              return (
+                <li key={r.user_id}>
+                  <AppButton
+                    type="button"
+                    variant="secondary"
+                    onClick={() => pickPendingPersonForBooking(String(r.user_id))}
+                    disabled={bookMutation.isPending}
+                    className="h-auto w-full flex-col items-start gap-1 px-4 py-3 text-left"
+                  >
+                    <span className={uiTypography.controlLabel}>{r.display_name || r.name || r.user_id}</span>
+                    {startsAt ? (
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <AppBadge variant="neutral">Current: {formatDayHeading(startsAt)}</AppBadge>
+                        {endsAt ? (
+                          <span className={uiCx(uiTypography.helper, 'tabular-nums normal-case')}>
+                            {formatTimeOnly(startsAt, endsAt)}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
+                    <span className={uiTypography.helper}>The current booking will be replaced with this slot</span>
+                  </AppButton>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </AppFormModal>
+
+    <AppModal
+      open={Boolean(pendingDirectorNotifyModal)}
+      onClose={() => {
+        if (!removeNotifyPending) closeDirectorNotifyModal();
+      }}
+      title={
+        pendingDirectorNotifyModal?.kind === 'remove_row'
+          ? 'Remove schedule row — colleagues will be notified'
+          : 'Cancel booking — colleagues will be notified'
+      }
+      size="sm"
+      dialogClassName="!max-w-lg"
+      overlayClassName="z-[60]"
+      bodyFill={false}
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+          <AppButton variant="secondary" onClick={() => closeDirectorNotifyModal()} disabled={removeNotifyPending}>
+            Cancel
+          </AppButton>
+          <AppButton
+            onClick={() => void submitDirectorNotifyModal()}
+            disabled={
+              removeNotifyPending ||
+              !removeBookingJustification.trim() ||
+              directorNotifyModalRecipients.length === 0
+            }
+          >
+            {removeNotifyPending
+              ? 'Sending…'
+              : pendingDirectorNotifyModal?.kind === 'remove_row'
+                ? 'Send notification & remove row'
+                : 'Send notification & cancel booking'}
+          </AppButton>
+        </div>
+      }
+    >
+      <div className={uiSpacing.sectionStack}>
+        <p className={uiCx(uiTypography.helper, 'leading-relaxed text-gray-700')}>
+          {pendingDirectorNotifyModal?.kind === 'remove_row' ? (
+            <>
+              This row overlaps published slots that are already booked. If you continue, an{' '}
+              <span className="font-medium text-gray-900">in-app notification</span> will be sent to each affected person
+              with your message below. Then the row is removed from your current schedule (publish to apply availability).
+            </>
+          ) : (
+            <>
+              This cancels the director meeting slot for this person. If you continue, an{' '}
+              <span className="font-medium text-gray-900">in-app notification</span> will be sent with your message below,
+              then the booking is cleared.
+            </>
+          )}
+        </p>
+        {directorNotifyModalRecipients.length > 0 ? (
+          <div className={uiCx(uiRadius.control, uiColors.surfaceSubtle, 'border border-gray-200 px-3 py-2', uiTypography.helper)}>
+            <span className="font-medium text-gray-900">Notify: </span>
+            {directorNotifyModalRecipients.map((r) => r.label).join(' · ')}
+          </div>
+        ) : null}
+        <AppTextarea
+          id="remove-booking-justification"
+          label="Message to colleagues *"
+          rows={4}
+          maxLength={4000}
+          value={removeBookingJustification}
+          onChange={(e) => setRemoveBookingJustification(e.target.value)}
+          placeholder="Explain why the time is changing or what they should do next…"
+          disabled={removeNotifyPending}
+          helperText={`${removeBookingJustification.length}/4000`}
+        />
+      </div>
+    </AppModal>
 
     {showScheduleFooterBar ? (
-      <div className="fixed left-64 right-0 bottom-0 z-40 flex justify-center">
+      <div className="fixed bottom-0 left-64 right-0 z-40 flex justify-center">
         <div className="w-full min-w-0 max-w-none px-5">
-          <div className="rounded-t-xl border bg-white/95 backdrop-blur p-2.5 flex flex-wrap items-center justify-between gap-3 shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
-            {hasScheduleUnsaved ? (
-              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-medium">
-                Unsaved changes
-              </div>
-            ) : (
-              <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1 font-medium">
-                All changes saved
-              </div>
-            )}
-            <div className="flex-1 min-w-0" />
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
+          <AppCard
+            className={uiCx('rounded-b-none rounded-t-xl border-x border-t !shadow-none', uiShadows.elevated)}
+            bodyClassName="!p-2.5 flex flex-wrap items-center justify-between gap-3 bg-white/95 backdrop-blur"
+          >
+            <AppBadge variant={hasScheduleUnsaved ? 'warning' : 'success'} className="normal-case tracking-normal">
+              {hasScheduleUnsaved ? 'Unsaved changes' : 'All changes saved'}
+            </AppBadge>
+            <div className="min-w-0 flex-1" />
+            <div className={uiCx(uiLayout.actionsRow, 'shrink-0')}>
+              <AppButton
+                variant="secondary"
                 onClick={() => discardScheduleDraft()}
                 disabled={!hasScheduleUnsaved || saveConfig.isPending}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none"
               >
                 Discard
-              </button>
-              <button
-                type="button"
-                onClick={() => void saveSchedule()}
-                disabled={!hasScheduleUnsaved || saveConfig.isPending}
-                className="rounded-lg bg-brand-red px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#aa1212] disabled:opacity-50 disabled:pointer-events-none"
-              >
+              </AppButton>
+              <AppButton onClick={() => void saveSchedule()} disabled={!hasScheduleUnsaved || saveConfig.isPending}>
                 {saveConfig.isPending ? 'Saving…' : 'Save schedule'}
-              </button>
+              </AppButton>
             </div>
-          </div>
+          </AppCard>
         </div>
       </div>
     ) : null}

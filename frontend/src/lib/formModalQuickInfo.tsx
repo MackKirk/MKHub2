@@ -954,3 +954,191 @@ export const formCustomListNewQuickInfo = formModalQuickInfo({
     </>
   ),
 });
+
+/** Company Files — upload modal. */
+export const companyFilesUploadQuickInfo = formModalQuickInfo({
+  purpose: <>Add one or more files to the open folder in Company Files.</>,
+  howToUse: (
+    <>
+      Choose files with {uiLabel('Files')}, or drag and drop onto the folder area. The folder must be open before
+      uploading.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without uploading. Selected files upload immediately after you pick them.
+    </>
+  ),
+});
+
+/** Company Files — new folder / subfolder. */
+export const companyFilesNewFolderQuickInfo = formModalQuickInfo({
+  purpose: <>Create a folder to organize company documents within the selected file category.</>,
+  howToUse: <>Enter a {uiLabel('Folder name')} your team will recognize, then create the folder.</>,
+  actions: (
+    <>
+      {uiLabel('Create')} saves the folder. {uiLabel('Cancel')} closes without changes.
+    </>
+  ),
+});
+
+/** Company Files — move document. */
+export const companyFilesMoveDocQuickInfo = formModalQuickInfo({
+  purpose: <>Move a document to a different folder within Company Files.</>,
+  howToUse: <>Pick the {uiLabel('Destination folder')}, then confirm the move.</>,
+  actions: (
+    <>
+      {uiLabel('Move')} updates the document location. {uiLabel('Cancel')} closes without changes.
+    </>
+  ),
+});
+
+/** User profile — Basic Information section. */
+export const userBasicInfoQuickInfo = formModalQuickInfo({
+  purpose: <>Update legal name, identity, and uniform sizing for this employee.</>,
+  howToUse: (
+    <>
+      Edit the fields you need. Use {uiLabel('?')} beside a label for field-level help. {uiLabel('Preferred name')} appears
+      on the profile hero when set.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save')} updates this section only. {uiLabel('Cancel')} closes without saving.
+    </>
+  ),
+});
+
+/** User profile — Address section. */
+export const userAddressQuickInfo = formModalQuickInfo({
+  purpose: <>Set the employee&apos;s primary mailing and location address.</>,
+  howToUse: (
+    <>
+      Start typing in {uiLabel('Address line 1')} to pick a suggestion, then adjust city, province, and postal code if
+      needed.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save')} updates the address for this employee. {uiLabel('Cancel')} closes without saving.
+    </>
+  ),
+});
+
+/** User profile — Contact section. */
+export const userContactQuickInfo = formModalQuickInfo({
+  purpose: <>Personal phone numbers used to reach this employee outside of work systems.</>,
+  howToUse: (
+    <>
+      Enter {uiLabel('Phone 1')} and optional {uiLabel('Phone 2')}. Numbers are formatted as you type.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save')} applies phone number changes. {uiLabel('Cancel')} closes without saving.
+    </>
+  ),
+});
+
+/** User profile — Education section. */
+export const userEducationQuickInfo = formModalQuickInfo({
+  purpose: <>Record schools, degrees, and study dates for this employee.</>,
+  howToUse: (
+    <>
+      Use {uiLabel('Add education')} to create a record. {uiLabel('Delete')} removes a card you no longer need.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save')} in the add window creates a record. Deletes save immediately. {uiLabel('Done')} closes the
+      education list.
+    </>
+  ),
+});
+
+/** User profile — Legal & Documents section. */
+export const userLegalDocumentsQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      SIN, work eligibility, driver&apos;s licence, and immigration documents required for payroll and compliance.
+    </>
+  ),
+  howToUse: (
+    <>
+      Set {uiLabel('Work Eligibility Status')} first — it controls which document sections appear. Upload or update
+      supporting files where shown.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save')} applies profile field changes from this window. {uiLabel('Cancel')} closes without saving.
+    </>
+  ),
+});
+
+/** User profile — Emergency Contacts section. */
+export const userEmergencyContactsQuickInfo = formModalQuickInfo({
+  purpose: <>People to call if something happens to this employee on or off site.</>,
+  howToUse: (
+    <>
+      {uiLabel('New Contact')} adds a person. Mark one as {uiLabel('Primary')} for the default emergency contact.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Create')} in the new-contact window saves a contact. Card edits save from each card. {uiLabel('Done')}{' '}
+      closes the list.
+    </>
+  ),
+});
+
+/** User profile — Organization (Job tab). */
+export const userOrganizationQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Job title, supervisor, departments, project divisions, and work contact details for this employee.
+    </>
+  ),
+  howToUse: (
+    <>
+      Update employment fields and multi-select {uiLabel('Departments')} and {uiLabel('Project Divisions')} as needed.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save')} updates organization data for this employee. {uiLabel('Cancel')} closes without saving.
+    </>
+  ),
+});
+
+/** User profile — Salary (Job tab). */
+export const userSalaryQuickInfo = formModalQuickInfo({
+  purpose: <>Current pay rate and pay type on file for this employee.</>,
+  howToUse: (
+    <>
+      Enter {uiLabel('Pay rate')} and choose or type {uiLabel('Pay type')}. Salary history is managed separately on the
+      profile card.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save')} updates compensation fields. {uiLabel('Cancel')} closes without saving.
+    </>
+  ),
+});
+
+/** Company Files — folder permissions. */
+export const companyFilesPermissionsQuickInfo = formModalQuickInfo({
+  purpose: <>Control who can access this folder when it is not public to all users.</>,
+  howToUse: (
+    <>
+      Leave {uiLabel('Public (all users can access)')} checked for open access, or restrict to selected users and
+      divisions.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save')} applies permissions. {uiLabel('Cancel')} closes without saving.
+    </>
+  ),
+});

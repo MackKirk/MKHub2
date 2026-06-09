@@ -44,10 +44,18 @@ function pathnameIsLearnerTraining(pathname: string): boolean {
   return true;
 }
 
-function menuChildMatchesLocation(child: MenuItem, pathname: string, search: string): boolean {
+function menuChildMatchesLocation(child: MenuItem, pathname: string, _search: string): boolean {
   if (child.id === 'fleet-assets') {
     return ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(
       (p) => pathname === p || pathname.startsWith(p + '/')
+    );
+  }
+  if (child.id === 'employee-review-cycles') {
+    return (
+      pathname === '/reviews/compare' ||
+      pathname.startsWith('/reviews/compare/') ||
+      pathname === child.path ||
+      pathname.startsWith(child.path + '/')
     );
   }
   return pathname === child.path || pathname.startsWith(child.path + '/');
@@ -812,6 +820,11 @@ export default function AppShell({ children }: PropsWithChildren){
       if (item.id === 'my-training' && item.path === '/training') {
         return pathnameIsLearnerTraining(location.pathname);
       }
+      if (item.id === 'employee-review-cycles') {
+        if (menuChildMatchesLocation(item, location.pathname, location.search)) {
+          return true;
+        }
+      }
       const isSelfActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
       if (isSelfActive) return true;
       if (Array.isArray(item.children) && item.children.some((child) => menuChildMatchesLocation(child, location.pathname, location.search))) {
@@ -1103,6 +1116,9 @@ export default function AppShell({ children }: PropsWithChildren){
                           }
                           else if (item.id === 'my-training' && item.path === '/training') {
                             isItemActive = pathnameIsLearnerTraining(location.pathname);
+                          }
+                          else if (item.id === 'employee-review-cycles') {
+                            isItemActive = menuChildMatchesLocation(item, location.pathname, location.search);
                           }
                           else {
                             isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
