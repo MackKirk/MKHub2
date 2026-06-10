@@ -10,6 +10,7 @@ import DocumentTemplatesTab from '@/components/DocumentTemplatesTab';
 import DocumentTypesTab from '@/components/DocumentTypesTab';
 import {
   IMPLEMENTED_PERMISSIONS,
+  isHiddenPermissionKey,
   isConstructionProjectPermissionKey,
   isRepairsProjectPermissionKey,
 } from '@/lib/implementedPermissions';
@@ -27,7 +28,6 @@ import {
   applyProjectLineAccessLevelToKeySet,
   type ProjectLinePermissionRow,
 } from '@/lib/projectLinePermissions';
-import { isHiddenProjectLinePermissionKey } from '@/lib/projectLinePermissionKeys';
 import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
@@ -1147,7 +1147,7 @@ function PermissionTemplatesSection() {
       const combined = [
         ...(businessCat?.permissions || []),
         ...(inventoryCat?.permissions || []),
-      ].filter((p) => p.key !== 'business:access');
+      ].filter((p) => p.key !== 'business:access' && !isHiddenPermissionKey(p.key));
       if (combined.length > 0) {
         const insert = {
           id: 'business',
@@ -1312,13 +1312,16 @@ function PermissionTemplatesSection() {
       <div className="space-y-6">
         {processedDefinitions.map((cat) => {
           const areaAccessPerm = (cat.permissions || []).find(
-            (p) => p.key.endsWith(':access') && p.key !== 'business:access'
+            (p) =>
+              p.key.endsWith(':access') &&
+              p.key !== 'business:access' &&
+              !isHiddenPermissionKey(p.key)
           );
           const subPermissions = (cat.permissions || []).filter(
             (p) =>
               p.key !== 'business:access' &&
               !p.key.endsWith(':access') &&
-              !isHiddenProjectLinePermissionKey(p.key)
+              !isHiddenPermissionKey(p.key)
           );
           const isExpanded = expandedCategories.has(cat.id);
 

@@ -1,3 +1,8 @@
+import {
+  isHiddenProjectLinePermissionKey,
+  isLegacySharedProjectPermissionKey,
+} from '@/lib/projectLinePermissionKeys';
+
 const LINE_PROJECT_SUB_FEATURES = [
   'reports',
   'workload',
@@ -65,7 +70,6 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'fleet:equipment:write',
   'company_cards:read',
   'company_cards:write',
-  'inventory:access',
   'inventory:suppliers:read',
   'inventory:suppliers:write',
   'inventory:products:read',
@@ -113,6 +117,11 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'sales:quotations:write',
   ...LINE_PROJECT_SUB_KEYS,
 ]);
+
+/** Permissions hidden from permission UIs (retired tabs, unused area gates). */
+export function isHiddenPermissionKey(key: string): boolean {
+  return key === 'inventory:access' || isHiddenProjectLinePermissionKey(key);
+}
 
 /** Legacy/shared project permissions (hidden in line UIs; backend fallback). */
 export function isLegacyProjectPermissionKey(key: string): boolean {

@@ -61,34 +61,28 @@ def seed_inventory_permissions():
         # First permission is always the area access
         inventory_permissions = [
             {
-                "key": "inventory:access",
-                "label": "Access Inventory",
-                "description": "Grants access to the Inventory area. Required for all Inventory functions. If disabled, all Inventory permissions are blocked.",
-                "sort_index": 1,
-            },
-            {
                 "key": "inventory:suppliers:read",
                 "label": "View Suppliers",
                 "description": "Allows viewing suppliers list and suppliers details.",
-                "sort_index": 2,
+                "sort_index": 1,
             },
             {
                 "key": "inventory:suppliers:write",
                 "label": "Edit Suppliers",
                 "description": "Allows creating, updating, and deleting suppliers.",
-                "sort_index": 3,
+                "sort_index": 2,
             },
             {
                 "key": "inventory:products:read",
                 "label": "View Products",
                 "description": "Allows viewing products list and products details.",
-                "sort_index": 4,
+                "sort_index": 3,
             },
             {
                 "key": "inventory:products:write",
                 "label": "Edit Products",
                 "description": "Allows creating, updating, and deleting products.",
-                "sort_index": 5,
+                "sort_index": 4,
             },
         ]
         
@@ -115,6 +109,15 @@ def seed_inventory_permissions():
                 db.add(permission)
                 print(f"Created permission: {perm_data['key']}")
         
+        access_perm = (
+            db.query(PermissionDefinition)
+            .filter(PermissionDefinition.key == "inventory:access")
+            .first()
+        )
+        if access_perm and access_perm.is_active:
+            access_perm.is_active = False
+            print("Deactivated permission: inventory:access")
+
         db.commit()
         print(f"\nSuccessfully seeded Inventory permissions!")
         print(f"Total permissions: {len(inventory_permissions)}")

@@ -43,7 +43,6 @@ import {
   cloneLineCategoryConfigs,
   syncLineCategoryConfigAfterFilesMacroChange,
   syncLineCategoryConfigAfterReportsMacroChange,
-  isHiddenProjectLinePermissionKey,
 } from '@/lib/projectLinePermissionKeys';
 import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
 import {
@@ -108,6 +107,7 @@ import {
 import { userProfileFieldHint } from '@/lib/userProfileFieldHints';
 import {
   IMPLEMENTED_PERMISSIONS,
+  isHiddenPermissionKey,
   isConstructionProjectPermissionKey,
   isRepairsProjectPermissionKey,
 } from '@/lib/implementedPermissions';
@@ -1113,7 +1113,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
               const combinedPermissions = [
                 ...(businessCategory?.permissions || []),
                 ...(inventoryCategory?.permissions || []),
-              ].filter((p: any) => p.key !== 'business:access');
+              ].filter((p: any) => p.key !== 'business:access' && !isHiddenPermissionKey(p.key));
               if (combinedPermissions.length > 0) {
                 processedCategories.push({
                   category: {
@@ -1153,13 +1153,16 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
             return finalCategories.map((cat: any) => {
               // Area access checkbox (deprecated for business:access — granular perms only)
               const areaAccessPerm = cat.permissions.find(
-                (p: any) => p.key.endsWith(':access') && p.key !== 'business:access'
+                (p: any) =>
+                  p.key.endsWith(':access') &&
+                  p.key !== 'business:access' &&
+                  !isHiddenPermissionKey(p.key)
               );
               const subPermissions = cat.permissions.filter(
                 (p: any) =>
                   p.key !== 'business:access' &&
                   !p.key.endsWith(':access') &&
-                  !isHiddenProjectLinePermissionKey(p.key)
+                  !isHiddenPermissionKey(p.key)
               );
               const hasAreaAccess = areaAccessPerm && permissions[areaAccessPerm.key];
               const categoryId = cat.category.id;
