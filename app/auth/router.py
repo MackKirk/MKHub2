@@ -1313,6 +1313,8 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "drivers_license_conditions": getattr(ep, "drivers_license_conditions", None),
             "drivers_license_updated_at": _dt(getattr(ep, "drivers_license_updated_at", None)),
             "drivers_license_last_requested_at": _dt(getattr(ep, "drivers_license_last_requested_at", None)),
+            "permit_file_id": str(ep.permit_file_id) if getattr(ep, "permit_file_id", None) else None,
+            "pr_card_file_id": str(ep.pr_card_file_id) if getattr(ep, "pr_card_file_id", None) else None,
             "project_division_ids": list(getattr(ep, "project_division_ids", None) or []),
             # New API field backed by legacy column
             "work_eligibility_status": getattr(ep, "work_permit_status", None),
@@ -1377,6 +1379,8 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
         "drivers_license_expiry_date",
         "drivers_license_conditions",
         "drivers_license_last_requested_at",
+        "permit_file_id",
+        "pr_card_file_id",
     }
     incoming = payload.dict(exclude_unset=True)
     # Map new API field to legacy column so existing DB schema still works
@@ -1574,6 +1578,8 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
                 "drivers_license_conditions",
                 "drivers_license_updated_at",
                 "drivers_license_last_requested_at",
+                "permit_file_id",
+                "pr_card_file_id",
                 "work_permit_status","visa_status","profile_photo_file_id",
                 "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
                 "cloth_size",
@@ -1899,6 +1905,44 @@ def create_education(user_id: str, payload: dict = Body(...), db: Session = Depe
     db.add(e)
     db.commit()
     return {"id": str(e.id)}
+
+
+@router.patch("/users/{user_id}/education/{eid}")
+def update_education(user_id: str, eid: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
+    from ..models.models import EmployeeEducation
+    from datetime import datetime, timezone
+
+    e = db.query(EmployeeEducation).filter(and_(EmployeeEducation.user_id == user_id, EmployeeEducation.id == eid)).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Education record not found")
+
+    def _dt(s):
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+
+    if "college_institution" in payload:
+        e.college_institution = payload.get("college_institution")
+    if "degree" in payload:
+        e.degree = payload.get("degree")
+    if "major_specialization" in payload:
+        e.major_specialization = payload.get("major_specialization")
+    if "gpa" in payload:
+        e.gpa = payload.get("gpa")
+    if "start_date" in payload:
+        e.start_date = _dt(payload.get("start_date"))
+    if "end_date" in payload:
+        e.end_date = _dt(payload.get("end_date"))
+
+    db.commit()
+    return {"status": "ok"}
 
 
 @router.delete("/users/{user_id}/education/{eid}")

@@ -76,7 +76,7 @@ function DriversLicenseVisualCard({
   return (
     <div
       className={uiCx(
-        'relative w-full overflow-hidden rounded-lg border border-slate-500/90 bg-gradient-to-b from-sky-900 to-slate-950 p-3 text-white shadow-md',
+        'relative overflow-hidden rounded-lg border border-slate-500/90 bg-gradient-to-b from-sky-900 to-slate-950 p-3 text-white shadow-md',
         className,
       )}
     >
@@ -183,6 +183,8 @@ export function CanadianDriversLicenseSection({
   const conditions = String(profile.drivers_license_conditions || '');
   const hasRecord = !!(num && jur);
 
+  const licenseCardClassName = 'w-[440px] max-w-full shrink-0';
+
   const visualCard = (
     <DriversLicenseVisualCard
       displayName={displayName}
@@ -195,7 +197,7 @@ export function CanadianDriversLicenseSection({
       expired={expired}
       expirySoon={expirySoon}
       hasRecord={hasRecord}
-      className={resolvedLayout === 'preview' ? 'max-w-md' : 'w-full'}
+      className={licenseCardClassName}
     />
   );
 
@@ -256,11 +258,11 @@ export function CanadianDriversLicenseSection({
       <div className={uiTypography.controlLabel}>Driver&apos;s License</div>
 
       {resolvedLayout === 'preview' ? (
-        <div className="mt-3">{visualCard}</div>
+        <div className="mt-3 w-fit max-w-full">{visualCard}</div>
       ) : (
         <div className="mt-3 grid gap-4 lg:grid-cols-2 lg:items-start">
           <div className="min-w-0">{editForm}</div>
-          <div className="min-w-0">{visualCard}</div>
+          <div className="min-w-0 w-fit max-w-full lg:justify-self-end">{visualCard}</div>
         </div>
       )}
     </div>

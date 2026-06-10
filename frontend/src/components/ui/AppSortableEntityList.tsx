@@ -41,6 +41,10 @@ export const APP_SORTABLE_LIST_PRESETS = {
     gridCols: 'grid-cols-[3fr_6fr_4fr_3fr_2fr_2fr_2fr_1fr_2fr_2fr]',
     minWidth: 'min-w-[900px]',
   },
+  employeeLoans: {
+    gridCols: 'grid-cols-[3fr_3fr_3fr_2fr_3fr_auto]',
+    minWidth: 'min-w-[720px]',
+  },
 } as const;
 
 export type AppSortableListPreset = keyof typeof APP_SORTABLE_LIST_PRESETS;

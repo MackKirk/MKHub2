@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useImperativeHandle, forwardRef, useCallback, type ReactNode } from 'react';
+﻿import { useEffect, useMemo, useRef, useState, useImperativeHandle, forwardRef, useCallback, type ReactNode } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -17,6 +17,10 @@ import UserReports from '@/components/UserReports';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { CanadianDriversLicenseSection } from '@/components/CanadianDriversLicenseSection';
 import UserEmployeeReviewsTab from '@/components/UserEmployeeReviewsTab';
+import { UserInfoHero, UserInfoHeroSkeleton } from '@/components/users/UserInfoHero';
+import UserDocumentsTabEnhanced from '@/components/users/UserDocumentsTabEnhanced';
+import { EmployeeTrainingSection } from '@/components/users/EmployeeTrainingTabEnhanced';
+import { isCompleteLocalDatetime, LocalDateTimeFields } from '@/components/LocalDateTimeFields';
 import ProjectFilesCategoriesModal from '@/components/ProjectFilesCategoriesModal';
 import ProjectReportCategoriesModal from '@/components/ProjectReportCategoriesModal';
 import { CustomerPermissionsGrid } from '@/components/CustomerPermissionsGrid';
@@ -93,17 +97,19 @@ import {
   uiTypography,
   useLocalAppListSort,
 } from '@/components/ui';
-import { ChevronDown, RefreshCw, User as UserIcon } from 'lucide-react';
+import { Eye, EyeOff, Mail, MapPin, Paperclip, Phone, RefreshCw, User as UserIcon, X } from 'lucide-react';
 import {
-  employeeTrainingRecordQuickInfo,
   userAddressQuickInfo,
   userBasicInfoQuickInfo,
   userContactQuickInfo,
   userEducationQuickInfo,
   userEmergencyContactsQuickInfo,
   userLegalDocumentsQuickInfo,
+  userVisaEntryQuickInfo,
   userOrganizationQuickInfo,
-  userSalaryQuickInfo,
+  userSalaryEntryQuickInfo,
+  userTimeOffBalanceAdjustQuickInfo,
+  scWorkerManualAttendanceQuickInfo,
 } from '@/lib/formModalQuickInfo';
 import { userProfileFieldHint } from '@/lib/userProfileFieldHints';
 import {
@@ -131,53 +137,16 @@ const USER_TAB_LABELS: Record<string, string> = {
   activity: 'Activity',
 };
 
-function UserAccountStatusBadge({
-  isActive,
-  saving,
-  interactive,
-  onClick,
-  className,
-}: {
-  isActive?: boolean;
-  saving?: boolean;
-  interactive?: boolean;
-  onClick?: () => void;
-  className?: string;
-}) {
-  const active = isActive !== false;
-  const label = saving ? 'Saving…' : active ? 'Active' : 'Inactive';
-  const badge = (
-    <AppBadge variant={active ? 'success' : 'danger'} className={uiCx('normal-case !tracking-normal', className)}>
-      {label}
-    </AppBadge>
-  );
-  if (interactive && onClick) {
-    return (
-      <button
-        type="button"
-        disabled={saving}
-        onClick={onClick}
-        title="Change account status"
-        className="rounded-full border border-transparent transition-shadow hover:ring-2 hover:ring-offset-1 hover:ring-brand-red/40 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {badge}
-      </button>
-    );
-  }
-  return badge;
-}
-
-function UserInfoHeroField({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div>
-      <span className={uiTypography.overline}>{label}</span>
-      <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5 text-xs')}>{value}</div>
-    </div>
-  );
-}
-
 function UserInfoReadOnlyField({ label, value }: { label: string; value: ReactNode }) {
   return <AppReadOnlyField label={label} value={value} />;
+}
+
+function UserInfoRecordCard({ children }: { children: ReactNode }) {
+  return (
+    <div className={uiCx('rounded-lg border border-gray-200 bg-white p-4')}>
+      {children}
+    </div>
+  );
 }
 
 function UserInfoSectionCard({
@@ -187,6 +156,7 @@ function UserInfoSectionCard({
   editTitle,
   showEdit,
   onEditClick,
+  headerAction,
   children,
   className,
   bodyClassName,
@@ -197,6 +167,7 @@ function UserInfoSectionCard({
   editTitle?: string;
   showEdit?: boolean;
   onEditClick?: () => void;
+  headerAction?: ReactNode;
   children: ReactNode;
   className?: string;
   bodyClassName?: string;
@@ -208,9 +179,10 @@ function UserInfoSectionCard({
         description={description}
         {...appSectionPresetProps(preset)}
         action={
-          showEdit && onEditClick ? (
+          headerAction ??
+          (showEdit && onEditClick ? (
             <AppHeroEditButton onClick={onEditClick} title={editTitle || `Edit ${title}`} />
-          ) : null
+          ) : null)
         }
       />
       <div className={uiCx('mt-4', uiSpacing.sectionStack)}>{children}</div>
@@ -340,7 +312,7 @@ function BambooFilesLastSyncRow({
   const [saving, setSaving] = useState(false);
   const queryClient = useQueryClient();
   const display = (() => {
-    if (!lastSyncIso) return '—';
+    if (!lastSyncIso) return 'â€”';
     const ymd = String(lastSyncIso).slice(0, 10);
     if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
       const [y, m, d] = ymd.split('-').map(Number);
@@ -349,7 +321,7 @@ function BambooFilesLastSyncRow({
     try {
       return new Date(lastSyncIso).toLocaleDateString(undefined, { dateStyle: 'medium' });
     } catch {
-      return '—';
+      return 'â€”';
     }
   })();
   const saveToday = async () => {
@@ -380,7 +352,7 @@ function BambooFilesLastSyncRow({
           disabled={saving}
           className="px-3 py-1.5 rounded-lg bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {saving ? 'Saving…' : "Save today's date"}
+          {saving ? 'Savingâ€¦' : "Save today's date"}
         </button>
       )}
     </div>
@@ -433,7 +405,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     permissionsHydratedForUser.current = null;
   }, [userId]);
 
-  // Initialize permissions from API (once per user load — do not wipe modal edits on refetch)
+  // Initialize permissions from API (once per user load â€” do not wipe modal edits on refetch)
   useEffect(() => {
     if (!permissionsData?.permissions_by_category) return;
     if (permissionsHydratedForUser.current === userId) return;
@@ -815,7 +787,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
           await refetchUser();
         }
       }
-      // Save permissions (only keys defined in DB — avoids invalid key errors after seed/migrations)
+      // Save permissions (only keys defined in DB â€” avoids invalid key errors after seed/migrations)
       const validPermKeys = new Set<string>();
       (permissionsData?.permissions_by_category || []).forEach((cat: any) => {
         (cat.permissions || []).forEach((p: any) => {
@@ -957,11 +929,11 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                 </span>
               </div>
               <div className="text-[10px] text-yellow-800 mt-1">
-                ⚠️ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
+                âš ï¸ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
               </div>
               {isAdminLocal && (
                 <div className="text-[10px] text-yellow-700 mt-2 font-medium">
-                  ⚠️ When admin is enabled, all permission checks are bypassed. Individual permissions below are ignored.
+                  âš ï¸ When admin is enabled, all permission checks are bypassed. Individual permissions below are ignored.
                 </div>
               )}
             </div>
@@ -1000,7 +972,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
             <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
               <AppSelect
                 className="min-w-[200px]"
-                placeholder="— Select template —"
+                placeholder="â€” Select template â€”"
                 value={selectedTemplateId}
                 onChange={(e) => setSelectedTemplateId(e.target.value)}
                 options={(permissionTemplates as { id: string; name: string }[]).map((t) => ({
@@ -1151,7 +1123,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
             const finalCategories = [...primaryCategories, ...remainingCategories];
 
             return finalCategories.map((cat: any) => {
-              // Area access checkbox (deprecated for business:access — granular perms only)
+              // Area access checkbox (deprecated for business:access â€” granular perms only)
               const areaAccessPerm = cat.permissions.find(
                 (p: any) => p.key.endsWith(':access') && p.key !== 'business:access'
               );
@@ -1823,7 +1795,7 @@ type AuditActivityDetail = {
 
 function activityAuditTitle(row: UserActivityLogResponse['audit']['items'][0]): string {
   const label = row.entity_display || row.entity_type.replace(/_/g, ' ');
-  return `${row.action} · ${label}`;
+  return `${row.action} Â· ${label}`;
 }
 
 function ActivityPager({
@@ -1843,7 +1815,7 @@ function ActivityPager({
   return (
     <div className="flex items-center justify-between gap-2 mt-2 text-[10px] text-gray-500">
       <span>
-        Page {page} of {Math.max(totalPages, 1)} · {total} total
+        Page {page} of {Math.max(totalPages, 1)} Â· {total} total
       </span>
       <div className="flex gap-1">
         <button
@@ -1924,7 +1896,7 @@ function UserActivityLogTab({ userId }: { userId: string }) {
     <div className="space-y-5 pb-16 max-w-3xl">
       <div className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2">
         <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Last sign-in</div>
-        <div className="text-xs text-gray-900 mt-0.5">{data.last_login_at ? formatUserActivityTime(data.last_login_at) : '—'}</div>
+        <div className="text-xs text-gray-900 mt-0.5">{data.last_login_at ? formatUserActivityTime(data.last_login_at) : 'â€”'}</div>
       </div>
 
       <section>
@@ -2016,7 +1988,7 @@ function UserActivityLogTab({ userId }: { userId: string }) {
             </div>
             <div>
               <span className="text-gray-500">Path</span>
-              <div className="break-all font-mono">{loginModal.path || '—'}</div>
+              <div className="break-all font-mono">{loginModal.path || 'â€”'}</div>
             </div>
             {loginModal.request_id ? (
               <div>
@@ -2125,7 +2097,7 @@ export default function UserInfo(){
     return perms.includes('hr:users:edit:general') || perms.includes('users:write'); // Legacy
   }, [me]);
 
-  /** Matches PATCH /users/:id — admin, hr:users:write, or users:write only (not hr:users:edit:general). */
+  /** Matches PATCH /users/:id â€” admin, hr:users:write, or users:write only (not hr:users:edit:general). */
   const canManageAccountStatus = useMemo(() => {
     if (!me) return false;
     if ((me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin')) return true;
@@ -2356,7 +2328,11 @@ export default function UserInfo(){
       }
     }
   }, [hasVisas, p.work_eligibility_status, userId, canEdit, canEditGeneral, personalEditSection, queryClient]);
-  const [isEmployeeCardMinimized, setIsEmployeeCardMinimized] = useState(false);
+  const [isHeroCollapsed, setIsHeroCollapsed] = useState(tab !== 'personal');
+
+  useEffect(() => {
+    setIsHeroCollapsed(tab !== 'personal');
+  }, [tab]);
   const permissionsRef = useRef<UserPermissionsRef>(null);
   const { data: usersOptionsRaw } = useQuery({
     queryKey: ['users-options', { limit: 5000 }],
@@ -2390,7 +2366,7 @@ export default function UserInfo(){
 
   function calcAge(dob?: string){
     if(!dob) return '';
-    try{ const d = new Date(dob); const now = new Date(); let a = now.getFullYear()-d.getFullYear(); const m = now.getMonth()-d.getMonth(); if(m<0 || (m===0 && now.getDate()<d.getDate())) a--; return a>0? `${a}y` : '—'; }catch{ return ''; }
+    try{ const d = new Date(dob); const now = new Date(); let a = now.getFullYear()-d.getFullYear(); const m = now.getMonth()-d.getMonth(); if(m<0 || (m===0 && now.getDate()<d.getDate())) a--; return a>0? `${a}y` : 'â€”'; }catch{ return ''; }
   }
   function tenure(from?: string){
     if(!from) return '';
@@ -2584,29 +2560,6 @@ export default function UserInfo(){
     }
   };
 
-  const saveSalaryModal = async () => {
-    if (sectionModalSaving) return;
-    if (!Object.keys(sectionModalPending).length) {
-      closeJobEditModal();
-      return;
-    }
-    try {
-      setSectionModalSaving(true);
-      if (canEdit || canEditGeneral) {
-        await api('PUT', `/auth/users/${encodeURIComponent(String(userId || ''))}/profile`, sectionModalPending);
-      } else {
-        throw new Error('Not allowed');
-      }
-      toast.success('Saved');
-      await refreshUserProfile();
-      closeJobEditModal();
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to save');
-    } finally {
-      setSectionModalSaving(false);
-    }
-  };
-
   const collectSectionModalChanges = (kv: Record<string, any>) => {
     setSectionModalPending((s) => ({ ...s, ...kv }));
   };
@@ -2773,6 +2726,58 @@ export default function UserInfo(){
     });
   }, []);
 
+  const pageHeaderToday = (
+    <div className="text-right">
+      <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Today</div>
+      <div className="mt-0.5 text-xs font-semibold text-gray-700">{todayLabel}</div>
+    </div>
+  );
+
+  const heroPrimaryTitle = useMemo(() => {
+    const name = `${p.first_name || u?.username || ''} ${p.last_name || ''}`.trim();
+    return u?.username ? `${name} (${u.username})` : name || 'â€”';
+  }, [p.first_name, p.last_name, u?.username]);
+
+  const heroPhotoUrl = useMemo(
+    () =>
+      p.profile_photo_file_id
+        ? withFileAccessToken(`/files/${p.profile_photo_file_id}/thumbnail?w=400`)
+        : '/ui/assets/placeholders/user.png',
+    [p.profile_photo_file_id],
+  );
+
+  const heroHireDateDisplay = useMemo(() => {
+    if (!p.hire_date) return null;
+    const date = String(p.hire_date).slice(0, 10);
+    const t = tenure(p.hire_date);
+    return t ? `${date} (${t})` : date;
+  }, [p.hire_date]);
+
+  const handleSendAccessInvite = useCallback(async () => {
+    if (!userId || sendingAccessInvite) return;
+    setSendingAccessInvite(true);
+    try {
+      const res = await api<{
+        email_sent?: boolean;
+        email_error?: string | null;
+        reset_expires_hours?: number;
+      }>('POST', `/auth/users/${encodeURIComponent(String(userId))}/send-access-invite`, {});
+      if (res?.email_sent) {
+        toast.success(
+          `Access invite sent${typeof res.reset_expires_hours === 'number' ? ` (password link valid ${res.reset_expires_hours}h)` : ''}`,
+        );
+      } else if (res?.email_error) {
+        toast.error(String(res.email_error));
+      } else {
+        toast.error('Email was not sent. Check SMTP, MAIL_FROM, and PUBLIC_BASE_URL.');
+      }
+    } catch (e: any) {
+      toast.error(e?.message || e?.detail || 'Failed to send access invite');
+    } finally {
+      setSendingAccessInvite(false);
+    }
+  }, [userId, sendingAccessInvite]);
+
   const userTabItems = useMemo(
     () =>
       ([
@@ -2801,11 +2806,11 @@ export default function UserInfo(){
   );
 
   const employeeSubtitle =
-    `${p.job_title || '—'}${
+    `${p.job_title || 'â€”'}${
       u?.divisions && u.divisions.length > 0
-        ? ` • ${u.divisions.map((d: any) => d.label).join(', ')}`
+        ? ` â€¢ ${u.divisions.map((d: any) => d.label).join(', ')}`
         : p.division
-          ? ` • ${p.division}`
+          ? ` â€¢ ${p.division}`
           : ''
     }`;
 
@@ -2817,186 +2822,44 @@ export default function UserInfo(){
         icon={<UserIcon className="h-4 w-4" />}
         onBack={() => navigate('/users')}
         backLabel="Back to Users"
-        actions={
-          <div className={uiCx(uiLayout.actionsRow, 'flex-col items-end gap-2 sm:flex-row sm:items-center')}>
-            {isAdmin && userId && !canSelfEdit ? (
-              <AppButton
-                type="button"
-                variant="danger"
-                size="sm"
-                disabled={deletingUser}
-                loading={deletingUser}
-                title="Administrator only — permanently delete this user"
-                onClick={async () => {
-                  if (!userId || deletingUser) return;
-                  const choice = await confirm({
-                    title: 'Delete user',
-                    message: `Permanently delete ${u?.username || String(userId)}? This removes the account and related data where the database allows. This cannot be undone.`,
-                    confirmText: 'Delete user',
-                    cancelText: 'Cancel',
-                  });
-                  if (choice !== 'confirm') return;
-                  setDeletingUser(true);
-                  try {
-                    await api('DELETE', `/users/${encodeURIComponent(String(userId))}`);
-                    toast.success('User deleted');
-                    queryClient.invalidateQueries({ queryKey: ['user'] });
-                    navigate('/users');
-                  } catch (e: any) {
-                    toast.error(e?.message || e?.detail || 'Failed to delete user');
-                  } finally {
-                    setDeletingUser(false);
-                  }
-                }}
-              >
-                {deletingUser ? 'Deleting…' : 'Delete user'}
-              </AppButton>
-            ) : null}
-            {canEditGeneral && userId && u?.is_active ? (
-              <AppButton
-                type="button"
-                size="sm"
-                disabled={sendingAccessInvite}
-                loading={sendingAccessInvite}
-                title="Email username, password setup link, and login URL"
-                onClick={async () => {
-                  if (!userId || sendingAccessInvite) return;
-                  setSendingAccessInvite(true);
-                  try {
-                    const res = await api<{
-                      email_sent?: boolean;
-                      email_error?: string | null;
-                      reset_expires_hours?: number;
-                    }>('POST', `/auth/users/${encodeURIComponent(String(userId))}/send-access-invite`, {});
-                    if (res?.email_sent) {
-                      toast.success(
-                        `Access invite sent${typeof res.reset_expires_hours === 'number' ? ` (password link valid ${res.reset_expires_hours}h)` : ''}`,
-                      );
-                    } else if (res?.email_error) {
-                      toast.error(String(res.email_error));
-                    } else {
-                      toast.error('Email was not sent. Check SMTP, MAIL_FROM, and PUBLIC_BASE_URL.');
-                    }
-                  } catch (e: any) {
-                    toast.error(e?.message || e?.detail || 'Failed to send access invite');
-                  } finally {
-                    setSendingAccessInvite(false);
-                  }
-                }}
-              >
-                {sendingAccessInvite ? 'Sending…' : 'Send access invite'}
-              </AppButton>
-            ) : null}
-            <div className="text-right">
-              <div className={uiTypography.overline}>Today</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-            </div>
-          </div>
-        }
+        actions={pageHeaderToday}
       />
 
-      <div className={uiSpacing.pageStack}>
-        <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'relative')}>
-          {isEmployeeCardMinimized ? (
-            <div className="flex items-center gap-2 pr-8">
-              <img
-                className={uiCx('h-10 w-10 object-cover', uiRadius.control, uiBorders.subtle)}
-                src={
-                  p.profile_photo_file_id
-                    ? withFileAccessToken(`/files/${p.profile_photo_file_id}/thumbnail?w=80`)
-                    : '/ui/assets/placeholders/user.png'
-                }
-                alt={`${p.first_name || u?.username} ${p.last_name || ''}`}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className={uiCx(uiTypography.sectionTitle, 'truncate text-sm')}>
-                      {p.first_name || u?.username} {p.last_name || ''}
-                      {u?.username ? ` (${u.username})` : ''}
-                    </div>
-                    <div className={uiCx(uiTypography.helper, 'mt-0.5 truncate')}>{employeeSubtitle}</div>
-                  </div>
-                  <div className="shrink-0">
-                    <UserAccountStatusBadge
-                      isActive={u?.is_active}
-                      saving={savingAccountStatus}
-                      interactive={!!(canManageAccountStatus && userId && data)}
-                      onClick={canManageAccountStatus && userId && data ? openAccountStatusModal : undefined}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-start gap-3">
-              <div className="flex shrink-0 flex-col items-center">
-                <img
-                  className={uiCx('h-24 w-24 border-2 border-gray-200 object-cover', uiRadius.card)}
-                  src={
-                    p.profile_photo_file_id
-                      ? withFileAccessToken(`/files/${p.profile_photo_file_id}/thumbnail?w=240`)
-                      : '/ui/assets/placeholders/user.png'
-                  }
-                  alt={`${p.first_name || u?.username} ${p.last_name || ''}`}
-                />
-                <div className="mt-2 flex w-full max-w-[9rem] flex-col items-center">
-                  <UserAccountStatusBadge
-                    isActive={u?.is_active}
-                    saving={savingAccountStatus}
-                    interactive={!!(canManageAccountStatus && userId && data)}
-                    onClick={canManageAccountStatus && userId && data ? openAccountStatusModal : undefined}
-                    className="w-full justify-center"
-                  />
-                </div>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="mb-2">
-                  <h1 className={uiTypography.sectionTitle}>
-                    {p.first_name || u?.username} {p.last_name || ''}
-                    {u?.username ? ` (${u.username})` : ''}
-                  </h1>
-                  <div className={uiCx(uiTypography.helper, 'mt-0.5')}>{employeeSubtitle}</div>
-                </div>
-                <div className={uiCx('grid gap-x-3 gap-y-1.5 md:grid-cols-3')}>
-                  <UserInfoHeroField label="Phone" value={p.phone || '—'} />
-                  <UserInfoHeroField label="Personal Email" value={u?.email || u?.email_personal || '—'} />
-                  <UserInfoHeroField label="Work Email" value={p.work_email || '—'} />
-                  <UserInfoHeroField
-                    label="Hire Date"
-                    value={
-                      <>
-                        {p.hire_date ? String(p.hire_date).slice(0, 10) : '—'}
-                        {p.hire_date ? ` (${tenure(p.hire_date)})` : ''}
-                      </>
-                    }
-                  />
-                  <UserInfoHeroField label="Supervisor" value={supervisorName || '—'} />
-                  <UserInfoHeroField label="Age" value={calcAge(p.date_of_birth) || '—'} />
-                </div>
-              </div>
-            </div>
-          )}
-          <AppButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="absolute bottom-2 right-2 !h-7 !w-7 !p-0"
-            onClick={() => setIsEmployeeCardMinimized(!isEmployeeCardMinimized)}
-            title={isEmployeeCardMinimized ? 'Expand' : 'Minimize'}
-            aria-label={isEmployeeCardMinimized ? 'Expand employee card' : 'Minimize employee card'}
-          >
-            <ChevronDown className={uiCx('h-3.5 w-3.5 transition-transform', isEmployeeCardMinimized ? '' : 'rotate-180')} />
-          </AppButton>
-        </AppCard>
-
-        <AppCard bodyClassName={uiSpacing.cardPadding}>
-          <AppTabs
-            tabs={userTabItems}
-            value={tab}
-            onChange={(key) => void handleTabChange(key as typeof tab)}
+      <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-1.5' : 'gap-2')}>
+        {isLoading ? (
+          <UserInfoHeroSkeleton />
+        ) : (
+          <UserInfoHero
+            primaryTitle={heroPrimaryTitle}
+            subtitleLine={employeeSubtitle || null}
+            photoUrl={heroPhotoUrl}
+            phone={p.phone || ''}
+            personalEmail={u?.email || u?.email_personal || ''}
+            workEmail={p.work_email || ''}
+            hireDateDisplay={heroHireDateDisplay}
+            supervisor={supervisorName || ''}
+            age={calcAge(p.date_of_birth) || ''}
+            isActive={u?.is_active}
+            savingAccountStatus={savingAccountStatus}
+            canManageAccountStatus={!!(canManageAccountStatus && userId && data)}
+            onAccountStatusClick={canManageAccountStatus && userId && data ? openAccountStatusModal : undefined}
+            showAccessInvite={!!(canEditGeneral && userId && u?.is_active)}
+            sendingAccessInvite={sendingAccessInvite}
+            onSendAccessInvite={() => void handleSendAccessInvite()}
+            isCollapsed={isHeroCollapsed}
+            onToggleCollapsed={() => setIsHeroCollapsed((v) => !v)}
           />
-        </AppCard>
+        )}
+
+        <div className={!isHeroCollapsed ? '-mt-0.5' : undefined}>
+          <AppCard bodyClassName={isHeroCollapsed ? 'p-2.5' : '!py-3'}>
+            <AppTabs
+              tabs={userTabItems}
+              value={tab}
+              onChange={(key) => void handleTabChange(key as typeof tab)}
+            />
+          </AppCard>
+        </div>
       </div>
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -3078,13 +2941,12 @@ export default function UserInfo(){
                       userId={String(userId)}
                       settings={settings}
                       canEdit={canEditGeneral}
-                      onEditClick={() => openJobEditModal('salary')}
                     />
                   )}
                   <TimeOffSection userId={String(userId)} canEdit={canEditGeneral} />
                 </div>
               )}
-              {tab==='docs' && canViewGeneral && <UserDocuments userId={String(userId)} canEdit={canEditGeneral} />}
+              {tab==='docs' && canViewGeneral && <UserDocumentsTabEnhanced userId={String(userId)} canEdit={canEditGeneral} />}
               {tab==='timesheet' && canViewTimesheet && <TimesheetBlock userId={String(userId)} canEdit={canEditTimesheet} />}
               {tab==='loans' && canViewLoans && <UserLoans userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab==='training' && canViewTraining && (
@@ -3142,14 +3004,14 @@ export default function UserInfo(){
             <span className="font-semibold text-gray-800">Last profile change: </span>
             {(() => {
               const iso = p?.updated_at;
-              if (!iso) return '—';
+              if (!iso) return 'â€”';
               try {
                 return new Date(iso as string).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
               } catch {
-                return '—';
+                return 'â€”';
               }
             })()}
-            {p?.updated_by_name ? <span className="text-gray-700"> · {p.updated_by_name}</span> : null}
+            {p?.updated_by_name ? <span className="text-gray-700"> Â· {p.updated_by_name}</span> : null}
           </div>
           <p className="text-gray-500">
             Updates automatically when someone saves this employee (profile, departments, or account fields). This is separate from the manual{' '}
@@ -3157,6 +3019,74 @@ export default function UserInfo(){
           </p>
         </div>
       </AppCard>
+
+      {isAdmin && (
+        <AppCard className={uiCx(uiBorders.subtle, 'border-red-200 bg-red-50')} bodyClassName={uiSpacing.cardPadding}>
+          <AppSectionHeader
+            title="Danger Zone"
+            description="BambooHR sync and permanent account deletion â€” system administrators only."
+          />
+          <div className={uiCx(uiSpacing.sectionStack, 'mt-4')}>
+            <div>
+              <AppSectionHeader
+                title="BambooHR Integration"
+                description="Sync profile data, photo, and documents from BambooHR."
+              />
+              <div className={uiCx(uiLayout.actionsRow, 'mt-3 flex-wrap')}>
+                <SyncBambooHRButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
+                <SyncPhotoButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
+                <SyncDocumentsButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
+              </div>
+              {userId ? (
+                <BambooFilesLastSyncRow
+                  userId={String(userId)}
+                  lastSyncIso={p.bamboo_files_last_sync_at}
+                  isAdmin
+                />
+              ) : null}
+            </div>
+            {userId && !canSelfEdit ? (
+              <div className="border-t border-red-200 pt-4">
+                <AppSectionHeader
+                  title="Delete user"
+                  description="Permanently remove this account and related data where the database allows. This cannot be undone."
+                />
+                <AppButton
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  className="mt-3"
+                  disabled={deletingUser}
+                  loading={deletingUser}
+                  onClick={async () => {
+                    if (!userId || deletingUser) return;
+                    const choice = await confirm({
+                      title: 'Delete user',
+                      message: `Permanently delete ${u?.username || String(userId)}? This removes the account and related data where the database allows. This cannot be undone.`,
+                      confirmText: 'Delete user',
+                      cancelText: 'Cancel',
+                    });
+                    if (choice !== 'confirm') return;
+                    setDeletingUser(true);
+                    try {
+                      await api('DELETE', `/users/${encodeURIComponent(String(userId))}`);
+                      toast.success('User deleted');
+                      queryClient.invalidateQueries({ queryKey: ['user'] });
+                      navigate('/users');
+                    } catch (e: any) {
+                      toast.error(e?.message || e?.detail || 'Failed to delete user');
+                    } finally {
+                      setDeletingUser(false);
+                    }
+                  }}
+                >
+                  {deletingUser ? 'Deletingâ€¦' : 'Delete user'}
+                </AppButton>
+              </div>
+            ) : null}
+          </div>
+        </AppCard>
+      )}
 
       <AppModal
         open={accountStatusModalOpen}
@@ -3184,7 +3114,7 @@ export default function UserInfo(){
               loading={savingAccountStatus}
               onClick={() => void saveAccountStatusFromModal()}
             >
-              {savingAccountStatus ? 'Saving…' : 'Save'}
+              {savingAccountStatus ? 'Savingâ€¦' : 'Save'}
             </AppButton>
           </div>
         }
@@ -3425,55 +3355,6 @@ export default function UserInfo(){
         />
       </AppFormModal>
 
-      <AppFormModal
-        open={jobEditSection === 'salary'}
-        onClose={closeJobEditModal}
-        title="Edit Salary"
-        description="Current pay rate and type on file."
-        formWidth="comfortable"
-        quickInfo={userSalaryQuickInfo}
-        footer={
-          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={closeJobEditModal}>
-              Cancel
-            </AppButton>
-            <AppButton type="button" size="sm" loading={sectionModalSaving} disabled={sectionModalSaving} onClick={saveSalaryModal}>
-              Save
-            </AppButton>
-          </div>
-        }
-      >
-        <SalarySection
-          embedded
-          p={p}
-          editable
-          userId={String(userId)}
-          collectChanges={collectSectionModalChanges}
-          settings={settings}
-          canEdit={canEditGeneral}
-        />
-      </AppFormModal>
-
-      {canEdit && (
-        <AppCard bodyClassName={uiSpacing.cardPadding}>
-          <AppSectionHeader
-            title="BambooHR Integration"
-            description="Sync profile data, photo, and documents from BambooHR."
-          />
-          <div className={uiCx(uiLayout.actionsRow, 'mt-3 flex-wrap')}>
-            <SyncBambooHRButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
-            <SyncPhotoButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
-            <SyncDocumentsButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
-          </div>
-          {userId ? (
-            <BambooFilesLastSyncRow
-              userId={String(userId)}
-              lastSyncIso={p.bamboo_files_last_sync_at}
-              isAdmin={isAdmin}
-            />
-          ) : null}
-        </AppCard>
-      )}
     </div>
   );
 }
@@ -3488,7 +3369,7 @@ function LabelVal({label, value}:{label:string, value:any}){
 }
 
 type UserPersonalEditSection = 'basic' | 'address' | 'contact' | 'education' | 'legal' | 'emergency';
-type UserJobEditSection = 'organization' | 'salary';
+type UserJobEditSection = 'organization';
 
 function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, inlineSave=true, fieldOptions, onSaved, showFieldHints}:{p:any, fields:[string,string][], editable:boolean, selfEdit:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, inlineSave?: boolean, fieldOptions?: Record<string, string[]>, onSaved?: () => void, showFieldHints?: boolean}){
   const [form, setForm] = useState<any>(()=>({ ...p }));
@@ -3914,10 +3795,6 @@ function SectionGrid({ p, keys }:{ p:any, keys:string[] }){
   );
 }
 
-const EDUCATION_LIST_MIN_WIDTH = 'min-w-[520px]';
-const EDUCATION_LIST_GRID_EDIT = 'grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_minmax(0,1.2fr)_auto]';
-const EDUCATION_LIST_GRID_READ = 'grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_minmax(0,1.2fr)]';
-
 function formatEducationPeriod(start?: string | null, end?: string | null): string {
   const fmt = (d?: string | null) => {
     if (!d) return '';
@@ -3930,9 +3807,9 @@ function formatEducationPeriod(start?: string | null, end?: string | null): stri
   };
   const from = fmt(start);
   const to = fmt(end);
-  if (from && to) return `${from} — ${to}`;
-  if (from) return `${from} — Present`;
-  return to || '—';
+  if (from && to) return `${from} â€” ${to}`;
+  if (from) return `${from} â€” Present`;
+  return to || 'â€”';
 }
 
 function EducationSection({
@@ -3952,12 +3829,17 @@ function EducationSection({
     queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/education`),
   });
   const [showAdd, setShowAdd] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [inst, setInst] = useState('');
   const [degree, setDegree] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
+  const [eInst, setEInst] = useState('');
+  const [eDegree, setEDegree] = useState('');
+  const [eStart, setEStart] = useState('');
+  const [eEnd, setEEnd] = useState('');
   const [isAddingEducation, setIsAddingEducation] = useState(false);
-  const listGrid = canEdit ? EDUCATION_LIST_GRID_EDIT : EDUCATION_LIST_GRID_READ;
+  const [isUpdatingEducation, setIsUpdatingEducation] = useState(false);
 
   const resetAddForm = () => {
     setInst('');
@@ -3969,6 +3851,18 @@ function EducationSection({
   const closeAddModal = () => {
     setShowAdd(false);
     resetAddForm();
+  };
+
+  const beginEdit = (e: any) => {
+    setEditId(e.id);
+    setEInst(e.college_institution || '');
+    setEDegree(e.degree || '');
+    setEStart(e.start_date ? String(e.start_date).slice(0, 10) : '');
+    setEEnd(e.end_date ? String(e.end_date).slice(0, 10) : '');
+  };
+
+  const closeEditModal = () => {
+    setEditId(null);
   };
 
   const add = async () => {
@@ -4008,55 +3902,127 @@ function EducationSection({
     try {
       await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/education/${encodeURIComponent(id)}`);
       toast.success('Deleted');
+      if (editId === id) setEditId(null);
       await refetch();
     } catch (_e) {
       toast.error('Failed');
     }
   };
 
-  const educationList = (
-    <AppSortableEntityList layout="flat">
-      <AppSortableEntityListHeader gridCols={listGrid} minWidth={EDUCATION_LIST_MIN_WIDTH} variant="flat">
-        <div className="min-w-0">Institution</div>
-        <div className="min-w-0">Degree</div>
-        <div className="min-w-0">Dates</div>
-        {canEdit ? <div className="min-w-0 w-10" aria-hidden /> : null}
-      </AppSortableEntityListHeader>
-      <AppSortableEntityListFlatBody gridCols={listGrid} minWidth={EDUCATION_LIST_MIN_WIDTH}>
-        {(rows || []).map((e: any) => {
-          const degreeLine = [e.degree, e.major_specialization].filter(Boolean).join(' · ');
-          return (
-            <AppSortableEntityListRow
-              key={e.id}
-              as="div"
-              variant="flat"
-              gridCols={listGrid}
-              minWidth={EDUCATION_LIST_MIN_WIDTH}
-            >
-              <div className={uiCx(uiTypography.sectionTitle, 'min-w-0 truncate text-sm')}>
-                {e.college_institution || '—'}
-              </div>
-              <div className={uiCx(uiTypography.helper, 'min-w-0 truncate font-medium text-gray-800')}>
-                {degreeLine || '—'}
-              </div>
-              <div className={uiCx(uiTypography.helper, 'min-w-0 whitespace-nowrap')}>
-                {formatEducationPeriod(e.start_date, e.end_date)}
-              </div>
-              {canEdit ? (
-                <div className="flex justify-end">
-                  <AppListRowIconButton preset="delete" label="Delete record" onClick={() => del(e.id)} />
-                </div>
-              ) : null}
-            </AppSortableEntityListRow>
-          );
-        })}
-      </AppSortableEntityListFlatBody>
-    </AppSortableEntityList>
+  const update = async () => {
+    if (!editId || isUpdatingEducation) return;
+    try {
+      if (!eInst.trim()) {
+        toast.error('Institution required');
+        return;
+      }
+      setIsUpdatingEducation(true);
+      const startDate = eStart ? `${eStart.slice(0, 7)}-01` : null;
+      const endDate = eEnd ? `${eEnd.slice(0, 7)}-01` : null;
+      await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/education/${encodeURIComponent(editId)}`, {
+        college_institution: eInst,
+        degree: eDegree,
+        start_date: startDate,
+        end_date: endDate,
+      });
+      toast.success('Updated');
+      closeEditModal();
+      await refetch();
+    } catch (_e) {
+      toast.error('Failed');
+    } finally {
+      setIsUpdatingEducation(false);
+    }
+  };
+
+  const renderEducationFormFields = (mode: 'create' | 'edit') => {
+    const isCreate = mode === 'create';
+    return (
+      <div className="grid gap-2.5 md:grid-cols-2">
+        <AppInput
+          label="Institution"
+          value={isCreate ? inst : eInst}
+          onChange={(e) => (isCreate ? setInst : setEInst)(e.target.value)}
+          fieldHint={showFieldHints ? userProfileFieldHint('college_institution') : undefined}
+        />
+        <AppInput
+          label="Degree"
+          value={isCreate ? degree : eDegree}
+          onChange={(e) => (isCreate ? setDegree : setEDegree)(e.target.value)}
+          fieldHint={showFieldHints ? userProfileFieldHint('degree') : undefined}
+        />
+        <AppDatePicker
+          label="Start date"
+          value={isCreate ? start : eStart}
+          onChange={(e) => (isCreate ? setStart : setEStart)(e.target.value)}
+          fieldHint={showFieldHints ? userProfileFieldHint('education_start') : undefined}
+        />
+        <AppDatePicker
+          label="End date"
+          value={isCreate ? end : eEnd}
+          onChange={(e) => (isCreate ? setEnd : setEEnd)(e.target.value)}
+          fieldHint={showFieldHints ? userProfileFieldHint('education_end') : undefined}
+        />
+      </div>
+    );
+  };
+
+  const educationDegreeLine = (e: any) => [e.degree, e.major_specialization].filter(Boolean).join(' Â· ');
+
+  const renderEducationEditCardField = (label: string, value: ReactNode) => (
+    <div className="min-w-0 space-y-1">
+      <div className={uiTypography.controlLabel}>{label}</div>
+      <div className={uiCx(uiTypography.helper, 'truncate font-medium text-gray-900')}>{value}</div>
+    </div>
+  );
+
+  const renderEducationEditCardFields = (e: any, actions: ReactNode) => (
+    <div className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_minmax(0,1.2fr)_auto] items-stretch gap-x-3">
+      {renderEducationEditCardField('Institution', e.college_institution || 'â€”')}
+      {renderEducationEditCardField('Degree', educationDegreeLine(e) || 'â€”')}
+      <div className="min-w-0 space-y-1">
+        <div className={uiTypography.controlLabel}>Dates</div>
+        <div className={uiCx(uiTypography.helper, 'whitespace-nowrap font-medium text-gray-900')}>
+          {formatEducationPeriod(e.start_date, e.end_date)}
+        </div>
+      </div>
+      <div className="flex items-center justify-end gap-1 self-stretch pl-1">{actions}</div>
+    </div>
+  );
+
+  const educationReadOnlyCards = (
+    <div className={uiCx('grid gap-3', (rows || []).length > 1 && 'md:grid-cols-2')}>
+      {(rows || []).map((e: any) => (
+        <UserInfoRecordCard key={e.id}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <UserInfoReadOnlyField label="Institution" value={e.college_institution || 'â€”'} />
+            <UserInfoReadOnlyField label="Degree" value={educationDegreeLine(e) || 'â€”'} />
+            <UserInfoReadOnlyField label="Dates" value={formatEducationPeriod(e.start_date, e.end_date)} />
+          </div>
+        </UserInfoRecordCard>
+      ))}
+    </div>
+  );
+
+  const educationEditCards = (
+    <div className="flex flex-col gap-3">
+      {(rows || []).map((e: any) => (
+        <UserInfoRecordCard key={e.id}>
+          {renderEducationEditCardFields(
+            e,
+            <>
+              <AppListRowIconButton preset="edit" label="Edit record" onClick={() => beginEdit(e)} />
+              <AppListRowIconButton preset="delete" label="Delete record" onClick={() => del(e.id)} />
+            </>,
+          )}
+        </UserInfoRecordCard>
+      ))}
+    </div>
   );
 
   if (!embedded) {
     if (isLoading || !(rows || []).length) return null;
-    return <div className="overflow-x-auto">{educationList}</div>;
+    return educationReadOnlyCards;
   }
 
   return (
@@ -4064,23 +4030,23 @@ function EducationSection({
       {isLoading ? (
         <div className={uiCx('h-28 animate-pulse rounded-lg bg-gray-100', uiRadius.control)} />
       ) : (
-        <div className="flex flex-col gap-2 overflow-x-auto rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex flex-col gap-3">
           {canEdit ? (
             <AppListCreateItem
               label="Add education"
               layout="row"
-              className={uiCx('w-full', EDUCATION_LIST_MIN_WIDTH)}
+              className="w-full"
               onClick={() => setShowAdd(true)}
             />
           ) : null}
           {!(rows || []).length ? (
             <AppEmptyState
               title="No education records yet"
-              description="Add schools and degrees using “Add education” above."
+              description="Add schools and degrees using â€œAdd educationâ€ above."
               className="border-0 bg-transparent p-0 py-6 shadow-none"
             />
           ) : (
-            educationList
+            educationEditCards
           )}
         </div>
       )}
@@ -4098,37 +4064,39 @@ function EducationSection({
               Cancel
             </AppButton>
             <AppButton type="button" size="sm" disabled={isAddingEducation} loading={isAddingEducation} onClick={add}>
-              {isAddingEducation ? 'Saving…' : 'Save'}
+              {isAddingEducation ? 'Savingâ€¦' : 'Save'}
             </AppButton>
           </div>
         }
       >
-        <div className="grid gap-2.5 md:grid-cols-2">
-          <AppInput
-            label="Institution"
-            value={inst}
-            onChange={(e) => setInst(e.target.value)}
-            fieldHint={showFieldHints ? userProfileFieldHint('college_institution') : undefined}
-          />
-          <AppInput
-            label="Degree"
-            value={degree}
-            onChange={(e) => setDegree(e.target.value)}
-            fieldHint={showFieldHints ? userProfileFieldHint('degree') : undefined}
-          />
-          <AppDatePicker
-            label="Start date"
-            value={start}
-            onChange={(e) => setStart(e.target.value)}
-            fieldHint={showFieldHints ? userProfileFieldHint('education_start') : undefined}
-          />
-          <AppDatePicker
-            label="End date"
-            value={end}
-            onChange={(e) => setEnd(e.target.value)}
-            fieldHint={showFieldHints ? userProfileFieldHint('education_end') : undefined}
-          />
-        </div>
+        {renderEducationFormFields('create')}
+      </AppFormModal>
+
+      <AppFormModal
+        open={editId !== null}
+        onClose={closeEditModal}
+        title="Edit education"
+        description="School, degree, and study dates."
+        formWidth="comfortable"
+        quickInfo={userEducationQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={closeEditModal}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              disabled={isUpdatingEducation}
+              loading={isUpdatingEducation}
+              onClick={update}
+            >
+              {isUpdatingEducation ? 'Savingâ€¦' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        {renderEducationFormFields('edit')}
       </AppFormModal>
     </div>
   );
@@ -4214,7 +4182,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
                 <input type="date" className="w-full text-center text-sm font-semibold text-gray-900 border-0 bg-transparent focus:outline-none focus:ring-0" value={(form.hire_date||'').slice(0,10)} onChange={e=>onField('hire_date', e.target.value)} />
               ) : (
                 <div className="text-sm font-semibold text-gray-900">
-                  {String(p.hire_date||'').slice(0,10) || '—'}
+                  {String(p.hire_date||'').slice(0,10) || 'â€”'}
                 </div>
               )}
               <div className="text-xs font-medium text-gray-700 mt-0.5">
@@ -4237,7 +4205,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
                 <input type="date" className="w-full text-center text-sm font-semibold text-gray-900 border-0 bg-transparent focus:outline-none focus:ring-0" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} />
               ) : (
                 <div className="text-sm font-semibold text-gray-900">
-                  {String(p.termination_date||'').slice(0,10) || '—'}
+                  {String(p.termination_date||'').slice(0,10) || 'â€”'}
                 </div>
               )}
               <div className="text-xs font-medium text-gray-700 mt-0.5">
@@ -4276,7 +4244,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
                         return division?.label || '';
                       }).filter(Boolean).join(', ') || 'No departments selected'}
                 </span>
-                <span className="text-gray-400">▼</span>
+                <span className="text-gray-400">â–¼</span>
               </button>
               {departmentDropdownOpen && (
                 <>
@@ -4311,7 +4279,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
           <div className="text-gray-900 font-medium py-1">
             {userDivisions && userDivisions.length > 0
               ? userDivisions.map((d: any) => d.label).join(', ')
-              : String(p.division||'') || '—'}
+              : String(p.division||'') || 'â€”'}
           </div>
         )}
       </div>
@@ -4327,16 +4295,16 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
             ))}
           </select>
         ) : (
-          <div className="text-gray-900 font-medium py-1">{supervisor||'—'}</div>
+          <div className="text-gray-900 font-medium py-1">{supervisor||'â€”'}</div>
         )}
       </div>
       <div>
         <div className="text-sm text-gray-600">Work email</div>
-        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_email} onChange={e=>onField('work_email', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_email||'') || '—'}</div>}
+        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_email} onChange={e=>onField('work_email', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_email||'') || 'â€”'}</div>}
       </div>
       <div>
         <div className="text-sm text-gray-600">Work phone</div>
-        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_phone} onChange={e=>onField('work_phone', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_phone||'') || '—'}</div>}
+        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_phone} onChange={e=>onField('work_phone', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_phone||'') || 'â€”'}</div>}
       </div>
     </div>
   );
@@ -4651,18 +4619,44 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
     resetForm();
   };
 
-  useEffect(() => {
-    if (!showModal) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeAttendanceModal(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [showModal]);
+  type TimesheetSortColumn = 'clock_in' | 'clock_out' | 'project' | 'hours' | 'break' | 'status';
+  const { sortBy, sortDir, setSort } = useLocalAppListSort<TimesheetSortColumn>('clock_in', 'desc');
 
-  useEffect(() => {
-    if (!showModal) return;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, [showModal]);
+  const eventJobLabel = useCallback(
+    (event: AttendanceEvent) =>
+      event.job_name ||
+      event.project_name ||
+      (event.job_type ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown' : 'No Project'),
+    [jobOptions],
+  );
+
+  const sortedAttendanceEvents = useMemo(
+    () =>
+      sortListByAppColumn(attendanceEvents, sortBy, sortDir, {
+        clock_in: (e) => (e.is_hours_worked ? null : e.clock_in_time ? Date.parse(e.clock_in_time) : null),
+        clock_out: (e) => (e.is_hours_worked ? null : e.clock_out_time ? Date.parse(e.clock_out_time) : null),
+        project: (e) => eventJobLabel(e),
+        hours: (e) => e.hours_worked ?? null,
+        break: (e) => e.break_minutes ?? null,
+        status: (e) => {
+          if (e.clock_in_status === 'approved' && (!e.clock_out_status || e.clock_out_status === 'approved')) {
+            return 'approved';
+          }
+          if (e.clock_in_status === 'pending' || e.clock_out_status === 'pending') return 'pending';
+          return 'rejected';
+        },
+      }),
+    [attendanceEvents, sortBy, sortDir, eventJobLabel],
+  );
+
+  const timesheetStatusBadge = (event: AttendanceEvent) => {
+    const approved =
+      event.clock_in_status === 'approved' && (!event.clock_out_status || event.clock_out_status === 'approved');
+    const pending = event.clock_in_status === 'pending' || event.clock_out_status === 'pending';
+    if (approved) return <AppBadge variant="success">Approved</AppBadge>;
+    if (pending) return <AppBadge variant="warning">Pending</AppBadge>;
+    return <AppBadge variant="danger">Rejected</AppBadge>;
+  };
 
   const handleOpenModal = (event?: AttendanceEvent) => {
     if (!canEdit) {
@@ -4988,17 +4982,24 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
     }
   };
 
-  const isSubmitDisabled = editingEvent
-    ? (!formData.worker_id || !formData.clock_in_time)
-    : !formData.clock_in_time
-    ? true
-    : formData.entry_mode === 'time'
-    ? !formData.clock_out_time
-    : !formData.hours_worked || parseFloat(formData.hours_worked || '0') <= 0;
+  const isSubmitDisabled = useMemo(() => {
+    if (formData.entry_mode === 'time') {
+      if (!isCompleteLocalDatetime(formData.clock_in_time)) return true;
+      if (editingEvent) return false;
+      return !isCompleteLocalDatetime(formData.clock_out_time);
+    }
+    if (!formData.clock_in_time?.slice(0, 10)) return true;
+    const hours = parseFloat(formData.hours_worked || '0');
+    return !formData.hours_worked || Number.isNaN(hours) || hours <= 0;
+  }, [editingEvent, formData]);
 
   return (
     <div className="space-y-6 pb-24">
-      <UserInfoSectionCard preset="timesheet" title="Timesheet">
+      <UserInfoSectionCard
+        preset="timesheet"
+        title="Timesheet"
+        description="Clock-in/out history and manual attendance entries for this employee."
+      >
         <div className="flex flex-wrap items-center gap-2">
           <AppCheckbox
             label="Eligible for Break"
@@ -5066,174 +5067,199 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
           </div>
         )}
 
-        {/* Bulk Actions */}
         {canEdit && selectedEvents.size > 0 && (
-          <div className="mb-4 rounded-xl border bg-blue-50 p-3 flex items-center justify-between">
-            <div className="text-xs font-medium text-blue-900">
-              {selectedEvents.size} event(s) selected
+          <div className="mb-4 flex items-center justify-between rounded-xl border bg-blue-50 p-3">
+            <div className={uiCx(uiTypography.helper, 'font-medium text-blue-900')}>
+              {selectedEvents.size} record(s) selected
             </div>
-            <button
-              onClick={handleDeleteSelected}
+            <AppButton
+              type="button"
+              variant="danger"
+              size="sm"
+              onClick={() => void handleDeleteSelected()}
               disabled={deletingSelected}
-              className="px-2 py-1 text-xs bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              loading={deletingSelected}
             >
-              {deletingSelected ? 'Deleting...' : 'Delete All Selected'}
-            </button>
+              Delete selected
+            </AppButton>
           </div>
         )}
 
-        {/* Table */}
-        <div className="rounded-xl border overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="p-2.5 text-left w-12">
-                  {canEdit && (
-                    <input
-                      type="checkbox"
-                      checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
-                      onChange={handleSelectAll}
-                      className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                  )}
-                </th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock In</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock Out</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Job/Project</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Hours</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Break</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Status</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {canEdit && (
-                <tr>
-                  <td colSpan={8} className="p-0 align-top">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenModal()}
-                      className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 flex items-center justify-center gap-2 min-h-[52px] text-gray-600 hover:text-brand-red transition-colors"
+        <div className={uiCx('rounded-xl border bg-white', uiSpacing.cardPadding)}>
+          <p className={uiCx(uiTypography.helper, 'mb-3')}>
+            Manual entries and approved clock times for this employee.
+          </p>
+          <div className="flex flex-col gap-2 overflow-x-auto">
+            {canEdit && (
+              <AppListCreateItem
+                label="New attendance"
+                layout="row"
+                className={uiCx('w-full', resolveAppSortableListPreset('workerTimesheet').minWidth)}
+                onClick={() => handleOpenModal()}
+              />
+            )}
+            {isLoading ? (
+              <div className={uiCx(resolveAppSortableListPreset('workerTimesheet').minWidth, 'px-4 py-4')}>
+                <div className="h-6 animate-pulse rounded bg-gray-100" />
+              </div>
+            ) : error ? (
+              <p className={uiCx(uiTypography.helper, 'px-1 text-red-600')}>Could not load attendance.</p>
+            ) : attendanceEvents.length === 0 ? (
+              <AppEmptyState
+                title="No attendance records found"
+                className="border-0 bg-transparent p-0 py-6 shadow-none"
+              />
+            ) : (
+              <AppSortableEntityList layout="flat">
+                <AppSortableEntityListHeader preset="workerTimesheet" variant="flat">
+                  <div className="flex w-8 shrink-0 items-center justify-center">
+                    {canEdit && (
+                      <input
+                        type="checkbox"
+                        checked={
+                          attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length
+                        }
+                        onChange={handleSelectAll}
+                        className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    )}
+                  </div>
+                  <AppSortableEntityListSortColumn
+                    label="Clock In"
+                    column="clock_in"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Clock Out"
+                    column="clock_out"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Job/Project"
+                    column="project"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Hours"
+                    column="hours"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Break"
+                    column="break"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <AppSortableEntityListSortColumn
+                    label="Status"
+                    column="status"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={setSort}
+                  />
+                  <div className="min-w-0 w-24" aria-hidden />
+                </AppSortableEntityListHeader>
+                <AppSortableEntityListFlatBody preset="workerTimesheet">
+                  {sortedAttendanceEvents.map((event) => (
+                    <AppSortableEntityListRow
+                      key={event.event_id}
+                      as="div"
+                      variant="flat"
+                      preset="workerTimesheet"
+                      className="group"
                     >
-                      <span className="text-lg font-medium">+</span>
-                      <span className="text-sm font-medium">New Attendance</span>
-                    </button>
-                  </td>
-                </tr>
-              )}
-              {isLoading ? (
-                <tr>
-                  <td colSpan={8} className="p-4">
-                    <div className="h-6 bg-gray-100 animate-pulse rounded" />
-                  </td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={8} className="p-4 text-center text-xs text-red-600">
-                    Error loading data. Please check console for details.
-                  </td>
-                </tr>
-              ) : attendanceEvents.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-4 text-center text-xs text-gray-500">
-                    No attendance records found
-                  </td>
-                </tr>
-              ) : (
-                attendanceEvents.map((event) => (
-                  <tr key={event.event_id} className="border-t border-gray-200 hover:bg-gray-50">
-                    <td className="p-2.5">
-                      {canEdit && (
-                        <input
-                          type="checkbox"
-                          checked={selectedEvents.has(event.event_id)}
-                          onChange={() => handleToggleSelect(event.event_id)}
-                          className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                      )}
-                    </td>
-                    <td className="p-2.5 text-xs text-gray-900">
-                      {event.is_hours_worked ? '—' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '—')}
-                    </td>
-                    <td className="p-2.5 text-xs text-gray-900">
-                      {event.is_hours_worked ? '—' : (event.clock_out_time ? formatDateTime(event.clock_out_time) : '—')}
-                    </td>
-                    <td className="p-2.5 text-xs text-gray-900">
-                      {event.job_name ||
-                        event.project_name ||
-                        (event.job_type
-                          ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown'
-                          : 'No Project')}
-                    </td>
-                    <td className="p-2.5 text-xs text-gray-900">{formatHours(event.hours_worked)}</td>
-                    <td className="p-2.5 text-xs text-gray-900">{formatBreak(event.break_minutes)}</td>
-                    <td className="p-2.5">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                          event.clock_in_status === 'approved' &&
-                          (!event.clock_out_status || event.clock_out_status === 'approved')
-                            ? 'bg-green-100 text-green-800'
-                            : event.clock_in_status === 'pending' ||
-                              event.clock_out_status === 'pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {event.clock_in_status === 'approved' &&
-                        (!event.clock_out_status || event.clock_out_status === 'approved')
-                          ? 'Approved'
-                          : event.clock_in_status === 'pending' ||
-                            event.clock_out_status === 'pending'
-                          ? 'Pending'
-                          : 'Rejected'}
+                      <div className="flex w-8 shrink-0 items-center justify-center">
+                        {canEdit && (
+                          <input
+                            type="checkbox"
+                            checked={selectedEvents.has(event.event_id)}
+                            onChange={() => handleToggleSelect(event.event_id)}
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        )}
+                      </div>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-900')}>
+                        {event.is_hours_worked ? '—' : event.clock_in_time ? formatDateTime(event.clock_in_time) : '—'}
                       </span>
-                    </td>
-                    <td className="p-2.5">
-                      <div className="flex items-center gap-1.5">
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-900')}>
+                        {event.is_hours_worked ? '—' : event.clock_out_time ? formatDateTime(event.clock_out_time) : '—'}
+                      </span>
+                      <span
+                        className={uiCx(
+                          'min-w-0 truncate text-sm font-semibold text-gray-900 transition-colors group-hover:text-[#7f1010]',
+                        )}
+                      >
+                        {eventJobLabel(event)}
+                      </span>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 text-gray-900')}>
+                        {formatHours(event.hours_worked)}
+                      </span>
+                      <span className={uiCx(uiTypography.helper, 'min-w-0 text-gray-900')}>
+                        {formatBreak(event.break_minutes)}
+                      </span>
+                      <div className="min-w-0">{timesheetStatusBadge(event)}</div>
+                      <div className="flex w-24 shrink-0 items-center justify-end gap-1.5">
                         {canEdit ? (
                           <>
-                            <button
+                            <AppListRowIconButton
+                              preset="edit"
+                              label="Edit attendance"
                               onClick={() => handleOpenModal(event)}
-                              className="text-blue-600 hover:text-blue-800 text-[10px]"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDeleteEvent(event)}
-                              disabled={deletingId === event.event_id}
-                              className="text-red-600 hover:text-red-800 text-[10px] disabled:opacity-50"
-                            >
-                              {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
-                            </button>
+                            />
+                            <AppListRowIconButton
+                              preset="delete"
+                              label="Delete attendance"
+                              loading={deletingId === event.event_id}
+                              onClick={() => void handleDeleteEvent(event)}
+                            />
                           </>
                         ) : (
-                          <span className="text-[10px] text-gray-500">View only</span>
+                          <span className={uiTypography.helper}>View only</span>
                         )}
                         {event.shift_deleted && (
-                          <span 
-                            className="text-yellow-600" 
-                            title={event.shift_deleted_by ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
+                          <span
+                            className="text-yellow-600"
+                            title={
+                              event.shift_deleted_by
+                                ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}`
+                                : 'The shift related to this attendance was deleted'
+                            }
                           >
-                            <svg className="w-3 h-3 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            <svg className="inline-block h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                              />
                             </svg>
                           </span>
                         )}
                       </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                    </AppSortableEntityListRow>
+                  ))}
+                </AppSortableEntityListFlatBody>
+              </AppSortableEntityList>
+            )}
+          </div>
         </div>
       </UserInfoSectionCard>
 
       <AppFormModal
         open={showModal}
         onClose={closeAttendanceModal}
-        title={editingEvent ? 'Edit Attendance Event' : 'New Attendance Event'}
-        description={editingEvent ? 'Update clock-in/out or hours worked' : 'Add a new attendance record'}
+        title={editingEvent ? 'Edit attendance' : 'New attendance'}
+        description={editingEvent ? 'Update times and job/project.' : 'Add clock-in/out or hours worked.'}
+        quickInfo={scWorkerManualAttendanceQuickInfo(!!editingEvent)}
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
             <AppButton type="button" variant="secondary" size="sm" onClick={closeAttendanceModal}>
@@ -5246,217 +5272,202 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
         }
       >
         <div className={uiSpacing.sectionStack}>
-              <AppSelect
-                label="Job *"
-                required
-                value={formData.job_type}
-                onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
-                options={jobOptions.map((job) => ({
-                  value: job.id,
-                  label: `${job.code} - ${job.name}`,
-                }))}
+          <AppSelect
+            label="Job *"
+            required
+            value={formData.job_type}
+            onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
+            fieldHint="Job\n\nProject or job code this attendance row applies to."
+            options={jobOptions.map((job) => ({
+              value: job.id,
+              label: `${job.code} - ${job.name}`,
+            }))}
+          />
+          <div>
+            <AppControlLabelRow
+              label="Entry type"
+              fieldHint={
+                <AppFieldHint hint="Entry type\n\nClock in / out — enter start and end times. Hours worked — enter total hours for one work date." />
+              }
+            />
+            <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 bg-gray-50 text-xs">
+              <AppButton
+                type="button"
+                variant={formData.entry_mode === 'time' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="rounded-none border-0 shadow-none"
+                onClick={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    entry_mode: 'time',
+                    hours_worked: '',
+                  }));
+                }}
+              >
+                Clock in / out
+              </AppButton>
+              <AppButton
+                type="button"
+                variant={formData.entry_mode === 'hours' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="rounded-none border-0 border-l border-gray-200 shadow-none"
+                onClick={() => {
+                  setFormData((prev) => {
+                    const datePart = prev.clock_in_time ? prev.clock_in_time.slice(0, 10) : formatDateLocal(new Date());
+                    let hoursWorked = '';
+                    if (prev.clock_in_time && prev.clock_out_time) {
+                      const inTime = new Date(prev.clock_in_time);
+                      const outTime = new Date(prev.clock_out_time);
+                      const diffMs = outTime.getTime() - inTime.getTime();
+                      const diffHours = diffMs / (1000 * 60 * 60);
+                      if (diffHours > 0) hoursWorked = diffHours.toString();
+                    }
+                    return {
+                      ...prev,
+                      entry_mode: 'hours',
+                      clock_in_time: `${datePart}T00:00`,
+                      clock_out_time: '',
+                      hours_worked: hoursWorked,
+                    };
+                  });
+                }}
+              >
+                Hours worked
+              </AppButton>
+            </div>
+          </div>
+          {formData.entry_mode === 'time' ? (
+            <LocalDateTimeFields
+              key={`clock-in-${editingEvent?.event_id ?? 'new'}`}
+              label="Clock in"
+              value={formData.clock_in_time}
+              onChange={(next) => setFormData((prev) => ({ ...prev, clock_in_time: next }))}
+              required
+              dateFieldHint="Clock-in date\n\nDay the employee started on site."
+              timeFieldHint="Clock-in time\n\nLocal time when the employee clocked in (5-minute steps)."
+            />
+          ) : (
+            <AppDatePicker
+              label="Work date *"
+              value={formData.clock_in_time ? formData.clock_in_time.slice(0, 10) : ''}
+              onChange={(e) => {
+                const date = e.target.value;
+                setFormData((prev) => ({
+                  ...prev,
+                  clock_in_time: date ? `${date}T00:00` : '',
+                }));
+              }}
+              fieldHint="Work date\n\nCalendar day when the hours were worked."
+              required
+            />
+          )}
+          {formData.entry_mode === 'time' && (
+            <>
+              <LocalDateTimeFields
+                key={`clock-out-${editingEvent?.event_id ?? 'new'}`}
+                label="Clock out"
+                value={formData.clock_out_time}
+                onChange={(next) => setFormData((prev) => ({ ...prev, clock_out_time: next }))}
+                required={!editingEvent}
+                dateFieldHint="Clock-out date\n\nDay the employee finished on site."
+                timeFieldHint="Clock-out time\n\nLocal time when the employee clocked out. Must be after clock-in."
               />
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                  Entry Type
-                </label>
-                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 overflow-hidden text-xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        entry_mode: 'time',
-                        hours_worked: '',
-                      }));
-                    }}
-                    className={`px-2.5 py-1.5 ${
-                      formData.entry_mode === 'time'
-                        ? 'bg-white text-gray-900'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    Clock In / Out
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFormData((prev) => {
-                        const datePart = prev.clock_in_time ? prev.clock_in_time.slice(0, 10) : formatDateLocal(new Date());
-                        let hoursWorked = '';
-                        if (prev.clock_in_time && prev.clock_out_time) {
-                          const inTime = new Date(prev.clock_in_time);
-                          const outTime = new Date(prev.clock_out_time);
-                          const diffMs = outTime.getTime() - inTime.getTime();
-                          const diffHours = diffMs / (1000 * 60 * 60);
-                          if (diffHours > 0) {
-                            hoursWorked = diffHours.toString();
-                          }
-                        }
-                        return {
-                          ...prev,
-                          entry_mode: 'hours',
-                          clock_in_time: `${datePart}T00:00`,
-                          clock_out_time: '',
-                          hours_worked: hoursWorked,
-                        };
-                      });
-                    }}
-                    className={`px-2.5 py-1.5 border-l border-gray-300 ${
-                      formData.entry_mode === 'hours'
-                        ? 'bg-white text-gray-900'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    Hours Worked
-                  </button>
-                </div>
-                <p className="mt-1 text-[10px] text-gray-500">
-                  {formData.entry_mode === 'time'
-                    ? 'Enter exact clock-in and clock-out times.'
-                    : 'Enter start time and total hours; clock-out will be calculated automatically.'}
-                </p>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                  {formData.entry_mode === 'time'
-                    ? 'Clock In Time * (Local)'
-                    : 'Work Date *'}
-                </label>
-                {formData.entry_mode === 'time' ? (
-                  <AppInput
-                    type="datetime-local"
-                    value={formData.clock_in_time}
-                    onChange={(e) => setFormData({ ...formData, clock_in_time: e.target.value })}
-                    required
-                  />
-                ) : (
-                  <AppDatePicker
-                    value={formData.clock_in_time ? formData.clock_in_time.slice(0, 10) : ''}
-                    onChange={(e) => {
-                      const date = e.target.value;
-                      setFormData((prev) => ({
-                        ...prev,
-                        clock_in_time: date ? `${date}T00:00` : '',
-                      }));
-                    }}
-                    required
-                  />
+                <AppCheckbox
+                  label="Insert break time"
+                  fieldHint="Insert break time\n\nSubtract unpaid break minutes from the total session time."
+                  checked={insertBreakTime}
+                  onChange={setInsertBreakTime}
+                />
+                {insertBreakTime && (
+                  <div className="flex flex-wrap items-end gap-3 pl-8">
+                    <AppSelect
+                      className="min-w-[100px] flex-1"
+                      label="Hours"
+                      value={breakHours}
+                      onChange={(e) => setBreakHours(e.target.value)}
+                      options={Array.from({ length: 3 }, (_, i) => ({
+                        value: String(i),
+                        label: String(i),
+                      }))}
+                    />
+                    <AppSelect
+                      className="min-w-[100px] flex-1"
+                      label="Minutes"
+                      value={breakMinutes}
+                      onChange={(e) => setBreakMinutes(e.target.value)}
+                      options={Array.from({ length: 12 }, (_, i) => {
+                        const m = i * 5;
+                        const v = String(m).padStart(2, '0');
+                        return { value: v, label: v };
+                      })}
+                    />
+                  </div>
                 )}
               </div>
-              {formData.entry_mode === 'time' && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                      {editingEvent
-                        ? 'Clock Out Time (Local) - Optional'
-                        : 'Clock Out Time * (Local)'}
-                    </label>
-                    <AppInput
-                      type="datetime-local"
-                      value={formData.clock_out_time}
-                      onChange={(e) => setFormData({ ...formData, clock_out_time: e.target.value })}
-                      required={!editingEvent}
-                    />
-                  </div>
-                  {/* Manual Break Time (always available in clock in/out mode) */}
-                  <div>
-                    <AppCheckbox
-                      label="Insert Break Time"
-                      checked={insertBreakTime}
-                      onChange={setInsertBreakTime}
-                    />
-                    {insertBreakTime && (
-                      <div className={uiCx('ml-6', uiSpacing.sectionStack)}>
-                        <div className={uiCx(uiLayout.actionsRow, 'items-end')}>
-                          <AppSelect
-                            className="min-w-0 flex-1"
-                            label="Hours"
-                            value={breakHours}
-                            onChange={(e) => setBreakHours(e.target.value)}
-                            options={Array.from({ length: 3 }, (_, i) => ({
-                              value: String(i),
-                              label: String(i),
-                            }))}
-                          />
-                          <AppSelect
-                            className="min-w-0 flex-1"
-                            label="Minutes"
-                            value={breakMinutes}
-                            onChange={(e) => setBreakMinutes(e.target.value)}
-                            options={Array.from({ length: 12 }, (_, i) => {
-                              const m = i * 5;
-                              const v = String(m).padStart(2, '0');
-                              return { value: v, label: v };
-                            })}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-              {formData.entry_mode === 'hours' && (
-                <>
-                  <AppInput
-                    label="Hours Worked *"
-                    type="number"
-                    min={0}
-                    step="0.25"
-                    value={formData.hours_worked}
-                    onChange={(e) => setFormData({ ...formData, hours_worked: e.target.value })}
-                    placeholder="e.g. 8"
-                    required
-                  />
-                  <div>
-                    <AppCheckbox
-                      label="Insert Break Time"
-                      checked={insertBreakTime}
-                      onChange={setInsertBreakTime}
-                    />
-                    {insertBreakTime && (
-                      <div className={uiCx('ml-6 mt-2', uiSpacing.sectionStack)}>
-                        <div className={uiCx(uiLayout.actionsRow, 'items-end')}>
-                          <AppSelect
-                            className="min-w-0 flex-1"
-                            label="Hours"
-                            value={breakHours}
-                            onChange={(e) => setBreakHours(e.target.value)}
-                            options={Array.from({ length: 3 }, (_, i) => ({
-                              value: String(i),
-                              label: String(i),
-                            }))}
-                          />
-                          <AppSelect
-                            className="min-w-0 flex-1"
-                            label="Minutes"
-                            value={breakMinutes}
-                            onChange={(e) => setBreakMinutes(e.target.value)}
-                            options={Array.from({ length: 12 }, (_, i) => {
-                              const m = i * 5;
-                              const v = String(m).padStart(2, '0');
-                              return { value: v, label: v };
-                            })}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-              {editingEvent && (
-                <AppSelect
-                  label="Status *"
-                  required
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  options={[
-                    { value: 'approved', label: 'Approved' },
-                    { value: 'pending', label: 'Pending' },
-                    { value: 'rejected', label: 'Rejected' },
-                  ]}
+            </>
+          )}
+          {formData.entry_mode === 'hours' && (
+            <>
+              <AppInput
+                label="Hours worked *"
+                type="number"
+                min={0}
+                step="0.25"
+                value={formData.hours_worked}
+                onChange={(e) => setFormData({ ...formData, hours_worked: e.target.value })}
+                placeholder="e.g. 8"
+                fieldHint="Hours worked\n\nTotal hours for the work date (e.g. 8 for a full day)."
+                required
+              />
+              <div>
+                <AppCheckbox
+                  label="Insert break time"
+                  checked={insertBreakTime}
+                  onChange={setInsertBreakTime}
                 />
-              )}
+                {insertBreakTime && (
+                  <div className="flex flex-wrap items-end gap-3 pl-8">
+                    <AppSelect
+                      className="min-w-[100px] flex-1"
+                      label="Hours"
+                      value={breakHours}
+                      onChange={(e) => setBreakHours(e.target.value)}
+                      options={Array.from({ length: 3 }, (_, i) => ({
+                        value: String(i),
+                        label: String(i),
+                      }))}
+                    />
+                    <AppSelect
+                      className="min-w-[100px] flex-1"
+                      label="Minutes"
+                      value={breakMinutes}
+                      onChange={(e) => setBreakMinutes(e.target.value)}
+                      options={Array.from({ length: 12 }, (_, i) => {
+                        const m = i * 5;
+                        const v = String(m).padStart(2, '0');
+                        return { value: v, label: v };
+                      })}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+          {editingEvent && (
+            <AppSelect
+              label="Status *"
+              required
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              fieldHint="Status\n\nApproval state for this row (approved, pending, or rejected)."
+              options={[
+                { value: 'approved', label: 'Approved' },
+                { value: 'pending', label: 'Pending' },
+                { value: 'rejected', label: 'Rejected' },
+              ]}
+            />
+          )}
         </div>
       </AppFormModal>
     </div>
@@ -5464,7 +5475,8 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
 }
 
 
-function SalarySection({ p, editable, userId, collectChanges, settings, canEdit, onEditClick, embedded }: { p:any, editable:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, settings?: any, canEdit:boolean, onEditClick?: () => void, embedded?: boolean }){
+function SalarySection({ p, editable, userId, collectChanges, settings, canEdit, embedded }: { p:any, editable:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, settings?: any, canEdit:boolean, embedded?: boolean }){
+  const [showAddEntry, setShowAddEntry] = useState(false);
   const isEditable = !!editable;
   const showFieldHints = !!embedded;
   const [form, setForm] = useState<any>(()=>({
@@ -5497,8 +5509,16 @@ function SalarySection({ p, editable, userId, collectChanges, settings, canEdit,
           <div className={uiCx(uiLayout.actionsRow, 'mb-2')}>
             <span className={uiTypography.overline}>Pay Rate</span>
             {!isEditable ? (
-              <AppButton type="button" variant="ghost" size="sm" onClick={() => setShowPayRate(!showPayRate)}>
-                {showPayRate ? 'Hide' : 'Show'}
+              <AppButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="!h-7 !w-7 !p-0"
+                onClick={() => setShowPayRate(!showPayRate)}
+                title={showPayRate ? 'Hide pay rate' : 'Show pay rate'}
+                aria-label={showPayRate ? 'Hide pay rate' : 'Show pay rate'}
+              >
+                {showPayRate ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </AppButton>
             ) : null}
           </div>
@@ -5511,7 +5531,7 @@ function SalarySection({ p, editable, userId, collectChanges, settings, canEdit,
               fieldHint={showFieldHints ? userProfileFieldHint('pay_rate') : undefined}
             />
           ) : (
-            <div className={uiTypography.sectionTitle}>{showPayRate ? String(p.pay_rate || '') || '—' : '••••'}</div>
+            <div className={uiTypography.sectionTitle}>{showPayRate ? String(p.pay_rate || '') || 'â€”' : 'â€¢â€¢â€¢â€¢'}</div>
           )}
         </AppCard>
         <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -5540,7 +5560,7 @@ function SalarySection({ p, editable, userId, collectChanges, settings, canEdit,
                 />
               )
             ) : (
-              <div className={uiTypography.sectionTitle}>{String(p.pay_type || '') || '—'}</div>
+              <div className={uiTypography.sectionTitle}>{String(p.pay_type || '') || 'â€”'}</div>
             )}
           </div>
         </AppCard>
@@ -5554,24 +5574,45 @@ function SalarySection({ p, editable, userId, collectChanges, settings, canEdit,
       preset="billing"
       title="Salary"
       description="Current pay rate and type on file."
-      showEdit={!isEditable && !!onEditClick && canEdit}
-      onEditClick={onEditClick}
-      editTitle="Edit Salary"
+      headerAction={
+        !isEditable && canEdit ? (
+          <AppButton type="button" size="sm" onClick={() => setShowAddEntry(true)}>
+            New Entry
+          </AppButton>
+        ) : null
+      }
     >
       {fields}
-      <SalaryHistorySection userId={userId} canEdit={canEdit} settings={settings} />
+      <SalaryHistorySection
+        userId={userId}
+        canEdit={canEdit}
+        settings={settings}
+        showAdd={showAddEntry}
+        onShowAddChange={setShowAddEntry}
+      />
     </UserInfoSectionCard>
   );
 }
 
-function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, canEdit:boolean, settings?: any }){
+function SalaryHistorySection({
+  userId,
+  canEdit,
+  settings,
+  showAdd,
+  onShowAddChange,
+}: {
+  userId: string;
+  canEdit: boolean;
+  settings?: any;
+  showAdd: boolean;
+  onShowAddChange: (open: boolean) => void;
+}){
   const queryClient = useQueryClient();
   const { data:rows, refetch, isLoading } = useQuery({
     queryKey:['salary-history', userId],
     queryFn: ()=> api<any[]>('GET', `/employees/${userId}/salary-history`)
   });
 
-  const [showAdd, setShowAdd] = useState(false);
   const [effectiveDate, setEffectiveDate] = useState('');
   const [payType, setPayType] = useState('');
   const [newSalary, setNewSalary] = useState('');
@@ -5603,7 +5644,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
         notes: String(notes||'').trim() || null,
       });
       toast.success('Salary change saved');
-      setShowAdd(false);
+      onShowAddChange(false);
       reset();
       await refetch();
       await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
@@ -5615,7 +5656,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
   };
 
   const formatDate = (iso?: string | null)=>{
-    if(!iso) return '—';
+    if(!iso) return 'â€”';
     try{
       return new Date(iso).toLocaleDateString(undefined, { timeZone: 'UTC' });
     }catch{
@@ -5625,17 +5666,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs font-medium text-gray-700">History</div>
-        {canEdit && (
-          <button
-            onClick={()=>setShowAdd(true)}
-            className="px-2.5 py-1 rounded border border-green-300 text-green-700 text-xs font-medium hover:bg-green-50"
-          >
-            New Entry
-          </button>
-        )}
-      </div>
+      <div className="mb-2 text-xs font-medium text-gray-700">History</div>
 
       {isLoading ? (
         <div className="text-xs text-gray-600">Loading...</div>
@@ -5655,14 +5686,14 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
               {rows.map((r:any)=> {
                 const prev = String(r.previous_salary||'').trim();
                 const next = String(r.new_salary||'').trim();
-                const payLabel = prev ? `${next} (was ${prev})` : (next || '—');
+                const payLabel = prev ? `${next} (was ${prev})` : (next || 'â€”');
                 return (
                   <tr key={r.id} className="border-b align-top">
                     <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{formatDate(r.effective_date)}</td>
-                    <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{String(r.pay_type||'') || '—'}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{String(r.pay_type||'') || 'â€”'}</td>
                     <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{payLabel}</td>
-                    <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.justification||'') || '—'}</td>
-                    <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.notes||'') || '—'}</td>
+                    <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.justification||'') || 'â€”'}</td>
+                    <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.notes||'') || 'â€”'}</td>
                   </tr>
                 );
               })}
@@ -5676,18 +5707,22 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
       <AppFormModal
         open={showAdd}
         onClose={() => {
-          setShowAdd(false);
+          onShowAddChange(false);
           reset();
         }}
         title="New salary entry"
+        description="Record a compensation change with effective date and reason."
+        formWidth="comfortable"
+        quickInfo={userSalaryEntryQuickInfo}
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
             <AppButton
               type="button"
               variant="secondary"
               size="sm"
+              disabled={saving}
               onClick={() => {
-                setShowAdd(false);
+                onShowAddChange(false);
                 reset();
               }}
             >
@@ -5705,6 +5740,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
               label="Effective date *"
               value={effectiveDate}
               onChange={(e) => setEffectiveDate(e.target.value)}
+              fieldHint={userProfileFieldHint('salary_effective_date')}
             />
             {settings?.pay_types?.length ? (
               <AppSelect
@@ -5712,6 +5748,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
                 placeholder="Select..."
                 value={payType}
                 onChange={(e) => setPayType(e.target.value)}
+                fieldHint={userProfileFieldHint('pay_type')}
                 options={sortByLabel(settings.pay_types, (it: any) => (it.label || '').toString()).map((it: any) => ({
                   value: it.label,
                   label: it.label,
@@ -5723,6 +5760,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
                 value={payType}
                 onChange={(e) => setPayType(e.target.value)}
                 placeholder="Hourly / Salary / Contract..."
+                fieldHint={userProfileFieldHint('pay_type')}
               />
             )}
           </div>
@@ -5731,6 +5769,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
             value={newSalary}
             onChange={(e) => setNewSalary(e.target.value)}
             placeholder="$29.00 / Hour"
+            fieldHint={userProfileFieldHint('pay_rate')}
           />
           <AppTextarea
             label="Change reason *"
@@ -5738,6 +5777,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
             value={justification}
             onChange={(e) => setJustification(e.target.value)}
             placeholder="Reason for the salary change..."
+            fieldHint={userProfileFieldHint('salary_justification')}
           />
           <AppTextarea
             label="Comment"
@@ -5745,6 +5785,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Optional notes..."
+            fieldHint={userProfileFieldHint('salary_notes')}
           />
         </div>
       </AppFormModal>
@@ -5971,6 +6012,11 @@ function LegalDocumentsFields({
           <UserInfoReadOnlyField label="Work Eligibility Status" value={mergedProfile.work_eligibility_status} />
         </div>
       )}
+      {isEditable && !(mergedProfile.work_eligibility_status || '').trim() ? (
+        <p className={uiCx(uiTypography.helper, '-mt-2')}>
+          Select work eligibility to see required document sections.
+        </p>
+      ) : null}
       <WorkEligibilityDocumentsSection
         userId={userId}
         canEdit={isEditable}
@@ -6274,7 +6320,7 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
                       </div>
                     );
                   })
-                : <span className={uiTypography.sectionTitle}>—</span>}
+                : <span className={uiTypography.sectionTitle}>â€”</span>}
             </div>
           </div>
         )}
@@ -6429,6 +6475,16 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     }
   };
   
+  const closeAdjustModal = () => {
+    setShowAdjustModal(false);
+    setAdjustingBalance(null);
+    setSelectedPolicyName('');
+    setAdjustmentType('add');
+    setAdjustmentDays('');
+    setAdjustmentNote('');
+    setEffectiveDate(new Date().toISOString().split('T')[0]);
+  };
+
   const handleOpenAdjust = (balance: any) => {
     setAdjustingBalance(balance);
     setSelectedPolicyName(balance.policy_name || '');
@@ -6462,11 +6518,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
         note: adjustmentNote.trim()
       });
       toast.success('Balance adjusted successfully');
-      setShowAdjustModal(false);
-      setAdjustingBalance(null);
-      setSelectedPolicyName('');
-      setAdjustmentDays('');
-      setAdjustmentNote('');
+      closeAdjustModal();
       refetchBalances();
       refetchHistory();
     } catch (error: any) {
@@ -6722,7 +6774,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           ) : (
             <div className="text-sm text-gray-600 py-8 text-center">
-              <div className="text-4xl mb-2">🏖️</div>
+              <div className="text-4xl mb-2">ðŸ–ï¸</div>
               <div>No upcoming time off.</div>
               <div className="text-xs text-gray-500 mt-1">Do you need to get away?</div>
             </div>
@@ -6817,14 +6869,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                                   <span className="text-red-600 font-medium">
                                     {h.used_days < 0 ? parseFloat(h.used_days).toFixed(2) : `-${parseFloat(h.used_days).toFixed(2)}`}
                                   </span>
-                                ) : '—'}
+                                ) : 'â€”'}
                               </td>
                               <td className="py-2 px-3 text-right">
                                 {h.earned_days ? (
                                   <span className="text-green-600 font-medium">
                                     +{parseFloat(h.earned_days).toFixed(2)}
                                   </span>
-                                ) : '—'}
+                                ) : 'â€”'}
                               </td>
                               <td className="py-2 px-3 text-right font-semibold">
                                 {parseFloat(h.balance_after).toFixed(2)} days
@@ -6897,10 +6949,10 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                         {r.notes && <div className="text-xs text-gray-500">{r.notes}</div>}
                       </td>
                       <td className="py-2 px-2 text-right">
-                        {r.status === 'approved' ? `-${days}` : '—'}
+                        {r.status === 'approved' ? `-${days}` : 'â€”'}
                       </td>
-                      <td className="py-2 px-2 text-right">—</td>
-                      <td className="py-2 px-2 text-right">—</td>
+                      <td className="py-2 px-2 text-right">â€”</td>
+                      <td className="py-2 px-2 text-right">â€”</td>
                     </tr>
                   );
                 })}
@@ -7046,27 +7098,23 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
 
       <AppFormModal
         open={showAdjustModal && !!adjustingBalance}
-        onClose={() => {
-          setShowAdjustModal(false);
-          setAdjustingBalance(null);
-          setSelectedPolicyName('');
-        }}
+        onClose={closeAdjustModal}
         title={
           adjustingBalance?.policy_name
             ? `Adjust ${adjustingBalance.policy_name} Balance`
             : 'Adjust Time Off Balance'
         }
+        description="Add or subtract days from this employee's time-off balance."
+        formWidth="comfortable"
+        quickInfo={userTimeOffBalanceAdjustQuickInfo(adjustingBalance?.policy_name || 'Time Off')}
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
             <AppButton
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => {
-                setShowAdjustModal(false);
-                setAdjustingBalance(null);
-                setSelectedPolicyName('');
-              }}
+              disabled={adjusting}
+              onClick={closeAdjustModal}
             >
               Cancel
             </AppButton>
@@ -7096,6 +7144,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   label="Policy*"
                   placeholder="Select policy..."
                   value={selectedPolicyName || adjustingBalance.policy_name || ''}
+                  fieldHint={userProfileFieldHint('time_off_policy')}
                   onChange={(e) => {
                     setSelectedPolicyName(e.target.value);
                     const selectedBalance = displayedBalances?.find((b: any) => b.policy_name === e.target.value);
@@ -7119,7 +7168,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               )}
 
               <div>
-                <AppControlLabelRow label="Amount*" />
+                <AppControlLabelRow
+                  label="Amount*"
+                  fieldHint={
+                    userProfileFieldHint('time_off_adjustment_amount') ? (
+                      <AppFieldHint hint={userProfileFieldHint('time_off_adjustment_amount')!} />
+                    ) : undefined
+                  }
+                />
                 <div className={uiCx(uiLayout.actionsRow, 'items-end')}>
                   <AppSelect
                     className="w-32 shrink-0"
@@ -7147,6 +7203,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 label="Effective Date*"
                 value={effectiveDate}
                 onChange={(e) => setEffectiveDate(e.target.value)}
+                fieldHint={userProfileFieldHint('time_off_effective_date')}
               />
 
               <AppTextarea
@@ -7155,6 +7212,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 value={adjustmentNote}
                 onChange={(e) => setAdjustmentNote(e.target.value)}
                 placeholder="Reason for adjustment..."
+                fieldHint={userProfileFieldHint('time_off_adjustment_note')}
               />
               
               {/* Summary */}
@@ -7225,7 +7283,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               loading={savingHistoryEdit}
               onClick={() => void handleSaveHistoryEdit()}
             >
-              {savingHistoryEdit ? 'Saving…' : 'Save'}
+              {savingHistoryEdit ? 'Savingâ€¦' : 'Save'}
             </AppButton>
           </div>
         }
@@ -7283,10 +7341,10 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
 
 /** Format API date/datetime for asset tables; avoids showing one calendar day early when the API stores UTC midnight for a business date. */
 function formatAssetDisplayDate(iso: string | null | undefined): string {
-  if (iso == null || iso === '') return '—';
+  if (iso == null || iso === '') return 'â€”';
   const s = String(iso).trim();
   const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return '—';
+  if (Number.isNaN(d.getTime())) return 'â€”';
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     const [y, m, day] = s.split('-').map(Number);
     return new Date(y, m - 1, day).toLocaleDateString('en-US', { dateStyle: 'short' });
@@ -7522,7 +7580,7 @@ function UserAssetsSection({
                         </button>
                       </td>
                     )}
-                    {!canEditEquipment && canEditFleet && <td className="py-2 px-3 text-right">—</td>}
+                    {!canEditEquipment && canEditFleet && <td className="py-2 px-3 text-right">â€”</td>}
                   </tr>
                 ))}
                 {current_assignments.map((a: any) => (
@@ -7548,7 +7606,7 @@ function UserAssetsSection({
                         </button>
                       </td>
                     ) : (
-                      (canEditEquipment || canEditFleet) && <td className="py-2 px-3 text-right">—</td>
+                      (canEditEquipment || canEditFleet) && <td className="py-2 px-3 text-right">â€”</td>
                     )}
                   </tr>
                 ))}
@@ -7583,7 +7641,7 @@ function UserAssetsSection({
                     <td className="py-2 px-3">{c.equipment_name || c.equipment_id}</td>
                     <td className="py-2 px-3">{formatAssetDisplayDate(c.checked_out_at)}</td>
                     <td className="py-2 px-3">{formatAssetDisplayDate(c.actual_return_date)}</td>
-                    <td className="py-2 px-3">{c.status || '—'}</td>
+                    <td className="py-2 px-3">{c.status || 'â€”'}</td>
                     {isAdmin && (
                       <td className="py-2 px-3 text-right">
                         <button
@@ -7898,7 +7956,7 @@ function UserFleetVehicleCheckoutModal({
 
   const vehicleLabel = (v: any) => {
     const parts = [v.name, v.license_plate, v.make && v.model ? `${v.make} ${v.model}` : v.make || v.model].filter(Boolean);
-    return parts.length ? parts.join(' · ') : v.id;
+    return parts.length ? parts.join(' Â· ') : v.id;
   };
 
   const formId = 'user-fleet-vehicle-checkout-form';
@@ -8071,1193 +8129,6 @@ function UserFleetReturnModal({
   );
 }
 
-const TRAINING_CATEGORIES = ['', 'Safety', 'Compliance', 'Technical skills', 'Soft skills', 'Leadership', 'Other'];
-const TRAINING_FORMATS = ['', 'in_person', 'online', 'hybrid'];
-const TRAINING_STATUSES = ['completed', 'in_progress', 'scheduled', 'expired'];
-
-/** Docs tab folder for certificate files uploaded from Training & courses modal. */
-const TRAINING_CERTIFICATES_FOLDER_NAME = 'Training certificates';
-
-async function getOrCreateTrainingCertificatesFolderId(userId: string): Promise<string> {
-  const folders = await api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/folders`);
-  const match = (folders || []).find(
-    (f: any) => !f.parent_id && String(f.name || '').trim() === TRAINING_CERTIFICATES_FOLDER_NAME,
-  );
-  if (match?.id) return String(match.id);
-  try {
-    const res = await api<{ id: string }>('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, {
-      name: TRAINING_CERTIFICATES_FOLDER_NAME,
-    });
-    return String(res.id);
-  } catch {
-    const again = await api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/folders`);
-    const m2 = (again || []).find(
-      (f: any) => !f.parent_id && String(f.name || '').trim() === TRAINING_CERTIFICATES_FOLDER_NAME,
-    );
-    if (m2?.id) return String(m2.id);
-    throw new Error('Could not resolve Training certificates folder');
-  }
-}
-
-async function uploadTrainingCertificateToDocs(
-  userId: string,
-  file: File,
-  meta: { docTitle?: string; issuedDate?: string; expiryDate?: string; trainingTitle: string },
-) {
-  const name = file.name;
-  const contentType = file.type || 'application/octet-stream';
-  const folderId = await getOrCreateTrainingCertificatesFolderId(userId);
-  const up = await api<any>('POST', '/files/upload', {
-    original_name: name,
-    content_type: contentType,
-    employee_id: userId,
-    project_id: null,
-    client_id: null,
-    category_id: userId,
-  });
-  const putResp = await fetch(up.upload_url, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType, 'x-ms-blob-type': 'BlockBlob' },
-    body: file,
-  });
-  if (!putResp.ok) {
-    throw new Error(`Upload failed (${putResp.status})`);
-  }
-  const conf = await api<{ id: string }>('POST', '/files/confirm', {
-    key: up.key,
-    size_bytes: file.size,
-    checksum_sha256: 'na',
-    content_type: contentType,
-  });
-  const title =
-    (meta.docTitle && meta.docTitle.trim()) || `${meta.trainingTitle} — ${name}`;
-  await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, {
-    folder_id: folderId,
-    title,
-    file_id: conf.id,
-    issued_date: meta.issuedDate?.trim() || undefined,
-    expiry_date: meta.expiryDate?.trim() || undefined,
-    notes: 'Uploaded from Training & courses (employee HR record).',
-  });
-}
-
-async function uploadTrainingCertificateToWorkerFiles(
-  workerId: string,
-  file: File,
-  meta: { docTitle?: string; trainingTitle: string },
-) {
-  const name = file.name;
-  const contentType = file.type || 'application/octet-stream';
-  const up = await api<any>('POST', '/files/upload', {
-    original_name: name,
-    content_type: contentType,
-    employee_id: null,
-    project_id: null,
-    client_id: null,
-    category_id: 'files',
-  });
-  const putResp = await fetch(up.upload_url, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType, 'x-ms-blob-type': 'BlockBlob' },
-    body: file,
-  });
-  if (!putResp.ok) {
-    throw new Error(`Upload failed (${putResp.status})`);
-  }
-  const conf = await api<{ id: string }>('POST', '/files/confirm', {
-    key: up.key,
-    size_bytes: file.size,
-    checksum_sha256: 'na',
-    content_type: contentType,
-  });
-  const title = (meta.docTitle && meta.docTitle.trim()) || `${meta.trainingTitle} — ${name}`;
-  const q = new URLSearchParams({
-    file_object_id: conf.id,
-    category: 'Training certificates',
-    original_name: title,
-  });
-  await api<{ id: string }>('POST', `/subcontractors/workers/${encodeURIComponent(workerId)}/files?${q.toString()}`);
-}
-
-function trainingStatusPill(status: string | null | undefined) {
-  const s = (status || '').toLowerCase().replace(/_/g, ' ');
-  const base = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border';
-  if (s === 'completed') return <span className={`${base} bg-emerald-50 text-emerald-800 border-emerald-200`}>Completed</span>;
-  if (s === 'expired') return <span className={`${base} bg-gray-100 text-gray-700 border-gray-200`}>Expired</span>;
-  if (s === 'scheduled') return <span className={`${base} bg-sky-50 text-sky-800 border-sky-200`}>Scheduled</span>;
-  if (s === 'in progress') return <span className={`${base} bg-amber-50 text-amber-900 border-amber-200`}>In progress</span>;
-  return <span className={`${base} bg-slate-50 text-slate-700 border-slate-200`}>{status || '—'}</span>;
-}
-
-function TrainingDetailField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div
-      className={uiCx(
-        'grid grid-cols-1 gap-1 border-b border-gray-100 py-3 last:border-0 sm:grid-cols-[9.5rem_minmax(0,1fr)] sm:items-start sm:gap-x-4 sm:py-2.5',
-      )}
-    >
-      <dt className={uiTypography.helper}>{label}</dt>
-      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
-    </div>
-  );
-}
-
-function _parseYmdLocal(iso: string): Date | null {
-  const s = String(iso || '').trim().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-  const d = new Date(`${s}T12:00:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function _calendarInclusiveDays(startIso: string, endIso: string): number {
-  const a = _parseYmdLocal(startIso);
-  const b = _parseYmdLocal(endIso || startIso);
-  if (!a || !b) return 0;
-  if (b < a) return 0;
-  return Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
-}
-
-/** Inclusive range; skips Sat/Sun when includeWeekends is false. Falls back to at least 1 calendar day if no weekdays match. */
-function _workdaysInclusive(startIso: string, endIso: string, includeWeekends: boolean): number {
-  const a = _parseYmdLocal(startIso);
-  const b = _parseYmdLocal(endIso || startIso);
-  if (!a || !b || b < a) return 0;
-  let n = 0;
-  for (let d = new Date(a); d <= b; d.setDate(d.getDate() + 1)) {
-    const w = d.getDay();
-    if (includeWeekends || (w !== 0 && w !== 6)) n++;
-  }
-  if (n === 0) return Math.max(1, _calendarInclusiveDays(startIso, endIso || startIso));
-  return n;
-}
-
-/** Expects HTML time values "HH:mm". If end <= start, assumes same session past midnight. */
-function _dailyHoursFromTimes(timeStart: string, timeEnd: string): number | null {
-  const ts = String(timeStart || '').trim();
-  const te = String(timeEnd || '').trim();
-  if (!ts || !te) return null;
-  const [sh, sm] = ts.split(':').map((x) => parseInt(x, 10));
-  const [eh, em] = te.split(':').map((x) => parseInt(x, 10));
-  if ([sh, sm, eh, em].some((x) => Number.isNaN(x))) return null;
-  let startM = sh * 60 + sm;
-  let endM = eh * 60 + em;
-  let diff = endM - startM;
-  if (diff <= 0) diff += 24 * 60;
-  return diff / 60;
-}
-
-function _parseSessionTimeToHHmm(sessionTime: string): { time_start: string; time_end: string } {
-  const s = String(sessionTime || '').trim();
-  const m = s.match(/(\d{1,2}:\d{2})\s*[–—-]\s*(\d{1,2}:\d{2})/);
-  if (!m) return { time_start: '', time_end: '' };
-  const pad = (t: string) => {
-    const [h, mi] = t.split(':').map((x) => parseInt(x, 10));
-    if (Number.isNaN(h) || Number.isNaN(mi)) return '';
-    return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
-  };
-  return { time_start: pad(m[1]), time_end: pad(m[2]) };
-}
-
-function EmployeeTrainingSection(
-  props:
-    | { variant: 'user'; userId: string; canEdit: boolean }
-    | { variant: 'worker'; workerId: string; canEdit: boolean },
-) {
-  const isWorker = props.variant === 'worker';
-  const subjectId = isWorker ? props.workerId : props.userId;
-  const { canEdit } = props;
-  const trainingRecordsBase = isWorker
-    ? `/subcontractors/workers/${encodeURIComponent(subjectId)}/training-records`
-    : `/auth/users/${encodeURIComponent(subjectId)}/training-records`;
-  const trainingMatrixBase = isWorker
-    ? `/subcontractors/workers/${encodeURIComponent(subjectId)}/training-matrix`
-    : `/auth/users/${encodeURIComponent(subjectId)}/training-matrix`;
-  const trainingQueryScope = isWorker ? ('worker' as const) : ('user' as const);
-
-  const confirm = useConfirm();
-  const queryClient = useQueryClient();
-  const { data: rows = [], refetch, isLoading } = useQuery({
-    queryKey: ['employee-training-records', trainingQueryScope, subjectId],
-    queryFn: () => api<any[]>('GET', trainingRecordsBase),
-    enabled: !!subjectId,
-  });
-  const { data: matrixSnap, isLoading: matrixLoading } = useQuery({
-    queryKey: ['user-training-matrix', trainingQueryScope, subjectId],
-    queryFn: () =>
-      api<{ items: Array<{ id: string; label: string; cell_kind: string; display: string; record: any | null }> }>(
-        'GET',
-        trainingMatrixBase,
-      ),
-    enabled: !!subjectId,
-  });
-  const { data: matrixCatalog } = useQuery({
-    queryKey: ['training-matrix-catalog'],
-    queryFn: () => api<{ items: Array<{ id: string; label: string; cell_kind: string }> }>('GET', '/auth/training-records/matrix-catalog'),
-  });
-  const [modalOpen, setModalOpen] = useState(false);
-  const [viewingRecord, setViewingRecord] = useState<any | null>(null);
-  const [editing, setEditing] = useState<any | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [certificateFile, setCertificateFile] = useState<File | null>(null);
-  const [certificateDocTitle, setCertificateDocTitle] = useState('');
-  const [includeWeekends, setIncludeWeekends] = useState(false);
-  const [differentCompletionDate, setDifferentCompletionDate] = useState(false);
-  const [form, setForm] = useState({
-    title: '',
-    provider: '',
-    category: '',
-    delivery_format: '',
-    start_date: '',
-    end_date: '',
-    completion_date: '',
-    status: 'completed',
-    certificate_number: '',
-    expiry_date: '',
-    notes: '',
-    crew: '',
-    location: '',
-    session_time: '',
-    time_start: '',
-    time_end: '',
-    matrix_training_id: '',
-  });
-
-  const resetForm = (defaults?: Partial<typeof form>) => {
-    setIncludeWeekends(false);
-    setDifferentCompletionDate(false);
-    setForm({
-      title: '',
-      provider: '',
-      category: '',
-      delivery_format: '',
-      start_date: '',
-      end_date: '',
-      completion_date: '',
-      status: 'completed',
-      certificate_number: '',
-      expiry_date: '',
-      notes: '',
-      crew: '',
-      location: '',
-      session_time: '',
-      time_start: '',
-      time_end: '',
-      matrix_training_id: '',
-      ...defaults,
-    });
-  };
-
-  const openAdd = () => {
-    setEditing(null);
-    resetForm();
-    setCertificateFile(null);
-    setCertificateDocTitle('');
-    setModalOpen(true);
-  };
-
-  const openAddForMatrix = (slot: { id: string; label: string }) => {
-    setEditing(null);
-    resetForm({ title: slot.label, matrix_training_id: slot.id });
-    setCertificateFile(null);
-    setCertificateDocTitle('');
-    setModalOpen(true);
-  };
-
-  const openView = (r: any) => {
-    setViewingRecord(r);
-  };
-
-  const closeView = () => {
-    setViewingRecord(null);
-  };
-
-  const openEdit = (r: any) => {
-    setEditing(r);
-    const st = r.session_time != null ? String(r.session_time) : '';
-    const parsed = _parseSessionTimeToHHmm(st);
-    const endD = r.end_date ? String(r.end_date).slice(0, 10) : '';
-    const compD = r.completion_date ? String(r.completion_date).slice(0, 10) : '';
-    const useDifferentComp = compD !== '' && compD !== endD;
-    setDifferentCompletionDate(useDifferentComp);
-    setForm({
-      title: r.title || '',
-      provider: r.provider || '',
-      category: r.category || '',
-      delivery_format: r.delivery_format || '',
-      start_date: r.start_date ? String(r.start_date).slice(0, 10) : '',
-      end_date: endD,
-      completion_date: compD,
-      status: r.status || 'completed',
-      certificate_number: r.certificate_number || '',
-      expiry_date: r.expiry_date ? String(r.expiry_date).slice(0, 10) : '',
-      notes: r.notes || '',
-      crew: r.crew != null ? String(r.crew) : '',
-      location: r.location != null ? String(r.location) : '',
-      session_time: st,
-      time_start: parsed.time_start,
-      time_end: parsed.time_end,
-      matrix_training_id: r.matrix_training_id != null ? String(r.matrix_training_id) : '',
-    });
-    setCertificateFile(null);
-    setCertificateDocTitle('');
-    setIncludeWeekends(false);
-    setModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setModalOpen(false);
-    setEditing(null);
-    setCertificateFile(null);
-    setCertificateDocTitle('');
-    setIncludeWeekends(false);
-    setDifferentCompletionDate(false);
-  };
-
-  /** Matrix slots without a linked HR record yet — shortcuts only; filled slots live in Training & courses above. */
-  const matrixShortcutItems = useMemo(
-    () => (matrixSnap?.items || []).filter((row) => !row.record),
-    [matrixSnap?.items],
-  );
-
-  const trainingDurationHint = useMemo(() => {
-    const startD = form.start_date.trim();
-    const endD = form.end_date.trim() || startD;
-    const ts = form.time_start.trim();
-    const te = form.time_end.trim();
-    if (!startD || !ts || !te) return null;
-    const perDay = _dailyHoursFromTimes(ts, te);
-    if (perDay == null) return null;
-    const days = _workdaysInclusive(startD, endD, includeWeekends);
-    if (days <= 0) return null;
-    return { days, perDay };
-  }, [form.start_date, form.end_date, form.time_start, form.time_end, includeWeekends]);
-
-  const computedDurationHours = useMemo(() => {
-    if (!trainingDurationHint) return null;
-    return Math.round(trainingDurationHint.perDay * trainingDurationHint.days * 100) / 100;
-  }, [trainingDurationHint]);
-
-  const effectiveCompletionDate = (): string => {
-    if (differentCompletionDate) return form.completion_date.trim();
-    return form.end_date.trim() || form.start_date.trim();
-  };
-
-  const buildPayload = () => {
-    const needsCompletion = form.status === 'completed' || form.status === 'expired';
-    const cdTrim = effectiveCompletionDate();
-    const duration_hours =
-      computedDurationHours != null
-        ? computedDurationHours
-        : editing?.duration_hours != null && !Number.isNaN(Number(editing.duration_hours))
-          ? Number(editing.duration_hours)
-          : undefined;
-    const ts = form.time_start.trim();
-    const te = form.time_end.trim();
-    const session_time =
-      ts && te ? `${ts}–${te}` : form.session_time.trim() || undefined;
-    return {
-      title: form.title.trim(),
-      provider: form.provider.trim() || undefined,
-      category: form.category.trim() || undefined,
-      delivery_format: form.delivery_format.trim() || undefined,
-      start_date: form.start_date || undefined,
-      end_date: form.end_date || undefined,
-      completion_date: (needsCompletion ? cdTrim : cdTrim || null) as string | null,
-      duration_hours,
-      status: form.status || 'completed',
-      certificate_number: form.certificate_number.trim() || undefined,
-      expiry_date: form.expiry_date || undefined,
-      notes: form.notes.trim() || undefined,
-      crew: form.crew.trim() || undefined,
-      location: form.location.trim() || undefined,
-      session_time,
-      matrix_training_id: form.matrix_training_id.trim() ? form.matrix_training_id.trim() : null,
-    };
-  };
-
-  const submitTrainingRecord = async () => {
-    if (!form.title.trim()) {
-      toast.error('Title is required');
-      return;
-    }
-    const needsCompletion = form.status === 'completed' || form.status === 'expired';
-    if (needsCompletion && !effectiveCompletionDate()) {
-      toast.error(
-        differentCompletionDate
-          ? 'Completion date is required when using a different completion date'
-          : 'End date (or start date) is required for completed or expired records',
-      );
-      return;
-    }
-    let payload: Record<string, unknown>;
-    try {
-      payload = buildPayload();
-    } catch (err: any) {
-      toast.error(err?.message || 'Invalid form');
-      return;
-    }
-    setSaving(true);
-    try {
-      if (editing) {
-        await api('PATCH', `${trainingRecordsBase}/${encodeURIComponent(editing.id)}`, payload);
-      } else {
-        await api('POST', trainingRecordsBase, payload);
-      }
-      if (certificateFile && canEdit) {
-        try {
-          if (isWorker) {
-            await uploadTrainingCertificateToWorkerFiles(subjectId, certificateFile, {
-              docTitle: certificateDocTitle,
-              trainingTitle: form.title.trim(),
-            });
-            toast.success(
-              editing
-                ? 'Record updated; certificate saved to worker Documents.'
-                : 'Record added; certificate saved to worker Documents.',
-            );
-          } else {
-            await uploadTrainingCertificateToDocs(subjectId, certificateFile, {
-              docTitle: certificateDocTitle,
-              issuedDate: effectiveCompletionDate(),
-              expiryDate: form.expiry_date,
-              trainingTitle: form.title.trim(),
-            });
-            toast.success(
-              editing ? 'Record updated; certificate saved to Docs.' : 'Record added; certificate saved to Docs.',
-            );
-          }
-        } catch (upErr: any) {
-          console.error(upErr);
-          toast.error(
-            editing
-              ? 'Record updated, but certificate upload failed. Try again from the Docs tab.'
-              : 'Record added, but certificate upload failed. Try again from the Docs tab.',
-          );
-        }
-      } else {
-        toast.success(editing ? 'Record updated' : 'Record added');
-      }
-      if (!isWorker) {
-        queryClient.invalidateQueries({ queryKey: ['user-docs', subjectId] });
-        queryClient.invalidateQueries({ queryKey: ['user-folders', subjectId] });
-      } else {
-        queryClient.invalidateQueries({ queryKey: ['subcontractor-worker-files', subjectId] });
-      }
-      queryClient.invalidateQueries({ queryKey: ['user-training-matrix', trainingQueryScope, subjectId] });
-      closeModal();
-      refetch();
-    } catch (err: any) {
-      toast.error(err?.message || 'Save failed');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (r: any) => {
-    const res = await confirm({
-      title: 'Delete training record?',
-      message: 'This cannot be undone.',
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
-    });
-    if (res !== 'confirm') return;
-    try {
-      await api('DELETE', `${trainingRecordsBase}/${encodeURIComponent(r.id)}`);
-      toast.success('Deleted');
-      queryClient.invalidateQueries({ queryKey: ['user-training-matrix', trainingQueryScope, subjectId] });
-      refetch();
-    } catch (err: any) {
-      toast.error(err?.message || 'Delete failed');
-    }
-  };
-
-  const fmtDate = (s: string | null | undefined) => {
-    if (!s) return '—';
-    return String(s).slice(0, 10);
-  };
-
-  const formatLabel = (v: string) => {
-    if (v === 'in_person') return 'In person';
-    if (v === 'online') return 'Online';
-    if (v === 'hybrid') return 'Hybrid';
-    return v || '—';
-  };
-
-  const trainingTitle = isWorker ? 'Training' : 'Training & courses';
-  const trainingDescription = isWorker
-    ? 'Training matrix records required for site access.'
-    : 'HR training history, including optional sync from completed internal LMS courses. Use Start date for scheduled or in-progress rows so they show on the team training calendar.';
-
-  const matrixSelectOptions = useMemo(
-    () => (matrixCatalog?.items ?? []).map((opt) => ({ value: opt.id, label: opt.label })),
-    [matrixCatalog?.items],
-  );
-
-  const categorySelectOptions = useMemo(
-    () => TRAINING_CATEGORIES.filter(Boolean).map((c) => ({ value: c, label: c })),
-    [],
-  );
-
-  const formatSelectOptions = useMemo(
-    () =>
-      TRAINING_FORMATS.filter(Boolean).map((c) => ({
-        value: c,
-        label: formatLabel(c),
-      })),
-    [],
-  );
-
-  const statusSelectOptions = useMemo(
-    () =>
-      TRAINING_STATUSES.map((s) => ({
-        value: s,
-        label: s.replace('_', ' '),
-      })),
-    [],
-  );
-
-  const needsCompletionDate = form.status === 'completed' || form.status === 'expired';
-  const endDateLabel =
-    needsCompletionDate && !differentCompletionDate ? 'End date *' : 'End date';
-
-  const trainingListPreset = canEdit ? 'workerTraining' : 'workerTrainingReadOnly';
-
-  type TrainingSortColumn =
-    | 'type'
-    | 'title'
-    | 'provider'
-    | 'category'
-    | 'crew'
-    | 'start'
-    | 'completed'
-    | 'hours'
-    | 'status'
-    | 'expires';
-  const { sortBy, sortDir, setSort } = useLocalAppListSort<TrainingSortColumn>('title', 'asc');
-
-  const sortedTrainingRows = useMemo(
-    () =>
-      sortListByAppColumn(rows as any[], sortBy, sortDir, {
-        type: (r) => r.item_type_label || '',
-        title: (r) => r.title || '',
-        provider: (r) => r.provider || '',
-        category: (r) => r.category || '',
-        crew: (r) => r.crew || '',
-        start: (r) => r.start_date || '',
-        completed: (r) => r.completion_date || '',
-        hours: (r) => r.duration_hours ?? null,
-        status: (r) => r.status || '',
-        expires: (r) => r.expiry_date || '',
-      }),
-    [rows, sortBy, sortDir],
-  );
-
-  const certificateUploadHint = isWorker
-    ? "Certificate file\n\nOptional. Saves to this worker's Documents tab under Training certificates when you save."
-    : `Certificate file\n\nOptional. Saves to Docs → ${TRAINING_CERTIFICATES_FOLDER_NAME} (folder is created automatically if missing).`;
-
-  return (
-    <AppCard>
-      <AppSectionHeader
-        title={trainingTitle}
-        description={trainingDescription}
-        {...appSectionPresetProps('education')}
-      />
-
-      <div className="mt-4 space-y-4">
-        {isLoading ? (
-          <div className="h-28 animate-pulse rounded-lg bg-slate-100" />
-        ) : (
-          <div className="flex flex-col gap-2 overflow-x-auto rounded-lg border border-gray-200 bg-white p-4">
-            {(rows as any[]).length > 0 ? (
-              <p className={uiCx(uiTypography.helper, 'mb-1')}>
-                Click a row to view full details.
-              </p>
-            ) : null}
-            {canEdit && (
-              <AppListCreateItem
-                label="Add record"
-                layout="row"
-                className={uiCx('w-full', resolveAppSortableListPreset(trainingListPreset).minWidth)}
-                onClick={openAdd}
-              />
-            )}
-            {!(rows as any[]).length ? (
-              <AppEmptyState
-                title="No training records yet"
-                description={
-                  canEdit
-                    ? 'Add courses, certifications, or renewals using “Add record” above.'
-                    : undefined
-                }
-                className="border-0 bg-transparent p-0 py-6 shadow-none"
-              />
-            ) : (
-              <AppSortableEntityList layout="flat">
-                <AppSortableEntityListHeader preset={trainingListPreset} variant="flat">
-                  <AppSortableEntityListSortColumn
-                    label="Type"
-                    column="type"
-                    sortBy={sortBy}
-                    sortDir={sortDir}
-                    onSort={setSort}
-                  />
-                  <AppSortableEntityListSortColumn
-                    label="Title"
-                    column="title"
-                    sortBy={sortBy}
-                    sortDir={sortDir}
-                    onSort={setSort}
-                  />
-                  <AppSortableEntityListSortColumn
-                    label="Provider"
-                    column="provider"
-                    sortBy={sortBy}
-                    sortDir={sortDir}
-                    onSort={setSort}
-                  />
-                  <AppSortableEntityListSortColumn
-                    label="Category"
-                    column="category"
-                    sortBy={sortBy}
-                    sortDir={sortDir}
-                    onSort={setSort}
-                  />
-                  <AppSortableEntityListSortColumn
-                    label="Crew"
-                    column="crew"
-                    sortBy={sortBy}
-                    sortDir={sortDir}
-                    onSort={setSort}
-                  />
-                  <AppSortableEntityListSortColumn
-                    label="Start"
-                    column="start"
-                    sortBy={sortBy}
-                    sortDir={sortDir}
-                    onSort={setSort}
-                  />
-                  <AppSortableEntityListSortColumn
-                    label="Completed"
-                    column="completed"
-                    sortBy={sortBy}
-                    sortDir={sortDir}
-                    onSort={setSort}
-                  />
-                  <AppSortableEntityListSortColumn
-                    label="Hrs"
-                    column="hours"
-                    sortBy={sortBy}
-                    sortDir={sortDir}
-                    onSort={setSort}
-                  />
-                  <AppSortableEntityListSortColumn
-                    label="Status"
-                    column="status"
-                    sortBy={sortBy}
-                    sortDir={sortDir}
-                    onSort={setSort}
-                  />
-                  <AppSortableEntityListSortColumn
-                    label="Expires"
-                    column="expires"
-                    sortBy={sortBy}
-                    sortDir={sortDir}
-                    onSort={setSort}
-                  />
-                  {canEdit ? <div className="min-w-0 w-24" aria-hidden /> : null}
-                </AppSortableEntityListHeader>
-                <AppSortableEntityListFlatBody preset={trainingListPreset}>
-                  {sortedTrainingRows.map((r) => (
-                    <AppSortableEntityListRow
-                      key={r.id}
-                      as="div"
-                      variant="flat"
-                      preset={trainingListPreset}
-                      className="group cursor-pointer"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => openView(r)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          openView(r);
-                        }
-                      }}
-                    >
-                      <span
-                        className={uiCx(uiTypography.helper, 'min-w-0 truncate text-slate-600')}
-                        title={r.item_type_label || ''}
-                      >
-                        {r.item_type_label || '—'}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate text-sm font-bold text-gray-900 transition-colors group-hover:text-[#7f1010]">
-                            {r.title}
-                          </span>
-                          {r.training_source === 'lms' && (
-                            <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
-                              Internal LMS
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-700')}>
-                        {r.provider || '—'}
-                      </span>
-                      <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-700')}>
-                        {r.category || '—'}
-                      </span>
-                      <span
-                        className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-700')}
-                        title={r.crew || ''}
-                      >
-                        {r.crew || '—'}
-                      </span>
-                      <span className={uiCx(uiTypography.helper, 'min-w-0 whitespace-nowrap text-gray-700')}>
-                        {fmtDate(r.start_date)}
-                      </span>
-                      <span className={uiCx(uiTypography.helper, 'min-w-0 whitespace-nowrap text-gray-700')}>
-                        {fmtDate(r.completion_date)}
-                      </span>
-                      <span className={uiCx(uiTypography.helper, 'min-w-0 text-gray-700')}>
-                        {r.duration_hours != null ? r.duration_hours : '—'}
-                      </span>
-                      <div className="min-w-0">{trainingStatusPill(r.status)}</div>
-                      <span className={uiCx(uiTypography.helper, 'min-w-0 whitespace-nowrap text-gray-700')}>
-                        {fmtDate(r.expiry_date)}
-                      </span>
-                      {canEdit ? (
-                        <div
-                          className="flex w-24 shrink-0 items-center justify-end gap-1.5"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <AppListRowIconButton
-                            preset="edit"
-                            label="Edit training record"
-                            onClick={() => openEdit(r)}
-                          />
-                          <AppListRowIconButton
-                            preset="delete"
-                            label="Delete training record"
-                            onClick={() => void handleDelete(r)}
-                          />
-                        </div>
-                      ) : null}
-                    </AppSortableEntityListRow>
-                  ))}
-                </AppSortableEntityListFlatBody>
-              </AppSortableEntityList>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-6 border-t border-gray-200 pt-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100">
-              <svg className="h-4 w-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <h5 className="text-sm font-semibold text-emerald-950">Standard training matrix</h5>
-              <p className="mt-0.5 text-xs text-gray-500">
-                Shortcuts to add a linked record for a checklist slot. After you save, it appears in{' '}
-                <span className="font-medium text-gray-700">{trainingTitle}</span> above and leaves this list.
-              </p>
-            </div>
-          </div>
-        </div>
-        {matrixLoading ? (
-          <div className="h-24 animate-pulse rounded-lg bg-slate-100" />
-        ) : matrixShortcutItems.length === 0 ? (
-          <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-4 py-3 text-sm text-emerald-900">
-            All standard matrix slots are covered in <span className="font-semibold">{trainingTitle}</span> above.
-          </div>
-        ) : canEdit ? (
-          <div className="flex flex-wrap gap-2">
-            {matrixShortcutItems.map((row) => (
-              <button
-                key={row.id}
-                type="button"
-                onClick={() => openAddForMatrix({ id: row.id, label: row.label })}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs font-semibold text-gray-800 shadow-sm transition-colors hover:border-brand-red hover:text-brand-red"
-              >
-                <span className="text-brand-red">+</span>
-                <span>{row.label}</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="rounded-lg border border-dashed border-gray-200 bg-slate-50/60 px-4 py-3 text-xs text-gray-600">
-            Not yet linked in {trainingTitle}:{' '}
-            <span className="font-medium text-gray-800">{matrixShortcutItems.map((r) => r.label).join(', ')}</span>
-          </p>
-        )}
-      </div>
-
-      {viewingRecord ? (
-        <AppFormModal
-          open
-          onClose={closeView}
-          layout="detail"
-          size="md"
-          title="Training record details"
-          description={viewingRecord.title || 'Training record'}
-          bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}
-          footer={
-            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-              <AppButton type="button" variant="secondary" size="sm" onClick={closeView}>
-                Close
-              </AppButton>
-              {canEdit ? (
-                <AppButton
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    const r = viewingRecord;
-                    closeView();
-                    openEdit(r);
-                  }}
-                >
-                  Edit
-                </AppButton>
-              ) : null}
-            </div>
-          }
-        >
-          <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
-            <dl className="min-w-0">
-              <TrainingDetailField label="Type">{viewingRecord.item_type_label || '—'}</TrainingDetailField>
-              <TrainingDetailField label="Title">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span>{viewingRecord.title || '—'}</span>
-                  {viewingRecord.training_source === 'lms' ? (
-                    <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
-                      Internal LMS
-                    </span>
-                  ) : null}
-                </div>
-              </TrainingDetailField>
-              <TrainingDetailField label="Status">{trainingStatusPill(viewingRecord.status)}</TrainingDetailField>
-              <TrainingDetailField label="Provider">{viewingRecord.provider || '—'}</TrainingDetailField>
-              <TrainingDetailField label="Category">{viewingRecord.category || '—'}</TrainingDetailField>
-              <TrainingDetailField label="Format">
-                {viewingRecord.delivery_format ? formatLabel(viewingRecord.delivery_format) : '—'}
-              </TrainingDetailField>
-              <TrainingDetailField label="Crew">{viewingRecord.crew || '—'}</TrainingDetailField>
-              <TrainingDetailField label="Location">{viewingRecord.location || '—'}</TrainingDetailField>
-              <TrainingDetailField label="Start date">
-                {viewingRecord.start_date ? String(viewingRecord.start_date).slice(0, 10) : '—'}
-              </TrainingDetailField>
-              <TrainingDetailField label="End date">
-                {viewingRecord.end_date ? String(viewingRecord.end_date).slice(0, 10) : '—'}
-              </TrainingDetailField>
-              <TrainingDetailField label="Completed">
-                {viewingRecord.completion_date ? String(viewingRecord.completion_date).slice(0, 10) : '—'}
-              </TrainingDetailField>
-              <TrainingDetailField label="Session time">{viewingRecord.session_time || '—'}</TrainingDetailField>
-              <TrainingDetailField label="Duration (hours)">
-                {viewingRecord.duration_hours != null ? viewingRecord.duration_hours : '—'}
-              </TrainingDetailField>
-              <TrainingDetailField label="Certificate / reference #">
-                {viewingRecord.certificate_number || '—'}
-              </TrainingDetailField>
-              <TrainingDetailField label="Expires">
-                {viewingRecord.expiry_date ? String(viewingRecord.expiry_date).slice(0, 10) : '—'}
-              </TrainingDetailField>
-              <TrainingDetailField label="Matrix slot">
-                {viewingRecord.matrix_training_id
-                  ? matrixCatalog?.items?.find((x) => x.id === String(viewingRecord.matrix_training_id))?.label ||
-                    viewingRecord.matrix_training_id
-                  : '—'}
-              </TrainingDetailField>
-              <TrainingDetailField label="Notes">
-                {viewingRecord.notes ? (
-                  <span className="whitespace-pre-wrap font-normal text-gray-700">{viewingRecord.notes}</span>
-                ) : (
-                  '—'
-                )}
-              </TrainingDetailField>
-            </dl>
-          </AppCard>
-        </AppFormModal>
-      ) : null}
-
-      <AppFormModal
-        open={modalOpen}
-        onClose={closeModal}
-        title={editing ? 'Edit training record' : 'Add training record'}
-        description="For completed or expired, the end date counts as completion unless you choose a different completion date."
-        formWidth="wide"
-        quickInfo={employeeTrainingRecordQuickInfo({
-          isWorker,
-          editing: !!editing,
-          hasCertificateFile: !!certificateFile,
-        })}
-        dialogClassName={FORM_MODAL_WIDE_DIALOG_COLLAPSED}
-        dialogClassNameExpanded={FORM_MODAL_WIDE_DIALOG_EXPANDED}
-        footer={
-          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={closeModal} disabled={saving}>
-              Cancel
-            </AppButton>
-            <AppButton
-              type="button"
-              size="sm"
-              loading={saving}
-              disabled={saving}
-              onClick={() => void submitTrainingRecord()}
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </AppButton>
-          </div>
-        }
-      >
-        <AppInput
-          label="Title *"
-          value={form.title}
-          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-          required
-          fieldHint="Title\n\nCourse, certification, or matrix training name shown in the list."
-        />
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-start">
-          <AppSelect
-            label="Matrix slot (optional)"
-            value={form.matrix_training_id}
-            options={matrixSelectOptions}
-            placeholder="Select matrix slot…"
-            onChange={(e) => {
-              const v = e.target.value;
-              const slotLabel =
-                matrixCatalog?.items?.find((x) => x.id === v)?.label?.trim() || '';
-              setForm((f) => ({
-                ...f,
-                matrix_training_id: v,
-                ...(!editing && slotLabel ? { title: slotLabel } : {}),
-              }));
-            }}
-            fieldHint="Matrix slot\n\nLinks this record to a standard training matrix item."
-          />
-          <AppSelect
-            label="Status"
-            value={form.status}
-            options={statusSelectOptions}
-            onChange={(e) => {
-              const ns = e.target.value;
-              setForm((f) => {
-                let cd = f.completion_date;
-                if (
-                  (ns === 'completed' || ns === 'expired') &&
-                  differentCompletionDate &&
-                  !cd.trim()
-                ) {
-                  cd =
-                    f.end_date.trim() ||
-                    f.start_date.trim() ||
-                    new Date().toISOString().slice(0, 10);
-                }
-                return { ...f, status: ns, completion_date: cd };
-              });
-            }}
-            fieldHint="Status\n\nCompleted or expired require an end date (or separate completion date)."
-          />
-        </div>
-        <AppInput
-          label="Provider"
-          value={form.provider}
-          onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
-          placeholder="Organization or trainer"
-        />
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-start">
-          <AppSelect
-            label="Category"
-            value={form.category}
-            options={categorySelectOptions}
-            placeholder="Select category…"
-            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-          />
-          <AppSelect
-            label="Format"
-            value={form.delivery_format}
-            options={formatSelectOptions}
-            placeholder="Select format…"
-            onChange={(e) => setForm((f) => ({ ...f, delivery_format: e.target.value }))}
-          />
-          <AppInput
-            label="Crew"
-            value={form.crew}
-            onChange={(e) => setForm((f) => ({ ...f, crew: e.target.value }))}
-            placeholder="e.g. Repairs, Metal, Office"
-          />
-          <AppInput
-            label="Location"
-            value={form.location}
-            onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-            placeholder="Address or room"
-          />
-          <AppDatePicker
-            label="Start date"
-            value={form.start_date}
-            onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
-          />
-          <AppDatePicker
-            label={endDateLabel}
-            value={form.end_date}
-            onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))}
-            helperText={
-              !differentCompletionDate && needsCompletionDate
-                ? 'Also used as completion date.'
-                : undefined
-            }
-          />
-          <AppTimePicker
-            label="Start time"
-            value={form.time_start}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, time_start: e.target.value, session_time: '' }))
-            }
-            fieldHint="Start time\n\nDaily session start; used with end time to calculate duration."
-          />
-          <AppTimePicker
-            label="End time"
-            value={form.time_end}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, time_end: e.target.value, session_time: '' }))
-            }
-            fieldHint="End time\n\nDaily session end; must be after start time for duration."
-          />
-          <AppInput
-            label="Certificate / reference #"
-            value={form.certificate_number}
-            onChange={(e) => setForm((f) => ({ ...f, certificate_number: e.target.value }))}
-          />
-          <AppDatePicker
-            label="Expiry / renewal date"
-            value={form.expiry_date}
-            onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))}
-          />
-        </div>
-        <div className={uiSpacing.sectionStack}>
-          <AppCheckbox
-            label="Use different completion date"
-            checked={differentCompletionDate}
-            onChange={(on) => {
-              setDifferentCompletionDate(on);
-              if (on) {
-                setForm((f) => ({
-                  ...f,
-                  completion_date:
-                    f.completion_date.trim() ||
-                    f.end_date.trim() ||
-                    f.start_date.trim() ||
-                    new Date().toISOString().slice(0, 10),
-                }));
-              }
-            }}
-          />
-          {differentCompletionDate ? (
-            <AppDatePicker
-              label={needsCompletionDate ? 'Completion date *' : 'Completion date'}
-              value={form.completion_date}
-              onChange={(e) => setForm((f) => ({ ...f, completion_date: e.target.value }))}
-              className="max-w-xs"
-            />
-          ) : null}
-          <AppCheckbox
-            label="Include weekends"
-            checked={includeWeekends}
-            onChange={setIncludeWeekends}
-          />
-        </div>
-        <div className={uiSpacing.sectionStack}>
-          <AppControlLabelRow
-            label="Duration (hours)"
-            fieldHint={
-              <AppFieldHint hint="Duration\n\nCalculated from dates and daily start/end times." />
-            }
-          />
-          {computedDurationHours != null && trainingDurationHint ? (
-            <p
-              className={uiCx(
-                uiRadius.control,
-                uiBorders.subtle,
-                'bg-gray-50/80 px-3 py-2',
-                uiTypography.body,
-              )}
-            >
-              <span className="font-semibold tabular-nums">{computedDurationHours}</span>
-              <span className="text-gray-600">
-                {' '}
-                ({trainingDurationHint.days} day(s) × {trainingDurationHint.perDay.toFixed(2)} h/day)
-              </span>
-            </p>
-          ) : (
-            <p
-              className={uiCx(
-                uiRadius.control,
-                'border border-dashed border-gray-200 bg-gray-50/50 px-3 py-2',
-                uiTypography.helper,
-              )}
-            >
-              Set start and end dates plus daily start and end times to calculate hours
-              {includeWeekends ? ' (all days)' : ' (weekdays only unless weekends are included)'}.
-              {editing?.duration_hours != null
-                ? ` Saved value: ${editing.duration_hours} h (unchanged until recalculated).`
-                : ''}
-            </p>
-          )}
-        </div>
-        {canEdit ? (
-          <div
-            className={uiCx(
-              uiSpacing.sectionStack,
-              uiRadius.card,
-              uiBorders.subtle,
-              uiSpacing.compactCardPadding,
-              'bg-gray-50/40',
-            )}
-          >
-            <AppFileUpload
-              mode="single"
-              value={certificateFile}
-              onChange={setCertificateFile}
-              label="Certificate file (optional)"
-              fieldHint={certificateUploadHint}
-              helperText="PDF, image, or other — one file per save."
-            />
-            <AppInput
-              label={isWorker ? 'Document title (optional)' : 'Document title in Docs (optional)'}
-              value={certificateDocTitle}
-              onChange={(e) => setCertificateDocTitle(e.target.value)}
-              placeholder={
-                form.title.trim()
-                  ? `Default: “${form.title.trim()} — file name”`
-                  : 'Default: training title — file name'
-              }
-            />
-          </div>
-        ) : null}
-        <AppTextarea
-          label="Notes"
-          value={form.notes}
-          onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-          rows={5}
-          fieldHint="Notes\n\nInternal comments or renewal reminders."
-        />
-      </AppFormModal>
-    </AppCard>
-  );
-}
-
 function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId: string; canEdit: boolean; showFieldHints?: boolean }) {
   const { data, refetch } = useQuery({ 
     queryKey:['emergency-contacts', userId], 
@@ -9369,201 +8240,203 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
     try {
       await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`);
       toast.success('Emergency contact deleted');
+      setEditId(null);
       refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to delete contact');
     }
   };
-  
-  const handleSetPrimary = async (contactId: string) => {
-    try {
-      await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`, {
-        is_primary: true
-      });
-      toast.success('Primary contact updated');
-      refetch();
-    } catch (error: any) {
-      toast.error(error?.message || 'Failed to update contact');
-    }
+
+  const resetCreateForm = () => {
+    setName('');
+    setRelationship('');
+    setMobilePhone('');
+    setHomePhone('');
+    setWorkPhone('');
+    setEmail('');
+    setAddress('');
+    setIsPrimary(false);
   };
-  
-  return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div></div>
-        {canEdit && (
-          <button 
-            onClick={() => setCreateOpen(true)} 
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold"
-          >
-            New Contact
-          </button>
-        )}
+
+  const openEdit = (c: any) => {
+    if (!canEdit) return;
+    beginEdit(c);
+  };
+
+  const renderContactFormFields = (mode: 'create' | 'edit') => {
+    const isCreate = mode === 'create';
+    return (
+      <div className="grid gap-3 md:grid-cols-2">
+        <AppInput
+          className="md:col-span-2"
+          label="Name *"
+          value={isCreate ? name : eName}
+          onChange={(e) => (isCreate ? setName : setEName)(e.target.value)}
+          fieldHint={showFieldHints ? userProfileFieldHint('emergency_name') : undefined}
+        />
+        <AppInput
+          label="Relationship"
+          value={isCreate ? relationship : eRelationship}
+          onChange={(e) => (isCreate ? setRelationship : setERelationship)(e.target.value)}
+          fieldHint={showFieldHints ? userProfileFieldHint('emergency_relationship') : undefined}
+        />
+        <AppCheckbox
+          label="Set as primary contact"
+          checked={isCreate ? isPrimary : eIsPrimary}
+          onChange={isCreate ? setIsPrimary : setEIsPrimary}
+        />
+        <AppInput
+          label="Mobile Phone"
+          value={isCreate ? mobilePhone : eMobilePhone}
+          onChange={(e) => (isCreate ? setMobilePhone : setEMobilePhone)(formatPhone(e.target.value))}
+          fieldHint={showFieldHints ? userProfileFieldHint('emergency_mobile_phone') : undefined}
+        />
+        <AppInput
+          label="Home Phone"
+          value={isCreate ? homePhone : eHomePhone}
+          onChange={(e) => (isCreate ? setHomePhone : setEHomePhone)(formatPhone(e.target.value))}
+          fieldHint={showFieldHints ? userProfileFieldHint('emergency_home_phone') : undefined}
+        />
+        <AppInput
+          label="Work Phone"
+          value={isCreate ? workPhone : eWorkPhone}
+          onChange={(e) => (isCreate ? setWorkPhone : setEWorkPhone)(formatPhone(e.target.value))}
+          fieldHint={showFieldHints ? userProfileFieldHint('emergency_work_phone') : undefined}
+        />
+        <AppInput
+          className="md:col-span-2"
+          label="Email"
+          type="email"
+          value={isCreate ? email : eEmail}
+          onChange={(e) => (isCreate ? setEmail : setEEmail)(e.target.value)}
+          fieldHint={showFieldHints ? userProfileFieldHint('emergency_email') : undefined}
+        />
+        <AppInput
+          className="md:col-span-2"
+          label="Address"
+          value={isCreate ? address : eAddress}
+          onChange={(e) => (isCreate ? setAddress : setEAddress)(e.target.value)}
+          fieldHint={showFieldHints ? userProfileFieldHint('emergency_address') : undefined}
+        />
       </div>
-      <div className="grid md:grid-cols-2 gap-4">
-        {(data||[]).map((c: any) => (
-          <div key={c.id} className="rounded-xl border bg-white overflow-hidden flex">
-            <div className="w-28 bg-gray-100 flex items-center justify-center">
-              <div className="w-20 h-20 rounded bg-gray-200 grid place-items-center text-lg font-bold text-gray-600">
-                {(c.name||'?').slice(0,2).toUpperCase()}
-              </div>
-            </div>
-            <div className="flex-1 p-3 text-sm">
-              {editId === c.id ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold">Edit contact</div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-600">Primary</label>
-                      <input 
-                        type="checkbox" 
-                        checked={eIsPrimary} 
-                        onChange={e => setEIsPrimary(e.target.checked)}
-                        className="rounded"
-                      />
-                    </div>
+    );
+  };
+
+  const contacts = data || [];
+
+  return (
+    <div className="flex flex-col gap-2">
+      {canEdit ? (
+        <AppListCreateItem label="New Contact" layout="row" className="w-full" onClick={() => setCreateOpen(true)} />
+      ) : null}
+
+      {contacts.length ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          {contacts.map((c: any) => {
+            const phoneEntries = [
+              c.mobile_phone ? { label: 'Mobile', value: c.mobile_phone } : null,
+              c.home_phone ? { label: 'Home', value: c.home_phone } : null,
+              c.work_phone ? { label: 'Work', value: c.work_phone } : null,
+            ].filter(Boolean) as { label: string; value: string }[];
+
+            return (
+              <UserInfoRecordCard key={c.id}>
+                <div
+                  role={canEdit ? 'button' : undefined}
+                  tabIndex={canEdit ? 0 : undefined}
+                  onClick={() => openEdit(c)}
+                  onKeyDown={(e) => {
+                    if (canEdit && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault();
+                      openEdit(c);
+                    }
+                  }}
+                  className={uiCx(
+                    'group flex items-center gap-2 text-left sm:gap-3',
+                    canEdit && 'cursor-pointer',
+                  )}
+                >
+                <div
+                  className={uiCx(
+                    'flex h-11 w-11 shrink-0 items-center justify-center text-sm font-semibold text-gray-600',
+                    uiRadius.control,
+                    'bg-gradient-to-br from-gray-100 to-gray-200',
+                  )}
+                >
+                  {(c.name || '?').slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className={uiCx(uiTypography.sectionTitle, 'truncate')}>{c.name || 'â€”'}</span>
+                    {c.is_primary ? <AppBadge variant="neutral">Primary</AppBadge> : null}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Name *</label>
-                      <input 
-                        className="border rounded px-2 py-1 w-full" 
-                        value={eName} 
-                        onChange={e => setEName(e.target.value)} 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Relationship</label>
-                      <input 
-                        className="border rounded px-2 py-1 w-full" 
-                        value={eRelationship} 
-                        onChange={e => setERelationship(e.target.value)} 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Mobile Phone</label>
-                      <input 
-                        className="border rounded px-2 py-1 w-full" 
-                        value={eMobilePhone} 
-                        onChange={e => setEMobilePhone(formatPhone(e.target.value))} 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Home Phone</label>
-                      <input 
-                        className="border rounded px-2 py-1 w-full" 
-                        value={eHomePhone} 
-                        onChange={e => setEHomePhone(formatPhone(e.target.value))} 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Work Phone</label>
-                      <input 
-                        className="border rounded px-2 py-1 w-full" 
-                        value={eWorkPhone} 
-                        onChange={e => setEWorkPhone(formatPhone(e.target.value))} 
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Email</label>
-                      <input 
-                        className="border rounded px-2 py-1 w-full" 
-                        type="email"
-                        value={eEmail} 
-                        onChange={e => setEEmail(e.target.value)} 
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Address</label>
-                      <input 
-                        className="border rounded px-2 py-1 w-full" 
-                        value={eAddress} 
-                        onChange={e => setEAddress(e.target.value)} 
-                      />
-                    </div>
-                  </div>
-                  <div className="text-right space-x-2">
-                    <button onClick={cancelEdit} className="px-2 py-1 rounded bg-gray-100">Cancel</button>
-                    <button onClick={() => handleUpdate(c.id)} className="px-2 py-1 rounded bg-brand-red text-white">Save</button>
+                  {c.relationship ? (
+                    <p className={uiCx(uiTypography.helper, 'truncate')}>{c.relationship}</p>
+                  ) : null}
+                  <div
+                    className={uiCx('mt-1 flex flex-col gap-0.5', uiTypography.helper)}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {c.email ? (
+                      <a
+                        href={`mailto:${c.email}`}
+                        className="inline-flex min-w-0 max-w-full items-center gap-1 truncate text-gray-600 hover:text-brand-red"
+                      >
+                        <Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                        <span className="truncate">{c.email}</span>
+                      </a>
+                    ) : null}
+                    {phoneEntries.map((phone) => (
+                      <a
+                        key={`${c.id}-${phone.label}`}
+                        href={`tel:${phone.value}`}
+                        className="inline-flex min-w-0 max-w-full items-center gap-1 truncate text-gray-600 hover:text-brand-red"
+                      >
+                        <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                        <span className="truncate">
+                          {phoneEntries.length > 1 ? `${phone.label}: ` : ''}
+                          {phone.value}
+                        </span>
+                      </a>
+                    ))}
+                    {c.address ? (
+                      <p className="inline-flex min-w-0 max-w-full items-start gap-1 text-gray-600">
+                        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                        <span className="line-clamp-2">{c.address}</span>
+                      </p>
+                    ) : null}
                   </div>
                 </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold">{c.name}</div>
-                    {canEdit && (
-                      <div className="flex items-center gap-2">
-                        {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}
-                        {!c.is_primary && (
-                          <button 
-                            onClick={() => handleSetPrimary(c.id)} 
-                            className="px-2 py-1 rounded bg-gray-100 text-xs"
-                          >
-                            Set Primary
-                          </button>
-                        )}
-                        <button onClick={() => beginEdit(c)} className="px-2 py-1 rounded bg-gray-100 text-xs">Edit</button>
-                        <button onClick={() => handleDelete(c.id)} className="px-2 py-1 rounded bg-gray-100 text-xs">Delete</button>
-                      </div>
-                    )}
-                  </div>
-                  {c.relationship && (
-                    <div className="text-gray-600 text-xs mt-1">{c.relationship}</div>
-                  )}
-                  <div className="mt-2 space-y-1">
-                    {c.mobile_phone && (
-                      <div>
-                        <div className="text-[11px] uppercase text-gray-500">Mobile</div>
-                        <div className="text-gray-700">{c.mobile_phone}</div>
-                      </div>
-                    )}
-                    {c.home_phone && (
-                      <div>
-                        <div className="text-[11px] uppercase text-gray-500">Home</div>
-                        <div className="text-gray-700">{c.home_phone}</div>
-                      </div>
-                    )}
-                    {c.work_phone && (
-                      <div>
-                        <div className="text-[11px] uppercase text-gray-500">Work</div>
-                        <div className="text-gray-700">{c.work_phone}</div>
-                      </div>
-                    )}
-                    {c.email && (
-                      <div>
-                        <div className="text-[11px] uppercase text-gray-500">Email</div>
-                        <div className="text-gray-700">{c.email}</div>
-                      </div>
-                    )}
-                    {c.address && (
-                      <div>
-                        <div className="text-[11px] uppercase text-gray-500">Address</div>
-                        <div className="text-gray-700">{c.address}</div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        ))}
-        {(!data || !data.length) && (
-          <div className="text-sm text-gray-600 col-span-2 py-8 text-center">
-            No emergency contacts. {canEdit && 'Click "New Contact" to add one.'}
-          </div>
-        )}
-      </div>
-      
+                </div>
+              </UserInfoRecordCard>
+            );
+          })}
+        </div>
+      ) : !canEdit ? (
+        <AppEmptyState title="No emergency contacts" />
+      ) : null}
+
       <AppFormModal
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        onClose={() => {
+          setCreateOpen(false);
+          resetCreateForm();
+        }}
         title="New Emergency Contact"
         description="Add a person to call in an emergency."
         formWidth="comfortable"
         quickInfo={userEmergencyContactsQuickInfo}
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={() => setCreateOpen(false)}>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setCreateOpen(false);
+                resetCreateForm();
+              }}
+            >
               Cancel
             </AppButton>
             <AppButton type="button" size="sm" onClick={handleCreate}>
@@ -9572,61 +8445,49 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
           </div>
         }
       >
-        <div className="grid gap-3 md:grid-cols-2">
-          <AppInput
-            className="md:col-span-2"
-            label="Name *"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            fieldHint={showFieldHints ? userProfileFieldHint('emergency_name') : undefined}
-          />
-          <AppInput
-            label="Relationship"
-            value={relationship}
-            onChange={(e) => setRelationship(e.target.value)}
-            fieldHint={showFieldHints ? userProfileFieldHint('emergency_relationship') : undefined}
-          />
-          <AppCheckbox label="Set as primary contact" checked={isPrimary} onChange={setIsPrimary} />
-          <AppInput
-            label="Mobile Phone"
-            value={mobilePhone}
-            onChange={(e) => setMobilePhone(formatPhone(e.target.value))}
-            fieldHint={showFieldHints ? userProfileFieldHint('emergency_mobile_phone') : undefined}
-          />
-          <AppInput
-            label="Home Phone"
-            value={homePhone}
-            onChange={(e) => setHomePhone(formatPhone(e.target.value))}
-            fieldHint={showFieldHints ? userProfileFieldHint('emergency_home_phone') : undefined}
-          />
-          <AppInput
-            label="Work Phone"
-            value={workPhone}
-            onChange={(e) => setWorkPhone(formatPhone(e.target.value))}
-            fieldHint={showFieldHints ? userProfileFieldHint('emergency_work_phone') : undefined}
-          />
-          <AppInput
-            className="md:col-span-2"
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            fieldHint={showFieldHints ? userProfileFieldHint('emergency_email') : undefined}
-          />
-          <AppInput
-            className="md:col-span-2"
-            label="Address"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            fieldHint={showFieldHints ? userProfileFieldHint('emergency_address') : undefined}
-          />
-        </div>
+        {renderContactFormFields('create')}
+      </AppFormModal>
+
+      <AppFormModal
+        open={editId !== null}
+        onClose={cancelEdit}
+        title="Edit Emergency Contact"
+        description="Update contact details or mark as primary."
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-between')}>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="!text-red-600 hover:!bg-red-50"
+              onClick={() => editId && handleDelete(editId)}
+            >
+              Delete
+            </AppButton>
+            <div className="flex items-center gap-2">
+              <AppButton type="button" variant="secondary" size="sm" onClick={cancelEdit}>
+                Cancel
+              </AppButton>
+              <AppButton type="button" size="sm" onClick={() => editId && handleUpdate(editId)}>
+                Save
+              </AppButton>
+            </div>
+          </div>
+        }
+      >
+        {renderContactFormFields('edit')}
       </AppFormModal>
     </div>
   );
 }
 
-// Work Eligibility Documents Section — driver's licence; visa & immigration hidden for Canadian citizens
+function requiresVisaAndImmigration(workEligibilityStatus: string | null | undefined): boolean {
+  const wes = (workEligibilityStatus || '').trim();
+  return wes !== '' && wes !== 'Canadian Citizen';
+}
+
+// Work Eligibility Documents Section â€” driver's licence; visa & immigration when eligibility requires them
 function WorkEligibilityDocumentsSection({
   userId,
   canEdit,
@@ -9640,22 +8501,36 @@ function WorkEligibilityDocumentsSection({
   onProfileFieldsChange: (kv: Record<string, any>) => void;
   showFieldHints?: boolean;
 }) {
-  const wes = (profile.work_eligibility_status || '').trim();
-  const hideVisaAndImmigration = wes === 'Canadian Citizen';
+  const showVisaAndImmigration = requiresVisaAndImmigration(profile.work_eligibility_status);
+
+  const driversLicense = (
+    <CanadianDriversLicenseSection
+      editable={canEdit}
+      profile={profile}
+      onFieldsChange={onProfileFieldsChange}
+      showFieldHints={showFieldHints}
+    />
+  );
+
+  const visaSection = showVisaAndImmigration ? (
+    <VisaInformationSection userId={userId} canEdit={canEdit} isRequired={false} showFieldHints={showFieldHints} />
+  ) : null;
+
+  if (!canEdit && showVisaAndImmigration) {
+    return (
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <div className="min-w-0">{driversLicense}</div>
+        <div className="min-w-0">{visaSection}</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <CanadianDriversLicenseSection
-        editable={canEdit}
-        profile={profile}
-        onFieldsChange={onProfileFieldsChange}
-        showFieldHints={showFieldHints}
-      />
-      {!hideVisaAndImmigration ? (
-        <>
-          <VisaInformationSection userId={userId} canEdit={canEdit} isRequired={false} showInlineForm={false} />
-          <ImmigrationStatusDocumentSection userId={userId} canEdit={canEdit} isRequired={false} />
-        </>
+    <div className={uiSpacing.sectionStack}>
+      {driversLicense}
+      {visaSection}
+      {canEdit && showVisaAndImmigration ? (
+        <ImmigrationStatusDocumentSection userId={userId} canEdit={canEdit} isRequired={false} />
       ) : null}
     </div>
   );
@@ -9815,9 +8690,119 @@ async function getOrCreatePersonalDocumentsFolder(userId: string): Promise<strin
   }
 }
 
+function immigrationFileIdentity(f: File): string {
+  return `${f.name}\0${f.size}\0${f.lastModified}`;
+}
+
+function ProfileStoredFilePreviewCard({
+  fileId,
+  canEdit,
+  onRemove,
+  disabled,
+}: {
+  fileId: string;
+  canEdit: boolean;
+  onRemove: () => void;
+  disabled?: boolean;
+}) {
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
+  const { data: previewMeta } = useQuery({
+    queryKey: ['stored-file-preview', fileId],
+    queryFn: async () => {
+      const r: any = await api('GET', withFileAccessToken(`/files/${encodeURIComponent(fileId)}/preview`));
+      return {
+        previewUrl: String(r.preview_url || ''),
+        thumbUrl: withFileAccessToken(`/files/${encodeURIComponent(fileId)}/thumbnail?w=400`),
+      };
+    },
+  });
+
+  const openPreview = () => {
+    const url = previewMeta?.previewUrl;
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  return (
+    <>
+      <div className={uiCx(uiRadius.card, uiBorders.subtle, 'overflow-hidden', uiColors.surfaceSubtle, 'max-w-sm')}>
+        {!imgFailed && previewMeta?.thumbUrl ? (
+          <button
+            type="button"
+            className="block w-full"
+            onClick={() => setViewerOpen(true)}
+            disabled={disabled}
+          >
+            <img
+              src={previewMeta.thumbUrl}
+              alt="Immigration status document"
+              className="h-32 w-full cursor-pointer object-cover hover:opacity-90"
+              onError={() => setImgFailed(true)}
+            />
+          </button>
+        ) : (
+          <div className={uiCx('flex h-32 flex-col items-center justify-center gap-2 px-3', uiTypography.helper)}>
+            <Paperclip className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
+            <span className="font-medium text-gray-800">Document on file</span>
+            <AppButton type="button" variant="secondary" size="sm" onClick={openPreview} disabled={disabled || !previewMeta?.previewUrl}>
+              View
+            </AppButton>
+          </div>
+        )}
+        <div className={uiCx('flex items-center justify-between gap-2 border-t border-gray-100 bg-white', uiSpacing.compactCardPadding)}>
+          <span className={uiCx(uiTypography.helper, 'min-w-0 truncate font-medium text-gray-900')}>
+            Immigration status document
+          </span>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              disabled={disabled}
+              className={uiCx(uiTypography.helper, 'shrink-0 font-medium text-brand-red hover:text-brand-red/80 disabled:opacity-50')}
+            >
+              Remove
+            </button>
+          ) : (
+            <AppButton type="button" variant="secondary" size="sm" onClick={openPreview} disabled={!previewMeta?.previewUrl}>
+              View
+            </AppButton>
+          )}
+        </div>
+      </div>
+      {viewerOpen && previewMeta?.thumbUrl && !imgFailed ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setViewerOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image preview"
+        >
+          <img
+            src={previewMeta.thumbUrl}
+            alt="Immigration status document"
+            className="max-h-[90vh] max-w-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setViewerOpen(false)}
+            className={uiCx(
+              'absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center bg-white/90 text-gray-800 shadow-lg',
+              uiRadius.badge,
+            )}
+            aria-label="Close preview"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 // Immigration Status Document Upload Section (optional)
 function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { userId: string; canEdit: boolean; isRequired?: boolean }) {
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [stagingFiles, setStagingFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const queryClient = useQueryClient();
   const { data: permitFile, refetch } = useQuery({
@@ -9826,19 +8811,14 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
   });
   const permitFileId = permitFile?.profile?.permit_file_id;
 
-  const handleUpload = async () => {
-    const f = fileRef.current?.files?.[0];
-    if (!f) return;
-    
-    // Validate file type
+  const uploadFile = async (f: File): Promise<boolean> => {
     const isPDF = f.type === 'application/pdf';
     const isImage = f.type.startsWith('image/');
     if (!isPDF && !isImage) {
       toast.error('Please upload a PDF or image file');
-      return;
+      return false;
     }
 
-    setUploading(true);
     try {
       const up: any = await api('POST', '/files/upload', {
         project_id: null,
@@ -9846,139 +8826,133 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
         employee_id: userId,
         category_id: 'permit',
         original_name: f.name,
-        content_type: f.type || 'application/pdf'
+        content_type: f.type || 'application/pdf',
       });
       const put = await fetch(up.upload_url, {
         method: 'PUT',
         headers: { 'Content-Type': f.type || 'application/pdf', 'x-ms-blob-type': 'BlockBlob' },
-        body: f
+        body: f,
       });
       if (!put.ok) throw new Error('upload failed');
       const conf: any = await api('POST', '/files/confirm', {
         key: up.key,
         size_bytes: f.size,
         checksum_sha256: 'na',
-        content_type: f.type || 'application/pdf'
+        content_type: f.type || 'application/pdf',
       });
-      // Save to profile
       await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, {
-        permit_file_id: conf.id
+        permit_file_id: conf.id,
       });
-      // Also add to Personal Documents folder
       try {
         const personalFolderId = await getOrCreatePersonalDocumentsFolder(userId);
         await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, {
           folder_id: personalFolderId,
           title: `Immigration Status Document - ${f.name}`,
-          file_id: conf.id
+          file_id: conf.id,
         });
       } catch (e: any) {
         console.error('Failed to add document to Personal Documents folder:', e);
-        // Don't fail the whole upload if folder creation fails
       }
       toast.success('Immigration Status Document uploaded successfully');
       await refetch();
       await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
       await queryClient.invalidateQueries({ queryKey: ['user-docs', userId] });
       await queryClient.invalidateQueries({ queryKey: ['user-folders', userId] });
+      await queryClient.invalidateQueries({ queryKey: ['stored-file-preview', conf.id] });
+      return true;
     } catch (e: any) {
       toast.error(e?.message || 'Failed to upload Immigration Status Document');
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
+      return false;
+    }
+  };
+
+  const handleStagingChange = (next: File[]) => {
+    const prevKeys = new Set(stagingFiles.map(immigrationFileIdentity));
+    const added = next.filter((f) => !prevKeys.has(immigrationFileIdentity(f)));
+    setStagingFiles(next);
+    if (!added.length) return;
+
+    void (async () => {
+      setUploading(true);
+      try {
+        for (const f of added) {
+          const ok = await uploadFile(f);
+          if (ok) {
+            setStagingFiles((prev) => prev.filter((x) => immigrationFileIdentity(x) !== immigrationFileIdentity(f)));
+          }
+        }
+      } finally {
+        setUploading(false);
+      }
+    })();
+  };
+
+  const removeFile = async () => {
+    try {
+      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { permit_file_id: null });
+      toast.success('Immigration Status Document removed');
+      await refetch();
+      await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to remove Immigration Status Document');
     }
   };
 
   return (
-    <div className="rounded-xl border bg-white p-4">
-      <div className="mb-4 flex items-center gap-2">
-        <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
-          <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
-          </svg>
-        </div>
-        <h5 className="font-semibold text-amber-900">Immigration Status Document {isRequired && <span className="text-red-600">*</span>}</h5>
+    <div>
+      <div className={uiTypography.controlLabel}>
+        Immigration Status Document
+        {isRequired ? <span className="text-red-600"> *</span> : null}
       </div>
-      {permitFileId ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-            <div className="flex-1">
-              <div className="text-sm font-medium text-gray-900">Immigration Status Document</div>
-              <div className="text-xs text-gray-500">Document uploaded</div>
-            </div>
-            <a
-              href={withFileAccessToken(`/files/${permitFileId}/download`)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-            >
-              View
-            </a>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { permit_file_id: null });
-                    toast.success('Immigration Status Document removed');
-                    await refetch();
-                    await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
-                  } catch (e: any) {
-                    toast.error(e?.message || 'Failed to remove Immigration Status Document');
-                  }
-                }}
-                className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-50"
-              >
-                Remove
-              </button>
-            )}
-          </div>
-          {canEdit && (
-            <div>
-              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
-              >
-                {uploading ? 'Uploading...' : 'Replace Document'}
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div>
-          {canEdit ? (
-            <>
-              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
-              >
-                {uploading ? 'Uploading...' : 'Upload Document'}
-              </button>
-              {isRequired && !permitFileId && (
-                <div className="mt-2 text-sm text-red-600">Immigration Status Document is required</div>
-              )}
-            </>
-          ) : (
-            <div className="text-sm text-gray-600">No permit document uploaded</div>
-          )}
-        </div>
-      )}
+      <div className="mt-3 space-y-3">
+        {permitFileId ? (
+          <ProfileStoredFilePreviewCard
+            fileId={permitFileId}
+            canEdit={canEdit}
+            onRemove={removeFile}
+            disabled={uploading}
+          />
+        ) : !canEdit ? (
+          <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>â€”</div>
+        ) : null}
+        {canEdit ? (
+          <>
+            <AppFileUpload
+              mode="multiple"
+              value={stagingFiles}
+              onChange={handleStagingChange}
+              accept="image/*,.pdf"
+              label={permitFileId ? 'Add or replace documents' : 'Upload documents'}
+              helperText="PDF or images. Select multiple files; each upload updates the primary document."
+              disabled={uploading}
+            />
+            {isRequired && !permitFileId && !stagingFiles.length ? (
+              <p className={uiCx(uiTypography.helper, 'text-red-600')}>Immigration Status Document is required</p>
+            ) : null}
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function VisaInformationSection({ userId, canEdit, isRequired = false, showInlineForm = false }:{ userId:string, canEdit:boolean, isRequired?: boolean, showInlineForm?: boolean }){
-  const { data, refetch } = useQuery({ 
-    queryKey:['employee-visas', userId], 
-    queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/visas`) 
+function VisaInformationSection({
+  userId,
+  canEdit,
+  isRequired = false,
+  showFieldHints,
+}: {
+  userId: string;
+  canEdit: boolean;
+  isRequired?: boolean;
+  showFieldHints?: boolean;
+}) {
+  const confirm = useConfirm();
+  const { data, refetch } = useQuery({
+    queryKey: ['employee-visas', userId],
+    queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/visas`),
   });
-  const [editId, setEditId] = useState<string|null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [visaType, setVisaType] = useState('');
   const [visaNumber, setVisaNumber] = useState('');
@@ -9994,51 +8968,53 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
   const [eExpiryDate, setEExpiryDate] = useState('');
   const [eStatus, setEStatus] = useState('Active');
   const [eNotes, setENotes] = useState('');
-  
-  const getStatusColor = (status: string | null) => {
-    if (!status) return 'bg-gray-100 text-gray-800';
-    const s = status.toLowerCase();
-    if (s.includes('current') || s.includes('active')) return 'bg-green-100 text-green-800';
-    if (s.includes('expired')) return 'bg-red-100 text-red-800';
-    if (s.includes('pending')) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-gray-100 text-gray-800';
-  };
-  
+
+  const visaStatusOptions = [
+    { value: 'CURRENT', label: 'CURRENT' },
+    { value: 'EXPIRED', label: 'EXPIRED' },
+    { value: 'PENDING', label: 'PENDING' },
+    { value: 'Active', label: 'Active' },
+  ];
+
   const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return '—';
+    if (!dateStr) return 'â€”';
     try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+      return new Date(dateStr).toLocaleDateString('en-CA', { dateStyle: 'medium' });
     } catch {
       return dateStr;
     }
   };
-  
+
   const getDateForInput = (dateStr: string | null) => {
     if (!dateStr) return '';
     try {
-      const date = new Date(dateStr);
-      return date.toISOString().split('T')[0];
+      return new Date(dateStr).toISOString().split('T')[0];
     } catch {
       return '';
     }
   };
-  
-  const beginEdit = (v:any)=>{
+
+  const beginEdit = (v: any) => {
     setEditId(v.id);
-    setEVisaType(v.visa_type||'');
-    setEVisaNumber(v.visa_number||'');
-    setEIssuingCountry(v.issuing_country||'');
+    setEVisaType(v.visa_type || '');
+    setEVisaNumber(v.visa_number || '');
+    setEIssuingCountry(v.issuing_country || '');
     setEIssuedDate(getDateForInput(v.issued_date));
     setEExpiryDate(getDateForInput(v.expiry_date));
-    setEStatus(v.status||'Active');
-    setENotes(v.notes||'');
+    setEStatus(v.status || 'Active');
+    setENotes(v.notes || '');
   };
-  
-  const cancelEdit = ()=>{
-    setEditId(null);
+
+  const resetCreateForm = () => {
+    setVisaType('');
+    setVisaNumber('');
+    setIssuingCountry('');
+    setIssuedDate('');
+    setExpiryDate('');
+    setStatus('Active');
+    setNotes('');
   };
-  
+
   const handleCreate = async () => {
     if (!visaType.trim()) {
       toast.error('Visa type is required');
@@ -10051,238 +9027,251 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
         issuing_country: issuingCountry,
         issued_date: issuedDate || null,
         expiry_date: expiryDate || null,
-        status: status,
-        notes: notes
+        status,
+        notes,
       });
       toast.success('Visa entry created');
-      setVisaType('');
-      setVisaNumber('');
-      setIssuingCountry('');
-      setIssuedDate('');
-      setExpiryDate('');
-      setStatus('Active');
-      setNotes('');
+      resetCreateForm();
       setCreateOpen(false);
       await refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to create visa entry');
     }
   };
-  
-  const handleUpdate = async (visaId: string) => {
+
+  const handleUpdate = async () => {
+    if (!editId) return;
     if (!eVisaType.trim()) {
       toast.error('Visa type is required');
       return;
     }
     try {
-      await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/visas/${visaId}`, {
+      await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/visas/${editId}`, {
         visa_type: eVisaType,
         visa_number: eVisaNumber,
         issuing_country: eIssuingCountry,
         issued_date: eIssuedDate || null,
         expiry_date: eExpiryDate || null,
         status: eStatus,
-        notes: eNotes
+        notes: eNotes,
       });
       toast.success('Visa entry updated');
       setEditId(null);
-      refetch();
+      await refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to update visa entry');
     }
   };
-  
+
   const handleDelete = async (visaId: string) => {
-    if (!confirm('Delete this visa entry?')) return;
+    const result = await confirm({
+      title: 'Delete visa entry',
+      message: 'Remove this visa record from the profile?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
     try {
       await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/visas/${visaId}`);
       toast.success('Visa entry deleted');
-      refetch();
+      await refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to delete visa entry');
     }
   };
-  
-  // Determine status based on expiry date
+
   const getEffectiveStatus = (v: any) => {
     if (v.status) return v.status;
     if (v.expiry_date) {
       const expiry = new Date(v.expiry_date);
-      const now = new Date();
-      return expiry < now ? 'EXPIRED' : 'CURRENT';
+      return expiry < new Date() ? 'EXPIRED' : 'CURRENT';
     }
     return 'CURRENT';
   };
-  
-  return (
-    <div className="rounded-xl border bg-white p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
-            </svg>
-          </div>
-          <h5 className="font-semibold text-amber-900">Visa Information {isRequired && <span className="text-red-600">*</span>}</h5>
+
+  const renderStatusBadge = (statusValue: string) => {
+    const s = statusValue.toLowerCase();
+    if (s.includes('current') || s.includes('active')) return <AppBadge variant="success">{statusValue}</AppBadge>;
+    if (s.includes('expired')) return <AppBadge variant="danger">{statusValue}</AppBadge>;
+    if (s.includes('pending')) return <AppBadge variant="warning">{statusValue}</AppBadge>;
+    return <AppBadge variant="neutral">{statusValue}</AppBadge>;
+  };
+
+  const renderVisaFormFields = (mode: 'create' | 'edit') => {
+    const isCreate = mode === 'create';
+    const hint = (key: string) => (showFieldHints ? userProfileFieldHint(key) : undefined);
+    return (
+      <div className={uiSpacing.sectionStack}>
+        <AppInput
+          label="Visa Type *"
+          value={isCreate ? visaType : eVisaType}
+          onChange={(e) => (isCreate ? setVisaType : setEVisaType)(e.target.value)}
+          placeholder="e.g., Work Permit"
+          fieldHint={hint('visa_type')}
+        />
+        <div className="grid gap-4 md:grid-cols-2">
+          <AppInput
+            label="Visa Number"
+            value={isCreate ? visaNumber : eVisaNumber}
+            onChange={(e) => (isCreate ? setVisaNumber : setEVisaNumber)(e.target.value)}
+            fieldHint={hint('visa_number')}
+          />
+          <AppInput
+            label="Issuing Country"
+            value={isCreate ? issuingCountry : eIssuingCountry}
+            onChange={(e) => (isCreate ? setIssuingCountry : setEIssuingCountry)(e.target.value)}
+            fieldHint={hint('visa_issuing_country')}
+          />
+          <AppDatePicker
+            label="Issued Date"
+            value={isCreate ? issuedDate : eIssuedDate}
+            onChange={(e) => (isCreate ? setIssuedDate : setEIssuedDate)(e.target.value)}
+            fieldHint={hint('visa_issued_date')}
+          />
+          <AppDatePicker
+            label="Expiry Date"
+            value={isCreate ? expiryDate : eExpiryDate}
+            onChange={(e) => (isCreate ? setExpiryDate : setEExpiryDate)(e.target.value)}
+            fieldHint={hint('visa_expiry_date')}
+          />
+          <AppSelect
+            label="Status"
+            value={isCreate ? status : eStatus}
+            onChange={(e) => (isCreate ? setStatus : setEStatus)(e.target.value)}
+            options={visaStatusOptions}
+            fieldHint={hint('visa_status')}
+          />
         </div>
-        {canEdit && !showInlineForm && data && data.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800"
-          >
-            Add Entry
-          </button>
+        <AppTextarea
+          label="Notes"
+          value={isCreate ? notes : eNotes}
+          onChange={(e) => (isCreate ? setNotes : setENotes)(e.target.value)}
+          placeholder="e.g., LMIA #9164748, Roofer"
+          rows={3}
+          fieldHint={hint('visa_notes')}
+        />
+      </div>
+    );
+  };
+
+  const rows = data || [];
+
+  const formatVisaPeriod = (issued: string | null, expiry: string | null) => {
+    const from = formatDate(issued);
+    const to = formatDate(expiry);
+    if (from === 'â€”' && to === 'â€”') return 'â€”';
+    if (from !== 'â€”' && to !== 'â€”') return `${from} â€” ${to}`;
+    return to !== 'â€”' ? to : from;
+  };
+
+  const renderVisaFieldValue = (v: any, includeNotes: boolean) => {
+    const country = (v.issuing_country || '').trim();
+    const note = (v.notes || '').trim();
+    return (
+      <div>
+        <div className={uiCx(uiTypography.sectionTitle, 'text-sm')}>{v.visa_type || 'â€”'}</div>
+        {country ? <div className={uiCx(uiTypography.helper, 'mt-0.5')}>{country}</div> : null}
+        {includeNotes && note ? (
+          <div className={uiCx(uiTypography.helper, 'mt-0.5 line-clamp-2 text-gray-600')}>{note}</div>
         ) : null}
       </div>
-      
-      {data && data.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="pb-2 font-medium text-gray-600">Date</th>
-                <th className="pb-2 font-medium text-gray-600">Visa</th>
-                <th className="pb-2 font-medium text-gray-600">Issuing Country</th>
-                <th className="pb-2 font-medium text-gray-600">Issued</th>
-                <th className="pb-2 font-medium text-gray-600">Expiration</th>
-                <th className="pb-2 font-medium text-gray-600">Status</th>
-                <th className="pb-2 font-medium text-gray-600">Note</th>
-                {canEdit && <th className="pb-2 font-medium text-gray-600">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((v: any) => {
-                const effectiveStatus = getEffectiveStatus(v);
-                const isEditing = editId === v.id;
-                return isEditing ? (
-                  <tr key={v.id} className="border-b">
-                    <td colSpan={canEdit ? 8 : 7} className="py-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-xs text-gray-600">Visa Type *</label>
-                          <input 
-                            className="border rounded px-2 py-1 w-full text-sm" 
-                            value={eVisaType} 
-                            onChange={e => setEVisaType(e.target.value)} 
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-600">Visa Number</label>
-                          <input 
-                            className="border rounded px-2 py-1 w-full text-sm" 
-                            value={eVisaNumber} 
-                            onChange={e => setEVisaNumber(e.target.value)} 
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-600">Issuing Country</label>
-                          <input 
-                            className="border rounded px-2 py-1 w-full text-sm" 
-                            value={eIssuingCountry} 
-                            onChange={e => setEIssuingCountry(e.target.value)} 
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-600">Status</label>
-                          <select 
-                            className="border rounded px-2 py-1 w-full text-sm" 
-                            value={eStatus} 
-                            onChange={e => setEStatus(e.target.value)}
-                          >
-                            <option value="CURRENT">CURRENT</option>
-                            <option value="EXPIRED">EXPIRED</option>
-                            <option value="PENDING">PENDING</option>
-                            <option value="Active">Active</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-600">Issued Date</label>
-                          <input 
-                            type="date"
-                            className="border rounded px-2 py-1 w-full text-sm" 
-                            value={eIssuedDate} 
-                            onChange={e => setEIssuedDate(e.target.value)} 
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-600">Expiry Date</label>
-                          <input 
-                            type="date"
-                            className="border rounded px-2 py-1 w-full text-sm" 
-                            value={eExpiryDate} 
-                            onChange={e => setEExpiryDate(e.target.value)} 
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <label className="text-xs text-gray-600">Notes</label>
-                          <input 
-                            className="border rounded px-2 py-1 w-full text-sm" 
-                            value={eNotes} 
-                            onChange={e => setENotes(e.target.value)} 
-                          />
-                        </div>
-                        <div className="col-span-2 text-right space-x-2">
-                          <button onClick={cancelEdit} className="px-2 py-1 rounded bg-gray-100 text-xs">Cancel</button>
-                          <button onClick={() => handleUpdate(v.id)} className="px-2 py-1 rounded bg-brand-red text-white text-xs">Save</button>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={v.id} className="border-b hover:bg-gray-50">
-                    <td className="py-2">{formatDate(v.issued_date)}</td>
-                    <td className="py-2 font-medium">{v.visa_type || '—'}</td>
-                    <td className="py-2">{v.issuing_country || '—'}</td>
-                    <td className="py-2">{formatDate(v.issued_date)}</td>
-                    <td className="py-2">{formatDate(v.expiry_date)}</td>
-                    <td className="py-2">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(effectiveStatus)}`}>
-                        {effectiveStatus}
-                      </span>
-                    </td>
-                    <td className="py-2 text-gray-600">{v.notes || '—'}</td>
-                    {canEdit && (
-                      <td className="py-2">
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => beginEdit(v)} className="px-2 py-1 rounded bg-gray-100 text-xs">Edit</button>
-                          <button onClick={() => handleDelete(v.id)} className="px-2 py-1 rounded bg-gray-100 text-xs text-red-600">Delete</button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="py-8">
-          {canEdit ? (
-            <div className="flex flex-col items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => setCreateOpen(true)}
-                className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800"
-              >
-                Add Entry
-              </button>
-              {isRequired ? <p className="text-sm text-red-600">Visa information is required</p> : null}
+    );
+  };
+
+  const renderVisaRecordCardField = (label: string, value: ReactNode) => (
+    <div className="min-w-0 space-y-1">
+      <div className={uiTypography.controlLabel}>{label}</div>
+      <div className={uiCx(uiTypography.helper, 'break-words font-medium text-gray-900')}>{value}</div>
+    </div>
+  );
+
+  const renderVisaRecordCardFields = (v: any, includeNotes: boolean, actions?: ReactNode) => {
+    const effectiveStatus = getEffectiveStatus(v);
+    const gridCols = actions
+      ? 'grid-cols-[minmax(0,1.6fr)_minmax(0,1.2fr)_minmax(0,0.9fr)_auto]'
+      : 'grid-cols-[minmax(0,1.6fr)_minmax(0,1.2fr)_minmax(0,0.9fr)]';
+
+    return (
+      <div className={uiCx('grid items-stretch gap-x-3', gridCols)}>
+        {renderVisaRecordCardField('Visa', renderVisaFieldValue(v, includeNotes))}
+        {renderVisaRecordCardField('Dates', formatVisaPeriod(v.issued_date, v.expiry_date))}
+        {renderVisaRecordCardField('Status', renderStatusBadge(effectiveStatus))}
+        {actions ? (
+          <div className="flex items-center justify-end gap-1 self-stretch pl-1">{actions}</div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const visaEditCards = (
+    <div className="flex flex-col gap-3">
+      <AppListCreateItem layout="row" label="Add visa entry" onClick={() => setCreateOpen(true)} className="w-full" />
+      {rows.map((v: any) => (
+        <UserInfoRecordCard key={v.id}>
+          {renderVisaRecordCardFields(v, false, (
+            <>
+              <AppListRowIconButton preset="edit" label="Edit record" onClick={() => beginEdit(v)} />
+              <AppListRowIconButton preset="delete" label="Delete record" onClick={() => handleDelete(v.id)} />
+            </>
+          ))}
+        </UserInfoRecordCard>
+      ))}
+    </div>
+  );
+
+  const visaReadOnlyCards = (
+    <div className="flex flex-col gap-3">
+      {rows.map((v: any) => (
+        <UserInfoRecordCard key={v.id}>{renderVisaRecordCardFields(v, true)}</UserInfoRecordCard>
+      ))}
+    </div>
+  );
+
+  return (
+    <div>
+      <div className={uiTypography.controlLabel}>
+        Visa Information
+        {isRequired ? <span className="text-red-600"> *</span> : null}
+      </div>
+
+      <div className="mt-3">
+        {rows.length === 0 ? (
+          canEdit ? (
+            <div className="flex flex-col gap-3">
+              <AppListCreateItem layout="row" label="Add visa entry" onClick={() => setCreateOpen(true)} className="w-full" />
+              {isRequired ? <p className={uiCx(uiTypography.helper, 'text-red-600')}>Visa information is required</p> : null}
             </div>
           ) : (
-            <p className="text-center text-sm text-gray-500">—</p>
-          )}
-        </div>
-      )}
-      
+            <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>â€”</div>
+          )
+        ) : canEdit ? (
+          visaEditCards
+        ) : (
+          visaReadOnlyCards
+        )}
+      </div>
+
       <AppFormModal
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        onClose={() => {
+          setCreateOpen(false);
+          resetCreateForm();
+        }}
         title="Add Visa Entry"
+        description="Work permit, study permit, or other visa details."
         formWidth="comfortable"
+        quickInfo={showFieldHints ? userVisaEntryQuickInfo : undefined}
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={() => setCreateOpen(false)}>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setCreateOpen(false);
+                resetCreateForm();
+              }}
+            >
               Cancel
             </AppButton>
             <AppButton type="button" size="sm" onClick={handleCreate}>
@@ -10291,788 +9280,30 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
           </div>
         }
       >
-        <div className="grid grid-cols-2 gap-3">
-          <AppInput
-            className="col-span-2"
-            label="Visa Type *"
-            value={visaType}
-            onChange={(e) => setVisaType(e.target.value)}
-            placeholder="e.g., Work Permit"
-          />
-          <AppInput label="Visa Number" value={visaNumber} onChange={(e) => setVisaNumber(e.target.value)} />
-          <AppInput
-            label="Issuing Country"
-            value={issuingCountry}
-            onChange={(e) => setIssuingCountry(e.target.value)}
-          />
-          <AppDatePicker label="Issued Date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} />
-          <AppDatePicker label="Expiry Date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
-          <AppSelect
-            label="Status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            options={[
-              { value: 'CURRENT', label: 'CURRENT' },
-              { value: 'EXPIRED', label: 'EXPIRED' },
-              { value: 'PENDING', label: 'PENDING' },
-              { value: 'Active', label: 'Active' },
-            ]}
-          />
-          <AppInput
-            className="col-span-2"
-            label="Notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g., LMIA #9164748, Roofer"
-          />
-        </div>
-      </AppFormModal>
-    </div>
-  );
-}
-
-function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
-  const confirm = useConfirm();
-  const { data:folders, refetch: refetchFolders } = useQuery({ queryKey:['user-folders', userId], queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/folders`) });
-  const [activeFolderId, setActiveFolderId] = useState<string>('all');
-  const { data: allDocsRaw, refetch, isLoading: docsLoading, isError: docsError } = useQuery({
-    queryKey:['user-docs', userId],
-    queryFn: async ()=>{
-      const res = await api<any>('GET', `/auth/users/${encodeURIComponent(userId)}/documents`);
-      return res;
-    },
-  });
-  const allDocs = useMemo(()=> {
-    if (Array.isArray(allDocsRaw)) return allDocsRaw;
-    if (allDocsRaw && typeof allDocsRaw === 'object' && Array.isArray((allDocsRaw as any).data)) return (allDocsRaw as any).data;
-    return [];
-  }, [allDocsRaw]);
-  const [showUpload, setShowUpload] = useState(false);
-  const [fileObj, setFileObj] = useState<File|null>(null);
-  const [title, setTitle] = useState<string>('');
-  const [showNewFolder, setShowNewFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [newFolderParentId, setNewFolderParentId] = useState<string| null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [draggedFileId, setDraggedFileId] = useState<string|null>(null);
-  const [renameFolder, setRenameFolder] = useState<{id:string, name:string}|null>(null);
-  const [moveDoc, setMoveDoc] = useState<{id:string}|null>(null);
-  const [renameDoc, setRenameDoc] = useState<{id:string, title:string}|null>(null);
-  const [fileSearchQuery, setFileSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'uploaded_at'|'name'|'type'>('uploaded_at');
-  const [sortOrder, setSortOrder] = useState<'asc'|'desc'>('desc');
-  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
-  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
-  const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
-  const [uploadTargetFolderId, setUploadTargetFolderId] = useState<string>('');
-  const defaultFoldersCreatedRef = useRef(false);
-
-  useEffect(() => {
-    if (!canEdit || !folders || folders.length > 0 || defaultFoldersCreatedRef.current) return;
-    defaultFoldersCreatedRef.current = true;
-    const names = ['HR Documents', 'Contracts', 'Training', 'Training certificates', 'Other'];
-    (async () => {
-      for (const name of names) {
-        try { await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, { name }); } catch (_) { /* ignore */ }
-      }
-      refetchFolders();
-    })();
-  }, [userId, canEdit, folders, refetchFolders]);
-
-  const closeNewFolderModal = () => {
-    setShowNewFolder(false);
-    setNewFolderName('');
-    setNewFolderParentId(null);
-  };
-
-  useEffect(() => {
-    if (!showNewFolder) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeNewFolderModal(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [showNewFolder]);
-
-  useEffect(() => {
-    if (!showNewFolder) return;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, [showNewFolder]);
-
-  const fileExt = (name?:string)=>{
-    const n = String(name||'').toLowerCase();
-    const m = n.match(/\.([a-z0-9]+)$/); return m? m[1] : '';
-  };
-  const extStyle = (ext:string)=>{
-    const e = ext.toLowerCase();
-    if(e==='pdf') return { bg:'bg-[#e74c3c]', txt:'text-white' };
-    if(['xls','xlsx','csv'].includes(e)) return { bg:'bg-[#27ae60]', txt:'text-white' };
-    if(['doc','docx','odt','rtf'].includes(e)) return { bg:'bg-[#2980b9]', txt:'text-white' };
-    if(['ppt','pptx','key'].includes(e)) return { bg:'bg-[#d35400]', txt:'text-white' };
-    if(['png','jpg','jpeg','webp','gif','bmp','svg','heic','heif'].includes(e)) return { bg:'bg-[#8e44ad]', txt:'text-white' };
-    if(['zip','rar','7z','tar','gz'].includes(e)) return { bg:'bg-[#34495e]', txt:'text-white' };
-    if(['txt','md','json','xml','yaml','yml'].includes(e)) return { bg:'bg-[#16a085]', txt:'text-white' };
-    return { bg:'bg-gray-300', txt:'text-gray-800' };
-  };
-
-  const upload = async()=>{
-    try{
-      if(!fileObj){ toast.error('Select a file'); return; }
-      const name = fileObj.name; const type = fileObj.type || 'application/octet-stream';
-      const up = await api('POST','/files/upload',{ original_name: name, content_type: type, employee_id: userId, project_id: null, client_id: null, category_id: userId });
-      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: fileObj });
-      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: fileObj.size, checksum_sha256: 'na', content_type: type });
-      const payload: any = { title: title || name, file_id: conf.id };
-      if(uploadTargetFolderId) payload.folder_id = uploadTargetFolderId;
-      await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, payload);
-      toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); setUploadTargetFolderId(''); await refetch();
-    }catch(_e){ toast.error('Upload failed'); }
-  };
-
-  const uploadToFolder = async(folderId:string, file: File)=>{
-    try{
-      const name = file.name; const type = file.type || 'application/octet-stream';
-      const up = await api('POST','/files/upload',{ original_name: name, content_type: type, employee_id: userId, project_id: null, client_id: null, category_id: userId });
-      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: file });
-      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256: 'na', content_type: type });
-      await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, { folder_id: folderId, title: name, file_id: conf.id });
-    }catch(_e){ /* noop per-file */ }
-  };
-
-  const del = async(id:string, title?:string)=>{
-    const choice = await confirm({ title:'Delete file', message:`Are you sure you want to delete "${title||'file'}"?` });
-    if (choice !== 'confirm') return;
-    try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(id)}`); await refetch(); }
-    catch(_e){ toast.error('Delete failed'); }
-  };
-  const createFolder = async()=>{
-    try{
-      const name = newFolderName.trim(); if(!name){ toast.error('Folder name required'); return; }
-      const body:any = { name };
-      if(newFolderParentId) body.parent_id = newFolderParentId;
-      await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, body);
-      toast.success('Folder created'); closeNewFolderModal(); await refetchFolders();
-    }catch(_e){ toast.error('Failed to create folder'); }
-  };
-
-  const doRenameFolder = async()=>{
-    try{
-      if(!renameFolder) return; const nm = (renameFolder.name||'').trim(); if(!nm){ toast.error('Folder name required'); return; }
-      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(renameFolder.id)}`, { name: nm });
-      toast.success('Renamed'); setRenameFolder(null); await refetchFolders();
-    }catch(_e){ toast.error('Failed to rename'); }
-  };
-
-  const removeFolder = async(id:string)=>{
-    try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(id)}`); toast.success('Folder deleted'); if(activeFolderId===id) setActiveFolderId('all'); await refetchFolders(); }
-    catch(e:any){ toast.error(e?.detail||'Cannot delete folder'); }
-  };
-
-  const doMoveDoc = async()=>{
-    try{
-      if(!moveDoc) return;
-      const target = (document.getElementById('move-target') as HTMLSelectElement)?.value || '';
-      if(!target){ toast.error('Select destination folder'); return; }
-      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(moveDoc.id)}`, { folder_id: target });
-      setMoveDoc(null); await refetch();
-    }catch(_e){ toast.error('Failed to move'); }
-  };
-
-  const doRenameDoc = async()=>{
-    try{
-      if(!renameDoc) return; const t = (renameDoc.title||'').trim(); if(!t){ toast.error('Title required'); return; }
-      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(renameDoc.id)}`, { title: t });
-      toast.success('Renamed'); setRenameDoc(null); await refetch();
-    }catch(_e){ toast.error('Failed to rename'); }
-  };
-
-  const docs = allDocs;
-  const currentDocs = useMemo(()=>
-    activeFolderId==='all' ? docs : docs.filter((d:any)=> d.folder_id === activeFolderId),
-  [docs, activeFolderId]);
-  const topFolders = useMemo(()=> (folders||[]).filter((f:any)=> !f.parent_id), [folders]);
-  const folderDocCount = useCallback((folderId: string)=> docs.filter((d:any)=> d.folder_id === folderId).length, [docs]);
-  const childFolders = useMemo(()=> (folders||[]).filter((f:any)=> f.parent_id===activeFolderId), [folders, activeFolderId]);
-  const currentParentFolderId = useMemo(()=>{
-    if(activeFolderId==='all') return null;
-    const f = (folders||[]).find((x:any)=> x.id===activeFolderId);
-    return f?.parent_id ?? null;
-  }, [folders, activeFolderId]);
-  const locationBreadcrumb = useMemo(()=>{
-    if(activeFolderId==='all') return [] as { id: string|null; name: string }[];
-    const map = new Map<string, any>(); (folders||[]).forEach((f:any)=> map.set(f.id, f));
-    const path: { id: string|null; name: string }[] = [{ id: null, name: 'Root' }];
-    let cur: any = map.get(activeFolderId);
-    const chain: any[] = [];
-    while(cur){ chain.unshift(cur); cur = cur.parent_id ? map.get(cur.parent_id) : null; }
-    chain.forEach((f: any)=> path.push({ id: f.id, name: f.name }));
-    return path;
-  }, [folders, activeFolderId]);
-  const getDocTypeLabel = (d: any): string => {
-    const name = String(d?.title || '');
-    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
-    if(['pdf'].includes(ext)) return 'PDF';
-    if(['xlsx','xls','csv'].includes(ext)) return 'Excel';
-    if(['doc','docx'].includes(ext)) return 'Word';
-    if(['ppt','pptx'].includes(ext)) return 'PowerPoint';
-    return ext ? ext.toUpperCase() : 'File';
-  };
-
-  const getFileTypeForDoc = (d: any): 'image' | 'pdf' | 'excel' | 'other' => {
-    const name = String(d?.title || '');
-    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase() || '';
-    if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)) return 'image';
-    if (ext === 'pdf') return 'pdf';
-    if (['xlsx', 'xls', 'csv'].includes(ext)) return 'excel';
-    return 'other';
-  };
-
-  const fetchEmployeeDocDownloadUrl = async (fileId: string) => {
-    try {
-      const r: any = await api('GET', withFileAccessToken(`/files/${encodeURIComponent(fileId)}/download`));
-      return String(r.download_url || '');
-    } catch {
-      toast.error('Download link unavailable');
-      return '';
-    }
-  };
-
-  const handleEmployeeDocPreview = async (d: any) => {
-    const fileId = d.file_id;
-    if (!fileId) return;
-    const name = d.title || 'Document';
-    try {
-      const r: any = await api('GET', withFileAccessToken(`/files/${encodeURIComponent(fileId)}/preview`));
-      const url = String(r.preview_url || r.download_url || '');
-      if (!url) {
-        toast.error('Preview not available');
-        return;
-      }
-      const ft = getFileTypeForDoc(d);
-      if (ft === 'image') setPreviewImage({ url, name });
-      else if (ft === 'pdf') setPreviewPdf({ url, name });
-      else if (ft === 'excel') setPreviewExcel({ url, name });
-      else window.open(url, '_blank', 'noopener,noreferrer');
-    } catch {
-      toast.error('Preview not available');
-    }
-  };
-  const handleSort = (col: 'uploaded_at'|'name'|'type')=>{
-    if(sortBy===col) setSortOrder(o=> o==='asc' ? 'desc' : 'asc');
-    else { setSortBy(col); setSortOrder('asc'); }
-  };
-  const currentFiles = useMemo(()=>{
-    const q = fileSearchQuery.trim().toLowerCase();
-    let list = q ? currentDocs.filter((d:any)=> (d.title||'').toLowerCase().includes(q)) : currentDocs;
-    const sorted = [...list].sort((a:any,b:any)=>{
-      let av: any, bv: any;
-      if(sortBy==='uploaded_at'){ av = a.created_at||''; bv = b.created_at||''; }
-      else if(sortBy==='name'){ av = (a.title||'').toLowerCase(); bv = (b.title||'').toLowerCase(); }
-      else { av = getDocTypeLabel(a).toLowerCase(); bv = getDocTypeLabel(b).toLowerCase(); }
-      if(av<bv) return sortOrder==='asc' ? -1 : 1;
-      if(av>bv) return sortOrder==='asc' ? 1 : -1;
-      return 0;
-    });
-    return sorted;
-  }, [currentDocs, fileSearchQuery, sortBy, sortOrder]);
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-            </svg>
-          </div>
-          <h2 className="text-sm font-semibold text-gray-900">Files</h2>
-        </div>
-        <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="flex min-h-[400px]" style={{ height: 'calc(100vh - 380px)' }}>
-            {/* Left Sidebar */}
-            <div className="w-64 border-r bg-gray-50 flex flex-col flex-shrink-0">
-              <div className="p-3 border-b">
-                <div className="text-xs font-semibold text-gray-700">File Categories</div>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <button
-                  type="button"
-                  onClick={()=> setActiveFolderId('all')}
-                  className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${activeFolderId==='all' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs">📁</span>
-                    <span className="text-xs">All Files</span>
-                    <span className="ml-auto text-[10px] text-gray-500">({docs.length})</span>
-                  </div>
-                </button>
-                {topFolders.map((f: any)=> (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={()=> setActiveFolderId(f.id)}
-                    className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${activeFolderId===f.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs">📁</span>
-                      <span className="text-xs truncate">{f.name}</span>
-                      <span className="ml-auto text-[10px] text-gray-500">({folderDocCount(f.id)})</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* Right content */}
-            <div
-              className={`flex-1 overflow-y-auto p-4 ${isDragging && canEdit ? 'bg-blue-50 border-2 border-dashed border-blue-400' : ''}`}
-              onDragOver={canEdit ? (e)=>{ e.preventDefault(); e.stopPropagation(); setIsDragging(true); } : undefined}
-              onDragLeave={canEdit ? (e)=>{ e.preventDefault(); setIsDragging(false); } : undefined}
-              onDrop={canEdit ? async (e)=>{
-                e.preventDefault(); setIsDragging(false);
-                if(e.dataTransfer.files?.length){
-                  if(activeFolderId==='all'){
-                    for(const file of Array.from(e.dataTransfer.files)){
-                      const name = file.name; const type = file.type || 'application/octet-stream';
-                      const up = await api('POST','/files/upload',{ original_name: name, content_type: type, employee_id: userId, project_id: null, client_id: null, category_id: userId });
-                      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: file });
-                      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256: 'na', content_type: type });
-                      await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, { title: name, file_id: conf.id });
-                    }
-                  } else {
-                    for(const file of Array.from(e.dataTransfer.files)) await uploadToFolder(activeFolderId, file as File);
-                  }
-                  toast.success('Uploaded'); await refetch();
-                }
-                if(draggedFileId && activeFolderId!=='all'){
-                  try{ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(draggedFileId)}`, { folder_id: activeFolderId }); toast.success('Moved'); await refetch(); } catch(_){ toast.error('Failed to move'); }
-                  setDraggedFileId(null);
-                }
-              } : undefined}
-            >
-              <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="relative flex-1 max-w-sm">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                    </span>
-                    <input
-                      type="text"
-                      value={fileSearchQuery}
-                      onChange={e=> setFileSearchQuery(e.target.value)}
-                      placeholder="Search by file name..."
-                      className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-red focus:border-brand-red"
-                    />
-                  </div>
-                  <div className="text-xs font-semibold text-gray-700 whitespace-nowrap">
-                    {activeFolderId==='all' ? 'All Files' : (folders||[]).find((x:any)=> x.id===activeFolderId)?.name || 'Files'}
-                    <span className="ml-1 text-gray-500">({currentFiles.length})</span>
-                  </div>
-                </div>
-                {canEdit && (
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button type="button" onClick={()=> { setNewFolderParentId(activeFolderId==='all' ? null : activeFolderId); setShowNewFolder(true); }} className="px-2 py-1.5 rounded border border-gray-300 bg-white text-gray-700 text-xs font-medium hover:bg-gray-50 flex items-center gap-1">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-10 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
-                      Add folder
-                    </button>
-                    <button type="button" onClick={()=> { setShowUpload(true); setUploadTargetFolderId(activeFolderId==='all' ? '' : activeFolderId); }} className="px-2 py-1.5 rounded bg-brand-red text-white text-xs font-medium">+ Upload File</button>
-                  </div>
-                )}
-              </div>
-              {activeFolderId!=='all' && locationBreadcrumb.length>0 && (
-                <div className="mb-3 flex flex-wrap items-center gap-1">
-                  <span className="text-xs text-gray-500">Location:</span>
-                  {locationBreadcrumb.map((item, idx)=> (
-                    <span key={item.id ?? 'root'} className="inline-flex items-center gap-1">
-                      {idx>0 && <span className="text-gray-400 text-xs">/</span>}
-                      <button type="button" onClick={()=> setActiveFolderId(item.id === null ? 'all' : item.id)} className={`px-2 py-1 rounded text-xs font-medium truncate max-w-[140px] ${item.id===activeFolderId ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{item.name}</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {docsLoading && (
-                <div className="rounded-lg border bg-white p-6 text-center text-sm text-gray-500">Loading documents…</div>
-              )}
-              {docsError && (
-                <div className="rounded-lg border bg-white p-6 text-center">
-                  <p className="text-sm text-gray-600 mb-2">Failed to load documents.</p>
-                  <button type="button" onClick={()=> refetch()} className="px-3 py-1.5 rounded bg-brand-red text-white text-sm">Retry</button>
-                </div>
-              )}
-              {!docsLoading && !docsError && (
-              <div className="rounded-lg border overflow-hidden bg-white">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12"></th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none" onClick={()=> handleSort('name')}>
-                          <div className="flex items-center gap-1">Name {sortBy==='name' && <span className="text-xs">{sortOrder==='asc' ? '↑' : '↓'}</span>}</div>
-                        </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none" onClick={()=> handleSort('type')}>
-                          <div className="flex items-center gap-1">Type {sortBy==='type' && <span className="text-xs">{sortOrder==='asc' ? '↑' : '↓'}</span>}</div>
-                        </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none" onClick={()=> handleSort('uploaded_at')}>
-                          <div className="flex items-center gap-1">Upload Date {sortBy==='uploaded_at' && <span className="text-xs">{sortOrder==='asc' ? '↑' : '↓'}</span>}</div>
-                        </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-24">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {activeFolderId!=='all' && (
-                        <tr className="hover:bg-gray-50 cursor-pointer bg-gray-50/50" onClick={()=> setActiveFolderId(currentParentFolderId ?? 'all')}>
-                          <td className="px-3 py-2"><div className="w-8 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg></div></td>
-                          <td className="px-3 py-2"><div className="text-xs font-semibold text-gray-600">..</div></td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                          <td className="px-3 py-2"></td>
-                        </tr>
-                      )}
-                      {activeFolderId!=='all' && childFolders.map((f: any)=> (
-                        <tr key={f.id} className="hover:bg-gray-50 cursor-pointer" onClick={()=> setActiveFolderId(f.id)}>
-                          <td className="px-3 py-2"><div className="w-8 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg></div></td>
-                          <td className="px-3 py-2"><div className="text-xs font-semibold truncate max-w-xs">{f.name}</div></td>
-                          <td className="px-3 py-2 text-xs text-gray-600">Folder</td>
-                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                          <td className="px-3 py-2" onClick={e=> e.stopPropagation()}>{canEdit && <button type="button" onClick={()=> removeFolder(f.id)} className="p-1 rounded hover:bg-red-50 text-red-600 text-xs" title="Delete folder">🗑️</button>}</td>
-                        </tr>
-                      ))}
-                      {currentFiles.map((d: any)=>{
-                        const ext = fileExt(d.title);
-                        const s = extStyle(ext);
-                        const name = d.title || 'Document';
-                        return (
-                          <tr
-                            key={d.id}
-                            draggable={canEdit}
-                            onDragStart={()=> canEdit && setDraggedFileId(d.id)}
-                            onDragEnd={()=> setDraggedFileId(null)}
-                            className={`hover:bg-gray-50 ${canEdit ? 'cursor-move' : ''}`}
-                          >
-                            <td className="px-3 py-2">
-                              <button
-                                type="button"
-                                className={`w-8 h-10 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none cursor-pointer border-0`}
-                                onClick={() => handleEmployeeDocPreview(d)}
-                              >
-                                {ext?.toUpperCase() || 'FILE'}
-                              </button>
-                            </td>
-                            <td className="px-3 py-2">
-                              <button
-                                type="button"
-                                className="text-left w-full min-w-0"
-                                onClick={() => handleEmployeeDocPreview(d)}
-                              >
-                                <div className="text-xs font-semibold truncate max-w-xs cursor-pointer hover:underline">{name}</div>
-                              </button>
-                            </td>
-                            <td className="px-3 py-2 text-xs text-gray-600">{getDocTypeLabel(d)}</td>
-                            <td className="px-3 py-2 text-xs text-gray-600">{d.created_at ? String(d.created_at).slice(0,10) : '—'}</td>
-                            <td className="px-3 py-2">
-                              <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                                {d.file_id && (
-                                  <button
-                                    type="button"
-                                    title="Download"
-                                    className="p-1 rounded hover:bg-gray-100 text-xs"
-                                    onClick={async () => {
-                                      const url = await fetchEmployeeDocDownloadUrl(d.file_id);
-                                      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-                                    }}
-                                  >
-                                    ⬇️
-                                  </button>
-                                )}
-                                {canEdit && <>
-                                  <button type="button" title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-1 rounded hover:bg-gray-100 text-xs">✏️</button>
-                                  <button type="button" title="Move" onClick={()=> setMoveDoc({ id: d.id })} className="p-1 rounded hover:bg-gray-100 text-xs">📁</button>
-                                  <button type="button" title="Delete" onClick={()=> del(d.id, d.title)} className="p-1 rounded hover:bg-red-50 text-red-600 text-xs">🗑️</button>
-                                </>}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {currentFiles.length===0 && (activeFolderId==='all' ? docs.length===0 : currentDocs.length===0) && (
-                  <div className="p-4 text-sm text-gray-500 text-center">No documents</div>
-                )}
-              </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <AppFormModal
-        open={showUpload}
-        onClose={() => setShowUpload(false)}
-        title="Add file"
-        footer={
-          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowUpload(false)}>
-              Cancel
-            </AppButton>
-            <AppButton type="button" size="sm" onClick={upload}>
-              Upload
-            </AppButton>
-          </div>
-        }
-      >
-        <div className={uiSpacing.sectionStack}>
-          <AppSelect
-            label="Folder"
-            value={uploadTargetFolderId}
-            onChange={(e) => setUploadTargetFolderId(e.target.value)}
-            options={[
-              { value: '', label: 'All Files (uncategorized)' },
-              ...sortByLabel(folders || [], (f: any) => (f.name || '').toString()).map((f: any) => ({
-                value: String(f.id),
-                label: String(f.name),
-              })),
-            ]}
-          />
-          <AppInput
-            label="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Optional title"
-          />
-          <AppFileUpload label="File" onChange={(file) => setFileObj(file)} />
-        </div>
+        {renderVisaFormFields('create')}
       </AppFormModal>
 
       <AppFormModal
-        open={showNewFolder}
-        onClose={closeNewFolderModal}
-        title={newFolderParentId ? 'New subfolder' : 'New folder'}
-        description={newFolderParentId ? 'Create a folder inside the current one' : 'Create a new top-level folder'}
+        open={editId !== null}
+        onClose={() => setEditId(null)}
+        title="Edit Visa Entry"
+        description="Work permit, study permit, or other visa details."
+        formWidth="comfortable"
+        quickInfo={showFieldHints ? userVisaEntryQuickInfo : undefined}
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={closeNewFolderModal}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => setEditId(null)}>
               Cancel
             </AppButton>
-            <AppButton type="button" size="sm" disabled={!newFolderName.trim()} onClick={createFolder}>
-              Create
-            </AppButton>
-          </div>
-        }
-      >
-        <AppInput
-          label="Folder name"
-          value={newFolderName}
-          onChange={(e) => setNewFolderName(e.target.value)}
-          placeholder="e.g., Hiring pack"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') createFolder();
-            if (e.key === 'Escape') closeNewFolderModal();
-          }}
-        />
-      </AppFormModal>
-
-      <AppFormModal
-        open={!!renameFolder}
-        onClose={() => setRenameFolder(null)}
-        title="Rename folder"
-        footer={
-          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={() => setRenameFolder(null)}>
-              Cancel
-            </AppButton>
-            <AppButton type="button" size="sm" onClick={doRenameFolder}>
+            <AppButton type="button" size="sm" onClick={handleUpdate}>
               Save
             </AppButton>
           </div>
         }
       >
-        {renameFolder ? (
-          <AppInput
-            label="Folder name"
-            value={renameFolder.name}
-            onChange={(e) => setRenameFolder({ id: renameFolder.id, name: e.target.value })}
-          />
-        ) : null}
+        {renderVisaFormFields('edit')}
       </AppFormModal>
-
-      <AppFormModal
-        open={!!moveDoc}
-        onClose={() => setMoveDoc(null)}
-        title="Move file"
-        footer={
-          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={() => setMoveDoc(null)}>
-              Cancel
-            </AppButton>
-            <AppButton type="button" size="sm" onClick={doMoveDoc}>
-              Move
-            </AppButton>
-          </div>
-        }
-      >
-        <AppSelect
-          label="Destination folder"
-          placeholder="Select..."
-          options={sortByLabel(folders || [], (f: any) => (f.name || '').toString()).map((f: any) => ({
-            value: String(f.id),
-            label: String(f.name),
-          }))}
-          onChange={(e) => {
-            const sel = document.getElementById('move-target') as HTMLSelectElement | null;
-            if (sel) sel.value = e.target.value;
-          }}
-        />
-        <select id="move-target" className="sr-only" defaultValue="" tabIndex={-1} aria-hidden>
-          <option value="" disabled>
-            Select...
-          </option>
-          {sortByLabel(folders || [], (f: any) => (f.name || '').toString()).map((f: any) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
-      </AppFormModal>
-
-      <AppFormModal
-        open={!!renameDoc}
-        onClose={() => setRenameDoc(null)}
-        title="Rename file"
-        footer={
-          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={() => setRenameDoc(null)}>
-              Cancel
-            </AppButton>
-            <AppButton type="button" size="sm" onClick={doRenameDoc}>
-              Save
-            </AppButton>
-          </div>
-        }
-      >
-        {renameDoc ? (
-          <AppInput
-            label="Title"
-            value={renameDoc.title}
-            onChange={(e) => setRenameDoc({ id: renameDoc.id, title: e.target.value })}
-          />
-        ) : null}
-      </AppFormModal>
-
-      {previewImage && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-semibold truncate pr-2">{previewImage.name}</h3>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <a
-                  href={previewImage.url}
-                  download={previewImage.name}
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Download"
-                >
-                  ⬇️
-                </a>
-                <a
-                  href={previewImage.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Open in new tab"
-                >
-                  🔗
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setPreviewImage(null)}
-                  className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto p-3 min-h-0 flex items-center justify-center">
-              <img src={previewImage.url} alt={previewImage.name} className="max-w-full max-h-full h-auto object-contain" />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {previewPdf && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-semibold truncate pr-2">{previewPdf.name}</h3>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <a
-                  href={previewPdf.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Open in new tab"
-                >
-                  🔗
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setPreviewPdf(null)}
-                  className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-hidden min-h-0">
-              <iframe src={previewPdf.url} className="w-full h-full border-0" title={previewPdf.name} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {previewExcel && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewExcel(null)}>
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-semibold truncate pr-2">{previewExcel.name}</h3>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <a
-                  href={previewExcel.url}
-                  download={previewExcel.name}
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Download"
-                >
-                  ⬇️
-                </a>
-                <a
-                  href={previewExcel.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Open in new tab"
-                >
-                  🔗
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setPreviewExcel(null)}
-                  className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-hidden min-h-0">
-              <iframe
-                src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewExcel.url)}`}
-                className="w-full h-full border-0"
-                title={previewExcel.name}
-                allow="fullscreen"
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-export { EmployeeTrainingSection };

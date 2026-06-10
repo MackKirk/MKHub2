@@ -15,7 +15,7 @@ import { formatDecimalHoursAsHMin } from '@/lib/dateUtils';
 import { SubcontractorWorkerFilesTabEnhanced } from '@/pages/SubcontractorWorkerFilesTabEnhanced';
 import type { ClientFileForFiles } from '@/pages/SubcontractorCompanyFilesTabEnhanced';
 import ImagePicker from '@/components/ImagePicker';
-import { EmployeeTrainingSection } from './UserInfo';
+import { EmployeeTrainingSection } from '@/components/users/EmployeeTrainingTabEnhanced';
 import {
   AppBadge,
   AppButton,

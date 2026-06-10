@@ -114,6 +114,8 @@ class EmployeeProfileInput(BaseModel):
     drivers_license_expiry_date: Optional[str] = None
     drivers_license_conditions: Optional[str] = None
     drivers_license_last_requested_at: Optional[str] = None  # ISO; set when HR logs a verification / copy request
+    permit_file_id: Optional[str] = None
+    pr_card_file_id: Optional[str] = None
     # Backwards-compatible: API still stores this in the legacy work_permit_status column,
     # but the new UI treats it as "work_eligibility_status".
     work_eligibility_status: Optional[str] = None

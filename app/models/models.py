@@ -955,6 +955,8 @@ class EmployeeProfile(Base):
     drivers_license_conditions: Mapped[Optional[str]] = mapped_column(String(500))
     drivers_license_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     drivers_license_last_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    permit_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
+    pr_card_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
     work_permit_status: Mapped[Optional[str]] = mapped_column(String(100))
     visa_status: Mapped[Optional[str]] = mapped_column(String(100))
     emergency_contact_name: Mapped[Optional[str]] = mapped_column(String(255))

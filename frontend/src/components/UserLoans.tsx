@@ -1,10 +1,44 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
-import OverlayPortal from '@/components/OverlayPortal';
+import {
+  employeeLoanCreateQuickInfo,
+  employeeLoanDetailQuickInfo,
+  employeeLoanPaymentQuickInfo,
+} from '@/lib/formModalQuickInfo';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppControlLabelRow,
+  AppDatePicker,
+  AppEmptyState,
+  AppFormModal,
+  AppInput,
+  AppListCreateItem,
+  AppListRowIconButton,
+  AppSectionHeader,
+  AppSelect,
+  AppSortableEntityList,
+  AppSortableEntityListFlatBody,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
+  AppTextarea,
+  appSectionPresetProps,
+  resolveAppSortableListPreset,
+  sortListByAppColumn,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiSpacing,
+  uiTypography,
+  useLocalAppListSort,
+} from '@/components/ui';
 
 type Loan = {
   id: string;
@@ -45,6 +79,24 @@ type LoanDetail = Loan & {
   updated_by?: { id: string; username?: string };
 };
 
+const LOAN_STATUS_OPTIONS = [
+  { value: '', label: 'All statuses' },
+  { value: 'Active', label: 'Active' },
+  { value: 'Closed', label: 'Closed' },
+  { value: 'Cancelled', label: 'Cancelled' },
+];
+
+const PAYMENT_METHOD_OPTIONS = [
+  { value: 'Payroll', label: 'Payroll' },
+  { value: 'Manual', label: 'Manual' },
+];
+
+const LOAN_STATUS_FORM_OPTIONS = [
+  { value: 'Active', label: 'Active' },
+  { value: 'Closed', label: 'Closed' },
+  { value: 'Cancelled', label: 'Cancelled' },
+];
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -55,13 +107,32 @@ function formatCurrency(value: number): string {
 }
 
 function formatDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return '-';
+  if (!dateStr) return '—';
   try {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch {
     return dateStr;
   }
+}
+
+function loanStatusVariant(status: string): 'success' | 'neutral' | 'danger' {
+  if (status === 'Active') return 'success';
+  if (status === 'Closed') return 'neutral';
+  return 'danger';
+}
+
+function DetailField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div
+      className={uiCx(
+        'grid grid-cols-1 gap-1 border-b border-gray-100 py-3 last:border-0 sm:grid-cols-[9.5rem_minmax(0,1fr)] sm:items-start sm:gap-x-4 sm:py-2.5',
+      )}
+    >
+      <dt className={uiTypography.helper}>{label}</dt>
+      <dd className={uiCx(uiTypography.body, 'min-w-0 break-words font-medium text-gray-900')}>{children}</dd>
+    </div>
+  );
 }
 
 export default function UserLoans({ userId, canEdit = true }: { userId: string; canEdit?: boolean }) {
@@ -71,14 +142,13 @@ export default function UserLoans({ userId, canEdit = true }: { userId: string; 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showLoanDetail, setShowLoanDetail] = useState<string | null>(null);
   const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null);
-  
-  // Filters
+
   const [showClosedLoans, setShowClosedLoans] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>('');
-  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
-  const [filterDateTo, setFilterDateTo] = useState<string>('');
-  const [filterAmountMin, setFilterAmountMin] = useState<string>('');
-  const [filterAmountMax, setFilterAmountMax] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterAmountMin, setFilterAmountMin] = useState('');
+  const [filterAmountMax, setFilterAmountMax] = useState('');
 
   const { data: summary } = useQuery<LoanSummary>({
     queryKey: ['loans-summary', userId],
@@ -90,22 +160,13 @@ export default function UserLoans({ userId, canEdit = true }: { userId: string; 
     queryFn: () => api<Loan[]>('GET', `/employees/${userId}/loans`),
   });
 
-  // Filter loans
   const filteredLoans = useMemo(() => {
     if (!loans) return [];
-    
+
     return loans.filter((loan) => {
-      // Filter by closed status
-      if (!showClosedLoans && loan.status === 'Closed') {
-        return false;
-      }
-      
-      // Filter by status
-      if (filterStatus && loan.status !== filterStatus) {
-        return false;
-      }
-      
-      // Filter by date range
+      if (!showClosedLoans && loan.status === 'Closed') return false;
+      if (filterStatus && loan.status !== filterStatus) return false;
+
       if (filterDateFrom || filterDateTo) {
         const loanDate = new Date(loan.loan_date);
         if (filterDateFrom) {
@@ -119,309 +180,319 @@ export default function UserLoans({ userId, canEdit = true }: { userId: string; 
           if (loanDate > toDate) return false;
         }
       }
-      
-      // Filter by amount range
+
       if (filterAmountMin) {
         const minAmount = parseFloat(filterAmountMin);
-        if (isNaN(minAmount) || loan.loan_amount < minAmount) return false;
+        if (Number.isNaN(minAmount) || loan.loan_amount < minAmount) return false;
       }
       if (filterAmountMax) {
         const maxAmount = parseFloat(filterAmountMax);
-        if (isNaN(maxAmount) || loan.loan_amount > maxAmount) return false;
+        if (Number.isNaN(maxAmount) || loan.loan_amount > maxAmount) return false;
       }
-      
+
       return true;
     });
   }, [loans, showClosedLoans, filterStatus, filterDateFrom, filterDateTo, filterAmountMin, filterAmountMax]);
 
-  const { data: loanDetail } = useQuery<LoanDetail>({
-    queryKey: ['loan-detail', userId, showLoanDetail],
-    queryFn: () => api<LoanDetail>('GET', `/employees/${userId}/loans/${showLoanDetail}`),
-    enabled: !!showLoanDetail,
-  });
+  type LoanSortColumn = 'date' | 'amount' | 'remaining' | 'status' | 'createdBy';
+  const { sortBy, sortDir, setSort } = useLocalAppListSort<LoanSortColumn>('date', 'desc');
+
+  const sortedFilteredLoans = useMemo(
+    () =>
+      sortListByAppColumn(filteredLoans, sortBy, sortDir, {
+        date: (loan) => (loan.loan_date ? Date.parse(loan.loan_date) : null),
+        amount: (loan) => loan.loan_amount,
+        remaining: (loan) => loan.remaining_balance,
+        status: (loan) => loan.status,
+        createdBy: (loan) => loan.created_by?.username || '',
+      }),
+    [filteredLoans, sortBy, sortDir],
+  );
+
+  const hasActiveFilters =
+    Boolean(filterStatus || filterDateFrom || filterDateTo || filterAmountMin || filterAmountMax);
+
+  const clearFilters = () => {
+    setFilterStatus('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+    setFilterAmountMin('');
+    setFilterAmountMax('');
+  };
 
   const handleCloseLoan = async (loanId: string) => {
     try {
       await api('PATCH', `/employees/${userId}/loans/${loanId}/close`);
       toast.success('Loan closed');
       await refetchLoans();
+      queryClient.invalidateQueries({ queryKey: ['loans-summary', userId] });
       if (showLoanDetail === loanId) {
         queryClient.invalidateQueries({ queryKey: ['loan-detail', userId, loanId] });
       }
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Failed to close loan');
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail || 'Failed to close loan');
     }
   };
 
+  const summaryCards = [
+    {
+      title: 'Total loaned',
+      description: 'Sum of all loan amounts issued to this employee.',
+      value: summary ? formatCurrency(summary.total_loaned) : '—',
+      preset: 'billing' as const,
+    },
+    {
+      title: 'Total paid',
+      description: 'Total repayments collected across all loans.',
+      value: summary ? formatCurrency(summary.total_paid) : '—',
+      preset: 'pricing' as const,
+    },
+    {
+      title: 'Outstanding',
+      description: 'Remaining balance still owed on active loans.',
+      value: summary ? formatCurrency(summary.total_outstanding) : '—',
+      preset: 'billing' as const,
+    },
+  ];
+
   return (
     <div className="space-y-6 pb-24">
-      {/* Summary Cards */}
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="rounded-xl border bg-white p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
-              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h5 className="text-sm font-semibold text-blue-900">Total Loaned</h5>
-          </div>
-          <div className="text-sm font-semibold text-blue-900">
-            {summary ? formatCurrency(summary.total_loaned) : '—'}
-          </div>
-        </div>
-        <div className="rounded-xl border bg-white p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
-              <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h5 className="text-sm font-semibold text-green-900">Total Paid</h5>
-          </div>
-          <div className="text-sm font-semibold text-green-900">
-            {summary ? formatCurrency(summary.total_paid) : '—'}
-          </div>
-        </div>
-        <div className="rounded-xl border bg-white p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded bg-orange-100 flex items-center justify-center">
-              <svg className="w-5 h-5 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h5 className="text-sm font-semibold text-orange-900">Total Outstanding</h5>
-          </div>
-          <div className="text-sm font-semibold text-orange-900">
-            {summary ? formatCurrency(summary.total_outstanding) : '—'}
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {summaryCards.map((card) => (
+          <AppCard key={card.title} bodyClassName={uiSpacing.cardPadding}>
+            <AppSectionHeader
+              title={card.title}
+              description={card.description}
+              {...appSectionPresetProps(card.preset)}
+            />
+            <p className="mt-3 text-lg font-semibold text-gray-900">{card.value}</p>
+          </AppCard>
+        ))}
       </div>
 
-      {/* Loans Section */}
-      <div className="rounded-xl border bg-white p-4">
-        {/* Header */}
-        <div className="mb-4 flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-purple-100 flex items-center justify-center">
-              <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h5 className="text-sm font-semibold text-purple-900">Loans</h5>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="show-closed"
-              checked={showClosedLoans}
-              onChange={(e) => setShowClosedLoans(e.target.checked)}
-              className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-            />
-            <label htmlFor="show-closed" className="text-xs font-medium text-gray-700 cursor-pointer">
-              Show "Closed" Loans
-            </label>
-          </div>
-        </div>
+      <AppCard>
+        <AppSectionHeader
+          title="Loans"
+          description="Employee loan agreements, repayments, and outstanding balances."
+          {...appSectionPresetProps('billing')}
+        />
 
-        {/* Filters */}
-        <div className="mb-4 space-y-4">
-          <div className="grid grid-cols-12 gap-4 items-end">
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Start Date</label>
-              <input
-                type="date"
+        <div className="mt-4 space-y-4">
+          <AppCheckbox
+            label='Show "Closed" loans'
+            checked={showClosedLoans}
+            onChange={setShowClosedLoans}
+          />
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12 lg:items-end">
+            <div className="lg:col-span-2">
+              <AppDatePicker
+                label="Start date"
                 value={filterDateFrom}
                 onChange={(e) => setFilterDateFrom(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               />
             </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">End Date</label>
-              <input
-                type="date"
+            <div className="lg:col-span-2">
+              <AppDatePicker
+                label="End date"
                 value={filterDateTo}
                 onChange={(e) => setFilterDateTo(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               />
             </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
-              <select
+            <div className="lg:col-span-2">
+              <AppSelect
+                label="Status"
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              >
-                <option value="">All Statuses</option>
-                <option value="Active">Active</option>
-                <option value="Closed">Closed</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
+                placeholder="All statuses"
+                options={LOAN_STATUS_OPTIONS}
+              />
             </div>
-            <div className="col-span-4">
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Amount Range</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={filterAmountMin}
-                  onChange={(e) => setFilterAmountMin(e.target.value)}
-                  placeholder="Min"
-                  className="flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                />
-                <span className="text-xs text-gray-500">-</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={filterAmountMax}
-                  onChange={(e) => setFilterAmountMax(e.target.value)}
-                  placeholder="Max"
-                  className="flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                />
+            <div className="lg:col-span-4">
+              <div className="block space-y-1.5">
+                <AppControlLabelRow label="Amount range" />
+                <div className="flex items-center gap-2">
+                  <AppInput
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    placeholder="Min"
+                    value={filterAmountMin}
+                    onChange={(e) => setFilterAmountMin(e.target.value)}
+                    className="min-w-0 flex-1 !space-y-0"
+                  />
+                  <span className={uiTypography.helper}>–</span>
+                  <AppInput
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    placeholder="Max"
+                    value={filterAmountMax}
+                    onChange={(e) => setFilterAmountMax(e.target.value)}
+                    className="min-w-0 flex-1 !space-y-0"
+                  />
+                </div>
               </div>
             </div>
-            {(filterStatus || filterDateFrom || filterDateTo || filterAmountMin || filterAmountMax) && (
-              <div className="col-span-2">
-                <button
-                  onClick={() => {
-                    setFilterStatus('');
-                    setFilterDateFrom('');
-                    setFilterDateTo('');
-                    setFilterAmountMin('');
-                    setFilterAmountMax('');
-                  }}
-                  className="w-full px-2 py-1 text-xs rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium transition-colors"
-                >
-                  Clear Filters
-                </button>
+            {hasActiveFilters ? (
+              <div className="flex items-end lg:col-span-2">
+                <AppButton type="button" variant="secondary" size="sm" className="w-full" onClick={clearFilters}>
+                  Clear filters
+                </AppButton>
               </div>
-            )}
+            ) : null}
           </div>
-        </div>
 
-        {/* Loans Table */}
-        <div className="rounded-xl border overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Date</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Amount</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Remaining</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Status</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Created By</th>
-                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          <div className={uiCx('rounded-xl border bg-white', uiSpacing.cardPadding)}>
+            <p className={uiCx(uiTypography.helper, 'mb-3')}>Click a row to view loan details and payment history.</p>
+            <div className="flex flex-col gap-2 overflow-x-auto">
               {canEdit && (
-                <tr>
-                  <td colSpan={6} className="p-0 align-top">
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateModal(true)}
-                      className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 flex items-center justify-center gap-2 min-h-[52px] text-gray-600 hover:text-brand-red transition-colors"
-                    >
-                      <span className="text-lg font-medium">+</span>
-                      <span className="text-sm font-medium">Create Loan</span>
-                    </button>
-                  </td>
-                </tr>
+                <AppListCreateItem
+                  label="Create loan"
+                  layout="row"
+                  className={uiCx('w-full', resolveAppSortableListPreset('employeeLoans').minWidth)}
+                  onClick={() => setShowCreateModal(true)}
+                />
               )}
               {!loans ? (
-                <tr>
-                  <td colSpan={6} className="p-4 text-center text-xs text-gray-500">
-                    <div className="h-6 bg-gray-100 animate-pulse rounded" />
-                  </td>
-                </tr>
+                <div
+                  className={uiCx(resolveAppSortableListPreset('employeeLoans').minWidth, 'px-4 py-4')}
+                >
+                  <div className="h-6 animate-pulse rounded bg-gray-100" />
+                </div>
               ) : filteredLoans.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-4 text-center text-xs text-gray-500">
-                    {loans.length === 0 ? 'No loans found' : 'No loans match the filters'}
-                  </td>
-                </tr>
+                <AppEmptyState
+                  title={loans.length === 0 ? 'No loans found' : 'No loans match the filters'}
+                  className="border-0 bg-transparent p-0 py-6 shadow-none"
+                />
               ) : (
-                filteredLoans.map((loan) => (
-                  <tr key={loan.id} className="border-t border-gray-200 hover:bg-gray-50 transition-colors">
-                    <td className="p-2.5 text-xs text-gray-900">{formatDate(loan.loan_date)}</td>
-                    <td className="p-2.5 text-xs font-semibold text-gray-900">{formatCurrency(loan.loan_amount)}</td>
-                    <td className="p-2.5 text-xs text-gray-900">{formatCurrency(loan.remaining_balance)}</td>
-                    <td className="p-2.5">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                          loan.status === 'Active'
-                            ? 'bg-green-100 text-green-800'
-                            : loan.status === 'Closed'
-                            ? 'bg-gray-100 text-gray-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
+                <AppSortableEntityList layout="flat">
+                  <AppSortableEntityListHeader preset="employeeLoans" variant="flat">
+                    <AppSortableEntityListSortColumn
+                      label="Date"
+                      column="date"
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={setSort}
+                    />
+                    <AppSortableEntityListSortColumn
+                      label="Amount"
+                      column="amount"
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={setSort}
+                    />
+                    <AppSortableEntityListSortColumn
+                      label="Remaining"
+                      column="remaining"
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={setSort}
+                    />
+                    <AppSortableEntityListSortColumn
+                      label="Status"
+                      column="status"
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={setSort}
+                    />
+                    <AppSortableEntityListSortColumn
+                      label="Created by"
+                      column="createdBy"
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={setSort}
+                    />
+                    <div className="min-w-0 w-24" aria-hidden />
+                  </AppSortableEntityListHeader>
+                  <AppSortableEntityListFlatBody preset="employeeLoans">
+                    {sortedFilteredLoans.map((loan) => (
+                      <AppSortableEntityListRow
+                        key={loan.id}
+                        as="div"
+                        variant="flat"
+                        preset="employeeLoans"
+                        className="group"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setShowLoanDetail(loan.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setShowLoanDetail(loan.id);
+                          }
+                        }}
                       >
-                        {loan.status}
-                      </span>
-                    </td>
-                    <td className="p-2.5 text-xs text-gray-600">{loan.created_by?.username || '—'}</td>
-                    <td className="p-2.5">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => setShowLoanDetail(loan.id)}
-                          className="px-2 py-1 text-[10px] font-medium rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+                        <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-900')}>
+                          {formatDate(loan.loan_date)}
+                        </span>
+                        <span className={uiCx(uiTypography.helper, 'min-w-0 truncate font-semibold text-gray-900')}>
+                          {formatCurrency(loan.loan_amount)}
+                        </span>
+                        <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-900')}>
+                          {formatCurrency(loan.remaining_balance)}
+                        </span>
+                        <div className="min-w-0">
+                          <AppBadge variant={loanStatusVariant(loan.status)}>{loan.status}</AppBadge>
+                        </div>
+                        <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-600')}>
+                          {loan.created_by?.username || '—'}
+                        </span>
+                        <div
+                          className="flex w-24 shrink-0 items-center justify-end gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          View
-                        </button>
-                        {canEdit && loan.status === 'Active' && (
-                          <>
-                            <button
-                              onClick={() => {
-                                setSelectedLoanId(loan.id);
-                                setShowPaymentModal(true);
-                              }}
-                              className="px-2 py-1 text-[10px] font-medium rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 transition-colors"
-                            >
-                              + Payment
-                            </button>
-                            {loan.remaining_balance <= 0 && (
-                              <button
-                                onClick={async () => {
-                                  const result = await confirm({
-                                    message: 'Are you sure you want to close this loan?',
-                                    title: 'Close Loan',
-                                  });
-                                  if (result === 'confirm') {
-                                    await handleCloseLoan(loan.id);
-                                  }
+                          {canEdit && loan.status === 'Active' ? (
+                            <>
+                              <AppListRowIconButton
+                                icon="💵"
+                                label="Add payment"
+                                onClick={() => {
+                                  setSelectedLoanId(loan.id);
+                                  setShowPaymentModal(true);
                                 }}
-                                className="px-2 py-1 text-[10px] font-medium rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-700 transition-colors"
-                              >
-                                Close
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                              />
+                              {loan.remaining_balance <= 0 ? (
+                                <AppListRowIconButton
+                                  icon="✓"
+                                  label="Close loan"
+                                  onClick={async () => {
+                                    const result = await confirm({
+                                      message: 'Are you sure you want to close this loan?',
+                                      title: 'Close loan',
+                                    });
+                                    if (result === 'confirm') {
+                                      await handleCloseLoan(loan.id);
+                                    }
+                                  }}
+                                />
+                              ) : null}
+                            </>
+                          ) : null}
+                        </div>
+                      </AppSortableEntityListRow>
+                    ))}
+                  </AppSortableEntityListFlatBody>
+                </AppSortableEntityList>
               )}
-            </tbody>
-          </table>
+            </div>
+          </div>
         </div>
-      </div>
+      </AppCard>
 
-      {/* Create Loan Modal */}
-      {showCreateModal && (
+      {showCreateModal ? (
         <CreateLoanModal
           userId={userId}
           onClose={() => {
             setShowCreateModal(false);
-            refetchLoans();
+            void refetchLoans();
             queryClient.invalidateQueries({ queryKey: ['loans-summary', userId] });
           }}
         />
-      )}
+      ) : null}
 
-      {/* Add Payment Modal */}
-      {showPaymentModal && selectedLoanId && (
+      {showPaymentModal && selectedLoanId ? (
         <AddPaymentModal
           userId={userId}
           loanId={selectedLoanId}
@@ -435,10 +506,9 @@ export default function UserLoans({ userId, canEdit = true }: { userId: string; 
             }
           }}
         />
-      )}
+      ) : null}
 
-      {/* Loan Detail View */}
-      {showLoanDetail && loanDetail && (
+      {showLoanDetail ? (
         <LoanDetailView
           userId={userId}
           loanId={showLoanDetail}
@@ -455,7 +525,7 @@ export default function UserLoans({ userId, canEdit = true }: { userId: string; 
             queryClient.invalidateQueries({ queryKey: ['loans-summary', userId] });
           }}
         />
-      )}
+      ) : null}
     </div>
   );
 }
@@ -469,51 +539,29 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
-
-  // Calculate total loan amount (base + fees)
   const totalLoanAmount = useMemo(() => {
     const baseAmount = parseFloat(loanAmount) || 0;
     const feesPercent = parseFloat(fees) || 0;
     if (baseAmount <= 0) return 0;
-    const feesAmount = (baseAmount * feesPercent) / 100;
-    return baseAmount + feesAmount;
+    return baseAmount + (baseAmount * feesPercent) / 100;
   }, [loanAmount, fees]);
 
+  const submitDisabled =
+    saving ||
+    !loanAmount ||
+    parseFloat(loanAmount) <= 0 ||
+    totalLoanAmount <= 0 ||
+    !agreementDate ||
+    !paymentMethod;
+
   const handleSubmit = async () => {
-    if (!loanAmount || parseFloat(loanAmount) <= 0) {
-      toast.error('Loan amount is required and must be greater than 0');
-      return;
-    }
-    if (totalLoanAmount <= 0) {
-      toast.error('Total loan amount must be greater than 0');
-      return;
-    }
-    if (!agreementDate) {
-      toast.error('Agreement date is required');
-      return;
-    }
-    if (!paymentMethod) {
-      toast.error('Payment method is required');
-      return;
-    }
+    if (submitDisabled) return;
 
     setSaving(true);
     try {
-      // Send the total calculated amount (base + fees) as loan_amount
-      // Also send base_amount and fees_percent for tracking
       const baseAmountValue = parseFloat(loanAmount) || 0;
       const feesPercentValue = parseFloat(fees) || 0;
-      
+
       await api('POST', `/employees/${userId}/loans`, {
         loan_amount: totalLoanAmount,
         base_amount: baseAmountValue > 0 ? baseAmountValue : undefined,
@@ -521,152 +569,109 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
         loan_date: agreementDate,
         agreement_date: agreementDate,
         payment_method: paymentMethod,
-        status: status,
-        weekly_payment: 0, // Optional field
+        status,
+        weekly_payment: 0,
         notes: notes || undefined,
       });
       toast.success('Loan created');
       onClose();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Failed to create loan');
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail || 'Failed to create loan');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <OverlayPortal><div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
-      onClick={onClose}
-    >
-      <div
-        className="w-[600px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-              title="Close"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">Create Loan</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Add a new loan for this employee</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Loan Amount *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                value={loanAmount}
-                onChange={(e) => setLoanAmount(e.target.value)}
-                placeholder="0.00"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Fees (%)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                value={fees}
-                onChange={(e) => setFees(e.target.value)}
-                placeholder="0.00"
-              />
-              <div className="text-[10px] text-gray-500 mt-1">Interest rate percentage to be added to the loan amount</div>
-            </div>
-            {loanAmount && parseFloat(loanAmount) > 0 && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="text-xs text-blue-600 font-medium mb-1">Total Loan Amount</div>
-                <div className="text-sm font-semibold text-blue-900">
-                  {formatCurrency(totalLoanAmount)}
-                </div>
-                <div className="text-[10px] text-blue-700 mt-1">
-                  Base: {formatCurrency(parseFloat(loanAmount) || 0)}
-                  {fees && parseFloat(fees) > 0 && (
-                    <> + Fees ({parseFloat(fees) || 0}%): {formatCurrency((parseFloat(loanAmount) || 0) * (parseFloat(fees) || 0) / 100)}</>
-                  )}
-                </div>
-              </div>
-            )}
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Agreement Date *</label>
-              <input
-                type="date"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                value={agreementDate}
-                onChange={(e) => setAgreementDate(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Payment Method *</label>
-              <select
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-              >
-                <option value="Payroll">Payroll</option>
-                <option value="Manual">Manual</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
-              <select
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                <option value="Active">Active</option>
-                <option value="Closed">Closed</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Notes</label>
-              <textarea
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                rows={3}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Optional notes about the loan agreement"
-              />
-            </div>
-          </div>
-        </div>
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
-          >
+    <AppFormModal
+      open
+      onClose={onClose}
+      title="Create loan"
+      description="Add a new loan agreement for this employee."
+      quickInfo={employeeLoanCreateQuickInfo}
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={saving}
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? 'Creating...' : 'Create Loan'}
-          </button>
+          </AppButton>
+          <AppButton type="button" size="sm" onClick={() => void handleSubmit()} disabled={submitDisabled} loading={saving}>
+            Create loan
+          </AppButton>
         </div>
+      }
+    >
+      <div className={uiSpacing.sectionStack}>
+        <AppInput
+          label="Loan amount *"
+          type="number"
+          step="0.01"
+          min={0}
+          value={loanAmount}
+          onChange={(e) => setLoanAmount(e.target.value)}
+          placeholder="0.00"
+          fieldHint="Loan amount\n\nPrincipal before fees are applied."
+          required
+        />
+        <AppInput
+          label="Fees (%)"
+          type="number"
+          step="0.01"
+          min={0}
+          max={100}
+          value={fees}
+          onChange={(e) => setFees(e.target.value)}
+          placeholder="0.00"
+          fieldHint="Fees (%)\n\nInterest rate percentage added to the loan amount."
+        />
+        {loanAmount && parseFloat(loanAmount) > 0 ? (
+          <div className={uiCx('rounded-xl border border-blue-200 bg-blue-50 p-3', uiBorders.card)}>
+            <div className={uiCx(uiTypography.helper, 'font-medium text-blue-700')}>Total loan amount</div>
+            <div className="mt-1 text-sm font-semibold text-blue-900">{formatCurrency(totalLoanAmount)}</div>
+            <div className={uiCx(uiTypography.helper, 'mt-1 text-blue-700')}>
+              Base: {formatCurrency(parseFloat(loanAmount) || 0)}
+              {fees && parseFloat(fees) > 0 ? (
+                <>
+                  {' '}
+                  + Fees ({parseFloat(fees) || 0}%):{' '}
+                  {formatCurrency(((parseFloat(loanAmount) || 0) * (parseFloat(fees) || 0)) / 100)}
+                </>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        <AppDatePicker
+          label="Agreement date *"
+          value={agreementDate}
+          onChange={(e) => setAgreementDate(e.target.value)}
+          fieldHint="Agreement date\n\nDate the loan agreement was signed or issued."
+          required
+        />
+        <AppSelect
+          label="Payment method *"
+          value={paymentMethod}
+          onChange={(e) => setPaymentMethod(e.target.value)}
+          options={PAYMENT_METHOD_OPTIONS}
+          fieldHint="Payment method\n\nHow repayments are typically collected."
+          required
+        />
+        <AppSelect
+          label="Status"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          options={LOAN_STATUS_FORM_OPTIONS}
+          fieldHint="Status\n\nActive loans accept payments; closed loans are read-only."
+        />
+        <AppTextarea
+          label="Notes"
+          rows={3}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Optional notes about the loan agreement"
+          fieldHint="Notes\n\nOptional context for payroll or HR."
+        />
       </div>
-    </div></OverlayPortal>
+    </AppFormModal>
   );
 }
 
@@ -686,72 +691,46 @@ function AddPaymentModal({
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
-
-  // Fetch loan details to get remaining balance
   const { data: loan } = useQuery<LoanDetail>({
     queryKey: ['loan-detail', userId, loanId],
     queryFn: () => api<LoanDetail>('GET', `/employees/${userId}/loans/${loanId}`),
     enabled: !!loanId,
   });
 
+  const submitDisabled =
+    saving ||
+    !paymentAmount ||
+    parseFloat(paymentAmount) <= 0 ||
+    !paymentDate ||
+    !paymentMethod ||
+    !loan;
+
   const handleSubmit = async () => {
-    if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
-      toast.error('Payment amount is required and must be greater than 0');
-      return;
-    }
-    if (!paymentDate) {
-      toast.error('Payment date is required');
-      return;
-    }
-    if (!paymentMethod) {
-      toast.error('Payment method is required');
-      return;
-    }
-    
-    // Ensure loan data is loaded
-    if (!loan) {
-      toast.error('Loan information is still loading. Please try again.');
-      return;
-    }
+    if (submitDisabled || !loan) return;
 
     const paymentValue = parseFloat(paymentAmount);
     const remainingBalance = loan.remaining_balance ?? 0;
 
-    // Check if payment exceeds remaining balance
     if (paymentValue > remainingBalance) {
-      // Don't show confirmation if balance is already 0 or negative
       if (remainingBalance <= 0) {
         toast.error('This loan has no remaining balance to pay');
         return;
       }
-      
+
       const adjustResult = await confirm({
         message: `The payment amount (${formatCurrency(paymentValue)}) is greater than the remaining balance (${formatCurrency(remainingBalance)}). The payment will be adjusted to ${formatCurrency(remainingBalance)}. Do you want to continue?`,
-        title: 'Payment Exceeds Balance',
-        confirmText: 'Yes, Adjust Payment',
+        title: 'Payment exceeds balance',
+        confirmText: 'Yes, adjust payment',
         cancelText: 'Cancel',
       });
-      
-      if (adjustResult !== 'confirm') {
-        return; // User cancelled
-      }
+
+      if (adjustResult !== 'confirm') return;
     }
 
     setSaving(true);
     try {
-      // Use the adjusted amount if payment exceeds balance
       const finalPaymentAmount = paymentValue > remainingBalance ? remainingBalance : paymentValue;
-      
+
       const result = await api<{ remaining_balance: number; should_close: boolean }>(
         'POST',
         `/employees/${userId}/loans/${loanId}/payments`,
@@ -759,138 +738,100 @@ function AddPaymentModal({
           payment_amount: finalPaymentAmount,
           payment_date: paymentDate,
           payment_method: paymentMethod,
-          origin: paymentMethod, // Support both field names
+          origin: paymentMethod,
           notes: notes || undefined,
-        }
+        },
       );
 
       toast.success('Payment added');
-      
-      // If balance reached 0, ask user if they want to close the loan
+
       if (result.should_close) {
         const closeResult = await confirm({
           message: 'The balance of this loan has reached $0.00. Would you like to change the status to "Closed"?',
-          title: 'Close Loan?',
-          confirmText: 'Yes, Close',
-          cancelText: 'No, Keep Open',
+          title: 'Close loan?',
+          confirmText: 'Yes, close',
+          cancelText: 'No, keep open',
         });
-        
+
         if (closeResult === 'confirm') {
           try {
             await api('PATCH', `/employees/${userId}/loans/${loanId}/close`);
             toast.success('Loan closed');
-          } catch (e: any) {
-            toast.error(e?.response?.data?.detail || 'Failed to close loan');
+          } catch (e: unknown) {
+            const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+            toast.error(detail || 'Failed to close loan');
           }
         }
       }
-      
+
       onClose();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Failed to add payment');
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail || 'Failed to add payment');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <OverlayPortal><div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
-      onClick={onClose}
-    >
-      <div
-        className="w-[500px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-              title="Close"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">Add Payment</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Record a payment for this loan</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Payment Date *</label>
-              <input
-                type="date"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                value={paymentDate}
-                onChange={(e) => setPaymentDate(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Payment Amount *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-                placeholder="0.00"
-              />
-              {loan && loan.remaining_balance > 0 && (
-                <div className="text-[10px] text-gray-500 mt-1">
-                  Remaining balance: {formatCurrency(loan.remaining_balance)}
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Payment Method *</label>
-              <select
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-              >
-                <option value="Payroll">Payroll</option>
-                <option value="Manual">Manual</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Notes</label>
-              <textarea
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                rows={3}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Optional notes"
-              />
-            </div>
-          </div>
-        </div>
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
-          >
+    <AppFormModal
+      open
+      onClose={onClose}
+      title="Add payment"
+      description="Record a repayment for this loan."
+      quickInfo={employeeLoanPaymentQuickInfo}
+      overlayClassName="z-[200]"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={saving}
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? 'Adding...' : 'Add Payment'}
-          </button>
+          </AppButton>
+          <AppButton type="button" size="sm" onClick={() => void handleSubmit()} disabled={submitDisabled} loading={saving}>
+            Add payment
+          </AppButton>
         </div>
+      }
+    >
+      <div className={uiSpacing.sectionStack}>
+        <AppDatePicker
+          label="Payment date *"
+          value={paymentDate}
+          onChange={(e) => setPaymentDate(e.target.value)}
+          fieldHint="Payment date\n\nDate the repayment was collected or deducted."
+          required
+        />
+        <AppInput
+          label="Payment amount *"
+          type="number"
+          step="0.01"
+          min={0}
+          value={paymentAmount}
+          onChange={(e) => setPaymentAmount(e.target.value)}
+          placeholder="0.00"
+          fieldHint="Payment amount\n\nAmount repaid toward the loan balance."
+          required
+        />
+        {loan && loan.remaining_balance > 0 ? (
+          <p className={uiTypography.helper}>Remaining balance: {formatCurrency(loan.remaining_balance)}</p>
+        ) : null}
+        <AppSelect
+          label="Payment method *"
+          value={paymentMethod}
+          onChange={(e) => setPaymentMethod(e.target.value)}
+          options={PAYMENT_METHOD_OPTIONS}
+          fieldHint="Payment method\n\nHow this repayment was collected."
+          required
+        />
+        <AppTextarea
+          label="Notes"
+          rows={3}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Optional notes"
+          fieldHint="Notes\n\nOptional context for this payment."
+        />
       </div>
-    </div></OverlayPortal>
+    </AppFormModal>
   );
 }
 
@@ -912,279 +853,185 @@ function LoanDetailView({
   const confirm = useConfirm();
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
-
-  // Fetch loan details to ensure we have the latest data including payments
   const { data: loan } = useQuery<LoanDetail>({
     queryKey: ['loan-detail', userId, loanId],
     queryFn: () => api<LoanDetail>('GET', `/employees/${userId}/loans/${loanId}`),
   });
 
-  if (!loan) {
-    return (
-      <OverlayPortal><div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
-        onClick={onClose}
-      >
-        <div
-          className="w-[800px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-                title="Close"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Loan Details</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Loading…</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="rounded-xl border border-gray-200 bg-white p-6 flex items-center justify-center">
-              <div className="text-sm text-gray-500">Loading...</div>
-            </div>
-          </div>
-        </div>
-      </div></OverlayPortal>
-    );
-  }
+  const activities = useMemo(() => {
+    if (!loan) return [];
+
+    const items: Array<{ type: string; date: string; user?: string; description: string }> = [];
+
+    items.push({
+      type: 'created',
+      date: loan.created_at,
+      user: loan.created_by?.username,
+      description: `Loan created for ${formatCurrency(loan.loan_amount)}`,
+    });
+
+    if (loan.updated_at && loan.updated_by) {
+      items.push({
+        type: 'updated',
+        date: loan.updated_at,
+        user: loan.updated_by.username,
+        description: `Loan status updated to ${loan.status}`,
+      });
+    }
+
+    if (loan.paid_off_at) {
+      items.push({
+        type: 'closed',
+        date: loan.paid_off_at,
+        description: 'Loan closed',
+      });
+    }
+
+    loan.payments.forEach((payment) => {
+      items.push({
+        type: 'payment',
+        date: payment.created_at,
+        user: payment.created_by?.username,
+        description: `Payment of ${formatCurrency(payment.payment_amount)} recorded (${payment.payment_method || 'N/A'})`,
+      });
+    });
+
+    return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [loan]);
 
   const handleCloseLoan = async () => {
     const result = await confirm({
       message: 'Are you sure you want to close this loan?',
-      title: 'Close Loan',
+      title: 'Close loan',
     });
-    if (result === 'confirm') {
-      try {
-        await api('PATCH', `/employees/${userId}/loans/${loanId}/close`);
-        toast.success('Loan closed');
-        await onLoanClosed();
-      } catch (e: any) {
-        toast.error(e?.response?.data?.detail || 'Failed to close loan');
-      }
+    if (result !== 'confirm') return;
+
+    try {
+      await api('PATCH', `/employees/${userId}/loans/${loanId}/close`);
+      toast.success('Loan closed');
+      await onLoanClosed();
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail || 'Failed to close loan');
     }
   };
 
-  // Build history/activities
-  const activities: Array<{ type: string; date: string; user?: string; description: string }> = [];
-  
-  // Loan creation
-  activities.push({
-    type: 'created',
-    date: loan.created_at,
-    user: loan.created_by?.username,
-    description: `Loan created for ${formatCurrency(loan.loan_amount)}`,
-  });
-
-  // Status changes
-  if (loan.updated_at && loan.updated_by) {
-    activities.push({
-      type: 'updated',
-      date: loan.updated_at,
-      user: loan.updated_by.username,
-      description: `Loan status updated to ${loan.status}`,
-    });
-  }
-
-  if (loan.paid_off_at) {
-    activities.push({
-      type: 'closed',
-      date: loan.paid_off_at,
-      description: 'Loan closed',
-    });
-  }
-
-  // Payments
-  loan.payments.forEach((payment) => {
-    activities.push({
-      type: 'payment',
-      date: payment.created_at,
-      user: payment.created_by?.username,
-      description: `Payment of ${formatCurrency(payment.payment_amount)} recorded (${payment.payment_method || 'N/A'})`,
-    });
-  });
-
-  // Sort by date (newest first)
-  activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
   return (
-    <OverlayPortal><div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
-      onClick={onClose}
-    >
-      <div
-        className="w-[800px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+    <>
+      <AppFormModal
+        open
+        onClose={onClose}
+        layout="detail"
+        size="md"
+        title="Loan details"
+        description={loan ? `${formatCurrency(loan.loan_amount)} · ${loan.status}` : 'Loading…'}
+        quickInfo={loan ? employeeLoanDetailQuickInfo : undefined}
+        bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
+              Close
+            </AppButton>
+            {canEdit && loan?.status === 'Active' ? (
+              <>
+                <AppButton type="button" size="sm" onClick={() => setShowPaymentModal(true)}>
+                  Add payment
+                </AppButton>
+                {loan.remaining_balance <= 0 ? (
+                  <AppButton type="button" variant="secondary" size="sm" onClick={() => void handleCloseLoan()}>
+                    Close loan
+                  </AppButton>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        }
       >
-        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-              title="Close"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">Loan Details</h2>
-              <p className="text-xs text-gray-500 mt-0.5">{formatCurrency(loan.loan_amount)} · {loan.status}</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-6">
-          {/* Loan Info */}
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">Loan Amount</div>
-              <div className="text-sm font-semibold text-gray-900 flex items-baseline gap-2 flex-wrap">
-                <span>{formatCurrency(loan.loan_amount)}</span>
-                {loan.base_amount && loan.fees_percent && loan.fees_percent > 0 && (
-                  <span className="text-[10px] font-normal text-gray-500 leading-tight">
-                    ({formatCurrency(loan.base_amount)} + {formatCurrency((loan.base_amount * loan.fees_percent) / 100)} Fees ({loan.fees_percent}%))
+        {!loan ? (
+          <div className="flex items-center justify-center py-12 text-sm text-gray-500">Loading…</div>
+        ) : (
+          <div className={uiSpacing.sectionStack}>
+            <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
+              <dl className="min-w-0">
+                <DetailField label="Loan amount">
+                  <span className="inline-flex flex-wrap items-baseline gap-2">
+                    <span>{formatCurrency(loan.loan_amount)}</span>
+                    {loan.base_amount && loan.fees_percent && loan.fees_percent > 0 ? (
+                      <span className={uiCx(uiTypography.helper, 'font-normal')}>
+                        ({formatCurrency(loan.base_amount)} +{' '}
+                        {formatCurrency((loan.base_amount * loan.fees_percent) / 100)} fees ({loan.fees_percent}%))
+                      </span>
+                    ) : null}
                   </span>
-                )}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">Remaining Balance</div>
-              <div className="text-sm font-semibold text-gray-900">{formatCurrency(loan.remaining_balance)}</div>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">Agreement Date</div>
-              <div className="text-sm font-semibold text-gray-900">{formatDate(loan.loan_date)}</div>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">Payment Method</div>
-              <div className="text-sm font-semibold text-gray-900">{loan.payment_method || '—'}</div>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">Status</div>
-              <div>
-                <span
-                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                    loan.status === 'Active'
-                      ? 'bg-green-100 text-green-800'
-                      : loan.status === 'Closed'
-                      ? 'bg-gray-100 text-gray-800'
-                      : 'bg-red-100 text-red-800'
-                  }`}
-                >
-                  {loan.status}
-                </span>
-              </div>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-1.5">Created By</div>
-              <div className="text-sm font-semibold text-gray-900">{loan.created_by?.username || '—'}</div>
-            </div>
-            {loan.notes && (
-              <div className="md:col-span-2">
-                <div className="text-xs font-medium text-gray-600 mb-1.5">Notes</div>
-                <div className="text-xs text-gray-900">{loan.notes}</div>
-              </div>
-            )}
-          </div>
+                </DetailField>
+                <DetailField label="Remaining balance">{formatCurrency(loan.remaining_balance)}</DetailField>
+                <DetailField label="Agreement date">{formatDate(loan.loan_date)}</DetailField>
+                <DetailField label="Payment method">{loan.payment_method || '—'}</DetailField>
+                <DetailField label="Status">
+                  <AppBadge variant={loanStatusVariant(loan.status)}>{loan.status}</AppBadge>
+                </DetailField>
+                <DetailField label="Created by">{loan.created_by?.username || '—'}</DetailField>
+                {loan.notes ? (
+                  <DetailField label="Notes">
+                    <span className="whitespace-pre-wrap font-normal text-gray-700">{loan.notes}</span>
+                  </DetailField>
+                ) : null}
+              </dl>
+            </AppCard>
 
-          {/* Actions - Only show if canEdit */}
-          {canEdit && loan.status === 'Active' && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setShowPaymentModal(true)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-              >
-                + Add Payment
-              </button>
-              {loan.remaining_balance <= 0 && (
-                <button
-                  type="button"
-                  onClick={handleCloseLoan}
-                  className="px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-orange-600 hover:bg-orange-700"
-                >
-                  Close Loan
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Payments Table */}
-          <div>
-            <h4 className="text-xs font-semibold text-gray-900 mb-2">Payments</h4>
-            {loan.payments.length === 0 ? (
-              <div className="text-xs text-gray-500">No payments recorded</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="p-2 text-left text-xs font-medium text-gray-600">Date</th>
-                      <th className="p-2 text-left text-xs font-medium text-gray-600">Amount</th>
-                      <th className="p-2 text-left text-xs font-medium text-gray-600">Method</th>
-                      <th className="p-2 text-left text-xs font-medium text-gray-600">Balance After</th>
-                      <th className="p-2 text-left text-xs font-medium text-gray-600">Recorded By</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loan.payments.map((payment) => (
-                      <tr key={payment.id} className="border-t border-gray-200">
-                        <td className="p-2 text-xs text-gray-900">{formatDate(payment.payment_date)}</td>
-                        <td className="p-2 text-xs font-semibold text-gray-900">{formatCurrency(payment.payment_amount)}</td>
-                        <td className="p-2 text-xs text-gray-900">{payment.payment_method || '—'}</td>
-                        <td className="p-2 text-xs text-gray-900">{formatCurrency(payment.balance_after)}</td>
-                        <td className="p-2 text-xs text-gray-600">{payment.created_by?.username || '—'}</td>
+            <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
+              <AppSectionHeader title="Payments" />
+              {loan.payments.length === 0 ? (
+                <p className={uiTypography.helper}>No payments recorded</p>
+              ) : (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="p-2 text-left text-xs font-medium text-gray-600">Date</th>
+                        <th className="p-2 text-left text-xs font-medium text-gray-600">Amount</th>
+                        <th className="p-2 text-left text-xs font-medium text-gray-600">Method</th>
+                        <th className="p-2 text-left text-xs font-medium text-gray-600">Balance after</th>
+                        <th className="p-2 text-left text-xs font-medium text-gray-600">Recorded by</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* History/Activities */}
-          <div>
-            <h4 className="text-xs font-semibold text-gray-900 mb-2">History / Activities</h4>
-            <div className="space-y-2">
-              {activities.map((activity, idx) => (
-                <div key={idx} className="text-xs border-l-2 border-gray-200 pl-3 py-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-gray-900">{activity.description}</span>
-                    {activity.user && (
-                      <span className="text-gray-500">by {activity.user}</span>
-                    )}
-                  </div>
-                  <div className="text-[10px] text-gray-500">{formatDate(activity.date)}</div>
+                    </thead>
+                    <tbody>
+                      {loan.payments.map((payment) => (
+                        <tr key={payment.id} className="border-t border-gray-200">
+                          <td className="p-2 text-xs text-gray-900">{formatDate(payment.payment_date)}</td>
+                          <td className="p-2 text-xs font-semibold text-gray-900">
+                            {formatCurrency(payment.payment_amount)}
+                          </td>
+                          <td className="p-2 text-xs text-gray-900">{payment.payment_method || '—'}</td>
+                          <td className="p-2 text-xs text-gray-900">{formatCurrency(payment.balance_after)}</td>
+                          <td className="p-2 text-xs text-gray-600">{payment.created_by?.username || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-            </div>
-          </div>
-          </div>
-        </div>
-      </div>
+              )}
+            </AppCard>
 
-      {/* Payment Modal */}
-      {showPaymentModal && (
+            <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
+              <AppSectionHeader title="History" />
+              <div className="mt-3 space-y-2">
+                {activities.map((activity, idx) => (
+                  <div key={idx} className="border-l-2 border-gray-200 py-1 pl-3 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-gray-900">{activity.description}</span>
+                      {activity.user ? <span className="text-gray-500">by {activity.user}</span> : null}
+                    </div>
+                    <div className={uiTypography.helper}>{formatDate(activity.date)}</div>
+                  </div>
+                ))}
+              </div>
+            </AppCard>
+          </div>
+        )}
+      </AppFormModal>
+
+      {showPaymentModal ? (
         <AddPaymentModal
           userId={userId}
           loanId={loanId}
@@ -1193,8 +1040,7 @@ function LoanDetailView({
             await onPaymentAdded();
           }}
         />
-      )}
-    </div></OverlayPortal>
+      ) : null}
+    </>
   );
 }
-

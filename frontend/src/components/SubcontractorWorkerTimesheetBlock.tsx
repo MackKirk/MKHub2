@@ -8,7 +8,7 @@ import { SubcontractorWorkerClockModalLayer } from '@/components/SubcontractorWo
 import { ProjectSearchCombobox } from '@/components/ProjectSearchCombobox';
 import { ClockActionTile } from '@/components/ClockActionTile';
 import { formatDateLocal, formatDecimalHoursAsHMin, getTodayLocal } from '@/lib/dateUtils';
-import { parseHhmm } from '@/lib/timePickerUtils';
+import { isCompleteLocalDatetime, LocalDateTimeFields } from '@/components/LocalDateTimeFields';
 import {
   scWorkerAttendanceDetailQuickInfo,
   scWorkerManualAttendanceQuickInfo,
@@ -34,7 +34,6 @@ import {
   AppSortableEntityListHeader,
   AppSortableEntityListRow,
   AppSortableEntityListSortColumn,
-  AppTimePicker,
   appSectionPresetProps,
   resolveAppSortableListPreset,
   sortListByAppColumn,
@@ -63,13 +62,6 @@ const toLocalInputValue = (iso?: string | null) => {
 /** Date selected, time not yet chosen (shows Hour / Min / AM placeholders). */
 function localDatetimeDateOnly(): string {
   return `${getTodayLocal()}T`;
-}
-
-function isCompleteLocalDatetime(value: string): boolean {
-  if (!value?.includes('T')) return false;
-  const [datePart, timePart = ''] = value.split('T');
-  const { hour12, minute, amPm } = parseHhmm(timePart.slice(0, 5));
-  return Boolean(datePart && hour12 && minute && amPm);
 }
 
 /** Parse `datetime-local` string as local civil time and return UTC ISO string. */
@@ -129,68 +121,6 @@ const BREAK_MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => {
   const v = String(m).padStart(2, '0');
   return { value: v, label: v };
 });
-
-function localDatePart(value: string): string {
-  if (!value?.includes('T')) return value?.trim() || '';
-  return value.split('T')[0] || '';
-}
-
-function localTimePart(value: string): string {
-  if (!value?.includes('T')) return '';
-  const timePart = value.split('T')[1] || '';
-  return /^\d{2}:\d{2}/.test(timePart) ? timePart.slice(0, 5) : '';
-}
-
-function LocalDateTimeFields({
-  label,
-  value,
-  onChange,
-  required,
-  dateFieldHint,
-  timeFieldHint,
-}: {
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-  required?: boolean;
-  dateFieldHint?: string;
-  timeFieldHint?: string;
-}) {
-  const date = localDatePart(value);
-  const time = localTimePart(value);
-  const dateLabel = required ? `${label} *` : label;
-  const timeLabel = required ? 'Time *' : 'Time';
-
-  return (
-    <div className={uiSpacing.sectionStack}>
-      <AppDatePicker
-        label={dateLabel}
-        fieldHint={dateFieldHint ? <AppFieldHint hint={dateFieldHint} /> : undefined}
-        value={date}
-        onChange={(e) => {
-          const d = e.target.value;
-          if (!d) {
-            onChange('');
-            return;
-          }
-          onChange(time ? `${d}T${time}` : `${d}T`);
-        }}
-        required={required}
-      />
-      <AppTimePicker
-        label={timeLabel}
-        fieldHint={timeFieldHint ? <AppFieldHint hint={timeFieldHint} /> : undefined}
-        value={time}
-        onChange={(e) => {
-          const t = e.target.value;
-          if (!date) return;
-          onChange(t ? `${date}T${t}` : `${date}T`);
-        }}
-        required={required}
-      />
-    </div>
-  );
-}
 
 /** Parse `GPS:{...}` lines from attendance notes (e.g. session notes from clock-in/out). */
 function extractGpsFromSessionNotes(text?: string | null): { lat: number; lng: number; accuracy_m?: number } | null {

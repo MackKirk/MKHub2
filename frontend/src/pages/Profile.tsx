@@ -2273,7 +2273,12 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
   );
 }
 
-// Work Eligibility Documents Section — driver's licence; visa & immigration hidden for Canadian citizens
+function requiresVisaAndImmigration(workEligibilityStatus: string | null | undefined): boolean {
+  const wes = (workEligibilityStatus || '').trim();
+  return wes !== '' && wes !== 'Canadian Citizen';
+}
+
+// Work Eligibility Documents Section — driver's licence; visa & immigration when eligibility requires them
 function WorkEligibilityDocumentsSection({
   userId,
   canEdit,
@@ -2285,8 +2290,7 @@ function WorkEligibilityDocumentsSection({
   profile: Record<string, any>;
   onProfileFieldsChange: (kv: Record<string, any>) => void;
 }) {
-  const wes = (profile.work_eligibility_status || '').trim();
-  const hideVisaAndImmigration = wes === 'Canadian Citizen';
+  const showVisaAndImmigration = requiresVisaAndImmigration(profile.work_eligibility_status);
 
   return (
     <div className="space-y-4">
@@ -2295,7 +2299,7 @@ function WorkEligibilityDocumentsSection({
         profile={profile}
         onFieldsChange={onProfileFieldsChange}
       />
-      {!hideVisaAndImmigration ? (
+      {showVisaAndImmigration ? (
         <>
           <VisaInformationSection userId={userId} canEdit={canEdit} isRequired={false} showInlineForm={false} />
           <ImmigrationStatusDocumentSection userId={userId} canEdit={canEdit} isRequired={false} />

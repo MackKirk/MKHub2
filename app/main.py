@@ -903,6 +903,8 @@ def create_app() -> FastAPI:
                         ("drivers_license_conditions", "VARCHAR(500) NULL"),
                         ("drivers_license_updated_at", "TIMESTAMPTZ NULL"),
                         ("drivers_license_last_requested_at", "TIMESTAMPTZ NULL"),
+                        ("permit_file_id", "UUID NULL"),
+                        ("pr_card_file_id", "UUID NULL"),
                     ):
                         rows = db.execute(
                             text(

@@ -321,6 +321,35 @@ export function employeeTrainingRecordQuickInfo(opts: {
   });
 }
 
+/** Employee or subcontractor worker — training record detail view. */
+export function employeeTrainingDetailQuickInfo(opts: { isWorker: boolean; canEdit: boolean }): ReactNode {
+  const { isWorker, canEdit } = opts;
+  const subject = isWorker ? 'worker' : 'employee';
+  return formModalQuickInfo({
+    purpose: (
+      <>Review one training record for this {subject} — dates, status, matrix link, certificate reference, and notes.</>
+    ),
+    howToUse: (
+      <>
+        Click a row in the training table to open this view. Records synced from the internal LMS show an{' '}
+        {uiLabel('Internal LMS')} badge on the title.
+      </>
+    ),
+    behavior: (
+      <>
+        Scheduled or in-progress rows with a start date can appear on the team training calendar. Matrix-linked records
+        also satisfy checklist slots in the standard training matrix section.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Close')} returns to the list.
+        {canEdit ? ` ${uiLabel('Edit')} opens the full edit form.` : ''}
+      </>
+    ),
+  });
+}
+
 /** Employee or subcontractor worker — create / edit safety or incident report. */
 export function employeeReportFormQuickInfo(opts: { isWorker: boolean; editing: boolean }): ReactNode {
   const { isWorker, editing } = opts;
@@ -382,6 +411,80 @@ export function employeeReportDetailQuickInfo(opts: { isWorker: boolean; canEdit
     ),
   });
 }
+
+/** Employee loans — create a new loan agreement. */
+export const employeeLoanCreateQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>Record a new loan issued to this employee — principal, optional fees, agreement date, and how repayments are collected.</>
+  ),
+  howToUse: (
+    <>
+      Enter {uiLabel('Loan amount')} and optional {uiLabel('Fees (%)')}; the total updates automatically. Set{' '}
+      {uiLabel('Agreement date')}, {uiLabel('Payment method')}, and {uiLabel('Status')}. Add {uiLabel('Notes')} when you
+      need context for payroll or HR.
+    </>
+  ),
+  behavior: (
+    <>
+      Fees are added to the base amount and stored as the loan total. New loans typically start as {uiLabel('Active')}{' '}
+      with repayments tracked through payments on the loan row.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Create loan')} saves the agreement and refreshes the loans
+      list and summary totals.
+    </>
+  ),
+});
+
+/** Employee loans — record a repayment. */
+export const employeeLoanPaymentQuickInfo = formModalQuickInfo({
+  purpose: <>Log a repayment against an active loan — date, amount, and how the payment was collected.</>,
+  howToUse: (
+    <>
+      Set {uiLabel('Payment date')}, {uiLabel('Payment amount')}, and {uiLabel('Payment method')}. Optional{' '}
+      {uiLabel('Notes')} help explain payroll deductions or manual collections.
+    </>
+  ),
+  behavior: (
+    <>
+      If the amount exceeds the remaining balance, you are asked to confirm before the payment is capped to the balance.
+      When the balance reaches zero, you may be prompted to close the loan.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Add payment')} records the payment and updates balances on the
+      loan.
+    </>
+  ),
+});
+
+/** Employee loans — read loan detail, payments, and history. */
+export const employeeLoanDetailQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>Review one loan agreement for this employee — amounts, status, payment history, and activity timeline.</>
+  ),
+  howToUse: (
+    <>
+      Click a row in the loans table to open this view. Use {uiLabel('Add payment')} on active loans when you need to
+      record a repayment.
+    </>
+  ),
+  behavior: (
+    <>
+      Payments list every deduction or manual payment with the balance after each entry. When the remaining balance is
+      zero, {uiLabel('Close loan')} marks the agreement as closed.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Close')} returns to the loans list. {uiLabel('Add payment')} opens the payment form. {uiLabel('Close loan')}{' '}
+      is available when the balance is fully paid.
+    </>
+  ),
+});
 
 export const scWorkerAttendanceDetailQuickInfo = formModalQuickInfo({
   purpose: (
@@ -1056,6 +1159,22 @@ export const userEducationQuickInfo = formModalQuickInfo({
   ),
 });
 
+/** User profile — Add / edit visa entry (Legal & Documents). */
+export const userVisaEntryQuickInfo = formModalQuickInfo({
+  purpose: <>Record a work permit, study permit, or other visa held by this employee.</>,
+  howToUse: (
+    <>
+      Enter {uiLabel('Visa Type')} and dates. {uiLabel('Status')} drives the badge on the profile card. Use{' '}
+      {uiLabel('Notes')} for LMIA numbers or other reference details.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Create')} or {uiLabel('Save')} stores the entry. {uiLabel('Cancel')} closes without saving.
+    </>
+  ),
+});
+
 /** User profile — Legal & Documents section. */
 export const userLegalDocumentsQuickInfo = formModalQuickInfo({
   purpose: (
@@ -1067,6 +1186,13 @@ export const userLegalDocumentsQuickInfo = formModalQuickInfo({
     <>
       Set {uiLabel('Work Eligibility Status')} first — it controls which document sections appear. Upload or update
       supporting files where shown.
+    </>
+  ),
+  behavior: (
+    <>
+      While {uiLabel('Work Eligibility Status')} is {uiLabel('Select...')} or {uiLabel('Canadian Citizen')}, only SIN,
+      eligibility, and driver&apos;s licence are shown. Visa and immigration sections appear after you choose another
+      status (for example Permanent Resident or Temporary Resident).
     </>
   ),
   actions: (
@@ -1123,6 +1249,64 @@ export const userSalaryQuickInfo = formModalQuickInfo({
   actions: (
     <>
       {uiLabel('Save')} updates compensation fields. {uiLabel('Cancel')} closes without saving.
+    </>
+  ),
+});
+
+/** User profile — Manual time-off balance adjustment (Sick Leave, Vacation, etc.). */
+export function userTimeOffBalanceAdjustQuickInfo(policyLabel: string) {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        Manually adjust this employee&apos;s {uiLabel(policyLabel)} balance when payroll or BambooHR data needs a
+        correction.
+      </>
+    ),
+    howToUse: (
+      <>
+        Choose {uiLabel('Add')} or {uiLabel('Subtract')}, enter days, set {uiLabel('Effective date')}, and provide a{' '}
+        {uiLabel('Note')}. The summary shows the projected balance after you save.
+      </>
+    ),
+    behavior: (
+      <>
+        The adjustment is recorded in time-off history as a manual entry. Sick leave requests can still be submitted
+        without sufficient balance; vacation typically requires available days.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Save')} applies the adjustment and refreshes balances and history. {uiLabel('Cancel')} closes without
+        saving.
+      </>
+    ),
+  });
+}
+
+/** User profile — New salary history entry (Job tab). */
+export const userSalaryEntryQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Record a compensation change for this employee. The new {uiLabel('Pay rate')} and {uiLabel('Pay type')} update the
+      profile when you save.
+    </>
+  ),
+  howToUse: (
+    <>
+      Set {uiLabel('Effective date')}, enter the new {uiLabel('Pay rate')}, and choose {uiLabel('Pay type')} if needed.
+      {uiLabel('Change reason')} is required; {uiLabel('Comment')} is optional.
+    </>
+  ),
+  behavior: (
+    <>
+      Each entry appears in the salary history table. The most recent effective entry updates the current pay fields on
+      the profile card.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save')} creates the history entry and refreshes compensation on the profile. {uiLabel('Cancel')} closes
+      without saving.
     </>
   ),
 });
