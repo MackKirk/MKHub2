@@ -21,13 +21,40 @@ from ..auth.security import (
     has_customer_list_permission,
     has_customer_detail_access,
     assert_customer_tab,
+    can_access_business_line,
+    has_project_files_category_permission,
     User,
 )
 from ..services.standard_file_categories import get_categories_for_client_api, get_default_folder_rows
-from ..services.project_visibility import project_visibility_clause_for_user
+from ..services.project_visibility import project_visibility_clause_for_user, is_project_visible_to_user
 
 
 router = APIRouter(prefix="/clients", tags=["clients"])
+
+
+def _customer_list_includes_project_file(
+    user: User,
+    db: Session,
+    cf: ClientFile,
+    fo: FileObject,
+) -> bool:
+    """
+    Project-origin blobs on the customer Files tab use the same read rules as Project > Files:
+    business line, project visibility, and optional per-category allow-list.
+    """
+    pid = getattr(fo, "project_id", None)
+    if not pid:
+        return True
+    proj = db.query(Project).filter(Project.id == pid, Project.deleted_at.is_(None)).first()
+    if not proj:
+        return False
+    if not can_access_business_line(user, getattr(proj, "business_line", None)):
+        return False
+    if not is_project_visible_to_user(db, user, proj):
+        return False
+    return has_project_files_category_permission(
+        user, getattr(cf, "category", None), action="read", project=proj
+    )
 
 
 def _try_remove_orphan_file_object(db: Session, file_object_id: uuid.UUID) -> None:
@@ -993,6 +1020,10 @@ def list_files(
     out = []
     for cf in rows:
         fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+        if fo and getattr(fo, "project_id", None) and not _customer_list_includes_project_file(
+            user, db, cf, fo
+        ):
+            continue
         # Optional filter by project id - only include if matches
         if project_id and (not fo or str(getattr(fo, 'project_id', None) or '') != str(project_id)):
             continue
