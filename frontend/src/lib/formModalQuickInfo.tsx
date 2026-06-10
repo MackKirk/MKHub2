@@ -412,6 +412,16 @@ export function employeeReportDetailQuickInfo(opts: { isWorker: boolean; canEdit
   });
 }
 
+/** Field hints for employee Reports tab filters (`Title\\n\\nBody`). */
+export const USER_REPORTS_FIELD_HINTS = {
+  search: 'Search\n\nMatches title, description, or ticket number.',
+  type: 'Type\n\nFine, warning, suspension, behavior note, or other.',
+  status: 'Status\n\nOpen, under review, or closed.',
+  severity: 'Severity\n\nLow, medium, or high priority.',
+  from_date: 'From date\n\nEarliest occurrence date to include.',
+  to_date: 'To date\n\nLatest occurrence date to include.',
+} as const;
+
 /** Employee loans — create a new loan agreement. */
 export const employeeLoanCreateQuickInfo = formModalQuickInfo({
   purpose: (
@@ -485,6 +495,115 @@ export const employeeLoanDetailQuickInfo = formModalQuickInfo({
     </>
   ),
 });
+
+/** Employee Assets — assign equipment to this employee. */
+export const employeeEquipmentCheckoutQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>Assign company equipment from inventory to this employee — tools, electronics, PPE, or other tracked items.</>
+  ),
+  howToUse: (
+    <>
+      Choose {uiLabel('Equipment')} from available items, set {uiLabel('Condition')} at hand-off, and optional{' '}
+      {uiLabel('Expected return date')} and {uiLabel('Notes')}.
+    </>
+  ),
+  behavior: (
+    <>
+      Only unassigned, active equipment appears in the list. The assignment shows under {uiLabel('Currently with this employee')}{' '}
+      until someone checks it back in.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Assign equipment')} records the assignment and refreshes the assets
+      table.
+    </>
+  ),
+});
+
+/** Employee Assets — check in equipment from this employee. */
+export const employeeEquipmentCheckinQuickInfo = formModalQuickInfo({
+  purpose: <>Record that checked-out equipment was returned by this employee.</>,
+  howToUse: (
+    <>
+      Set {uiLabel('Return date')}, {uiLabel('Condition in')} when the item comes back, and optional {uiLabel('Notes')}{' '}
+      (damage, missing parts, etc.).
+    </>
+  ),
+  behavior: (
+    <>
+      The active checkout moves to {uiLabel('History')} with return date and status. The equipment becomes available for
+      checkout again.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Check in')} completes the return and refreshes the assets
+      table.
+    </>
+  ),
+});
+
+/** Employee Assets — assign a fleet vehicle to this employee. */
+export const employeeVehicleCheckoutQuickInfo = formModalQuickInfo({
+  purpose: <>Assign an unassigned fleet vehicle to this employee for field or site use.</>,
+  howToUse: (
+    <>
+      Select {uiLabel('Vehicle')}, optionally enter {uiLabel('Odometer (out)')}, {uiLabel('Expected return date')}, and{' '}
+      {uiLabel('Notes')}.
+    </>
+  ),
+  behavior: (
+    <>
+      Only vehicles not currently assigned to another driver are listed. The assignment appears under{' '}
+      {uiLabel('Currently with this employee')} until the vehicle is returned.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Assign vehicle')} records the assignment and refreshes the
+      assets table.
+    </>
+  ),
+});
+
+/** Employee Assets — return a fleet vehicle or machinery assignment. */
+export const employeeFleetReturnQuickInfo = formModalQuickInfo({
+  purpose: <>Close an active fleet assignment — record return readings and optional notes.</>,
+  howToUse: (
+    <>
+      Enter {uiLabel('Odometer (in)')} or {uiLabel('Hours (in)')} when readings were taken at check-out. Return values must
+      be at or above those readings. Add {uiLabel('Notes')} if needed.
+    </>
+  ),
+  behavior: (
+    <>
+      Vehicles use odometer; heavy machinery and other fleet assets may use hour meters. Empty readings are allowed when
+      not tracked for this asset.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Confirm return')} ends the assignment and refreshes the assets
+      table.
+    </>
+  ),
+});
+
+/** Field hints for employee Assets checkout / return modals (`Title\\n\\nBody`). */
+export const USER_ASSETS_FIELD_HINTS = {
+  equipment: 'Equipment\n\nAvailable item not currently assigned to another employee.',
+  condition_out: 'Condition\n\nPhysical state when the item leaves inventory.',
+  expected_return_date: 'Expected return date\n\nTarget date the employee should return the item.',
+  notes_out: 'Notes\n\nOptional context at checkout (project, job site, etc.).',
+  return_date: 'Return date\n\nCalendar day the equipment was returned.',
+  condition_in: 'Condition in\n\nPhysical state when the item comes back.',
+  notes_in: 'Notes\n\nOptional notes on return (damage, missing parts, etc.).',
+  vehicle: 'Vehicle\n\nUnassigned fleet vehicle to assign to this employee.',
+  odometer_out: 'Odometer (out)\n\nReading when the vehicle is assigned; optional but recommended.',
+  odometer_in: 'Odometer (in)\n\nReading when returned; must be at or above the check-out reading.',
+  hours_in: 'Hours (in)\n\nHour meter when returned; must be at or above the check-out reading.',
+} as const;
 
 export const scWorkerAttendanceDetailQuickInfo = formModalQuickInfo({
   purpose: (
