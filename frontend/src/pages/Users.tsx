@@ -61,13 +61,15 @@ const userGridCardClass = uiCx(
 
 const USER_SORT_COLUMNS: UserSortColumn[] = ['user', 'job_title', 'email', 'status'];
 
+/** Card grid uses 4 columns; reserve one slot for Invite User so rows stay full. */
+const USERS_PAGE_LIMIT = 24;
+
 export default function Users(){
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
   const pageParam = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
   const [searchQuery, setSearchQuery] = useState(queryParam);
   const [page, setPage] = useState(pageParam);
-  const limit = 24;
   const queryClient = useQueryClient();
   const [isSyncing, setIsSyncing] = useState(false);
   const [bambooSyncModal, setBambooSyncModal] = useState<'photos' | 'documents' | null>(null);
@@ -115,15 +117,32 @@ export default function Users(){
     setSearchParams(params, { replace: true });
   };
 
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+
+  const canInviteUser = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:write') || perms.includes('users:write');
+  }, [me]);
+
+  const pageLimit = useMemo(() => {
+    if (viewMode === 'cards' && canInviteUser) {
+      return USERS_PAGE_LIMIT - 1;
+    }
+    return USERS_PAGE_LIMIT;
+  }, [viewMode, canInviteUser]);
+
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
     if (searchQuery.trim()) params.set('q', searchQuery.trim());
     params.set('page', String(page));
-    params.set('limit', String(limit));
+    params.set('limit', String(pageLimit));
     params.set('sort', sortBy);
     params.set('dir', sortDir);
     return params.toString();
-  }, [page, limit, searchQuery, sortBy, sortDir]);
+  }, [page, pageLimit, searchQuery, sortBy, sortDir]);
 
   const { data, isLoading } = useQuery<UsersResponse>({
     queryKey: ['users', queryParams],
@@ -132,19 +151,9 @@ export default function Users(){
 
   const [showInviteModal, setShowInviteModal] = useState(false);
 
-  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
-
   const isSystemAdmin = useMemo(() => {
     if (!me) return false;
     return (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
-  }, [me]);
-
-  const canInviteUser = useMemo(() => {
-    if (!me) return false;
-    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
-    if (isAdmin) return true;
-    const perms = me?.permissions || [];
-    return perms.includes('hr:users:write') || perms.includes('users:write');
   }, [me]);
 
   const canViewUserDetails = useMemo(() => {
@@ -338,7 +347,7 @@ export default function Users(){
           totalPages > 1 ? (
             <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
               <p className={uiTypography.helper}>
-                Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, total)} of {total} users
+                Showing {((page - 1) * pageLimit) + 1} to {Math.min(page * pageLimit, total)} of {total} users
               </p>
               <div className={uiCx(uiLayout.actionsRow, 'items-center')}>
                 <AppButton

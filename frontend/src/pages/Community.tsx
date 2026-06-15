@@ -1,10 +1,24 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { Megaphone } from 'lucide-react';
 import { api } from '@/lib/api';
-import { CommunityPageHeader } from '@/components/community/CommunityPageHeader';
 import { MyAnnouncementsPanel } from '@/components/community/MyAnnouncementsPanel';
-import { ChartBarIcon, ChevronRightIcon, MegaphoneIcon, UsersGroupIcon } from '@/components/community/communityIcons';
+import {
+  ChartBarIcon,
+  ChevronRightIcon,
+  MegaphoneIcon,
+  UsersGroupIcon,
+} from '@/components/community/communityIcons';
+import {
+  AppCard,
+  AppPageHeader,
+  AppTabs,
+  uiBorders,
+  uiCx,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type CommunityTab = 'overview' | 'announcements';
 
@@ -41,7 +55,7 @@ export default function Community() {
   const [activeTab, setActiveTab] = useState<CommunityTab>(() =>
     typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('myAnnouncements') === '1'
       ? 'announcements'
-      : 'overview'
+      : 'overview',
   );
 
   useEffect(() => {
@@ -61,7 +75,7 @@ export default function Community() {
       }
       setSearchParams(next, { replace: true });
     },
-    [searchParams, setSearchParams]
+    [searchParams, setSearchParams],
   );
 
   const { data: myPostsData, isError, isPending, error, refetch } = useQuery({
@@ -71,118 +85,106 @@ export default function Community() {
 
   const myPosts: any[] = Array.isArray(myPostsData) ? myPostsData : [];
 
-  const tabBtn = (active: boolean) =>
-    `snap-start shrink-0 px-4 py-3 sm:px-6 text-sm font-medium transition-colors border-b-2 -mb-px outline-none focus-visible:ring-2 focus-visible:ring-red-100 focus-visible:ring-offset-2 rounded-t-md ${
-      active ? 'text-brand-red border-brand-red' : 'text-gray-600 hover:text-gray-900 border-transparent'
-    }`;
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString('en-CA', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }),
+    [],
+  );
+
+  const tabItems = useMemo(
+    () => [
+      { key: 'overview', label: 'Overview' },
+      { key: 'announcements', label: 'My announcements', count: myPosts.length > 0 ? myPosts.length : undefined },
+    ],
+    [myPosts.length],
+  );
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <CommunityPageHeader
+    <div className={uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
         title="Community"
         subtitle="Create announcements, manage groups, and review engagement."
+        icon={<Megaphone className="h-4 w-4" />}
+        actions={
+          <div className="text-right">
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
+          </div>
+        }
       />
 
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-        <div
-          className="flex border-b border-gray-200 overflow-x-auto snap-x snap-mandatory"
-          role="tablist"
-          aria-label="Community sections"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'overview'}
-            id="community-tab-overview"
-            aria-controls="community-panel-overview"
-            tabIndex={activeTab === 'overview' ? 0 : -1}
-            onClick={() => goToTab('overview')}
-            className={tabBtn(activeTab === 'overview')}
-          >
-            Overview
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'announcements'}
-            id="community-tab-announcements"
-            aria-controls="community-panel-announcements"
-            tabIndex={activeTab === 'announcements' ? 0 : -1}
-            onClick={() => goToTab('announcements')}
-            className={`${tabBtn(activeTab === 'announcements')} whitespace-nowrap`}
-          >
-            My announcements
-          </button>
-        </div>
-
-        <div
-          id="community-panel-overview"
-          role="tabpanel"
-          aria-labelledby="community-tab-overview"
-          hidden={activeTab !== 'overview'}
-          className={activeTab === 'overview' ? 'p-4 sm:p-6 space-y-5' : 'hidden'}
-        >
-          <section aria-labelledby="community-create-heading">
-            <Link
-              to="/community/new-post"
-              className={shortcutCardClass}
-              aria-labelledby="community-create-heading"
-            >
-              <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-700 group-hover:border-gray-300"
-                aria-hidden
-              >
-                <MegaphoneIcon className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h2 id="community-create-heading" className="font-semibold text-sm text-gray-900">
-                  Create an announcement
-                </h2>
-                <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
-                  Reach groups, track read confirmations, and schedule for later.
-                </p>
-              </div>
-              <ChevronRightIcon className="h-5 w-5 shrink-0 text-gray-400 group-hover:text-gray-600" />
-            </Link>
-          </section>
-
-          <section aria-labelledby="community-shortcuts-heading">
-            <h3 id="community-shortcuts-heading" className="sr-only">
-              Shortcuts
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {secondaryCards.map((card) => (
-                <Link key={card.id} to={card.path} className={shortcutCardClass}>
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-700 group-hover:border-gray-300">
-                    {card.icon}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-sm text-gray-900">{card.label}</div>
-                    <div className="text-xs text-gray-500 mt-0.5 line-clamp-2">{card.description}</div>
-                  </div>
-                  <ChevronRightIcon className="h-5 w-5 shrink-0 text-gray-400 group-hover:text-gray-600" />
-                </Link>
-              ))}
-            </div>
-          </section>
-        </div>
-
-        <div
-          id="community-panel-announcements"
-          role="tabpanel"
-          aria-labelledby="community-tab-announcements"
-          hidden={activeTab !== 'announcements'}
-          className={activeTab === 'announcements' ? 'p-4 sm:p-6' : 'hidden'}
-        >
-          <MyAnnouncementsPanel
-            posts={myPosts}
-            isPending={isPending}
-            isError={isError}
-            error={error}
-            refetch={refetch}
+      <AppCard bodyClassName="p-0 overflow-hidden">
+        <div className={uiSpacing.cardPadding}>
+          <AppTabs
+            tabs={tabItems}
+            value={activeTab}
+            onChange={(key) => goToTab(key as CommunityTab)}
           />
         </div>
-      </div>
+
+        {activeTab === 'overview' ? (
+          <div className={uiCx(uiSpacing.cardPadding, 'border-t', uiBorders.subtle, 'space-y-5')}>
+            <section aria-labelledby="community-create-heading">
+              <Link
+                to="/community/new-post"
+                className={shortcutCardClass}
+                aria-labelledby="community-create-heading"
+              >
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-700 group-hover:border-gray-300"
+                  aria-hidden
+                >
+                  <MegaphoneIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 id="community-create-heading" className="text-sm font-semibold text-gray-900">
+                    Create an announcement
+                  </h2>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">
+                    Reach groups, track read confirmations, and schedule for later.
+                  </p>
+                </div>
+                <ChevronRightIcon className="h-5 w-5 shrink-0 text-gray-400 group-hover:text-gray-600" />
+              </Link>
+            </section>
+
+            <section aria-labelledby="community-shortcuts-heading">
+              <h3 id="community-shortcuts-heading" className="sr-only">
+                Shortcuts
+              </h3>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {secondaryCards.map((card) => (
+                  <Link key={card.id} to={card.path} className={shortcutCardClass}>
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-700 group-hover:border-gray-300">
+                      {card.icon}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-gray-900">{card.label}</div>
+                      <div className="mt-0.5 line-clamp-2 text-xs text-gray-500">{card.description}</div>
+                    </div>
+                    <ChevronRightIcon className="h-5 w-5 shrink-0 text-gray-400 group-hover:text-gray-600" />
+                  </Link>
+                ))}
+              </div>
+            </section>
+          </div>
+        ) : (
+          <div className={uiCx(uiSpacing.cardPadding, 'border-t', uiBorders.subtle)}>
+            <MyAnnouncementsPanel
+              posts={myPosts}
+              isPending={isPending}
+              isError={isError}
+              error={error}
+              refetch={refetch}
+            />
+          </div>
+        )}
+      </AppCard>
     </div>
   );
 }

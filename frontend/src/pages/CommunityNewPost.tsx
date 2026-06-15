@@ -2,11 +2,12 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Editor } from '@tiptap/core';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Megaphone, Paperclip, Plus, Minus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import CommunityPostRichTextEditor from '@/components/community/CommunityPostRichTextEditor';
-import { CommunityPageHeader } from '@/components/community/CommunityPageHeader';
 import { CommunityNewPostPreviewModal } from '@/components/community/CommunityNewPostPreviewModal';
+import { LocalDateTimeFields } from '@/components/LocalDateTimeFields';
 import {
   communityContentLooksLikeHtml,
   isCommunityEditorHtmlEmpty,
@@ -16,6 +17,23 @@ import {
 } from '@/lib/communityPostHtml';
 import { extractMentionsFromEditor } from '@/lib/communityPostEditorUtils';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import {
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppCheckboxControl,
+  AppControlLabelRow,
+  AppInput,
+  AppPageHeader,
+  AppSelect,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 const RELATED_AREAS: { value: string; label: string }[] = [
   { value: 'general', label: 'General' },
@@ -193,10 +211,6 @@ function deriveBaselineFromExistingPost(existingPost: Record<string, unknown>): 
     scheduledAt,
     relatedArea,
   };
-}
-
-function sectionCardClass() {
-  return 'rounded-xl border border-gray-200/80 bg-white shadow-sm';
 }
 
 function priorityPillClass(value: string, active: boolean) {
@@ -588,7 +602,7 @@ export default function CommunityNewPost() {
     setSelectedAudienceUsers((prev) => prev.filter((u) => u.id !== id));
   };
 
-  const busy = createPostMutation.isLoading || patchPostMutation.isLoading;
+  const busy = createPostMutation.isPending || patchPostMutation.isPending;
 
   const currentFormSnapshot = useMemo(
     () =>
@@ -731,47 +745,54 @@ export default function CommunityNewPost() {
 
   if (isEdit && loadingExisting) {
     return (
-      <div className="space-y-4 animate-pulse">
-        <div className="rounded-xl border bg-white h-16" />
-        <div className="rounded-xl border bg-white h-96" />
+      <div className={uiCx(uiSpacing.pageStack, 'animate-pulse bg-gray-50')}>
+        <AppCard className="h-16">{null}</AppCard>
+        <AppCard className="h-96">{null}</AppCard>
       </div>
     );
   }
 
+  const audienceOptionClass = (active: boolean) =>
+    uiCx(
+      'flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition',
+      active ? 'border-brand-red/40 bg-red-50/30' : uiCx(uiBorders.subtle, 'hover:bg-gray-50/80'),
+    );
+
   const composerBlock = (
-    <div
-      className={`flex flex-col gap-5 p-5 sm:p-6 lg:min-h-0 lg:flex-1 ${sectionCardClass()}`}
-    >
+    <AppCard className="flex lg:min-h-0 lg:flex-1 flex-col" bodyClassName="flex flex-col gap-5 lg:min-h-0 lg:flex-1">
       <div className="shrink-0">
-        <div className="flex items-baseline justify-between gap-2 mb-2">
-          <label htmlFor="title" className="text-sm font-medium text-gray-800">
-            Title <span className="text-red-500">*</span>
-          </label>
-          <span
-            className={`text-xs tabular-nums ${title.length > TITLE_SOFT_MAX ? 'text-amber-600 font-medium' : 'text-gray-400'}`}
-          >
-            {title.length} / {TITLE_SOFT_MAX}
-          </span>
-        </div>
-        <input
+        <AppInput
           id="title"
+          label="Title *"
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Clear, specific headline…"
           maxLength={280}
-          className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm shadow-sm focus:ring-2 focus:ring-brand-red/30 focus:border-brand-red"
           required
+          helperText={
+            <span className={title.length > TITLE_SOFT_MAX ? 'font-medium text-amber-600' : undefined}>
+              {title.length} / {TITLE_SOFT_MAX}
+            </span>
+          }
         />
       </div>
 
       <div className="flex min-h-[18rem] flex-1 flex-col gap-2 lg:min-h-0">
-        <div className="flex shrink-0 items-baseline justify-between gap-2">
-          <label htmlFor="content" className="text-sm font-medium text-gray-800">
-            Announcement <span className="text-red-500">*</span>
-          </label>
+        <AppControlLabelRow
+          label={
+            <>
+              Announcement <span className="text-red-500">*</span>
+            </>
+          }
+        />
+        <div className="flex shrink-0 justify-end">
           <span
-            className={`text-xs tabular-nums ${plainBodyLen > CONTENT_SOFT_MAX ? 'text-amber-600 font-medium' : 'text-gray-400'}`}
+            className={uiCx(
+              uiTypography.helper,
+              'tabular-nums',
+              plainBodyLen > CONTENT_SOFT_MAX && 'font-medium text-amber-600',
+            )}
           >
             {plainBodyLen.toLocaleString()} chars
           </span>
@@ -791,33 +812,27 @@ export default function CommunityNewPost() {
       </div>
 
       <div className="shrink-0">
-        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between mb-2">
-          <span className="text-sm font-medium text-gray-800">Attachments (optional)</span>
-          <span className="text-xs text-gray-500">
-            Up to {MAX_COMMUNITY_ATTACHMENTS} files 
-          </span>
+        <div className="mb-2 flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
+          <AppControlLabelRow label="Attachments (optional)" />
+          <span className={uiTypography.helper}>Up to {MAX_COMMUNITY_ATTACHMENTS} files</span>
         </div>
 
         {attachments.length > 0 && (
-          <ul className="space-y-2 mb-3">
+          <ul className="mb-3 space-y-2">
             {attachments.map((a) => (
               <li
                 key={a.fileId}
-                className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50/80 max-w-2xl"
+                className={uiCx(
+                  'flex max-w-2xl items-center gap-3 rounded-lg border border-gray-200 bg-gray-50/80 p-3',
+                )}
               >
-                <svg className="w-7 h-7 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                </svg>
-                <span className="flex-1 text-sm text-gray-800 truncate" title={a.name}>
+                <Paperclip className="h-7 w-7 shrink-0 text-gray-600" aria-hidden />
+                <span className="flex-1 truncate text-sm text-gray-800" title={a.name}>
                   {a.name}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => removeAttachment(a.fileId)}
-                  className="rounded-md px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 flex-shrink-0"
-                >
+                <AppButton type="button" variant="ghost" size="sm" className="text-red-700" onClick={() => removeAttachment(a.fileId)}>
                   Remove
-                </button>
+                </AppButton>
               </li>
             ))}
           </ul>
@@ -838,23 +853,19 @@ export default function CommunityNewPost() {
               if (!dropRef.current?.contains(e.relatedTarget as Node)) setDropActive(false);
             }}
             onDrop={handleDrop}
-            className={`rounded-xl border-2 border-dashed px-4 py-8 text-center transition ${
-              dropActive ? 'border-brand-red bg-red-50/40' : 'border-gray-200 bg-gray-50/50 hover:border-gray-300'
-            }`}
+            className={uiCx(
+              'rounded-xl border-2 border-dashed px-4 py-8 text-center transition',
+              dropActive ? 'border-brand-red bg-red-50/40' : uiCx(uiBorders.subtle, uiColors.surfaceSubtle, 'hover:border-gray-300'),
+            )}
           >
-            <p className="text-sm font-medium text-gray-800">Drop files here to attach</p>
-            <p className="text-xs text-gray-500 mt-1 max-w-lg mx-auto">
-              You can drop or select multiple files at once (max{' '}
-              {Math.round(ATTACHMENT_MAX_BYTES / (1024 * 1024))} MB each).
+            <p className={uiTypography.sectionTitle}>Drop files here to attach</p>
+            <p className={uiCx(uiTypography.helper, 'mx-auto mt-1 max-w-lg')}>
+              You can drop or select multiple files at once (max {Math.round(ATTACHMENT_MAX_BYTES / (1024 * 1024))} MB each).
             </p>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => attachmentInputRef.current?.click()}
-                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50"
-              >
+              <AppButton type="button" variant="secondary" size="sm" onClick={() => attachmentInputRef.current?.click()}>
                 Choose files
-              </button>
+              </AppButton>
             </div>
             <input
               ref={attachmentInputRef}
@@ -867,17 +878,13 @@ export default function CommunityNewPost() {
           </div>
         )}
       </div>
-    </div>
+    </AppCard>
   );
 
   const sidebarBlock = (
-    <div className="space-y-4">
+    <div className={uiSpacing.sectionStack}>
       {showPublicationControls && (
-        <div className={`p-5 sm:p-6 space-y-4 ${sectionCardClass()}`}>
-          <div className="border-b border-gray-100 pb-3">
-            <h2 className="text-sm font-semibold text-gray-900">When to publish</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Control timing before anyone sees this</p>
-          </div>
+        <AppCard title="When to publish" subtitle="Control timing before anyone sees this" bodyClassName={uiSpacing.sectionStack}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {(
               [
@@ -903,67 +910,30 @@ export default function CommunityNewPost() {
           </div>
           {publishMode === 'scheduled' && (
             <div>
-              <label htmlFor="scheduled-at" className="block text-xs font-medium text-gray-600 mb-1.5">
-                Date & time (local)
-              </label>
-              <input
-                id="scheduled-at"
-                type="datetime-local"
+              <LocalDateTimeFields
+                label="Date & time (local)"
                 value={scheduledAt}
-                onChange={(e) => setScheduledAt(e.target.value)}
-                className={`w-full rounded-lg border px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-brand-red/30 focus:border-brand-red ${
-                  scheduleError ? 'border-red-400 bg-red-50/30' : 'border-gray-200'
-                }`}
+                onChange={setScheduledAt}
+                required
               />
-              {scheduleError && <p className="text-xs text-red-600 mt-1">Select a valid schedule time.</p>}
+              {scheduleError && <p className="mt-1 text-xs text-red-600">Select a valid schedule time.</p>}
             </div>
           )}
-        </div>
+        </AppCard>
       )}
 
-      <div className={`flex items-center p-5 sm:p-6 ${sectionCardClass()}`}>
-        <label htmlFor="read-confirmation" className="group flex w-full cursor-pointer items-center gap-3">
-          <input
-            id="read-confirmation"
-            type="checkbox"
-            className="peer sr-only"
-            checked={requiresReadConfirmation}
-            onChange={(e) => setRequiresReadConfirmation(e.target.checked)}
-          />
-          <span
-            aria-hidden
-            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 shadow-sm transition-all duration-200 ease-out outline-none ring-offset-2 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-red/40 group-hover:border-gray-400 ${
-              requiresReadConfirmation
-                ? 'border-brand-red bg-brand-red shadow-md'
-                : 'border-gray-300 bg-white'
-            }`}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={3}
-              className={`h-3 w-3 text-white transition duration-200 ease-out ${
-                requiresReadConfirmation ? 'scale-100 opacity-100' : 'scale-75 opacity-0'
-              }`}
-              aria-hidden
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </span>
-          <div className="min-w-0">
-            <span className="text-sm font-medium text-gray-900">Request read confirmation</span>
-            <p className="text-xs text-gray-500 mt-0.5">Recipients must acknowledge they have read this post.</p>
-          </div>
-        </label>
-      </div>
+      <AppCard bodyClassName={uiSpacing.cardPadding}>
+        <AppCheckbox
+          label="Request read confirmation"
+          checked={requiresReadConfirmation}
+          onChange={setRequiresReadConfirmation}
+          fieldHint="Recipients must acknowledge they have read this post."
+        />
+      </AppCard>
 
-      <div className={`p-5 sm:p-6 space-y-4 ${sectionCardClass()}`}>
-        <div className="border-b border-gray-100 pb-3">
-          <h2 className="text-sm font-semibold text-gray-900">Priority & topic</h2>
-        </div>
+      <AppCard title="Priority & topic" bodyClassName={uiSpacing.sectionStack}>
         <div>
-          <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Priority</span>
+          <span className={uiTypography.overline}>Priority</span>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {PRIORITIES.map((p) => (
               <button
@@ -977,39 +947,18 @@ export default function CommunityNewPost() {
             ))}
           </div>
         </div>
-        <div>
-          <label htmlFor="related-area" className="block text-xs font-medium text-gray-600 mb-1.5">
-            Related area
-          </label>
-          <select
-            id="related-area"
-            value={relatedArea}
-            onChange={(e) => setRelatedArea(e.target.value)}
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-brand-red/30 focus:border-brand-red bg-white"
-          >
-            {RELATED_AREAS.map((a) => (
-              <option key={a.value} value={a.value}>
-                {a.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+        <AppSelect
+          id="related-area"
+          label="Related area"
+          value={relatedArea}
+          onChange={(e) => setRelatedArea(e.target.value)}
+          options={RELATED_AREAS.map((a) => ({ value: a.value, label: a.label }))}
+        />
+      </AppCard>
 
-      <div className={`p-5 sm:p-6 space-y-4 ${sectionCardClass()}`}>
-        <div className="border-b border-gray-100 pb-3 flex items-start justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">Audience</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{audienceSummary}</p>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <label
-            className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition ${
-              targetType === 'all' ? 'border-brand-red/40 bg-red-50/30' : 'border-gray-200 hover:bg-gray-50/80'
-            }`}
-          >
+      <AppCard title="Audience" subtitle={audienceSummary} bodyClassName={uiSpacing.sectionStack}>
+        <div className={uiSpacing.sectionStack}>
+          <label className={audienceOptionClass(targetType === 'all')}>
             <input
               type="radio"
               name="target"
@@ -1027,11 +976,7 @@ export default function CommunityNewPost() {
               <div className="text-xs text-gray-500">Company-wide visibility</div>
             </div>
           </label>
-          <label
-            className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition ${
-              targetType === 'divisions' ? 'border-brand-red/40 bg-red-50/30' : 'border-gray-200 hover:bg-gray-50/80'
-            }`}
-          >
+          <label className={audienceOptionClass(targetType === 'divisions')}>
             <input
               type="radio"
               name="target"
@@ -1048,11 +993,7 @@ export default function CommunityNewPost() {
               <div className="text-xs text-gray-500">Limit to selected teams</div>
             </div>
           </label>
-          <label
-            className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition ${
-              targetType === 'users' ? 'border-brand-red/40 bg-red-50/30' : 'border-gray-200 hover:bg-gray-50/80'
-            }`}
-          >
+          <label className={audienceOptionClass(targetType === 'users')}>
             <input
               type="radio"
               name="target"
@@ -1069,11 +1010,7 @@ export default function CommunityNewPost() {
               <div className="text-xs text-gray-500">Only selected people see this in the feed</div>
             </div>
           </label>
-          <label
-            className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition ${
-              targetType === 'groups' ? 'border-brand-red/40 bg-red-50/30' : 'border-gray-200 hover:bg-gray-50/80'
-            }`}
-          >
+          <label className={audienceOptionClass(targetType === 'groups')}>
             <input
               type="radio"
               name="target"
@@ -1090,7 +1027,6 @@ export default function CommunityNewPost() {
               <div className="text-xs text-gray-500">Everyone in the selected groups</div>
             </div>
           </label>
-        </div>
 
         {targetType === 'divisions' && (
           <div
@@ -1099,21 +1035,13 @@ export default function CommunityNewPost() {
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <span className="text-xs font-medium text-gray-600">Divisions</span>
               {divisions.length > 0 && (
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDivisions(divisions.map((d) => d.id))}
-                    className="text-xs font-medium text-brand-red hover:underline"
-                  >
+                <div className={uiCx(uiLayout.actionsRow, 'gap-2')}>
+                  <AppButton type="button" variant="ghost" size="sm" onClick={() => setSelectedDivisions(divisions.map((d) => d.id))}>
                     Select all
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDivisions([])}
-                    className="text-xs font-medium text-gray-600 hover:underline"
-                  >
+                  </AppButton>
+                  <AppButton type="button" variant="ghost" size="sm" onClick={() => setSelectedDivisions([])}>
                     Clear
-                  </button>
+                  </AppButton>
                 </div>
               )}
             </div>
@@ -1158,13 +1086,9 @@ export default function CommunityNewPost() {
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <span className="text-xs font-medium text-gray-600">Employees</span>
               {selectedAudienceUsers.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedAudienceUsers([])}
-                  className="text-xs font-medium text-gray-600 hover:underline"
-                >
+                <AppButton type="button" variant="ghost" size="sm" onClick={() => setSelectedAudienceUsers([])}>
                   Clear all
-                </button>
+                </AppButton>
               )}
             </div>
 
@@ -1207,17 +1131,14 @@ export default function CommunityNewPost() {
                   className="absolute left-0 right-0 top-full z-40 mt-1 rounded-lg border border-gray-200 bg-white shadow-lg ring-1 ring-black/5"
                 >
                   <div className="border-b border-gray-100 p-2">
-                    <label htmlFor="audience-employee-search" className="sr-only">
-                      Search employees
-                    </label>
-                    <input
+                    <AppInput
                       id="audience-employee-search"
                       type="search"
                       value={employeeSearchInput}
                       onChange={(e) => setEmployeeSearchInput(e.target.value)}
                       placeholder="Search by name…"
                       autoComplete="off"
-                      className="w-full rounded-md border border-gray-200 px-2.5 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red/30"
+                      aria-label="Search employees"
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
@@ -1237,17 +1158,16 @@ export default function CommunityNewPost() {
                                 atCap ? 'cursor-not-allowed opacity-50' : 'hover:bg-gray-50'
                               }`}
                             >
-                              <input
-                                type="checkbox"
+                              <AppCheckboxControl
                                 checked={checked}
                                 disabled={atCap}
                                 onChange={() => toggleAudienceUserRow(row)}
-                                className="h-4 w-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                                aria-label={`Select ${label}`}
                               />
                               <span className="min-w-0 flex-1">
                                 <span className="font-medium text-gray-900">{label}</span>
                                 {row.username && row.name ? (
-                                  <span className="block truncate text-xs text-gray-500">{row.username}</span>
+                                  <span className={uiCx(uiTypography.helper, 'block truncate')}>{row.username}</span>
                                 ) : null}
                               </span>
                             </label>
@@ -1256,14 +1176,10 @@ export default function CommunityNewPost() {
                       })
                     )}
                   </ul>
-                  <div className="border-t border-gray-100 px-2 py-2 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setEmployeeAudienceOpen(false)}
-                      className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800"
-                    >
+                  <div className="flex justify-end border-t border-gray-100 px-2 py-2">
+                    <AppButton type="button" variant="primary" size="sm" onClick={() => setEmployeeAudienceOpen(false)}>
                       Done
-                    </button>
+                    </AppButton>
                   </div>
                 </div>
               )}
@@ -1306,21 +1222,18 @@ export default function CommunityNewPost() {
               <span className="text-xs font-medium text-gray-600">Groups</span>
               <div className="flex flex-wrap items-center gap-2">
                 {communityGroups.length > 0 && (
-                  <div className="flex gap-2">
-                    <button
+                  <div className={uiCx(uiLayout.actionsRow, 'gap-2')}>
+                    <AppButton
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setSelectedCommunityGroupIds(communityGroups.map((g) => g.id))}
-                      className="text-xs font-medium text-brand-red hover:underline"
                     >
                       Select all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCommunityGroupIds([])}
-                      className="text-xs font-medium text-gray-600 hover:underline"
-                    >
+                    </AppButton>
+                    <AppButton type="button" variant="ghost" size="sm" onClick={() => setSelectedCommunityGroupIds([])}>
                       Clear
-                    </button>
+                    </AppButton>
                   </div>
                 )}
                 <Link
@@ -1369,42 +1282,49 @@ export default function CommunityNewPost() {
             {groupsAudienceError && <p className="text-xs text-red-600 mt-2">Select at least one community group.</p>}
           </div>
         )}
-      </div>
+        </div>
+      </AppCard>
     </div>
   );
 
   return (
-    <div className="space-y-4 pb-28">
-      <CommunityPageHeader
+    <div className={uiCx(uiSpacing.pageStack, 'pb-28 bg-gray-50')}>
+      <AppPageHeader
         title={isEdit ? 'Edit announcement' : 'New announcement'}
         subtitle="Compose once, control audience and timing, then publish to the community feed."
         onBack={() => navigate('/community')}
+        backLabel="Back to Community"
+        icon={<Megaphone className="h-4 w-4" />}
       />
 
-      <form id="community-post-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <div className="lg:hidden space-y-3">
-          <button
+      <form id="community-post-form" onSubmit={handleSubmit} className={uiSpacing.sectionStack} noValidate>
+        <div className={uiCx(uiSpacing.sectionStack, 'lg:hidden')}>
+          <AppButton
             type="button"
+            variant="secondary"
+            className={uiCx(
+              'w-full justify-between px-4 py-3 text-left',
+              mobileComposerOpen && 'border-brand-red/30 bg-red-50/40',
+            )}
             onClick={() => setMobileComposerOpen((o) => !o)}
-            className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-semibold ${
-              mobileComposerOpen ? 'border-brand-red/30 bg-red-50/40' : 'border-gray-200 bg-white'
-            }`}
+            rightIcon={mobileComposerOpen ? <Minus className="h-4 w-4 text-gray-400" /> : <Plus className="h-4 w-4 text-gray-400" />}
           >
             Compose
-            <span className="text-gray-400">{mobileComposerOpen ? '−' : '+'}</span>
-          </button>
+          </AppButton>
           {mobileComposerOpen && composerBlock}
 
-          <button
+          <AppButton
             type="button"
+            variant="secondary"
+            className={uiCx(
+              'w-full justify-between px-4 py-3 text-left',
+              mobileAudienceOpen && 'border-brand-red/30 bg-red-50/40',
+            )}
             onClick={() => setMobileAudienceOpen((o) => !o)}
-            className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-semibold ${
-              mobileAudienceOpen ? 'border-brand-red/30 bg-red-50/40' : 'border-gray-200 bg-white'
-            }`}
+            rightIcon={mobileAudienceOpen ? <Minus className="h-4 w-4 text-gray-400" /> : <Plus className="h-4 w-4 text-gray-400" />}
           >
             Publish & audience
-            <span className="text-gray-400">{mobileAudienceOpen ? '−' : '+'}</span>
-          </button>
+          </AppButton>
           {mobileAudienceOpen && sidebarBlock}
         </div>
 
@@ -1436,39 +1356,27 @@ export default function CommunityNewPost() {
       />
 
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200/80 bg-white/95 backdrop-blur-md supports-[backdrop-filter]:bg-white/85">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-2 px-4 py-3">
-          <button
-            type="button"
-            onClick={() => navigate('/community')}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-          >
+        <div className={uiCx('mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-2 px-4 py-3', uiLayout.actionsRow)}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={() => navigate('/community')}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => setPreviewOpen(true)}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50"
-          >
+          </AppButton>
+          <AppButton type="button" variant="secondary" size="sm" onClick={() => setPreviewOpen(true)}>
             Preview
-          </button>
+          </AppButton>
           {!isEdit && publishMode !== 'draft' && (
-            <button
+            <AppButton
               type="button"
+              variant="secondary"
+              size="sm"
               disabled={busy || !title.trim() || isCommunityEditorHtmlEmpty(content)}
               onClick={handleSaveAsDraft}
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Save as draft
-            </button>
+            </AppButton>
           )}
-          <button
-            type="submit"
-            form="community-post-form"
-            disabled={formDisabled}
-            className="rounded-lg bg-brand-red px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <AppButton type="submit" form="community-post-form" variant="primary" size="sm" disabled={formDisabled} loading={busy}>
             {primaryLabel}
-          </button>
+          </AppButton>
         </div>
       </div>
     </div>

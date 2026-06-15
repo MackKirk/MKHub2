@@ -6,6 +6,7 @@ import {
   PRIORITY_ORDER,
   formatPriorityLabel,
 } from './insightsTypes';
+import { getAppTabButtonClassName, uiCx, uiLayout } from '@/components/ui';
 
 type Mode = 'posts' | 'views' | 'engagement';
 
@@ -43,17 +44,14 @@ export function InsightsEngagementByPriority({
       title="Engagement by priority"
       subtitle="Where the audience is putting their attention"
       actions={
-        <div className="inline-flex items-center bg-gray-100 rounded-full p-0.5">
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
           {MODES.map((m) => (
             <button
               key={m.id}
               type="button"
               onClick={() => setMode(m.id)}
-              className={
-                m.id === mode
-                  ? 'px-3 py-1 rounded-full text-[11px] font-semibold bg-white text-gray-900 shadow-sm'
-                  : 'px-3 py-1 rounded-full text-[11px] font-medium text-gray-600 hover:text-gray-900'
-              }
+              className={getAppTabButtonClassName(m.id === mode)}
+              aria-pressed={m.id === mode}
             >
               {m.label}
             </button>

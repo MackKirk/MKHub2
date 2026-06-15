@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  useCallback,
+  type InputHTMLAttributes,
+  type ReactNode,
+} from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -10,7 +18,27 @@ import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import EstimateBuilder, { EstimateBuilderRef } from '@/components/EstimateBuilder';
 import SupplierSelect from '@/components/SupplierSelect';
 import NewSupplierModal from '@/components/NewSupplierModal';
-import OverlayPortal from '@/components/OverlayPortal';
+import {
+  AppButton,
+  AppCheckbox,
+  AppControlLabel,
+  AppControlLabelRow,
+  AppDatePicker,
+  AppFieldHint,
+  AppFormModal,
+  AppInput,
+  AppModal,
+  AppSelect,
+  AppTextarea,
+  SelectDropdownCheckbox,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 import {
   PROPOSAL_SECTION_IMAGE_EXPORT_SCALE,
   PROPOSAL_SECTION_IMAGE_MAX_EXPORT_LONG_SIDE,
@@ -19,6 +47,143 @@ import {
   SECTION_IMAGE_GRID_THUMB_W,
   SECTION_IMAGE_LIGHTBOX_THUMB_W,
 } from '@/constants/proposalSectionImage';
+
+/** Quote form — `fieldHint` for App* controls (`Title\n\nBody`). */
+const QUOTE_FIELD_HINTS = {
+  documentType: 'Document Type\n\nShown on the quotation cover page (max 44 characters).',
+  typeOfProject: 'Type of Quotation\n\nBrief scope label on the quotation (e.g. roof replacement).',
+  date: 'Date\n\nQuotation date printed on the cover and headers.',
+  primaryContact: 'Primary Contact Name\n\nClient contact shown as Created for on the quotation.',
+  primaryPhone: 'Primary Contact Phone\n\nPrinted on the quotation; editable after selecting a contact.',
+  primaryEmail: 'Primary Contact Email\n\nPrinted on the quotation; editable after selecting a contact.',
+  otherNotes: 'Other Notes\n\nShort note on the cover (max 250 characters).',
+  frontCover: 'Front Cover Image\n\nMain cover photo. Cropped to 566×537 px in the PDF.',
+  sectionTitle: 'Section title\n\nHeading for this section in the generated PDF.',
+  sectionText: 'Section text\n\nBody copy for a text section. Press Tab to indent with four spaces.',
+  imageCaption: 'Caption\n\nCaption printed under the image in the PDF.',
+  pricingName: 'Item name\n\nLine item description in the pricing table.',
+  pricingPrice: 'Price\n\nLine price before tax; formatted when you leave the field.',
+  optionalService: 'Service\n\nOptional line the client may accept; does not change the quotation total.',
+  optionalPrice: 'Price\n\nPrice shown for this optional service.',
+  termsTemplate: 'Terms template\n\nLoad standard terms from settings; you can still edit the text below.',
+  termsText: 'Terms text\n\nContract terms printed at the end of the quotation PDF.',
+  pst: 'PST\n\nInclude PST for this line in totals and the PDF when enabled.',
+  gst: 'GST\n\nInclude GST for this line in totals and the PDF when enabled.',
+  showTotalInPdf: 'Show total in PDF\n\nWhen off, the quotation total is hidden in the generated PDF.',
+  contactName: 'Name\n\nContact name saved on the client record.',
+  contactRole: 'Role/Title\n\nJob title on contact lists and documents.',
+  contactDept: 'Department\n\nOptional department for this contact.',
+  contactEmail: 'Email\n\nContact email address.',
+  contactPhone: 'Phone\n\nContact phone; formatted as you type.',
+  contactPrimary: 'Primary contact\n\nPrimary contacts are suggested first on quotations.',
+  contactPhoto: 'Contact Photo\n\nOptional photo for this client contact.',
+  pricingQty: 'Quantity\n\nNumber of units for this line item (minimum 1).',
+  pricingLineTotal: 'Line total\n\nPrice multiplied by quantity for this row.',
+} as const;
+
+const QUOTE_INLINE_CONTROL_H = 'h-8';
+const QUOTE_INLINE_LABEL_ROW = 'mb-1 h-3.5 shrink-0';
+
+function ProposalInlineLabelRow({ label, fieldHint }: { label: string; fieldHint?: string }) {
+  return (
+    <div className={QUOTE_INLINE_LABEL_ROW}>
+      {fieldHint ? (
+        <AppControlLabelRow label={label} fieldHint={<AppFieldHint hint={fieldHint} />} />
+      ) : (
+        <AppControlLabel label={label} />
+      )}
+    </div>
+  );
+}
+
+function ProposalInlineInput({
+  label,
+  fieldHint,
+  className,
+  inputClassName,
+  ...props
+}: { label: string; fieldHint: string; inputClassName?: string } & InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div className={uiCx('min-w-0', className)}>
+      <ProposalInlineLabelRow label={label} fieldHint={fieldHint} />
+      <input
+        className={uiCx(
+          'box-border w-full bg-white text-xs text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
+          uiSpacing.controlX,
+          QUOTE_INLINE_CONTROL_H,
+          'py-0',
+          uiRadius.control,
+          uiBorders.input,
+          inputClassName,
+        )}
+        {...props}
+      />
+    </div>
+  );
+}
+
+function ProposalInlineCheckbox({
+  label,
+  fieldHint,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  fieldHint: string;
+  checked: boolean;
+  onChange?: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  const interactive = Boolean(onChange) && !disabled;
+  return (
+    <div className="flex shrink-0 flex-col">
+      <ProposalInlineLabelRow label={label} fieldHint={fieldHint} />
+      <label
+        className={uiCx(
+          'flex items-center',
+          QUOTE_INLINE_CONTROL_H,
+          interactive ? 'cursor-pointer' : 'cursor-default',
+          disabled && 'cursor-not-allowed opacity-50',
+        )}
+      >
+        <input
+          type="checkbox"
+          className="sr-only"
+          checked={checked}
+          disabled={disabled}
+          readOnly={!onChange}
+          onChange={onChange ? (e) => onChange(e.target.checked) : undefined}
+        />
+        <SelectDropdownCheckbox checked={checked} />
+      </label>
+    </div>
+  );
+}
+
+function ProposalInlineControlSpacer({
+  children,
+  className,
+  label,
+  fieldHint,
+}: {
+  children: ReactNode;
+  className?: string;
+  label?: string;
+  fieldHint?: string;
+}) {
+  return (
+    <div className={uiCx('flex shrink-0 flex-col', className)}>
+      {label ? (
+        <ProposalInlineLabelRow label={label} fieldHint={fieldHint} />
+      ) : (
+        <div className={QUOTE_INLINE_LABEL_ROW} aria-hidden />
+      )}
+      <div className={uiCx('flex items-center', QUOTE_INLINE_CONTROL_H)}>{children}</div>
+    </div>
+  );
+}
+
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
@@ -96,6 +261,113 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     if (d.length<=6) return `(${d.slice(0,3)}) ${d.slice(3)}`;
     if (d.length<=10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
     return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`;
+  };
+  const resetContactModal = () => {
+    setContactModalOpen(false);
+    setNewContactName('');
+    setNewContactEmail('');
+    setNewContactPhone('');
+    setNewContactRole('');
+    setNewContactDept('');
+    setNewContactPrimary('false');
+    setContactNameError(false);
+    setContactPhotoBlob(null);
+  };
+  const handleContactSelectChange = (contactId: string) => {
+    if (contactId === '__new__') {
+      setContactModalOpen(true);
+    } else {
+      setSelectedContactId(contactId);
+      if (contactId && contacts) {
+        const contact = contacts.find((c) => String(c.id) === contactId);
+        if (contact) {
+          setCreatedFor(contact.name || '');
+          setPrimary({
+            name: contact.name || '',
+            phone: contact.phone || '',
+            email: contact.email || '',
+          });
+        }
+      } else {
+        setCreatedFor('');
+        setPrimary({ name: '', phone: '', email: '' });
+      }
+    }
+  };
+  const handleCreateNewContact = async () => {
+    if (isCreatingContact) return;
+    if (!newContactName.trim()) {
+      setContactNameError(true);
+      toast.error('Name is required');
+      return;
+    }
+    if (!clientId) {
+      toast.error('Client ID is required');
+      return;
+    }
+    try {
+      setIsCreatingContact(true);
+      const isFirstContact = !contacts || contacts.length === 0;
+      const willBePrimary = isFirstContact || newContactPrimary === 'true';
+      if (willBePrimary && contacts && contacts.length > 0) {
+        const primaryContact = contacts.find((c: any) => c.is_primary);
+        if (primaryContact) {
+          await api('PATCH', `/clients/${clientId}/contacts/${primaryContact.id}`, {
+            is_primary: false,
+          });
+        }
+      }
+      const payload: any = {
+        name: newContactName,
+        email: newContactEmail,
+        phone: newContactPhone,
+        role_title: newContactRole,
+        department: newContactDept,
+        is_primary: willBePrimary,
+      };
+      const created: any = await api('POST', `/clients/${clientId}/contacts`, payload);
+      if (contactPhotoBlob && created.id) {
+        try {
+          const up: any = await api('POST', '/files/upload', {
+            project_id: null,
+            client_id: clientId,
+            employee_id: null,
+            category_id: 'contact-photo',
+            original_name: `contact-${created.id}.jpg`,
+            content_type: 'image/jpeg',
+          });
+          await fetch(up.upload_url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' },
+            body: contactPhotoBlob,
+          });
+          const conf: any = await api('POST', '/files/confirm', {
+            key: up.key,
+            size_bytes: contactPhotoBlob.size,
+            checksum_sha256: 'na',
+            content_type: 'image/jpeg',
+          });
+          await api(
+            'POST',
+            `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + created.id)}&original_name=${encodeURIComponent('contact-' + created.id + '.jpg')}`,
+          );
+        } catch (e) {
+          console.error('Failed to upload contact photo:', e);
+        }
+      }
+      resetContactModal();
+      await refetchContacts();
+      setSelectedContactId(String(created.id));
+      setCreatedFor(created.name || '');
+      setPrimary({
+        name: created.name || '',
+        phone: created.phone || '',
+        email: created.email || '',
+      });
+    } catch (e) {
+      toast.error('Failed to create contact');
+      setIsCreatingContact(false);
+    }
   };
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -528,14 +800,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     if (!contactModalOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setContactModalOpen(false);
-        setNewContactName('');
-        setNewContactEmail('');
-        setNewContactPhone('');
-        setNewContactRole('');
-        setNewContactDept('');
-        setNewContactPrimary('false');
-        setContactNameError(false);
+        resetContactModal();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -1200,6 +1465,15 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   };
 
   const renderFingerprint = computeFingerprint();
+  const dsSectionShell = uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, 'overflow-hidden');
+  const dsSectionHeader = uiCx(
+    'flex w-full cursor-pointer items-center justify-between border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50/80',
+    uiTypography.sectionTitle,
+  );
+  const dsSectionBodyPad = uiSpacing.cardPadding;
+  const dsSectionBodyPadLg = uiSpacing.cardPadding;
+  const dsFieldLabelClass = undefined;
+  const dsReadonlyClass = uiTypography.sectionTitle;
   return (
     <div onKeyDown={!disabled ? (e)=>{
       const tgt = e.target as HTMLElement;
@@ -1241,17 +1515,17 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       {/* Restriction Warning - appears before blocks */}
       {showRestrictionWarning && restrictionMessage && (
         <div className="mb-4">
-          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+          <div className={uiCx(uiRadius.card, 'border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800')}>
             <strong>Editing Restricted:</strong> {restrictionMessage}
           </div>
         </div>
       )}
       
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* General Information Block */}
-        <div className="rounded-xl border bg-white overflow-hidden">
+        <div className={dsSectionShell}>
           <div 
-            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className={dsSectionHeader}
             onClick={() => setSectionsExpanded(prev => ({ ...prev, generalInfo: !prev.generalInfo }))}
           >
             <span>General Information</span>
@@ -1265,87 +1539,150 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             </svg>
           </div>
           {sectionsExpanded.generalInfo && (
-          <div className="p-3 sm:p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={dsSectionBodyPad}>
+            <div className="grid md:grid-cols-2 gap-3">
               {/* Card 1 - Left side: Document info, Contact, and Other Notes */}
-              <div className="space-y-2 text-sm">
+              <div className="space-y-3">
                 <div>
-                  <label className="text-sm text-gray-600">Document Type (Shown on cover page)</label>
-                  <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" disabled={disabled} readOnly={disabled} />
-                  <div className="mt-1 text-[11px] text-gray-500">{coverTitle.length}/44 characters</div>
+                  {disabled ? (
+                    <>
+                      <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Document Type (Shown on cover page)</div>
+                      <div className={dsReadonlyClass}>{coverTitle || '-'}</div>
+                    </>
+                  ) : (
+                    <AppInput
+                      label="Document Type (Shown on cover page)"
+                      value={coverTitle}
+                      onChange={(e) => setCoverTitle(e.target.value)}
+                      maxLength={44}
+                      fieldHint={QUOTE_FIELD_HINTS.documentType}
+                    />
+                  )}
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">Type of Quotation</label>
-                  <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} disabled={disabled} readOnly={disabled} />
+                  {disabled ? (
+                    <>
+                      <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Type of Quotation</div>
+                      <div className={dsReadonlyClass}>{typeOfProject || '-'}</div>
+                    </>
+                  ) : (
+                    <AppInput
+                      label="Type of Quotation"
+                      value={typeOfProject}
+                      onChange={(e) => setTypeOfProject(e.target.value)}
+                      fieldHint={QUOTE_FIELD_HINTS.typeOfProject}
+                    />
+                  )}
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">Date</label>
-                  <input type="date" className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={date} onChange={e=>setDate(e.target.value)} disabled={disabled} readOnly={disabled} />
+                  {disabled ? (
+                    <>
+                      <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Date</div>
+                      <div className={dsReadonlyClass}>{date || '-'}</div>
+                    </>
+                  ) : (
+                    <AppDatePicker
+                      label="Date"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      fieldHint={QUOTE_FIELD_HINTS.date}
+                    />
+                  )}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="text-sm text-gray-600">Primary Contact Name</label>
-                    <select 
-                      className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                      value={contactModalOpen ? '__new__' : selectedContactId}
-                      onChange={e=>{
-                        const contactId = e.target.value;
-                        if (contactId === '__new__') {
-                          setContactModalOpen(true);
-                        } else {
-                          setSelectedContactId(contactId);
-                          if (contactId && contacts) {
-                            const contact = contacts.find(c => String(c.id) === contactId);
-                            if (contact) {
-                              setCreatedFor(contact.name || '');
-                              setPrimary({
-                                name: contact.name || '',
-                                phone: contact.phone || '',
-                                email: contact.email || ''
-                              });
-                            }
-                          } else {
-                            setCreatedFor('');
-                            setPrimary({ name: '', phone: '', email: '' });
-                          }
-                        }
-                      }}
-                      disabled={disabled}
-                    >
-                      <option value="">-- Select Contact --</option>
-                      {(contacts||[]).map(contact => (
-                        <option key={contact.id} value={String(contact.id)}>
-                          {contact.name || 'Unnamed Contact'}
-                        </option>
-                      ))}
-                      {!disabled && (
-                        <option value="__new__">+ New Contact</option>
-                      )}
-                    </select>
+                    {disabled ? (
+                      <>
+                        <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Primary Contact Name</div>
+                        <div className={dsReadonlyClass}>{createdFor || '-'}</div>
+                      </>
+                    ) : (
+                      <AppSelect
+                        label="Primary Contact Name"
+                        value={contactModalOpen ? '__new__' : selectedContactId}
+                        options={[
+                          { value: '', label: '-- Select Contact --' },
+                          ...(contacts || []).map((contact) => ({
+                            value: String(contact.id),
+                            label: contact.name || 'Unnamed Contact',
+                          })),
+                          { value: '__new__', label: '+ New Contact' },
+                        ]}
+                        onChange={(e) => handleContactSelectChange(e.target.value)}
+                        fieldHint={QUOTE_FIELD_HINTS.primaryContact}
+                      />
+                    )}
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">Primary Contact Phone</label>
-                    <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.phone||''} onChange={e=>setPrimary(p=>({ ...p, phone: e.target.value }))} disabled={disabled} readOnly={disabled} />
+                    {disabled ? (
+                      <>
+                        <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Primary Contact Phone</div>
+                        <div className={dsReadonlyClass}>{primary.phone || '-'}</div>
+                      </>
+                    ) : (
+                      <AppInput
+                        label="Primary Contact Phone"
+                        value={primary.phone || ''}
+                        onChange={(e) => setPrimary((p) => ({ ...p, phone: e.target.value }))}
+                        fieldHint={QUOTE_FIELD_HINTS.primaryPhone}
+                      />
+                    )}
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">Primary Contact Email</label>
-                    <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.email||''} onChange={e=>setPrimary(p=>({ ...p, email: e.target.value }))} disabled={disabled} readOnly={disabled} />
+                    {disabled ? (
+                      <>
+                        <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Primary Contact Email</div>
+                        <div className={dsReadonlyClass}>{primary.email || '-'}</div>
+                      </>
+                    ) : (
+                      <AppInput
+                        label="Primary Contact Email"
+                        value={primary.email || ''}
+                        onChange={(e) => setPrimary((p) => ({ ...p, email: e.target.value }))}
+                        fieldHint={QUOTE_FIELD_HINTS.primaryEmail}
+                      />
+                    )}
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">Other Notes</label>
-                  <textarea className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={otherNotes} onChange={e=>setOtherNotes(e.target.value)} maxLength={250} disabled={disabled} readOnly={disabled} />
-                  <div className="mt-1 text-[11px] text-gray-500">{otherNotes.length}/250 characters</div>
+                  {disabled ? (
+                    <>
+                      <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Other Notes</div>
+                      <div className={dsReadonlyClass}>{otherNotes || '-'}</div>
+                    </>
+                  ) : (
+                    <AppTextarea
+                      label="Other Notes"
+                      value={otherNotes}
+                      onChange={(e) => setOtherNotes(e.target.value)}
+                      maxLength={250}
+                      fieldHint={QUOTE_FIELD_HINTS.otherNotes}
+                    />
+                  )}
                 </div>
               </div>
               {/* Card 2 - Right side: Front Cover Image only */}
-              <div className="space-y-2 text-sm">
+              <div className="space-y-3">
                 <div className="max-w-[50%]">
-                  <div className="mb-1 text-sm text-gray-600">Front Cover Image</div>
+                  <AppControlLabelRow
+                    label="Front Cover Image"
+                    fieldHint={<AppFieldHint hint={QUOTE_FIELD_HINTS.frontCover} />}
+                  />
                   {!disabled && (
-                    <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>{ if (!disabled) setPickerFor('cover'); }}>Choose</button>
+                    <AppButton type="button" variant="secondary" size="sm" onClick={() => setPickerFor('cover')}>
+                      Choose
+                    </AppButton>
                   )}
-                  {coverPreview && <div className="mt-2"><img src={coverPreview} className="w-full rounded border" style={{ aspectRatio: '566/537', objectFit: 'contain' }} /></div>}
+                  {coverPreview && (
+                    <div className="mt-2">
+                      <img
+                        src={coverPreview}
+                        className={uiCx('w-full rounded border', uiBorders.subtle)}
+                        style={{ aspectRatio: '566/537', objectFit: 'contain' }}
+                        alt=""
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1354,9 +1691,9 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         </div>
         
         {/* Sections Block */}
-        <div className="rounded-xl border bg-white overflow-hidden">
+        <div className={dsSectionShell}>
           <div 
-            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className={dsSectionHeader}
             onClick={() => setSectionsExpanded(prev => ({ ...prev, sections: !prev.sections }))}
           >
             <span>Sections</span>
@@ -1370,7 +1707,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             </svg>
           </div>
           {sectionsExpanded.sections && (
-          <div className="p-3 sm:p-4">
+          <div className={dsSectionBodyPadLg}>
           <div className="space-y-3">
             {sections.map((s:any, idx:number)=> (
               <div key={s.id||idx} className="relative">
@@ -1429,7 +1766,19 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                         </svg>
                       </span>
                     )}
-                    <input data-role="section-title" data-sec={idx} onFocus={()=> setActiveSectionIndex(idx)} className={`flex-1 min-w-[240px] border rounded px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} disabled={disabled} readOnly={disabled} />
+                    <AppInput
+                      className="min-w-[240px] flex-1"
+                      label="Section title"
+                      data-role="section-title"
+                      data-sec={idx}
+                      onFocus={() => setActiveSectionIndex(idx)}
+                      placeholder="Section title"
+                      value={s.title || ''}
+                      onChange={(e) => setSections((arr) => arr.map((x, i) => (i === idx ? { ...x, title: e.target.value } : x)))}
+                      disabled={disabled}
+                      readOnly={disabled}
+                      fieldHint={QUOTE_FIELD_HINTS.sectionTitle}
+                    />
                   </div>
                   {!disabled && (
                     <div className="flex items-center gap-1">
@@ -1456,38 +1805,42 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   )}
                 </div>
                 {s.type==='text' ? (
-                  <textarea 
-                    className={`w-full border rounded px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                    rows={5} 
-                    placeholder="Section text" 
-                    value={s.text||''} 
-                    onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: e.target.value }: x))}
+                  <AppTextarea
+                    label="Section text"
+                    rows={5}
+                    placeholder="Section text"
+                    value={s.text || ''}
+                    onChange={(e) => setSections((arr) => arr.map((x, i) => (i === idx ? { ...x, text: e.target.value } : x)))}
                     disabled={disabled}
                     readOnly={disabled}
-                    onKeyDown={!disabled ? (e)=>{
-                      // Handle Tab key to insert indentation (4 spaces)
-                      if (e.key === 'Tab') {
-                        e.preventDefault();
-                        const textarea = e.currentTarget;
-                        const start = textarea.selectionStart;
-                        const end = textarea.selectionEnd;
-                        const value = textarea.value;
-                        
-                        // Insert 4 spaces at cursor position
-                        const newValue = value.substring(0, start) + '    ' + value.substring(end);
-                        setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: newValue }: x));
-                        
-                        // Restore cursor position after the inserted spaces
-                        setTimeout(() => {
-                          textarea.selectionStart = textarea.selectionEnd = start + 4;
-                        }, 0);
-                      }
-                    } : undefined}
+                    fieldHint={QUOTE_FIELD_HINTS.sectionText}
+                    onKeyDown={
+                      !disabled
+                        ? (e) => {
+                            if (e.key === 'Tab') {
+                              e.preventDefault();
+                              const textarea = e.currentTarget;
+                              const start = textarea.selectionStart;
+                              const end = textarea.selectionEnd;
+                              const value = textarea.value;
+                              const newValue = value.substring(0, start) + '    ' + value.substring(end);
+                              setSections((arr) => arr.map((x, i) => (i === idx ? { ...x, text: newValue } : x)));
+                              setTimeout(() => {
+                                textarea.selectionStart = textarea.selectionEnd = start + 4;
+                              }, 0);
+                            }
+                          }
+                        : undefined
+                    }
                   />
                 ) : (
                   <div>
                     {!disabled && (
-                      <div className="mb-2"><button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}>+ Add Image</button></div>
+                      <div className="mb-2">
+                        <AppButton type="button" variant="secondary" size="sm" onClick={() => setSectionPicker({ secId: s.id || String(idx) })}>
+                          + Add Image
+                        </AppButton>
+                      </div>
                     )}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {(s.images||[]).map((img:any, j:number)=> (
@@ -1510,17 +1863,29 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                             )}
                             {!disabled && (
                               <div className="ml-auto flex items-center gap-2">
-                                <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Edit image" onClick={()=> setSectionPicker({ secId: s.id||String(idx), index: j, fileObjectId: img.file_object_id })}>Edit</button>
-                                <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Duplicate image" onClick={()=>{
-                                  setSections(arr=> arr.map((x,i)=>{
-                                    if (i!==idx) return x;
-                                    const imgs = Array.isArray(x.images)? [...x.images]:[];
-                                    const clone = { ...(imgs[j]||{}), image_id: 'img_'+Math.random().toString(36).slice(2) };
-                                    imgs.splice(j+1,0,clone);
-                                    setTimeout(()=> setFocusTarget({ type:'caption', sectionIndex: idx, imageIndex: j+1 }), 0);
-                                    return { ...x, images: imgs };
-                                  }));
-                                }}>Duplicate</button>
+                                <AppButton type="button" variant="secondary" size="sm" title="Edit image" onClick={() => setSectionPicker({ secId: s.id || String(idx), index: j, fileObjectId: img.file_object_id })}>
+                                  Edit
+                                </AppButton>
+                                <AppButton
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  title="Duplicate image"
+                                  onClick={() => {
+                                    setSections((arr) =>
+                                      arr.map((x, i) => {
+                                        if (i !== idx) return x;
+                                        const imgs = Array.isArray(x.images) ? [...x.images] : [];
+                                        const clone = { ...(imgs[j] || {}), image_id: 'img_' + Math.random().toString(36).slice(2) };
+                                        imgs.splice(j + 1, 0, clone);
+                                        setTimeout(() => setFocusTarget({ type: 'caption', sectionIndex: idx, imageIndex: j + 1 }), 0);
+                                        return { ...x, images: imgs };
+                                      }),
+                                    );
+                                  }}
+                                >
+                                  Duplicate
+                                </AppButton>
                                 <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove image" onClick={async()=>{
                                   const result = await confirm({ title:'Remove image', message:'Are you sure you want to remove this image?' });
                                   if (result !== 'confirm') return;
@@ -1546,7 +1911,32 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                               />
                             </button>
                           ) : null}
-                          <input data-role="img-caption" data-sec={idx} data-img={j} className={`mt-2 w-full border rounded px-2 py-1 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Caption" value={img.caption||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} disabled={disabled} readOnly={disabled} />
+                          <AppInput
+                            className="mt-2"
+                            label="Caption"
+                            data-role="img-caption"
+                            data-sec={idx}
+                            data-img={j}
+                            placeholder="Caption"
+                            value={img.caption || ''}
+                            onChange={(e) =>
+                              setSections((arr) =>
+                                arr.map((x, i) =>
+                                  i === idx
+                                    ? {
+                                        ...x,
+                                        images: (x.images || []).map((it: any, k: number) =>
+                                          k === j ? { ...it, caption: e.target.value } : it,
+                                        ),
+                                      }
+                                    : x,
+                                ),
+                              )
+                            }
+                            disabled={disabled}
+                            readOnly={disabled}
+                            fieldHint={QUOTE_FIELD_HINTS.imageCaption}
+                          />
                         </div>
                       ))}
                       {!(s.images||[]).length && <div className="text-sm text-gray-600">No images</div>}
@@ -1562,8 +1952,22 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             ))}
             {!disabled && (
               <div className="flex items-center gap-2">
-                <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }])}>+ Text Section</button>
-                <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }])}>+ Images Section</button>
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSections((arr) => [...arr, { id: 'sec_' + Math.random().toString(36).slice(2), type: 'text', title: '', text: '' }])}
+                >
+                  + Text Section
+                </AppButton>
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSections((arr) => [...arr, { id: 'sec_' + Math.random().toString(36).slice(2), type: 'images', title: '', images: [] }])}
+                >
+                  + Images Section
+                </AppButton>
               </div>
             )}
           </div>
@@ -1577,16 +1981,18 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           const sectionNumber = pricingSections.length > 1 ? ` #${sectionIndex + 1}` : '';
           
           return (
-            <div key={section.id} className="rounded-xl border bg-white overflow-hidden mb-4">
+            <div key={section.id} className={uiCx(dsSectionShell, 'mb-4')}>
               <div 
-                className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+                className={dsSectionHeader}
                 onClick={() => setSectionsExpanded(prev => ({ ...prev, pricing: !prev.pricing }))}
               >
                 <span>Pricing{sectionNumber}</span>
                 <div className="flex items-center gap-2">
                   {!disabled && sectionIndex === 0 && (
                     <button
-                      onClick={() => {
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
                         if (pricingSections.length < 5) {
                           const newSection: PricingSection = {
                             id: `section_${Date.now()}`,
@@ -1600,7 +2006,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                         }
                       }}
                       disabled={pricingSections.length >= 5}
-                      className="p-1.5 rounded hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="rounded p-1.5 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                       title="Click here to add another Pricing section"
                     >
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1611,13 +2017,15 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   )}
                   {!disabled && sectionIndex > 0 && (
                     <button
-                      onClick={async () => {
+                      type="button"
+                      onClick={async (e) => {
+                        e.stopPropagation();
                         const result = await confirm({ title: 'Remove Pricing Section', message: 'Are you sure you want to remove this pricing section?' });
                         if (result === 'confirm') {
                           setPricingSections(arr => arr.filter((_, idx) => idx !== sectionIndex));
                         }
                       }}
-                      className="p-1.5 rounded hover:bg-white/20 transition-colors"
+                      className="rounded p-1.5 transition-colors hover:bg-gray-100"
                       title="Remove this Pricing section"
                     >
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1625,41 +2033,49 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                       </svg>
                     </button>
                   )}
+                  <svg 
+                    className={`h-5 w-5 transition-transform duration-200 ${sectionsExpanded.pricing ? 'rotate-180' : ''}`}
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
-                <svg 
-                  className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.pricing ? 'rotate-180' : ''}`}
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
               </div>
               {sectionsExpanded.pricing && (
-              <div className="p-4">
+              <div className={dsSectionBodyPad}>
                 <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table{sectionNumber}" section will be hidden in the PDF.</div>
                 {!disabled && (
-                  <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
+                  <div className="sticky top-0 z-30 mb-3 border-b bg-white/95 py-2 backdrop-blur">
                     <div className="flex items-center gap-2">
-                      <div className="ml-auto flex items-center gap-3 text-sm">
-                        <label className="text-sm">PST (%)</label>
-                        <input 
-                          type="number" 
-                          className="border rounded px-2 py-1 w-20" 
-                          value={section.pstRate} 
-                          min={0} 
-                          step={1} 
-                          onChange={e=>setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, pstRate: Number(e.target.value||0) }: s))} 
+                      <div className="ml-auto flex items-center gap-3">
+                        <AppInput
+                          className="w-24"
+                          label="PST (%)"
+                          type="number"
+                          value={String(section.pstRate)}
+                          min={0}
+                          step={1}
+                          onChange={(e) =>
+                            setPricingSections((arr) =>
+                              arr.map((s, idx) => (idx === sectionIndex ? { ...s, pstRate: Number(e.target.value || 0) } : s)),
+                            )
+                          }
                           disabled={disabled}
                         />
-                        <label className="text-sm">GST (%)</label>
-                        <input 
-                          type="number" 
-                          className="border rounded px-2 py-1 w-20" 
-                          value={section.gstRate} 
-                          min={0} 
-                          step={1} 
-                          onChange={e=>setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, gstRate: Number(e.target.value||0) }: s))} 
+                        <AppInput
+                          className="w-24"
+                          label="GST (%)"
+                          type="number"
+                          value={String(section.gstRate)}
+                          min={0}
+                          step={1}
+                          onChange={(e) =>
+                            setPricingSections((arr) =>
+                              arr.map((s, idx) => (idx === sectionIndex ? { ...s, gstRate: Number(e.target.value || 0) } : s)),
+                            )
+                          }
                           disabled={disabled}
                         />
                       </div>
@@ -1692,43 +2108,46 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                     const lineTotal = priceNum * qtyNum;
                     
                     return (
-                      <div key={i} className="flex flex-col sm:flex-row gap-1.5 sm:gap-2 items-stretch sm:items-center w-full min-w-0">
-                        <div className="flex-1 flex items-center gap-2 relative min-w-0">
-                          {/* Product Image - show placeholder if no image */}
-                          <div className="flex-shrink-0 w-10 h-10 rounded border overflow-hidden bg-gray-100">
+                      <div key={i} className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-row sm:items-start">
+                        <ProposalInlineControlSpacer>
+                          <div className="h-8 w-10 overflow-hidden rounded border bg-gray-100">
                             {c.productImage ? (
-                              <img 
-                                src={c.productImage} 
+                              <img
+                                src={c.productImage}
                                 alt={c.name}
-                                className="w-full h-full object-cover"
+                                className="h-full w-full object-cover"
                                 onError={(e) => {
-                                  // Fallback to placeholder on error
                                   (e.target as HTMLImageElement).src = '/ui/assets/image placeholders/no_image.png';
                                 }}
                               />
                             ) : (
-                              <img 
-                                src="/ui/assets/image placeholders/no_image.png" 
-                                alt="No image"
-                                className="w-full h-full object-cover"
-                              />
+                              <img src="/ui/assets/image placeholders/no_image.png" alt="No image" className="h-full w-full object-cover" />
                             )}
                           </div>
-                          <input 
-                            className={`flex-1 min-w-0 border rounded px-3 py-2 ${disabled || c.productId ? 'bg-gray-50 cursor-not-allowed' : ''}`} 
-                            placeholder="Name" 
-                            value={c.name} 
-                            onChange={e=>{ 
-                              const v=e.target.value; 
-                              setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, name:v }: x) }: s)); 
+                        </ProposalInlineControlSpacer>
+                        <div className="relative min-w-0 flex-1">
+                          <ProposalInlineInput
+                            className="w-full"
+                            label="Name"
+                            placeholder="Name"
+                            value={c.name}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setPricingSections((arr) =>
+                                arr.map((s, idx) =>
+                                  idx === sectionIndex ? { ...s, items: s.items.map((x, j) => (j === i ? { ...x, name: v } : x)) } : s,
+                                ),
+                              );
                             }}
-                            disabled={disabled || !!c.productId} 
-                            readOnly={disabled || !!c.productId} 
+                            disabled={disabled || !!c.productId}
+                            readOnly={disabled || !!c.productId}
+                            fieldHint={QUOTE_FIELD_HINTS.pricingName}
                           />
                           {!disabled && (
                             <button
+                              type="button"
                               onClick={() => setProductSearchModalOpen({ sectionIndex, itemIndex: i })}
-                              className="p-1 text-gray-500 hover:text-gray-700 flex-shrink-0"
+                              className="absolute right-0 top-[calc(100%-1.75rem)] p-1 text-gray-500 hover:text-gray-700"
                               title="Browse Products by Supplier"
                             >
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1738,130 +2157,185 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                             </button>
                           )}
                         </div>
-                        <input type="text" className={`flex-1 min-w-[100px] max-w-[140px] border rounded px-2 sm:px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, price:v }: x) }: s)); }} onBlur={!disabled ? ()=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x) }: s)) : undefined} disabled={disabled} readOnly={disabled} />
-                        <div className="flex items-center border rounded overflow-hidden min-w-[80px] max-w-[120px]">
-                          <input 
-                            type="number" 
-                            min="1"
-                            step="1"
-                            className={`flex-1 min-w-0 border-0 rounded-none px-2 sm:px-3 py-2 text-sm appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
-                            placeholder="Qty" 
-                            value={c.quantity || '1'} 
-                            onChange={e=>{ 
-                              const v = e.target.value;
-                              const num = parseInt(v) || 1;
-                              const finalValue = num < 1 ? '1' : String(num);
-                              setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, quantity: finalValue }: x) }: s)); 
-                            }} 
-                            disabled={disabled} 
-                            readOnly={disabled} 
-                          />
-                          {!disabled && (
-                            <div className="flex flex-col flex-none border-l bg-white w-6">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const currentQty = parseInt(c.quantity || '1') || 1;
-                                  const newQty = currentQty + 1;
-                                  setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x) }: s));
-                                }}
-                                className="px-0.5 py-0 text-[9px] leading-tight border-b hover:bg-gray-100 flex items-center justify-center flex-1"
-                                title="Increase"
-                              >
-                                ▲
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const currentQty = parseInt(c.quantity || '1') || 1;
-                                  const newQty = Math.max(1, currentQty - 1);
-                                  setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x) }: s));
-                                }}
-                                className="px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center flex-1"
-                                title="Decrease"
-                                disabled={parseInt(c.quantity || '1') <= 1}
-                              >
-                                ▼
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        <div className={`border rounded px-2 sm:px-3 py-2 bg-gray-50 min-w-[100px] max-w-[140px] flex-shrink-0 ${disabled ? 'cursor-not-allowed' : ''}`}>
-                          <div className="text-xs sm:text-sm font-medium text-gray-700 text-right whitespace-nowrap overflow-hidden">
-                            ${formatAccounting(lineTotal)}
+                        <ProposalInlineInput
+                          className="min-w-[100px] max-w-[140px] flex-1"
+                          label="Price"
+                          placeholder="Price"
+                          value={c.price}
+                          onChange={(e) => {
+                            const v = parseAccounting(e.target.value);
+                            setPricingSections((arr) =>
+                              arr.map((s, idx) =>
+                                idx === sectionIndex ? { ...s, items: s.items.map((x, j) => (j === i ? { ...x, price: v } : x)) } : s,
+                              ),
+                            );
+                          }}
+                          onBlur={
+                            !disabled
+                              ? () =>
+                                  setPricingSections((arr) =>
+                                    arr.map((s, idx) =>
+                                      idx === sectionIndex
+                                        ? { ...s, items: s.items.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x)) }
+                                        : s,
+                                    ),
+                                  )
+                              : undefined
+                          }
+                          disabled={disabled}
+                          readOnly={disabled}
+                          fieldHint={QUOTE_FIELD_HINTS.pricingPrice}
+                        />
+                        <div className="min-w-[80px] max-w-[120px] shrink-0">
+                          <ProposalInlineLabelRow label="Qty" fieldHint={QUOTE_FIELD_HINTS.pricingQty} />
+                          <div className={uiCx('flex items-center overflow-hidden rounded-lg border border-gray-300 bg-white', QUOTE_INLINE_CONTROL_H)}>
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              className={uiCx(
+                                'min-w-0 flex-1 appearance-none border-0 bg-transparent px-2 text-xs text-gray-900 [-moz-appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+                                disabled && 'cursor-not-allowed bg-gray-100',
+                                QUOTE_INLINE_CONTROL_H,
+                                'py-0',
+                              )}
+                              placeholder="Qty"
+                              value={c.quantity || '1'}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                const num = parseInt(v) || 1;
+                                const finalValue = num < 1 ? '1' : String(num);
+                                setPricingSections((arr) =>
+                                  arr.map((s, idx) =>
+                                    idx === sectionIndex ? { ...s, items: s.items.map((x, j) => (j === i ? { ...x, quantity: finalValue } : x)) } : s,
+                                  ),
+                                );
+                              }}
+                              disabled={disabled}
+                              readOnly={disabled}
+                            />
+                            {!disabled && (
+                              <div className="flex w-6 shrink-0 flex-col border-l border-gray-200 bg-white">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const currentQty = parseInt(c.quantity || '1') || 1;
+                                    setPricingSections((arr) =>
+                                      arr.map((s, idx) =>
+                                        idx === sectionIndex
+                                          ? { ...s, items: s.items.map((x, j) => (j === i ? { ...x, quantity: String(currentQty + 1) } : x)) }
+                                          : s,
+                                      ),
+                                    );
+                                  }}
+                                  className="flex flex-1 items-center justify-center border-b border-gray-200 px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100"
+                                  title="Increase"
+                                >
+                                  ▲
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const currentQty = parseInt(c.quantity || '1') || 1;
+                                    setPricingSections((arr) =>
+                                      arr.map((s, idx) =>
+                                        idx === sectionIndex
+                                          ? { ...s, items: s.items.map((x, j) => (j === i ? { ...x, quantity: String(Math.max(1, currentQty - 1)) } : x)) }
+                                          : s,
+                                      ),
+                                    );
+                                  }}
+                                  className="flex flex-1 items-center justify-center px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  title="Decrease"
+                                  disabled={parseInt(c.quantity || '1') <= 1}
+                                >
+                                  ▼
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <label className={`flex items-center gap-1 text-xs sm:text-sm flex-shrink-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                            <input 
-                              type="checkbox" 
-                              checked={c.pst === true}
-                              onChange={e=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, pst: e.target.checked }: x) }: s))}
-                              className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                              disabled={disabled}
-                            />
-                            <span className="text-gray-700 whitespace-nowrap">PST</span>
-                          </label>
-                          <label className={`flex items-center gap-1 text-xs sm:text-sm flex-shrink-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                            <input 
-                              type="checkbox" 
-                              checked={c.gst === true}
-                              onChange={e=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, gst: e.target.checked }: x) }: s))}
-                              className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                              disabled={disabled}
-                            />
-                            <span className="text-gray-700 whitespace-nowrap">GST</span>
-                          </label>
+                        <ProposalInlineControlSpacer className="min-w-[100px] max-w-[140px]" label="Line total" fieldHint={QUOTE_FIELD_HINTS.pricingLineTotal}>
+                          <div className="overflow-hidden whitespace-nowrap text-right text-xs font-medium text-gray-700">
+                            ${formatAccounting(lineTotal)}
+                          </div>
+                        </ProposalInlineControlSpacer>
+                        <div className={uiCx('flex shrink-0 gap-1.5', 'items-start')}>
+                          <ProposalInlineCheckbox
+                            label="PST"
+                            fieldHint={QUOTE_FIELD_HINTS.pst}
+                            checked={c.pst === true}
+                            onChange={(checked) =>
+                              setPricingSections((arr) =>
+                                arr.map((s, idx) =>
+                                  idx === sectionIndex ? { ...s, items: s.items.map((x, j) => (j === i ? { ...x, pst: checked } : x)) } : s,
+                                ),
+                              )
+                            }
+                            disabled={disabled}
+                          />
+                          <ProposalInlineCheckbox
+                            label="GST"
+                            fieldHint={QUOTE_FIELD_HINTS.gst}
+                            checked={c.gst === true}
+                            onChange={(checked) =>
+                              setPricingSections((arr) =>
+                                arr.map((s, idx) =>
+                                  idx === sectionIndex ? { ...s, items: s.items.map((x, j) => (j === i ? { ...x, gst: checked } : x)) } : s,
+                                ),
+                              )
+                            }
+                            disabled={disabled}
+                          />
                         </div>
                         {!disabled && (
-                          <button 
-                            className="p-1 rounded bg-red-100 hover:bg-red-200 flex items-center justify-center transition-colors flex-shrink-0 w-7 h-7" 
-                            onClick={()=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.filter((_,j)=> j!==i) }: s))}
-                            title="Remove"
-                          >
-                            <svg className="w-4 h-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          <ProposalInlineControlSpacer>
+                            <button
+                              type="button"
+                              className={uiCx(
+                                'flex w-8 shrink-0 items-center justify-center rounded bg-red-100 transition-colors hover:bg-red-200',
+                                QUOTE_INLINE_CONTROL_H,
+                              )}
+                              onClick={() =>
+                                setPricingSections((arr) =>
+                                  arr.map((s, idx) => (idx === sectionIndex ? { ...s, items: s.items.filter((_, j) => j !== i) } : s)),
+                                )
+                              }
+                              title="Remove"
+                            >
+                              <svg className="h-4 w-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </ProposalInlineControlSpacer>
                         )}
                       </div>
                     );
                   })}
                 </div>
                 {!disabled && (
-                  <button 
-                    onClick={()=> setProductSearchModalOpen({ sectionIndex, itemIndex: -1 })}
+                  <AppButton
+                    type="button"
+                    variant="secondary"
+                    className="mt-3 flex min-h-[60px] w-full items-center justify-center border-2 border-dashed"
+                    onClick={() => setProductSearchModalOpen({ sectionIndex, itemIndex: -1 })}
                     disabled={disabled}
-                    className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] disabled:opacity-60"
                   >
-                    <div className="text-2xl text-gray-400 mr-2">+</div>
-                    <div className="font-medium text-sm text-gray-700">Add Pricing Item</div>
-                  </button>
+                    + Add Pricing Item
+                  </AppButton>
                 )}
                 
                 {/* Show PST, GST fields even when disabled (read-only view) */}
                 {disabled && (
                   <div className="mt-4 flex items-center gap-4">
-                    <label className="flex items-center gap-2 text-sm">
-                      <span>PST (%)</span>
-                      <input 
-                        type="number" 
-                        className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
-                        value={section.pstRate} 
-                        disabled={true}
-                        readOnly={true}
-                      />
-                    </label>
-                    <label className="flex items-center gap-2 text-sm">
-                      <span>GST (%)</span>
-                      <input 
-                        type="number" 
-                        className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
-                        value={section.gstRate} 
-                        disabled={true}
-                        readOnly={true}
-                      />
-                    </label>
+                    <div className="flex items-center gap-2">
+                      <div className={uiTypography.controlLabel}>PST (%)</div>
+                      <div className={dsReadonlyClass}>{section.pstRate}%</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className={uiTypography.controlLabel}>GST (%)</div>
+                      <div className={dsReadonlyClass}>{section.gstRate}%</div>
+                    </div>
                   </div>
                 )}
 
@@ -1903,17 +2377,19 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                 {/* Total with Show in PDF checkbox */}
                 <div className="mt-3 space-y-2">
                   <div className="flex items-center gap-2">
-                    <div className="text-sm font-semibold">Total: <span className="text-gray-600">${formatAccounting(sectionTotals.grandTotal)}</span></div>
-                    <label className={`flex items-center gap-1 text-sm text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                      <input 
-                        type="checkbox" 
-                        checked={section.showTotalInPdf} 
-                        onChange={e=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, showTotalInPdf: e.target.checked }: s))}
-                        className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                        disabled={disabled}
-                      />
-                      <span>Show Total in PDF</span>
-                    </label>
+                    <div className="text-xs font-semibold">Total: <span className="text-gray-600">${formatAccounting(sectionTotals.grandTotal)}</span></div>
+                    <AppCheckbox
+                      label="Show Total in PDF"
+                      checked={section.showTotalInPdf}
+                      onChange={(checked) =>
+                        setPricingSections((arr) =>
+                          arr.map((s, idx) => (idx === sectionIndex ? { ...s, showTotalInPdf: checked } : s)),
+                        )
+                      }
+                      disabled={disabled}
+                      fieldHint={QUOTE_FIELD_HINTS.showTotalInPdf}
+                      className="text-xs"
+                    />
                   </div>
                 </div>
               </div>
@@ -1923,9 +2399,9 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         })}
 
         {/* Optional Services Block */}
-        <div className="rounded-xl border bg-white overflow-hidden">
+        <div className={dsSectionShell}>
           <div 
-            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className={dsSectionHeader}
             onClick={() => setSectionsExpanded(prev => ({ ...prev, optionalServices: !prev.optionalServices }))}
           >
             <span>Optional Services</span>
@@ -1939,20 +2415,58 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             </svg>
           </div>
           {sectionsExpanded.optionalServices && (
-          <div className="p-3 sm:p-4">
-          <div className="text-[12px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
+          <div className={dsSectionBodyPad}>
+          <div className="text-[10px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
             <div className="space-y-2">
               {optionalServices.map((s, i)=> (
-                <div key={i} className="grid grid-cols-1 sm:grid-cols-5 gap-2">
-                  <input className={`col-span-1 sm:col-span-3 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
-                  <input type="text" className={`col-span-1 sm:col-span-1 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                <div key={i} className={uiCx('grid grid-cols-5 gap-2', 'items-start')}>
+                  <ProposalInlineInput
+                    className="col-span-3"
+                    label="Service"
+                    placeholder="Service"
+                    value={s.service}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, service: v } : x)));
+                    }}
+                    disabled={disabled}
+                    readOnly={disabled}
+                    fieldHint={QUOTE_FIELD_HINTS.optionalService}
+                  />
+                  <ProposalInlineInput
+                    className="col-span-1"
+                    label="Price"
+                    placeholder="Price"
+                    value={s.price}
+                    onChange={(e) => {
+                      const v = parseAccounting(e.target.value);
+                      setOptionalServices((arr) => arr.map((x, j) => (j === i ? { ...x, price: v } : x)));
+                    }}
+                    onBlur={
+                      !disabled
+                        ? () =>
+                            setOptionalServices((arr) =>
+                              arr.map((x, j) => (j === i ? { ...x, price: formatAccounting(x.price) } : x)),
+                            )
+                        : undefined
+                    }
+                    disabled={disabled}
+                    readOnly={disabled}
+                    fieldHint={QUOTE_FIELD_HINTS.optionalPrice}
+                  />
                   {!disabled && (
-                    <button className="col-span-1 sm:col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                    <ProposalInlineControlSpacer className="col-span-1">
+                      <AppButton type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={() => setOptionalServices((arr) => arr.filter((_, j) => j !== i))}>
+                        Remove
+                      </AppButton>
+                    </ProposalInlineControlSpacer>
                   )}
                 </div>
               ))}
               {!disabled && (
-                <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}>+ Add Service</button>
+                <AppButton type="button" variant="secondary" size="sm" onClick={() => setOptionalServices((arr) => [...arr, { service: '', price: '' }])}>
+                  + Add Service
+                </AppButton>
               )}
             </div>
           </div>
@@ -1960,9 +2474,9 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         </div>
 
         {/* Terms Block */}
-        <div className="rounded-xl border bg-white overflow-hidden">
+        <div className={dsSectionShell}>
           <div 
-            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className={dsSectionHeader}
             onClick={() => setSectionsExpanded(prev => ({ ...prev, terms: !prev.terms }))}
           >
             <span>Terms</span>
@@ -1976,46 +2490,57 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             </svg>
           </div>
           {sectionsExpanded.terms && (
-          <div className="p-3 sm:p-4 space-y-3">
-            {!disabled && termsTemplates.length > 0 && (
+          <div className={uiCx(dsSectionBodyPad, 'space-y-2')}>
+            {termsTemplates.length > 0 && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Terms Template (optional)</label>
-                <select
-                  className="w-full border rounded px-3 py-2 text-sm"
-                  value={selectedTermsTemplateId}
-                  onChange={(e) => {
-                    const templateId = e.target.value;
-                    setSelectedTermsTemplateId(templateId);
-                    if (templateId) {
-                      const template = termsTemplates.find(t => t.id === templateId);
-                      if (template?.meta?.description) {
-                        setTerms(template.meta.description);
+                {disabled ? (
+                  <>
+                    <div className={dsFieldLabelClass ?? uiTypography.controlLabel}>Select Terms Template (optional)</div>
+                    <div className={dsReadonlyClass}>
+                      {selectedTermsTemplateId
+                        ? termsTemplates.find((t) => t.id === selectedTermsTemplateId)?.label || '-'
+                        : '-'}
+                    </div>
+                  </>
+                ) : (
+                  <AppSelect
+                    label="Select Terms Template (optional)"
+                    value={selectedTermsTemplateId}
+                    options={[
+                      { value: '', label: 'Custom / No template' },
+                      ...termsTemplates.map((template) => ({
+                        value: template.id,
+                        label: template.label,
+                      })),
+                    ]}
+                    onChange={(e) => {
+                      const templateId = e.target.value;
+                      setSelectedTermsTemplateId(templateId);
+                      if (templateId) {
+                        const template = termsTemplates.find((t) => t.id === templateId);
+                        if (template?.meta?.description) {
+                          setTerms(template.meta.description);
+                        }
                       }
-                    }
-                  }}
-                >
-                  <option value="">Custom / No template</option>
-                  {termsTemplates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.label}
-                    </option>
-                  ))}
-                </select>
+                    }}
+                    fieldHint={QUOTE_FIELD_HINTS.termsTemplate}
+                  />
+                )}
               </div>
             )}
             <div>
-              {!disabled && termsTemplates.length > 0 && (
-                <label className="block text-sm font-medium text-gray-700 mb-1">Terms Text</label>
+              {disabled ? (
+                <div className={uiCx(dsReadonlyClass, 'whitespace-pre-wrap')}>{terms || '-'}</div>
+              ) : (
+                <AppTextarea
+                  label="Terms Text"
+                  value={terms}
+                  onChange={(e) => setTerms(e.target.value)}
+                  rows={12}
+                  className="min-h-[250px]"
+                  fieldHint={QUOTE_FIELD_HINTS.termsText}
+                />
               )}
-              <textarea 
-                className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
-                value={terms} 
-                onChange={e=>setTerms(e.target.value)} 
-                disabled={disabled} 
-                readOnly={disabled}
-                rows={12}
-                style={{ minHeight: '250px' }}
-              />
             </div>
           </div>
           )}
@@ -2058,7 +2583,12 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           onMouseLeave={() => setFooterVisible(false)}
         >
           <div className="px-4">
-            <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-2.5 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+            <div className={uiCx(
+              uiRadius.card,
+              uiBorders.subtle,
+              uiColors.surface,
+              'mx-auto flex max-w-[1400px] items-center justify-between rounded-t-xl border-t bg-white/95 p-2.5 shadow-[0_-6px_16px_rgba(0,0,0,0.08)] backdrop-blur',
+            )}>
             {/* Left: Status indicator */}
             {hasUnsavedChanges ? (
               <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-medium">
@@ -2076,18 +2606,16 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             {/* Right: Action buttons */}
             <div className="flex items-center gap-1.5">
               {!disabled && (
-                <button 
-                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
-                  onClick={handleClearQuote}
-                  disabled={disabled}
-                >
+                <AppButton type="button" variant="secondary" size="sm" onClick={handleClearQuote} disabled={disabled}>
                   Clear Quote
-                </button>
+                </AppButton>
               )}
               {!disabled && mode === 'edit' && (
                 <>
-                  <button 
-                    className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
+                  <AppButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={async () => {
                       const result = await confirm({ 
                         title: 'Delete Quote', 
@@ -2101,20 +2629,15 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                           queryClient.invalidateQueries({ queryKey: ['quotes'] });
                           queryClient.invalidateQueries({ queryKey: ['clientQuotes', clientId] });
                           
-                          // Determine redirect based on where user came from
-                          // Check location state first (if passed during navigation)
                           const state = location.state as any;
                           const cameFromCustomer = state?.fromCustomer || false;
                           
-                          // Fallback: check referrer if state is not available
                           const referrer = document.referrer || '';
                           const referrerIndicatesCustomer = referrer.includes('/customers/') && clientId;
                           
                           if ((cameFromCustomer || referrerIndicatesCustomer) && clientId) {
-                            // Redirect to customer's quotes tab
                             nav(`/customers/${encodeURIComponent(clientId)}?tab=quotes`);
                           } else {
-                            // Redirect to main quotations page
                             nav('/quotes');
                           }
                         }
@@ -2125,42 +2648,62 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                     }}
                   >
                     Delete Quote
-                  </button>
+                  </AppButton>
                   <div className="w-px h-4 bg-gray-300"></div>
                 </>
               )}
               {!disabled && (
-                <button 
-                  className={`px-4 py-1.5 text-sm rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
-                    hasUnsavedChanges
-                      ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:from-red-700 hover:to-red-800' 
-                      : 'bg-gray-400 hover:bg-gray-500'
-                  }`}
-                  onClick={handleSave} 
+                <AppButton
+                  size="sm"
+                  onClick={handleSave}
                   disabled={disabled || isSaving || !hasUnsavedChanges}
+                  loading={isSaving}
                 >
-                  {isSaving ? 'Saving...' : 'Save Quote'}
-                </button>
+                  Save Quote
+                </AppButton>
               )}
               {!disabled && (
                 <>
                   <div className="w-px h-4 bg-gray-300"></div>
-                  <button 
-                    className="px-3 py-1.5 text-sm rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors" 
-                    disabled={isGenerating} 
+                  <AppButton
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={isGenerating}
+                    loading={isGenerating}
                     onClick={handleGenerate}
                   >
-                    {isGenerating ? 'Generating…' : 'Generate Quote'}
-                  </button>
+                    Generate Quote
+                  </AppButton>
                 </>
               )}
               {downloadUrl && (
                 <>
                   <div className="w-px h-4 bg-gray-300"></div>
                   {(renderFingerprint===lastGeneratedHash) ? (
-                    <a className="px-3 py-1.5 text-sm rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium transition-colors" href={downloadUrl} download="Quote.pdf">Download PDF</a>
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = downloadUrl;
+                        a.download = 'Quote.pdf';
+                        a.click();
+                      }}
+                    >
+                      Download PDF
+                    </AppButton>
                   ) : (
-                    <button className="px-3 py-1.5 text-sm rounded-lg bg-gray-200 text-gray-600 cursor-not-allowed font-medium" title="PDF is outdated. Generate again to enable download" disabled>Download PDF</button>
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled
+                      title="PDF is outdated. Generate again to enable download"
+                    >
+                      Download PDF
+                    </AppButton>
                   )}
                 </>
               )}
@@ -2225,207 +2768,87 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       
       {/* New Contact Modal */}
       {contactModalOpen && (
-        <OverlayPortal>
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 bg-gradient-to-br from-[#7f1010] to-[#a31414] flex items-center justify-between">
-              <div className="font-semibold text-white">New Contact</div>
-              <button 
-                onClick={() => {
-                  setContactModalOpen(false);
-                  setNewContactName('');
-                  setNewContactEmail('');
-                  setNewContactPhone('');
-                  setNewContactRole('');
-                  setNewContactDept('');
-                  setNewContactPrimary('false');
-                  setContactNameError(false);
-                  setContactPhotoBlob(null);
-                }} 
-                className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" 
-                title="Close"
-              >
-                ×
-              </button>
+        <AppFormModal
+          open
+          onClose={resetContactModal}
+          title="New Contact"
+          formWidth="comfortable"
+          footer={
+            <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+              <AppButton type="button" variant="secondary" size="sm" onClick={resetContactModal} disabled={isCreatingContact}>
+                Cancel
+              </AppButton>
+              <AppButton type="button" size="sm" onClick={handleCreateNewContact} disabled={isCreatingContact} loading={isCreatingContact}>
+                {isCreatingContact ? 'Creating...' : 'Create'}
+              </AppButton>
             </div>
-            <div className="p-4 grid grid-cols-1 md:grid-cols-5 gap-3 items-start">
-              <div className="md:col-span-2">
-                <div className="text-[11px] uppercase text-gray-500 mb-1">Contact Photo</div>
-                <button 
-                  onClick={() => {
-                    setContactPhotoBlob(new Blob());
-                    setPickerForContact('__new__');
-                  }} 
-                  className="w-full h-40 border rounded grid place-items-center bg-gray-50"
-                >
-                  Select Photo
-                </button>
-              </div>
-              <div className="md:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className="col-span-2">
-                  <label className="text-xs text-gray-600">
-                    Name <span className="text-red-600">*</span>
-                  </label>
-                  <input 
-                    className={`border rounded px-3 py-2 w-full ${contactNameError && !newContactName.trim() ? 'border-red-500' : ''}`} 
-                    value={newContactName} 
-                    onChange={e => {
-                      setNewContactName(e.target.value);
-                      if (contactNameError) setContactNameError(false);
-                    }} 
-                  />
-                  {contactNameError && !newContactName.trim() && (
-                    <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                  )}
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Role/Title</label>
-                  <input 
-                    className="border rounded px-3 py-2 w-full" 
-                    value={newContactRole} 
-                    onChange={e => setNewContactRole(e.target.value)} 
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Department</label>
-                  <input 
-                    className="border rounded px-3 py-2 w-full" 
-                    value={newContactDept} 
-                    onChange={e => setNewContactDept(e.target.value)} 
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Email</label>
-                  <input 
-                    className="border rounded px-3 py-2 w-full" 
-                    value={newContactEmail} 
-                    onChange={e => setNewContactEmail(e.target.value)} 
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Phone</label>
-                  <input 
-                    className="border rounded px-3 py-2 w-full" 
-                    value={newContactPhone} 
-                    onChange={e => setNewContactPhone(formatPhone(e.target.value))} 
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Primary</label>
-                  <div className="flex items-center gap-2 mt-2">
-                    <input
-                      type="checkbox"
-                      checked={(!contacts || contacts.length === 0) || newContactPrimary === 'true'}
-                      onChange={e => setNewContactPrimary(e.target.checked ? 'true' : 'false')}
-                      disabled={!contacts || contacts.length === 0}
-                      className="rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                    <span className="text-xs text-gray-600">
-                      {(!contacts || contacts.length === 0) ? 'Primary contact' : 'Set as primary contact'}
-                    </span>
-                  </div>
-                </div>
-                <div className="col-span-2 text-right">
-                  <button 
-                    onClick={async () => {
-                      if (isCreatingContact) return;
-                      if (!newContactName.trim()) {
-                        setContactNameError(true);
-                        toast.error('Name is required');
-                        return;
-                      }
-                      if (!clientId) {
-                        toast.error('Client ID is required');
-                        return;
-                      }
-                      try {
-                        setIsCreatingContact(true);
-                        // If this is the first contact, automatically set as primary
-                        const isFirstContact = !contacts || contacts.length === 0;
-                        const willBePrimary = isFirstContact || newContactPrimary === 'true';
-                        
-                        // If setting as primary, first unset any existing primary contacts
-                        if (willBePrimary && contacts && contacts.length > 0) {
-                          const primaryContact = contacts.find((c: any) => c.is_primary);
-                          if (primaryContact) {
-                            await api('PATCH', `/clients/${clientId}/contacts/${primaryContact.id}`, {
-                              is_primary: false
-                            });
-                          }
-                        }
-                        
-                        const payload: any = {
-                          name: newContactName,
-                          email: newContactEmail,
-                          phone: newContactPhone,
-                          role_title: newContactRole,
-                          department: newContactDept,
-                          is_primary: willBePrimary
-                        };
-                        const created: any = await api('POST', `/clients/${clientId}/contacts`, payload);
-                        // If photo selected, upload it now
-                        if (contactPhotoBlob && created.id) {
-                          try {
-                            const up: any = await api('POST', '/files/upload', { 
-                              project_id: null, 
-                              client_id: clientId, 
-                              employee_id: null, 
-                              category_id: 'contact-photo', 
-                              original_name: `contact-${created.id}.jpg`, 
-                              content_type: 'image/jpeg' 
-                            });
-                            await fetch(up.upload_url, { 
-                              method: 'PUT', 
-                              headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' }, 
-                              body: contactPhotoBlob 
-                            });
-                            const conf: any = await api('POST', '/files/confirm', { 
-                              key: up.key, 
-                              size_bytes: contactPhotoBlob.size, 
-                              checksum_sha256: 'na', 
-                              content_type: 'image/jpeg' 
-                            });
-                            await api('POST', `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + created.id)}&original_name=${encodeURIComponent('contact-' + created.id + '.jpg')}`);
-                          } catch (e) {
-                            console.error('Failed to upload contact photo:', e);
-                            // Don't fail the whole operation if photo upload fails
-                          }
-                        }
-                        setNewContactName('');
-                        setNewContactEmail('');
-                        setNewContactPhone('');
-                        setNewContactRole('');
-                        setNewContactDept('');
-                        setNewContactPrimary('false');
-                        setContactNameError(false);
-                        setContactPhotoBlob(null);
-                        setContactModalOpen(false);
-                        // Refresh contacts list
-                        await refetchContacts();
-                        // Select the newly created contact
-                        setSelectedContactId(String(created.id));
-                        setCreatedFor(created.name || '');
-                        setPrimary({
-                          name: created.name || '',
-                          phone: created.phone || '',
-                          email: created.email || ''
-                        });
-                      } catch (e) {
-                        toast.error('Failed to create contact');
-                        setIsCreatingContact(false);
-                      }
-                    }} 
-                    disabled={isCreatingContact} 
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isCreatingContact ? 'Creating...' : 'Create'}
-                  </button>
-                </div>
-              </div>
+          }
+        >
+          <div className="grid items-start gap-3 md:grid-cols-5">
+            <div className="md:col-span-2">
+              <AppControlLabelRow
+                label="Contact Photo"
+                fieldHint={<AppFieldHint hint={QUOTE_FIELD_HINTS.contactPhoto} />}
+              />
+              <AppButton
+                type="button"
+                variant="secondary"
+                className="mt-1.5 grid h-40 w-full place-items-center"
+                onClick={() => {
+                  setContactPhotoBlob(new Blob());
+                  setPickerForContact('__new__');
+                }}
+              >
+                Select Photo
+              </AppButton>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:col-span-3">
+              <AppInput
+                className="col-span-2"
+                label="Name *"
+                value={newContactName}
+                error={contactNameError && !newContactName.trim() ? 'This field is required' : undefined}
+                fieldHint={QUOTE_FIELD_HINTS.contactName}
+                onChange={(e) => {
+                  setNewContactName(e.target.value);
+                  if (contactNameError) setContactNameError(false);
+                }}
+              />
+              <AppInput
+                label="Role/Title"
+                value={newContactRole}
+                onChange={(e) => setNewContactRole(e.target.value)}
+                fieldHint={QUOTE_FIELD_HINTS.contactRole}
+              />
+              <AppInput
+                label="Department"
+                value={newContactDept}
+                onChange={(e) => setNewContactDept(e.target.value)}
+                fieldHint={QUOTE_FIELD_HINTS.contactDept}
+              />
+              <AppInput
+                label="Email"
+                value={newContactEmail}
+                onChange={(e) => setNewContactEmail(e.target.value)}
+                fieldHint={QUOTE_FIELD_HINTS.contactEmail}
+              />
+              <AppInput
+                label="Phone"
+                value={newContactPhone}
+                onChange={(e) => setNewContactPhone(formatPhone(e.target.value))}
+                fieldHint={QUOTE_FIELD_HINTS.contactPhone}
+              />
+              <AppCheckbox
+                className="col-span-2"
+                label={(!contacts || contacts.length === 0) ? 'Primary contact' : 'Set as primary contact'}
+                checked={(!contacts || contacts.length === 0) || newContactPrimary === 'true'}
+                onChange={(checked) => setNewContactPrimary(checked ? 'true' : 'false')}
+                disabled={!contacts || contacts.length === 0}
+                fieldHint={QUOTE_FIELD_HINTS.contactPrimary}
+              />
             </div>
           </div>
-        </div>
-        </OverlayPortal>
+        </AppFormModal>
       )}
       {pickerForContact && (
         <ImagePicker 
@@ -2535,25 +2958,13 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       )}
 
       {sectionImageLightboxId && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setSectionImageLightboxId(null)}
-          role="presentation"
-        >
-          <button
-            type="button"
-            className="absolute top-4 right-4 rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
-            onClick={() => setSectionImageLightboxId(null)}
-          >
-            Close
-          </button>
+        <AppModal open onClose={() => setSectionImageLightboxId(null)} title="Section Image" size="lg">
           <img
             src={withFileAccessToken(`/files/${sectionImageLightboxId}/thumbnail?w=${SECTION_IMAGE_LIGHTBOX_THUMB_W}`)}
-            className="max-h-[92vh] max-w-[95vw] object-contain"
+            className="mx-auto max-h-[70vh] max-w-full object-contain"
             alt=""
-            onClick={(e) => e.stopPropagation()}
           />
-        </div>
+        </AppModal>
       )}
 
     </div>
@@ -2606,148 +3017,144 @@ function AddProductModalForQuote({ open, onClose, onSelect }: { open: boolean, o
 
   return (
     <>
-      <OverlayPortal>
-      <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-        <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
-          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
-            <div className="font-semibold text-lg text-white">Add Product</div>
-            <button 
-              onClick={onClose} 
-              className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" 
-              title="Close"
+      <AppFormModal
+        open={open}
+        onClose={onClose}
+        title="Add Product"
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              onClick={() => {
+                if (!selection) {
+                  toast.error('Select a product first');
+                  return;
+                }
+                onSelect(selection);
+              }}
             >
-              ×
-            </button>
+              Add Item
+            </AppButton>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
-                <label className="text-xs text-gray-600">Search Product:</label>
-                <input 
-                  className="w-full border rounded px-3 py-2" 
-                  placeholder="Type product name..." 
-                  value={q} 
-                  onChange={e => setQ(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <button
-                onClick={() => setSupplierModalOpen(true)}
-                className="px-2 py-1 rounded text-gray-500 hover:text-blue-600 mt-6"
-                title="Browse by supplier"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <path d="M21 21l-4.35-4.35"></path>
-                </svg>
-              </button>
-            </div>
-            {q.trim() && list.length > 0 && (
-              <div className="max-h-64 overflow-auto rounded border divide-y">
-                {list.map(p => (
-                  <button 
-                    key={p.id} 
-                    onClick={() => setSelection(p)} 
-                    className={`w-full text-left px-3 py-2 bg-white hover:bg-gray-50 ${selection?.id === p.id ? 'ring-2 ring-brand-red' : ''}`}
-                  >
-                    <div className="font-medium">{p.name}</div>
-                    <div className="text-xs text-gray-500">
-                      {p.supplier_name || ''} · {p.unit || ''} · ${Number(p.price || 0).toFixed(2)}
-                    </div>
-                  </button>
-                ))}
-                {hasMore && (
-                  <button
-                    onClick={() => setDisplayedCount(prev => prev + 5)}
-                    className="w-full text-center px-3 py-2 bg-gray-50 hover:bg-gray-100 text-sm text-gray-600 border-t"
-                  >
-                    Load more ({allResults.length - displayedCount} remaining)
-                  </button>
-                )}
-              </div>
-            )}
-            {hasNoResults && (
-              <div className="border rounded p-4 bg-gray-50">
-                <div className="text-sm text-gray-600 mb-3">
-                  No products found matching "{q}"
-                </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="flex items-end gap-2">
+            <AppInput
+              className="flex-1"
+              label="Search Product"
+              placeholder="Type product name..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              autoFocus
+            />
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setSupplierModalOpen(true)}
+              title="Browse by supplier"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="M21 21l-4.35-4.35"></path>
+              </svg>
+            </AppButton>
+          </div>
+          {q.trim() && list.length > 0 && (
+            <div className={uiCx('max-h-64 divide-y overflow-auto rounded border', uiBorders.subtle)}>
+              {list.map((p) => (
                 <button
-                  onClick={() => {
-                    setNewProductModalOpen(true);
-                  }}
-                  className="w-full px-4 py-2 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-sm"
+                  key={p.id}
+                  type="button"
+                  onClick={() => setSelection(p)}
+                  className={uiCx(
+                    'w-full bg-white px-3 py-2 text-left hover:bg-gray-50',
+                    selection?.id === p.id && 'ring-2 ring-brand-red ring-inset',
+                  )}
                 >
-                  + Create new product: "{q}"
+                  <div className="font-medium">{p.name}</div>
+                  <div className={uiTypography.helper}>
+                    {p.supplier_name || ''} · {p.unit || ''} · ${Number(p.price || 0).toFixed(2)}
+                  </div>
                 </button>
-              </div>
-            )}
-            {selection && (
-              <div className="border rounded p-3 bg-gray-50 space-y-2">
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-24 h-24 relative">
-                    {selection.image_base64 ? (
-                      <img 
-                        src={selection.image_base64.startsWith('data:') ? selection.image_base64 : `data:image/jpeg;base64,${selection.image_base64}`}
-                        alt={selection.name}
-                        className="w-full h-full object-contain rounded"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                          const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
-                          if (placeholder) placeholder.style.display = 'flex';
-                        }}
-                      />
-                    ) : null}
-                    <img 
-                      src="/ui/assets/image placeholders/no_image.png" 
-                      alt="No image"
-                      className={`w-full h-full object-contain rounded ${selection.image_base64 ? 'hidden' : ''}`}
-                      style={{ display: selection.image_base64 ? 'none' : 'block' }}
+              ))}
+              {hasMore && (
+                <AppButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full border-t"
+                  onClick={() => setDisplayedCount((prev) => prev + 5)}
+                >
+                  Load more ({allResults.length - displayedCount} remaining)
+                </AppButton>
+              )}
+            </div>
+          )}
+          {hasNoResults && (
+            <div className={uiCx('rounded border bg-gray-50 p-4', uiBorders.subtle)}>
+              <div className={uiCx(uiTypography.helper, 'mb-3')}>No products found matching &quot;{q}&quot;</div>
+              <AppButton type="button" variant="secondary" size="sm" className="w-full" onClick={() => setNewProductModalOpen(true)}>
+                + Create new product: &quot;{q}&quot;
+              </AppButton>
+            </div>
+          )}
+          {selection && (
+            <div className={uiCx('space-y-2 rounded border bg-gray-50 p-3', uiBorders.subtle)}>
+              <div className="flex items-start gap-3">
+                <div className="relative h-24 w-24 shrink-0">
+                  {selection.image_base64 ? (
+                    <img
+                      src={selection.image_base64.startsWith('data:') ? selection.image_base64 : `data:image/jpeg;base64,${selection.image_base64}`}
+                      alt={selection.name}
+                      className="h-full w-full rounded object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                        const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
+                        if (placeholder) placeholder.style.display = 'flex';
+                      }}
                     />
+                  ) : null}
+                  <img
+                    src="/ui/assets/image placeholders/no_image.png"
+                    alt="No image"
+                    className={uiCx('h-full w-full rounded object-contain', selection.image_base64 ? 'hidden' : '')}
+                    style={{ display: selection.image_base64 ? 'none' : 'block' }}
+                  />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">{selection.name}</div>
+                    <AppButton type="button" variant="secondary" size="sm" onClick={() => setCompareModalOpen(true)}>
+                      Compare
+                    </AppButton>
                   </div>
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium">{selection.name}</div>
-                      <button
-                        onClick={() => setCompareModalOpen(true)}
-                        className="px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800 text-sm"
-                      >
-                        Compare
-                      </button>
+                  <div className={uiTypography.helper}>Supplier: {selection.supplier_name || 'N/A'}</div>
+                  <div className={uiTypography.helper}>
+                    Unit: {selection.unit || '-'} · Price: ${Number(selection.price || 0).toFixed(2)}
+                  </div>
+                  {selection.unit_type === 'coverage' && (
+                    <div className={uiTypography.helper}>
+                      Coverage: {selection.coverage_sqs ? `${selection.coverage_sqs} SQS · ` : ''}
+                      {selection.coverage_ft2 ? `${selection.coverage_ft2} ft² · ` : ''}
+                      {selection.coverage_m2 ? `${selection.coverage_m2} m²` : ''}
                     </div>
-                    <div className="text-sm text-gray-600">Supplier: {selection.supplier_name || 'N/A'}</div>
-                    <div className="text-sm text-gray-600">Unit: {selection.unit || '-'} · Price: ${Number(selection.price || 0).toFixed(2)}</div>
-                    {selection.unit_type === 'coverage' && (
-                      <div className="text-xs text-gray-600 mt-1">
-                        Coverage: {selection.coverage_sqs ? `${selection.coverage_sqs} SQS · ` : ''}{selection.coverage_ft2 ? `${selection.coverage_ft2} ft² · ` : ''}{selection.coverage_m2 ? `${selection.coverage_m2} m²` : ''}
-                      </div>
-                    )}
-                    {selection.unit_type === 'multiple' && selection.units_per_package && (
-                      <div className="text-xs text-gray-600 mt-1">
-                        {selection.units_per_package} units per package
-                      </div>
-                    )}
-                  </div>
+                  )}
+                  {selection.unit_type === 'multiple' && selection.units_per_package && (
+                    <div className={uiTypography.helper}>{selection.units_per_package} units per package</div>
+                  )}
                 </div>
               </div>
-            )}
-            <div className="text-right">
-              <button 
-                onClick={() => {
-                  if (!selection) { 
-                    toast.error('Select a product first'); 
-                    return; 
-                  }
-                  onSelect(selection);
-                }} 
-                className="px-3 py-2 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111]"
-              >
-                Add Item
-              </button>
             </div>
-          </div>
+          )}
         </div>
-      </div>
-      </OverlayPortal>
+      </AppFormModal>
       {supplierModalOpen && (
         <SupplierProductModalForQuote
           open={supplierModalOpen}
@@ -2932,268 +3339,219 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
 
   if (!open) return null;
 
+  const handleSaveProduct = async () => {
+    if (isSavingProduct) return;
+
+    if (!name.trim()) {
+      setNameError(true);
+      toast.error('Name is required');
+      return;
+    }
+
+    if (!newSupplier.trim()) {
+      setSupplierError(true);
+      toast.error('Supplier is required');
+      return;
+    }
+
+    if (name.trim() && newSupplier) {
+      try {
+        const params = new URLSearchParams();
+        params.set('q', name.trim());
+        params.set('supplier', newSupplier);
+        const duplicateCheck = await api<Material[]>('GET', `/estimate/products/search?${params.toString()}`);
+        const duplicate = duplicateCheck.find(
+          (p: Material) =>
+            p.name.toLowerCase().trim() === name.toLowerCase().trim() &&
+            p.supplier_name?.toLowerCase().trim() === newSupplier.toLowerCase().trim(),
+        );
+        if (duplicate) {
+          setDuplicateError(true);
+          toast.error(
+            `A product with the name "${name.trim()}" already exists for supplier "${newSupplier}". Please use a different name or select a different supplier.`,
+          );
+          return;
+        }
+      } catch (e) {
+        console.error('Error checking for duplicate:', e);
+      }
+    }
+
+    const priceValue = parseCurrency(price);
+    if (!priceValue || !priceValue.trim() || Number(priceValue) <= 0) {
+      setPriceError(true);
+      toast.error('Price is required');
+      return;
+    }
+
+    try {
+      setIsSavingProduct(true);
+      const payload = {
+        name: name.trim(),
+        supplier_name: newSupplier || null,
+        category: newCategory || null,
+        unit: unit || null,
+        price: Number(parseCurrency(price)),
+        description: desc || null,
+        unit_type: unitType,
+        units_per_package: unitType === 'multiple' ? (unitsPerPackage ? Number(unitsPerPackage) : null) : null,
+        coverage_sqs: unitType === 'coverage' ? (covSqs ? Number(covSqs) : null) : null,
+        coverage_ft2: unitType === 'coverage' ? (covFt2 ? Number(covFt2) : null) : null,
+        coverage_m2: unitType === 'coverage' ? (covM2 ? Number(covM2) : null) : null,
+        image_base64: imageDataUrl || null,
+        technical_manual_url: technicalManualUrl || null,
+      };
+      const created = await api<Material>('POST', '/estimate/products', payload);
+      toast.success('Product created');
+      onProductCreated(created);
+    } catch (_e) {
+      toast.error('Failed to create product');
+    } finally {
+      setIsSavingProduct(false);
+    }
+  };
+
   return (
     <>
-      <OverlayPortal>
-      <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
-        <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
-          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
-            <div className="font-semibold text-lg text-white">New Product</div>
-            <button 
-              onClick={onClose} 
-              className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" 
-              title="Close"
-            >
-              ×
-            </button>
+      <AppFormModal
+        open={open}
+        onClose={onClose}
+        title="New Product"
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={isSavingProduct}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSaveProduct} disabled={isSavingProduct} loading={isSavingProduct}>
+              {isSavingProduct ? 'Creating...' : 'Create Product'}
+            </AppButton>
           </div>
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">
-                  Name <span className="text-red-600">*</span>
-                </label>
-                <input 
-                  className={`w-full border rounded px-3 py-2 mt-1 ${(nameError && !name.trim()) || duplicateError ? 'border-red-500' : ''}`}
-                  value={name} 
-                  onChange={e=>{
-                    setName(e.target.value);
-                    if (nameError) setNameError(false);
-                    // Clear duplicate error when user starts typing
-                    if (duplicateError) setDuplicateError(false);
-                  }} 
-                />
-                {nameError && !name.trim() && (
-                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                )}
-                {duplicateError && (
-                  <div className="text-[11px] text-red-600 mt-1">
-                    A product with this name already exists for supplier "{newSupplier}". Please use a different name or select a different supplier.
-                  </div>
-                )}
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-700">
-                  Supplier <span className="text-red-600">*</span>
-                </label>
-                <div className="mt-1">
-                  <SupplierSelect
-                    value={newSupplier}
-                    onChange={(value) => {
-                      setNewSupplier(value);
-                      if (supplierError) setSupplierError(false);
-                      // Clear duplicate error when supplier changes
-                      if (duplicateError) setDuplicateError(false);
-                    }}
-                    onOpenNewSupplierModal={() => setNewSupplierModalOpen(true)}
-                    error={(supplierError && !newSupplier.trim()) || duplicateError}
-                    placeholder="Select a supplier"
-                  />
-                </div>
-                {supplierError && !newSupplier.trim() && (
-                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                )}
-              </div>
-              <div><label className="text-xs font-semibold text-gray-700">Category</label><input className="w-full border rounded px-3 py-2 mt-1" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
-              <div><label className="text-xs font-semibold text-gray-700">Sell Unit</label><input className="w-full border rounded px-3 py-2 mt-1" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
-              <div>
-                <label className="text-xs font-semibold text-gray-700">
-                  Price ($) <span className="text-red-600">*</span>
-                </label>
-                <input 
-                  type="text" 
-                  className={`w-full border rounded px-3 py-2 mt-1 ${priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) ? 'border-red-500' : ''}`}
-                  placeholder="$0.00"
-                  value={priceFocused ? priceDisplay : (price ? formatCurrency(price) : '')}
-                  onFocus={() => {
-                    setPriceFocused(true);
-                    setPriceDisplay(price || '');
-                  }}
-                  onBlur={() => {
-                    setPriceFocused(false);
-                    const parsed = parseCurrency(priceDisplay);
-                    setPrice(parsed);
-                    setPriceDisplay(parsed);
-                    if (priceError && parsed && Number(parsed) > 0) setPriceError(false);
-                  }}
-                  onChange={e => {
-                    const raw = e.target.value;
-                    setPriceDisplay(raw);
-                  }}
-                />
-                {priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) && (
-                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                )}
-              </div>
-              <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">Unit Type</label>
-                <div className="flex items-center gap-6 mt-1">
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type-quote" checked={unitType==='unitary'} onChange={()=>{ setUnitType('unitary'); setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Unitary</label>
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type-quote" checked={unitType==='multiple'} onChange={()=>{ setUnitType('multiple'); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Multiple</label>
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type-quote" checked={unitType==='coverage'} onChange={()=>{ setUnitType('coverage'); setUnitsPerPackage(''); }} /> Coverage</label>
-                </div>
-              </div>
-              {unitType==='multiple' && (
-                <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-700">Units per Package</label>
-                  <input type="number" step="0.01" className="w-full border rounded px-3 py-2 mt-1" value={unitsPerPackage} onChange={e=>setUnitsPerPackage(e.target.value)} />
-                </div>
-              )}
-              {unitType==='coverage' && (
-                <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-700">Coverage Area</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <div className="flex-1 flex items-center gap-1">
-                      <input 
-                        className="w-full border rounded px-3 py-2" 
-                        placeholder="0" 
-                        value={covSqs} 
-                        onChange={e=> onCoverageChange('sqs', e.target.value)} 
-                      />
-                      <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
-                    </div>
-                    <span className="text-gray-400">=</span>
-                    <div className="flex-1 flex items-center gap-1">
-                      <input 
-                        className="w-full border rounded px-3 py-2" 
-                        placeholder="0" 
-                        value={covFt2} 
-                        onChange={e=> onCoverageChange('ft2', e.target.value)} 
-                      />
-                      <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
-                    </div>
-                    <span className="text-gray-400">=</span>
-                    <div className="flex-1 flex items-center gap-1">
-                      <input 
-                        className="w-full border rounded px-3 py-2" 
-                        placeholder="0" 
-                        value={covM2} 
-                        onChange={e=> onCoverageChange('m2', e.target.value)} 
-                      />
-                      <span className="text-sm text-gray-600 whitespace-nowrap">m²</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Description / Notes</label><textarea className="w-full border rounded px-3 py-2 mt-1" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
-              <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">Technical Manual URL</label>
-                <input 
-                  className="w-full border rounded px-3 py-2 mt-1" 
-                  type="url"
-                  placeholder="https://supplier.com/manual/product"
-                  value={technicalManualUrl} 
-                  onChange={e=>setTechnicalManualUrl(e.target.value)} 
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">Product Image</label>
-                <div className="mt-1 space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setImagePickerOpen(true)}
-                    className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm">
-                    {imageDataUrl ? 'Change Image' : 'Select Image'}
-                  </button>
-                  {imageDataUrl && (
-                    <div className="mt-2">
-                      <img src={imageDataUrl} className="w-32 h-32 object-contain border rounded" alt="Preview" />
-                      <button
-                        type="button"
-                        onClick={() => setImageDataUrl('')}
-                        className="mt-2 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200">
-                        Remove Image
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+        }
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <AppInput
+            className="col-span-2"
+            label="Name *"
+            value={name}
+            error={
+              nameError && !name.trim()
+                ? 'This field is required'
+                : duplicateError
+                  ? `A product with this name already exists for supplier "${newSupplier}".`
+                  : undefined
+            }
+            onChange={(e) => {
+              setName(e.target.value);
+              if (nameError) setNameError(false);
+              if (duplicateError) setDuplicateError(false);
+            }}
+          />
+          <div>
+            <AppControlLabel label="Supplier *" />
+            <div className="mt-1.5">
+              <SupplierSelect
+                value={newSupplier}
+                onChange={(value) => {
+                  setNewSupplier(value);
+                  if (supplierError) setSupplierError(false);
+                  if (duplicateError) setDuplicateError(false);
+                }}
+                onOpenNewSupplierModal={() => setNewSupplierModalOpen(true)}
+                error={(supplierError && !newSupplier.trim()) || duplicateError}
+                placeholder="Select a supplier"
+              />
+            </div>
+            {supplierError && !newSupplier.trim() && (
+              <div className="mt-1 text-[11px] text-red-600">This field is required</div>
+            )}
+          </div>
+          <AppInput label="Category" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} />
+          <AppInput label="Sell Unit" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={(e) => setUnit(e.target.value)} />
+          <AppInput
+            label="Price ($) *"
+            placeholder="$0.00"
+            value={priceFocused ? priceDisplay : price ? formatCurrency(price) : ''}
+            error={priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) ? 'This field is required' : undefined}
+            onFocus={() => {
+              setPriceFocused(true);
+              setPriceDisplay(price || '');
+            }}
+            onBlur={() => {
+              setPriceFocused(false);
+              const parsed = parseCurrency(priceDisplay);
+              setPrice(parsed);
+              setPriceDisplay(parsed);
+              if (priceError && parsed && Number(parsed) > 0) setPriceError(false);
+            }}
+            onChange={(e) => setPriceDisplay(e.target.value)}
+          />
+          <div className="col-span-2">
+            <AppControlLabel label="Unit Type" />
+            <div className="mt-1.5 flex items-center gap-6">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" name="unit-type-quote" checked={unitType === 'unitary'} onChange={() => { setUnitType('unitary'); setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Unitary
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" name="unit-type-quote" checked={unitType === 'multiple'} onChange={() => { setUnitType('multiple'); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Multiple
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" name="unit-type-quote" checked={unitType === 'coverage'} onChange={() => { setUnitType('coverage'); setUnitsPerPackage(''); }} /> Coverage
+              </label>
             </div>
           </div>
-          <div className="px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
-            <button 
-              onClick={async()=>{
-                if(isSavingProduct) return;
-                
-                if(!name.trim()){
-                  setNameError(true);
-                  toast.error('Name is required');
-                  return;
-                }
-                
-                if(!newSupplier.trim()){
-                  setSupplierError(true);
-                  toast.error('Supplier is required');
-                  return;
-                }
-                
-                // Check for duplicate before creating
-                if (name.trim() && newSupplier) {
-                  try {
-                    const params = new URLSearchParams();
-                    params.set('q', name.trim());
-                    params.set('supplier', newSupplier);
-                    const duplicateCheck = await api<Material[]>('GET', `/estimate/products/search?${params.toString()}`);
-                    const duplicate = duplicateCheck.find(
-                      (p: Material) => 
-                        p.name.toLowerCase().trim() === name.toLowerCase().trim() && 
-                        p.supplier_name?.toLowerCase().trim() === newSupplier.toLowerCase().trim()
-                    );
-                    if (duplicate) {
-                      setDuplicateError(true);
-                      toast.error(`A product with the name "${name.trim()}" already exists for supplier "${newSupplier}". Please use a different name or select a different supplier.`);
-                      return;
-                    }
-                  } catch (e) {
-                    // If check fails, continue (server will validate anyway)
-                    console.error('Error checking for duplicate:', e);
-                  }
-                }
-                
-                const priceValue = parseCurrency(price);
-                if(!priceValue || !priceValue.trim() || Number(priceValue) <= 0){
-                  setPriceError(true);
-                  toast.error('Price is required');
-                  return;
-                }
-                
-                try{
-                  setIsSavingProduct(true);
-                  const payload = {
-                    name: name.trim(),
-                    supplier_name: newSupplier||null,
-                    category: newCategory||null,
-                    unit: unit||null,
-                    price: Number(parseCurrency(price)),
-                    description: desc||null,
-                    unit_type: unitType,
-                    units_per_package: unitType==='multiple'? (unitsPerPackage? Number(unitsPerPackage): null) : null,
-                    coverage_sqs: unitType==='coverage'? (covSqs? Number(covSqs): null) : null,
-                    coverage_ft2: unitType==='coverage'? (covFt2? Number(covFt2): null) : null,
-                    coverage_m2: unitType==='coverage'? (covM2? Number(covM2): null) : null,
-                    image_base64: imageDataUrl || null,
-                    technical_manual_url: technicalManualUrl || null,
-                  };
-                  const created = await api<Material>('POST','/estimate/products', payload);
-                  toast.success('Product created');
-                  onProductCreated(created);
-                }catch(_e){ 
-                  toast.error('Failed to create product'); 
-                }
-                finally{ 
-                  setIsSavingProduct(false); 
-                }
-              }} 
-              disabled={isSavingProduct} 
-              className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSavingProduct ? 'Creating...' : 'Create Product'}
-            </button>
+          {unitType === 'multiple' && (
+            <AppInput
+              className="col-span-2"
+              label="Units per Package"
+              type="number"
+              step="0.01"
+              value={unitsPerPackage}
+              onChange={(e) => setUnitsPerPackage(e.target.value)}
+            />
+          )}
+          {unitType === 'coverage' && (
+            <div className="col-span-2">
+              <AppControlLabel label="Coverage Area" />
+              <div className="mt-1.5 flex items-center gap-2">
+                <AppInput placeholder="0" value={covSqs} onChange={(e) => onCoverageChange('sqs', e.target.value)} />
+                <span className={uiTypography.helper}>SQS</span>
+                <span className="text-gray-400">=</span>
+                <AppInput placeholder="0" value={covFt2} onChange={(e) => onCoverageChange('ft2', e.target.value)} />
+                <span className={uiTypography.helper}>ft²</span>
+                <span className="text-gray-400">=</span>
+                <AppInput placeholder="0" value={covM2} onChange={(e) => onCoverageChange('m2', e.target.value)} />
+                <span className={uiTypography.helper}>m²</span>
+              </div>
+            </div>
+          )}
+          <AppTextarea className="col-span-2" label="Description / Notes" rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} />
+          <AppInput
+            className="col-span-2"
+            label="Technical Manual URL"
+            type="url"
+            placeholder="https://supplier.com/manual/product"
+            value={technicalManualUrl}
+            onChange={(e) => setTechnicalManualUrl(e.target.value)}
+          />
+          <div className="col-span-2">
+            <AppControlLabel label="Product Image" />
+            <div className="mt-1.5 space-y-2">
+              <AppButton type="button" variant="secondary" size="sm" onClick={() => setImagePickerOpen(true)}>
+                {imageDataUrl ? 'Change Image' : 'Select Image'}
+              </AppButton>
+              {imageDataUrl && (
+                <div>
+                  <img src={imageDataUrl} className={uiCx('h-32 w-32 rounded border object-contain', uiBorders.subtle)} alt="Preview" />
+                  <AppButton type="button" variant="ghost" size="sm" className="mt-2" onClick={() => setImageDataUrl('')}>
+                    Remove Image
+                  </AppButton>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-      </OverlayPortal>
+      </AppFormModal>
       {imagePickerOpen && (
         <ImagePicker
           isOpen={true}
@@ -3279,119 +3637,116 @@ function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boole
 
   if (!open) return null;
 
-  return (
-    <>
-      <OverlayPortal>
-      <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-2 sm:p-4">
-      <div className="w-[1000px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-4 sm:p-6 flex items-center gap-4 sm:gap-6 relative flex-shrink-0">
-          <div className="font-semibold text-base sm:text-lg text-white">Browse Products by Supplier</div>
-          <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
-        </div>
-        <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
-          {/* Left: Suppliers List */}
-          <div className="w-full sm:w-64 border-r sm:border-r border-b sm:border-b-0 overflow-y-auto bg-gray-50 flex-shrink-0 sm:flex-shrink">
-            <div className="p-4">
-              <div className="font-semibold mb-3 text-sm text-gray-700">Suppliers</div>
-              <div className="space-y-2">
-                {(suppliers || []).map(supplier => (
-                  <button
-                    key={supplier.id}
-                    onClick={() => setSelectedSupplier(supplier.id)}
-                    className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-                      selectedSupplier === supplier.id
-                        ? 'text-white bg-gradient-to-br from-[#7f1010] to-[#a31414]'
-                        : 'bg-white hover:bg-gray-100 text-gray-700'
-                    }`}>
-                    {supplier.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          
-          {/* Right: Products Grid */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4">
-            {!selectedSupplier ? (
-              <div className="flex items-center justify-center h-full text-gray-500">
-                Select a supplier to view products
-              </div>
-            ) : (
-              <div>
-                <div className="font-semibold mb-4 text-gray-700">
-                  Products from {suppliers?.find(s => s.id === selectedSupplier)?.name || 'Supplier'}
-                </div>
-                {products && products.length > 0 ? (
-                  <>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                      {/* New Product Card - First position */}
-                      <button
-                        onClick={() => setNewProductModalOpen(true)}
-                        className="border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]">
-                        <div className="text-4xl text-gray-400 mb-2">+</div>
-                        <div className="font-medium text-sm text-gray-700">New Product</div>
-                        <div className="text-xs text-gray-500 mt-1">Add new product to {suppliers?.find(s => s.id === selectedSupplier)?.name || 'supplier'}</div>
-                      </button>
-                      {products.map(product => (
-                      <button
-                        key={product.id}
-                        onClick={() => onSelect(product)}
-                        className="border rounded-lg p-3 hover:border-brand-red hover:shadow-md transition-all text-left bg-white flex flex-col">
-                        <div className="w-full h-24 mb-2 relative">
-                          {product.image_base64 ? (
-                            <img 
-                              src={product.image_base64.startsWith('data:') ? product.image_base64 : `data:image/jpeg;base64,${product.image_base64}`}
-                              alt={product.name}
-                              className="w-full h-full object-contain rounded"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                                const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
-                                if (placeholder) placeholder.style.display = 'flex';
-                              }}
-                            />
-                          ) : null}
-                          <img 
-                            src="/ui/assets/image placeholders/no_image.png" 
-                            alt="No image"
-                            className={`w-full h-full object-contain rounded ${product.image_base64 ? 'hidden' : ''}`}
-                            style={{ display: product.image_base64 ? 'none' : 'block' }}
-                          />
-                        </div>
-                        <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
-                        {product.category && (
-                          <div className="text-xs text-gray-500 mb-1">{product.category}</div>
-                        )}
-                        <div className="text-sm font-semibold text-brand-red">${Number(product.price || 0).toFixed(2)}</div>
-                      </button>
-                      ))}
-                    </div>
-                    {hasMoreProducts && (
-                      <button
-                        onClick={() => setDisplayedProductCount(prev => prev + 20)}
-                        className="mt-4 w-full text-center px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm text-gray-600">
-                        Load more ({allProductsForSupplier.length - displayedProductCount} remaining)
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="text-gray-500 mb-4">No products found for this supplier</div>
-                    <button
-                      onClick={() => setNewProductModalOpen(true)}
-                      className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center mx-auto w-64">
-                      <div className="text-4xl text-gray-400 mb-2">+</div>
-                      <div className="font-medium text-sm text-gray-700">New Product</div>
-                      <div className="text-xs text-gray-500 mt-1">Add new product to {suppliers?.find(s => s.id === selectedSupplier)?.name || 'supplier'}</div>
-                    </button>
-                  </div>
+  const supplierBody = (
+    <div className="flex max-h-[70vh] flex-col overflow-hidden sm:flex-row">
+      <div className={uiCx('w-full shrink-0 overflow-y-auto border-b bg-gray-50 sm:w-64 sm:border-b-0 sm:border-r', uiBorders.subtle)}>
+        <div className="p-4">
+          <div className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Suppliers</div>
+          <div className="space-y-2">
+            {(suppliers || []).map((supplier) => (
+              <button
+                key={supplier.id}
+                type="button"
+                onClick={() => setSelectedSupplier(supplier.id)}
+                className={uiCx(
+                  'w-full rounded px-3 py-2 text-left text-sm transition-colors',
+                  selectedSupplier === supplier.id
+                    ? 'bg-brand-red text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-100',
                 )}
+              >
+                {supplier.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+        {!selectedSupplier ? (
+          <div className="flex h-full items-center justify-center text-gray-500">Select a supplier to view products</div>
+        ) : (
+          <div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mb-4')}>
+              Products from {suppliers?.find((s) => s.id === selectedSupplier)?.name || 'Supplier'}
+            </div>
+            {products && products.length > 0 ? (
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                  <button
+                    type="button"
+                    onClick={() => setNewProductModalOpen(true)}
+                    className={uiCx(
+                      'flex min-h-[200px] flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white p-3 text-center transition-all hover:border-brand-red hover:bg-gray-50',
+                      uiBorders.subtle,
+                    )}
+                  >
+                    <div className="mb-2 text-4xl text-gray-400">+</div>
+                    <div className="text-sm font-medium text-gray-700">New Product</div>
+                    <div className={uiCx(uiTypography.helper, 'mt-1')}>
+                      Add new product to {suppliers?.find((s) => s.id === selectedSupplier)?.name || 'supplier'}
+                    </div>
+                  </button>
+                  {products.map((product) => (
+                    <button
+                      key={product.id}
+                      type="button"
+                      onClick={() => onSelect(product)}
+                      className={uiCx(
+                        'flex flex-col rounded-lg border bg-white p-3 text-left transition-all hover:border-brand-red hover:shadow-md',
+                        uiBorders.subtle,
+                      )}
+                    >
+                      <div className="relative mb-2 h-24 w-full">
+                        {product.image_base64 ? (
+                          <img
+                            src={product.image_base64.startsWith('data:') ? product.image_base64 : `data:image/jpeg;base64,${product.image_base64}`}
+                            alt={product.name}
+                            className="h-full w-full rounded object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
+                              if (placeholder) placeholder.style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
+                        <img
+                          src="/ui/assets/image placeholders/no_image.png"
+                          alt="No image"
+                          className={uiCx('h-full w-full rounded object-contain', product.image_base64 ? 'hidden' : '')}
+                          style={{ display: product.image_base64 ? 'none' : 'block' }}
+                        />
+                      </div>
+                      <div className="mb-1 line-clamp-2 text-sm font-medium">{product.name}</div>
+                      {product.category && <div className={uiTypography.helper}>{product.category}</div>}
+                      <div className="text-sm font-semibold text-brand-red">${Number(product.price || 0).toFixed(2)}</div>
+                    </button>
+                  ))}
+                </div>
+                {hasMoreProducts && (
+                  <AppButton type="button" variant="secondary" size="sm" className="mt-4 w-full" onClick={() => setDisplayedProductCount((prev) => prev + 20)}>
+                    Load more ({allProductsForSupplier.length - displayedProductCount} remaining)
+                  </AppButton>
+                )}
+              </>
+            ) : (
+              <div className="py-8 text-center">
+                <div className="mb-4 text-gray-500">No products found for this supplier</div>
+                <AppButton type="button" variant="secondary" onClick={() => setNewProductModalOpen(true)}>
+                  + New Product
+                </AppButton>
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
-      </div>
-      </OverlayPortal>
+    </div>
+  );
+
+  return (
+    <>
+      <AppModal open={open} onClose={onClose} title="Browse Products by Supplier" size="xl">
+        {supplierBody}
+      </AppModal>
       {newProductModalOpen && selectedSupplier && (
         <NewProductModalForQuote
           open={true}
@@ -3424,35 +3779,31 @@ function CompareProductsModalForQuote({ open, onClose, selectedProduct, onSelect
   if (!open) return null;
 
   return (
-    <OverlayPortal>
-    <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center">
-      <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
-          <div className="font-semibold text-lg text-white">Compare Products</div>
-          <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20">×</button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          <div className="border rounded p-3 bg-gray-50">
-            <div className="font-medium mb-2">Selected: {selectedProduct.name}</div>
-            <div className="text-sm text-gray-600">${Number(selectedProduct.price || 0).toFixed(2)} · {selectedProduct.supplier_name || 'N/A'}</div>
+    <AppModal open={open} onClose={onClose} title="Compare Products" size="md">
+      <div className="space-y-3">
+        <div className={uiCx('rounded border bg-gray-50 p-3', uiBorders.subtle)}>
+          <div className="mb-2 font-medium">Selected: {selectedProduct.name}</div>
+          <div className={uiTypography.helper}>
+            ${Number(selectedProduct.price || 0).toFixed(2)} · {selectedProduct.supplier_name || 'N/A'}
           </div>
-          {(similarProducts || []).length > 0 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Similar Products:</div>
-              <div className="max-h-64 overflow-auto rounded border divide-y">
-                {(similarProducts || []).map(p => (
-                  <button key={p.id} onClick={() => onSelect(p)} className="w-full text-left px-3 py-2 bg-white hover:bg-gray-50">
-                    <div className="font-medium">{p.name}</div>
-                    <div className="text-xs text-gray-500">{p.supplier_name || ''} · ${Number(p.price || 0).toFixed(2)}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
+        {(similarProducts || []).length > 0 && (
+          <div className="space-y-2">
+            <div className={uiTypography.sectionTitle}>Similar Products</div>
+            <div className={uiCx('max-h-64 divide-y overflow-auto rounded border', uiBorders.subtle)}>
+              {(similarProducts || []).map((p) => (
+                <button key={p.id} type="button" onClick={() => onSelect(p)} className="w-full bg-white px-3 py-2 text-left hover:bg-gray-50">
+                  <div className="font-medium">{p.name}</div>
+                  <div className={uiTypography.helper}>
+                    {p.supplier_name || ''} · ${Number(p.price || 0).toFixed(2)}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
-    </div>
-    </OverlayPortal>
+    </AppModal>
   );
 }
 

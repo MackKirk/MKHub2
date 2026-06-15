@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, useImperativeHandle, forwardRef, useCallback, type ReactNode } from 'react';
+﻿import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -16,40 +16,17 @@ import UserLoans from '@/components/UserLoans';
 import { UserReportsSection } from '@/components/users/UserReportsTabEnhanced';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { CanadianDriversLicenseSection } from '@/components/CanadianDriversLicenseSection';
-import UserEmployeeReviewsTab from '@/components/UserEmployeeReviewsTab';
+import { UserEmployeeReviewsSection } from '@/components/users/UserEmployeeReviewsTabEnhanced';
 import { UserInfoHero, UserInfoHeroSkeleton } from '@/components/users/UserInfoHero';
 import UserDocumentsTabEnhanced from '@/components/users/UserDocumentsTabEnhanced';
 import { EmployeeTrainingSection } from '@/components/users/EmployeeTrainingTabEnhanced';
 import { UserAssetsSection } from '@/components/users/UserAssetsTabEnhanced';
+import {
+  UserPermissionsSection,
+  type UserPermissionsRef,
+} from '@/components/users/UserPermissionsTabEnhanced';
+import { UserActivitySection } from '@/components/users/UserActivityTabEnhanced';
 import { isCompleteLocalDatetime, LocalDateTimeFields } from '@/components/LocalDateTimeFields';
-import ProjectFilesCategoriesModal from '@/components/ProjectFilesCategoriesModal';
-import ProjectReportCategoriesModal from '@/components/ProjectReportCategoriesModal';
-import { CustomerPermissionsGrid } from '@/components/CustomerPermissionsGrid';
-import { ProjectLinePermissionsGrid } from '@/components/ProjectLinePermissionsGrid';
-import {
-  applyCustomerAccessLevel,
-  type CustomerAccessLevel,
-} from '@/lib/customerPermissions';
-import {
-  applyProjectLineAccessLevel,
-  type ProjectLine,
-  type ProjectLinePermissionRow,
-} from '@/lib/projectLinePermissions';
-import {
-  EMPTY_LINE_CATEGORY_CONFIG,
-  applyLineCategoryConfigToPayload,
-  configsEqual,
-  resolveCategoryConfigFromApi,
-  lineMacroFilesWriteKey,
-  lineMacroReportsWriteKey,
-  type LineCategoryConfigState,
-  clearLegacyProjectSubPermissions,
-  clearLegacyCategoryConfigKeys,
-  cloneLineCategoryConfigs,
-  syncLineCategoryConfigAfterFilesMacroChange,
-  syncLineCategoryConfigAfterReportsMacroChange,
-} from '@/lib/projectLinePermissionKeys';
-import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
 import {
   AppBadge,
   AppButton,
@@ -112,17 +89,6 @@ import {
   scWorkerManualAttendanceQuickInfo,
 } from '@/lib/formModalQuickInfo';
 import { userProfileFieldHint } from '@/lib/userProfileFieldHints';
-import {
-  IMPLEMENTED_PERMISSIONS,
-  isHiddenPermissionKey,
-  isConstructionProjectPermissionKey,
-  isRepairsProjectPermissionKey,
-} from '@/lib/implementedPermissions';
-import {
-  applyPermissionUncheckCascade,
-  canEnablePermission,
-  permissionEnableBlockedMessage,
-} from '@/lib/permissionDependencies';
 
 const USER_TAB_LABELS: Record<string, string> = {
   personal: 'Personal',
@@ -313,7 +279,7 @@ function BambooFilesLastSyncRow({
   const [saving, setSaving] = useState(false);
   const queryClient = useQueryClient();
   const display = (() => {
-    if (!lastSyncIso) return 'â€”';
+    if (!lastSyncIso) return '—';
     const ymd = String(lastSyncIso).slice(0, 10);
     if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
       const [y, m, d] = ymd.split('-').map(Number);
@@ -322,7 +288,7 @@ function BambooFilesLastSyncRow({
     try {
       return new Date(lastSyncIso).toLocaleDateString(undefined, { dateStyle: 'medium' });
     } catch {
-      return 'â€”';
+      return '—';
     }
   })();
   const saveToday = async () => {
@@ -353,1349 +319,13 @@ function BambooFilesLastSyncRow({
           disabled={saving}
           className="px-3 py-1.5 rounded-lg bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {saving ? 'Savingâ€¦' : "Save today's date"}
+          {saving ? 'Saving…' : "Save today's date"}
         </button>
       )}
     </div>
   );
 }
 
-export type UserPermissionsRef = {
-  hasUnsavedChanges: () => boolean;
-  save: () => Promise<void>;
-};
-
-const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirtyChange?: (dirty: boolean) => void; canEdit?: boolean }>(({ userId, onDirtyChange, canEdit = true }, ref) => {
-  const queryClient = useQueryClient();
-  const { data:user, refetch: refetchUser } = useQuery({ queryKey:['user', userId], queryFn: ()=> api<any>('GET', `/users/${userId}`) });
-  const { data:permissionsData, refetch } = useQuery({ 
-    queryKey:['user-permissions', userId], 
-    queryFn: ()=> api<any>('GET', `/permissions/users/${userId}`) 
-  });
-  const { data: currentUser } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
-  const { data: permissionTemplates = [] } = useQuery({
-    queryKey: ['permission-templates'],
-    queryFn: () => api<{ id: string; name: string; permission_keys: string[] }[]>('GET', '/permissions/templates'),
-  });
-  const [permissions, setPermissions] = useState<Record<string, boolean>>({});
-  const [initialPermissions, setInitialPermissions] = useState<Record<string, boolean>>({});
-  const [isAdminLocal, setIsAdminLocal] = useState<boolean>(false);
-  const [initialIsAdmin, setInitialIsAdmin] = useState<boolean>(false);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-  const [showApplyTemplateModal, setShowApplyTemplateModal] = useState(false);
-
-  type LineCategoryConfigs = Record<ProjectLine, LineCategoryConfigState>;
-  const [lineCategoryConfigs, setLineCategoryConfigs] = useState<LineCategoryConfigs>({
-    construction: { ...EMPTY_LINE_CATEGORY_CONFIG },
-    repairs: { ...EMPTY_LINE_CATEGORY_CONFIG },
-  });
-  const [initialLineCategoryConfigs, setInitialLineCategoryConfigs] = useState<LineCategoryConfigs>({
-    construction: { ...EMPTY_LINE_CATEGORY_CONFIG },
-    repairs: { ...EMPTY_LINE_CATEGORY_CONFIG },
-  });
-  const [categoryModal, setCategoryModal] = useState<{
-    line: ProjectLine;
-    feature: 'files' | 'reports';
-  } | null>(null);
-
-  const permissionsHydratedForUser = useRef<string | null>(null);
-
-  // Reset hydration when switching users
-  useEffect(() => {
-    permissionsHydratedForUser.current = null;
-  }, [userId]);
-
-  // Initialize permissions from API (once per user load â€” do not wipe modal edits on refetch)
-  useEffect(() => {
-    if (!permissionsData?.permissions_by_category) return;
-    if (permissionsHydratedForUser.current === userId) return;
-
-    const perms: Record<string, boolean> = {};
-    permissionsData.permissions_by_category.forEach((cat: any) => {
-      cat.permissions.forEach((perm: any) => {
-        perms[perm.key] = perm.is_granted;
-      });
-    });
-    setPermissions(perms);
-    setInitialPermissions({ ...perms });
-
-    const cfg = permissionsData?.configs || {};
-    const nextConfigs: LineCategoryConfigs = {
-      construction: resolveCategoryConfigFromApi(cfg, 'construction'),
-      repairs: resolveCategoryConfigFromApi(cfg, 'repairs'),
-    };
-    setLineCategoryConfigs(nextConfigs);
-    setInitialLineCategoryConfigs(cloneLineCategoryConfigs(nextConfigs));
-    permissionsHydratedForUser.current = userId;
-  }, [permissionsData, userId]);
-
-  // Initialize admin state from user data
-  useEffect(() => {
-    if (user) {
-      const adminStatus = (user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin');
-      setIsAdminLocal(adminStatus);
-      setInitialIsAdmin(adminStatus);
-    }
-  }, [user]);
-
-  // Check if there are unsaved changes
-  const hasUnsavedChanges = useMemo(() => {
-    // Check admin status change
-    if (isAdminLocal !== initialIsAdmin) return true;
-    
-    // Check permissions changes
-    const currentKeys = Object.keys(permissions);
-    const initialKeys = Object.keys(initialPermissions);
-    
-    if (currentKeys.length !== initialKeys.length) return true;
-    
-    for (const key of currentKeys) {
-      if (permissions[key] !== initialPermissions[key]) return true;
-    }
-    
-    for (const key of initialKeys) {
-      if (permissions[key] !== initialPermissions[key]) return true;
-    }
-    
-    if (!configsEqual(lineCategoryConfigs.construction, initialLineCategoryConfigs.construction)) {
-      return true;
-    }
-    if (!configsEqual(lineCategoryConfigs.repairs, initialLineCategoryConfigs.repairs)) {
-      return true;
-    }
-
-    return false;
-  }, [
-    permissions,
-    initialPermissions,
-    isAdminLocal,
-    initialIsAdmin,
-    lineCategoryConfigs,
-    initialLineCategoryConfigs,
-  ]);
-
-  const openProjectFilesCategoriesModal = (line: ProjectLine) => {
-    setCategoryModal({ line, feature: 'files' });
-  };
-
-  const openProjectReportsCategoriesModal = (line: ProjectLine) => {
-    setCategoryModal({ line, feature: 'reports' });
-  };
-
-  // Notify parent of dirty state changes
-  useEffect(() => {
-    onDirtyChange?.(hasUnsavedChanges);
-  }, [hasUnsavedChanges, onDirtyChange]);
-
-  const handleToggle = (key: string) => {
-    setPermissions((prev) => {
-      const newPerms = { ...prev };
-      const newValue = !prev[key];
-
-      if (newValue && !canEnablePermission(key, prev)) {
-        toast.error(permissionEnableBlockedMessage(key) || 'Required permissions must be enabled first');
-        return prev;
-      }
-      
-      // Check dependencies for view permissions
-      if (key === 'hr:users:view:general' || key === 'hr:users:view:timesheet' || key === 'hr:users:view:permissions' || key === 'hr:users:view:activity') {
-        // Requires hr:users:read
-        if (newValue && !prev['hr:users:read']) {
-          toast.error('This permission requires "View Users List" to be enabled first');
-          return prev;
-        }
-      }
-      // Check dependencies for job compensation view permission
-      else if (key === 'hr:users:view:job:compensation') {
-        // Requires hr:users:read and hr:users:view:general
-        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:general'])) {
-          toast.error('This permission requires "View Users List" and "View General Tab" to be enabled first');
-          return prev;
-        }
-      }
-      // Check dependencies for invite user permission
-      else if (key === 'hr:users:write') {
-        // Requires hr:users:read
-        if (newValue && !prev['hr:users:read']) {
-          toast.error('This permission requires "View Users List" to be enabled first');
-          return prev;
-        }
-      }
-      // Check dependencies for Edit Projects & Opportunities
-      else if (key === 'business:projects:write') {
-        // Requires business:projects:read (View Projects & Opportunities)
-        if (newValue && !prev['business:projects:read']) {
-          toast.error('This permission requires "View Projects & Opportunities" to be enabled first');
-          return prev;
-        }
-      }
-      // Check dependencies for Edit Quotations
-      else if (key === 'sales:quotations:write') {
-        // Requires sales:quotations:read (View Quotations)
-        if (newValue && !prev['sales:quotations:read']) {
-          toast.error('This permission requires "View Quotations" to be enabled first');
-          return prev;
-        }
-      }
-      // Check dependencies for Edit Customers
-      else if (key === 'business:customers:write') {
-        // Requires business:customers:read (View Customers)
-        if (newValue && !prev['business:customers:read']) {
-          toast.error('This permission requires "View Customers" to be enabled first');
-          return prev;
-        }
-      }
-      // Check dependencies for edit permissions
-      else if (key === 'hr:users:edit:general') {
-        // Requires hr:users:read and hr:users:view:general
-        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:general'])) {
-          toast.error('This permission requires "View Users List" and "View General Tab" to be enabled first');
-          return prev;
-        }
-      } else if (key === 'hr:users:edit:timesheet') {
-        // Requires hr:users:read and hr:users:view:timesheet
-        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:timesheet'])) {
-          toast.error('This permission requires "View Users List" and "View Timesheet Tab" to be enabled first');
-          return prev;
-        }
-      } else if (key === 'hr:users:edit:permissions') {
-        // Requires hr:users:read and hr:users:view:permissions
-        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:permissions'])) {
-          toast.error('This permission requires "View Users List" and "View Permissions Tab" to be enabled first');
-          return prev;
-        }
-      }
-      // Check dependencies for Edit Projects & Opportunities
-      else if (key === 'business:projects:write') {
-        // Requires business:projects:read (View Projects & Opportunities)
-        if (newValue && !prev['business:projects:read']) {
-          toast.error('This permission requires "View Projects & Opportunities" to be enabled first');
-          return prev;
-        }
-      }
-      // Check dependencies for Edit Quotations
-      else if (key === 'sales:quotations:write') {
-        // Requires sales:quotations:read (View Quotations)
-        if (newValue && !prev['sales:quotations:read']) {
-          toast.error('This permission requires "View Quotations" to be enabled first');
-          return prev;
-        }
-      }
-      // Check dependencies for Projects & Opportunities view sub-permissions
-      else if (key.startsWith('business:projects:') && key.endsWith(':read') && key !== 'business:projects:read') {
-        // Requires business:projects:read (View Projects & Opportunities)
-        if (newValue && !prev['business:projects:read']) {
-          toast.error('This permission requires "View Projects & Opportunities" to be enabled first');
-          return prev;
-        }
-      }
-      // Check dependencies for Projects & Opportunities edit sub-permissions
-      else if (key.startsWith('business:projects:') && key.endsWith(':write') && key !== 'business:projects:write') {
-        // Get the corresponding view permission key
-        const viewKey = key.replace(':write', ':read');
-        // Requires only the corresponding view permission
-        if (newValue && !prev[viewKey]) {
-          const viewLabel = viewKey.includes(':reports:') ? 'View Notes/History' :
-                           viewKey.includes(':workload:') ? 'View Workload' :
-                           viewKey.includes(':timesheet:') ? 'View Timesheet' :
-                           viewKey.includes(':files:') ? 'View Files' :
-                           viewKey.includes(':documents:') ? 'View Documents' :
-                           viewKey.includes(':proposal:') ? 'View Proposal' :
-                           viewKey.includes(':estimate:') ? 'View Estimate' :
-                           viewKey.includes(':orders:') ? 'View Orders' :
-                           viewKey.includes(':safety:') ? 'View Safety' : 'corresponding View permission';
-          toast.error(`This permission requires "${viewLabel}" to be enabled first`);
-          return prev;
-        }
-      }
-      
-      newPerms[key] = newValue;
-
-      // Fleet & Equipment: enabling any fleet sub-permission turns on area access (matches UserDetail / backend hierarchy)
-      if (newValue && key.startsWith('fleet:') && key !== 'fleet:access') {
-        newPerms['fleet:access'] = true;
-      }
-      
-      // If disabling a view permission, also disable the corresponding edit permission
-      if (!newValue) {
-        if (key === 'fleet:access') {
-          Object.keys(newPerms).forEach((k) => {
-            if (k.startsWith('fleet:') && k !== 'fleet:access') {
-              newPerms[k] = false;
-            }
-          });
-        } else if (key === 'fleet:vehicles:read') {
-          newPerms['fleet:vehicles:write'] = false;
-        } else if (key === 'fleet:equipment:read') {
-          newPerms['fleet:equipment:write'] = false;
-        } else if (key === 'hr:users:view:general') {
-          newPerms['hr:users:edit:general'] = false;
-        } else if (key === 'hr:users:view:timesheet') {
-          newPerms['hr:users:edit:timesheet'] = false;
-        } else if (key === 'hr:users:view:permissions') {
-          newPerms['hr:users:edit:permissions'] = false;
-        } else if (key === 'hr:users:view:general') {
-          // If disabling View General Tab, also disable job compensation view
-          newPerms['hr:users:view:job:compensation'] = false;
-        } else if (key === 'hr:users:read') {
-          // If disabling View Users List, disable all view, edit permissions and invite user
-          newPerms['hr:users:write'] = false;
-          newPerms['hr:users:view:general'] = false;
-          newPerms['hr:users:view:job:compensation'] = false;
-          newPerms['hr:users:view:timesheet'] = false;
-          newPerms['hr:users:view:permissions'] = false;
-          newPerms['hr:users:view:activity'] = false;
-          newPerms['hr:users:edit:general'] = false;
-          newPerms['hr:users:edit:timesheet'] = false;
-          newPerms['hr:users:edit:permissions'] = false;
-        }
-        // If disabling View Customers, disable Edit Customers
-        else if (key === 'business:customers:read') {
-          newPerms['business:customers:write'] = false;
-        }
-        // If disabling View Quotations, disable Edit Quotations
-        else if (key === 'sales:quotations:read') {
-          newPerms['sales:quotations:write'] = false;
-        }
-        // If disabling View Projects & Opportunities, disable Edit Projects & Opportunities and all view sub-permissions
-        else if (key === 'business:projects:read') {
-          newPerms['business:projects:write'] = false;
-          newPerms['business:projects:reports:read'] = false;
-          newPerms['business:projects:workload:read'] = false;
-          newPerms['business:projects:timesheet:read'] = false;
-          newPerms['business:projects:files:read'] = false;
-          newPerms['business:projects:documents:read'] = false;
-          newPerms['business:projects:documents:write'] = false;
-          newPerms['business:projects:proposal:read'] = false;
-          newPerms['business:projects:estimate:read'] = false;
-          newPerms['business:projects:orders:read'] = false;
-          newPerms['business:projects:safety:read'] = false;
-        }
-        // If disabling Edit Projects & Opportunities, disable all edit sub-permissions
-        else if (key === 'business:projects:write') {
-          newPerms['business:projects:reports:write'] = false;
-          newPerms['business:projects:workload:write'] = false;
-          newPerms['business:projects:timesheet:write'] = false;
-          newPerms['business:projects:files:write'] = false;
-          newPerms['business:projects:documents:write'] = false;
-          newPerms['business:projects:proposal:write'] = false;
-          newPerms['business:projects:estimate:write'] = false;
-          newPerms['business:projects:orders:write'] = false;
-          newPerms['business:projects:safety:write'] = false;
-        }
-        // If disabling a view sub-permission, also disable the corresponding edit permission
-        else if (key.startsWith('business:projects:') && key.endsWith(':read') && key !== 'business:projects:read') {
-          const editKey = key.replace(':read', ':write');
-          newPerms[editKey] = false;
-        }
-        return applyPermissionUncheckCascade(key, newPerms);
-      }
-      
-      return newPerms;
-    });
-  };
-  
-  const canEnableEditPermission = (permKey: string, permissions: Record<string, boolean>): boolean =>
-    canEnablePermission(permKey, permissions);
-
-  const handleCustomerAccessLevel = useCallback(
-    (readKey: string, writeKey: string | undefined, level: CustomerAccessLevel) => {
-      setPermissions((prev) => applyCustomerAccessLevel(prev, readKey, writeKey, level));
-    },
-    []
-  );
-
-  const handleProjectLineAccessLevel = useCallback(
-    (
-      line: ProjectLine,
-      areaPerms: { id: string; key: string; label: string; description?: string }[],
-      row: ProjectLinePermissionRow,
-      level: PermissionAccessLevel
-    ) => {
-      setPermissions((prev) => applyProjectLineAccessLevel(line, areaPerms, prev, row, level));
-      if (row.kind === 'pair' && row.configKind?.endsWith('-files')) {
-        setLineCategoryConfigs((prev) => ({
-          ...prev,
-          [line]: syncLineCategoryConfigAfterFilesMacroChange(prev[line], level),
-        }));
-      }
-      if (row.kind === 'pair' && row.configKind?.endsWith('-reports')) {
-        setLineCategoryConfigs((prev) => ({
-          ...prev,
-          [line]: syncLineCategoryConfigAfterReportsMacroChange(prev[line], level),
-        }));
-      }
-    },
-    []
-  );
-
-  const applyTemplateMerge = useCallback(() => {
-    if (!selectedTemplateId) return;
-    const template = (permissionTemplates as { id: string; name: string; permission_keys: string[] }[]).find((t) => t.id === selectedTemplateId);
-    if (!template?.permission_keys?.length) {
-      toast.error('Template has no permissions');
-      return;
-    }
-    setPermissions((prev) => ({
-      ...prev,
-      ...Object.fromEntries((template.permission_keys || []).map((k) => [k, true])),
-    }));
-    toast.success(`Applied template "${template.name}" (merge)`);
-    setShowApplyTemplateModal(false);
-  }, [selectedTemplateId, permissionTemplates]);
-
-  const applyTemplateReplace = useCallback(() => {
-    if (!selectedTemplateId) return;
-    const template = (permissionTemplates as { id: string; name: string; permission_keys: string[] }[]).find((t) => t.id === selectedTemplateId);
-    if (!template) return;
-    const templateKeySet = new Set(template.permission_keys || []);
-    const allKeys: string[] = [];
-    (permissionsData?.permissions_by_category || []).forEach((cat: any) => {
-      (cat.permissions || []).forEach((p: any) => {
-        if (p.key) allKeys.push(p.key);
-      });
-    });
-    const next: Record<string, boolean> = {};
-    allKeys.forEach((k) => { next[k] = templateKeySet.has(k); });
-    Object.keys(next).forEach((key) => {
-      if (next[key] && key.includes(':')) {
-        const area = key.split(':')[0];
-        const areaAccessKey = `${area}:access`;
-        if (allKeys.includes(areaAccessKey)) next[areaAccessKey] = true;
-      }
-    });
-    setPermissions(next);
-    toast.success(`Applied template "${template.name}" (replace)`);
-    setShowApplyTemplateModal(false);
-  }, [selectedTemplateId, permissionTemplates, permissionsData]);
-
-  const handleSave = useCallback(async () => {
-    try {
-      // Save admin role if changed
-      if (user) {
-        const isAdmin = (user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin');
-        if (isAdmin !== isAdminLocal) {
-          let newRoles = [...(user.roles||[])];
-          if (isAdminLocal) {
-            if (!newRoles.some((r: string) => String(r || '').toLowerCase() === 'admin')) {
-              newRoles.push('admin');
-            }
-          } else {
-            newRoles = newRoles.filter((r: string) => String(r || '').toLowerCase() !== 'admin');
-          }
-          await api('PATCH', `/users/${userId}`, { roles: newRoles, is_active: user.is_active });
-          await refetchUser();
-        }
-      }
-      // Save permissions (only keys defined in DB â€” avoids invalid key errors after seed/migrations)
-      const validPermKeys = new Set<string>();
-      (permissionsData?.permissions_by_category || []).forEach((cat: any) => {
-        (cat.permissions || []).forEach((p: any) => {
-          if (p.key) validPermKeys.add(p.key);
-        });
-      });
-      const payload: Record<string, boolean | string[]> = {};
-      validPermKeys.forEach((key) => {
-        payload[key] = !!permissions[key];
-      });
-      applyLineCategoryConfigToPayload(payload, 'construction', lineCategoryConfigs.construction);
-      applyLineCategoryConfigToPayload(payload, 'repairs', lineCategoryConfigs.repairs);
-      clearLegacyProjectSubPermissions(payload);
-      clearLegacyCategoryConfigKeys(payload);
-      await api('PUT', `/permissions/users/${userId}`, payload);
-      toast.success('Permissions saved');
-      await refetch();
-      
-      // Update initial state to reflect saved state
-      setInitialPermissions({ ...permissions });
-      setInitialIsAdmin(isAdminLocal);
-      setInitialLineCategoryConfigs(cloneLineCategoryConfigs(lineCategoryConfigs));
-      
-      // If editing own permissions, invalidate /auth/me cache to refresh permissions
-      if (currentUser && currentUser.id === userId) {
-        await queryClient.invalidateQueries({ queryKey: ['me'] });
-        await queryClient.invalidateQueries({ queryKey: ['project-files-category-perms'] });
-        await queryClient.invalidateQueries({ queryKey: ['project-reports-category-perms'] });
-      }
-    } catch (e: any) {
-      toast.error(e?.detail || 'Failed to save permissions');
-      throw e;
-    }
-  }, [
-    user,
-    isAdminLocal,
-    userId,
-    permissions,
-    lineCategoryConfigs,
-    currentUser,
-    queryClient,
-    refetchUser,
-    refetch,
-  ]);
-
-  // Expose methods to parent via ref
-  useImperativeHandle(ref, () => ({
-    hasUnsavedChanges: () => hasUnsavedChanges,
-    save: handleSave,
-  }), [hasUnsavedChanges, handleSave]);
-
-
-  if (!permissionsData) {
-    return <div className="h-24 bg-gray-100 animate-pulse rounded" />;
-  }
-
-  return (
-    <div className="space-y-6 pb-24">
-      {categoryModal?.feature === 'files' && (
-        <ProjectFilesCategoriesModal
-          open
-          readCategories={lineCategoryConfigs[categoryModal.line].filesRead}
-          writeCategories={lineCategoryConfigs[categoryModal.line].filesWrite}
-          macroCanEdit={permissions[lineMacroFilesWriteKey(categoryModal.line)] === true}
-          onClose={() => setCategoryModal(null)}
-          onSave={({ read, write }) => {
-            const line = categoryModal.line;
-            setLineCategoryConfigs((prev) => ({
-              ...prev,
-              [line]: {
-                ...prev[line],
-                filesRead: read ? [...read] : null,
-                filesWrite: write ? [...write] : null,
-              },
-            }));
-            setCategoryModal(null);
-          }}
-        />
-      )}
-      {categoryModal?.feature === 'reports' && (
-        <ProjectReportCategoriesModal
-          open
-          readCategories={lineCategoryConfigs[categoryModal.line].reportsRead}
-          writeCategories={lineCategoryConfigs[categoryModal.line].reportsWrite}
-          macroCanEdit={permissions[lineMacroReportsWriteKey(categoryModal.line)] === true}
-          onClose={() => setCategoryModal(null)}
-          onSave={({ read, write }) => {
-            const line = categoryModal.line;
-            setLineCategoryConfigs((prev) => ({
-              ...prev,
-              [line]: {
-                ...prev[line],
-                reportsRead: read ? [...read] : null,
-                reportsWrite: write ? [...write] : null,
-              },
-            }));
-            setCategoryModal(null);
-          }}
-        />
-      )}
-      <div className="rounded-xl border bg-white p-4">
-        {/* Header */}
-        <div className="mb-4 flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-          </div>
-          <div className="flex-1">
-            <h5 className="text-sm font-semibold text-amber-900">User Permissions</h5>
-            <p className="text-xs text-gray-600 mt-0.5">
-              {canEdit 
-                ? "Manage granular permissions for this user. Permissions from roles are combined with these overrides. Permissions marked with [WIP] are not yet implemented in the system."
-                : "View permissions assigned to this user. You have view-only access and cannot modify permissions."
-              }
-            </p>
-          </div>
-        </div>
-
-        {/* Admin Access Section */}
-        <div className="mb-6 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          {canEdit ? (
-            <label className="inline-flex items-start gap-2 cursor-pointer">
-              <input 
-                id="admin-checkbox"
-                type="checkbox" 
-                checked={isAdminLocal}
-                disabled={!user}
-                onChange={e=>{ 
-                  setIsAdminLocal(e.target.checked);
-                }} 
-                className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            <div className="flex-1">
-              <div className="text-xs font-semibold text-yellow-900 flex items-center gap-2">
-                Administrator Access
-                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
-                  System Role
-                </span>
-              </div>
-              <div className="text-[10px] text-yellow-800 mt-1">
-                âš ï¸ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
-              </div>
-              {isAdminLocal && (
-                <div className="text-[10px] text-yellow-700 mt-2 font-medium">
-                  âš ï¸ When admin is enabled, all permission checks are bypassed. Individual permissions below are ignored.
-                </div>
-              )}
-            </div>
-          </label>
-          ) : (
-            <div className="inline-flex items-start gap-2">
-              <input 
-                id="admin-checkbox"
-                type="checkbox" 
-                checked={isAdminLocal}
-                disabled
-                className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red opacity-50"
-              />
-              <div className="flex-1">
-                <div className="text-xs font-semibold text-yellow-900 flex items-center gap-2">
-                  Administrator Access
-                  <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
-                    System Role
-                  </span>
-                </div>
-                <div className="text-[10px] text-yellow-800 mt-1">
-                  Status: {isAdminLocal ? 'Enabled' : 'Disabled'}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Permission Template: select template then apply with Merge or Replace confirmation */}
-        {canEdit && (
-          <div className="mb-6 p-3 border rounded-lg bg-gray-50">
-            <div className="text-sm font-medium text-gray-700 mb-2">Permission Template</div>
-            <p className="text-xs text-gray-600 mb-3">
-              Select a template and click Apply to prefill permissions. You will choose whether to merge (add to current) or replace (replace all with template).
-            </p>
-            <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
-              <AppSelect
-                className="min-w-[200px]"
-                placeholder="â€” Select template â€”"
-                value={selectedTemplateId}
-                onChange={(e) => setSelectedTemplateId(e.target.value)}
-                options={(permissionTemplates as { id: string; name: string }[]).map((t) => ({
-                  value: t.id,
-                  label: t.name,
-                }))}
-              />
-              <AppButton
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  if (!selectedTemplateId) {
-                    toast.error('Select a template first');
-                    return;
-                  }
-                  setShowApplyTemplateModal(true);
-                }}
-              >
-                Apply template
-              </AppButton>
-            </div>
-          </div>
-        )}
-
-        <AppModal
-          open={showApplyTemplateModal}
-          onClose={() => setShowApplyTemplateModal(false)}
-          size="sm"
-          title="Apply permission template"
-          description={
-            <>
-              How do you want to apply the template? <strong>Merge</strong> adds the template&apos;s permissions to the current ones.{' '}
-              <strong>Replace</strong> clears current permissions and sets only those in the template.
-            </>
-          }
-          footer={
-            <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-end')}>
-              <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowApplyTemplateModal(false)}>
-                Cancel
-              </AppButton>
-              <AppButton type="button" variant="secondary" size="sm" onClick={applyTemplateMerge}>
-                Merge
-              </AppButton>
-              <AppButton type="button" size="sm" onClick={applyTemplateReplace}>
-                Replace
-              </AppButton>
-            </div>
-          }
-        >
-          <span className="sr-only">Choose merge or replace.</span>
-        </AppModal>
-
-        <div className="space-y-6">
-          {(() => {
-            // Process categories and reorganize them to match sidebar language:
-            // Production (Sales), Repairs & Maintenance, Business, Quotations.
-            const processedCategories: any[] = [];
-            let businessCategory: any = null;
-            let inventoryCategory: any = null;
-            let quotationsCategory: any = null;
-            permissionsData.permissions_by_category?.forEach((cat: any) => {
-              if (cat.category.name === 'business') {
-                const constructionPerms = cat.permissions.filter((p: any) => isConstructionProjectPermissionKey(p.key));
-                const repairsPerms = cat.permissions.filter((p: any) => isRepairsProjectPermissionKey(p.key));
-                const hasCustomers = cat.permissions.some((p: any) => p.key.includes('business:customers'));
-
-                if (constructionPerms.length > 0) {
-                  processedCategories.push({
-                    ...cat,
-                    category: {
-                      ...cat.category,
-                      name: 'construction',
-                      label: 'Production (Sales)',
-                      id: 'construction',
-                    },
-                    permissions: constructionPerms,
-                  });
-                }
-
-                if (repairsPerms.length > 0) {
-                  processedCategories.push({
-                    ...cat,
-                    category: {
-                      ...cat.category,
-                      name: 'repairs_maintenance',
-                      label: 'Repairs & Maintenance',
-                      id: 'repairs_maintenance',
-                    },
-                    permissions: repairsPerms,
-                  });
-                }
-
-                if (hasCustomers) {
-                  businessCategory = {
-                    ...cat,
-                    permissions: cat.permissions.filter((p: any) => p.key.includes('business:customers')),
-                  };
-                }
-              } else if (cat.category.name === 'inventory') {
-                inventoryCategory = cat;
-              } else if (cat.category.name === 'sales') {
-                quotationsCategory = cat;
-              } else {
-                processedCategories.push(cat);
-              }
-            });
-
-            if (businessCategory || inventoryCategory) {
-              const combinedPermissions = [
-                ...(businessCategory?.permissions || []),
-                ...(inventoryCategory?.permissions || []),
-              ].filter((p: any) => p.key !== 'business:access' && !isHiddenPermissionKey(p.key));
-              if (combinedPermissions.length > 0) {
-                processedCategories.push({
-                  category: {
-                    id: 'business',
-                    name: 'business',
-                    label: 'Business',
-                    description:
-                      inventoryCategory?.category?.description ||
-                      'Customers, suppliers, and products permissions.',
-                  },
-                  permissions: combinedPermissions,
-                });
-              }
-            }
-
-            processedCategories.push({
-              category: {
-                id: 'quotations',
-                name: 'quotations',
-                label: 'Quotations',
-                description:
-                  quotationsCategory?.category?.description ||
-                  'Permissions for Quotations area. Blocking access blocks all sub-permissions.',
-              },
-              permissions: quotationsCategory?.permissions || [],
-            });
-
-            const orderedPrimaryNames = ['construction', 'repairs_maintenance', 'business', 'quotations'];
-            const primaryCategories = orderedPrimaryNames
-              .map((name) => processedCategories.find((c: any) => c.category?.name === name))
-              .filter(Boolean);
-            const remainingCategories = processedCategories.filter(
-              (c: any) => !orderedPrimaryNames.includes(c.category?.name)
-            );
-            const finalCategories = [...primaryCategories, ...remainingCategories];
-
-            return finalCategories.map((cat: any) => {
-              // Area access checkbox (deprecated for business:access â€” granular perms only)
-              const areaAccessPerm = cat.permissions.find(
-                (p: any) =>
-                  p.key.endsWith(':access') &&
-                  p.key !== 'business:access' &&
-                  !isHiddenPermissionKey(p.key)
-              );
-              const subPermissions = cat.permissions.filter(
-                (p: any) =>
-                  p.key !== 'business:access' &&
-                  !p.key.endsWith(':access') &&
-                  !isHiddenPermissionKey(p.key)
-              );
-              const hasAreaAccess = areaAccessPerm && permissions[areaAccessPerm.key];
-              const categoryId = cat.category.id;
-              const isExpanded = expandedCategories.has(categoryId);
-              
-              const toggleExpand = () => {
-                setExpandedCategories(prev => {
-                  const next = new Set(prev);
-                  if (next.has(categoryId)) {
-                    next.delete(categoryId);
-                  } else {
-                    next.add(categoryId);
-                  }
-                  return next;
-                });
-              };
-              
-              return (
-                <div key={cat.category.id} className="border rounded-lg overflow-hidden">
-                  {/* Category Header with Arrow */}
-                  <div 
-                    className="p-3 cursor-pointer hover:bg-gray-50 transition-colors flex items-center gap-2"
-                    onClick={toggleExpand}
-                  >
-                    <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
-                      <svg 
-                        className={`w-3 h-3 text-gray-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="text-xs font-semibold text-gray-900">{cat.category.label}</h4>
-                      {cat.category.description && (
-                        <p className="text-[10px] text-gray-500 mt-0.5">{cat.category.description}</p>
-                      )}
-                    </div>
-                  </div>
-                
-                {/* Sub-permissions (shown when expanded) */}
-                {isExpanded && subPermissions.length > 0 && (
-                  <div className="px-4 pb-4 border-t border-gray-200 pt-3 mt-0">
-                    {/* Special handling for HR category - group by area (users, attendance, community, etc.) */}
-                    {cat.category.name === 'human_resources' ? (
-                      <div className="space-y-4">
-                        {/* Group permissions by area */}
-                        {['users', 'attendance', 'community', 'reviews', 'timesheet'].map((area: string) => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes(`hr:${area}`));
-                          if (areaPerms.length === 0) return null;
-                          
-                          const areaLabel = area.charAt(0).toUpperCase() + area.slice(1);
-                          const viewPerms = areaPerms.filter((p: any) => {
-                            const key = p.key;
-                            return key.includes(':view:') || (key.includes(':read') && !key.includes(':write') && !key.includes(':edit:'));
-                          });
-                          const editPerms = areaPerms.filter((p: any) => {
-                            const key = p.key;
-                            return key.includes(':edit:') || (key.includes(':write') && !key.includes(':view:')) || key.includes(':admin') || key.includes(':unrestricted') || key.includes(':approve');
-                          });
-                          
-                          return (
-                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
-                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-2.5">
-                                {/* View Permissions Column */}
-                                {viewPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
-                                    {viewPerms.map((perm: any) => {
-                                      const isViewPermission = perm.key.startsWith('hr:users:view:');
-                                      const canEnable = canEdit && (!isViewPermission || canEnableEditPermission(perm.key, permissions));
-                                      const isSubPermission = perm.key === 'hr:users:view:job:compensation';
-                                      return (
-                                      <label
-                                        key={perm.id}
-                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ${isSubPermission ? 'ml-4' : ''}`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={permissions[perm.key] || false}
-                                          onChange={() => canEnable && handleToggle(perm.key)}
-                                          disabled={!canEnable}
-                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                            <span className="truncate">{perm.label}</span>
-                                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                [WIP]
-                                              </span>
-                                            )}
-                                          </div>
-                                          {perm.description && (
-                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                          )}
-                                        </div>
-                                      </label>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                                {/* Edit Permissions Column */}
-                                {editPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
-                                    {editPerms.map((perm: any) => {
-                                      const isEditPermission = perm.key.startsWith('hr:users:edit:') || perm.key === 'hr:users:write';
-                                      const canEnable = canEdit && (!isEditPermission || canEnableEditPermission(perm.key, permissions));
-                                      return (
-                                        <label
-                                          key={perm.id}
-                                          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={permissions[perm.key] || false}
-                                            onChange={() => canEnable && handleToggle(perm.key)}
-                                            disabled={!canEnable}
-                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                          />
-                                          <div className="flex-1 min-w-0">
-                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                              <span className="truncate">{perm.label}</span>
-                                              {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                  [WIP]
-                                                </span>
-                                              )}
-                                            </div>
-                                            {perm.description && (
-                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                            )}
-                                          </div>
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : cat.category.name === 'repairs_maintenance' ? (
-                      <div className="space-y-4">
-                        {(() => {
-                          const areaPerms = subPermissions.filter((p: any) =>
-                            p.key.startsWith('business:rm:projects')
-                          );
-                          if (areaPerms.length === 0) return null;
-                          return (
-                            <ProjectLinePermissionsGrid
-                              line="repairs"
-                              areaPerms={areaPerms}
-                              permissions={permissions}
-                              canEdit={canEdit}
-                              onAccessLevelChange={(row, level) =>
-                                handleProjectLineAccessLevel('repairs', areaPerms, row, level)
-                              }
-                              onConfigureProjectFiles={openProjectFilesCategoriesModal}
-                              onConfigureProjectReports={openProjectReportsCategoriesModal}
-                            />
-                          );
-                        })()}
-                      </div>
-                    ) : cat.category.name === 'business' ? (
-                      /* Special handling for Business category - Customers, Suppliers and Products */
-                      <div className="space-y-4">
-                        {areaAccessPerm && (
-                          <label className="flex items-start gap-1.5 p-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={permissions[areaAccessPerm.key] || false}
-                              onChange={() => canEdit && handleToggle(areaAccessPerm.key)}
-                              disabled={!canEdit}
-                              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-semibold text-gray-900">{areaAccessPerm.label}</div>
-                              {areaAccessPerm.description && (
-                                <div className="text-[10px] text-gray-500 mt-0.5">{areaAccessPerm.description}</div>
-                              )}
-                            </div>
-                          </label>
-                        )}
-                        {/* Customers */}
-                        {(() => {
-                          const areaPerms = subPermissions.filter((p: any) =>
-                            p.key.startsWith('business:customers:')
-                          );
-                          return (
-                            <CustomerPermissionsGrid
-                              areaPerms={areaPerms}
-                              permissions={permissions}
-                              canEdit={canEdit}
-                              onAccessLevelChange={handleCustomerAccessLevel}
-                            />
-                          );
-                        })()}
-                        
-                        {/* Suppliers and Products */}
-                        {['suppliers', 'products'].map((area: string) => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes(`inventory:${area}`));
-                          if (areaPerms.length === 0) return null;
-                          
-                          const areaLabel = area.charAt(0).toUpperCase() + area.slice(1);
-                          const viewPerms = areaPerms.filter((p: any) => p.key.includes(':read'));
-                          const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
-                          
-                          return (
-                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
-                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-2.5">
-                                {/* View Permissions Column */}
-                                {viewPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
-                                    {viewPerms.map((perm: any) => (
-                                      <label
-                                        key={perm.id}
-                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={permissions[perm.key] || false}
-                                          onChange={() => canEdit && handleToggle(perm.key)}
-                                          disabled={!canEdit}
-                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                            <span className="truncate">{perm.label}</span>
-                                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                [WIP]
-                                              </span>
-                                            )}
-                                          </div>
-                                          {perm.description && (
-                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                          )}
-                                        </div>
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-                                {/* Edit Permissions Column */}
-                                {editPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
-                                    {editPerms.map((perm: any) => (
-                                      <label
-                                        key={perm.id}
-                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={permissions[perm.key] || false}
-                                          onChange={() => canEdit && handleToggle(perm.key)}
-                                          disabled={!canEdit}
-                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                            <span className="truncate">{perm.label}</span>
-                                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                [WIP]
-                                              </span>
-                                            )}
-                                          </div>
-                                          {perm.description && (
-                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                          )}
-                                        </div>
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : cat.category.name === 'fleet' ? (
-                      /* Special handling for Fleet & Equipment category - group by vehicles and equipment */
-                      <div className="space-y-4">
-                        {areaAccessPerm && (
-                          <label className="flex items-start gap-1.5 p-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={permissions[areaAccessPerm.key] || false}
-                              onChange={() => canEdit && handleToggle(areaAccessPerm.key)}
-                              disabled={!canEdit}
-                              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-semibold text-gray-900">{areaAccessPerm.label}</div>
-                              {areaAccessPerm.description && (
-                                <div className="text-[10px] text-gray-500 mt-0.5">{areaAccessPerm.description}</div>
-                              )}
-                            </div>
-                          </label>
-                        )}
-                        {['vehicles', 'equipment'].map((area: string) => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes(`fleet:${area}`));
-                          if (areaPerms.length === 0) return null;
-                          
-                          const areaLabel = area.charAt(0).toUpperCase() + area.slice(1);
-                          const viewPerms = areaPerms.filter((p: any) => p.key.includes(':read'));
-                          const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
-                          
-                          return (
-                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
-                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-2.5">
-                                {/* View Permissions Column */}
-                                {viewPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
-                                    {viewPerms.map((perm: any) => (
-                                      <label
-                                        key={perm.id}
-                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={permissions[perm.key] || false}
-                                          onChange={() => canEdit && handleToggle(perm.key)}
-                                          disabled={!canEdit}
-                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                            <span className="truncate">{perm.label}</span>
-                                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                [WIP]
-                                              </span>
-                                            )}
-                                          </div>
-                                          {perm.description && (
-                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                          )}
-                                        </div>
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-                                {/* Edit Permissions Column */}
-                                {editPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
-                                    {editPerms.map((perm: any) => {
-                                      const canEnableFleetEdit = canEdit && canEnableEditPermission(perm.key, permissions);
-                                      return (
-                                      <label
-                                        key={perm.id}
-                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnableFleetEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={permissions[perm.key] || false}
-                                          onChange={() => canEnableFleetEdit && handleToggle(perm.key)}
-                                          disabled={!canEnableFleetEdit}
-                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                            <span className="truncate">{perm.label}</span>
-                                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                [WIP]
-                                              </span>
-                                            )}
-                                          </div>
-                                          {perm.description && (
-                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                          )}
-                                        </div>
-                                      </label>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : cat.category.name === 'construction' ? (
-                      <div className="space-y-4">
-                        {(() => {
-                          const areaPerms = subPermissions.filter((p: any) =>
-                            p.key.startsWith('business:construction:projects')
-                          );
-                          if (areaPerms.length === 0) return null;
-                          return (
-                            <ProjectLinePermissionsGrid
-                              line="construction"
-                              areaPerms={areaPerms}
-                              permissions={permissions}
-                              canEdit={canEdit}
-                              onAccessLevelChange={(row, level) =>
-                                handleProjectLineAccessLevel('construction', areaPerms, row, level)
-                              }
-                              onConfigureProjectFiles={openProjectFilesCategoriesModal}
-                              onConfigureProjectReports={openProjectReportsCategoriesModal}
-                            />
-                          );
-                        })()}
-                      </div>
-                    ) : cat.category.name === 'quotations' ? (
-                      /* Special handling for Quotations category */
-                      <div className="space-y-4">
-                        {['quotations'].map((area: string) => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes(`sales:${area}`));
-                          if (areaPerms.length === 0) return null;
-                          
-                          const areaLabel = area.charAt(0).toUpperCase() + area.slice(1);
-                          const viewPerms = areaPerms.filter((p: any) => p.key.includes(':read'));
-                          const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
-                          
-                          return (
-                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
-                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-2.5">
-                                {/* View Permissions Column */}
-                                {viewPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
-                                    {viewPerms.map((perm: any) => (
-                                      <label
-                                        key={perm.id}
-                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={permissions[perm.key] || false}
-                                          onChange={() => canEdit && handleToggle(perm.key)}
-                                          disabled={!canEdit}
-                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                            <span className="truncate">{perm.label}</span>
-                                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                [WIP]
-                                              </span>
-                                            )}
-                                          </div>
-                                          {perm.description && (
-                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                          )}
-                                        </div>
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-                                {/* Edit Permissions Column */}
-                                {editPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
-                                    {editPerms.map((perm: any) => {
-                                      const canEnableEdit = canEdit && canEnableEditPermission(perm.key, permissions);
-                                      return (
-                                      <label
-                                        key={perm.id}
-                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnableEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={permissions[perm.key] || false}
-                                          onChange={() => canEnableEdit && handleToggle(perm.key)}
-                                          disabled={!canEnableEdit}
-                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                            <span className="truncate">{perm.label}</span>
-                                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                [WIP]
-                                              </span>
-                                            )}
-                                          </div>
-                                          {perm.description && (
-                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                          )}
-                                        </div>
-                                      </label>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      /* Default layout for other categories */
-                      <div className="space-y-1.5">
-                        {subPermissions.map((perm: any) => {
-                          const isEditPermission = perm.key.startsWith('hr:users:edit:') || perm.key === 'hr:users:write';
-                          const canEnable = canEdit && (!isEditPermission || canEnableEditPermission(perm.key, permissions));
-                          return (
-                          <label
-                            key={perm.id}
-                            className={`flex items-start gap-1.5 p-1.5 rounded ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={permissions[perm.key] || false}
-                              onChange={() => canEnable && handleToggle(perm.key)}
-                              disabled={!canEnable}
-                              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
-                            />
-                            <div className="flex-1">
-                              <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                {perm.label}
-                                {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                  <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
-                                    [WIP]
-                                  </span>
-                                )}
-                              </div>
-                              {perm.description && (
-                                <div className="text-[10px] text-gray-500 mt-0.5">{perm.description}</div>
-                              )}
-                            </div>
-                          </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              );
-            });
-            
-            return processedCategories;
-          })()}
-        </div>
-        
-        {!canEdit && (
-          <div className="mt-6 p-3 bg-gray-50 border border-gray-200 rounded-lg text-center text-xs text-gray-600">
-            You have view-only access. You need edit permissions to modify user permissions.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -1732,348 +362,6 @@ function UserLabel({ id, fallback }:{ id:string, fallback:string }){
   return <>{label}</>;
 }
 
-const USER_ACTIVITY_LOG_TZ = 'America/Vancouver';
-
-function parseUtcForUserActivity(iso: string): Date {
-  const s = iso.trim();
-  if (!s) return new Date(NaN);
-  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s);
-  const normalized = s.includes('T') ? s : s.replace(' ', 'T');
-  return new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
-}
-
-function formatUserActivityTime(iso: string): string {
-  const d = parseUtcForUserActivity(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: USER_ACTIVITY_LOG_TZ,
-    dateStyle: 'short',
-    timeStyle: 'medium',
-  }).format(d);
-}
-
-type ActivityPaginated<T> = {
-  items: T[];
-  total: number;
-  page: number;
-  page_size: number;
-  total_pages: number;
-};
-
-type UserActivityLogResponse = {
-  last_login_at: string | null;
-  logins: ActivityPaginated<{
-    id: string;
-    timestamp_utc: string;
-    title: string;
-    path: string | null;
-    request_id: string | null;
-  }>;
-  audit: ActivityPaginated<{
-    id: string;
-    timestamp_utc: string;
-    entity_type: string;
-    entity_id: string;
-    entity_display: string | null;
-    action: string;
-    source: string | null;
-  }>;
-};
-
-type LoginActivityRow = UserActivityLogResponse['logins']['items'][number];
-
-type AuditActivityDetail = {
-  id: string;
-  timestamp_utc: string;
-  entity_type: string;
-  entity_id: string;
-  entity_display: string | null;
-  action: string;
-  actor_id: string | null;
-  actor_name: string | null;
-  actor_role: string | null;
-  source: string | null;
-  changes_json: Record<string, unknown> | unknown[] | null;
-  context: Record<string, unknown> | null;
-};
-
-function activityAuditTitle(row: UserActivityLogResponse['audit']['items'][0]): string {
-  const label = row.entity_display || row.entity_type.replace(/_/g, ' ');
-  return `${row.action} Â· ${label}`;
-}
-
-function ActivityPager({
-  page,
-  totalPages,
-  total,
-  onPrev,
-  onNext,
-}: {
-  page: number;
-  totalPages: number;
-  total: number;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  if (total <= 0) return null;
-  return (
-    <div className="flex items-center justify-between gap-2 mt-2 text-[10px] text-gray-500">
-      <span>
-        Page {page} of {Math.max(totalPages, 1)} Â· {total} total
-      </span>
-      <div className="flex gap-1">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={onPrev}
-          className="px-2 py-0.5 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Prev
-        </button>
-        <button
-          type="button"
-          disabled={totalPages <= 0 ? true : page >= totalPages}
-          onClick={onNext}
-          className="px-2 py-0.5 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Next
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function UserActivityLogTab({ userId }: { userId: string }) {
-  const [loginsPage, setLoginsPage] = useState(1);
-  const [auditPage, setAuditPage] = useState(1);
-  const pageSize = 15;
-
-  const [loginModal, setLoginModal] = useState<LoginActivityRow | null>(null);
-  const [auditModalId, setAuditModalId] = useState<string | null>(null);
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['user-activity-log', userId, loginsPage, auditPage, pageSize],
-    queryFn: () =>
-      api<UserActivityLogResponse>(
-        'GET',
-        `/users/${encodeURIComponent(userId)}/activity-log?logins_page=${loginsPage}&logins_page_size=${pageSize}&audit_page=${auditPage}&audit_page_size=${pageSize}`,
-      ),
-    enabled: !!userId,
-  });
-
-  useEffect(() => {
-    if (!data) return;
-    if (data.logins.total_pages > 0 && loginsPage > data.logins.total_pages) {
-      setLoginsPage(data.logins.page);
-    }
-    if (data.audit.total_pages > 0 && auditPage > data.audit.total_pages) {
-      setAuditPage(data.audit.page);
-    }
-  }, [data, loginsPage, auditPage]);
-
-  const { data: auditDetail, isLoading: auditDetailLoading } = useQuery({
-    queryKey: ['user-activity-audit-detail', userId, auditModalId],
-    queryFn: () =>
-      api<AuditActivityDetail>(
-        'GET',
-        `/users/${encodeURIComponent(userId)}/activity-log/audit/${encodeURIComponent(auditModalId!)}`,
-      ),
-    enabled: !!userId && !!auditModalId,
-  });
-
-  if (isLoading) {
-    return <div className="h-24 animate-pulse bg-gray-100 rounded-lg" />;
-  }
-  if (error) {
-    return (
-      <div className="text-xs text-red-600 py-4">
-        Could not load activity. Check that you have the &quot;View Activity Tab&quot; permission.
-      </div>
-    );
-  }
-  if (!data) return null;
-
-  const lg = data.logins;
-  const au = data.audit;
-
-  return (
-    <div className="space-y-5 pb-16 max-w-3xl">
-      <div className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2">
-        <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Last sign-in</div>
-        <div className="text-xs text-gray-900 mt-0.5">{data.last_login_at ? formatUserActivityTime(data.last_login_at) : 'â€”'}</div>
-      </div>
-
-      <section>
-        <h3 className="text-xs font-semibold text-gray-800 mb-2">Sign-ins</h3>
-        {lg.total === 0 ? (
-          <p className="text-[11px] text-gray-500">No sign-in events recorded yet.</p>
-        ) : (
-          <>
-            <div className="rounded border border-gray-200 divide-y divide-gray-100 bg-white" role="list">
-              {lg.items.map((row) => (
-                <button
-                  key={row.id}
-                  type="button"
-                  role="listitem"
-                  onClick={() => setLoginModal(row)}
-                  className="w-full flex items-center px-2 py-1.5 min-h-[2rem] text-left hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-red/35"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] text-gray-900 truncate">{row.title}</div>
-                    <div className="text-[10px] text-gray-500 truncate">{formatUserActivityTime(row.timestamp_utc)}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <ActivityPager
-              page={lg.page}
-              totalPages={lg.total_pages}
-              total={lg.total}
-              onPrev={() => setLoginsPage((p) => Math.max(1, p - 1))}
-              onNext={() => setLoginsPage((p) => (lg.total_pages ? Math.min(lg.total_pages, p + 1) : p))}
-            />
-          </>
-        )}
-      </section>
-
-      <section>
-        <h3 className="text-xs font-semibold text-gray-800 mb-2">Audit (actions in the system)</h3>
-        {au.total === 0 ? (
-          <p className="text-[11px] text-gray-500">No audit entries for this user.</p>
-        ) : (
-          <>
-            <div className="rounded border border-gray-200 divide-y divide-gray-100 bg-white" role="list">
-              {au.items.map((row) => (
-                <button
-                  key={row.id}
-                  type="button"
-                  role="listitem"
-                  onClick={() => setAuditModalId(row.id)}
-                  className="w-full flex items-center px-2 py-1.5 min-h-[2rem] text-left hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-red/35"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] text-gray-900 truncate" title={activityAuditTitle(row)}>
-                      {activityAuditTitle(row)}
-                    </div>
-                    <div className="text-[10px] text-gray-500 truncate">{formatUserActivityTime(row.timestamp_utc)}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <ActivityPager
-              page={au.page}
-              totalPages={au.total_pages}
-              total={au.total}
-              onPrev={() => setAuditPage((p) => Math.max(1, p - 1))}
-              onNext={() => setAuditPage((p) => (au.total_pages ? Math.min(au.total_pages, p + 1) : p))}
-            />
-          </>
-        )}
-      </section>
-
-      <AppModal
-        open={!!loginModal}
-        onClose={() => setLoginModal(null)}
-        size="sm"
-        title="Sign-in"
-        footer={
-          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={() => setLoginModal(null)}>
-              Close
-            </AppButton>
-          </div>
-        }
-      >
-        {loginModal ? (
-          <div className={uiCx(uiTypography.helper, uiSpacing.sectionStack)}>
-            <div>
-              <span className="text-gray-500">Time (Vancouver)</span>
-              <div className="font-mono">{formatUserActivityTime(loginModal.timestamp_utc)}</div>
-            </div>
-            <div>
-              <span className="text-gray-500">Path</span>
-              <div className="break-all font-mono">{loginModal.path || 'â€”'}</div>
-            </div>
-            {loginModal.request_id ? (
-              <div>
-                <span className="text-gray-500">Request ID</span>
-                <div className="break-all font-mono">{loginModal.request_id}</div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </AppModal>
-
-      <AppModal
-        open={!!auditModalId}
-        onClose={() => setAuditModalId(null)}
-        size="md"
-        title="Audit action"
-        footer={
-          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={() => setAuditModalId(null)}>
-              Close
-            </AppButton>
-          </div>
-        }
-      >
-        <div className={uiCx(uiTypography.helper, uiSpacing.sectionStack)}>
-          {auditDetailLoading ? (
-            <div className={uiCx('h-16 animate-pulse bg-gray-100', uiRadius.control)} />
-          ) : auditDetail ? (
-            <>
-              <div className="grid gap-1">
-                <div>
-                  <span className="text-gray-500">Time</span>
-                  <div>{formatUserActivityTime(auditDetail.timestamp_utc)}</div>
-                </div>
-                <div>
-                  <span className="text-gray-500">Action</span>
-                  <div className="font-medium">{auditDetail.action}</div>
-                </div>
-                <div>
-                  <span className="text-gray-500">Entity</span>
-                  <div>
-                    {auditDetail.entity_display || auditDetail.entity_type}{' '}
-                    <span className="font-mono text-[10px] text-gray-500">({auditDetail.entity_id})</span>
-                  </div>
-                </div>
-                {auditDetail.source ? (
-                  <div>
-                    <span className="text-gray-500">Source</span>
-                    <div>{auditDetail.source}</div>
-                  </div>
-                ) : null}
-              </div>
-              {auditDetail.changes_json != null &&
-              (Array.isArray(auditDetail.changes_json)
-                ? auditDetail.changes_json.length > 0
-                : typeof auditDetail.changes_json === 'object' && Object.keys(auditDetail.changes_json).length > 0) ? (
-                <div>
-                  <div className="mb-1 font-semibold text-gray-600">Changes</div>
-                  <pre className={uiCx(uiTypography.helper, uiBorders.subtle, 'max-h-40 overflow-x-auto rounded bg-gray-50 p-2')}>
-                    {JSON.stringify(auditDetail.changes_json, null, 2)}
-                  </pre>
-                </div>
-              ) : null}
-              {auditDetail.context && Object.keys(auditDetail.context).length > 0 ? (
-                <div>
-                  <div className="mb-1 font-semibold text-gray-600">Context</div>
-                  <pre className={uiCx(uiTypography.helper, uiBorders.subtle, 'max-h-32 overflow-x-auto rounded bg-gray-50 p-2')}>
-                    {JSON.stringify(auditDetail.context, null, 2)}
-                  </pre>
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <div className="text-red-600">Could not load details.</div>
-          )}
-        </div>
-      </AppModal>
-    </div>
-  );
-}
-
 export default function UserInfo(){
   const { userId } = useParams();
   const [sp] = useSearchParams();
@@ -2101,7 +389,7 @@ export default function UserInfo(){
     return perms.includes('hr:users:edit:general') || perms.includes('users:write'); // Legacy
   }, [me]);
 
-  /** Matches PATCH /users/:id â€” admin, hr:users:write, or users:write only (not hr:users:edit:general). */
+  /** Matches PATCH /users/:id — admin, hr:users:write, or users:write only (not hr:users:edit:general). */
   const canManageAccountStatus = useMemo(() => {
     if (!me) return false;
     if ((me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin')) return true;
@@ -2370,7 +658,7 @@ export default function UserInfo(){
 
   function calcAge(dob?: string){
     if(!dob) return '';
-    try{ const d = new Date(dob); const now = new Date(); let a = now.getFullYear()-d.getFullYear(); const m = now.getMonth()-d.getMonth(); if(m<0 || (m===0 && now.getDate()<d.getDate())) a--; return a>0? `${a}y` : 'â€”'; }catch{ return ''; }
+    try{ const d = new Date(dob); const now = new Date(); let a = now.getFullYear()-d.getFullYear(); const m = now.getMonth()-d.getMonth(); if(m<0 || (m===0 && now.getDate()<d.getDate())) a--; return a>0? `${a}y` : '—'; }catch{ return ''; }
   }
   function tenure(from?: string){
     if(!from) return '';
@@ -2739,7 +1027,7 @@ export default function UserInfo(){
 
   const heroPrimaryTitle = useMemo(() => {
     const name = `${p.first_name || u?.username || ''} ${p.last_name || ''}`.trim();
-    return u?.username ? `${name} (${u.username})` : name || 'â€”';
+    return u?.username ? `${name} (${u.username})` : name || '—';
   }, [p.first_name, p.last_name, u?.username]);
 
   const heroPhotoUrl = useMemo(
@@ -2810,11 +1098,11 @@ export default function UserInfo(){
   );
 
   const employeeSubtitle =
-    `${p.job_title || 'â€”'}${
+    `${p.job_title || '—'}${
       u?.divisions && u.divisions.length > 0
-        ? ` â€¢ ${u.divisions.map((d: any) => d.label).join(', ')}`
+        ? ` • ${u.divisions.map((d: any) => d.label).join(', ')}`
         : p.division
-          ? ` â€¢ ${p.division}`
+          ? ` • ${p.division}`
           : ''
     }`;
 
@@ -2967,14 +1255,14 @@ export default function UserInfo(){
               )}
               {tab==='reports' && canViewReports && <UserReportsSection userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab === 'reviews' && canViewReviews && userId && (
-                <UserEmployeeReviewsTab
+                <UserEmployeeReviewsSection
                   userId={String(userId)}
                   enabled={tab === 'reviews'}
                   canImportLegacy={canImportLegacyReviews}
                 />
               )}
-              {tab==='permissions' && canViewPermissions && <UserPermissions ref={permissionsRef} userId={String(userId)} onDirtyChange={setPermissionsDirty} canEdit={canEditPermissions} />}
-              {tab === 'activity' && canViewActivity && userId && <UserActivityLogTab userId={String(userId)} />}
+              {tab==='permissions' && canViewPermissions && <UserPermissionsSection ref={permissionsRef} userId={String(userId)} onDirtyChange={setPermissionsDirty} canEdit={canEditPermissions} />}
+              {tab === 'activity' && canViewActivity && userId && <UserActivitySection userId={String(userId)} />}
             </>
           )}
       </AppCard>
@@ -3008,14 +1296,14 @@ export default function UserInfo(){
             <span className="font-semibold text-gray-800">Last profile change: </span>
             {(() => {
               const iso = p?.updated_at;
-              if (!iso) return 'â€”';
+              if (!iso) return '—';
               try {
                 return new Date(iso as string).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
               } catch {
-                return 'â€”';
+                return '—';
               }
             })()}
-            {p?.updated_by_name ? <span className="text-gray-700"> Â· {p.updated_by_name}</span> : null}
+            {p?.updated_by_name ? <span className="text-gray-700"> · {p.updated_by_name}</span> : null}
           </div>
           <p className="text-gray-500">
             Updates automatically when someone saves this employee (profile, departments, or account fields). This is separate from the manual{' '}
@@ -3028,7 +1316,7 @@ export default function UserInfo(){
         <AppCard className={uiCx(uiBorders.subtle, 'border-red-200 bg-red-50')} bodyClassName={uiSpacing.cardPadding}>
           <AppSectionHeader
             title="Danger Zone"
-            description="BambooHR sync and permanent account deletion â€” system administrators only."
+            description="BambooHR sync and permanent account deletion — system administrators only."
           />
           <div className={uiCx(uiSpacing.sectionStack, 'mt-4')}>
             <div>
@@ -3084,7 +1372,7 @@ export default function UserInfo(){
                     }
                   }}
                 >
-                  {deletingUser ? 'Deletingâ€¦' : 'Delete user'}
+                  {deletingUser ? 'Deleting…' : 'Delete user'}
                 </AppButton>
               </div>
             ) : null}
@@ -3118,7 +1406,7 @@ export default function UserInfo(){
               loading={savingAccountStatus}
               onClick={() => void saveAccountStatusFromModal()}
             >
-              {savingAccountStatus ? 'Savingâ€¦' : 'Save'}
+              {savingAccountStatus ? 'Saving…' : 'Save'}
             </AppButton>
           </div>
         }
@@ -3811,9 +2099,9 @@ function formatEducationPeriod(start?: string | null, end?: string | null): stri
   };
   const from = fmt(start);
   const to = fmt(end);
-  if (from && to) return `${from} â€” ${to}`;
-  if (from) return `${from} â€” Present`;
-  return to || 'â€”';
+  if (from && to) return `${from} — ${to}`;
+  if (from) return `${from} — Present`;
+  return to || '—';
 }
 
 function EducationSection({
@@ -3971,7 +2259,7 @@ function EducationSection({
     );
   };
 
-  const educationDegreeLine = (e: any) => [e.degree, e.major_specialization].filter(Boolean).join(' Â· ');
+  const educationDegreeLine = (e: any) => [e.degree, e.major_specialization].filter(Boolean).join(' · ');
 
   const renderEducationEditCardField = (label: string, value: ReactNode) => (
     <div className="min-w-0 space-y-1">
@@ -3982,8 +2270,8 @@ function EducationSection({
 
   const renderEducationEditCardFields = (e: any, actions: ReactNode) => (
     <div className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_minmax(0,1.2fr)_auto] items-stretch gap-x-3">
-      {renderEducationEditCardField('Institution', e.college_institution || 'â€”')}
-      {renderEducationEditCardField('Degree', educationDegreeLine(e) || 'â€”')}
+      {renderEducationEditCardField('Institution', e.college_institution || '—')}
+      {renderEducationEditCardField('Degree', educationDegreeLine(e) || '—')}
       <div className="min-w-0 space-y-1">
         <div className={uiTypography.controlLabel}>Dates</div>
         <div className={uiCx(uiTypography.helper, 'whitespace-nowrap font-medium text-gray-900')}>
@@ -3999,8 +2287,8 @@ function EducationSection({
       {(rows || []).map((e: any) => (
         <UserInfoRecordCard key={e.id}>
           <div className="grid gap-4 md:grid-cols-2">
-            <UserInfoReadOnlyField label="Institution" value={e.college_institution || 'â€”'} />
-            <UserInfoReadOnlyField label="Degree" value={educationDegreeLine(e) || 'â€”'} />
+            <UserInfoReadOnlyField label="Institution" value={e.college_institution || '—'} />
+            <UserInfoReadOnlyField label="Degree" value={educationDegreeLine(e) || '—'} />
             <UserInfoReadOnlyField label="Dates" value={formatEducationPeriod(e.start_date, e.end_date)} />
           </div>
         </UserInfoRecordCard>
@@ -4046,7 +2334,7 @@ function EducationSection({
           {!(rows || []).length ? (
             <AppEmptyState
               title="No education records yet"
-              description="Add schools and degrees using â€œAdd educationâ€ above."
+              description='Add schools and degrees using "Add education" above.'
               className="border-0 bg-transparent p-0 py-6 shadow-none"
             />
           ) : (
@@ -4068,7 +2356,7 @@ function EducationSection({
               Cancel
             </AppButton>
             <AppButton type="button" size="sm" disabled={isAddingEducation} loading={isAddingEducation} onClick={add}>
-              {isAddingEducation ? 'Savingâ€¦' : 'Save'}
+              {isAddingEducation ? 'Saving…' : 'Save'}
             </AppButton>
           </div>
         }
@@ -4095,7 +2383,7 @@ function EducationSection({
               loading={isUpdatingEducation}
               onClick={update}
             >
-              {isUpdatingEducation ? 'Savingâ€¦' : 'Save'}
+              {isUpdatingEducation ? 'Saving…' : 'Save'}
             </AppButton>
           </div>
         }
@@ -4186,7 +2474,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
                 <input type="date" className="w-full text-center text-sm font-semibold text-gray-900 border-0 bg-transparent focus:outline-none focus:ring-0" value={(form.hire_date||'').slice(0,10)} onChange={e=>onField('hire_date', e.target.value)} />
               ) : (
                 <div className="text-sm font-semibold text-gray-900">
-                  {String(p.hire_date||'').slice(0,10) || 'â€”'}
+                  {String(p.hire_date||'').slice(0,10) || '—'}
                 </div>
               )}
               <div className="text-xs font-medium text-gray-700 mt-0.5">
@@ -4209,7 +2497,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
                 <input type="date" className="w-full text-center text-sm font-semibold text-gray-900 border-0 bg-transparent focus:outline-none focus:ring-0" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} />
               ) : (
                 <div className="text-sm font-semibold text-gray-900">
-                  {String(p.termination_date||'').slice(0,10) || 'â€”'}
+                  {String(p.termination_date||'').slice(0,10) || '—'}
                 </div>
               )}
               <div className="text-xs font-medium text-gray-700 mt-0.5">
@@ -4248,7 +2536,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
                         return division?.label || '';
                       }).filter(Boolean).join(', ') || 'No departments selected'}
                 </span>
-                <span className="text-gray-400">â–¼</span>
+                <span className="text-gray-400">▼</span>
               </button>
               {departmentDropdownOpen && (
                 <>
@@ -4283,7 +2571,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
           <div className="text-gray-900 font-medium py-1">
             {userDivisions && userDivisions.length > 0
               ? userDivisions.map((d: any) => d.label).join(', ')
-              : String(p.division||'') || 'â€”'}
+              : String(p.division||'') || '—'}
           </div>
         )}
       </div>
@@ -4299,16 +2587,16 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
             ))}
           </select>
         ) : (
-          <div className="text-gray-900 font-medium py-1">{supervisor||'â€”'}</div>
+          <div className="text-gray-900 font-medium py-1">{supervisor||'—'}</div>
         )}
       </div>
       <div>
         <div className="text-sm text-gray-600">Work email</div>
-        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_email} onChange={e=>onField('work_email', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_email||'') || 'â€”'}</div>}
+        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_email} onChange={e=>onField('work_email', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_email||'') || '—'}</div>}
       </div>
       <div>
         <div className="text-sm text-gray-600">Work phone</div>
-        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_phone} onChange={e=>onField('work_phone', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_phone||'') || 'â€”'}</div>}
+        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_phone} onChange={e=>onField('work_phone', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_phone||'') || '—'}</div>}
       </div>
     </div>
   );
@@ -5535,7 +3823,7 @@ function SalarySection({ p, editable, userId, collectChanges, settings, canEdit,
               fieldHint={showFieldHints ? userProfileFieldHint('pay_rate') : undefined}
             />
           ) : (
-            <div className={uiTypography.sectionTitle}>{showPayRate ? String(p.pay_rate || '') || 'â€”' : 'â€¢â€¢â€¢â€¢'}</div>
+            <div className={uiTypography.sectionTitle}>{showPayRate ? String(p.pay_rate || '') || '—' : '••••'}</div>
           )}
         </AppCard>
         <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -5564,7 +3852,7 @@ function SalarySection({ p, editable, userId, collectChanges, settings, canEdit,
                 />
               )
             ) : (
-              <div className={uiTypography.sectionTitle}>{String(p.pay_type || '') || 'â€”'}</div>
+              <div className={uiTypography.sectionTitle}>{String(p.pay_type || '') || '—'}</div>
             )}
           </div>
         </AppCard>
@@ -5660,7 +3948,7 @@ function SalaryHistorySection({
   };
 
   const formatDate = (iso?: string | null)=>{
-    if(!iso) return 'â€”';
+    if(!iso) return '—';
     try{
       return new Date(iso).toLocaleDateString(undefined, { timeZone: 'UTC' });
     }catch{
@@ -5690,14 +3978,14 @@ function SalaryHistorySection({
               {rows.map((r:any)=> {
                 const prev = String(r.previous_salary||'').trim();
                 const next = String(r.new_salary||'').trim();
-                const payLabel = prev ? `${next} (was ${prev})` : (next || 'â€”');
+                const payLabel = prev ? `${next} (was ${prev})` : (next || '—');
                 return (
                   <tr key={r.id} className="border-b align-top">
                     <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{formatDate(r.effective_date)}</td>
-                    <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{String(r.pay_type||'') || 'â€”'}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{String(r.pay_type||'') || '—'}</td>
                     <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{payLabel}</td>
-                    <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.justification||'') || 'â€”'}</td>
-                    <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.notes||'') || 'â€”'}</td>
+                    <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.justification||'') || '—'}</td>
+                    <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.notes||'') || '—'}</td>
                   </tr>
                 );
               })}
@@ -6324,7 +4612,7 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
                       </div>
                     );
                   })
-                : <span className={uiTypography.sectionTitle}>â€”</span>}
+                : <span className={uiTypography.sectionTitle}>—</span>}
             </div>
           </div>
         )}
@@ -6778,7 +5066,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           ) : (
             <div className="text-sm text-gray-600 py-8 text-center">
-              <div className="text-4xl mb-2">ðŸ–ï¸</div>
+              <div className="text-4xl mb-2">🏖️</div>
               <div>No upcoming time off.</div>
               <div className="text-xs text-gray-500 mt-1">Do you need to get away?</div>
             </div>
@@ -6873,14 +5161,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                                   <span className="text-red-600 font-medium">
                                     {h.used_days < 0 ? parseFloat(h.used_days).toFixed(2) : `-${parseFloat(h.used_days).toFixed(2)}`}
                                   </span>
-                                ) : 'â€”'}
+                                ) : '—'}
                               </td>
                               <td className="py-2 px-3 text-right">
                                 {h.earned_days ? (
                                   <span className="text-green-600 font-medium">
                                     +{parseFloat(h.earned_days).toFixed(2)}
                                   </span>
-                                ) : 'â€”'}
+                                ) : '—'}
                               </td>
                               <td className="py-2 px-3 text-right font-semibold">
                                 {parseFloat(h.balance_after).toFixed(2)} days
@@ -6953,10 +5241,10 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                         {r.notes && <div className="text-xs text-gray-500">{r.notes}</div>}
                       </td>
                       <td className="py-2 px-2 text-right">
-                        {r.status === 'approved' ? `-${days}` : 'â€”'}
+                        {r.status === 'approved' ? `-${days}` : '—'}
                       </td>
-                      <td className="py-2 px-2 text-right">â€”</td>
-                      <td className="py-2 px-2 text-right">â€”</td>
+                      <td className="py-2 px-2 text-right">—</td>
+                      <td className="py-2 px-2 text-right">—</td>
                     </tr>
                   );
                 })}
@@ -7287,7 +5575,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               loading={savingHistoryEdit}
               onClick={() => void handleSaveHistoryEdit()}
             >
-              {savingHistoryEdit ? 'Savingâ€¦' : 'Save'}
+              {savingHistoryEdit ? 'Saving…' : 'Save'}
             </AppButton>
           </div>
         }
@@ -7581,7 +5869,7 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <span className={uiCx(uiTypography.sectionTitle, 'truncate')}>{c.name || 'â€”'}</span>
+                    <span className={uiCx(uiTypography.sectionTitle, 'truncate')}>{c.name || '—'}</span>
                     {c.is_primary ? <AppBadge variant="neutral">Primary</AppBadge> : null}
                   </div>
                   {c.relationship ? (
@@ -7701,7 +5989,7 @@ function requiresVisaAndImmigration(workEligibilityStatus: string | null | undef
   return wes !== '' && wes !== 'Canadian Citizen';
 }
 
-// Work Eligibility Documents Section â€” driver's licence; visa & immigration when eligibility requires them
+// Work Eligibility Documents Section — driver's licence; visa & immigration when eligibility requires them
 function WorkEligibilityDocumentsSection({
   userId,
   canEdit,
@@ -8127,7 +6415,7 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
             disabled={uploading}
           />
         ) : !canEdit ? (
-          <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>â€”</div>
+          <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>—</div>
         ) : null}
         {canEdit ? (
           <>
@@ -8191,7 +6479,7 @@ function VisaInformationSection({
   ];
 
   const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return 'â€”';
+    if (!dateStr) return '—';
     try {
       return new Date(dateStr).toLocaleDateString('en-CA', { dateStyle: 'medium' });
     } catch {
@@ -8373,9 +6661,9 @@ function VisaInformationSection({
   const formatVisaPeriod = (issued: string | null, expiry: string | null) => {
     const from = formatDate(issued);
     const to = formatDate(expiry);
-    if (from === 'â€”' && to === 'â€”') return 'â€”';
-    if (from !== 'â€”' && to !== 'â€”') return `${from} â€” ${to}`;
-    return to !== 'â€”' ? to : from;
+    if (from === '—' && to === '—') return '—';
+    if (from !== '—' && to !== '—') return `${from} — ${to}`;
+    return to !== '—' ? to : from;
   };
 
   const renderVisaFieldValue = (v: any, includeNotes: boolean) => {
@@ -8383,7 +6671,7 @@ function VisaInformationSection({
     const note = (v.notes || '').trim();
     return (
       <div>
-        <div className={uiCx(uiTypography.sectionTitle, 'text-sm')}>{v.visa_type || 'â€”'}</div>
+        <div className={uiCx(uiTypography.sectionTitle, 'text-sm')}>{v.visa_type || '—'}</div>
         {country ? <div className={uiCx(uiTypography.helper, 'mt-0.5')}>{country}</div> : null}
         {includeNotes && note ? (
           <div className={uiCx(uiTypography.helper, 'mt-0.5 line-clamp-2 text-gray-600')}>{note}</div>
@@ -8456,7 +6744,7 @@ function VisaInformationSection({
               {isRequired ? <p className={uiCx(uiTypography.helper, 'text-red-600')}>Visa information is required</p> : null}
             </div>
           ) : (
-            <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>â€”</div>
+            <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>—</div>
           )
         ) : canEdit ? (
           visaEditCards

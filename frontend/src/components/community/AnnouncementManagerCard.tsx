@@ -1,11 +1,22 @@
 import { useState, useEffect, useRef, type SVGProps } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ChevronDown } from 'lucide-react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { CommunityNewPostPreviewModal } from '@/components/community/CommunityNewPostPreviewModal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { stripHtmlToPlain } from '@/lib/communityPostHtml';
+import {
+  AppBadge,
+  AppButton,
+  AppTabs,
+  uiBorders,
+  uiCx,
+  uiDropdown,
+  uiLayout,
+  uiTypography,
+} from '@/components/ui';
 
 function announcementListExcerpt(html: string): string {
   const plain = stripHtmlToPlain(html || '');
@@ -103,6 +114,19 @@ function IconCheckCircle(props: SVGProps<SVGSVGElement>) {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   );
+}
+
+function statusBadgeVariant(status: string): 'success' | 'info' | 'warning' | 'neutral' {
+  if (status === 'published') return 'success';
+  if (status === 'scheduled') return 'info';
+  if (status === 'cancelled') return 'warning';
+  return 'neutral';
+}
+
+function priorityBadgeVariant(priority: string): 'danger' | 'warning' | 'neutral' {
+  if (priority === 'critical' || priority === 'urgent') return 'danger';
+  if (priority === 'important') return 'warning';
+  return 'neutral';
 }
 
 function statusAccentClass(status: string): string {
@@ -282,61 +306,35 @@ export function AnnouncementManagerCard({ post }: { post: any }) {
     deleteMut.mutate();
   };
 
-  const statusStyles =
-    status === 'published'
-      ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-      : status === 'draft'
-        ? 'bg-slate-100 text-slate-800 border-slate-200'
-        : status === 'scheduled'
-          ? 'bg-sky-50 text-sky-900 border-sky-200'
-          : status === 'cancelled'
-            ? 'bg-stone-100 text-stone-700 border-stone-300'
-            : 'bg-gray-50 text-gray-700 border-gray-200';
-
-  const approxPending =
-    totalR > 0 ? Math.max(0, totalR - confC) : undefined;
+  const approxPending = totalR > 0 ? Math.max(0, totalR - confC) : undefined;
 
   return (
-    <div className="relative flex rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <div className={uiCx('relative flex overflow-hidden rounded-xl border bg-white shadow-sm', uiBorders.subtle)}>
       <div className={`w-1 shrink-0 ${statusAccentClass(status)}`} aria-hidden />
-      <div className="flex-1 min-w-0 p-4 pl-3">
+      <div className="min-w-0 flex-1 p-4 pl-3">
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 min-w-0">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 min-w-0">
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1 space-y-2">
-                <div className="flex flex-wrap items-start gap-x-2 gap-y-1.5">
-                  <h3 className="font-semibold text-gray-900 text-base leading-snug line-clamp-2 pr-1">{post.title}</h3>
-                </div>
+                <h3 className={uiCx(uiTypography.sectionTitle, 'line-clamp-2 text-base leading-snug')}>{post.title}</h3>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className={`text-xs px-2 py-0.5 rounded-md border capitalize font-medium ${statusStyles}`}>{status}</span>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-md border ${
-                      priority === 'critical'
-                        ? 'bg-red-900 text-white border-red-900'
-                        : priority === 'urgent'
-                          ? 'bg-red-100 text-red-900 border-red-300'
-                          : priority === 'important'
-                            ? 'bg-amber-50 text-amber-900 border-amber-200'
-                            : 'bg-gray-50 text-gray-600 border-gray-200'
-                    }`}
-                  >
+                  <AppBadge variant={statusBadgeVariant(status)} className="capitalize">
+                    {status}
+                  </AppBadge>
+                  <AppBadge variant={priorityBadgeVariant(priority)}>
                     {PRI_LABELS[priority] || priority}
-                  </span>
+                  </AppBadge>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-100">
-                    {AREA_LABELS[area] || area}
-                  </span>
-                  {post.requires_read_confirmation && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs bg-amber-50 text-amber-900 border border-amber-200">
-                      Read confirmation
-                    </span>
-                  )}
+                  <AppBadge variant="info">{AREA_LABELS[area] || area}</AppBadge>
+                  {post.requires_read_confirmation ? (
+                    <AppBadge variant="warning">Read confirmation</AppBadge>
+                  ) : null}
                 </div>
-                <p className="text-sm text-gray-600 leading-relaxed line-clamp-3 break-words">
+                <p className={uiCx(uiTypography.body, 'line-clamp-3 break-words leading-relaxed text-gray-600')}>
                   {announcementListExcerpt(post.content)}
                 </p>
-                <div className="text-xs text-gray-500 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <div className={uiCx(uiTypography.helper, 'flex flex-wrap items-center gap-x-3 gap-y-1.5')}>
                   <span className="inline-flex items-center gap-1.5 text-gray-600">
                     <IconUsers className="text-gray-400" />
                     {post.target_type === 'all'
@@ -369,145 +367,122 @@ export function AnnouncementManagerCard({ post }: { post: any }) {
 
                 {post.requires_read_confirmation && totalR > 0 && (
                   <div className="pt-1">
-                    <div className="flex justify-between text-xs text-gray-600 mb-1">
+                    <div className={uiCx(uiTypography.helper, 'mb-1 flex justify-between')}>
                       <span>Confirmation progress</span>
                       <span>
                         {confC} / {totalR} ({pct}%)
                       </span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-brand-red h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    <div className="h-2 w-full rounded-full bg-gray-200" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                      <div className="h-2 rounded-full bg-brand-red transition-all" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-shrink-0 sm:max-w-[min(100%,20rem)] pt-1 sm:pt-0 border-t border-gray-100 sm:border-t-0">
-                <button
-                  type="button"
-                  onClick={() => setViewOpen(true)}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-                >
+              <div className={uiCx(uiLayout.actionsRow, 'flex-wrap border-t border-gray-100 pt-1 sm:max-w-[min(100%,20rem)] sm:flex-shrink-0 sm:justify-end sm:border-t-0 sm:pt-0')}>
+                <AppButton type="button" variant="secondary" size="sm" onClick={() => setViewOpen(true)}>
                   View
-                </button>
-                {canEdit && (
-                  <button
+                </AppButton>
+                {canEdit ? (
+                  <AppButton
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={() => navigate(`/community/posts/${post.id}/edit`)}
-                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
                   >
                     Edit
-                  </button>
-                )}
-                {showPublishNow && (
-                  <button
+                  </AppButton>
+                ) : null}
+                {showPublishNow ? (
+                  <AppButton
                     type="button"
+                    size="sm"
                     onClick={() => publishMut.mutate()}
                     disabled={publishMut.isPending}
-                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
+                    loading={publishMut.isPending}
                   >
                     Publish now
-                  </button>
-                )}
+                  </AppButton>
+                ) : null}
 
                 <div className="relative" ref={actionsRef}>
-                  <button
+                  <AppButton
                     type="button"
-                    onClick={() => setActionsOpen((o) => !o)}
-                    className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700"
+                    variant="secondary"
+                    size="sm"
                     aria-expanded={actionsOpen}
                     aria-haspopup="true"
                     aria-label="More actions"
+                    onClick={() => setActionsOpen((o) => !o)}
                   >
                     ···
-                  </button>
-                  {actionsOpen && (
-                    <div
-                      className="absolute right-0 top-full mt-1 z-20 min-w-[11rem] rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
-                      role="menu"
-                    >
-                      {showCancelOrUnpublish && (
+                  </AppButton>
+                  {actionsOpen ? (
+                    <div className={uiCx(uiDropdown.menu, 'absolute right-0 top-full z-20 mt-1 min-w-[11rem] py-1')} role="menu">
+                      {showCancelOrUnpublish ? (
                         <button
                           type="button"
                           role="menuitem"
                           onClick={() => void handleUnpublishOrCancel()}
                           disabled={busyUnpublishOrCancel}
-                          className="w-full text-left px-3 py-2 text-xs text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                          className={uiDropdown.option}
                         >
                           {status === 'published' ? 'Unpublish' : 'Cancel post'}
                         </button>
-                      )}
+                      ) : null}
                       <button
                         type="button"
                         role="menuitem"
                         onClick={() => void handleDelete()}
                         disabled={deleteMut.isPending}
-                        className="w-full text-left px-3 py-2 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        className={uiCx(uiDropdown.option, 'text-red-700 hover:bg-red-50')}
                       >
                         Delete
                       </button>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </div>
           </div>
 
         {post.requires_read_confirmation && (
-          <div className="pt-4 border-t border-gray-100">
-            <button
+          <div className="border-t border-gray-100 pt-4">
+            <AppButton
               type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto w-full justify-between px-2 py-2 -mx-2"
+              aria-expanded={readConfOpen}
               onClick={() => {
                 setReadConfOpen((o) => !o);
                 if (!readConfOpen) setReadConfSubTab('confirmed');
               }}
-              className="flex w-full items-center justify-between gap-2 text-left rounded-lg px-2 py-2 -mx-2 hover:bg-gray-50 transition-colors"
-              aria-expanded={readConfOpen}
             >
-              <span className="text-sm font-medium text-gray-900">
+              <span className={uiTypography.body}>
                 Read confirmations
-                <span className="font-normal text-gray-500 ml-1">
+                <span className={uiCx(uiTypography.helper, 'ml-1 font-normal')}>
                   ({confC} confirmed
                   {approxPending !== undefined ? ` · ~${approxPending} pending` : ''})
                 </span>
               </span>
-              <svg
-                className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${readConfOpen ? 'rotate-180' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+              <ChevronDown
+                className={uiCx('h-4 w-4 shrink-0 text-gray-500 transition-transform', readConfOpen && 'rotate-180')}
                 aria-hidden
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+              />
+            </AppButton>
 
             {readConfOpen && (
-              <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50/80 p-2">
-                <div className="flex gap-1 p-0.5 rounded-md bg-gray-200/60" role="tablist">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={readConfSubTab === 'confirmed'}
-                    onClick={() => setReadConfSubTab('confirmed')}
-                    className={`flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors ${
-                      readConfSubTab === 'confirmed' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    Confirmed ({post.confirmations_count || 0})
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={readConfSubTab === 'pending'}
-                    onClick={() => setReadConfSubTab('pending')}
-                    className={`flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors ${
-                      readConfSubTab === 'pending' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    Pending
-                  </button>
-                </div>
+              <div className={uiCx('mt-2 rounded-lg border bg-gray-50/80 p-2', uiBorders.subtle)}>
+                <AppTabs
+                  tabs={[
+                    { key: 'confirmed', label: `Confirmed (${post.confirmations_count || 0})` },
+                    { key: 'pending', label: 'Pending' },
+                  ]}
+                  value={readConfSubTab}
+                  onChange={(key) => setReadConfSubTab(key as 'confirmed' | 'pending')}
+                />
 
                 <div className="mt-3 px-1" role="tabpanel">
                   {showConfirmations && confirmations.length > 0 && (

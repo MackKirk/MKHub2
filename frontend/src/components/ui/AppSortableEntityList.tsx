@@ -53,6 +53,14 @@ export const APP_SORTABLE_LIST_PRESETS = {
     gridCols: 'grid-cols-[2fr_4fr_3fr_3fr_2fr_auto]',
     minWidth: 'min-w-[720px]',
   },
+  employeeReviews: {
+    gridCols: 'grid-cols-[5fr_3fr_3fr_4fr_3fr_3fr]',
+    minWidth: 'min-w-[800px]',
+  },
+  employeeActivityLog: {
+    gridCols: 'grid-cols-[8fr_4fr]',
+    minWidth: 'min-w-[480px]',
+  },
 } as const;
 
 export type AppSortableListPreset = keyof typeof APP_SORTABLE_LIST_PRESETS;

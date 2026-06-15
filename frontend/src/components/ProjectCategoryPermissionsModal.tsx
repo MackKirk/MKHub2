@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { PermissionAccessLevelSelect } from '@/components/PermissionAccessLevelSelect';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
   buildProjectCategoryLevels,
@@ -7,7 +8,10 @@ import {
   setAllProjectCategoriesAllowAll,
   type ProjectCategoryAllowLists,
 } from '@/lib/projectCategoryPermissions';
+import { permissionUi } from '@/components/permissionUi';
+import { PermissionToggleLabel } from '@/components/PermissionToggleRow';
 import { PERMISSION_ACCESS_LEVEL_LABELS, type PermissionAccessLevel } from '@/lib/permissionAccessLevel';
+import { AppButton, uiCx, uiTypography } from '@/components/ui';
 
 export type ProjectCategoryItem = {
   id: string;
@@ -93,19 +97,16 @@ export default function ProjectCategoryPermissionsModal({
   }
 
   const renderRow = (cat: ProjectCategoryItem) => (
-    <div
-      key={cat.id}
-      className="flex items-center gap-2 p-2 rounded border bg-white hover:bg-gray-50"
-    >
-      <div className="flex-1 min-w-0 flex items-center gap-2">
-        {cat.icon && <span className="text-lg shrink-0">{cat.icon}</span>}
-        <span className="text-sm text-gray-900 truncate">{cat.label}</span>
+    <div key={cat.id} className="flex items-center gap-3 border-b border-gray-200/80 py-2 last:border-0">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {cat.icon ? <span className="shrink-0 text-lg">{cat.icon}</span> : null}
+        <span className={uiCx(permissionUi.rowTitle, 'truncate')}>{cat.label}</span>
       </div>
-      <select
+      <PermissionAccessLevelSelect
         value={levels[cat.id] ?? (macroCanEdit ? 'edit' : 'view')}
         disabled={allowAll}
-        onChange={(e) => {
-          const level = e.target.value as PermissionAccessLevel;
+        options={options}
+        onChange={(level) => {
           const base = allowAll ? { read: null, write: null } : lists;
           const next = applyProjectCategoryAccessLevel(
             cat.id,
@@ -113,20 +114,13 @@ export default function ProjectCategoryPermissionsModal({
             base.read,
             base.write,
             allIds,
-            macroCanEdit
+            macroCanEdit,
           );
           setLists(next);
           setAllowAll(false);
         }}
-        className="shrink-0 text-xs border border-gray-300 rounded-md px-2 py-1 bg-white text-gray-800 focus:ring-1 focus:ring-brand-red focus:border-brand-red disabled:opacity-50 min-w-[7.5rem]"
         aria-label={`Access for ${cat.label}`}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      />
     </div>
   );
 
@@ -158,8 +152,8 @@ export default function ProjectCategoryPermissionsModal({
         <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <div className="p-4 border-b flex items-center justify-between">
             <div>
-              <div className="font-semibold">{title}</div>
-              {subtitle && <div className="text-[10px] text-gray-500 mt-0.5">{subtitle}</div>}
+              <div className={uiTypography.sectionTitle}>{title}</div>
+              {subtitle ? <div className={uiTypography.sectionSubtitle}>{subtitle}</div> : null}
             </div>
             <button
               type="button"
@@ -172,40 +166,28 @@ export default function ProjectCategoryPermissionsModal({
           </div>
 
           <div className="p-4 overflow-y-auto flex-1 space-y-4">
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={allowAll}
-                onChange={handleAllowAllChange}
-                className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-              />
-              <div className="min-w-0">
-                <div className="text-xs font-medium text-gray-900">Allow all categories</div>
-                <div className="text-[10px] text-gray-500">
-                  Default — user can access every category according to the permission above.
-                </div>
-              </div>
-            </label>
+            <PermissionToggleLabel
+              label="Allow all categories"
+              description="Default — user can access every category according to the permission above."
+              checked={allowAll}
+              onToggle={handleAllowAllChange}
+            />
 
-            <div className={allowAll ? 'opacity-50 pointer-events-none' : ''}>
-              <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
-                Per category
-              </div>
+            <div className={allowAll ? 'pointer-events-none opacity-50' : ''}>
+              <div className={uiCx(permissionUi.columnTitle, 'mb-2')}>Per category</div>
               {grouped ? (
                 GROUP_ORDER.map((groupKey) => {
                   const list = grouped[groupKey];
                   if (!list.length) return null;
                   return (
-                    <div key={groupKey} className="mb-3">
-                      <div className="text-[10px] font-semibold text-gray-500 mb-1.5">
-                        {labels[groupKey] ?? groupKey}
-                      </div>
-                      <div className="grid sm:grid-cols-1 gap-2">{list.map(renderRow)}</div>
+                    <div key={groupKey} className="mb-3 rounded-lg bg-gray-50/80 p-2.5">
+                      <div className={uiCx(permissionUi.subgroupTitle)}>{labels[groupKey] ?? groupKey}</div>
+                      <div>{list.map(renderRow)}</div>
                     </div>
                   );
                 })
               ) : (
-                <div className="grid sm:grid-cols-1 gap-2">{categories.map(renderRow)}</div>
+                <div className="rounded-lg bg-gray-50/80 p-2.5">{categories.map(renderRow)}</div>
               )}
               {hasBlockedAll && (
                 <div className="mt-2 text-xs text-red-600">
@@ -215,22 +197,13 @@ export default function ProjectCategoryPermissionsModal({
             </div>
           </div>
 
-          <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium"
-            >
+          <div className="flex justify-end gap-2 border-t bg-gray-50 p-4">
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={hasBlockedAll}
-              className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={hasBlockedAll}>
               Save
-            </button>
+            </AppButton>
           </div>
         </div>
       </div>

@@ -4,6 +4,28 @@ import { uploadOrganizationLogoFile, uploadCertificateBackgroundFile } from '@/l
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { Settings } from 'lucide-react';
+import {
+  AppPageHeader,
+  AppCard,
+  AppTabs,
+  AppButton,
+  AppInput,
+  AppTextarea,
+  AppSelect,
+  AppCheckbox,
+  AppEmptyState,
+  AppSectionHeader,
+  AppUserSelect,
+  uiCx,
+  uiSpacing,
+  uiTypography,
+  uiLayout,
+  uiBorders,
+  uiColors,
+  uiRadius,
+  uiListCreateItem,
+} from '@/components/ui';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { effectiveShowInProject, effectiveShowInOpportunity } from '@/lib/projectStatusVisibility';
 import DocumentTemplatesTab from '@/components/DocumentTemplatesTab';
@@ -33,6 +55,12 @@ import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
 type SettingsSection = 'files' | 'templates' | 'lists';
+
+const MATRIX_CELL_KIND_OPTIONS = [
+  { value: 'expiry', label: 'Expiry date' },
+  { value: 'date_taken', label: 'Date taken' },
+  { value: 'text', label: 'Text / notes' },
+];
 
 /** Human-readable label for setting list keys (sidebar + headers). */
 function formatSettingsListTitle(name: string): string {
@@ -87,15 +115,6 @@ export default function SystemSettings(){
   const [breakMin, setBreakMin] = useState<string>(breakMinItem?.value || '30');
   const [geofenceRadius, setGeofenceRadius] = useState<string>(geofenceRadiusItem?.value || '150');
   const [selectedBreakEmployees, setSelectedBreakEmployees] = useState<string[]>([]);
-  const [breakEmployeeSearch, setBreakEmployeeSearch] = useState('');
-  const [breakEmployeeDropdownOpen, setBreakEmployeeDropdownOpen] = useState(false);
-  const breakEmployeeDropdownRef = useRef<HTMLDivElement>(null);
-  
-  // Fetch employees for break selection
-  const { data: employees } = useQuery({
-    queryKey: ['employees'],
-    queryFn: () => api<any[]>('GET', '/employees'),
-  });
   
   // Update local state when items change
   useEffect(()=>{
@@ -110,43 +129,7 @@ export default function SystemSettings(){
       }
     }
   }, [breakMinItem?.value, geofenceRadiusItem?.value, breakEmployeesItem?.value]);
-  
-  // Filter employees by search
-  const filteredBreakEmployees = useMemo(() => {
-    if (!employees || !Array.isArray(employees)) return [];
-    if (!breakEmployeeSearch) return employees;
-    const searchLower = breakEmployeeSearch.toLowerCase();
-    return employees.filter((u: any) => {
-      const name = (u.name || u.username || '').toLowerCase();
-      return name.includes(searchLower);
-    });
-  }, [employees, breakEmployeeSearch]);
-  
-  const toggleBreakEmployee = (employeeId: string) => {
-    setSelectedBreakEmployees((prev) => {
-      const prevArray = Array.isArray(prev) ? prev : [];
-      return prevArray.includes(employeeId) 
-        ? prevArray.filter((id) => id !== employeeId) 
-        : [...prevArray, employeeId];
-    });
-  };
-  
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (breakEmployeeDropdownRef.current && !breakEmployeeDropdownRef.current.contains(event.target as Node)) {
-        setBreakEmployeeDropdownOpen(false);
-      }
-    };
 
-    if (breakEmployeeDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [breakEmployeeDropdownOpen]);
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
       weekday: 'long',
@@ -177,66 +160,42 @@ export default function SystemSettings(){
   ];
 
   return (
-    <div className="space-y-4">
-      {/* Page header — same rhythm & typography as User Information (/users/:id) */}
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center shrink-0">
-              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <h5 className="text-sm font-semibold text-blue-900">System settings</h5>
-              <p className="text-xs text-gray-600 mt-0.5">
-                Lists, file organization, templates, and document creator backgrounds/types used across the app.
-              </p>
-            </div>
-          </div>
+    <div className={uiCx(uiSpacing.pageStack, 'bg-gray-50')}>
+      <AppPageHeader
+        title="System settings"
+        subtitle="Lists, file organization, templates, and document creator backgrounds/types used across the app."
+        icon={<Settings className="h-4 w-4" />}
+        actions={
           <div className="text-right shrink-0">
-            <div className="text-[10px] text-gray-400 mb-1 font-medium uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx('text-xs font-semibold', uiColors.textBody)}>{todayLabel}</div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Section tabs — match User Information pill buttons */}
-      <div className="rounded-xl border bg-white p-3">
-        <div className="flex flex-wrap gap-2">
-          {sectionTabs.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => handleSectionTab(t.id)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                section === t.id
-                  ? 'bg-brand-red text-white border-brand-red'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <AppCard bodyClassName={uiSpacing.compactCardPadding}>
+        <AppTabs
+          tabs={sectionTabs.map((t) => ({ key: t.id, label: t.label }))}
+          value={section}
+          onChange={(key) => handleSectionTab(key as SettingsSection)}
+        />
+      </AppCard>
 
       {/* ——— Lookup lists ——— */}
       {section === 'lists' && (
-      <div className="rounded-xl border bg-white overflow-hidden">
+      <AppCard bodyClassName="!p-0">
       <div className="grid lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] lg:items-stretch min-h-[min(520px,70vh)]">
-        <div className="border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/50 flex flex-col lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-8rem)]">
-          <div className="border-b border-gray-100 px-4 py-3 bg-white/80">
-            <h2 className="text-sm font-semibold text-gray-900">Lists</h2>
-            <p className="mt-0.5 text-xs text-gray-600">Pick a dataset to edit.</p>
+        <div className={uiCx('border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/50 flex flex-col lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-8rem)]')}>
+          <div className={uiCx('border-b border-gray-100 px-4 py-3 bg-white/80')}>
+            <h2 className={uiTypography.sectionTitle}>Lists</h2>
+            <p className={uiTypography.sectionSubtitle}>Pick a dataset to edit.</p>
           </div>
           <div className="overflow-y-auto flex-1 min-h-0">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 bg-white text-left">
-                  <th className="px-3 py-2 text-[10px] font-medium text-gray-500 uppercase tracking-wide">Name</th>
-                  <th className="px-3 py-2 w-16 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wide">#</th>
+                <tr className={uiCx('border-b border-gray-100 bg-white text-left', uiTypography.overline)}>
+                  <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2 w-16 text-right">#</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -245,15 +204,16 @@ export default function SystemSettings(){
                   return (
                     <tr
                       key={name}
-                      className={`cursor-pointer transition-colors ${
-                        sel === name ? 'bg-red-50/90' : 'hover:bg-gray-50'
-                      }`}
+                      className={uiCx(
+                        'cursor-pointer transition-colors',
+                        sel === name ? 'bg-red-50/90' : 'hover:bg-gray-50',
+                      )}
                       onClick={() => setSel(name)}
                     >
-                      <td className={`px-3 py-2.5 font-medium ${sel === name ? 'text-brand-red' : 'text-gray-900'}`}>
+                      <td className={uiCx('px-3 py-2.5 font-medium', sel === name ? 'text-brand-red' : uiColors.textStrong)}>
                         {formatSettingsListTitle(name)}
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-gray-500">{count}</td>
+                      <td className={uiCx('px-3 py-2.5 text-right tabular-nums', uiTypography.helper)}>{count}</td>
                     </tr>
                   );
                 })}
@@ -263,173 +223,56 @@ export default function SystemSettings(){
         </div>
 
         <div className="flex min-h-[min(520px,70vh)] flex-col bg-white">
-          <div className="flex flex-wrap items-end justify-between gap-2 border-b border-gray-100 px-5 py-4">
+          <div className={uiCx('flex flex-wrap items-end justify-between gap-2 border-b border-gray-100 px-5 py-4')}>
             <div>
-              <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Editing</div>
-              <h2 className="text-sm font-semibold text-gray-900">{formatSettingsListTitle(sel)}</h2>
+              <div className={uiTypography.overline}>Editing</div>
+              <h2 className={uiTypography.sectionTitle}>{formatSettingsListTitle(sel)}</h2>
             </div>
-            <div className="text-xs text-gray-600">
-              <span className="tabular-nums font-semibold text-gray-900">{items.length}</span> items
+            <div className={uiTypography.helper}>
+              <span className={uiCx('tabular-nums font-semibold', uiColors.textStrong)}>{items.length}</span> items
             </div>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto p-5">
           {isTimesheetConfig ? (
-            <div className="rounded-lg border border-gray-200 bg-gray-50/40 p-4 space-y-5">
-              <div>
-                <h4 className="text-sm font-semibold text-gray-900">Timesheet defaults</h4>
-                <p className="mt-1 text-xs text-gray-500">Used when creating shifts and calculating attendance.</p>
-              </div>
+            <AppCard
+              title="Timesheet defaults"
+              subtitle="Used when creating shifts and calculating attendance."
+              bodyClassName={uiSpacing.sectionStack}
+            >
+              <div className={uiLayout.sectionGrid2}>
+                <AppInput
+                  type="number"
+                  label="Default break for shifts of 5+ hours (minutes)"
+                  value={breakMin}
+                  onChange={(e) => setBreakMin(e.target.value)}
+                  min="0"
+                  placeholder="30"
+                  helperText="Break duration deducted from attendance for eligible employees on long shifts."
+                />
 
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Default break for shifts of 5+ hours (minutes)
-                  </label>
-                  <input
-                    type="number"
-                    value={breakMin}
-                    onChange={(e) => setBreakMin(e.target.value)}
-                    min="0"
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm bg-white"
-                    placeholder="30"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Break duration deducted from attendance for eligible employees on long shifts.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Default geofence radius (meters)</label>
-                  <input
-                    type="number"
-                    value={geofenceRadius}
-                    onChange={(e) => setGeofenceRadius(e.target.value)}
-                    min="0"
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm bg-white"
-                    placeholder="150"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Default radius for new shifts.</p>
-                </div>
+                <AppInput
+                  type="number"
+                  label="Default geofence radius (meters)"
+                  value={geofenceRadius}
+                  onChange={(e) => setGeofenceRadius(e.target.value)}
+                  min="0"
+                  placeholder="150"
+                  helperText="Default radius for new shifts."
+                />
 
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Employees eligible for break deduction
-                    {selectedBreakEmployees.length > 0
-                      ? ` (${selectedBreakEmployees.length} selected)`
-                      : ''}
-                  </label>
-                  <div className="relative" ref={breakEmployeeDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => setBreakEmployeeDropdownOpen(!breakEmployeeDropdownOpen)}
-                      className="w-full border rounded px-3 py-2 text-left bg-white flex items-center justify-between"
-                    >
-                      <span className="text-sm text-gray-600">
-                        {selectedBreakEmployees.length === 0
-                          ? 'Select employees...'
-                          : `${selectedBreakEmployees.length} employee${selectedBreakEmployees.length > 1 ? 's' : ''} selected`}
-                      </span>
-                      <span className="text-gray-400">{breakEmployeeDropdownOpen ? '▲' : '▼'}</span>
-                    </button>
-                    {breakEmployeeDropdownOpen && (
-                      <div 
-                        className="absolute z-50 mt-1 w-full rounded-lg border bg-white shadow-lg max-h-60 overflow-auto"
-                        onMouseDown={(e) => e.stopPropagation()}
-                      >
-                        <div className="p-2 border-b space-y-2">
-                          <input
-                            type="text"
-                            placeholder="Search employees..."
-                            value={breakEmployeeSearch}
-                            onChange={(e) => setBreakEmployeeSearch(e.target.value)}
-                            className="w-full border rounded px-2 py-1 text-sm"
-                            onMouseDown={(e) => e.stopPropagation()}
-                          />
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                if (!Array.isArray(filteredBreakEmployees)) return;
-                                const allFilteredIds = filteredBreakEmployees.map((u: any) => u.id);
-                                setSelectedBreakEmployees((prev) => {
-                                  const prevArray = Array.isArray(prev) ? prev : [];
-                                  const newSet = new Set([...prevArray, ...allFilteredIds]);
-                                  return Array.from(newSet);
-                                });
-                              }}
-                              className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                            >
-                              Select All
-                            </button>
-                            <button
-                              type="button"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setSelectedBreakEmployees([]);
-                              }}
-                              className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                            >
-                              Clear All
-                            </button>
-                          </div>
-                        </div>
-                        <div className="p-2">
-                          {(Array.isArray(filteredBreakEmployees) && filteredBreakEmployees.length > 0) ? (
-                            filteredBreakEmployees.map((u: any) => (
-                              <label
-                                key={u.id}
-                                className="flex items-center gap-2 p-2 hover:bg-gray-50 cursor-pointer rounded"
-                                onMouseDown={(e) => e.stopPropagation()}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selectedBreakEmployees.includes(u.id)}
-                                  onChange={() => toggleBreakEmployee(u.id)}
-                                  className="rounded"
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                />
-                                <span className="text-sm">{u.name || u.username}</span>
-                              </label>
-                            ))
-                          ) : (
-                            <div className="p-2 text-sm text-gray-600">No employees found</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {selectedBreakEmployees.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {selectedBreakEmployees.map((employeeId) => {
-                        const employee = (Array.isArray(employees) ? employees : []).find((u: any) => u.id === employeeId);
-                        return (
-                          <span
-                            key={employeeId}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm"
-                          >
-                            {employee?.name || employee?.username || employeeId}
-                            <button
-                              type="button"
-                              onClick={() => toggleBreakEmployee(employeeId)}
-                              className="text-blue-600 hover:text-blue-800"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <div className="text-xs text-gray-500 mt-1">Select employees who are eligible for break deduction when their attendance is 5 hours or more.</div>
+                  <AppUserSelect
+                    mode="multiple"
+                    label={`Employees eligible for break deduction${selectedBreakEmployees.length > 0 ? ` (${selectedBreakEmployees.length} selected)` : ''}`}
+                    value={selectedBreakEmployees}
+                    onChange={setSelectedBreakEmployees}
+                    placeholder="Select employees..."
+                    helperText="Select employees who are eligible for break deduction when their attendance is 5 hours or more."
+                  />
                 </div>
 
-                <div className="sm:col-span-2 flex justify-end pt-1">
-                  <button
+                <div className={uiCx('sm:col-span-2 flex justify-end pt-1', uiLayout.actionsRow)}>
+                  <AppButton
                     onClick={async () => {
                       try {
                         // Save or update default_break_minutes
@@ -462,228 +305,197 @@ export default function SystemSettings(){
                         toast.error('Failed to save');
                       }
                     }}
-                    className="rounded-lg px-4 py-2 text-xs font-semibold text-white bg-brand-red hover:opacity-95"
                   >
                     Save Settings
-                  </button>
+                  </AppButton>
                 </div>
               </div>
-            </div>
+            </AppCard>
           ) : (
             <>
               {isTermsTemplates ? (
-                <div className="space-y-3 mb-4">
-                  <h4 className="font-semibold">Terms Templates</h4>
-                  <div className="space-y-2">
-                    <input className="border rounded px-2 py-1 text-sm w-full" placeholder="Template Name" value={label} onChange={e=>setLabel(e.target.value)} />
-                    <textarea 
-                      className="border rounded px-2 py-1 text-sm w-full" 
+                <div className={uiCx('space-y-3 mb-4', uiSpacing.sectionStack)}>
+                  <h4 className={uiTypography.sectionTitle}>Terms Templates</h4>
+                  <div className={uiSpacing.sectionStack}>
+                    <AppInput className="w-full" placeholder="Template Name" value={label} onChange={e=>setLabel(e.target.value)} />
+                    <AppTextarea
+                      className="w-full"
                       placeholder="Terms Description (full text)"
-                      value={description} 
+                      value={description}
                       onChange={e=>setDescription(e.target.value)}
                       rows={8}
                     />
-                    <button onClick={async()=>{ if(!label){ toast.error('Template name required'); return; } try{ const url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}&description=${encodeURIComponent(description||'')}`; await api('POST', url); setLabel(''); setDescription(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-brand-red hover:opacity-95">Add</button>
+                    <AppButton onClick={async()=>{ if(!label){ toast.error('Template name required'); return; } try{ const url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}&description=${encodeURIComponent(description||'')}`; await api('POST', url); setLabel(''); setDescription(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }}>Add</AppButton>
                   </div>
                 </div>
               ) : (
-                <div className="mb-4 rounded-lg border border-dashed border-gray-200 bg-gray-50/70 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Add entry</div>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-                    <input className="border rounded px-2 py-1 text-sm sm:min-w-[12rem]" placeholder={isMatrixSlotsList ? 'Column title' : 'Label'} value={label} onChange={e=>setLabel(e.target.value)} />
+                <div className={uiCx(uiBorders.createDashed, uiRadius.control, uiColors.surfaceSubtle, 'mb-4 p-4')}>
+                  <div className={uiCx(uiListCreateItem.label, 'mb-3 block text-left uppercase tracking-wide')}>Add entry</div>
+                  <div className={uiCx('flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end', uiLayout.actionsRow)}>
+                    <AppInput className="sm:min-w-[12rem]" placeholder={isMatrixSlotsList ? 'Column title' : 'Label'} value={label} onChange={e=>setLabel(e.target.value)} />
                     {isDivisionList ? (
                       <>
-                        <input className="border rounded px-2 py-1 text-sm w-28" placeholder="Abbr" value={(value||'').split('|')[0]||''} onChange={e=>{ const parts = (value||'').split('|'); parts[0] = e.target.value; setValue(parts.join('|')); }} />
-                        <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={((value||'').split('|')[1]||'#cccccc')} onChange={e=>{ const parts = (value||'').split('|'); parts[1] = e.target.value; setValue(parts.join('|')); }} />
+                        <AppInput className="w-28" placeholder="Abbr" value={(value||'').split('|')[0]||''} onChange={e=>{ const parts = (value||'').split('|'); parts[0] = e.target.value; setValue(parts.join('|')); }} />
+                        <input type="color" title="Color" className={uiCx(uiBorders.input, uiRadius.control, 'h-8 w-10 p-0')} value={((value||'').split('|')[1]||'#cccccc')} onChange={e=>{ const parts = (value||'').split('|'); parts[1] = e.target.value; setValue(parts.join('|')); }} />
                       </>
                     ) : isMatrixSlotsList ? (
                       <>
-                        <input className="border rounded px-2 py-1 text-sm w-44 font-mono" placeholder="Slug (stable id)" value={value} onChange={e=>setValue(e.target.value)} />
-                        <select className="border rounded px-2 py-1 text-sm w-48 bg-white" value={newMatrixCellKind} onChange={e=> setNewMatrixCellKind(e.target.value as 'expiry' | 'date_taken' | 'text')}>
-                          <option value="expiry">Expiry date</option>
-                          <option value="date_taken">Date taken</option>
-                          <option value="text">Text / notes</option>
-                        </select>
+                        <AppInput className="w-44" inputClassName="font-mono" placeholder="Slug (stable id)" value={value} onChange={e=>setValue(e.target.value)} />
+                        <AppSelect className="w-48" options={MATRIX_CELL_KIND_OPTIONS} value={newMatrixCellKind} onChange={(e)=> setNewMatrixCellKind(e.target.value as 'expiry' | 'date_taken' | 'text')} />
                       </>
                     ) : isColorList ? (
-                      <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={value||'#cccccc'} onChange={e=>setValue(e.target.value)} />
+                      <input type="color" title="Color" className={uiCx(uiBorders.input, uiRadius.control, 'h-8 w-10 p-0')} value={value||'#cccccc'} onChange={e=>setValue(e.target.value)} />
                     ) : (
-                      <input className="border rounded px-2 py-1 text-sm" placeholder="Value" value={value} onChange={e=>setValue(e.target.value)} />
+                      <AppInput placeholder="Value" value={value} onChange={e=>setValue(e.target.value)} />
                     )}
                     {sel === 'project_statuses' && (
-                      <span className="flex items-center gap-3 text-xs text-gray-700">
-                        <label className="flex items-center gap-1 whitespace-nowrap">
-                          <input type="checkbox" checked={newShowInProject} onChange={e=> setNewShowInProject(e.target.checked)} />
-                          Project
-                        </label>
-                        <label className="flex items-center gap-1 whitespace-nowrap">
-                          <input type="checkbox" checked={newShowInOpportunity} onChange={e=> setNewShowInOpportunity(e.target.checked)} />
-                          Opportunity
-                        </label>
+                      <span className={uiCx('flex items-center gap-3', uiTypography.body)}>
+                        <AppCheckbox label="Project" checked={newShowInProject} onChange={setNewShowInProject} className="whitespace-nowrap" />
+                        <AppCheckbox label="Opportunity" checked={newShowInOpportunity} onChange={setNewShowInOpportunity} className="whitespace-nowrap" />
                       </span>
                     )}
-                    <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } if(isMatrixSlotsList && !(value||'').trim()){ toast.error('Slug is required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isMatrixSlotsList){ url += `&value=${encodeURIComponent((value||'').trim())}&cell_kind=${encodeURIComponent(newMatrixCellKind)}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; if (sel === 'project_statuses'){ url += `&show_in_project=${newShowInProject ? 'true' : 'false'}&show_in_opportunity=${newShowInOpportunity ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); setNewMatrixCellKind('expiry'); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-brand-red hover:opacity-95">Add</button>
+                    <AppButton onClick={async()=>{ if(!label){ toast.error('Label required'); return; } if(isMatrixSlotsList && !(value||'').trim()){ toast.error('Slug is required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isMatrixSlotsList){ url += `&value=${encodeURIComponent((value||'').trim())}&cell_kind=${encodeURIComponent(newMatrixCellKind)}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; if (sel === 'project_statuses'){ url += `&show_in_project=${newShowInProject ? 'true' : 'false'}&show_in_opportunity=${newShowInOpportunity ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); setNewMatrixCellKind('expiry'); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }}>Add</AppButton>
                   </div>
                 </div>
               )}
-              <div className="overflow-hidden rounded-lg border border-gray-100 bg-gray-50/40">
+              <div className={uiCx('overflow-hidden', uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle)}>
                 {isLoading? <div className="p-3"><div className="h-6 bg-gray-100 animate-pulse rounded"/></div> : items.length? items.map(it=> {
                   const e = getEdit(it);
                   return (
-                    <div key={it.id} className={`border-b border-gray-100 px-3 py-2.5 text-sm last:border-b-0 odd:bg-gray-50/50 ${isTermsTemplates ? 'flex flex-col gap-2' : 'flex items-center justify-between gap-3'}`}>
-                      <div className={`${isTermsTemplates ? 'space-y-2' : 'flex items-center gap-2 flex-1 min-w-0'}`}>
-                        <input className="border rounded px-2 py-1 text-sm w-48" value={e.label} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), label: ev.target.value } }))} />
+                    <div key={it.id} className={uiCx('border-b border-gray-100 px-3 py-2.5 text-sm last:border-b-0 odd:bg-gray-50/50', isTermsTemplates ? 'flex flex-col gap-2' : 'flex items-center justify-between gap-3')}>
+                      <div className={isTermsTemplates ? uiSpacing.sectionStack : uiCx('flex items-center gap-2 flex-1 min-w-0', uiLayout.actionsRow)}>
+                        <AppInput className="w-48" value={e.label} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), label: ev.target.value } }))} />
                         {isTermsTemplates ? (
-                          <textarea 
-                            className="border rounded px-2 py-1 text-sm w-full" 
+                          <AppTextarea
+                            className="w-full"
                             placeholder="Terms Description"
-                            value={e.meta?.description||''} 
+                            value={e.meta?.description||''}
                             onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), description: ev.target.value } } }))}
                             rows={8}
                           />
                         ) : isDivisionList ? (
                           <>
-                            <input className="border rounded px-2 py-1 text-sm w-24" placeholder="Abbr" value={e.meta?.abbr||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), abbr: ev.target.value } } }))} />
-                            <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={e.meta?.color||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), color: ev.target.value } } }))} />
+                            <AppInput className="w-24" placeholder="Abbr" value={e.meta?.abbr||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), abbr: ev.target.value } } }))} />
+                            <input type="color" title="Color" className={uiCx(uiBorders.input, uiRadius.control, 'h-8 w-10 p-0')} value={e.meta?.color||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), color: ev.target.value } } }))} />
                           </>
                         ) : isMatrixSlotsList ? (
                           <>
-                            <input className="border rounded px-2 py-1 text-sm w-36 font-mono" placeholder="Slug" value={e.value||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
-                            <select className="border rounded px-2 py-1 text-sm w-44 bg-white" value={(e.meta?.cell_kind as string) || 'text'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), cell_kind: ev.target.value } } }))}>
-                              <option value="expiry">Expiry date</option>
-                              <option value="date_taken">Date taken</option>
-                              <option value="text">Text / notes</option>
-                            </select>
+                            <AppInput className="w-36" inputClassName="font-mono" placeholder="Slug" value={e.value||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
+                            <AppSelect
+                              className="w-44"
+                              options={MATRIX_CELL_KIND_OPTIONS}
+                              value={(e.meta?.cell_kind as string) || 'text'}
+                              onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), cell_kind: ev.target.value } } }))}
+                            />
                           </>
                         ) : isColorList ? (
                           <>
-                            <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={e.value||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
-                            <span className="text-[11px] text-gray-500">{e.value}</span>
+                            <input type="color" title="Color" className={uiCx(uiBorders.input, uiRadius.control, 'h-8 w-10 p-0')} value={e.value||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
+                            <span className={uiTypography.helper}>{e.value}</span>
                             {sel === 'project_statuses' && (
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 ml-2">
-                                <label className="flex items-center gap-1 text-xs text-gray-700 whitespace-nowrap">
-                                  <input type="checkbox" checked={typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it)} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), show_in_project: ev.target.checked } } }))} />
-                                  Show in projects
-                                </label>
-                                <label className="flex items-center gap-1 text-xs text-gray-700 whitespace-nowrap">
-                                  <input type="checkbox" checked={typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it)} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), show_in_opportunity: ev.target.checked } } }))} />
-                                  Show in opportunities
-                                </label>
-                                <label className="flex items-center gap-1 text-xs text-gray-700">
-                                  <input type="checkbox" checked={!!e.meta?.allow_edit_proposal} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), allow_edit_proposal: ev.target.checked } } }))} />
-                                  Allow edit proposal/estimate
-                                </label>
-                                <label className="flex items-center gap-1 text-xs text-gray-700">
-                                  <input type="checkbox" checked={!!e.meta?.sets_start_date} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), sets_start_date: ev.target.checked } } }))} />
-                                  Sets start date
-                                </label>
-                                <label className="flex items-center gap-1 text-xs text-gray-700">
-                                  <input type="checkbox" checked={!!e.meta?.sets_end_date} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), sets_end_date: ev.target.checked } } }))} />
-                                  Sets end date
-                                </label>
+                              <div className={uiCx('flex flex-wrap items-center gap-x-3 gap-y-2 ml-2', uiLayout.actionsRow)}>
+                                <AppCheckbox label="Show in projects" checked={typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it)} onChange={(checked)=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), show_in_project: checked } } }))} className="whitespace-nowrap" />
+                                <AppCheckbox label="Show in opportunities" checked={typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it)} onChange={(checked)=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), show_in_opportunity: checked } } }))} className="whitespace-nowrap" />
+                                <AppCheckbox label="Allow edit proposal/estimate" checked={!!e.meta?.allow_edit_proposal} onChange={(checked)=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), allow_edit_proposal: checked } } }))} />
+                                <AppCheckbox label="Sets start date" checked={!!e.meta?.sets_start_date} onChange={(checked)=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), sets_start_date: checked } } }))} />
+                                <AppCheckbox label="Sets end date" checked={!!e.meta?.sets_end_date} onChange={(checked)=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), sets_end_date: checked } } }))} />
                               </div>
                             )}
                           </>
                         ) : (
-                          <input className="border rounded px-2 py-1 text-sm w-40" placeholder="Value" value={e.value||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
+                          <AppInput className="w-40" placeholder="Value" value={e.value||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
                         )}
                         {/* sort index is now auto-assigned and not user-editable */}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isTermsTemplates){ url += `&description=${encodeURIComponent(e.meta?.description||'')}`; } else if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isMatrixSlotsList){ url += `&value=${encodeURIComponent((e.value||'').trim())}&cell_kind=${encodeURIComponent(String(e.meta?.cell_kind || 'text'))}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; const sip = typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it); const sio = typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it); url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; url += `&show_in_project=${sip ? 'true' : 'false'}&show_in_opportunity=${sio ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-brand-red hover:opacity-95">Save</button>
-                        <button onClick={async()=>{ if(!(await confirm({ title: 'Delete item?', description: 'This action cannot be undone.' }))) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">Delete</button>
+                      <div className={uiLayout.actionsRow}>
+                        <AppButton onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isTermsTemplates){ url += `&description=${encodeURIComponent(e.meta?.description||'')}`; } else if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isMatrixSlotsList){ url += `&value=${encodeURIComponent((e.value||'').trim())}&cell_kind=${encodeURIComponent(String(e.meta?.cell_kind || 'text'))}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; const sip = typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it); const sio = typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it); url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; url += `&show_in_project=${sip ? 'true' : 'false'}&show_in_opportunity=${sio ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }}>Save</AppButton>
+                        <AppButton variant="danger" onClick={async()=>{ if(!(await confirm({ title: 'Delete item?', description: 'This action cannot be undone.' }))) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }}>Delete</AppButton>
                       </div>
                     </div>
                   );
-                }) : <div className="p-3 text-sm text-gray-600">No items</div>}
+                }) : <AppEmptyState title="No items" className="border-0 bg-transparent shadow-none" />}
               </div>
             </>
           )}
           </div>
         </div>
       </div>
-      </div>
+      </AppCard>
       )}
 
       {section === 'files' && (
-        <div className="rounded-xl border bg-white p-5">
-          <div className="mb-5 border-b border-gray-100 pb-4">
-            <h2 className="text-sm font-semibold text-gray-900">Files &amp; categories</h2>
-            <p className="mt-1 text-xs text-gray-600">
-              Company-wide folders and standard upload categories used across projects.
-            </p>
-          </div>
+        <AppCard
+          title="Files & categories"
+          subtitle="Company-wide folders and standard upload categories used across projects."
+          bodyClassName={uiSpacing.sectionStack}
+        >
           <div className="grid gap-10 xl:grid-cols-2">
             <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-gray-900">Company file categories</h3>
-              <p className="mt-1 text-xs text-gray-600 mb-4">
-                Top-level areas in Company Files (e.g. HR, Operations).
-              </p>
+              <AppSectionHeader
+                title="Company file categories"
+                description="Top-level areas in Company Files (e.g. HR, Operations)."
+                className="mb-4"
+              />
               <CompanyFilesDepartments />
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-gray-900">Standard file categories</h3>
-              <p className="mt-1 text-xs text-gray-600 mb-4">
-                Labels for uploads and names of default project subfolders.
-              </p>
+              <AppSectionHeader
+                title="Standard file categories"
+                description="Labels for uploads and names of default project subfolders."
+                className="mb-4"
+              />
               <StandardFileCategories />
             </div>
           </div>
-          <div className="mt-10 border-t border-gray-100 pt-8">
-            <h3 className="text-sm font-semibold text-gray-900">Organization logos</h3>
-            <p className="mt-1 text-xs text-gray-600">
-              Upload large PNG or JPEG logos once; reuse them in LMS certificates and other surfaces. Each entry needs a
-              label and an image file.
-            </p>
+          <div className={uiCx('mt-10 border-t border-gray-100 pt-8', uiSpacing.sectionStack)}>
+            <AppSectionHeader
+              title="Organization logos"
+              description="Upload large PNG or JPEG logos once; reuse them in LMS certificates and other surfaces. Each entry needs a label and an image file."
+            />
             <OrganizationLogosSection />
           </div>
-          <div className="mt-10 border-t border-gray-100 pt-8">
-            <h3 className="text-sm font-semibold text-gray-900">Certificate backgrounds</h3>
-            <p className="mt-1 text-xs text-gray-600">
-              Landscape images (PNG, JPEG, WebP) for LMS completion certificates. Authors pick these in the course
-              Certificate tab; upload high-resolution artwork here.
-            </p>
+          <div className={uiCx('mt-10 border-t border-gray-100 pt-8', uiSpacing.sectionStack)}>
+            <AppSectionHeader
+              title="Certificate backgrounds"
+              description="Landscape images (PNG, JPEG, WebP) for LMS completion certificates. Authors pick these in the course Certificate tab; upload high-resolution artwork here."
+            />
             <CertificateBackgroundsSection />
           </div>
-        </div>
+        </AppCard>
       )}
 
       {section === 'templates' && (
-        <div className="space-y-4">
+        <div className={uiSpacing.pageStack}>
           <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
-            <div className="rounded-xl border bg-white p-5 min-w-0">
-              <div className="mb-4 border-b border-gray-100 pb-3">
-                <h2 className="text-sm font-semibold text-gray-900">Permission templates</h2>
-                <p className="mt-1 text-xs text-gray-600">Apply bundles of permissions from a user&apos;s Permissions tab.</p>
-              </div>
+            <AppCard
+              title="Permission templates"
+              subtitle="Apply bundles of permissions from a user's Permissions tab."
+              className="min-w-0"
+            >
               <PermissionTemplatesSection />
-            </div>
-            <div className="rounded-xl border bg-white p-5 min-w-0">
-              <div className="mb-4 border-b border-gray-100 pb-3">
-                <h2 className="text-sm font-semibold text-gray-900">Terms templates</h2>
-                <p className="mt-1 text-xs text-gray-600">Preset terms for proposals and quotes.</p>
-              </div>
+            </AppCard>
+            <AppCard
+              title="Terms templates"
+              subtitle="Preset terms for proposals and quotes."
+              className="min-w-0"
+            >
               <TermsTemplatesSection />
-            </div>
+            </AppCard>
           </div>
-          <div className="rounded-xl border bg-white p-5 min-w-0">
-            <div className="mb-4 border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-semibold text-gray-900">Document creator — background templates</h2>
-              <p className="mt-1 text-xs text-gray-600">
-                Page backgrounds (images) used when building documents in the Document creator (sidebar → Documents).
-              </p>
-            </div>
+          <AppCard
+            title="Document creator — background templates"
+            subtitle="Page backgrounds (images) used when building documents in the Document creator (sidebar → Documents)."
+            className="min-w-0"
+          >
             <DocumentTemplatesTab />
-          </div>
-          <div className="rounded-xl border bg-white p-5 min-w-0">
-            <div className="mb-4 border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-semibold text-gray-900">Document creator — document templates</h2>
-              <p className="mt-1 text-xs text-gray-600">
-                Preset layouts (ordered pages with backgrounds and fields) offered when creating a new document.
-              </p>
-            </div>
+          </AppCard>
+          <AppCard
+            title="Document creator — document templates"
+            subtitle="Preset layouts (ordered pages with backgrounds and fields) offered when creating a new document."
+            className="min-w-0"
+          >
             <DocumentTypesTab />
-          </div>
+          </AppCard>
         </div>
       )}
     </div>
@@ -728,17 +540,15 @@ function OrganizationLogosSection() {
   };
 
   return (
-    <div className="mt-4 space-y-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-gray-50/80 p-4">
-        <div className="min-w-[200px] flex-1">
-          <label className="block text-[11px] font-medium text-gray-500 mb-1">Default label (first file)</label>
-          <input
-            className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
-            placeholder="e.g. Primary mark — full color"
-            value={newLabel}
-            onChange={(e) => setNewLabel(e.target.value)}
-          />
-        </div>
+    <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
+      <div className={uiCx('flex flex-wrap items-end gap-3', uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
+        <AppInput
+          className="min-w-[200px] flex-1"
+          label="Default label (first file)"
+          placeholder="e.g. Primary mark — full color"
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+        />
         <div>
           <input
             ref={fileRef}
@@ -752,19 +562,21 @@ function OrganizationLogosSection() {
               e.target.value = '';
             }}
           />
-          <label
-            htmlFor="org-logo-multi"
-            className={`inline-flex cursor-pointer rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white shadow-sm hover:opacity-95 ${busy ? 'pointer-events-none opacity-60' : ''}`}
+          <AppButton
+            type="button"
+            disabled={busy}
+            loading={busy}
+            onClick={() => fileRef.current?.click()}
           >
             {busy ? 'Uploading…' : 'Choose image(s)…'}
-          </label>
+          </AppButton>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-gray-200">
+      <div className={uiCx('overflow-hidden', uiRadius.control, uiBorders.subtle)}>
         <div className="max-h-[24rem] overflow-auto">
           <table className="w-full min-w-[640px] text-sm">
-            <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            <thead className={uiCx('sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left', uiTypography.overline)}>
               <tr>
                 <th className="w-24 px-3 py-2.5">Preview</th>
                 <th className="min-w-[180px] px-3 py-2.5">Label</th>
@@ -774,14 +586,18 @@ function OrganizationLogosSection() {
             <tbody className="divide-y divide-gray-100 bg-white">
               {isLoading ? (
                 <tr>
-                  <td colSpan={3} className="px-3 py-8 text-center text-gray-500">
+                  <td colSpan={3} className={uiCx('px-3 py-8 text-center', uiTypography.helper)}>
                     Loading…
                   </td>
                 </tr>
               ) : logos.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-3 py-8 text-center text-gray-500">
-                    No logos yet. Upload one or more images above.
+                  <td colSpan={3} className="p-0">
+                    <AppEmptyState
+                      title="No logos yet."
+                      description="Upload one or more images above."
+                      className="border-0 bg-transparent shadow-none"
+                    />
                   </td>
                 </tr>
               ) : (
@@ -794,15 +610,14 @@ function OrganizationLogosSection() {
                           <img
                             src={withFileAccessToken(`/files/${fid}`)}
                             alt=""
-                            className="h-14 w-20 rounded border border-gray-200 object-contain bg-white"
+                            className={uiCx('h-14 w-20 object-contain bg-white', uiRadius.control, uiBorders.subtle)}
                           />
                         ) : (
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className={uiTypography.helper}>—</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          className="w-full min-w-0 rounded-md border border-gray-200 px-2 py-1.5 text-sm"
+                        <AppInput
                           defaultValue={it.label}
                           key={it.id + it.label}
                           onBlur={async (e) => {
@@ -853,9 +668,11 @@ function OrganizationLogosSection() {
                             }}
                           />
                         </label>
-                        <button
+                        <AppButton
                           type="button"
-                          className="text-xs font-medium text-red-600 hover:underline"
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700"
                           onClick={async () => {
                             if (!(await confirm({ title: 'Remove logo?', description: it.label }))) return;
                             try {
@@ -869,7 +686,7 @@ function OrganizationLogosSection() {
                           }}
                         >
                           Delete
-                        </button>
+                        </AppButton>
                       </td>
                     </tr>
                   );
@@ -921,17 +738,15 @@ function CertificateBackgroundsSection() {
   };
 
   return (
-    <div className="mt-4 space-y-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-gray-50/80 p-4">
-        <div className="min-w-[200px] flex-1">
-          <label className="block text-[11px] font-medium text-gray-500 mb-1">Default label (first file)</label>
-          <input
-            className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
-            placeholder="e.g. Corporate landscape — v2"
-            value={newLabel}
-            onChange={(e) => setNewLabel(e.target.value)}
-          />
-        </div>
+    <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
+      <div className={uiCx('flex flex-wrap items-end gap-3', uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
+        <AppInput
+          className="min-w-[200px] flex-1"
+          label="Default label (first file)"
+          placeholder="e.g. Corporate landscape — v2"
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+        />
         <div>
           <input
             ref={fileRef}
@@ -945,19 +760,21 @@ function CertificateBackgroundsSection() {
               e.target.value = '';
             }}
           />
-          <label
-            htmlFor="cert-bg-multi"
-            className={`inline-flex cursor-pointer rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white shadow-sm hover:opacity-95 ${busy ? 'pointer-events-none opacity-60' : ''}`}
+          <AppButton
+            type="button"
+            disabled={busy}
+            loading={busy}
+            onClick={() => fileRef.current?.click()}
           >
             {busy ? 'Uploading…' : 'Choose image(s)…'}
-          </label>
+          </AppButton>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-gray-200">
+      <div className={uiCx('overflow-hidden', uiRadius.control, uiBorders.subtle)}>
         <div className="max-h-[24rem] overflow-auto">
           <table className="w-full min-w-[640px] text-sm">
-            <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            <thead className={uiCx('sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left', uiTypography.overline)}>
               <tr>
                 <th className="w-28 px-3 py-2.5">Preview</th>
                 <th className="min-w-[180px] px-3 py-2.5">Label</th>
@@ -967,14 +784,18 @@ function CertificateBackgroundsSection() {
             <tbody className="divide-y divide-gray-100 bg-white">
               {isLoading ? (
                 <tr>
-                  <td colSpan={3} className="px-3 py-8 text-center text-gray-500">
+                  <td colSpan={3} className={uiCx('px-3 py-8 text-center', uiTypography.helper)}>
                     Loading…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-3 py-8 text-center text-gray-500">
-                    No certificate backgrounds yet. Upload landscape images above.
+                  <td colSpan={3} className="p-0">
+                    <AppEmptyState
+                      title="No certificate backgrounds yet."
+                      description="Upload landscape images above."
+                      className="border-0 bg-transparent shadow-none"
+                    />
                   </td>
                 </tr>
               ) : (
@@ -988,15 +809,14 @@ function CertificateBackgroundsSection() {
                           <img
                             src={pubPreview}
                             alt=""
-                            className="h-12 w-20 rounded border border-gray-200 object-cover bg-white"
+                            className={uiCx('h-12 w-20 object-cover bg-white', uiRadius.control, uiBorders.subtle)}
                           />
                         ) : (
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className={uiTypography.helper}>—</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          className="w-full min-w-0 rounded-md border border-gray-200 px-2 py-1.5 text-sm"
+                        <AppInput
                           defaultValue={it.label}
                           key={it.id + it.label}
                           onBlur={async (e) => {
@@ -1047,9 +867,11 @@ function CertificateBackgroundsSection() {
                             }}
                           />
                         </label>
-                        <button
+                        <AppButton
                           type="button"
-                          className="text-xs font-medium text-red-600 hover:underline"
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700"
                           onClick={async () => {
                             if (!(await confirm({ title: 'Remove background?', description: it.label }))) return;
                             try {
@@ -1063,7 +885,7 @@ function CertificateBackgroundsSection() {
                           }}
                         >
                           Delete
-                        </button>
+                        </AppButton>
                       </td>
                     </tr>
                   );
@@ -1523,25 +1345,24 @@ function PermissionTemplatesSection() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="border rounded-lg p-4 bg-gray-50">
-        <h4 className="font-semibold mb-3 text-sm">Create New Template</h4>
-        <div className="space-y-3">
+    <div className={uiSpacing.sectionStack}>
+      <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
+        <h4 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Create New Template</h4>
+        <div className={uiSpacing.sectionStack}>
+          <AppInput
+            label="Template Name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="e.g., Sales, Field Technician"
+          />
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Template Name</label>
-            <input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g., Sales, Field Technician"
-              className="border rounded px-3 py-2 text-sm w-full"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">Permissions (select all that apply)</label>
+            <div className={uiCx(uiTypography.controlLabel, 'mb-1 block')}>Permissions (select all that apply)</div>
             {renderPermissionCheckboxes(newSelectedKeys, setNewSelectedKeys)}
           </div>
           <div className="flex justify-end">
-            <button
+            <AppButton
+              loading={createMutation.isPending}
+              disabled={createMutation.isPending}
               onClick={() => {
                 if (!newName.trim()) {
                   toast.error('Template name is required');
@@ -1552,34 +1373,32 @@ function PermissionTemplatesSection() {
                   permission_keys: Array.from(newSelectedKeys),
                 });
               }}
-              className="px-4 py-2 rounded bg-brand-red text-white text-sm"
-              disabled={createMutation.isPending}
             >
               Create Template
-            </button>
+            </AppButton>
           </div>
         </div>
       </div>
 
       <div>
-        <h4 className="font-semibold mb-3 text-sm">Existing Templates</h4>
+        <h4 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Existing Templates</h4>
         {loadingTemplates ? (
-          <div className="p-4 text-sm text-gray-500 border rounded">Loading...</div>
+          <div className={uiCx('p-4', uiTypography.helper, uiRadius.control, uiBorders.subtle)}>Loading...</div>
         ) : (templates as PermTemplate[]).length === 0 ? (
-          <div className="p-4 text-sm text-gray-500 border rounded">No permission templates yet</div>
+          <AppEmptyState title="No permission templates yet" />
         ) : (
-          <div className="space-y-2">
+          <div className={uiSpacing.sectionStack}>
             {(templates as PermTemplate[]).map((t) => {
               const isExpanded = expandedId === t.id;
               const e = getEdit(t);
               return (
-                <div key={t.id} className="border rounded-lg bg-white overflow-hidden">
+                <div key={t.id} className={uiCx('overflow-hidden', uiRadius.control, uiBorders.subtle, uiColors.surface)}>
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : t.id)}
                     className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors text-left"
                   >
-                    <span className="font-medium text-sm text-gray-900">{t.name}</span>
-                    <span className="text-xs text-gray-500">
+                    <span className={uiTypography.sectionTitle}>{t.name}</span>
+                    <span className={uiTypography.helper}>
                       {(t.permission_keys || []).length} permission(s)
                     </span>
                     <svg
@@ -1592,23 +1411,20 @@ function PermissionTemplatesSection() {
                     </svg>
                   </button>
                   {isExpanded && (
-                    <div className="px-4 pb-4 border-t bg-gray-50">
-                      <div className="space-y-3 pt-3">
+                    <div className={uiCx('px-4 pb-4 border-t', uiColors.surfaceSubtle)}>
+                      <div className={uiCx('pt-3', uiSpacing.sectionStack)}>
+                        <AppInput
+                          label="Template Name"
+                          value={e.name}
+                          onChange={(ev) =>
+                            setEdits((s) => ({
+                              ...s,
+                              [t.id]: { ...(s[t.id] || e), name: ev.target.value },
+                            }))
+                          }
+                        />
                         <div>
-                          <label className="block text-xs text-gray-600 mb-1">Template Name</label>
-                          <input
-                            value={e.name}
-                            onChange={(ev) =>
-                              setEdits((s) => ({
-                                ...s,
-                                [t.id]: { ...(s[t.id] || e), name: ev.target.value },
-                              }))
-                            }
-                            className="border rounded px-3 py-2 text-sm w-full"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-600 mb-1">Permissions</label>
+                          <div className={uiCx(uiTypography.controlLabel, 'mb-1 block')}>Permissions</div>
                           {renderPermissionCheckboxes(
                             e.selectedKeys,
                             (next) =>
@@ -1618,8 +1434,10 @@ function PermissionTemplatesSection() {
                               }))
                           )}
                         </div>
-                        <div className="flex justify-end gap-2">
-                          <button
+                        <div className={uiCx('flex justify-end gap-2', uiLayout.actionsRow)}>
+                          <AppButton
+                            loading={updateMutation.isPending}
+                            disabled={updateMutation.isPending}
                             onClick={() =>
                               updateMutation.mutate({
                                 id: t.id,
@@ -1627,29 +1445,29 @@ function PermissionTemplatesSection() {
                                 permission_keys: Array.from(e.selectedKeys),
                               })
                             }
-                            className="px-3 py-1.5 rounded bg-black text-white text-sm"
-                            disabled={updateMutation.isPending}
                           >
                             Save
-                          </button>
-                          <button
-                            onClick={() => duplicateMutation.mutate(t.id)}
-                            className="px-3 py-1.5 rounded border text-sm"
+                          </AppButton>
+                          <AppButton
+                            variant="secondary"
+                            loading={duplicateMutation.isPending}
                             disabled={duplicateMutation.isPending}
+                            onClick={() => duplicateMutation.mutate(t.id)}
                           >
                             Duplicate
-                          </button>
-                          <button
+                          </AppButton>
+                          <AppButton
+                            variant="secondary"
+                            loading={deleteMutation.isPending}
+                            disabled={deleteMutation.isPending}
                             onClick={async () => {
                               if (!(await confirm({ title: 'Delete template?', description: 'This action cannot be undone.' })))
                                 return;
                               deleteMutation.mutate(t.id);
                             }}
-                            className="px-3 py-1.5 rounded bg-gray-100 text-sm"
-                            disabled={deleteMutation.isPending}
                           >
                             Delete
-                          </button>
+                          </AppButton>
                         </div>
                       </div>
                     </div>
@@ -1729,32 +1547,27 @@ function TermsTemplatesSection(){
   const getEdit = (it: Item): Item => edits[it.id] || it;
 
   return (
-    <div className="space-y-4">
-      {/* Add New Template */}
-      <div className="border rounded-lg p-4 bg-gray-50">
-        <h4 className="font-semibold mb-3 text-sm">Create New Template</h4>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">Template Name</label>
-            <input
-              value={newTemplateName}
-              onChange={e=>setNewTemplateName(e.target.value)}
-              placeholder="e.g., Standard Terms, Commercial Terms"
-              className="border rounded px-3 py-2 text-sm w-full"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">Terms Description</label>
-            <textarea
-              value={newTemplateDescription}
-              onChange={e=>setNewTemplateDescription(e.target.value)}
-              placeholder="Enter the full terms text..."
-              className="border rounded px-3 py-2 text-sm w-full"
-              rows={6}
-            />
-          </div>
+    <div className={uiSpacing.sectionStack}>
+      <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
+        <h4 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Create New Template</h4>
+        <div className={uiSpacing.sectionStack}>
+          <AppInput
+            label="Template Name"
+            value={newTemplateName}
+            onChange={e=>setNewTemplateName(e.target.value)}
+            placeholder="e.g., Standard Terms, Commercial Terms"
+          />
+          <AppTextarea
+            label="Terms Description"
+            value={newTemplateDescription}
+            onChange={e=>setNewTemplateDescription(e.target.value)}
+            placeholder="Enter the full terms text..."
+            rows={6}
+          />
           <div className="flex justify-end">
-            <button
+            <AppButton
+              loading={createMutation.isPending}
+              disabled={createMutation.isPending}
               onClick={()=>{
                 if(!newTemplateName.trim()){
                   toast.error('Template name is required');
@@ -1762,35 +1575,31 @@ function TermsTemplatesSection(){
                 }
                 createMutation.mutate({ name: newTemplateName.trim(), description: newTemplateDescription });
               }}
-              className="px-4 py-2 rounded bg-brand-red text-white text-sm"
-              disabled={createMutation.isPending}
             >
               Create Template
-            </button>
+            </AppButton>
           </div>
         </div>
       </div>
 
-      {/* Existing Templates */}
       <div>
-        <h4 className="font-semibold mb-3 text-sm">Existing Templates</h4>
+        <h4 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Existing Templates</h4>
         {isLoading ? (
-          <div className="p-4 text-sm text-gray-500 border rounded">Loading...</div>
+          <div className={uiCx('p-4', uiTypography.helper, uiRadius.control, uiBorders.subtle)}>Loading...</div>
         ) : templates.length === 0 ? (
-          <div className="p-4 text-sm text-gray-500 border rounded">No templates created yet</div>
+          <AppEmptyState title="No templates created yet" />
         ) : (
-          <div className="space-y-2">
+          <div className={uiSpacing.sectionStack}>
             {templates.map((template) => {
               const e = getEdit(template);
               const isExpanded = expandedTemplates.has(template.id);
               return (
-                <div key={template.id} className="border rounded-lg bg-white overflow-hidden">
-                  {/* Header - Always visible */}
+                <div key={template.id} className={uiCx('overflow-hidden', uiRadius.control, uiBorders.subtle, uiColors.surface)}>
                   <button
                     onClick={() => toggleTemplate(template.id)}
                     className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors text-left"
                   >
-                    <span className="font-medium text-sm text-gray-900">{template.label || 'Unnamed Template'}</span>
+                    <span className={uiTypography.sectionTitle}>{template.label || 'Unnamed Template'}</span>
                     <svg 
                       className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                       fill="none" 
@@ -1801,29 +1610,24 @@ function TermsTemplatesSection(){
                     </svg>
                   </button>
                   
-                  {/* Content - Collapsible */}
                   {isExpanded && (
-                    <div className="px-4 pb-4 border-t bg-gray-50">
-                      <div className="space-y-3 pt-3">
-                        <div>
-                          <label className="block text-xs text-gray-600 mb-1">Template Name</label>
-                          <input
-                            value={e.label}
-                            onChange={ev=> setEdits(s=>({ ...s, [template.id]: { ...(s[template.id]||template), label: ev.target.value } }))}
-                            className="border rounded px-3 py-2 text-sm w-full"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-600 mb-1">Terms Description</label>
-                          <textarea
-                            value={e.meta?.description||''} 
-                            onChange={ev=> setEdits(s=>({ ...s, [template.id]: { ...(s[template.id]||template), meta: { ...(s[template.id]?.meta||template.meta||{}), description: ev.target.value } } }))}
-                            className="border rounded px-3 py-2 text-sm w-full"
-                            rows={6}
-                          />
-                        </div>
-                        <div className="flex justify-end gap-2">
-                          <button
+                    <div className={uiCx('px-4 pb-4 border-t', uiColors.surfaceSubtle)}>
+                      <div className={uiCx('pt-3', uiSpacing.sectionStack)}>
+                        <AppInput
+                          label="Template Name"
+                          value={e.label}
+                          onChange={ev=> setEdits(s=>({ ...s, [template.id]: { ...(s[template.id]||template), label: ev.target.value } }))}
+                        />
+                        <AppTextarea
+                          label="Terms Description"
+                          value={e.meta?.description||''}
+                          onChange={ev=> setEdits(s=>({ ...s, [template.id]: { ...(s[template.id]||template), meta: { ...(s[template.id]?.meta||template.meta||{}), description: ev.target.value } } }))}
+                          rows={6}
+                        />
+                        <div className={uiCx('flex justify-end gap-2', uiLayout.actionsRow)}>
+                          <AppButton
+                            loading={updateMutation.isPending}
+                            disabled={updateMutation.isPending}
                             onClick={async()=>{
                               try{
                                 await updateMutation.mutateAsync({
@@ -1834,21 +1638,20 @@ function TermsTemplatesSection(){
                                 setEdits(s=>{ const {[template.id]:_, ...rest} = s; return rest; });
                               }catch(_e){}
                             }}
-                            className="px-3 py-1.5 rounded bg-black text-white text-sm"
-                            disabled={updateMutation.isPending}
                           >
                             Save
-                          </button>
-                          <button
+                          </AppButton>
+                          <AppButton
+                            variant="secondary"
+                            loading={deleteMutation.isPending}
+                            disabled={deleteMutation.isPending}
                             onClick={async()=>{
                               if(!(await confirm({ title: 'Delete template?', description: 'This action cannot be undone.' }))) return;
                               deleteMutation.mutate(template.id);
                             }}
-                            className="px-3 py-1.5 rounded bg-gray-100 text-sm"
-                            disabled={deleteMutation.isPending}
                           >
                             Delete
-                          </button>
+                          </AppButton>
                         </div>
                       </div>
                     </div>
@@ -1925,27 +1728,27 @@ function CompanyFilesDepartments(){
   const getEdit = (it: Item): Item => edits[it.id] || it;
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        <input
+    <div className={uiSpacing.sectionStack}>
+      <div className={uiCx('flex flex-wrap gap-2', uiLayout.actionsRow)}>
+        <AppInput
+          className="min-w-[200px] flex-1"
           value={newDept}
           onChange={e=>setNewDept(e.target.value)}
           placeholder="New category name"
-          className="min-w-[200px] flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400"
           onKeyDown={e=>{ if(e.key==='Enter' && newDept.trim()){ createMutation.mutate(newDept.trim()); } }}
         />
-        <button
-          onClick={()=>newDept.trim() && createMutation.mutate(newDept.trim())}
-          className="rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white shadow-sm hover:opacity-95 disabled:opacity-50"
+        <AppButton
+          loading={createMutation.isPending}
           disabled={createMutation.isPending}
+          onClick={()=>newDept.trim() && createMutation.mutate(newDept.trim())}
         >
           Add
-        </button>
+        </AppButton>
       </div>
-      <div className="overflow-hidden rounded-lg border border-gray-200">
+      <div className={uiCx('overflow-hidden', uiRadius.control, uiBorders.subtle)}>
         <div className="max-h-72 overflow-y-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            <thead className={uiCx('sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left', uiTypography.overline)}>
               <tr>
                 <th className="w-10 px-2 py-2.5">Order</th>
                 <th className="px-3 py-2.5">Name</th>
@@ -1954,9 +1757,9 @@ function CompanyFilesDepartments(){
             </thead>
             <tbody className="divide-y divide-gray-100">
               {isLoading ? (
-                <tr><td colSpan={3} className="px-3 py-8 text-center text-gray-500">Loading…</td></tr>
+                <tr><td colSpan={3} className={uiCx('px-3 py-8 text-center', uiTypography.helper)}>Loading…</td></tr>
               ) : sortedDepartments.length === 0 ? (
-                <tr><td colSpan={3} className="px-3 py-8 text-center text-gray-500">No categories yet.</td></tr>
+                <tr><td colSpan={3} className="p-0"><AppEmptyState title="No categories yet." className="border-0 bg-transparent shadow-none" /></td></tr>
               ) : (
                 sortedDepartments.map((d, i)=> {
                   const e = getEdit(d);
@@ -1964,24 +1767,28 @@ function CompanyFilesDepartments(){
                     <tr key={d.id} className="bg-white hover:bg-gray-50/80">
                       <td className="whitespace-nowrap px-2 py-2 align-middle">
                         <div className="flex flex-col gap-0.5">
-                          <button
+                          <AppButton
                             type="button"
-                            className="rounded border border-gray-200 px-1 text-[10px] leading-none disabled:opacity-30"
+                            variant="secondary"
+                            size="sm"
+                            className="h-auto px-1 py-0 text-[10px] leading-none"
                             disabled={i===0}
                             onClick={()=>move(i,-1)}
                             title="Move up"
-                          >↑</button>
-                          <button
+                          >↑</AppButton>
+                          <AppButton
                             type="button"
-                            className="rounded border border-gray-200 px-1 text-[10px] leading-none disabled:opacity-30"
+                            variant="secondary"
+                            size="sm"
+                            className="h-auto px-1 py-0 text-[10px] leading-none"
                             disabled={i===sortedDepartments.length-1}
                             onClick={()=>move(i,1)}
                             title="Move down"
-                          >↓</button>
+                          >↓</AppButton>
                         </div>
                       </td>
                       <td className="px-2 py-2 align-middle">
-                        <input
+                        <AppInput
                           value={e.label}
                           onChange={ev=> setEdits(s=>({ ...s, [d.id]: { ...(s[d.id]||d), label: ev.target.value } }))}
                           onBlur={()=>{
@@ -1991,22 +1798,24 @@ function CompanyFilesDepartments(){
                               setEdits(s=>{ const {[d.id]:_, ...rest} = s; return rest; });
                             }
                           }}
-                          className="w-full min-w-0 rounded-md border border-gray-200 px-2 py-1.5 text-sm"
                         />
                       </td>
                       <td className="px-3 py-2 text-right align-middle">
-                        <button
+                        <AppButton
                           type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700"
+                          loading={deleteMutation.isPending}
+                          disabled={deleteMutation.isPending}
                           onClick={()=>{
                             if(confirm(`Delete file category "${d.label}"?`)){
                               deleteMutation.mutate(d.id);
                             }
                           }}
-                          className="text-xs font-medium text-red-600 hover:underline"
-                          disabled={deleteMutation.isPending}
                         >
                           Delete
-                        </button>
+                        </AppButton>
                       </td>
                     </tr>
                   );
@@ -2115,43 +1924,30 @@ function StandardFileCategories(){
   };
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-4">
-        <div className="text-xs font-semibold text-gray-700">Add category</div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="block text-[11px] font-medium text-gray-500 mb-1">Id (slug)</label>
-            <input className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm" placeholder="e.g. as-built-docs" value={newSlug} onChange={e=>setNewSlug(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-[11px] font-medium text-gray-500 mb-1">Display / folder name</label>
-            <input className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm" placeholder="Shown in UI and folder name" value={newName} onChange={e=>setNewName(e.target.value)} />
-          </div>
+    <div className={uiSpacing.sectionStack}>
+      <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
+        <div className={uiTypography.sectionTitle}>Add category</div>
+        <div className={uiCx('mt-3 grid gap-3 sm:grid-cols-2', uiLayout.sectionGrid2)}>
+          <AppInput label="Id (slug)" placeholder="e.g. as-built-docs" value={newSlug} onChange={e=>setNewSlug(e.target.value)} />
+          <AppInput label="Display / folder name" placeholder="Shown in UI and folder name" value={newName} onChange={e=>setNewName(e.target.value)} />
         </div>
-        <div className="mt-3 flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="block text-[11px] font-medium text-gray-500 mb-1">Icon</label>
-            <input className="w-14 rounded-md border border-gray-200 px-2 py-2 text-center text-sm" title="Emoji" value={newIcon} onChange={e=>setNewIcon(e.target.value)} />
-          </div>
-          <div className="min-w-[180px] flex-1">
-            <label className="block text-[11px] font-medium text-gray-500 mb-1">Description (optional)</label>
-            <input className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm" value={newDesc} onChange={e=>setNewDesc(e.target.value)} />
-          </div>
-          <button
-            type="button"
-            className="rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white shadow-sm hover:opacity-95 disabled:opacity-50"
+        <div className={uiCx('mt-3 flex flex-wrap gap-3 items-end', uiLayout.actionsRow)}>
+          <AppInput className="w-14" label="Icon" title="Emoji" inputClassName="text-center" value={newIcon} onChange={e=>setNewIcon(e.target.value)} />
+          <AppInput className="min-w-[180px] flex-1" label="Description (optional)" value={newDesc} onChange={e=>setNewDesc(e.target.value)} />
+          <AppButton
+            loading={createMutation.isPending}
             disabled={createMutation.isPending || !newSlug.trim()}
             onClick={()=> createMutation.mutate({ slug: newSlug, name: newName, icon: newIcon, desc: newDesc })}
           >
             Add category
-          </button>
+          </AppButton>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-gray-200">
+      <div className={uiCx('overflow-hidden', uiRadius.control, uiBorders.subtle)}>
         <div className="max-h-[28rem] overflow-x-auto overflow-y-auto">
           <table className="w-full min-w-[720px] text-sm">
-            <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            <thead className={uiCx('sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left', uiTypography.overline)}>
               <tr>
                 <th className="w-10 px-2 py-2.5"> </th>
                 <th className="w-12 px-2 py-2.5">Icon</th>
@@ -2163,9 +1959,9 @@ function StandardFileCategories(){
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
               {isLoading ? (
-                <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-500">Loading…</td></tr>
+                <tr><td colSpan={6} className={uiCx('px-3 py-8 text-center', uiTypography.helper)}>Loading…</td></tr>
               ) : sorted.length === 0 ? (
-                <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-500">No categories.</td></tr>
+                <tr><td colSpan={6} className="p-0"><AppEmptyState title="No categories." className="border-0 bg-transparent shadow-none" /></td></tr>
               ) : (
                 sorted.map((row: any, i: number)=>{
                   const e = getEdit(row);
@@ -2176,48 +1972,42 @@ function StandardFileCategories(){
                     <tr key={row.itemId} className="align-top hover:bg-gray-50/50">
                       <td className="whitespace-nowrap px-2 py-2">
                         <div className="flex flex-col gap-0.5">
-                          <button type="button" className="rounded border border-gray-200 px-1 text-[10px] leading-none disabled:opacity-30" disabled={i===0} onClick={()=>move(i,-1)} title="Move up">↑</button>
-                          <button type="button" className="rounded border border-gray-200 px-1 text-[10px] leading-none disabled:opacity-30" disabled={i===sorted.length-1} onClick={()=>move(i,1)} title="Move down">↓</button>
+                          <AppButton type="button" variant="secondary" size="sm" className="h-auto px-1 py-0 text-[10px] leading-none" disabled={i===0} onClick={()=>move(i,-1)} title="Move up">↑</AppButton>
+                          <AppButton type="button" variant="secondary" size="sm" className="h-auto px-1 py-0 text-[10px] leading-none" disabled={i===sorted.length-1} onClick={()=>move(i,1)} title="Move down">↓</AppButton>
                         </div>
                       </td>
                       <td className="px-2 py-2">
-                        <input
-                          className="w-11 rounded-md border border-gray-200 px-1 py-1.5 text-center text-sm"
-                          value={icon}
-                          onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), icon: ev.target.value } }))}
-                        />
+                        <AppInput className="w-11" inputClassName="text-center px-1" value={icon} onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), icon: ev.target.value } }))} />
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm"
-                          value={name}
-                          onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), name: ev.target.value } }))}
-                        />
+                        <AppInput value={name} onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), name: ev.target.value } }))} />
                       </td>
                       <td className="px-3 py-2">
-                        <span className="font-mono text-[11px] text-gray-500 break-all">{row.id}</span>
+                        <span className={uiCx('font-mono break-all', uiTypography.helper)}>{row.id}</span>
                       </td>
                       <td className="px-3 py-2">
-                        <textarea
-                          className="w-full resize-y rounded-md border border-gray-200 px-2 py-1.5 text-xs min-h-[2.5rem]"
+                        <AppTextarea
+                          textareaClassName="min-h-[2.5rem] text-xs"
                           rows={2}
                           placeholder="—"
                           value={description}
                           onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), description: ev.target.value } }))}
                         />
                       </td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          className="mr-2 rounded-md bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                      <td className={uiCx('px-3 py-2 text-right whitespace-nowrap', uiLayout.actionsRow)}>
+                        <AppButton
+                          className="mr-2"
+                          loading={updateMutation.isPending}
                           disabled={updateMutation.isPending}
                           onClick={()=> saveRow(row)}
                         >
                           Save
-                        </button>
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                        </AppButton>
+                        <AppButton
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700"
+                          loading={deleteMutation.isPending}
                           disabled={deleteMutation.isPending}
                           onClick={async ()=>{
                             const result = await confirmDlg({
@@ -2230,7 +2020,7 @@ function StandardFileCategories(){
                           }}
                         >
                           Delete
-                        </button>
+                        </AppButton>
                       </td>
                     </tr>
                   );
@@ -2240,7 +2030,7 @@ function StandardFileCategories(){
           </table>
         </div>
       </div>
-      <p className="text-[11px] text-gray-500">
+      <p className={uiTypography.helper}>
         The id is stored on uploaded files; changing display name does not rewrite existing file rows.
       </p>
     </div>

@@ -1,4 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { Download, RefreshCw } from 'lucide-react';
+import {
+  AppButton,
+  AppCard,
+  AppDatePicker,
+  getAppTabButtonClassName,
+  uiCx,
+  uiLayout,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 export type DatePresetId = '7d' | '14d' | '30d' | '90d' | 'qtd' | 'custom';
 
@@ -33,11 +44,6 @@ export function presetToRange(preset: DatePresetId): { from: string; to: string 
   return { from: isoLocalDate(start), to };
 }
 
-/**
- * Sticky toolbar for the Insights page: preset chips on the left, optional
- * custom date inputs (only when Custom is selected), and the Export action on
- * the right. Brand-red accent for the active preset matches CommunityPageHeader.
- */
 export function InsightsToolbar({
   preset,
   onPresetChange,
@@ -61,12 +67,6 @@ export function InsightsToolbar({
   onRefresh: () => void;
   isRefreshing?: boolean;
 }) {
-  // Local mirror of the date inputs so the typed value isn't sent on every keystroke.
-  const [localFrom, setLocalFrom] = useState(dateFrom);
-  const [localTo, setLocalTo] = useState(dateTo);
-  useEffect(() => setLocalFrom(dateFrom), [dateFrom]);
-  useEffect(() => setLocalTo(dateTo), [dateTo]);
-
   const summary = useMemo(() => {
     if (preset === 'custom') return `${dateFrom} → ${dateTo}`;
     const found = PRESETS.find((p) => p.id === preset);
@@ -75,9 +75,9 @@ export function InsightsToolbar({
 
   return (
     <div className="sticky top-0 z-20 min-w-0 max-w-full">
-      <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm min-w-0 max-w-full overflow-hidden">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-2 flex-wrap">
+      <AppCard bodyClassName={uiSpacing.cardPadding}>
+        <div className={uiCx('flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between')}>
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
             {PRESETS.map((p) => {
               const active = p.id === preset;
               return (
@@ -85,11 +85,8 @@ export function InsightsToolbar({
                   key={p.id}
                   type="button"
                   onClick={() => onPresetChange(p.id)}
-                  className={
-                    active
-                      ? 'px-3 py-1.5 text-xs font-semibold rounded-full bg-brand-red text-white shadow-sm transition-colors'
-                      : 'px-3 py-1.5 text-xs font-medium rounded-full text-gray-600 bg-gray-50 hover:bg-gray-100 border border-transparent transition-colors'
-                  }
+                  className={getAppTabButtonClassName(active)}
+                  aria-pressed={active}
                 >
                   {p.label}
                 </button>
@@ -97,76 +94,54 @@ export function InsightsToolbar({
             })}
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-end')}>
             {preset === 'custom' ? (
               <>
-                <div className="flex items-center gap-1.5">
-                  <label className="text-[10px] uppercase tracking-wide text-gray-500" htmlFor="insights-date-from">
-                    From
-                  </label>
-                  <input
-                    id="insights-date-from"
-                    type="date"
-                    value={localFrom}
-                    max={localTo}
-                    onChange={(e) => setLocalFrom(e.target.value)}
-                    onBlur={(e) => onDateFromChange(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-red/40"
-                  />
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <label className="text-[10px] uppercase tracking-wide text-gray-500" htmlFor="insights-date-to">
-                    To
-                  </label>
-                  <input
-                    id="insights-date-to"
-                    type="date"
-                    value={localTo}
-                    min={localFrom}
-                    onChange={(e) => setLocalTo(e.target.value)}
-                    onBlur={(e) => onDateToChange(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-red/40"
-                  />
-                </div>
+                <AppDatePicker
+                  label="From"
+                  value={dateFrom}
+                  max={dateTo}
+                  onChange={(e) => onDateFromChange(e.target.value)}
+                  className="min-w-[10rem]"
+                />
+                <AppDatePicker
+                  label="To"
+                  value={dateTo}
+                  min={dateFrom}
+                  onChange={(e) => onDateToChange(e.target.value)}
+                  className="min-w-[10rem]"
+                />
               </>
             ) : (
-              <span className="text-xs text-gray-500 hidden sm:inline-block">{summary}</span>
+              <span className={uiCx(uiTypography.helper, 'hidden sm:inline-block')}>{summary}</span>
             )}
 
-            <button
+            <AppButton
               type="button"
+              variant="secondary"
+              size="sm"
+              leftIcon={<RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />}
               onClick={onRefresh}
               disabled={isRefreshing}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
               title="Refresh data"
             >
-              <svg
-                className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v6h6M20 20v-6h-6M5 13a7 7 0 0011.95 4.95M19 11a7 7 0 00-11.95-4.95" />
-              </svg>
               Refresh
-            </button>
+            </AppButton>
 
-            <button
+            <AppButton
               type="button"
+              variant="secondary"
+              size="sm"
+              leftIcon={<Download className="h-3.5 w-3.5" />}
               onClick={onExport}
               disabled={isExporting}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
               title="Export CSV"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h6l5 5v9a2 2 0 01-2 2z" />
-              </svg>
               Export CSV
-            </button>
+            </AppButton>
           </div>
         </div>
-      </div>
+      </AppCard>
     </div>
   );
 }

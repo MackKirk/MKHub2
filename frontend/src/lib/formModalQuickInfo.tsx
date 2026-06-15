@@ -422,6 +422,125 @@ export const USER_REPORTS_FIELD_HINTS = {
   to_date: 'To date\n\nLatest occurrence date to include.',
 } as const;
 
+/** Field hints for employee Permissions tab. */
+export const USER_PERMISSIONS_FIELD_HINTS = {
+  admin: 'Administrator access\n\nGrants full system access and bypasses all permission checks below.',
+  template: 'Permission template\n\nPrefill this user\'s permissions from a saved template bundle.',
+} as const;
+
+/** Employee permissions tab — overview for HR admins. */
+export const employeePermissionsTabQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Manage granular access for this employee — area permissions, project line scopes, customer tabs, and the
+      administrator role.
+    </>
+  ),
+  howToUse: (
+    <>
+      Expand each category to adjust view/edit permissions. Use a {uiLabel('Permission template')} to prefill from a
+      bundle, then save from the bar at the bottom of the page.
+    </>
+  ),
+  behavior: (
+    <>
+      Role permissions from the system are combined with overrides here. Administrator access bypasses all checks.
+      Permissions marked WIP are not enforced yet.
+    </>
+  ),
+  actions: (
+    <>
+      Changes are stored when you {uiLabel('Save')} from the sticky footer on this tab (or the inline save button on
+      other profile pages).
+    </>
+  ),
+});
+
+/** Employee activity tab — sign-in detail modal. */
+export const employeeActivitySignInQuickInfo = formModalQuickInfo({
+  purpose: <>View one sign-in event for this employee — time, path, and request identifier when available.</>,
+  howToUse: <>Click a row in the sign-ins list to open this detail view.</>,
+  behavior: <>Times are shown in Vancouver (America/Vancouver) local time.</>,
+  actions: <>{uiLabel('Close')} returns to the activity list.</>,
+});
+
+/** Employee activity tab — audit action detail modal. */
+export const employeeActivityAuditQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>Inspect one audit record for actions this employee performed in the system — entity, change payload, and context.</>
+  ),
+  howToUse: <>Click a row in the audit list to load full details for that entry.</>,
+  behavior: (
+    <>
+      Changes and context appear as JSON when the server stored them. Large payloads are scrollable inside the modal.
+    </>
+  ),
+  actions: <>{uiLabel('Close')} returns to the activity list.</>,
+});
+
+/** Field hints for employee Reviews legacy import (`Title\\n\\nBody`). */
+export const USER_REVIEWS_IMPORT_FIELD_HINTS = {
+  cycle: 'Review cycle\n\nChoose a cycle whose form template labels match the legacy question text.',
+  supervisor: 'Supervisor\n\nThe user who completed and signed the legacy supervisor review.',
+  legacy_json: 'Legacy JSON\n\nPaste or upload the JSON array exported from the previous platform.',
+} as const;
+
+/** Employee review submission — read-only detail from assignments list. */
+export const employeeReviewSubmissionQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Read-only view of a submitted employee review — form answers, rating scales, and supervisor comments when
+      present.
+    </>
+  ),
+  howToUse: (
+    <>
+      Click a row in the assignments list to open this view. Use the compare link to open side-by-side review data for
+      this cycle.
+    </>
+  ),
+  behavior: (
+    <>
+      Only submitted assignments show answers. Draft or in-progress assignments display a short message instead of the
+      form.
+    </>
+  ),
+  actions: <>{uiLabel('Close')} returns to the assignments list.</>,
+});
+
+/** HR legacy import — self or supervisor review from previous platform. */
+export function employeeLegacyReviewImportQuickInfo(kind: 'self' | 'supervisor'): ReactNode {
+  const reviewLabel = kind === 'self' ? 'self-review' : 'supervisor review';
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        Import a legacy {reviewLabel} JSON export into a review cycle for this employee — maps questions to the current
+        form template.
+      </>
+    ),
+    howToUse: (
+      <>
+        Select a {uiLabel('Review cycle')} whose template labels match legacy{' '}
+        <code className="text-[11px] bg-gray-100 px-1 rounded">question</code> text.
+        {kind === 'supervisor' ? ` Choose the ${uiLabel('Supervisor')} who signed the legacy form.` : ''} Paste or
+        upload {uiLabel('Legacy JSON')}, run {uiLabel('Preview')}, then {uiLabel('Apply import')}.
+      </>
+    ),
+    behavior: (
+      <>
+        Preview shows mapped fields, unmapped questions, and warnings before anything is saved. Apply only after a
+        successful preview.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Cancel')} closes without importing. {uiLabel('Preview')} validates the JSON. {uiLabel('Apply import')}{' '}
+        creates the assignment and stores answers.
+      </>
+    ),
+  });
+}
+
 /** Employee loans — create a new loan agreement. */
 export const employeeLoanCreateQuickInfo = formModalQuickInfo({
   purpose: (
@@ -1430,6 +1549,64 @@ export const userSalaryEntryQuickInfo = formModalQuickInfo({
   ),
 });
 
+/** HR Onboarding — signature template editor (base document PDF). */
+export const onboardingSignatureTemplateQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Place signature and data fields on the base PDF so new hires and other signers know exactly what to complete when
+      this document is assigned.
+    </>
+  ),
+  howToUse: (
+    <>
+      Scroll the PDF or use {uiLabel('Page')} ‹ › to choose a page. Under {uiLabel('Signature setup')}, click a field
+      type to add it where you are currently looking. Drag a field to move it; use the corner handle to resize. Select a
+      field to edit {uiLabel('Field properties')} in the right panel.
+    </>
+  ),
+  behavior: (
+    <>
+      New fields are placed in the part of the PDF visible in the scroll area. Saved positions use PDF coordinates. With
+      a field selected, use Ctrl+C / Ctrl+V (Cmd on Mac) to copy and paste a duplicate on the page in view.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save template')} stores field placements for this document. {uiLabel('Cancel')} closes the editor; you
+      will be asked to confirm if there are unsaved changes.
+    </>
+  ),
+});
+
+/** HR Onboarding — base document preferences (Onboarding Admin). */
+export const onboardingDocPreferencesQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Configure how this base PDF is assigned, when it becomes available for signature, and what new hires see during
+      onboarding.
+    </>
+  ),
+  howToUse: (
+    <>
+      Use {uiLabel('Assignment')} for the new hire or specific signers. Set {uiLabel('Signing and deadlines')} and{' '}
+      {uiLabel('Availability and notifications')} for timing. Optional {uiLabel('Display and messaging')} overrides the
+      title and notification text.
+    </>
+  ),
+  behavior: (
+    <>
+      Inactive documents are skipped during onboarding. Required documents that remain unsigned after the deadline may
+      block app access. Signed PDFs are always stored in the new hire&apos;s HR documents folder.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save')} applies these rules for future onboarding assignments. {uiLabel('Cancel')} closes without
+      saving changes.
+    </>
+  ),
+});
+
 /** Company Files — folder permissions. */
 export const companyFilesPermissionsQuickInfo = formModalQuickInfo({
   purpose: <>Control who can access this folder when it is not public to all users.</>,
@@ -1445,3 +1622,99 @@ export const companyFilesPermissionsQuickInfo = formModalQuickInfo({
     </>
   ),
 });
+
+/** Community Groups — field hints for create / manage modals. */
+export const communityGroupFieldHints = {
+  name: 'Name\n\nDisplay name shown on group cards and when targeting announcements. Required.',
+  description:
+    'Description\n\nOptional notes about who belongs in this group. Visible to collaborators with access.',
+  photo: 'Photo\n\nOptional image for the group card. After choosing an image, save Details to apply it.',
+  memberSearch: 'Search employees\n\nFilter the employee list by name to add or remove members.',
+  members:
+    'Members\n\nPeople in this group receive announcements targeted to it. The group creator is always included.',
+  deleteGroup:
+    'Delete group\n\nPermanently removes the group and member links. Announcements already sent are not affected.',
+} as const;
+
+/** Community Groups — create audience group. */
+export const createCommunityGroupQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Create an audience group to target community announcements — for example, a warehouse team or regional office.
+    </>
+  ),
+  howToUse: (
+    <>
+      Enter a {uiLabel('Name')} and optionally a {uiLabel('Description')} so collaborators know who the group is for.
+    </>
+  ),
+  behavior: <>After creation, open the group to add members and optionally set a photo.</>,
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without creating. {uiLabel('Create group')} saves the group and adds it to your list.
+    </>
+  ),
+});
+
+type ManageCommunityGroupQuickInfoTab = 'details' | 'members' | 'danger' | 'view';
+
+/** Community Groups — manage / view group (tab-aware for owners). */
+export function manageCommunityGroupQuickInfo(tab: ManageCommunityGroupQuickInfoTab): ReactNode {
+  if (tab === 'view') {
+    return formModalQuickInfo({
+      purpose: <>View who belongs to this group and any notes the creator added.</>,
+      howToUse: <>Member count and description are read-only. Only the group creator can edit settings or membership.</>,
+      actions: <>{uiLabel('Close')} dismisses this window.</>,
+    });
+  }
+  if (tab === 'members') {
+    return formModalQuickInfo({
+      purpose: <>Choose which employees belong to this group for announcement targeting.</>,
+      howToUse: (
+        <>
+          Search employees, check or uncheck people, or use {uiLabel('Select all in filter')} for bulk changes. Switch
+          tabs with {uiLabel('Details')} or {uiLabel('Danger zone')} as needed.
+        </>
+      ),
+      behavior: <>The group creator is always kept as a member, even if unchecked.</>,
+      actions: (
+        <>
+          {uiLabel('Cancel')} closes without saving. {uiLabel('Save members')} updates membership and refreshes the
+          group list.
+        </>
+      ),
+    });
+  }
+  if (tab === 'danger') {
+    return formModalQuickInfo({
+      purpose: <>Permanently remove this group when it is no longer needed.</>,
+      howToUse: (
+        <>
+          Open {uiLabel('Danger zone')} and choose {uiLabel('Delete group')}. Confirm in the dialog that follows.
+        </>
+      ),
+      behavior: <>Member links are removed. Announcements already sent to this group are not recalled or deleted.</>,
+      actions: (
+        <>
+          {uiLabel('Close')} returns to the group without deleting. Deletion happens only after you confirm in the
+          prompt.
+        </>
+      ),
+    });
+  }
+  return formModalQuickInfo({
+    purpose: <>Update the group name, description, and optional photo shown on cards.</>,
+    howToUse: (
+      <>
+        Edit {uiLabel('Name')} and {uiLabel('Description')}, optionally choose a {uiLabel('Photo')}, then save. Use{' '}
+        {uiLabel('Members')} to change who receives targeted announcements.
+      </>
+    ),
+    behavior: <>Photo changes apply only after you choose an image and click {uiLabel('Save changes')}.</>,
+    actions: (
+      <>
+        {uiLabel('Cancel')} closes without saving. {uiLabel('Save changes')} updates the group and refreshes the list.
+      </>
+    ),
+  });
+}

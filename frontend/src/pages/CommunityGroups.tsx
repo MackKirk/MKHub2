@@ -1,19 +1,40 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { LayoutGrid, List, Search, UsersRound } from 'lucide-react';
 import { api } from '@/lib/api';
-import { CommunityPageHeader } from '@/components/community/CommunityPageHeader';
 import { CreateCommunityGroupModal } from '@/components/community/CreateCommunityGroupModal';
 import { ManageCommunityGroupModal } from '@/components/community/ManageCommunityGroupModal';
 import { CommunityGroupCard } from '@/components/community/CommunityGroupCard';
 import { CommunityGroupListRow } from '@/components/community/CommunityGroupListRow';
 import { CommunityGroupsGridSkeleton, CommunityGroupsListSkeleton } from '@/components/community/CommunityGroupsGridSkeleton';
 import type { CommunityGroupSummary, ManageGroupTab } from '@/components/community/communityGroupTypes';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppInput,
+  AppListCreateItem,
+  AppPageHeader,
+  AppSelect,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+} from '@/components/ui';
 
 const VIEW_STORAGE_KEY = 'community-groups-view';
 
 type SortKey = 'recent' | 'name' | 'members';
 type ViewMode = 'cards' | 'list';
+
+const SORT_OPTIONS = [
+  { value: 'recent', label: 'Most recent' },
+  { value: 'name', label: 'Name A–Z' },
+  { value: 'members', label: 'Most members' },
+];
 
 function parseCreatedAt(iso?: string | null): number {
   if (!iso) return 0;
@@ -88,109 +109,80 @@ export default function CommunityGroups() {
     return rows;
   }, [groups, search, sortKey]);
 
+  const noSearchMatches = !groupsLoading && filteredSorted.length === 0 && search.trim().length > 0 && groups.length > 0;
+
   function openManage(g: CommunityGroupSummary, tab?: ManageGroupTab) {
     setManageGroup(g);
     setManageInitialTab(tab ?? 'details');
     setManageOpen(true);
   }
 
-  /* Same control chrome as Opportunities (`/opportunities`): bordered pill, list icon first, cards icon second */
-  const viewToggle = (
-    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden shrink-0">
-      <button
-        type="button"
-        onClick={() => setViewMode('list')}
-        className={`p-2.5 text-sm font-medium transition-colors duration-150 ${
-          viewMode === 'list'
-            ? 'bg-gray-900 text-white'
-            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
-        }`}
-        title="List view"
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        onClick={() => setViewMode('cards')}
-        className={`p-2.5 text-sm font-medium transition-colors duration-150 border-l border-gray-200 ${
-          viewMode === 'cards'
-            ? 'bg-gray-900 text-white'
-            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
-        }`}
-        title="Card view"
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
-          />
-        </svg>
-      </button>
-    </div>
-  );
-
-  const toolbarSecondary = (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap sm:justify-end">
-      <select
-        value={sortKey}
-        onChange={(e) => setSortKey(e.target.value as SortKey)}
-        className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 shrink-0"
-        aria-label="Sort groups"
-      >
-        <option value="recent">Most recent</option>
-        <option value="name">Name A–Z</option>
-        <option value="members">Most members</option>
-      </select>
-      {!groupsLoading && (
-        <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full shrink-0">
-          {groups.length} {groups.length === 1 ? 'group' : 'groups'}
-        </span>
-      )}
-    </div>
-  );
-
-  const createDashedButton = (
-    <button
-      type="button"
-      onClick={() => setCreateOpen(true)}
-      className="border-2 border-dashed border-gray-300 rounded-xl p-3 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px] outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30 focus-visible:ring-offset-2"
-    >
-      <div className="text-4xl text-gray-400 mb-2 leading-none">+</div>
-      <div className="font-medium text-sm text-gray-700">Create group</div>
-      <div className="text-xs text-gray-500 mt-1 max-w-[16rem]">Target announcements to the right audience.</div>
-    </button>
+  const clearSearchAction = (
+    <AppButton type="button" variant="ghost" size="sm" onClick={() => setSearch('')}>
+      Clear search
+    </AppButton>
   );
 
   return (
-    <div className="space-y-4">
-      <CommunityPageHeader
+    <div className={uiCx(uiSpacing.pageStack, 'bg-gray-50')}>
+      <AppPageHeader
         title="Groups"
         subtitle="Create and manage audience groups for community announcements."
         onBack={() => navigate('/community')}
+        backLabel="Back to Community"
+        icon={<UsersRound className="h-4 w-4" />}
       />
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between xl:gap-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 flex-1 min-w-0">
-            {viewToggle}
-            <label className="block flex-1 min-w-0 sm:max-w-none">
-              <span className="sr-only">Search groups</span>
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name or description…"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150"
-              />
-            </label>
+      <AppCard bodyClassName={uiSpacing.cardPadding}>
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+          <div className={uiCx('flex shrink-0 items-stretch overflow-hidden', uiRadius.control, uiBorders.subtle)}>
+            <AppButton
+              type="button"
+              variant={viewMode === 'list' ? 'primary' : 'secondary'}
+              size="sm"
+              className="!rounded-none !px-2.5"
+              onClick={() => setViewMode('list')}
+              title="List view"
+              aria-label="List view"
+            >
+              <List className="h-4 w-4" />
+            </AppButton>
+            <AppButton
+              type="button"
+              variant={viewMode === 'cards' ? 'primary' : 'secondary'}
+              size="sm"
+              className="!rounded-none !border-l-0 !px-2.5"
+              onClick={() => setViewMode('cards')}
+              title="Card view"
+              aria-label="Card view"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </AppButton>
           </div>
-          {toolbarSecondary}
+          <div className="min-w-0 flex-1">
+            <AppInput
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or description…"
+              leftIcon={<Search className="h-4 w-4" />}
+              aria-label="Search groups"
+            />
+          </div>
+          <AppSelect
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as SortKey)}
+            options={SORT_OPTIONS}
+            aria-label="Sort groups"
+            className="shrink-0"
+          />
+          {!groupsLoading && (
+            <AppBadge variant="neutral" className="shrink-0 self-center">
+              {groups.length} {groups.length === 1 ? 'group' : 'groups'}
+            </AppBadge>
+          )}
         </div>
-      </div>
+      </AppCard>
 
       {groupsLoading ? (
         viewMode === 'cards' ? (
@@ -199,46 +191,37 @@ export default function CommunityGroups() {
           <CommunityGroupsListSkeleton />
         )
       ) : viewMode === 'cards' ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {createDashedButton}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <AppListCreateItem
+            label="Create group"
+            layout="card"
+            className="min-h-[200px]"
+            onClick={() => setCreateOpen(true)}
+          />
           {filteredSorted.map((g) => (
             <CommunityGroupCard key={g.id} group={g} onOpen={(tab) => openManage(g, tab)} />
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden flex flex-col">
-          <button
-            type="button"
+        <AppCard bodyClassName="!p-0">
+          <AppListCreateItem
+            label="Create group"
+            layout="row"
+            className="min-h-[72px] w-full rounded-none border-0 border-b-2"
             onClick={() => setCreateOpen(true)}
-            className="w-full border-b-2 border-dashed border-gray-300 p-4 hover:border-brand-red hover:bg-gray-50 transition-all flex items-center justify-center gap-3 min-h-[72px]"
-          >
-            <span className="text-xl text-gray-400">+</span>
-            <div className="text-left">
-              <div className="text-sm font-semibold text-gray-800">Create group</div>
-              <div className="text-xs text-gray-500">Add an audience segment for announcements</div>
-            </div>
-          </button>
+          />
           {filteredSorted.map((g) => (
             <CommunityGroupListRow key={g.id} group={g} onOpen={(tab) => openManage(g, tab)} />
           ))}
-          {filteredSorted.length === 0 && search.trim().length > 0 && groups.length > 0 && (
-            <div className="px-6 py-12 text-center text-sm text-gray-500 border-t border-gray-50">
-              No groups match your search.{' '}
-              <button type="button" className="text-brand-red font-semibold hover:underline" onClick={() => setSearch('')}>
-                Clear search
-              </button>
-            </div>
-          )}
-        </div>
+        </AppCard>
       )}
 
-      {!groupsLoading && viewMode === 'cards' && filteredSorted.length === 0 && search.trim().length > 0 && groups.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-600">
-          No groups match “{search.trim()}”.{' '}
-          <button type="button" className="text-brand-red font-semibold hover:underline" onClick={() => setSearch('')}>
-            Clear search
-          </button>
-        </div>
+      {noSearchMatches && (
+        <AppEmptyState
+          title="No groups match your search"
+          description={search.trim() ? `No results for “${search.trim()}”.` : undefined}
+          action={clearSearchAction}
+        />
       )}
 
       <CreateCommunityGroupModal open={createOpen} onClose={() => setCreateOpen(false)} />

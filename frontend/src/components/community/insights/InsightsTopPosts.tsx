@@ -9,6 +9,7 @@ import {
   formatPriorityLabel,
   getInitials,
 } from './insightsTypes';
+import { AppBadge, AppSelect } from '@/components/ui';
 
 type SortKey = 'engagement' | 'views' | 'likes' | 'comments' | 'read_rate';
 
@@ -105,19 +106,15 @@ export function InsightsTopPosts({ posts }: { posts: TopPost[] }) {
       title="Top performing posts"
       subtitle="Ranked by the chosen metric across the selected window"
       actions={
-        <select
+        <AppSelect
           value={sort}
           onChange={(e) => setSort(e.target.value as SortKey)}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/40"
-        >
-          {SORTS.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+          options={SORTS.map((s) => ({ value: s.id, label: s.label }))}
+          aria-label="Sort top posts"
+          className="min-w-[10rem]"
+        />
       }
-      bodyClassName="p-0"
+      bodyClassName="!p-0"
     >
       {sorted.length === 0 ? (
         <div className="p-4">
@@ -160,9 +157,9 @@ export function InsightsTopPosts({ posts }: { posts: TopPost[] }) {
                         </span>
                       ) : null}
                       {p.requires_read_confirmation ? (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700">
+                        <AppBadge variant="warning" className="normal-case tracking-normal">
                           Required-read
-                        </span>
+                        </AppBadge>
                       ) : null}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
