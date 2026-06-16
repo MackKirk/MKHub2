@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Cog, ExternalLink } from 'lucide-react';
+import { ClipboardList, ExternalLink, Settings } from 'lucide-react';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -718,12 +718,11 @@ export default function OnboardingAdmin() {
                 >
                   <div className="absolute right-1 top-1 z-50 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                     <AppTooltip content="Document actions">
-                      <button
+                      <AppButton
                         type="button"
-                        className={uiCx(
-                          'rounded-md p-1 text-gray-500 hover:bg-red-50 hover:text-brand-red',
-                          uiRadius.control,
-                        )}
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto min-h-0 p-1"
                         aria-haspopup="menu"
                         aria-expanded={docMenuOpenId === d.id}
                         aria-label="Document actions"
@@ -741,8 +740,8 @@ export default function OnboardingAdmin() {
                           }
                         }}
                       >
-                        <Cog className="h-4 w-4" aria-hidden />
-                      </button>
+                        <Settings className="h-3.5 w-3.5" aria-hidden />
+                      </AppButton>
                     </AppTooltip>
                   </div>
                   <div

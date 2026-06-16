@@ -1,70 +1,78 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { Bell } from 'lucide-react';
 import { api } from '@/lib/api';
+import {
+  formatNotificationTimeAgo,
+  getNotificationIconMeta,
+  resolveNotificationLink,
+  type NotificationRecord,
+} from '@/lib/notificationUi';
+import {
+  AppBadge,
+  AppButton,
+  AppEmptyState,
+  comboboxMenuStyle,
+  uiBorders,
+  uiCx,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+  useComboboxDropdown,
+} from '@/components/ui';
 
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: string;
-  read: boolean;
-  created_at: string;
-  link?: string;
-  metadata?: any;
-}
+const PANEL_OPTIONS = {
+  menuWidth: 320,
+  menuAlign: 'end' as const,
+  preferredMaxHeight: 384,
+};
 
 export default function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { anchorRef, portalListId, menuRect, closeDropdown } = useComboboxDropdown(isOpen, setIsOpen, PANEL_OPTIONS);
 
-  // Fetch recent notifications (last 4 unread or recent)
   const { data: notifications, refetch } = useQuery({
     queryKey: ['notifications-recent'],
     queryFn: async () => {
       try {
-        const data = await api<Notification[]>('GET', '/notifications?limit=4&unread_only=false');
+        const data = await api<NotificationRecord[]>('GET', '/notifications?limit=4&unread_only=false');
         return data || [];
       } catch (e) {
         console.error('Failed to fetch notifications:', e);
         return [];
       }
     },
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 30000,
   });
 
-  // Fetch unread count
   const { data: unreadCount } = useQuery({
     queryKey: ['notifications-unread-count'],
     queryFn: async () => {
       try {
         const data = await api<{ count: number }>('GET', '/notifications/unread-count');
         return data?.count || 0;
-      } catch (e) {
+      } catch {
         return 0;
       }
     },
     refetchInterval: 30000,
   });
 
-  // Close dropdown when clicking outside
+  const unread = unreadCount ?? 0;
+
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeDropdown();
     };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, closeDropdown]);
 
   const markAsRead = async (notificationId: string) => {
     try {
@@ -77,161 +85,135 @@ export default function NotificationBell() {
     }
   };
 
-  const formatTimeAgo = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-  };
-
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'shift':
-        return '👷';
-      case 'task':
-        return '✅';
-      case 'message':
-        return '💬';
-      case 'attendance':
-        return '⏰';
-      case 'community_post':
-      case 'community_mention':
-      case 'community_comment_reply':
-        return '📣';
-      case 'community_urgent':
-        return '⚠️';
-      case 'community_required':
-        return '📋';
-      default:
-        return '🔔';
+  const handleNotificationClick = (notif: NotificationRecord) => {
+    if (!notif.read) {
+      void markAsRead(notif.id);
     }
+    closeDropdown();
+    const targetLink = resolveNotificationLink(notif);
+    if (targetLink) navigate(targetLink);
   };
 
-  return (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
-        title="Notifications"
+  const panelShellClass = useMemo(
+    () =>
+      uiCx(
+        'fixed z-[100050] flex flex-col overflow-hidden bg-white',
+        uiRadius.dropdownMenu,
+        uiBorders.subtle,
+        uiShadows.elevated,
+      ),
+    [],
+  );
+
+  const panel =
+    isOpen && menuRect ? (
+      <div
+        id={portalListId}
+        role="dialog"
+        aria-label="Notifications"
+        className={panelShellClass}
+        style={comboboxMenuStyle(menuRect)}
       >
-        <svg
-          className="h-5 w-5 text-white"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-          />
-        </svg>
-        {unreadCount && unreadCount > 0 && (
-          <span className="absolute top-0.5 right-0.5 flex min-h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-red-500 px-0.5 text-[10px] font-bold leading-none text-white ring-2 ring-gray-900/90">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
-        )}
-      </button>
-
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 rounded-lg border bg-white shadow-xl z-50 max-h-96 overflow-hidden flex flex-col">
-          <div className="p-4 border-b bg-gray-50">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">Notifications</h3>
-              {unreadCount && unreadCount > 0 && (
-                <span className="text-xs text-gray-500">{unreadCount} unread</span>
-              )}
-            </div>
-          </div>
-
-          <div className="overflow-y-auto flex-1">
-            {notifications && notifications.length > 0 ? (
-              <div className="divide-y">
-                {notifications.map((notif) => (
-                  <div
-                    key={notif.id}
-                    className={`p-3 hover:bg-gray-50 transition-colors cursor-pointer ${
-                      !notif.read ? 'bg-blue-50' : ''
-                    }`}
-                    onClick={() => {
-                      if (!notif.read) {
-                        markAsRead(notif.id);
-                      }
-                      setIsOpen(false);
-                      // Navigate to link if available
-                      if (notif.link) {
-                        // For shift notifications, always redirect to schedule
-                        const targetLink = notif.type === 'shift' ? '/schedule' : notif.link;
-                        navigate(targetLink);
-                      }
-                    }}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="text-xl flex-shrink-0">
-                        {getNotificationIcon(notif.type || 'default')}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium text-gray-900 line-clamp-1">
-                            {notif.title || 'Notification'}
-                          </p>
-                          {!notif.read && (
-                            <div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0 mt-1.5" />
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-600 mt-1 line-clamp-2">
-                          {notif.message || ''}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {formatTimeAgo(notif.created_at)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-8 text-center text-gray-500">
-                <svg
-                  className="w-12 h-12 mx-auto mb-2 text-gray-300"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                  />
-                </svg>
-                <p className="text-sm">No notifications</p>
-              </div>
-            )}
-          </div>
-
-          <div className="p-3 border-t bg-gray-50">
-            <Link
-              to="/notifications"
-              onClick={() => setIsOpen(false)}
-              className="block w-full text-center px-4 py-2 rounded-lg bg-brand-red hover:bg-red-700 text-white text-sm font-medium transition-colors"
-            >
-              Show All Notifications
-            </Link>
+        <div className={uiCx('shrink-0 border-b border-gray-100', uiSpacing.cardPadding)}>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className={uiTypography.sectionTitle}>Notifications</h3>
+            {unread > 0 ? <AppBadge variant="info">{unread} unread</AppBadge> : null}
           </div>
         </div>
-      )}
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {notifications && notifications.length > 0 ? (
+            <ul className="divide-y divide-gray-100">
+              {notifications.map((notif) => {
+                const { Icon, className } = getNotificationIconMeta(notif.type || 'default');
+                return (
+                  <li key={notif.id}>
+                    <button
+                      type="button"
+                      className={uiCx(
+                        'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50',
+                        !notif.read && 'bg-brand-red/[0.04]',
+                      )}
+                      onClick={() => handleNotificationClick(notif)}
+                    >
+                      <div
+                        className={uiCx(
+                          'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center',
+                          uiRadius.control,
+                          className,
+                        )}
+                      >
+                        <Icon className="h-4 w-4" aria-hidden />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={uiCx('line-clamp-1', uiTypography.sectionTitle)}>
+                            {notif.title || 'Notification'}
+                          </p>
+                          {!notif.read ? (
+                            <span
+                              className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand-red"
+                              aria-label="Unread"
+                            />
+                          ) : null}
+                        </div>
+                        {notif.message ? (
+                          <p className={uiCx('mt-1 line-clamp-2', uiTypography.helper)}>{notif.message}</p>
+                        ) : null}
+                        <p className={uiCx('mt-1', uiTypography.overline)}>
+                          {formatNotificationTimeAgo(notif.created_at)}
+                        </p>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <AppEmptyState
+              className="m-3 border-0 bg-transparent shadow-none"
+              icon={<Bell className="h-5 w-5" aria-hidden />}
+              title="No notifications"
+            />
+          )}
+        </div>
+
+        <div className={uiCx('shrink-0 border-t border-gray-100', uiSpacing.compactCardPadding)}>
+          <AppButton
+            variant="primary"
+            size="md"
+            className="w-full"
+            onClick={() => {
+              closeDropdown();
+              navigate('/notifications');
+            }}
+          >
+            Show all notifications
+          </AppButton>
+        </div>
+      </div>
+    ) : null;
+
+  return (
+    <div ref={anchorRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+        title="Notifications"
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
+        aria-controls={isOpen ? portalListId : undefined}
+      >
+        <Bell className="h-5 w-5 text-white" aria-hidden />
+        {unread > 0 ? (
+          <span className="absolute top-0.5 right-0.5 flex min-h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-brand-red px-0.5 text-[10px] font-bold leading-none text-white ring-2 ring-gray-900/90">
+            {unread > 99 ? '99+' : unread}
+          </span>
+        ) : null}
+      </button>
+
+      {typeof document !== 'undefined' && panel ? createPortal(panel, document.body) : null}
     </div>
   );
 }
-

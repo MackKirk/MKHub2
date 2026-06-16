@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { ChevronDown, ChevronUp, Mail } from 'lucide-react';
 import {
   FleetHeroStat,
@@ -48,6 +48,9 @@ type UserInfoHeroBodyProps = {
   primaryTitle: string;
   subtitleLine: string | null;
   photoUrl: string;
+  photoInputRef?: RefObject<HTMLInputElement | null>;
+  onPhotoFileChange?: (e: ChangeEvent<HTMLInputElement>) => void;
+  photoUploading?: boolean;
   phone: string;
   personalEmail: string;
   workEmail: string;
@@ -67,6 +70,9 @@ function UserInfoHeroBody({
   primaryTitle,
   subtitleLine,
   photoUrl,
+  photoInputRef,
+  onPhotoFileChange,
+  photoUploading,
   phone,
   personalEmail,
   workEmail,
@@ -87,13 +93,32 @@ function UserInfoHeroBody({
         <div className="w-48 shrink-0 overflow-visible self-center">
           <div
             className={uiCx(
-              'relative h-36 w-48 overflow-hidden',
+              'group relative h-36 w-48 overflow-hidden',
               uiRadius.card,
               uiBorders.subtle,
               'bg-gray-100',
             )}
           >
             <img src={photoUrl} alt={primaryTitle} className="h-full w-full object-cover" />
+            {photoInputRef && onPhotoFileChange ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={photoUploading}
+                  className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {photoUploading ? 'Uploading…' : 'Change'}
+                </button>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={onPhotoFileChange}
+                />
+              </>
+            ) : null}
           </div>
         </div>
 

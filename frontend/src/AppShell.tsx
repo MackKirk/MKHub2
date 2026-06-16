@@ -1,7 +1,7 @@
-import { PropsWithChildren, useState, useMemo, useEffect } from 'react';
+import { PropsWithChildren, useState, useMemo, useEffect, useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, withFileAccessToken } from '@/lib/api';
+import { api } from '@/lib/api';
 import {
   computeIsProfileComplete,
   isExemptFromProfileWizardRedirect,
@@ -16,6 +16,7 @@ import InstallPrompt from '@/components/InstallPrompt';
 import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
 import HubChatLauncher from '@/components/HubChatLauncher';
 import { canAccessProjectLineMenu, isAdminRole } from '@/lib/projectLinePermissionKeys';
+import { AppUserAvatar, uiCx, uiDropdown } from '@/components/ui';
 
 type MenuItem = {
   id: string;
@@ -329,10 +330,37 @@ export default function AppShell({ children }: PropsWithChildren){
   }, [meProfile, isProfileComplete, location.pathname, navigate, meLoading, meProfileLoading, emergencyContactsLoading, userId]);
   
   const displayName = (meProfile?.profile?.preferred_name) || ([meProfile?.profile?.first_name, meProfile?.profile?.last_name].filter(Boolean).join(' ') || meProfile?.user?.username || 'User');
-  const avatarId = meProfile?.profile?.profile_photo_file_id;
-  const avatarUrl = avatarId ? withFileAccessToken(`/files/${avatarId}/thumbnail?w=96`) : '/ui/assets/login/logo-light.svg';
+  const userMenuUser = useMemo(
+    () => ({
+      username: meProfile?.user?.username,
+      first_name: meProfile?.profile?.first_name,
+      last_name: meProfile?.profile?.last_name,
+      preferred_name: meProfile?.profile?.preferred_name,
+      profile_photo_file_id: meProfile?.profile?.profile_photo_file_id,
+    }),
+    [meProfile],
+  );
   const [open, setOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
   
   const { hasUnsavedChanges } = useUnsavedChanges();
   const confirm = useConfirm();
@@ -1296,26 +1324,55 @@ export default function AppShell({ children }: PropsWithChildren){
               <span className="w-px h-8 shrink-0 self-center rounded-full bg-white/12" aria-hidden />
               <FixedBugReportButton />
             </div>
-            <div className="relative">
+            <div className="relative" ref={userMenuRef}>
               <button
                 type="button"
+                aria-expanded={open}
+                aria-haspopup="menu"
                 onClick={() => setOpen((v) => !v)}
                 className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-black/15 hover:bg-black/25 hover:border-white/18 px-2 py-1.5 sm:pr-3 transition-all max-w-[min(240px,42vw)] sm:max-w-[280px]"
               >
-                <img
-                  src={avatarUrl}
-                  alt=""
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-gray-500/55 object-cover shadow-md flex-shrink-0"
-                />
-                <span className="text-sm font-semibold text-gray-50 truncate min-w-0">{displayName}</span>
+                <AppUserAvatar user={userMenuUser} size="md" className="border-2 border-gray-500/55 shadow-md flex-shrink-0" />
+                <span className="min-w-0 truncate text-sm font-semibold text-white">{displayName}</span>
               </button>
-              {open && (
-                <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border border-gray-200/20 bg-white text-black shadow-xl z-50">
-                  <Link to="/profile" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My Information</Link>
-                  <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My reviews</Link>
-                  <button onClick={handleLogout} className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">Logout</button>
+              {open ? (
+                <div
+                  role="menu"
+                  className={uiCx(
+                    uiDropdown.menu,
+                    '!absolute right-0 top-full z-[100050] mt-1 flex w-max min-w-0 max-w-[min(100vw-2rem,16rem)] flex-col !max-h-none py-1',
+                  )}
+                >
+                  <Link
+                    to="/profile"
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                    className={uiCx(uiDropdown.option, 'block w-full whitespace-nowrap !text-right')}
+                  >
+                    My Information
+                  </Link>
+                  <Link
+                    to="/reviews/my"
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                    className={uiCx(uiDropdown.option, 'block w-full whitespace-nowrap !text-right')}
+                  >
+                    My reviews
+                  </Link>
+                  <div className="my-1 border-t border-gray-100" aria-hidden />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpen(false);
+                      void handleLogout();
+                    }}
+                    className={uiCx(uiDropdown.option, 'block w-full whitespace-nowrap !text-right text-red-600 hover:bg-red-50')}
+                  >
+                    Logout
+                  </button>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

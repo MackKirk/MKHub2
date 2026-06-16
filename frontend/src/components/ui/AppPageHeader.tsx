@@ -7,6 +7,8 @@ type AppPageHeaderProps = {
   subtitle?: ReactNode;
   /** Decorative/context icon inside the blue tile (not navigation). Combine with `onBack` on child pages. */
   icon?: ReactNode;
+  /** Overrides the default blue icon tile (e.g. brand logo on standalone flows). */
+  iconClassName?: string;
   /** Back arrow before the icon tile (e.g. Business → Opportunities). */
   onBack?: () => void;
   /** `title` / `aria-label` for the back control. Default: "Back". */
@@ -19,6 +21,7 @@ export function AppPageHeader({
   title,
   subtitle,
   icon,
+  iconClassName,
   onBack,
   backLabel,
   actions,
@@ -38,7 +41,7 @@ export function AppPageHeader({
       >
         <div className={uiCx('flex min-w-0 items-center', uiSpacing.headerGap)}>
           {onBack ? <AppPageBackButton onClick={onBack} label={backLabel} /> : null}
-          {icon ? <div className={uiPageHeader.iconTile}>{icon}</div> : null}
+          {icon ? <div className={iconClassName ?? uiPageHeader.iconTile}>{icon}</div> : null}
           <div className="min-w-0">
             <h1 className={uiTypography.pageTitle}>{title}</h1>
             {subtitle ? <p className={uiTypography.pageSubtitle}>{subtitle}</p> : null}

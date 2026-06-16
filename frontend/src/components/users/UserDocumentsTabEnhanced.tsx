@@ -57,9 +57,12 @@ type UploadQueueItem = {
 export default function UserDocumentsTabEnhanced({
   userId,
   canEdit,
+  variant = 'user',
 }: {
   userId: string;
   canEdit: boolean;
+  /** `profile` = self-service /profile; `user` = HR user record (/users/:id). */
+  variant?: 'profile' | 'user';
 }) {
   const confirm = useConfirm();
   const { data: folders, refetch: refetchFolders } = useQuery({
@@ -526,6 +529,23 @@ export default function UserDocumentsTabEnhanced({
         ? (folders || []).find((x) => x.id === selectedFolderId)?.name || 'Files'
         : (folders || []).find((x) => x.id === selectedCategory)?.name || 'Files';
 
+  const sectionTitle = 'Documents';
+  const sectionDescription =
+    variant === 'profile'
+      ? 'Your document library. Upload and organize by category and folder.'
+      : 'Employee document library. Upload and organize by category and folder.';
+
+  const emptyStateTitle =
+    selectedCategory === 'all' ? 'No documents yet' : 'No files in this category';
+  const emptyStateDescription =
+    selectedCategory === 'all'
+      ? canEdit
+        ? 'Select a category on the left, then upload files or create folders.'
+        : undefined
+      : canEdit
+        ? 'Drag and drop files here or click Upload File.'
+        : undefined;
+
   const filesBrowserBody = (
     <div className="overflow-hidden bg-white">
       <div className="flex h-[calc(100vh-400px)]">
@@ -892,32 +912,26 @@ export default function UserDocumentsTabEnhanced({
                             <td className="px-3 py-2">
                               <div className="flex items-center gap-0.5">
                                 {d.file_id && (
-                                  <button
-                                    type="button"
+                                  <AppListRowIconButton
+                                    icon={'\u{2B07}\u{FE0F}'}
+                                    label="Download"
                                     onClick={async (e) => {
                                       e.stopPropagation();
                                       const url = await fetchDownloadUrl(d.file_id!);
                                       if (url) window.open(url, '_blank', 'noopener,noreferrer');
                                     }}
-                                    title="Download"
-                                    className="rounded p-1 text-xs hover:bg-gray-100"
-                                  >
-                                    ⬇️
-                                  </button>
+                                  />
                                 )}
                                 {canEdit && (
                                   <>
-                                    <button
-                                      type="button"
+                                    <AppListRowIconButton
+                                      icon={'\u{1F4E6}'}
+                                      label="Move to category"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         openMoveCategoryModal(d.id);
                                       }}
-                                      title="Move to category"
-                                      className="rounded p-1 text-xs hover:bg-gray-100"
-                                    >
-                                      📦
-                                    </button>
+                                    />
                                     {selectedCategory !== 'all' && (
                                       <AppSelect
                                         className="max-w-[100px]"
@@ -948,8 +962,8 @@ export default function UserDocumentsTabEnhanced({
               ) : (
                 <AppEmptyState
                   className="border-0 py-6 shadow-none"
-                  title="No files in this category"
-                  description={canEdit ? 'Drag and drop files here or click Upload File.' : undefined}
+                  title={emptyStateTitle}
+                  description={emptyStateDescription}
                 />
               )}
             </div>
@@ -964,9 +978,9 @@ export default function UserDocumentsTabEnhanced({
       <AppCard className="!rounded-2xl" bodyClassName="p-0">
         <div className={uiSpacing.cardPadding}>
           <AppSectionHeader
-            title="Files"
-            description="Document library for this project. Upload and organize by category and folder."
-            {...appSectionPresetProps('files')}
+            title={sectionTitle}
+            description={sectionDescription}
+            {...appSectionPresetProps('documents')}
           />
         </div>
         <div className="border-t border-gray-100">{filesBrowserBody}</div>
