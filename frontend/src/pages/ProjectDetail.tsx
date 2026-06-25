@@ -10269,19 +10269,16 @@ function ProjectDivisionsHeroSection({
         </div>
         <div>
           {divisionIcons.length > 0 ? (
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-end gap-2 flex-wrap">
               {divisionIcons.map((div) => (
-                <AppTooltip
-                  key={div.id}
-                  content={div.label}
-                  placement="bottom"
-                  className="flex flex-col items-center"
-                >
-                  <div className={compact ? 'text-xl transition-transform hover:scale-110' : 'text-2xl transition-transform hover:scale-110'}>
-                    {div.icon}
-                  </div>
-                  <div className={uiCx('text-xs font-bold text-gray-600', compact ? 'mt-0' : 'mt-0.5')}>
-                    {Math.round(div.percentage || 0)}%
+                <AppTooltip key={div.id} content={div.label} placement="bottom">
+                  <div className="flex flex-col items-center">
+                    <div className={compact ? 'text-xl transition-transform hover:scale-110' : 'text-2xl transition-transform hover:scale-110'}>
+                      {div.icon}
+                    </div>
+                    <div className={uiCx('text-xs font-bold text-gray-600', compact ? 'mt-0' : 'mt-0.5')}>
+                      {Math.round(div.percentage || 0)}%
+                    </div>
                   </div>
                 </AppTooltip>
               ))}
