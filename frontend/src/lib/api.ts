@@ -1,5 +1,36 @@
 export type HttpMethod = 'GET'|'POST'|'PUT'|'PATCH'|'DELETE';
 
+export function formatApiErrorDetail(detail: unknown): string {
+  if (detail == null) return '';
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) {
+          return String((item as { msg: unknown }).msg);
+        }
+        try {
+          return JSON.stringify(item);
+        } catch {
+          return String(item);
+        }
+      })
+      .filter(Boolean)
+      .join('; ');
+  }
+  if (typeof detail === 'object') {
+    if ('msg' in detail) return String((detail as { msg: unknown }).msg);
+    if ('message' in detail) return String((detail as { message: unknown }).message);
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return String(detail);
+    }
+  }
+  return String(detail);
+}
+
 export function getToken(){
   return localStorage.getItem('user_token');
 }
@@ -57,7 +88,8 @@ export async function api<T=any>(method: HttpMethod, path: string, body?: any, h
       const contentType = r.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const err = await r.json();
-        errorMessage = err.detail || err.message || err.error || errorMessage;
+        errorMessage =
+          formatApiErrorDetail(err.detail) || err.message || err.error || errorMessage;
       } else {
         // Try to get text response
         const text = await r.text();
@@ -66,7 +98,8 @@ export async function api<T=any>(method: HttpMethod, path: string, body?: any, h
           if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
             try {
               const parsed = JSON.parse(text);
-              errorMessage = parsed.detail || parsed.message || parsed.error || text;
+              errorMessage =
+                formatApiErrorDetail(parsed.detail) || parsed.message || parsed.error || text;
             } catch {
               errorMessage = text;
             }

@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import { inviteUserFieldHints, inviteUserQuickInfo } from '@/lib/formModalQuickInfo';
+import { userProfileFieldHint } from '@/lib/userProfileFieldHints';
 import {
   AppButton,
   AppCheckbox,
@@ -8,12 +11,12 @@ import {
   AppFormModal,
   AppInput,
   AppMultiSelect,
+  AppSectionHeader,
   AppSelect,
   AppTextarea,
   AppUserSelect,
   uiCx,
   uiLayout,
-  uiRadius,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
@@ -25,6 +28,24 @@ type InviteModalProps = {
 
 type Division = { id: string; label: string; value?: string };
 
+type OnboardingBaseDoc = {
+  id: string;
+  name: string;
+  display_name?: string | null;
+  employee_visible?: boolean;
+  sort_order?: number;
+};
+
+const TOTAL_STEPS = 3;
+
+const STEP_LABELS = ['Basic information', 'Job information', 'Onboarding requirements'] as const;
+
+function isValidEmail(value: string): boolean {
+  const v = value.trim();
+  if (!v) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
 export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   const queryClient = useQueryClient();
   const { data: settings } = useQuery({
@@ -32,9 +53,15 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
     queryFn: () => api<any>('GET', '/settings'),
     enabled: isOpen,
   });
+  const { data: baseDocs = [], isLoading: baseDocsLoading } = useQuery({
+    queryKey: ['onb-base-docs'],
+    queryFn: () => api<OnboardingBaseDoc[]>('GET', '/onboarding/base-documents'),
+    enabled: isOpen,
+  });
   const divisions: Division[] = (settings?.divisions || []) as Division[];
   const employmentTypes = (settings?.employment_types || []) as any[];
 
+  const [step, setStep] = useState(1);
   const [email, setEmail] = useState('');
   const [selectedDivisionIds, setSelectedDivisionIds] = useState<string[]>([]);
   const [documentIds, setDocumentIds] = useState<string[]>([]);
@@ -53,8 +80,6 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   const [payType, setPayType] = useState('');
   const [employmentType, setEmploymentType] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [divisionTouched, setDivisionTouched] = useState(false);
 
   const divisionOptions = divisions.map((div) => ({
     value: String(div.id),
@@ -72,13 +97,83 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
     label: et.label,
   }));
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setDivisionTouched(true);
+  const activeDocumentOptions = useMemo(
+    () =>
+      baseDocs
+        .filter((d) => d.employee_visible !== false)
+        .sort((a, b) => {
+          const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+          if (orderDiff !== 0) return orderDiff;
+          const labelA = ((a.display_name || '').trim() || a.name).toLowerCase();
+          const labelB = ((b.display_name || '').trim() || b.name).toLowerCase();
+          return labelA.localeCompare(labelB);
+        })
+        .map((d) => ({
+          value: d.id,
+          label: (d.display_name || '').trim() || d.name,
+        })),
+    [baseDocs],
+  );
 
-    if (selectedDivisionIds.length === 0) {
-      setError('Please select at least one department');
+  const canProceedStep1 = useMemo(() => {
+    if (!isValidEmail(email)) return false;
+    if (selectedDivisionIds.length === 0) return false;
+    return true;
+  }, [email, selectedDivisionIds]);
+
+  const resetForm = () => {
+    setStep(1);
+    setEmail('');
+    setSelectedDivisionIds([]);
+    setDocumentIds([]);
+    setNeedsEmail(false);
+    setNeedsBusinessCard(false);
+    setNeedsPhone(false);
+    setNeedsVehicle(false);
+    setNeedsEquipment(false);
+    setEquipmentList('');
+    setHireDate('');
+    setJobTitle('');
+    setWorkEmail('');
+    setWorkPhone('');
+    setManagerUserId('');
+    setPayRate('');
+    setPayType('');
+    setEmploymentType('');
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      resetForm();
+    }
+  }, [isOpen]);
+
+  const handleClose = () => {
+    if (loading) return;
+    onClose();
+  };
+
+  const handleNext = () => {
+    if (step === 1 && !canProceedStep1) return;
+    setStep((s) => Math.min(s + 1, TOTAL_STEPS));
+  };
+
+  const handleBack = () => {
+    setStep((s) => Math.max(s - 1, 1));
+  };
+
+  const handleSendInvite = async () => {
+    if (loading) return;
+
+    if (!canProceedStep1) {
+      setStep(1);
+      return;
+    }
+
+    const trimmedWorkEmail = workEmail.trim();
+    if (trimmedWorkEmail && !isValidEmail(trimmedWorkEmail)) {
+      toast.error('Work email must be a valid email address');
+      setStep(2);
       return;
     }
 
@@ -86,7 +181,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
 
     try {
       await api('POST', '/auth/invite', {
-        email_personal: email,
+        email_personal: email.trim(),
         division_ids: selectedDivisionIds.length > 0 ? selectedDivisionIds : null,
         document_ids: documentIds.length > 0 ? documentIds : null,
         needs_email: needsEmail,
@@ -97,7 +192,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
         equipment_list: needsEquipment && equipmentList ? equipmentList : null,
         hire_date: hireDate || null,
         job_title: jobTitle || null,
-        work_email: workEmail || null,
+        work_email: trimmedWorkEmail || null,
         work_phone: workPhone || null,
         manager_user_id: managerUserId || null,
         pay_rate: payRate || null,
@@ -105,233 +200,292 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
         employment_type: employmentType || null,
       });
 
-      setEmail('');
-      setSelectedDivisionIds([]);
-      setDocumentIds([]);
-      setNeedsEmail(false);
-      setNeedsBusinessCard(false);
-      setNeedsPhone(false);
-      setNeedsVehicle(false);
-      setNeedsEquipment(false);
-      setEquipmentList('');
-      setHireDate('');
-      setJobTitle('');
-      setWorkEmail('');
-      setWorkPhone('');
-      setManagerUserId('');
-      setPayRate('');
-      setPayType('');
-      setEmploymentType('');
-      setDivisionTouched(false);
-
       queryClient.invalidateQueries({ queryKey: ['users'] });
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to send invite');
+      toast.error(err?.message || 'Failed to send invite');
     } finally {
       setLoading(false);
     }
   };
 
-  const divisionError =
-    divisionTouched && selectedDivisionIds.length === 0 ? 'At least one department is required' : undefined;
+  const stepSubtitle = STEP_LABELS[step - 1];
+
+  const stepPillClass = (n: number) =>
+    uiCx(
+      'rounded-full px-2 py-1 text-[10px] font-medium',
+      step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
+    );
+
+  const stepIndicators = (
+    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-[10px] font-medium')}>
+      <span className={stepPillClass(1)}>1</span>
+      <span className="text-gray-400">→</span>
+      <span className={stepPillClass(2)}>2</span>
+      <span className="text-gray-400">→</span>
+      <span className={stepPillClass(3)}>3</span>
+    </div>
+  );
+
+  const modalFooter = (
+    <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
+      <span className={uiTypography.helper}>
+        Step {step} of {TOTAL_STEPS}
+      </span>
+      <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+        <AppButton type="button" variant="secondary" size="sm" onClick={handleClose} disabled={loading}>
+          Cancel
+        </AppButton>
+        {step > 1 ? (
+          <AppButton type="button" variant="secondary" size="sm" onClick={handleBack} disabled={loading}>
+            Back
+          </AppButton>
+        ) : null}
+        {step < TOTAL_STEPS ? (
+          <AppButton
+            type="button"
+            size="sm"
+            onClick={handleNext}
+            disabled={loading || (step === 1 && !canProceedStep1)}
+          >
+            Next
+          </AppButton>
+        ) : (
+          <AppButton
+            type="button"
+            size="sm"
+            loading={loading}
+            disabled={loading}
+            onClick={() => void handleSendInvite()}
+          >
+            {loading ? 'Sending...' : 'Send Invite'}
+          </AppButton>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <AppFormModal
       open={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       size="lg"
       title="Invite New User"
-      description="Send an invitation to a new employee"
-      footer={
-        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-          <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={loading}>
-            Cancel
-          </AppButton>
-          <AppButton type="submit" form="invite-user-form" size="sm" loading={loading} disabled={loading}>
-            {loading ? 'Sending...' : 'Send Invite'}
-          </AppButton>
-        </div>
-      }
+      description={stepSubtitle}
+      headerExtra={stepIndicators}
+      quickInfo={inviteUserQuickInfo}
+      footer={modalFooter}
     >
-      <form id="invite-user-form" onSubmit={handleSubmit} className={uiSpacing.sectionStack}>
-        {error ? (
-          <div className={uiCx(uiRadius.control, 'border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700')}>
-            {error}
-          </div>
-        ) : null}
-
-        <AppInput
-          type="email"
-          label="Email Address *"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="user@example.com"
-          disabled={loading}
-        />
-
-        <AppMultiSelect
-          label="Department *"
-          value={selectedDivisionIds}
-          onChange={(values) => {
-            setSelectedDivisionIds(values);
-            setDivisionTouched(true);
-          }}
-          options={divisionOptions}
-          placeholder="Select departments..."
-          searchable
-          disabled={loading}
-          error={divisionError}
-        />
-
-        <AppInput
-          label="Documents to Sign (optional)"
-          value={documentIds.join(', ')}
-          onChange={(e) =>
-            setDocumentIds(
-              e.target.value
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean),
-            )
-          }
-          placeholder="Comma-separated document IDs"
-          helperText="Enter document IDs separated by commas"
-          disabled={loading}
-        />
-
-        <div className={uiCx('border-t border-gray-100 pt-4', uiSpacing.sectionStack)}>
-          <h3 className={uiTypography.sectionTitle}>Job Information</h3>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <AppDatePicker
-              id="invite-hire-date"
-              label="Hire Date (optional)"
-              value={hireDate}
-              onChange={(e) => setHireDate(e.target.value)}
-              disabled={loading}
-            />
-
-            <AppInput
-              label="Job Title (optional)"
-              value={jobTitle}
-              onChange={(e) => setJobTitle(e.target.value)}
-              placeholder="e.g., Software Engineer"
-              disabled={loading}
+      <div className={uiSpacing.sectionStack}>
+        {step === 1 ? (
+          <div className={uiSpacing.sectionStack}>
+            <AppSectionHeader
+              title="Basic Information"
+              description="Personal email, department assignment, and documents to sign."
             />
 
             <AppInput
               type="email"
-              label="Work Email (optional)"
-              value={workEmail}
-              onChange={(e) => setWorkEmail(e.target.value)}
-              placeholder="work@company.com"
+              label="Email Address *"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="user@example.com"
               disabled={loading}
+              fieldHint={inviteUserFieldHints.email_personal}
             />
 
-            <AppInput
-              type="tel"
-              label="Work Phone (optional)"
-              value={workPhone}
-              onChange={(e) => setWorkPhone(e.target.value)}
-              placeholder="+1 (555) 123-4567"
+            <AppMultiSelect
+              label={
+                <>
+                  Department<span className="text-brand-red"> *</span>
+                </>
+              }
+              value={selectedDivisionIds}
+              onChange={setSelectedDivisionIds}
+              options={divisionOptions}
+              placeholder="Select departments..."
+              searchable
               disabled={loading}
+              fieldHint={inviteUserFieldHints.departments}
             />
 
-            <AppUserSelect
-              mode="single"
-              label="Manager (optional)"
-              value={managerUserId}
-              onChange={setManagerUserId}
-              placeholder="Select a manager..."
-              disabled={loading}
+            <AppMultiSelect
+              label="Documents to Sign (optional)"
+              value={documentIds}
+              onChange={setDocumentIds}
+              options={activeDocumentOptions}
+              placeholder={baseDocsLoading ? 'Loading documents...' : 'Select documents...'}
+              searchable
+              disabled={loading || baseDocsLoading}
+              fieldHint={inviteUserFieldHints.documents_to_sign}
+              helperText={
+                baseDocsLoading
+                  ? undefined
+                  : activeDocumentOptions.length === 0
+                    ? 'No active onboarding documents. Add or activate documents in Onboarding Admin.'
+                    : 'Only active documents from Onboarding Admin are listed.'
+              }
+            />
+          </div>
+        ) : null}
+
+        {step === 2 ? (
+          <div className={uiSpacing.sectionStack}>
+            <AppSectionHeader
+              title="Job Information"
+              description="Role, reporting, and compensation details (all optional)."
             />
 
-            {employmentTypes.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <AppDatePicker
+                id="invite-hire-date"
+                label="Hire Date (optional)"
+                value={hireDate}
+                onChange={(e) => setHireDate(e.target.value)}
+                disabled={loading}
+                fieldHint={userProfileFieldHint('hire_date')}
+              />
+
+              <AppInput
+                label="Job Title (optional)"
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                placeholder="e.g., Software Engineer"
+                disabled={loading}
+                fieldHint={userProfileFieldHint('job_title')}
+              />
+
+              <AppInput
+                type="email"
+                label="Work Email (optional)"
+                value={workEmail}
+                onChange={(e) => setWorkEmail(e.target.value)}
+                placeholder="work@company.com"
+                disabled={loading}
+                fieldHint={userProfileFieldHint('work_email')}
+              />
+
+              <AppInput
+                type="tel"
+                label="Work Phone (optional)"
+                value={workPhone}
+                onChange={(e) => setWorkPhone(e.target.value)}
+                placeholder="+1 (555) 123-4567"
+                disabled={loading}
+                fieldHint={userProfileFieldHint('work_phone')}
+              />
+
+              <AppUserSelect
+                mode="single"
+                label="Manager (optional)"
+                value={managerUserId}
+                onChange={setManagerUserId}
+                placeholder="Select a manager..."
+                disabled={loading}
+                fieldHint={userProfileFieldHint('manager_user_id')}
+              />
+
+              {employmentTypes.length > 0 ? (
+                <AppSelect
+                  label="Employment Type (optional)"
+                  value={employmentType}
+                  onChange={(e) => setEmploymentType(e.target.value)}
+                  options={employmentTypeOptions}
+                  placeholder="Select type..."
+                  disabled={loading}
+                  fieldHint={userProfileFieldHint('employment_type')}
+                />
+              ) : (
+                <AppInput
+                  label="Employment Type (optional)"
+                  value={employmentType}
+                  onChange={(e) => setEmploymentType(e.target.value)}
+                  placeholder="e.g., full-time, part-time"
+                  disabled={loading}
+                  fieldHint={userProfileFieldHint('employment_type')}
+                />
+              )}
+
+              <AppInput
+                label="Pay Rate (optional)"
+                value={payRate}
+                onChange={(e) => setPayRate(e.target.value)}
+                placeholder="e.g., $50/hour or $100,000/year"
+                disabled={loading}
+                fieldHint={userProfileFieldHint('pay_rate')}
+              />
+
               <AppSelect
-                label="Employment Type (optional)"
-                value={employmentType}
-                onChange={(e) => setEmploymentType(e.target.value)}
-                options={employmentTypeOptions}
+                label="Pay Type (optional)"
+                value={payType}
+                onChange={(e) => setPayType(e.target.value)}
+                options={payTypeOptions}
                 placeholder="Select type..."
                 disabled={loading}
+                fieldHint={userProfileFieldHint('pay_type')}
               />
-            ) : (
-              <AppInput
-                label="Employment Type (optional)"
-                value={employmentType}
-                onChange={(e) => setEmploymentType(e.target.value)}
-                placeholder="e.g., full-time, part-time"
-                disabled={loading}
-              />
-            )}
-
-            <AppInput
-              label="Pay Rate (optional)"
-              value={payRate}
-              onChange={(e) => setPayRate(e.target.value)}
-              placeholder="e.g., $50/hour or $100,000/year"
-              disabled={loading}
-            />
-
-            <AppSelect
-              label="Pay Type (optional)"
-              value={payType}
-              onChange={(e) => setPayType(e.target.value)}
-              options={payTypeOptions}
-              placeholder="Select type..."
-              disabled={loading}
-            />
+            </div>
           </div>
-        </div>
+        ) : null}
 
-        <div className={uiCx('border-t border-gray-100 pt-4', uiSpacing.sectionStack)}>
-          <h3 className={uiTypography.sectionTitle}>Onboarding Requirements</h3>
-
+        {step === 3 ? (
           <div className={uiSpacing.sectionStack}>
-            <AppCheckbox
-              label="This user will need an email account"
-              checked={needsEmail}
-              onChange={setNeedsEmail}
-              disabled={loading}
+            <AppSectionHeader
+              title="Onboarding Requirements"
+              description="Equipment and resources this employee will need."
             />
-            <AppCheckbox
-              label="This user will need business cards"
-              checked={needsBusinessCard}
-              onChange={setNeedsBusinessCard}
-              disabled={loading}
-            />
-            <AppCheckbox
-              label="This user will need a phone"
-              checked={needsPhone}
-              onChange={setNeedsPhone}
-              disabled={loading}
-            />
-            <AppCheckbox
-              label="This user will receive a vehicle"
-              checked={needsVehicle}
-              onChange={setNeedsVehicle}
-              disabled={loading}
-            />
-            <AppCheckbox
-              label="This user will need equipment or tools"
-              checked={needsEquipment}
-              onChange={setNeedsEquipment}
-              disabled={loading}
-            />
-            {needsEquipment ? (
-              <AppTextarea
-                value={equipmentList}
-                onChange={(e) => setEquipmentList(e.target.value)}
-                placeholder="Please list the equipment/tools needed..."
-                rows={3}
+
+            <div className={uiSpacing.sectionStack}>
+              <AppCheckbox
+                label="This user will need an email account"
+                checked={needsEmail}
+                onChange={setNeedsEmail}
                 disabled={loading}
+                fieldHint={inviteUserFieldHints.needs_email}
               />
-            ) : null}
+              <AppCheckbox
+                label="This user will need business cards"
+                checked={needsBusinessCard}
+                onChange={setNeedsBusinessCard}
+                disabled={loading}
+                fieldHint={inviteUserFieldHints.needs_business_card}
+              />
+              <AppCheckbox
+                label="This user will need a phone"
+                checked={needsPhone}
+                onChange={setNeedsPhone}
+                disabled={loading}
+                fieldHint={inviteUserFieldHints.needs_phone}
+              />
+              <AppCheckbox
+                label="This user will receive a vehicle"
+                checked={needsVehicle}
+                onChange={setNeedsVehicle}
+                disabled={loading}
+                fieldHint={inviteUserFieldHints.needs_vehicle}
+              />
+              <AppCheckbox
+                label="This user will need equipment or tools"
+                checked={needsEquipment}
+                onChange={setNeedsEquipment}
+                disabled={loading}
+                fieldHint={inviteUserFieldHints.needs_equipment}
+              />
+              {needsEquipment ? (
+                <AppTextarea
+                  label="Equipment list (optional)"
+                  value={equipmentList}
+                  onChange={(e) => setEquipmentList(e.target.value)}
+                  placeholder="Please list the equipment/tools needed..."
+                  rows={3}
+                  disabled={loading}
+                  fieldHint={inviteUserFieldHints.equipment_list}
+                />
+              ) : null}
+            </div>
           </div>
-        </div>
-      </form>
+        ) : null}
+      </div>
     </AppFormModal>
   );
 }

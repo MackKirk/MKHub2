@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FolderOpen, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -684,7 +684,7 @@ export default function CompanyFilesTabEnhanced() {
 
   const showTable =
     selectedDept &&
-    (selectedFolderId !== null || currentFolderChildren.length > 0 || currentFiles.length > 0);
+    (currentParentFolderId !== null || currentFolderChildren.length > 0 || currentFiles.length > 0);
 
   const filesBrowserBody = (
     <>
@@ -805,7 +805,7 @@ export default function CompanyFilesTabEnhanced() {
       {!(isAdmin && filesSection === 'deleted') && (
         <div className="overflow-hidden bg-white">
           <div className="flex h-[calc(100vh-400px)]">
-            <aside className="flex w-64 flex-col border-r bg-gray-50">
+            <div className="flex w-64 flex-col border-r bg-gray-50">
               <div className="border-b p-3">
                 <div className="text-xs font-semibold text-gray-700">File Categories</div>
               </div>
@@ -818,15 +818,14 @@ export default function CompanyFilesTabEnhanced() {
                       setSelectedDept(d.id);
                       setSelectedFolderId(null);
                     }}
-                    className={uiCx(
-                      'w-full border-b px-3 py-2 text-left transition-colors hover:bg-white',
+                    className={`w-full border-b px-3 py-2 text-left transition-colors hover:bg-white ${
                       selectedDept === d.id
                         ? 'border-l-4 border-l-brand-red bg-white font-semibold text-gray-900'
-                        : 'border-l-4 border-l-transparent text-gray-700'
-                    )}
+                        : 'text-gray-700'
+                    }`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-xs">🏢</span>
+                      <span className="text-xs">📁</span>
                       <span className="truncate text-xs">{d.label}</span>
                       <span className="ml-auto text-[10px] text-gray-500">({deptDocCounts[d.id] ?? 0})</span>
                     </div>
@@ -847,7 +846,7 @@ export default function CompanyFilesTabEnhanced() {
                   </div>
                 ) : null}
               </div>
-            </aside>
+            </div>
 
             <div
               className={uiCx(
@@ -889,7 +888,6 @@ export default function CompanyFilesTabEnhanced() {
                 <AppEmptyState
                   title="Select a File Category"
                   description="Choose a file category from the sidebar to view and manage folders."
-                  icon={<FolderOpen className="h-5 w-5" />}
                   className="min-h-[320px]"
                 />
               ) : (
@@ -985,17 +983,17 @@ export default function CompanyFilesTabEnhanced() {
                                   )}
                                 </div>
                               </th>
-                              <th className="w-32 px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Actions</th>
+                              <th className="w-24 px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y">
-                            {selectedFolderId !== null && (
+                            {currentParentFolderId !== null && (
                               <tr
                                 className="cursor-pointer bg-gray-50/50 hover:bg-gray-50"
                                 onClick={() => setSelectedFolderId(currentParentFolderId)}
                               >
                                 <td className="px-3 py-2">
-                                  <div className="flex h-10 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                                  <div className="flex h-10 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
                                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path
                                         strokeLinecap="round"
@@ -1096,7 +1094,7 @@ export default function CompanyFilesTabEnhanced() {
                                       </div>
                                     ) : (
                                       <div
-                                        className={`flex h-10 w-8 cursor-pointer select-none items-center justify-center rounded-lg ${icon.color} text-[10px] font-extrabold text-white`}
+                                        className={`flex h-10 w-8 flex-shrink-0 cursor-pointer select-none items-center justify-center rounded-lg ${icon.color} text-[10px] font-extrabold text-white`}
                                         onClick={() => handleFilePreview(d)}
                                       >
                                         {icon.label}
@@ -1168,7 +1166,7 @@ export default function CompanyFilesTabEnhanced() {
                                   </td>
                                   <td className="cursor-pointer px-3 py-2" onClick={() => handleFilePreview(d)}>
                                     <div className="text-xs text-gray-600">
-                                      {d.created_at ? new Date(d.created_at).toLocaleDateString('en-CA') : '-'}
+                                      {d.created_at ? new Date(d.created_at).toLocaleDateString('pt-BR') : '-'}
                                     </div>
                                   </td>
                                   <td className="px-3 py-2">
@@ -1195,7 +1193,7 @@ export default function CompanyFilesTabEnhanced() {
                                             setMoveDoc({ id: d.id });
                                             setMoveDocFolderId(d.folder_id || '');
                                           }}
-                                          title="Move"
+                                          title="Move to folder"
                                           className="rounded p-1 text-xs hover:bg-gray-100"
                                         >
                                           📦

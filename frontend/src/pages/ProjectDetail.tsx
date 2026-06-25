@@ -1131,6 +1131,7 @@ export default function ProjectDetail(){
   const [editRelatedLeakModal, setEditRelatedLeakModal] = useState(false);
   const [editLeakInvestigationLinksModal, setEditLeakInvestigationLinksModal] = useState(false);
   const [editRelatedCustomersModal, setEditRelatedCustomersModal] = useState(false);
+  const [editDescriptionModal, setEditDescriptionModal] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [workloadEventCreateOpen, setWorkloadEventCreateOpen] = useState(false);
 
@@ -2856,21 +2857,62 @@ export default function ProjectDetail(){
           );
         })()}
 
-      {/* Description card - only when description exists */}
-      {!tab && proj?.description?.trim() && (
+      {/* Description card — visible when set, or when user can add one */}
+      {!tab && (proj?.description?.trim() || hasEditPermission) && (
         useDesignSystem ? (
           <AppCard className="mt-6">
-            <AppSectionHeader title="Description" />
-            <p className={uiCx(uiTypography.body, 'mt-3 whitespace-pre-wrap leading-snug')}>
-              {proj.description.trim()}
+            <AppSectionHeader
+              title="Description"
+              action={
+                hasEditPermission ? (
+                  <AppHeroEditButton
+                    title="Edit Description"
+                    onClick={() => setEditDescriptionModal(true)}
+                  />
+                ) : null
+              }
+            />
+            <p
+              className={uiCx(
+                uiTypography.body,
+                'mt-3 whitespace-pre-wrap leading-snug',
+                hasEditPermission && 'cursor-pointer',
+              )}
+              onClick={() => hasEditPermission && setEditDescriptionModal(true)}
+            >
+              {proj?.description?.trim() ? (
+                proj.description.trim()
+              ) : (
+                <span className="text-gray-400 italic">No description</span>
+              )}
             </p>
           </AppCard>
         ) : (
           <div className="mt-6">
             <div className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80">
               <div className="p-3">
-                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Description</div>
-                <p className="text-sm text-gray-700 leading-snug whitespace-pre-wrap">{proj.description.trim()}</p>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Description</div>
+                  {hasEditPermission && (
+                    <AppHeroEditButton
+                      title="Edit Description"
+                      onClick={() => setEditDescriptionModal(true)}
+                    />
+                  )}
+                </div>
+                <p
+                  className={uiCx(
+                    'text-sm text-gray-700 leading-snug whitespace-pre-wrap',
+                    hasEditPermission && 'cursor-pointer',
+                  )}
+                  onClick={() => hasEditPermission && setEditDescriptionModal(true)}
+                >
+                  {proj?.description?.trim() ? (
+                    proj.description.trim()
+                  ) : (
+                    <span className="text-gray-400 italic">No description</span>
+                  )}
+                </p>
               </div>
             </div>
           </div>
@@ -3487,6 +3529,28 @@ export default function ProjectDetail(){
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
             invalidateRecentActivity();
             setEditProjectNameModal(false);
+          }}
+        />
+      )}
+
+      {/* Edit Description Modal */}
+      {editDescriptionModal && (
+        <EditDescriptionModal
+          projectId={String(id)}
+          currentDescription={proj?.description || ''}
+          entityLabel={
+            proj?.is_bidding
+              ? 'opportunity'
+              : proj?.is_leak_investigation
+                ? 'leak investigation'
+                : 'project'
+          }
+          designSystem={useDesignSystem}
+          onClose={() => setEditDescriptionModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
+            setEditDescriptionModal(false);
           }}
         />
       )}
@@ -8964,6 +9028,136 @@ function EditProjectNameModal({ projectId, currentName, designSystem, onClose, o
             type="button"
             onClick={handleSave}
             disabled={saving || !projectName.trim()}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div></OverlayPortal>
+  );
+}
+
+// Edit Description Modal Component
+function EditDescriptionModal({ projectId, currentDescription, entityLabel, designSystem, onClose, onSave }: {
+  projectId: string;
+  currentDescription: string;
+  entityLabel: string;
+  designSystem?: boolean;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [description, setDescription] = useState(currentDescription);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDescription(currentDescription);
+  }, [currentDescription]);
+
+  const handleSave = async () => {
+    const trimmed = description.trim();
+    const currentTrimmed = currentDescription.trim();
+    if (trimmed === currentTrimmed) {
+      onClose();
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        description: trimmed || null,
+      });
+      toast.success('Description updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update description');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Description"
+        description={`General notes and context for this ${entityLabel}`}
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <AppTextarea
+          label="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder={`Add notes or general information about this ${entityLabel}...`}
+          rows={6}
+          autoFocus
+        />
+      </AppFormModal>
+    );
+  }
+
+  return (
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Description</h2>
+              <p className="text-xs text-gray-500 mt-0.5">General notes and context for this {entityLabel}</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 min-h-[160px] resize-y"
+              placeholder={`Add notes or general information about this ${entityLabel}...`}
+              autoFocus
+            />
+          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
             className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving...' : 'Save'}

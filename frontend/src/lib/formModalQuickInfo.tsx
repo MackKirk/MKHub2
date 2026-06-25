@@ -1607,6 +1607,52 @@ export const onboardingDocPreferencesQuickInfo = formModalQuickInfo({
   ),
 });
 
+/** Users — invite new employee wizard. */
+export const inviteUserFieldHints = {
+  email_personal:
+    'Email address\n\nPersonal email where the new hire receives the invitation link. They use it to register and sign in.',
+  departments:
+    'Department\n\nInternal division(s) assigned when the employee completes registration. At least one is required.',
+  documents_to_sign:
+    'Documents to sign\n\nOptional onboarding PDFs to include for this hire. Only active documents from Onboarding Admin are listed.',
+  needs_email: 'Email account\n\nCheck if IT should provision a company email account for this person.',
+  needs_business_card: 'Business cards\n\nCheck if business cards should be ordered before their start date.',
+  needs_phone: 'Phone\n\nCheck if a company phone or mobile line should be assigned.',
+  needs_vehicle: 'Vehicle\n\nCheck if this employee will receive a company vehicle.',
+  needs_equipment:
+    'Equipment or tools\n\nCheck if special equipment or tools should be prepared before day one.',
+  equipment_list:
+    'Equipment list\n\nList specific items needed (laptop, PPE, tools, keys, etc.).',
+} as const;
+
+export const inviteUserQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Invite a new employee to MK Hub. They receive an email with a secure link to register, complete their profile, and
+      sign onboarding documents.
+    </>
+  ),
+  howToUse: (
+    <>
+      Step 1: enter {uiLabel('Email Address')} and {uiLabel('Department')} (required); optionally choose{' '}
+      {uiLabel('Documents to Sign')}. Step 2: add optional job details. Step 3: mark equipment and resources they may
+      need before starting.
+    </>
+  ),
+  behavior: (
+    <>
+      {uiLabel('Next')} is enabled only when required fields on the current step are valid. The invitation email is sent
+      only when you click {uiLabel('Send Invite')} on step 3.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without sending. {uiLabel('Back')} returns to the previous step. {uiLabel('Send Invite')}{' '}
+      creates the invitation and emails the new hire.
+    </>
+  ),
+});
+
 /** Company Files — folder permissions. */
 export const companyFilesPermissionsQuickInfo = formModalQuickInfo({
   purpose: <>Control who can access this folder when it is not public to all users.</>,
