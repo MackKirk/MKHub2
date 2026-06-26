@@ -1,225 +1,151 @@
-import { useQuery } from '@tanstack/react-query';
-import { api, withFileAccessToken } from '@/lib/api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useCallback, useEffect, useState } from 'react';
-import TrainingCertificates from './TrainingCertificates';
+import { useQuery } from '@tanstack/react-query';
+import { GraduationCap } from 'lucide-react';
+import { api } from '@/lib/api';
+import { useMyTrainingData } from '@/hooks/useMyTrainingData';
+import TrainingOverviewTab from '@/components/training/TrainingOverviewTab';
+import TrainingCoursesTab from '@/components/training/TrainingCoursesTab';
+import TrainingMyRecordsTab from '@/components/training/TrainingMyRecordsTab';
+import TrainingMyMatrixTab from '@/components/training/TrainingMyMatrixTab';
+import TrainingCertificates from '@/pages/TrainingCertificates';
+import {
+  AppCard,
+  AppEmptyState,
+  AppPageHeader,
+  AppTabs,
+  uiCx,
+  uiSpacing,
+} from '@/components/ui';
 
-type Course = {
-  id: string;
-  title: string;
-  description?: string;
-  category_label?: string;
-  thumbnail_file_id?: string;
-  estimated_duration_minutes?: number;
-  tags?: string[];
-  progress_percent: number;
-  completed_at?: string;
-  certificate_id?: string;
-  certificate_expires_at?: string;
-};
+export type TrainingHubTab = 'overview' | 'courses' | 'records' | 'certificates' | 'matrix';
 
-type TrainingData = {
-  completed: Course[];
-  in_progress: Course[];
-  required: Course[];
-  expired: Course[];
-  available?: Course[];
-};
+const PAGE_TABS = [
+  { key: 'overview' as const, label: 'Overview' },
+  { key: 'courses' as const, label: 'Internal courses' },
+  { key: 'records' as const, label: 'My schedule & records' },
+  { key: 'certificates' as const, label: 'Certificates' },
+  { key: 'matrix' as const, label: 'My matrix' },
+];
 
-type CourseTab = 'completed' | 'in_progress' | 'required' | 'expired' | 'available';
-type TrainingTab = CourseTab | 'certificates';
+const VALID_TABS = new Set<string>(PAGE_TABS.map((t) => t.key));
+
+function parseTab(raw: string | null): TrainingHubTab {
+  if (raw && VALID_TABS.has(raw)) return raw as TrainingHubTab;
+  return 'overview';
+}
+
+function canViewTrainingDashboard(me: { roles?: string[]; permissions?: string[] } | undefined): boolean {
+  if (!me) return false;
+  const roles = me.roles || [];
+  const perms = me.permissions || [];
+  return (
+    roles.includes('admin') ||
+    perms.includes('training:manage') ||
+    perms.includes('users:write') ||
+    perms.includes('users:read') ||
+    perms.includes('hr:users:read') ||
+    perms.includes('hr:users:view:general')
+  );
+}
 
 export default function Training() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<TrainingTab>('required');
+  const [pageTab, setPageTab] = useState<TrainingHubTab>(() => parseTab(searchParams.get('tab')));
+
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<{ id: string; roles?: string[]; permissions?: string[] }>('GET', '/auth/me'),
+  });
+
+  const data = useMyTrainingData();
+  const showDashboardLink = canViewTrainingDashboard(me);
 
   useEffect(() => {
-    if (searchParams.get('tab') === 'certificates') {
-      setActiveTab('certificates');
-    }
+    setPageTab(parseTab(searchParams.get('tab')));
   }, [searchParams]);
 
   const setTab = useCallback(
-    (tab: TrainingTab) => {
-      setActiveTab(tab);
-      if (tab === 'certificates') {
-        setSearchParams({ tab: 'certificates' }, { replace: true });
-      } else {
-        setSearchParams({}, { replace: true });
-      }
+    (tab: TrainingHubTab) => {
+      setPageTab(tab);
+      setSearchParams(tab === 'overview' ? {} : { tab }, { replace: true });
     },
-    [setSearchParams]
+    [setSearchParams],
   );
 
-  const { data, isLoading } = useQuery<TrainingData>({
-    queryKey: ['training'],
-    queryFn: () => api<TrainingData>('GET', '/training'),
-  });
-
-  const courses = activeTab === 'certificates' ? [] : data?.[activeTab as CourseTab] || [];
+  const tabsWithCounts = useMemo(
+    () =>
+      PAGE_TABS.map((t) => {
+        if (t.key === 'courses' && data.summaryCounts.required > 0) {
+          return { ...t, label: `${t.label} (${data.summaryCounts.required} req.)` };
+        }
+        if (t.key === 'certificates' && data.summaryCounts.certificates > 0) {
+          return { ...t, label: `${t.label} (${data.summaryCounts.certificates})` };
+        }
+        return t;
+      }),
+    [data.summaryCounts],
+  );
 
   return (
-    <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 mb-6">
-        <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Training & Learning</div>
-        <div className="text-sm text-gray-500 font-medium">
-          Complete your required training, browse internal courses, and earn certificates
+    <div className={uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
+        icon={<GraduationCap className="h-4 w-4" />}
+        title="My Training"
+        subtitle={
+          <>
+            Your personal training hub. Courses, certificates, schedule, and compliance matrix.
+          </>
+        }
+      />
+
+      <AppCard bodyClassName="!py-3">
+        <AppTabs tabs={tabsWithCounts} value={pageTab} onChange={(key) => setTab(key as TrainingHubTab)} />
+      </AppCard>
+
+      {data.isLoading && !data.training && !data.records.length ? (
+        <div className="space-y-4">
+          <div className="h-32 animate-pulse rounded-xl bg-gray-100" />
+          <div className="h-64 animate-pulse rounded-xl bg-gray-100" />
         </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="mb-4 flex gap-2 border-b flex-wrap">
-        <button
-          type="button"
-          onClick={() => setTab('available')}
-          className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
-            activeTab === 'available'
-              ? 'border-[#7f1010] text-[#7f1010]'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Browse ({data?.available?.length || 0})
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('required')}
-          className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
-            activeTab === 'required'
-              ? 'border-[#7f1010] text-[#7f1010]'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Required ({data?.required?.length || 0})
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('in_progress')}
-          className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
-            activeTab === 'in_progress'
-              ? 'border-[#7f1010] text-[#7f1010]'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          In Progress ({data?.in_progress?.length || 0})
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('completed')}
-          className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
-            activeTab === 'completed'
-              ? 'border-[#7f1010] text-[#7f1010]'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Completed ({data?.completed?.length || 0})
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('expired')}
-          className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
-            activeTab === 'expired'
-              ? 'border-[#7f1010] text-[#7f1010]'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Expired ({data?.expired?.length || 0})
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('certificates')}
-          className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
-            activeTab === 'certificates'
-              ? 'border-[#7f1010] text-[#7f1010]'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          My certificates
-        </button>
-      </div>
-
-      {activeTab === 'certificates' ? (
-        <TrainingCertificates embedded />
       ) : null}
 
-      {/* Course Grid */}
-      {activeTab !== 'certificates' && isLoading ? (
-        <div className="grid md:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-64 bg-gray-100 animate-pulse rounded-xl" />
-          ))}
-        </div>
-      ) : activeTab !== 'certificates' && courses.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          <p className="text-lg">No courses in this category.</p>
-        </div>
-      ) : activeTab !== 'certificates' ? (
-        <div className="grid md:grid-cols-3 gap-4">
-          {courses.map((course) => (
-            <Link
-              key={course.id}
-              to={`/training/${course.id}`}
-              className="rounded-xl border bg-white overflow-hidden hover:shadow-lg transition-shadow"
-            >
-              {course.thumbnail_file_id ? (
-                <img
-                  src={withFileAccessToken(`/files/${course.thumbnail_file_id}/thumbnail?w=400`)}
-                  alt={course.title}
-                  className="w-full h-40 object-cover"
-                />
-              ) : (
-                <div className="w-full h-40 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                  <span className="text-gray-400 text-4xl">📚</span>
-                </div>
-              )}
-              <div className="p-4">
-                {course.category_label && (
-                  <span className="text-xs font-semibold text-[#7f1010] uppercase">
-                    {course.category_label}
-                  </span>
-                )}
-                <h3 className="font-bold text-lg mt-1 mb-2 line-clamp-2">{course.title}</h3>
-                {course.description && (
-                  <p className="text-sm text-gray-600 line-clamp-2 mb-3">{course.description}</p>
-                )}
-                
-                {/* Progress Bar */}
-                {activeTab === 'in_progress' && (
-                  <div className="mb-3">
-                    <div className="flex justify-between text-xs text-gray-600 mb-1">
-                      <span>Progress</span>
-                      <span>{course.progress_percent}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-[#7f1010] h-2 rounded-full transition-all"
-                        style={{ width: `${course.progress_percent}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
+      {data.isError ? (
+        <AppEmptyState
+          title="Could not load training data"
+          description={data.errorMessage || 'Please refresh the page or try again later.'}
+        />
+      ) : null}
 
-                {/* Status Badge */}
-                <div className="flex items-center justify-between mt-3">
-                  {course.completed_at && (
-                    <span className="text-xs text-green-600 font-semibold">✓ Completed</span>
-                  )}
-                  {course.certificate_expires_at && (
-                    <span className="text-xs text-orange-600">
-                      Expires: {new Date(course.certificate_expires_at).toLocaleDateString()}
-                    </span>
-                  )}
-                  {course.estimated_duration_minutes && (
-                    <span className="text-xs text-gray-500">
-                      {Math.round(course.estimated_duration_minutes / 60)}h
-                    </span>
-                  )}
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
+      {!data.isLoading || data.training || data.records.length ? (
+        <>
+      {pageTab === 'overview' ? (
+        <TrainingOverviewTab data={data} onGoToTab={(tab) => setTab(tab as TrainingHubTab)} />
+      ) : null}
+
+      {pageTab === 'courses' ? (
+        <TrainingCoursesTab training={data.training} isLoading={data.isLoading} />
+      ) : null}
+
+      {pageTab === 'records' ? (
+        <TrainingMyRecordsTab userId={data.userId} records={data.records} isLoading={data.isLoading} />
+      ) : null}
+
+      {pageTab === 'certificates' ? (
+        <TrainingCertificates
+          embedded
+          certificates={data.certificates}
+          isLoading={data.isLoading}
+          isError={data.certificatesQuery.isError}
+          errorMessage={data.errorMessage}
+        />
+      ) : null}
+
+      {pageTab === 'matrix' ? (
+        <TrainingMyMatrixTab matrixItems={data.matrixItems} isLoading={data.isLoading} />
+      ) : null}
+        </>
       ) : null}
     </div>
   );
 }
-

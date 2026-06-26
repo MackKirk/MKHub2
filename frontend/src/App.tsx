@@ -253,12 +253,12 @@ export default function App(){
           <Route path="/fleet/inspections/:id" element={<AppShell><FleetInspectionsIdGate /></AppShell>} />
           <Route path="/training" element={<AppShell><Training/></AppShell>} />
           <Route path="/training/certificates" element={<Navigate to="/training?tab=certificates" replace />} />
-          <Route path="/training/:courseId" element={<AppShell><TrainingCourse/></AppShell>} />
           <Route path="/training/dashboard" element={<AppShell><TrainingLearningDashboard /></AppShell>} />
           <Route path="/training/hr-records" element={<Navigate to="/training/dashboard" replace />} />
           <Route path="/training/admin" element={<AppShell><TrainingAdmin/></AppShell>} />
           <Route path="/training/admin/new" element={<AppShell><TrainingCourseEdit/></AppShell>} />
           <Route path="/training/admin/:courseId" element={<AppShell><TrainingCourseEdit/></AppShell>} />
+          <Route path="/training/:courseId" element={<AppShell><TrainingCourse/></AppShell>} />
           <Route path="/logs" element={<AppShell><SystemAdmin /></AppShell>} />
           <Route path="/admin/system" element={<Navigate to="/logs" replace />} />
           <Route path="/notifications" element={<AppShell><Notifications/></AppShell>} />

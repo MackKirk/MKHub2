@@ -7,6 +7,23 @@ import { sanitizeTrainingRichTextHtml } from '@/lib/trainingRichTextSanitize';
 import { toYoutubeEmbedUrl } from '@/lib/youtubeEmbed';
 import toast from 'react-hot-toast';
 import { useState, useEffect, useMemo } from 'react';
+import { CheckCircle2, Circle, GraduationCap, ClipboardList } from 'lucide-react';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppPageHeader,
+  AppSectionHeader,
+  appSectionPresetProps,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type Module = {
   id: string;
@@ -218,11 +235,40 @@ export default function TrainingCourse() {
   });
 
   if (isLoading) {
-    return <div className="p-4">Loading course...</div>;
+    return (
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+        <AppCard
+          className={uiShadows.card}
+          bodyClassName={uiCx(uiSpacing.cardPadding, 'flex min-h-[240px] flex-col items-center justify-center')}
+        >
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-brand-red" />
+          <p className={uiCx('mt-4', uiTypography.body, 'font-medium')}>Loading course…</p>
+        </AppCard>
+      </div>
+    );
   }
 
   if (!course) {
-    return <div className="p-4">Course not found</div>;
+    return (
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+        <AppPageHeader
+          icon={<GraduationCap className="h-4 w-4" />}
+          title="Course not found"
+          subtitle="This course may be unpublished or no longer available."
+          onBack={() => navigate('/training')}
+          backLabel="My Training"
+        />
+        <AppEmptyState
+          title="Course not found"
+          description="Return to My Training to browse available courses."
+          action={
+            <AppButton type="button" onClick={() => navigate('/training')}>
+              Back to My Training
+            </AppButton>
+          }
+        />
+      </div>
+    );
   }
 
   const handleStartCourse = () => {
@@ -270,90 +316,121 @@ export default function TrainingCourse() {
     });
   };
 
+  const progressPercent = course.progress?.progress_percent ?? 0;
+
   return (
-    <div className="flex gap-6 h-[calc(100vh-200px)]">
-      {/* Sidebar - Modules & Lessons */}
-      <div className="w-80 border-r bg-gray-50 overflow-y-auto">
-        <div className="p-4 sticky top-0 bg-white border-b z-10">
-          <button
-            onClick={() => navigate('/training')}
-            className="text-sm text-gray-600 hover:text-gray-900 mb-2"
-          >
-            ← Back to Training
-          </button>
-          <h1 className="font-bold text-lg">{course.title}</h1>
-          {course.progress && (
-            <div className="mt-2">
-              <div className="flex justify-between text-xs text-gray-600 mb-1">
-                <span>Progress</span>
-                <span>{course.progress.progress_percent}%</span>
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
+        icon={<GraduationCap className="h-4 w-4" />}
+        title={course.title}
+        subtitle={course.description || 'Complete each lesson to finish the course.'}
+        onBack={() => navigate('/training')}
+        backLabel="My Training"
+        actions={
+          course.progress ? (
+            <div className="min-w-[10rem] text-right">
+              <div className={uiCx(uiTypography.helper, 'mb-1')}>
+                Progress <span className="font-semibold text-gray-900">{progressPercent}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
                 <div
-                  className="bg-[#7f1010] h-2 rounded-full"
-                  style={{ width: `${course.progress.progress_percent}%` }}
+                  className="h-full rounded-full bg-brand-red transition-all"
+                  style={{ width: `${progressPercent}%` }}
                 />
               </div>
             </div>
-          )}
-        </div>
+          ) : (
+            <AppBadge variant="info">Not started</AppBadge>
+          )
+        }
+      />
 
-        <div className="p-2">
-          {course.modules.map((module) => (
-            <div key={module.id} className="mb-4">
-              <div className="font-semibold text-sm text-gray-700 mb-2 px-2">
-                {module.title}
+      <div className="grid items-start gap-2 lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
+        <AppCard
+          className={uiCx(uiShadows.card, 'lg:sticky lg:top-5 lg:max-h-[calc(100vh-10rem)] lg:overflow-hidden')}
+          title="Curriculum"
+          subtitle={`${course.modules.length} module${course.modules.length === 1 ? '' : 's'}`}
+          bodyClassName="!p-0"
+        >
+          <div className="max-h-[min(70vh,640px)] overflow-y-auto p-2">
+            {course.modules.map((module) => (
+              <div key={module.id} className="mb-3 last:mb-0">
+                <div className={uiCx(uiTypography.overline, 'px-2 py-1.5')}>{module.title}</div>
+                <ul className="space-y-0.5">
+                  {module.lessons.map((lesson) => {
+                    const isSelected = selectedLessonId === lesson.id;
+                    return (
+                      <li key={lesson.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLessonId(lesson.id)}
+                          className={uiCx(
+                            'flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                            isSelected
+                              ? 'bg-brand-red text-white'
+                              : lesson.completed
+                                ? 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                                : 'text-gray-800 hover:bg-gray-50',
+                          )}
+                        >
+                          {lesson.completed ? (
+                            <CheckCircle2
+                              className={uiCx('mt-0.5 h-4 w-4 shrink-0', isSelected ? 'text-white' : 'text-emerald-600')}
+                              aria-hidden
+                            />
+                          ) : (
+                            <Circle
+                              className={uiCx('mt-0.5 h-4 w-4 shrink-0', isSelected ? 'text-white/80' : 'text-gray-400')}
+                              aria-hidden
+                            />
+                          )}
+                          <span className="min-w-0 flex-1 font-medium leading-snug">{lesson.title}</span>
+                          {lesson.has_quiz ? (
+                            <ClipboardList
+                              className={uiCx('mt-0.5 h-4 w-4 shrink-0', isSelected ? 'text-white/90' : 'text-gray-400')}
+                              aria-hidden
+                            />
+                          ) : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
-              {module.lessons.map((lesson) => (
-                <button
-                  key={lesson.id}
-                  onClick={() => setSelectedLessonId(lesson.id)}
-                  className={`w-full text-left px-4 py-2 mb-1 rounded text-sm transition-colors ${
-                    selectedLessonId === lesson.id
-                      ? 'bg-[#7f1010] text-white'
-                      : lesson.completed
-                      ? 'bg-green-50 text-green-800 hover:bg-green-100'
-                      : 'hover:bg-gray-100'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    {lesson.completed ? (
-                      <span className="text-green-600">✓</span>
-                    ) : (
-                      <span className="text-gray-400">○</span>
-                    )}
-                    <span>{lesson.title}</span>
-                    {lesson.has_quiz && <span className="text-xs">📝</span>}
-                  </div>
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {!course.progress ? (
-          <div className="text-center py-12">
-            <p className="text-lg mb-4">Start this course to begin learning</p>
-            <button
-              onClick={handleStartCourse}
-              className="px-6 py-3 bg-[#7f1010] text-white rounded-lg font-semibold hover:bg-[#a31414] transition-colors"
-            >
-              Start Course
-            </button>
+            ))}
           </div>
-        ) : selectedLesson ? (
-          <div>
-            <h2 className="text-2xl font-bold mb-4">{selectedLesson.title}</h2>
+        </AppCard>
 
-            {/* Lesson Content */}
-            <div className="mb-6">
+        <AppCard className={uiShadows.card} bodyClassName={uiSpacing.sectionStack}>
+          {!course.progress ? (
+            <AppEmptyState
+              title="Ready to begin?"
+              description="Start the course to track your progress and complete lessons."
+              action={
+                <AppButton type="button" loading={startMutation.isPending} onClick={handleStartCourse}>
+                  Start course
+                </AppButton>
+              }
+            />
+          ) : selectedLesson ? (
+            <>
+              <AppSectionHeader
+                title={selectedLesson.title}
+                description={
+                  selectedLesson.completed
+                    ? 'You completed this lesson.'
+                    : selectedLesson.lesson_type === 'quiz' || selectedLesson.has_quiz
+                      ? 'Answer all questions to pass the quiz.'
+                      : 'Review the content, then mark the lesson complete.'
+                }
+                {...appSectionPresetProps('education')}
+              />
+
+              <div className={uiSpacing.sectionStack}>
               {selectedLesson.lesson_type === 'video' && (
                 <div>
                   {selectedLesson.content?.video_url ? (
-                    <div className="aspect-video bg-black rounded-lg mb-4 overflow-hidden">
+                    <div className={uiCx(uiRadius.card, 'aspect-video overflow-hidden bg-black')}>
                       <iframe
                         title="Lesson video"
                         src={
@@ -367,33 +444,38 @@ export default function TrainingCourse() {
                       />
                     </div>
                   ) : (
-                    <div className="aspect-video bg-gray-200 rounded-lg flex items-center justify-center">
-                      <span className="text-gray-500">Video content</span>
+                    <div
+                      className={uiCx(
+                        uiRadius.card,
+                        'flex aspect-video items-center justify-center bg-gray-100',
+                      )}
+                    >
+                      <span className={uiTypography.helper}>Video content</span>
                     </div>
                   )}
                 </div>
               )}
 
               {selectedLesson.lesson_type === 'pdf' && (
-                <div className="border rounded-lg p-4 mb-4 bg-slate-50">
+                <div className={uiCx(uiRadius.card, uiBorders.subtle, 'bg-gray-50 p-4')}>
                   {selectedLesson.content?.pdf_file_id ? (
                     <>
                       <iframe
                         title="Lesson PDF"
                         src={`${withFileAccessToken(`/files/${selectedLesson.content.pdf_file_id}`)}#view=FitH`}
-                        className="w-full h-[min(70vh,720px)] min-h-[420px] rounded bg-white border border-gray-200"
+                        className="h-[min(70vh,720px)] min-h-[420px] w-full rounded-lg border border-gray-200 bg-white"
                       />
                       <a
                         href={withFileAccessToken(`/files/${selectedLesson.content.pdf_file_id}`)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-block mt-3 text-sm text-[#7f1010] underline"
+                        className={uiCx('mt-3 inline-block text-sm font-medium text-brand-red hover:underline')}
                       >
                         Open PDF in a new tab
                       </a>
                     </>
                   ) : (
-                    <p className="text-sm text-gray-600">No PDF is attached to this lesson yet.</p>
+                    <p className={uiTypography.helper}>No PDF is attached to this lesson yet.</p>
                   )}
                 </div>
               )}
@@ -423,45 +505,53 @@ export default function TrainingCourse() {
               )}
 
               {(selectedLesson.lesson_type === 'quiz' || selectedLesson.has_quiz) && needsQuiz && (
-                <div className="border rounded-lg p-6 bg-white mb-4">
-                  {quizLoading && <p className="text-gray-600">Loading quiz…</p>}
+                <AppCard bodyClassName={uiSpacing.sectionStack}>
+                  {quizLoading && <p className={uiTypography.helper}>Loading quiz…</p>}
                   {!quizLoading && !lessonQuiz && (
-                    <p className="text-amber-800">No quiz is attached to this lesson yet.</p>
+                    <p className="text-sm text-amber-800">No quiz is attached to this lesson yet.</p>
                   )}
                   {lessonQuiz && (
                     <>
-                  <h3 className="text-xl font-bold mb-4">{lessonQuiz.title}</h3>
-                  <p className="text-sm text-gray-600 mb-2">
-                    Passing score: {lessonQuiz.passing_score_percent}%
-                  </p>
-                  {lessonQuiz.max_attempts != null && (
-                    <p className="text-sm text-gray-600 mb-6">
-                      Submissions used: {lessonQuiz.attempts_used ?? 0} / {lessonQuiz.max_attempts}
-                      {lessonQuiz.attempts_remaining != null && lessonQuiz.attempts_remaining > 0 ? (
-                        <span className="text-gray-500"> ({lessonQuiz.attempts_remaining} remaining)</span>
-                      ) : null}
-                    </p>
-                  )}
-                  {lessonQuiz.max_attempts == null && (lessonQuiz.attempts_used ?? 0) > 0 && (
-                    <p className="text-sm text-gray-600 mb-6">
-                      Keep trying until you pass — unlimited attempts.
-                    </p>
-                  )}
-
-                  {selectedLesson.completed ? (
-                    <p className="rounded-lg bg-green-50 px-4 py-3 text-green-900">You completed this lesson.</p>
-                  ) : lessonQuiz.can_submit === false ? (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                      You have used all attempts for this quiz without reaching the passing score. Contact your
-                      administrator if you need access again.
-                    </div>
-                  ) : !quizSubmitted ? (
-                    <div className="space-y-6">
-                      {lessonQuiz.questions.map((question, idx) => (
-                        <div key={question.id} className="border-b pb-4">
-                          <p className="font-semibold mb-3">
-                            {idx + 1}. {question.question_text}
+                      <div>
+                        <h3 className={uiTypography.sectionTitle}>{lessonQuiz.title}</h3>
+                        <p className={uiTypography.helper}>
+                          Passing score: {lessonQuiz.passing_score_percent}%
+                        </p>
+                        {lessonQuiz.max_attempts != null && (
+                          <p className={uiTypography.helper}>
+                            Submissions used: {lessonQuiz.attempts_used ?? 0} / {lessonQuiz.max_attempts}
+                            {lessonQuiz.attempts_remaining != null && lessonQuiz.attempts_remaining > 0 ? (
+                              <span> ({lessonQuiz.attempts_remaining} remaining)</span>
+                            ) : null}
                           </p>
+                        )}
+                        {lessonQuiz.max_attempts == null && (lessonQuiz.attempts_used ?? 0) > 0 && (
+                          <p className={uiTypography.helper}>Keep trying until you pass — unlimited attempts.</p>
+                        )}
+                      </div>
+
+                      {selectedLesson.completed ? (
+                        <div className={uiCx(uiRadius.card, 'bg-emerald-50 px-4 py-3 text-sm text-emerald-900')}>
+                          You completed this lesson.
+                        </div>
+                      ) : lessonQuiz.can_submit === false ? (
+                        <div
+                          className={uiCx(
+                            uiRadius.card,
+                            uiBorders.subtle,
+                            'border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900',
+                          )}
+                        >
+                          You have used all attempts for this quiz without reaching the passing score. Contact your
+                          administrator if you need access again.
+                        </div>
+                      ) : !quizSubmitted ? (
+                        <div className="space-y-6">
+                          {lessonQuiz.questions.map((question, idx) => (
+                            <div key={question.id} className="border-b border-gray-100 pb-4 last:border-0">
+                              <p className={uiCx(uiTypography.body, 'mb-3 font-semibold text-gray-900')}>
+                                {idx + 1}. {question.question_text}
+                              </p>
                           {isQuizSingleChoice(question.question_type) && question.options ? (
                             <div className="space-y-2">
                               {question.options.map((option, optIdx) => (
@@ -546,23 +636,27 @@ export default function TrainingCourse() {
                         </div>
                       ))}
 
-                      <button
+                      <AppButton
+                        type="button"
+                        className="w-full"
+                        loading={submitQuizMutation.isPending}
+                        disabled={!quizFullyAnswered}
                         onClick={handleSubmitQuiz}
-                        disabled={submitQuizMutation.isPending || !quizFullyAnswered}
-                        className="w-full px-6 py-3 bg-[#7f1010] text-white rounded-lg font-semibold hover:bg-[#a31414] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {submitQuizMutation.isPending ? 'Submitting...' : 'Submit Quiz'}
-                      </button>
+                        Submit quiz
+                      </AppButton>
                     </div>
                   ) : quizResult ? (
                     <div className="space-y-4">
                       <div
-                        className={`p-4 rounded-lg ${
-                          quizResult.passed ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-                        }`}
+                        className={uiCx(
+                          uiRadius.card,
+                          'p-4',
+                          quizResult.passed ? 'bg-emerald-50 text-emerald-900' : 'bg-red-50 text-red-900',
+                        )}
                       >
-                        <p className="font-bold text-lg">
-                          {quizResult.passed ? '✓ Quiz Passed!' : '✗ Quiz Failed'}
+                        <p className="text-lg font-bold">
+                          {quizResult.passed ? 'Quiz passed' : 'Quiz failed'}
                         </p>
                         {quizResult.results_hidden ? (
                           <>
@@ -612,71 +706,68 @@ export default function TrainingCourse() {
                       )}
 
                       {quizResult.can_retry && (
-                        <button
-                          onClick={handleRetryQuiz}
-                          className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-                        >
-                          {quizResult.results_hidden ? 'Try Again' : 'Retry Quiz'}
-                        </button>
+                        <AppButton type="button" variant="secondary" className="w-full" onClick={handleRetryQuiz}>
+                          {quizResult.results_hidden ? 'Try again' : 'Retry quiz'}
+                        </AppButton>
                       )}
 
                       {quizResult.passed && (
-                        <button
-                          onClick={handleCompleteLesson}
-                          className="w-full px-6 py-3 bg-[#7f1010] text-white rounded-lg font-semibold hover:bg-[#a31414] transition-colors"
-                        >
-                          Continue to Next Lesson
-                        </button>
+                        <AppButton type="button" className="w-full" onClick={handleCompleteLesson}>
+                          Continue to next lesson
+                        </AppButton>
                       )}
                     </div>
                   ) : null}
                     </>
                   )}
-                </div>
+                </AppCard>
               )}
-            </div>
-
-            {/* Complete Button - Only show if lesson doesn't have quiz or quiz is completed */}
-            {!selectedLesson.completed &&
-              selectedLesson.lesson_type !== 'quiz' &&
-              !selectedLesson.has_quiz && (
-                <div className="flex gap-4">
-                  <button
-                    onClick={handleCompleteLesson}
-                    disabled={completeMutation.isPending}
-                    className="px-6 py-3 bg-[#7f1010] text-white rounded-lg font-semibold hover:bg-[#a31414] transition-colors disabled:opacity-50"
-                  >
-                    {completeMutation.isPending ? 'Completing...' : 'Mark as Complete'}
-                  </button>
-                </div>
-              )}
-
-            {selectedLesson.completed && (
-              <div className="px-6 py-3 bg-green-50 text-green-800 rounded-lg font-semibold">
-                ✓ Lesson Completed
               </div>
-            )}
 
-            {course.progress?.completed_at && (
-              <div className="mt-8 border rounded-xl bg-emerald-50 border-emerald-200 p-6">
-                <p className="font-bold text-emerald-900 text-lg mb-2">Course completed</p>
-                <p className="text-sm text-emerald-800 mb-4">
-                  You have finished all required lessons. Your certificate is available if this course issues one.
-                </p>
-                <Link
-                  to="/training?tab=certificates"
-                  className="inline-block px-4 py-2 bg-emerald-700 text-white rounded-lg font-semibold hover:bg-emerald-800"
+              {!selectedLesson.completed &&
+                selectedLesson.lesson_type !== 'quiz' &&
+                !selectedLesson.has_quiz && (
+                  <div className={uiLayout.actionsRow}>
+                    <AppButton
+                      type="button"
+                      loading={completeMutation.isPending}
+                      onClick={handleCompleteLesson}
+                    >
+                      Mark as complete
+                    </AppButton>
+                  </div>
+                )}
+
+              {selectedLesson.completed && (
+                <AppBadge variant="success" className="w-fit px-3 py-2 text-sm">
+                  Lesson completed
+                </AppBadge>
+              )}
+
+              {course.progress?.completed_at && (
+                <AppCard
+                  bodyClassName={uiCx(uiSpacing.sectionStack, 'border-emerald-200 bg-emerald-50/80')}
+                  className="border-emerald-200"
                 >
-                  View certificates
-                </Link>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="text-center py-12 text-gray-500">
-            <p>Select a lesson to begin</p>
-          </div>
-        )}
+                  <div>
+                    <p className={uiCx(uiTypography.sectionTitle, 'text-emerald-900')}>Course completed</p>
+                    <p className={uiCx(uiTypography.helper, 'text-emerald-800')}>
+                      You have finished all required lessons. Your certificate is available if this course issues one.
+                    </p>
+                  </div>
+                  <Link
+                    to="/training?tab=certificates"
+                    className="inline-flex h-9 items-center justify-center rounded-md border border-gray-300 bg-white px-4 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    View certificates
+                  </Link>
+                </AppCard>
+              )}
+            </>
+          ) : (
+            <AppEmptyState title="Select a lesson" description="Choose a lesson from the curriculum to begin." />
+          )}
+        </AppCard>
       </div>
     </div>
   );

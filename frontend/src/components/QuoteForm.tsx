@@ -44,9 +44,11 @@ import {
   PROPOSAL_SECTION_IMAGE_MAX_EXPORT_LONG_SIDE,
   PROPOSAL_SECTION_IMAGE_TARGET_HEIGHT,
   PROPOSAL_SECTION_IMAGE_TARGET_WIDTH,
-  SECTION_IMAGE_GRID_THUMB_W,
-  SECTION_IMAGE_LIGHTBOX_THUMB_W,
+  normalizeProposalSectionImageOrientation,
+  type ProposalSectionImageOrientation,
 } from '@/constants/proposalSectionImage';
+import SectionImageLightbox from '@/components/proposal/SectionImageLightbox';
+import SectionImagePreview from '@/components/proposal/SectionImagePreview';
 
 /** Quote form — `fieldHint` for App* controls (`Title\n\nBody`). */
 const QUOTE_FIELD_HINTS = {
@@ -251,8 +253,16 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   const [coverBlob, setCoverBlob] = useState<Blob|null>(null);
   const [coverFoId, setCoverFoId] = useState<string|undefined>(undefined);
   const [pickerFor, setPickerFor] = useState<null|'cover'>(null);
-  const [sectionPicker, setSectionPicker] = useState<{ secId:string, index?: number, fileObjectId?: string }|null>(null);
-  const [sectionImageLightboxId, setSectionImageLightboxId] = useState<string | null>(null);
+  const [sectionPicker, setSectionPicker] = useState<{
+    secId: string;
+    index?: number;
+    fileObjectId?: string;
+    orientation?: ProposalSectionImageOrientation;
+  }|null>(null);
+  const [sectionImageLightbox, setSectionImageLightbox] = useState<{
+    fileObjectId: string;
+    orientation?: string | null;
+  } | null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
   const newImageId = ()=> 'img_'+Math.random().toString(36).slice(2);
   const formatPhone = (v:string)=>{
@@ -413,7 +423,11 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       return {
         type: 'images',
         title: String(sec.title||''),
-        images: (sec.images||[]).map((im:any)=> ({ file_object_id: String(im.file_object_id||''), caption: String(im.caption||'') }))
+        images: (sec.images||[]).map((im:any)=> ({
+          file_object_id: String(im.file_object_id||''),
+          caption: String(im.caption||''),
+          orientation: normalizeProposalSectionImageOrientation(im.orientation),
+        }))
       };
     }
     // Filter out estimate sections - they're now handled in pricing area
@@ -673,7 +687,12 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     const loaded = Array.isArray(d.sections)? JSON.parse(JSON.stringify(d.sections)) : [];
     const normalized = loaded.map((sec:any)=>{
       if (sec?.type==='images'){
-        const imgs = (sec.images||[]).map((im:any)=> ({ image_id: im.image_id || newImageId(), file_object_id: String(im.file_object_id||''), caption: String(im.caption||'') }));
+        const imgs = (sec.images||[]).map((im:any)=> ({
+          image_id: im.image_id || newImageId(),
+          file_object_id: String(im.file_object_id||''),
+          caption: String(im.caption||''),
+          orientation: normalizeProposalSectionImageOrientation(im.orientation),
+        }));
         return { type:'images', title: String(sec.title||''), images: imgs };
       }
       // Remove estimate sections - they're now handled in pricing area
@@ -1863,7 +1882,12 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                             )}
                             {!disabled && (
                               <div className="ml-auto flex items-center gap-2">
-                                <AppButton type="button" variant="secondary" size="sm" title="Edit image" onClick={() => setSectionPicker({ secId: s.id || String(idx), index: j, fileObjectId: img.file_object_id })}>
+                                <AppButton type="button" variant="secondary" size="sm" title="Edit image" onClick={() => setSectionPicker({
+                                  secId: s.id || String(idx),
+                                  index: j,
+                                  fileObjectId: img.file_object_id,
+                                  orientation: normalizeProposalSectionImageOrientation(img.orientation),
+                                })}>
                                   Edit
                                 </AppButton>
                                 <AppButton
@@ -1896,20 +1920,17 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                               </div>
                             )}
                           </div>
-                          {img.file_object_id? (
-                            <button
-                              type="button"
-                              className="w-[260px] h-[150px] p-0 border-0 bg-transparent cursor-zoom-in rounded block overflow-hidden"
-                              title="View larger"
-                              onClick={() => setSectionImageLightboxId(String(img.file_object_id))}
-                            >
-                              <img
-                                src={withFileAccessToken(`/files/${img.file_object_id}/thumbnail?w=${SECTION_IMAGE_GRID_THUMB_W}`)}
-                                className="w-[260px] h-[150px] object-cover rounded pointer-events-none"
-                                loading="lazy"
-                                alt=""
-                              />
-                            </button>
+                          {img.file_object_id ? (
+                            <SectionImagePreview
+                              fileObjectId={String(img.file_object_id)}
+                              orientation={img.orientation}
+                              onClick={() =>
+                                setSectionImageLightbox({
+                                  fileObjectId: String(img.file_object_id),
+                                  orientation: img.orientation,
+                                })
+                              }
+                            />
                           ) : null}
                           <AppInput
                             className="mt-2"
@@ -2735,9 +2756,10 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         }} />
       )}
       {sectionPicker && (
-        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={PROPOSAL_SECTION_IMAGE_TARGET_WIDTH} targetHeight={PROPOSAL_SECTION_IMAGE_TARGET_HEIGHT} allowEdit={true} exportScale={PROPOSAL_SECTION_IMAGE_EXPORT_SCALE} maxExportLongSide={PROPOSAL_SECTION_IMAGE_MAX_EXPORT_LONG_SIDE} fileObjectId={sectionPicker.fileObjectId} editorScaleFactor={3} onConfirm={async(blob)=>{ 
+        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={PROPOSAL_SECTION_IMAGE_TARGET_WIDTH} targetHeight={PROPOSAL_SECTION_IMAGE_TARGET_HEIGHT} allowEdit={true} exportScale={PROPOSAL_SECTION_IMAGE_EXPORT_SCALE} maxExportLongSide={PROPOSAL_SECTION_IMAGE_MAX_EXPORT_LONG_SIDE} fileObjectId={sectionPicker.fileObjectId} editorScaleFactor={3} allowOrientationToggle initialOrientation={sectionPicker.orientation ?? 'landscape'} onConfirm={async(blob, meta)=>{ 
           try{
             if (!blob){ toast.error('No image'); return; }
+            const orientation = meta?.orientation ?? 'landscape';
             const uniqueName = `section_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
             // Use upload-proxy to avoid CORS issues
             const formData = new FormData();
@@ -2756,10 +2778,10 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
               const imgs = Array.isArray(x.images)? [...x.images] : [];
               if (typeof sectionPicker.index === 'number'){ // replace specific
                 const prev = imgs[sectionPicker.index] || {};
-                imgs[sectionPicker.index] = { image_id: (prev.image_id||newImageId()), file_object_id: fileObjectId, caption: prev.caption||'' };
+                imgs[sectionPicker.index] = { image_id: (prev.image_id||newImageId()), file_object_id: fileObjectId, caption: prev.caption||'', orientation };
                 return { ...x, images: imgs };
               }
-              return { ...x, images: [...imgs, { image_id: newImageId(), file_object_id: fileObjectId, caption: '' }] };
+              return { ...x, images: [...imgs, { image_id: newImageId(), file_object_id: fileObjectId, caption: '', orientation }] };
             }));
           }catch(e){ toast.error('Failed to add image'); }
           setSectionPicker(null);
@@ -2957,14 +2979,12 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         />
       )}
 
-      {sectionImageLightboxId && (
-        <AppModal open onClose={() => setSectionImageLightboxId(null)} title="Section Image" size="lg">
-          <img
-            src={withFileAccessToken(`/files/${sectionImageLightboxId}/thumbnail?w=${SECTION_IMAGE_LIGHTBOX_THUMB_W}`)}
-            className="mx-auto max-h-[70vh] max-w-full object-contain"
-            alt=""
-          />
-        </AppModal>
+      {sectionImageLightbox && (
+        <SectionImageLightbox
+          fileObjectId={sectionImageLightbox.fileObjectId}
+          orientation={sectionImageLightbox.orientation}
+          onClose={() => setSectionImageLightbox(null)}
+        />
       )}
 
     </div>

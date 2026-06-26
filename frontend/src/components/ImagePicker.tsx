@@ -14,6 +14,13 @@ import {
   editorTransitionInteractive,
   selectionToolButtonGhostClass,
 } from '@/components/document-editor/documentEditorRibbonPrimitives';
+import {
+  getProposalSectionImageTargetDimensions,
+  normalizeProposalSectionImageOrientation,
+  PROPOSAL_SECTION_IMAGE_PDF_LANDSCAPE_HEIGHT,
+  PROPOSAL_SECTION_IMAGE_PDF_PORTRAIT_HEIGHT,
+  type ProposalSectionImageOrientation,
+} from '@/constants/proposalSectionImage';
 
 type LibraryFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string };
 
@@ -102,6 +109,7 @@ export type ImagePickerConfirmMeta = {
   originalFileObjectId?: string;
   intrinsicWidth?: number;
   intrinsicHeight?: number;
+  orientation?: ProposalSectionImageOrientation;
 };
 
 export default function ImagePicker({
@@ -122,6 +130,8 @@ export default function ImagePicker({
   maxExportLongSide,
   /** Backdrop z-index when opened above another modal (e.g. `uiModalLayer.nestedPicker`). */
   overlayClassName,
+  allowOrientationToggle = false,
+  initialOrientation = 'landscape',
 }:{
   isOpen:boolean,
   onClose:()=>void,
@@ -138,6 +148,8 @@ export default function ImagePicker({
   openEditorOnOpen?: boolean,
   maxExportLongSide?: number,
   overlayClassName?: string,
+  allowOrientationToggle?: boolean,
+  initialOrientation?: ProposalSectionImageOrientation,
 }){
   const progressOverlayClassName =
     overlayClassName === uiModalLayer.nestedPicker
@@ -147,9 +159,18 @@ export default function ImagePicker({
     overlayClassName === uiModalLayer.nestedPicker
       ? uiModalLayer.nestedEditor
       : overlayClassName;
+  const [orientation, setOrientation] = useState<ProposalSectionImageOrientation>('landscape');
+  const effectiveDimensions = useMemo(() => {
+    if (!allowOrientationToggle) {
+      return { width: targetWidth, height: targetHeight };
+    }
+    return getProposalSectionImageTargetDimensions(orientation);
+  }, [allowOrientationToggle, orientation, targetWidth, targetHeight]);
+  const effectiveWidth = effectiveDimensions.width;
+  const effectiveHeight = effectiveDimensions.height;
   const exportDimensions = useMemo(
-    () => computeExportDimensions(targetWidth, targetHeight, exportScale, maxExportLongSide),
-    [targetWidth, targetHeight, exportScale, maxExportLongSide],
+    () => computeExportDimensions(effectiveWidth, effectiveHeight, exportScale, maxExportLongSide),
+    [effectiveWidth, effectiveHeight, exportScale, maxExportLongSide],
   );
   const hasLibrary = !!(clientId || projectId);
   const [tab, setTab] = useState<'upload'|'library'>('upload');
@@ -184,6 +205,7 @@ export default function ImagePicker({
   useEffect(()=>{
     if(!isOpen){
       setImg(null); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setTab('upload');
+      setOrientation('landscape');
       setLibraryLoaded(false); setFilesOriginals([]); setFilesDerived([]); setDisplayPageOriginals(0); setDisplayPageDerived(0);
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
@@ -191,6 +213,19 @@ export default function ImagePicker({
       }
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && allowOrientationToggle) {
+      setOrientation(normalizeProposalSectionImageOrientation(initialOrientation));
+    }
+  }, [isOpen, allowOrientationToggle, initialOrientation]);
+
+  const handleOrientationChange = (next: ProposalSectionImageOrientation) => {
+    setOrientation(next);
+    setZoom(1);
+    setTx(0);
+    setTy(0);
+  };
 
   // Handle paste from clipboard - works when button is clicked
   const handlePaste = async () => {
@@ -334,8 +369,31 @@ export default function ImagePicker({
     }
   }, [tab, isOpen, hasLibrary, clientId, projectId, libraryLoaded, isLoadingLibrary]);
 
-  const cw = 360;
-  const ch = useMemo(()=> Math.round(cw * (targetHeight/targetWidth)), [targetWidth, targetHeight]);
+  const landscapePreviewWidth = 360;
+  const landscapePreviewHeight = useMemo(
+    () => Math.round(landscapePreviewWidth * (targetHeight / targetWidth)),
+    [targetWidth, targetHeight],
+  );
+  const { cw, ch } = useMemo(() => {
+    const aspect = effectiveWidth / effectiveHeight;
+    if (allowOrientationToggle && orientation === 'portrait') {
+      const h = Math.round(
+        landscapePreviewHeight *
+          (PROPOSAL_SECTION_IMAGE_PDF_PORTRAIT_HEIGHT / PROPOSAL_SECTION_IMAGE_PDF_LANDSCAPE_HEIGHT),
+      );
+      return { cw: Math.round(h * aspect), ch: h };
+    }
+    return {
+      cw: landscapePreviewWidth,
+      ch: Math.round(landscapePreviewWidth / aspect),
+    };
+  }, [
+    allowOrientationToggle,
+    orientation,
+    effectiveWidth,
+    effectiveHeight,
+    landscapePreviewHeight,
+  ]);
 
   const coverScale = useMemo(()=>{
     if(!img) return 1;
@@ -672,7 +730,12 @@ export default function ImagePicker({
         toast.error('No image visible in the frame — zoom in or center the image.');
         return;
       }
-      const { outW, outH } = computeExportDimensions(crop.sw, crop.sh, exportScale, maxExportLongSide);
+      const { outW, outH } = computeExportDimensions(
+        effectiveWidth,
+        effectiveHeight,
+        exportScale,
+        maxExportLongSide,
+      );
       canvas.width = outW;
       canvas.height = outH;
       const ctx = canvas.getContext('2d')!;
@@ -691,6 +754,7 @@ export default function ImagePicker({
                 originalFileObjectId,
                 intrinsicWidth: outW,
                 intrinsicHeight: outH,
+                ...(allowOrientationToggle ? { orientation } : {}),
               });
               resolve();
             } catch (e) {
@@ -1236,12 +1300,36 @@ export default function ImagePicker({
 
             <div className="col-span-2 min-h-0 min-w-0 overflow-y-auto bg-slate-50/80">
               <div className="p-4">
-                <p className={`${editorCaptionClass} mb-3`}>
-                  Slot target: {targetWidth} × {targetHeight}px · JPEG export{' '}
-                  {tightExportDimensions
-                    ? `${tightExportDimensions.outW} × ${tightExportDimensions.outH}px (visible image only)`
-                    : `${exportDimensions.outW} × ${exportDimensions.outH}px`}
-                </p>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <p className={`${editorCaptionClass} min-w-0 flex-1`}>
+                    Slot target: {effectiveWidth} × {effectiveHeight}px · JPEG export{' '}
+                    {tightExportDimensions
+                      ? `${tightExportDimensions.outW} × ${tightExportDimensions.outH}px (visible image only)`
+                      : `${exportDimensions.outW} × ${exportDimensions.outH}px`}
+                  </p>
+                  {allowOrientationToggle && (
+                    <div className={`${editorSegmentedControlTrackClass} shrink-0`}>
+                      <button
+                        type="button"
+                        onClick={() => handleOrientationChange('landscape')}
+                        className={`flex h-full min-h-0 items-center justify-center px-2.5 text-[11px] font-semibold transition-[background-color,color,box-shadow] duration-150 ${
+                          orientation === 'landscape' ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
+                        }`}
+                      >
+                        Landscape
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOrientationChange('portrait')}
+                        className={`flex h-full min-h-0 items-center justify-center px-2.5 text-[11px] font-semibold transition-[background-color,color,box-shadow] duration-150 ${
+                          orientation === 'portrait' ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
+                        }`}
+                      >
+                        Portrait
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div
                   className="inline-block rounded-md border-2 border-slate-500 bg-slate-200/95 p-px shadow-[0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/10"
                   title="Exported crop area — outline matches target dimensions"
@@ -1376,8 +1464,8 @@ export default function ImagePicker({
           imageUrl={getCurrentImageUrl()}
           imageName={originalFileObjectId || 'image'}
           fileObjectId={originalFileObjectId}
-          targetWidth={targetWidth}
-          targetHeight={targetHeight}
+          targetWidth={effectiveWidth}
+          targetHeight={effectiveHeight}
           editorScaleFactor={editorScaleFactor}
           onSave={handleImageEditorSave}
           overlayClassName={editorOverlayClassName}
