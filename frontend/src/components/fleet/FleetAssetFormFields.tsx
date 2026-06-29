@@ -62,7 +62,7 @@ export function FleetAssetFormFields({ formId, values, onChange, onSubmit }: Fle
         <AppSelect
           label="Asset Type"
           value={values.asset_type}
-          onChange={(v) => onChange('asset_type', v)}
+          onChange={(e) => onChange('asset_type', e.target.value)}
           options={ASSET_TYPE_OPTIONS}
           fieldHint={FLEET_ASSET_FIELD_HINTS.asset_type}
         />
@@ -136,14 +136,14 @@ export function FleetAssetFormFields({ formId, values, onChange, onSubmit }: Fle
         <AppSelect
           label="Condition"
           value={values.condition}
-          onChange={(v) => onChange('condition', v)}
+          onChange={(e) => onChange('condition', e.target.value)}
           options={CONDITION_OPTIONS}
           fieldHint={FLEET_ASSET_FIELD_HINTS.condition}
         />
         <AppSelect
           label="Status"
           value={values.status}
-          onChange={(v) => onChange('status', v)}
+          onChange={(e) => onChange('status', e.target.value)}
           options={STATUS_OPTIONS}
           fieldHint={FLEET_ASSET_FIELD_HINTS.status}
         />

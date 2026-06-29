@@ -54,6 +54,8 @@ import LeakInvestigations from './pages/LeakInvestigations';
 import OpportunityDetail from './pages/OpportunityDetail';
 import Users from './pages/Users';
 import HrDataQualityOverview from './pages/HrDataQualityOverview';
+const OffboardingListPage = lazy(() => import('./pages/OffboardingListPage'));
+const OffboardingDetailPage = lazy(() => import('./pages/OffboardingDetailPage'));
 import UserInfo from './pages/UserInfo';
 import EmployeeReviews from './pages/EmployeeReviews';
 import ReviewCyclesPage from './pages/ReviewCyclesPage';
@@ -205,6 +207,8 @@ export default function App(){
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
           <Route path="/users" element={<AppShell><Users/></AppShell>} />
           <Route path="/human-resources/overview" element={<AppShell><HrDataQualityOverview /></AppShell>} />
+          <Route path="/human-resources/offboarding" element={<AppShell><Suspense fallback={null}><OffboardingListPage /></Suspense></AppShell>} />
+          <Route path="/human-resources/offboarding/:caseId" element={<AppShell><Suspense fallback={null}><OffboardingDetailPage /></Suspense></AppShell>} />
           <Route path="/users/:userId" element={<AppShell><UserInfo/></AppShell>} />
           <Route path="/settings/attendance" element={<AppShell><Attendance/></AppShell>} />
           <Route path="/community" element={<AppShell><Community/></AppShell>} />

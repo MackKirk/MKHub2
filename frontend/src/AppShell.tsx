@@ -628,6 +628,7 @@ export default function AppShell({ children }: PropsWithChildren){
           { id: 'hr-overview', label: 'Overview', path: '/human-resources/overview', icon: <IconOverview />, requiredPermission: 'hr:users:read' },
           { id: 'users', label: 'Users', path: '/users', icon: <IconUsersGroup />, requiredPermission: 'hr:users:read' },
           { id: 'onboarding-admin', label: 'Onboarding', path: '/onboarding/admin', icon: <IconDocument />, requiredPermission: 'hr:users:read' },
+          { id: 'offboarding', label: 'Offboarding', path: '/human-resources/offboarding', icon: <IconDocument />, requiredPermission: 'hr:offboarding:read' },
           { id: 'attendance', label: 'Attendance', path: '/settings/attendance', icon: <IconCalendar />, requiredPermission: 'hr:attendance:read' },
           { id: 'community', label: 'Community', path: '/community', icon: <IconUsersGroup />, requiredPermission: 'hr:community:read' },
         ] : [],

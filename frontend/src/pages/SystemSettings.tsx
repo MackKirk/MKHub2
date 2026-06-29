@@ -1277,7 +1277,7 @@ function PermissionTemplatesSection() {
                     </div>
                   ) : cat.name === 'human_resources' ? (
                     <div className="space-y-4">
-                      {['users', 'attendance', 'community', 'reviews', 'timesheet'].map((area) => {
+                      {['users', 'offboarding', 'attendance', 'community', 'reviews', 'timesheet'].map((area) => {
                         const areaPerms = subPermissions.filter((p) => p.key.includes(`hr:${area}`));
                         if (areaPerms.length === 0) return null;
                         const viewPerms = areaPerms.filter((p) => {

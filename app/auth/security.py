@@ -99,7 +99,13 @@ def get_current_user(
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid subject")
     user = db.query(User).filter(User.id == user_uuid).first()
-    if user is None or not user.is_active:
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not active")
+    from ..services.offboarding_service import enforce_due_revocation_for_user
+
+    enforce_due_revocation_for_user(db, user.id)
+    db.refresh(user)
+    if not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not active")
     return user
 
@@ -120,7 +126,13 @@ def get_current_user_bearer_or_query_token(
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid subject")
     user = db.query(User).filter(User.id == user_uuid).first()
-    if user is None or not user.is_active:
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not active")
+    from ..services.offboarding_service import enforce_due_revocation_for_user
+
+    enforce_due_revocation_for_user(db, user.id)
+    db.refresh(user)
+    if not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not active")
     return user
 

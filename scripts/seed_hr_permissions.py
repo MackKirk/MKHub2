@@ -180,6 +180,18 @@ def seed_hr_permissions():
                 "description": "Allows user to manage the hour they are clocking in and out",
                 "sort_index": 20,
             },
+            {
+                "key": "hr:offboarding:read",
+                "label": "View Offboarding",
+                "description": "Allows viewing offboarding cases and related summaries",
+                "sort_index": 21,
+            },
+            {
+                "key": "hr:offboarding:write",
+                "label": "Manage Offboarding",
+                "description": "Allows creating, editing, completing, and cancelling offboarding cases",
+                "sort_index": 22,
+            },
         ]
         
         for perm_data in hr_permissions:

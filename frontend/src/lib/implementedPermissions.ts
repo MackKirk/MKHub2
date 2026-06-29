@@ -57,6 +57,8 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'hr:timesheet:write',
   'hr:timesheet:approve',
   'hr:timesheet:unrestricted_clock',
+  'hr:offboarding:read',
+  'hr:offboarding:write',
   'settings:access',
   'documents:access',
   'documents:read',
