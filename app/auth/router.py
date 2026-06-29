@@ -1034,6 +1034,10 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         except Exception:
             pass
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    from ..services.offboarding_service import enforce_due_revocation_for_user
+
+    if enforce_due_revocation_for_user(db, user.id):
+        db.refresh(user)
     if not user.is_active:
         try:
             from ..services.system_log import write_system_log

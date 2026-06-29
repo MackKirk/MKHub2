@@ -1,10 +1,49 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState, useRef, useEffect, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
+import { Clock, TriangleAlert } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
-import OverlayPortal from '@/components/OverlayPortal';
+import { isCompleteLocalDatetime, LocalDateTimeFields } from '@/components/LocalDateTimeFields';
+import {
+  scWorkerAttendanceDetailQuickInfo,
+  scWorkerManualAttendanceQuickInfo,
+} from '@/lib/formModalQuickInfo';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppCheckboxControl,
+  AppCombobox,
+  AppControlLabelRow,
+  AppDatePicker,
+  AppEmptyState,
+  AppFieldHint,
+  AppFormModal,
+  AppInput,
+  AppListCreateItem,
+  AppListRowIconButton,
+  AppPageHeader,
+  AppProjectSelect,
+  AppReadOnlyField,
+  AppSectionHeader,
+  AppSelect,
+  AppSortableEntityList,
+  AppSortableEntityListFlatBody,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
+  AppTooltip,
+  AppUserSelect,
+  uiCx,
+  uiLayout,
+  uiSpacing,
+  uiTypography,
+  sortListByAppColumn,
+  useLocalAppListSort,
+} from '@/components/ui';
 
 
 type Attendance = {
@@ -217,9 +256,9 @@ function extractGpsFromSessionNotes(text?: string | null): { lat: number; lng: n
 
 function DetailField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-x-3 gap-y-0.5 py-2 border-b border-gray-100 last:border-0 text-xs">
-      <div className="text-gray-500 font-medium shrink-0">{label}</div>
-      <div className="text-gray-900 break-words min-w-0">{children}</div>
+    <div className="grid grid-cols-1 gap-x-3 gap-y-0.5 border-b border-gray-100 py-2 last:border-0 sm:grid-cols-[10rem_1fr]">
+      <div className={uiCx(uiTypography.controlLabel, 'shrink-0')}>{label}</div>
+      <div className={uiCx(uiTypography.helper, 'min-w-0 break-words text-gray-900')}>{children}</div>
     </div>
   );
 }
@@ -228,8 +267,8 @@ function SignaturePreviewBlock({ fileId, label }: { fileId?: string | null; labe
   if (!fileId?.trim()) {
     return (
       <div className="pt-1">
-        <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</p>
-        <p className="text-xs text-gray-400">None</p>
+        <p className={uiCx(uiTypography.controlLabel, 'mb-1')}>{label}</p>
+        <p className={uiTypography.helper}>None</p>
       </div>
     );
   }
@@ -237,15 +276,24 @@ function SignaturePreviewBlock({ fileId, label }: { fileId?: string | null; labe
   const thumb = withFileAccessToken(`/files/${fid}/thumbnail?w=640`);
   const dl = withFileAccessToken(`/files/${fid}/download`);
   return (
-    <div className="pt-1 min-w-0">
-      <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</p>
-      <a href={dl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 hover:underline">
+    <div className="min-w-0 pt-1">
+      <p className={uiCx(uiTypography.controlLabel, 'mb-1')}>{label}</p>
+      <a
+        href={dl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={uiCx(uiTypography.helper, 'text-blue-600 hover:underline')}
+      >
         Open / download
       </a>
-      <img src={thumb} alt="" className="mt-1.5 max-w-full h-auto rounded border border-gray-200 bg-white" />
+      <img src={thumb} alt="" className="mt-1.5 max-w-full rounded border border-gray-200 bg-white" />
     </div>
   );
 }
+
+const ATTENDANCE_ADMIN_GRID = 'grid-cols-[32px_3fr_4fr_4fr_4fr_4fr_5fr_3fr_3fr_3fr_auto]';
+const ATTENDANCE_ADMIN_GRID_READONLY = 'grid-cols-[3fr_4fr_4fr_4fr_4fr_5fr_3fr_3fr_3fr_auto]';
+const ATTENDANCE_ADMIN_MIN_WIDTH = 'min-w-[1100px]';
 
 const buildEvents = (attendances: Attendance[], projects: Project[] = []): AttendanceEvent[] => {
   // NEW MODEL: Each attendance record is already a complete event
@@ -375,8 +423,7 @@ export default function Attendance() {
   const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
   const perms = new Set<string>(me?.permissions || []);
   const canEditAttendance = isAdmin || perms.has('hr:attendance:write') || perms.has('hr:users:edit:timesheet') || perms.has('users:write');
-  const baseDataCols = 10;
-  const colCount = (canEditAttendance ? 1 : 0) + baseDataCols;
+  const listGridCols = canEditAttendance ? ATTENDANCE_ADMIN_GRID : ATTENDANCE_ADMIN_GRID_READONLY;
   const [refreshKey, setRefreshKey] = useState(0);
   const [filters, setFilters] = useState({
     worker_id: '',
@@ -391,9 +438,6 @@ export default function Attendance() {
   const [editingEvent, setEditingEvent] = useState<AttendanceEvent | null>(null);
   const [viewingEvent, setViewingEvent] = useState<AttendanceEvent | null>(null);
   const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
-  const [workerDropdownOpen, setWorkerDropdownOpen] = useState(false);
-  const [workerSearch, setWorkerSearch] = useState('');
-  const workerDropdownRef = useRef<HTMLDivElement>(null);
   const [formData, setFormData] = useState({
     worker_id: '',
     job_type: '0',
@@ -480,42 +524,114 @@ export default function Attendance() {
     return [...PREDEFINED_JOBS, ...projectJobs];
   }, [projects]);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (workerDropdownRef.current && !workerDropdownRef.current.contains(event.target as Node)) {
-        setWorkerDropdownOpen(false);
-      }
-    };
+  const employeeUsers = useMemo(() => {
+    const list = Array.isArray(users) ? users : [];
+    return list.map((u: User) => ({
+      id: String(u.id),
+      name: u.name,
+      username: u.username,
+    }));
+  }, [users]);
 
-    if (workerDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+  const workerFilterOptions = useMemo(() => {
+    const list = Array.isArray(users) ? users : [];
+    return [
+      { value: '', label: 'All Workers' },
+      ...list.map((u: User) => ({
+        value: String(u.id),
+        label: u.name || u.username || String(u.id),
+      })),
+    ];
+  }, [users]);
+
+  const companyFilterOptions = useMemo(() => {
+    return [
+      { value: '', label: 'All companies' },
+      ...subcontractorCompanies.map((c) => ({ value: c.id, label: c.name })),
+    ];
+  }, [subcontractorCompanies]);
+
+  const eventJobLabel = useCallback(
+    (event: AttendanceEvent) =>
+      event.shift_id
+        ? event.project_name || event.job_name || 'No Project'
+        : event.job_name ||
+          event.project_name ||
+          (event.job_type ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown' : 'No Project'),
+    [jobOptions],
+  );
+
+  type AttendanceSortColumn =
+    | 'type'
+    | 'worker'
+    | 'company'
+    | 'clock_in'
+    | 'clock_out'
+    | 'project'
+    | 'hours'
+    | 'break'
+    | 'status';
+  const { sortBy, sortDir, setSort } = useLocalAppListSort<AttendanceSortColumn>('clock_in', 'desc');
+
+  const attendanceStatusSortKey = useCallback((event: AttendanceEvent) => {
+    if (event.record_kind === 'subcontractor') {
+      if (!event.clock_out_time) return 'open';
+      return (event.hr_status || event.clock_in_status || 'approved').toLowerCase();
     }
+    if (
+      event.clock_in_status === 'approved' &&
+      (!event.clock_out_status || event.clock_out_status === 'approved')
+    ) {
+      return 'approved';
+    }
+    if (event.clock_in_status === 'pending' || event.clock_out_status === 'pending') return 'pending';
+    return 'rejected';
+  }, []);
 
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [workerDropdownOpen]);
+  const sortedAttendanceEvents = useMemo(
+    () =>
+      sortListByAppColumn(attendanceEvents, sortBy, sortDir, {
+        type: (e) => e.record_kind || 'internal',
+        worker: (e) => e.worker_name,
+        company: (e) => e.subcontractor_company_name || '',
+        clock_in: (e) => (e.is_hours_worked ? null : e.clock_in_time ? Date.parse(e.clock_in_time) : null),
+        clock_out: (e) => (e.is_hours_worked ? null : e.clock_out_time ? Date.parse(e.clock_out_time) : null),
+        project: (e) => eventJobLabel(e),
+        hours: (e) => e.hours_worked ?? null,
+        break: (e) => e.break_minutes ?? null,
+        status: (e) => attendanceStatusSortKey(e),
+      }),
+    [attendanceEvents, sortBy, sortDir, eventJobLabel, attendanceStatusSortKey],
+  );
 
-  // Filter employees by search
-  const filteredEmployees = useMemo(() => {
-    if (!users || !Array.isArray(users)) return [];
-    if (!workerSearch) return users;
-    const searchLower = workerSearch.toLowerCase();
-    return users.filter((u: any) => {
-      const name = (u.name || u.username || '').toLowerCase();
-      return name.includes(searchLower);
-    });
-  }, [users, workerSearch]);
+  const recordKindBadge = (event: AttendanceEvent) =>
+    event.record_kind === 'subcontractor' ? (
+      <AppBadge variant="info">Subcontractor</AppBadge>
+    ) : (
+      <AppBadge variant="neutral">Internal</AppBadge>
+    );
 
+  const attendanceStatusBadge = (event: AttendanceEvent) => {
+    if (event.record_kind === 'subcontractor') {
+      if (!event.clock_out_time) {
+        return <AppBadge variant="warning">Open</AppBadge>;
+      }
+      const st = (event.hr_status || event.clock_in_status || 'approved').toLowerCase();
+      if (st === 'approved') return <AppBadge variant="success">Approved</AppBadge>;
+      if (st === 'pending') return <AppBadge variant="warning">Pending</AppBadge>;
+      return <AppBadge variant="danger">Rejected</AppBadge>;
+    }
+    const approved =
+      event.clock_in_status === 'approved' && (!event.clock_out_status || event.clock_out_status === 'approved');
+    const pending = event.clock_in_status === 'pending' || event.clock_out_status === 'pending';
+    if (approved) return <AppBadge variant="success">Approved</AppBadge>;
+    if (pending) return <AppBadge variant="warning">Pending</AppBadge>;
+    return <AppBadge variant="danger">Rejected</AppBadge>;
+  };
 
-  const toggleWorker = (workerId: string) => {
-    setSelectedWorkers((prev) => {
-      const prevArray = Array.isArray(prev) ? prev : [];
-      return prevArray.includes(workerId) 
-        ? prevArray.filter((id) => id !== workerId) 
-        : [...prevArray, workerId];
-    });
+  const closeAttendanceModal = () => {
+    setShowModal(false);
+    resetForm();
   };
 
   const resetForm = () => {
@@ -532,7 +648,6 @@ export default function Attendance() {
     setInsertBreakTime(false);
     setBreakHours('0');
     setBreakMinutes('0');
-    setWorkerSearch('');
     setEditingEvent(null);
   };
 
@@ -1138,387 +1253,334 @@ export default function Attendance() {
   };
 
   const projectsList = Array.isArray(projects) ? projects : [];
-  const isSubmitDisabled = editingEvent
-    ? editingEvent.record_kind === 'subcontractor'
-      ? !formData.clock_in_time || !projectsList.some((p) => p.id === formData.job_type)
-      : !formData.worker_id || !formData.clock_in_time
-    : (Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0
-    ? true
-    : !formData.clock_in_time
-    ? true
-    : formData.entry_mode === 'time'
-    ? !formData.clock_out_time // Clock-out required for new entries in time mode
-    : !formData.hours_worked || parseFloat(formData.hours_worked || '0') <= 0;
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    });
-  };
+  const isSubmitDisabled = useMemo(() => {
+    if (editingEvent?.record_kind === 'subcontractor') {
+      return !isCompleteLocalDatetime(formData.clock_in_time) || !projectsList.some((p) => p.id === formData.job_type);
+    }
+    if (editingEvent) {
+      if (formData.entry_mode === 'time') {
+        if (!isCompleteLocalDatetime(formData.clock_in_time)) return true;
+        return !formData.worker_id;
+      }
+      if (!formData.clock_in_time?.slice(0, 10)) return true;
+      const hours = parseFloat(formData.hours_worked || '0');
+      return !formData.worker_id || !formData.hours_worked || Number.isNaN(hours) || hours <= 0;
+    }
+    if ((Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0) return true;
+    if (formData.entry_mode === 'time') {
+      if (!isCompleteLocalDatetime(formData.clock_in_time)) return true;
+      return !isCompleteLocalDatetime(formData.clock_out_time);
+    }
+    if (!formData.clock_in_time?.slice(0, 10)) return true;
+    const hours = parseFloat(formData.hours_worked || '0');
+    return !formData.hours_worked || Number.isNaN(hours) || hours <= 0;
+  }, [editingEvent, formData, projectsList, selectedWorkers]);
 
   return (
-    <div className="space-y-4">
-      {/* Header Card */}
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center">
-              <svg className="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div>
-              <h5 className="text-sm font-semibold text-indigo-900">Attendance</h5>
-              <p className="text-xs text-gray-600 mt-0.5">Manage all clock-in/out records</p>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className={uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
+        title="Attendance"
+        subtitle="Manage all clock-in/out records"
+        icon={<Clock className="h-4 w-4" />}
+      />
 
-      {/* Filters */}
-      <div className="rounded-xl border bg-white p-4 space-y-3">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Record type</label>
-            <select
-              value={filters.record_kind}
-              onChange={(e) =>
-                setFilters({
-                  ...filters,
-                  record_kind: e.target.value as 'internal' | 'subcontractor' | 'all',
-                })
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            >
-              <option value="internal">Internal Employees</option>
-              <option value="subcontractor">Subcontractors</option>
-              <option value="all">All</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Worker</label>
-            <select
-              value={filters.worker_id}
-              onChange={(e) => setFilters({ ...filters, worker_id: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            >
-              <option value="">All Workers</option>
-              {(Array.isArray(users) ? users : []).map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name || u.username}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Project</label>
-            <select
-              value={filters.project_id}
-              onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            >
-              <option value="">All Projects</option>
-              {(Array.isArray(projects) ? projects : []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Subcontractor company</label>
-            <select
-              value={filters.subcontractor_company_id}
-              onChange={(e) => setFilters({ ...filters, subcontractor_company_id: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            >
-              <option value="">All companies</option>
-              {subcontractorCompanies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Start Date</label>
-            <input
-              type="date"
-              value={filters.start_date}
-              onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">End Date</label>
-            <input
-              type="date"
-              value={filters.end_date}
-              onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
-            <select
-              value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            >
-              <option value="">All Statuses</option>
-              <option value="approved">Approved</option>
-              <option value="pending">Pending</option>
-              <option value="rejected">Rejected</option>
-              <option value="open">Open (subcontractor)</option>
-              <option value="finalized">Finalized (subcontractor)</option>
-            </select>
-          </div>
+      <AppCard bodyClassName={uiSpacing.cardPadding}>
+        <AppSectionHeader title="Filters" description="Narrow the attendance list by type, worker, project, or date." />
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <AppSelect
+            label="Record type"
+            value={filters.record_kind}
+            onChange={(e) =>
+              setFilters({
+                ...filters,
+                record_kind: e.target.value as 'internal' | 'subcontractor' | 'all',
+              })
+            }
+            options={[
+              { value: 'internal', label: 'Internal Employees' },
+              { value: 'subcontractor', label: 'Subcontractors' },
+              { value: 'all', label: 'All' },
+            ]}
+          />
+          <AppCombobox
+            label="Worker"
+            value={filters.worker_id}
+            onChange={(value) => setFilters({ ...filters, worker_id: value })}
+            options={workerFilterOptions}
+            placeholder="All Workers"
+          />
+          <AppProjectSelect
+            label="Project"
+            value={filters.project_id}
+            onChange={(id) => setFilters({ ...filters, project_id: id })}
+            allowEmpty
+            emptyOptionLabel="All Projects"
+          />
+          <AppCombobox
+            label="Subcontractor company"
+            value={filters.subcontractor_company_id}
+            onChange={(value) => setFilters({ ...filters, subcontractor_company_id: value })}
+            options={companyFilterOptions}
+            placeholder="All companies"
+          />
+          <AppDatePicker
+            label="Start Date"
+            value={filters.start_date}
+            onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
+          />
+          <AppDatePicker
+            label="End Date"
+            value={filters.end_date}
+            onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
+          />
+          <AppSelect
+            label="Status"
+            value={filters.status}
+            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            options={[
+              { value: '', label: 'All Statuses' },
+              { value: 'approved', label: 'Approved' },
+              { value: 'pending', label: 'Pending' },
+              { value: 'rejected', label: 'Rejected' },
+              { value: 'open', label: 'Open (subcontractor)' },
+              { value: 'finalized', label: 'Finalized (subcontractor)' },
+            ]}
+          />
         </div>
-      </div>
+      </AppCard>
 
-      {/* Error message */}
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+        <div className={uiCx('rounded-xl border border-red-200 bg-red-50 p-3', uiTypography.helper, 'text-red-800')}>
           Error loading attendance records: {String(error)}
         </div>
       )}
 
-      {/* Bulk Actions */}
       {canEditAttendance && selectedEvents.size > 0 && (
-        <div className="rounded-xl border bg-blue-50 p-3 flex items-center justify-between">
-          <div className="text-xs font-medium text-blue-900">
+        <div className={uiCx('flex items-center justify-between rounded-xl border bg-blue-50 p-3')}>
+          <div className={uiCx(uiTypography.helper, 'font-medium text-blue-900')}>
             {selectedEvents.size} event(s) selected
           </div>
-          <button
-            onClick={handleDeleteSelected}
+          <AppButton
+            type="button"
+            variant="danger"
+            size="sm"
+            onClick={() => void handleDeleteSelected()}
             disabled={deletingSelected}
-            className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            loading={deletingSelected}
           >
-            {deletingSelected ? 'Deleting...' : 'Delete All Selected'}
-          </button>
+            Delete All Selected
+          </AppButton>
         </div>
       )}
 
-      {/* Table */}
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              {canEditAttendance && (
-                <th className="p-2.5 text-left w-12">
-                  <input
-                    type="checkbox"
-                    checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
-                    onChange={handleSelectAll}
-                    className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                </th>
-              )}
-              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Type</th>
-              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Worker</th>
-              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Company</th>
-              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock In</th>
-              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock Out</th>
-              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Job/Project</th>
-              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Hours</th>
-              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Break</th>
-              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Status</th>
-              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {canEditAttendance && (
-              <tr>
-                <td colSpan={colCount} className="p-0 align-top">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenModal()}
-                    className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 flex items-center justify-center gap-2 min-h-[52px] text-gray-600 hover:text-brand-red transition-colors"
+      <AppCard bodyClassName={uiSpacing.cardPadding}>
+        <AppSectionHeader title="Records" description="Click a row to view details. Use checkboxes for bulk delete." />
+        <div className="mt-4 flex flex-col gap-2 overflow-x-auto">
+          {canEditAttendance && (
+            <AppListCreateItem
+              label="New Attendance"
+              layout="row"
+              className={uiCx('w-full', ATTENDANCE_ADMIN_MIN_WIDTH)}
+              onClick={() => handleOpenModal()}
+            />
+          )}
+          {isLoading ? (
+            <div className={uiCx(ATTENDANCE_ADMIN_MIN_WIDTH, 'px-4 py-4')}>
+              <div className="h-6 animate-pulse rounded bg-gray-100" />
+            </div>
+          ) : error ? (
+            <p className={uiCx(uiTypography.helper, 'px-1 text-red-600')}>Could not load attendance.</p>
+          ) : attendanceEvents.length === 0 ? (
+            <AppEmptyState
+              title="No attendance records found"
+              className="border-0 bg-transparent p-0 py-6 shadow-none"
+            />
+          ) : (
+            <AppSortableEntityList layout="flat">
+              <AppSortableEntityListHeader variant="flat" gridCols={listGridCols} minWidth={ATTENDANCE_ADMIN_MIN_WIDTH}>
+                {canEditAttendance && (
+                  <div className="flex w-8 shrink-0 items-center justify-center">
+                    <AppCheckboxControl
+                      aria-label="Select all attendance records"
+                      checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
+                      onChange={() => handleSelectAll()}
+                    />
+                  </div>
+                )}
+                <AppSortableEntityListSortColumn
+                  label="Type"
+                  column="type"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Worker"
+                  column="worker"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Company"
+                  column="company"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Clock In"
+                  column="clock_in"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Clock Out"
+                  column="clock_out"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Job/Project"
+                  column="project"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Hours"
+                  column="hours"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Break"
+                  column="break"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <AppSortableEntityListSortColumn
+                  label="Status"
+                  column="status"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
+                <div className="min-w-0 w-24" aria-hidden />
+              </AppSortableEntityListHeader>
+              <AppSortableEntityListFlatBody gridCols={listGridCols} minWidth={ATTENDANCE_ADMIN_MIN_WIDTH}>
+                {sortedAttendanceEvents.map((event) => (
+                  <AppSortableEntityListRow
+                    key={event.event_id}
+                    as="div"
+                    variant="flat"
+                    gridCols={listGridCols}
+                    minWidth={ATTENDANCE_ADMIN_MIN_WIDTH}
+                    className="group cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setViewingEvent(event)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setViewingEvent(event);
+                      }
+                    }}
                   >
-                    <span className="text-lg font-medium">+</span>
-                    <span className="text-sm font-medium">New Attendance</span>
-                  </button>
-                </td>
-              </tr>
-            )}
-            {isLoading ? (
-              <tr>
-                <td colSpan={colCount} className="p-4">
-                  <div className="h-6 bg-gray-100 animate-pulse rounded" />
-                </td>
-              </tr>
-            ) : error ? (
-              <tr>
-                <td colSpan={colCount} className="p-4 text-center text-xs text-red-600">
-                  Error loading data. Please check console for details.
-                </td>
-              </tr>
-            ) : attendanceEvents.length === 0 ? (
-              <tr>
-                <td colSpan={colCount} className="p-4 text-center text-xs text-gray-500">
-                  No attendance records found
-                </td>
-              </tr>
-            ) : (
-              attendanceEvents.map((event) => (
-                <tr
-                  key={event.event_id}
-                  role="button"
-                  tabIndex={0}
-                  className="border-t hover:bg-gray-50 cursor-pointer"
-                  onClick={() => setViewingEvent(event)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setViewingEvent(event);
-                    }
-                  }}
-                >
-                  {canEditAttendance && (
-                    <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedEvents.has(event.event_id)}
-                        onChange={() => handleToggleSelect(event.event_id)}
-                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                    </td>
-                  )}
-                  <td className="p-2.5 text-xs">
-                    <span
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                        event.record_kind === 'subcontractor' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
-                      }`}
-                    >
-                      {event.record_kind === 'subcontractor' ? 'Subcontractor' : 'Internal'}
+                    {canEditAttendance && (
+                      <div
+                        className="flex w-8 shrink-0 items-center justify-center"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <AppCheckboxControl
+                          aria-label="Select attendance record"
+                          checked={selectedEvents.has(event.event_id)}
+                          onChange={() => handleToggleSelect(event.event_id)}
+                        />
+                      </div>
+                    )}
+                    <div className="min-w-0">{recordKindBadge(event)}</div>
+                    <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-900')}>{event.worker_name}</span>
+                    <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-600')}>
+                      {event.subcontractor_company_name || '—'}
                     </span>
-                  </td>
-                  <td className="p-2.5 text-xs">{event.worker_name}</td>
-                  <td className="p-2.5 text-xs text-gray-600">{event.subcontractor_company_name || '—'}</td>
-                  <td className="p-2.5 text-xs">
-                    {event.is_hours_worked ? '—' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '—')}
-                  </td>
-                  <td className="p-2.5 text-xs">
-                    {event.is_hours_worked ? '—' : (event.clock_out_time ? formatDateTime(event.clock_out_time) : '—')}
-                  </td>
-                  <td className="p-2.5 text-xs">
-                    {event.shift_id
-                      ? (event.project_name || event.job_name || 'No Project')
-                      : (event.job_name ||
-                         event.project_name ||
-                         (event.job_type
-                           ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown'
-                           : 'No Project'))}
-                  </td>
-                  <td className="p-2.5 text-xs">{formatHours(event.hours_worked)}</td>
-                  <td className="p-2.5 text-xs">{formatBreak(event.break_minutes)}</td>
-                  <td className="p-2.5">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                        event.record_kind === 'subcontractor'
-                          ? event.clock_out_time
-                            ? (event.hr_status || event.clock_in_status || 'approved') === 'approved'
-                              ? 'bg-green-100 text-green-800'
-                              : (event.hr_status || event.clock_in_status) === 'pending'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                          : event.clock_in_status === 'approved' &&
-                            (!event.clock_out_status || event.clock_out_status === 'approved')
-                          ? 'bg-green-100 text-green-800'
-                          : event.clock_in_status === 'pending' || event.clock_out_status === 'pending'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}
-                    >
-                      {event.record_kind === 'subcontractor'
-                        ? event.clock_out_time
-                          ? `${(event.hr_status || event.clock_in_status || 'approved').charAt(0).toUpperCase()}${(event.hr_status || event.clock_in_status || 'approved').slice(1)}`
-                          : 'Open'
-                        : event.clock_in_status === 'approved' &&
-                          (!event.clock_out_status || event.clock_out_status === 'approved')
-                        ? 'Approved'
-                        : event.clock_in_status === 'pending' || event.clock_out_status === 'pending'
-                        ? 'Pending'
-                        : 'Rejected'}
+                    <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-900')}>
+                      {event.is_hours_worked ? '—' : event.clock_in_time ? formatDateTime(event.clock_in_time) : '—'}
                     </span>
-                  </td>
-                  <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-2">
+                    <span className={uiCx(uiTypography.helper, 'min-w-0 truncate text-gray-900')}>
+                      {event.is_hours_worked ? '—' : event.clock_out_time ? formatDateTime(event.clock_out_time) : '—'}
+                    </span>
+                    <span
+                      className={uiCx(
+                        'min-w-0 truncate text-sm font-semibold text-gray-900 transition-colors group-hover:text-[#7f1010]',
+                      )}
+                    >
+                      {eventJobLabel(event)}
+                    </span>
+                    <span className={uiCx(uiTypography.helper, 'min-w-0 text-gray-900')}>{formatHours(event.hours_worked)}</span>
+                    <span className={uiCx(uiTypography.helper, 'min-w-0 text-gray-900')}>{formatBreak(event.break_minutes)}</span>
+                    <div className="min-w-0">{attendanceStatusBadge(event)}</div>
+                    <div className="flex w-24 shrink-0 items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                       {canEditAttendance && (
                         <>
-                          <button
-                            type="button"
+                          <AppListRowIconButton
+                            preset="edit"
+                            label="Edit attendance"
                             onClick={() => handleOpenModal(event)}
-                            className="px-2 py-1 text-[10px] text-blue-600 hover:text-blue-800 font-medium hover:bg-blue-50 rounded transition-colors"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteEvent(event)}
-                            disabled={deletingId === event.event_id}
-                            className="px-2 py-1 text-[10px] text-red-600 hover:text-red-800 font-medium hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                          >
-                            {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
-                          </button>
+                          />
+                          <AppListRowIconButton
+                            preset="delete"
+                            label="Delete attendance"
+                            loading={deletingId === event.event_id}
+                            onClick={() => void handleDeleteEvent(event)}
+                          />
                         </>
                       )}
                       {event.shift_deleted && (
-                        <span 
-                          className="text-yellow-600" 
-                          title={event.shift_deleted_by ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
+                        <AppTooltip
+                          content={
+                            event.shift_deleted_by
+                              ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}`
+                              : 'The shift related to this attendance was deleted'
+                          }
                         >
-                          <svg className="w-3 h-3 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                        </span>
+                          <TriangleAlert className="inline-block h-3 w-3 text-yellow-600" aria-hidden />
+                        </AppTooltip>
                       )}
                     </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                  </AppSortableEntityListRow>
+                ))}
+              </AppSortableEntityListFlatBody>
+            </AppSortableEntityList>
+          )}
+        </div>
+      </AppCard>
 
-      {viewingEvent && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
-            onClick={() => setViewingEvent(null)}
-          >
-            <div
-              className="max-w-lg w-full min-w-0 max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden my-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setViewingEvent(null)}
-                    className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-                    aria-label="Close"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-gray-900">Attendance details</h2>
-                    <p className="text-xs text-gray-500 mt-0.5 truncate">Record ID: {viewingEvent.event_id}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 min-w-0">
-                <div className="rounded-xl border border-gray-200 bg-white p-4 min-w-0">
-                  {viewingEvent.record_kind === 'subcontractor' ? (
+      <AppFormModal
+        open={!!viewingEvent}
+        onClose={() => setViewingEvent(null)}
+        layout="detail"
+        size="md"
+        title="Attendance details"
+        description={viewingEvent ? `Record ID: ${viewingEvent.event_id}` : undefined}
+        quickInfo={scWorkerAttendanceDetailQuickInfo}
+        bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => setViewingEvent(null)}>
+              Close
+            </AppButton>
+          </div>
+        }
+      >
+        {viewingEvent ? (
+          <div className="min-w-0">
+            {viewingEvent.record_kind === 'subcontractor' ? (
                     <>
                       <DetailField label="Worker">{viewingEvent.worker_name}</DetailField>
                       {viewingEvent.subcontractor_company_name ? (
@@ -1628,508 +1690,275 @@ export default function Attendance() {
                       ) : null}
                     </>
                   )}
-                </div>
-              </div>
-              <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end rounded-b-xl">
-                <button
-                  type="button"
-                  onClick={() => setViewingEvent(null)}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212]"
-                >
-                  Close
-                </button>
-              </div>
+          </div>
+        ) : null}
+      </AppFormModal>
+
+      <AppFormModal
+        open={showModal}
+        onClose={closeAttendanceModal}
+        title={editingEvent ? 'Edit Attendance Event' : 'New Attendance'}
+        description={
+          editingEvent
+            ? editingEvent.record_kind === 'subcontractor'
+              ? 'Update project and clock times (subcontractor attendance).'
+              : 'Update clock-in/out and status'
+            : 'Add manual clock-in/out or hours worked'
+        }
+        quickInfo={scWorkerManualAttendanceQuickInfo(!!editingEvent)}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={closeAttendanceModal}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              disabled={isSubmitDisabled}
+              loading={isSubmitting}
+              onClick={() => void handleSubmit()}
+            >
+              {isSubmitting ? 'Saving...' : editingEvent ? 'Update' : 'Create'}
+            </AppButton>
+          </div>
+        }
+      >
+        <div className={uiSpacing.sectionStack}>
+          {editingEvent ? (
+            editingEvent.record_kind === 'subcontractor' ? (
+              <AppReadOnlyField
+                label="Subcontractor worker"
+                value={
+                  <>
+                    {editingEvent.worker_name}
+                    {editingEvent.subcontractor_company_name ? (
+                      <span className="font-normal text-gray-500"> · {editingEvent.subcontractor_company_name}</span>
+                    ) : null}
+                  </>
+                }
+              />
+            ) : (
+              <AppUserSelect
+                label="Worker *"
+                users={employeeUsers}
+                value={formData.worker_id}
+                onChange={(userId) => setFormData({ ...formData, worker_id: userId })}
+                placeholder="Select a worker..."
+                fieldHint="Worker\n\nEmployee this attendance row applies to."
+              />
+            )
+          ) : (
+            <AppUserSelect
+              mode="multiple"
+              label="Workers *"
+              users={employeeUsers}
+              value={selectedWorkers}
+              onChange={setSelectedWorkers}
+              placeholder="Select workers..."
+              fieldHint="Workers\n\nOne or more internal employees to create the same attendance row for."
+            />
+          )}
+          {editingEvent?.record_kind === 'subcontractor' ? (
+            <AppProjectSelect
+              label="Project *"
+              value={formData.job_type}
+              onChange={(id) => setFormData({ ...formData, job_type: id })}
+              fieldHint="Project\n\nJob site where this subcontractor worker was on site."
+            />
+          ) : (
+            <AppSelect
+              label="Job *"
+              value={formData.job_type}
+              onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
+              fieldHint="Job\n\nProject or job code this attendance row applies to."
+              options={jobOptions.map((job) => ({
+                value: job.id,
+                label: `${job.code} - ${job.name}`,
+              }))}
+            />
+          )}
+          <div>
+            <AppControlLabelRow
+              label="Entry Type"
+              fieldHint={
+                <AppFieldHint hint="Entry type\n\nClock in / out — enter start and end times. Hours worked — enter total hours for one work date." />
+              }
+            />
+            <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 bg-gray-50 text-xs">
+              <AppButton
+                type="button"
+                variant={formData.entry_mode === 'time' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="rounded-none border-0 shadow-none"
+                onClick={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    entry_mode: 'time',
+                    hours_worked: '',
+                  }));
+                }}
+              >
+                Clock In / Out
+              </AppButton>
+              <AppButton
+                type="button"
+                variant={formData.entry_mode === 'hours' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="rounded-none border-0 border-l border-gray-200 shadow-none"
+                onClick={() => {
+                  setFormData((prev) => {
+                    const datePart = prev.clock_in_time ? prev.clock_in_time.slice(0, 10) : getTodayLocal();
+                    let hoursWorked = '';
+                    if (prev.clock_in_time && prev.clock_out_time) {
+                      const inTime = new Date(prev.clock_in_time);
+                      const outTime = new Date(prev.clock_out_time);
+                      const diffMs = outTime.getTime() - inTime.getTime();
+                      const diffHours = diffMs / (1000 * 60 * 60);
+                      if (diffHours > 0) hoursWorked = diffHours.toString();
+                    }
+                    return {
+                      ...prev,
+                      entry_mode: 'hours',
+                      clock_in_time: `${datePart}T00:00`,
+                      clock_out_time: '',
+                      hours_worked: hoursWorked,
+                    };
+                  });
+                }}
+              >
+                Hours Worked
+              </AppButton>
             </div>
           </div>
-        </OverlayPortal>
-      )}
-
-      {/* Modal */}
-      {showModal && (
-        <OverlayPortal><div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => {
-            setShowModal(false);
-            resetForm();
-          }}
-        >
-          <div
-            className="w-[900px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowModal(false);
-                    resetForm();
-                  }}
-                  className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-900">
-                    {editingEvent ? 'Edit Attendance Event' : 'New Attendance'}
-                  </h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {editingEvent
-                      ? editingEvent.record_kind === 'subcontractor'
-                        ? 'Update project and clock times (subcontractor attendance).'
-                        : 'Update clock-in/out and status'
-                      : 'Add manual clock-in/out or hours worked'}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              <form
-                id="attendance-form"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSubmit();
-                }}
-                className="rounded-xl border border-gray-200 bg-white p-4 space-y-3"
-              >
-              {editingEvent ? (
-                editingEvent.record_kind === 'subcontractor' ? (
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                      Subcontractor worker
-                    </label>
-                    <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-800">
-                      {editingEvent.worker_name}
-                      {editingEvent.subcontractor_company_name ? (
-                        <span className="text-gray-500"> · {editingEvent.subcontractor_company_name}</span>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : (
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Worker *</label>
-                  <select
-                    value={formData.worker_id}
-                    onChange={(e) => setFormData({ ...formData, worker_id: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    required
-                  >
-                    <option value="">Select a worker...</option>
-                    {(Array.isArray(users) ? users : []).map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name || u.username}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                )
-              ) : (
-                // When creating, show multi-select with search
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                    Workers * {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 0 && `(${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} selected)`}
-                  </label>
-                  <div className="relative" ref={workerDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => setWorkerDropdownOpen(!workerDropdownOpen)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between bg-white focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    >
-                      <span className="text-xs text-gray-600">
-                        {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0
-                          ? 'Select workers...'
-                          : `${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} worker${(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 1 ? 's' : ''} selected`}
-                      </span>
-                      <span className="text-gray-400 text-xs">{workerDropdownOpen ? '▲' : '▼'}</span>
-                    </button>
-                    {workerDropdownOpen && (
-                      <div 
-                        className="absolute z-50 mt-1 w-full rounded-lg border bg-white shadow-lg max-h-60 overflow-auto"
-                        onMouseDown={(e) => e.stopPropagation()}
-                      >
-                        <div className="p-2 border-b space-y-2">
-                          <input
-                            type="text"
-                            placeholder="Search workers..."
-                            value={workerSearch}
-                            onChange={(e) => setWorkerSearch(e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                            onMouseDown={(e) => e.stopPropagation()}
-                          />
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                if (!Array.isArray(filteredEmployees)) return;
-                                const allFilteredIds = filteredEmployees.map((u: any) => u.id);
-                                setSelectedWorkers((prev) => {
-                                  const prevArray = Array.isArray(prev) ? prev : [];
-                                  const newSet = new Set([...prevArray, ...allFilteredIds]);
-                                  return Array.from(newSet);
-                                });
-                              }}
-                              className="text-[10px] px-2 py-1 rounded border hover:bg-gray-50"
-                            >
-                              Select All
-                            </button>
-                            <button
-                              type="button"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setSelectedWorkers([]);
-                              }}
-                              className="text-[10px] px-2 py-1 rounded border hover:bg-gray-50"
-                            >
-                              Clear All
-                            </button>
-                          </div>
-                        </div>
-                        <div className="p-2">
-                          {(Array.isArray(filteredEmployees) && filteredEmployees.length > 0) ? (
-                            filteredEmployees.map((u: any) => (
-                              <label
-                                key={u.id}
-                                className="flex items-center gap-2 p-1.5 hover:bg-gray-50 cursor-pointer rounded"
-                                onMouseDown={(e) => e.stopPropagation()}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={Array.isArray(selectedWorkers) && selectedWorkers.includes(u.id)}
-                                  onChange={() => toggleWorker(u.id)}
-                                  className="w-3.5 h-3.5 rounded border-gray-300"
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                />
-                                <span className="text-xs">{u.name || u.username}</span>
-                              </label>
-                            ))
-                          ) : (
-                            <div className="p-2 text-xs text-gray-600">No workers found</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {Array.isArray(selectedWorkers) && selectedWorkers.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {selectedWorkers.map((workerId) => {
-                        const worker = (Array.isArray(users) ? users : []).find((u: any) => u.id === workerId);
-                        return (
-                          <span
-                            key={workerId}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs"
-                          >
-                            {worker?.name || worker?.username || workerId}
-                            <button
-                              type="button"
-                              onClick={() => toggleWorker(workerId)}
-                              className="text-blue-600 hover:text-blue-800 text-sm"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        );
+          {formData.entry_mode === 'time' ? (
+            <LocalDateTimeFields
+              key={`clock-in-${editingEvent?.event_id ?? 'new'}`}
+              label="Clock in"
+              value={formData.clock_in_time}
+              onChange={(next) => setFormData((prev) => ({ ...prev, clock_in_time: next }))}
+              required
+              dateFieldHint="Clock-in date\n\nDay the employee started on site."
+              timeFieldHint="Clock-in time\n\nLocal time when the employee clocked in (5-minute steps)."
+            />
+          ) : (
+            <AppDatePicker
+              label="Work Date *"
+              value={formData.clock_in_time ? formData.clock_in_time.slice(0, 10) : ''}
+              onChange={(e) => {
+                const date = e.target.value;
+                setFormData((prev) => ({
+                  ...prev,
+                  clock_in_time: date ? `${date}T00:00` : '',
+                }));
+              }}
+              fieldHint="Work date\n\nCalendar day when the hours were worked."
+              required
+            />
+          )}
+          {formData.entry_mode === 'time' && (
+            <>
+              <LocalDateTimeFields
+                key={`clock-out-${editingEvent?.event_id ?? 'new'}`}
+                label="Clock out"
+                value={formData.clock_out_time}
+                onChange={(next) => setFormData((prev) => ({ ...prev, clock_out_time: next }))}
+                required={!editingEvent}
+                dateFieldHint="Clock-out date\n\nDay the employee finished on site."
+                timeFieldHint="Clock-out time\n\nLocal time when the employee clocked out. Must be after clock-in."
+              />
+              <div>
+                <AppCheckbox
+                  label="Insert break time"
+                  fieldHint="Insert break time\n\nSubtract unpaid break minutes from the total session time."
+                  checked={insertBreakTime}
+                  onChange={setInsertBreakTime}
+                />
+                {insertBreakTime && (
+                  <div className="flex flex-wrap items-end gap-3 pl-8">
+                    <AppSelect
+                      className="min-w-[100px] flex-1"
+                      label="Hours"
+                      value={breakHours}
+                      onChange={(e) => setBreakHours(e.target.value)}
+                      options={Array.from({ length: 3 }, (_, i) => ({
+                        value: String(i),
+                        label: String(i),
+                      }))}
+                    />
+                    <AppSelect
+                      className="min-w-[100px] flex-1"
+                      label="Minutes"
+                      value={breakMinutes}
+                      onChange={(e) => setBreakMinutes(e.target.value)}
+                      options={Array.from({ length: 12 }, (_, i) => {
+                        const m = i * 5;
+                        const v = String(m).padStart(2, '0');
+                        return { value: v, label: v };
                       })}
-                    </div>
-                  )}
-                </div>
-              )}
-              {/* Job field - always show */}
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                  {editingEvent?.record_kind === 'subcontractor' ? 'Project *' : 'Job *'}
-                </label>
-                <select
-                  value={formData.job_type}
-                  onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                  required
-                >
-                  {jobOptions.map((job) => (
-                    <option key={job.id} value={job.id}>
-                      {job.code} - {job.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                  Entry Type
-                </label>
-                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 overflow-hidden text-sm">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFormData((prev) => {
-                        // When switching to 'time', clear hours_worked
-                        return {
-                          ...prev,
-                          entry_mode: 'time',
-                          hours_worked: '',
-                        };
-                      });
-                    }}
-                    className={`px-2.5 py-1.5 ${
-                      formData.entry_mode === 'time'
-                        ? 'bg-white text-gray-900'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    Clock In / Out
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFormData((prev) => {
-                        // When switching to 'hours', reset clock_in_time to date at midnight
-                        // and calculate hours_worked from clock_in and clock_out if both exist
-                        const datePart = prev.clock_in_time ? prev.clock_in_time.slice(0, 10) : getTodayLocal();
-                        let hoursWorked = '';
-                        
-                        // If we have both clock_in and clock_out, calculate hours
-                        if (prev.clock_in_time && prev.clock_out_time) {
-                          const inTime = new Date(prev.clock_in_time);
-                          const outTime = new Date(prev.clock_out_time);
-                          const diffMs = outTime.getTime() - inTime.getTime();
-                          const diffHours = diffMs / (1000 * 60 * 60);
-                          if (diffHours > 0) {
-                            hoursWorked = diffHours.toString();
-                          }
-                        }
-                        
-                        return {
-                          ...prev,
-                          entry_mode: 'hours',
-                          clock_in_time: `${datePart}T00:00`,
-                          clock_out_time: '', // Clear clock-out time when switching to hours mode
-                          hours_worked: hoursWorked,
-                        };
-                      });
-                    }}
-                    className={`px-2.5 py-1.5 border-l border-gray-300 ${
-                      formData.entry_mode === 'hours'
-                        ? 'bg-white text-gray-900'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    } disabled:opacity-40 disabled:cursor-not-allowed`}
-                  >
-                    Hours Worked
-                  </button>
-                </div>
-                <p className="mt-1 text-[10px] text-gray-500">
-                  {formData.entry_mode === 'time'
-                    ? 'Enter exact clock-in and clock-out times.'
-                    : 'Enter start time and total hours; clock-out will be calculated automatically.'}
-                </p>
-              </div>
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                  {formData.entry_mode === 'time'
-                    ? 'Clock In Time * (Local)'
-                    : 'Work Date *'}
-                </label>
-                {formData.entry_mode === 'time' ? (
-                  <input
-                    type="datetime-local"
-                    value={formData.clock_in_time}
-                    onChange={(e) =>
-                      setFormData({ ...formData, clock_in_time: e.target.value })
-                    }
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    required
-                  />
-                ) : (
-                  <input
-                    type="date"
-                    value={formData.clock_in_time ? formData.clock_in_time.slice(0, 10) : ''}
-                    onChange={(e) => {
-                      const date = e.target.value;
-                      setFormData((prev) => ({
-                        ...prev,
-                        clock_in_time: date ? `${date}T00:00` : '',
-                      }));
-                    }}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    required
-                  />
+                    />
+                  </div>
                 )}
               </div>
-              {formData.entry_mode === 'time' && (
-                <>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                      {editingEvent
-                        ? 'Clock Out Time (Local) - Optional'
-                        : 'Clock Out Time * (Local)'}
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={formData.clock_out_time}
-                      onChange={(e) =>
-                        setFormData({ ...formData, clock_out_time: e.target.value })
-                      }
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                      required={!editingEvent}
+            </>
+          )}
+          {formData.entry_mode === 'hours' && (
+            <>
+              <AppInput
+                label="Hours Worked *"
+                type="number"
+                min={0}
+                step="0.25"
+                value={formData.hours_worked}
+                onChange={(e) => setFormData({ ...formData, hours_worked: e.target.value })}
+                placeholder="e.g. 8"
+                fieldHint="Hours worked\n\nTotal hours for the work date (e.g. 8 for a full day)."
+                required
+              />
+              <div>
+                <AppCheckbox label="Insert break time" checked={insertBreakTime} onChange={setInsertBreakTime} />
+                {insertBreakTime && (
+                  <div className="flex flex-wrap items-end gap-3 pl-8">
+                    <AppSelect
+                      className="min-w-[100px] flex-1"
+                      label="Hours"
+                      value={breakHours}
+                      onChange={(e) => setBreakHours(e.target.value)}
+                      options={Array.from({ length: 3 }, (_, i) => ({
+                        value: String(i),
+                        label: String(i),
+                      }))}
+                    />
+                    <AppSelect
+                      className="min-w-[100px] flex-1"
+                      label="Minutes"
+                      value={breakMinutes}
+                      onChange={(e) => setBreakMinutes(e.target.value)}
+                      options={Array.from({ length: 12 }, (_, i) => {
+                        const m = i * 5;
+                        const v = String(m).padStart(2, '0');
+                        return { value: v, label: v };
+                      })}
                     />
                   </div>
-                  {/* Manual Break Time (clock in/out mode) */}
-                  <div>
-                    <label className="flex items-center gap-2 mb-1.5">
-                      <input
-                        type="checkbox"
-                        checked={insertBreakTime}
-                        onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                      />
-                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Insert Break Time</span>
-                    </label>
-                    {insertBreakTime && (
-                      <div className="ml-4 space-y-1.5">
-                        <div className="flex gap-2 items-center">
-                          <label className="text-[10px] text-gray-500 w-12">Hours:</label>
-                          <select
-                            value={breakHours}
-                            onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                          >
-                            {Array.from({ length: 3 }, (_, i) => (
-                              <option key={i} value={String(i)}>
-                                {i}
-                              </option>
-                            ))}
-                          </select>
-                          <label className="text-[10px] text-gray-500 w-12 ml-2">Minutes:</label>
-                          <select
-                            value={breakMinutes}
-                            onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                          >
-                            {Array.from({ length: 12 }, (_, i) => {
-                              const m = i * 5;
-                              return (
-                                <option key={m} value={String(m).padStart(2, '0')}>
-                                  {String(m).padStart(2, '0')}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-              {formData.entry_mode === 'hours' && (
-                <>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                      Hours Worked *
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.25"
-                      value={formData.hours_worked}
-                      onChange={(e) =>
-                        setFormData({ ...formData, hours_worked: e.target.value })
-                      }
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                      placeholder="e.g. 8"
-                      required
-                    />
-                  </div>
-                  {/* Manual Break Time (for hours worked mode) */}
-                  <div>
-                    <label className="flex items-center gap-2 mb-1">
-                      <input
-                        type="checkbox"
-                        checked={insertBreakTime}
-                        onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-3.5 h-3.5 rounded border-gray-200 text-brand-red focus:ring-brand-red"
-                      />
-                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Insert Break Time</span>
-                    </label>
-                    {insertBreakTime && (
-                      <div className="ml-4 space-y-1.5">
-                        <div className="flex gap-2 items-center">
-                          <label className="text-[10px] text-gray-500 w-12">Hours:</label>
-                          <select
-                            value={breakHours}
-                            onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                          >
-                            {Array.from({ length: 3 }, (_, i) => (
-                              <option key={i} value={String(i)}>
-                                {i}
-                              </option>
-                            ))}
-                          </select>
-                          <label className="text-[10px] text-gray-500 w-12 ml-2">Minutes:</label>
-                          <select
-                            value={breakMinutes}
-                            onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                          >
-                            {Array.from({ length: 12 }, (_, i) => {
-                              const m = i * 5;
-                              return (
-                                <option key={m} value={String(m).padStart(2, '0')}>
-                                  {String(m).padStart(2, '0')}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-              {editingEvent && (
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status *</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    required
-                  >
-                    <option value="approved">Approved</option>
-                    <option value="pending">Pending</option>
-                    <option value="rejected">Rejected</option>
-                  </select>
-                </div>
-              )}
-              </form>
-            </div>
-            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                form="attendance-form"
-                disabled={isSubmitDisabled || isSubmitting}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? 'Saving...' : editingEvent ? 'Update' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+                )}
+              </div>
+            </>
+          )}
+          {editingEvent && (
+            <AppSelect
+              label="Status *"
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              fieldHint="Status\n\nApproval state for this row (approved, pending, or rejected)."
+              options={[
+                { value: 'approved', label: 'Approved' },
+                { value: 'pending', label: 'Pending' },
+                { value: 'rejected', label: 'Rejected' },
+              ]}
+            />
+          )}
+        </div>
+      </AppFormModal>
     </div>
   );
 }

@@ -2,10 +2,34 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
+import { FileText, LayoutGrid, Plus, Search, SlidersHorizontal, Table } from 'lucide-react';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import {
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppInput,
+  AppPageHeader,
+  AppSelect,
+  AppSortableEntityList,
+  AppSortableEntityListFlatBody,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
+  getListCreateItemClassName,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiListCreateItem,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 import {
   type Quote,
   type QuoteSortKey,
@@ -26,8 +50,29 @@ import {
   formatQuoteCurrency,
   formatQuoteValueDisplay,
   toggleColumnSort,
-  sortIndicator,
 } from '@/pages/quotesListUtils';
+
+const QUOTES_TABLE_GRID = 'grid-cols-[minmax(120px,1.2fr)_minmax(130px,1.3fr)_minmax(80px,0.7fr)_minmax(80px,0.7fr)_minmax(100px,1fr)_minmax(90px,0.8fr)]';
+const QUOTES_TABLE_MIN_WIDTH = 'min-w-[720px]';
+
+function quoteSortParts(sortKey: QuoteSortKey): {
+  column: QuoteTableColumn | null;
+  dir: 'asc' | 'desc';
+} {
+  const entries: [string, QuoteTableColumn][] = [
+    ['created_', 'created'],
+    ['updated_', 'updated'],
+    ['client_', 'client'],
+    ['value_', 'value'],
+    ['estimator_', 'estimator'],
+  ];
+  for (const [prefix, column] of entries) {
+    if (sortKey.startsWith(prefix)) {
+      return { column, dir: sortKey.endsWith('_asc') ? 'asc' : 'desc' };
+    }
+  }
+  return { column: null, dir: 'desc' };
+}
 
 // Helper: Convert filter rules to URL parameters
 function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
@@ -203,12 +248,12 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
 
 export default function Quotes() {
   const location = useLocation();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
 
   const viewMode = parseViewMode(searchParams.get('view'));
   const sortKey = parseSortKey(searchParams.get('sort'));
+  const { column: sortColumn, dir: sortDir } = quoteSortParts(sortKey);
 
   const [q, setQ] = useState(queryParam);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -442,75 +487,135 @@ export default function Quotes() {
     refetch();
   };
 
+  const listCardAnimClass = animationComplete
+    ? undefined
+    : uiCx(
+        'transition-[opacity,transform] duration-[400ms] ease-out',
+        hasAnimated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-2 scale-[0.98]',
+      );
+
+  const handleColumnSort = (column: QuoteTableColumn) => {
+    setViewAndSort({ sort: toggleColumnSort(sortKey, column) });
+  };
+
   if (!hasViewPermission) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        You do not have permission to view quotations.
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+        <AppEmptyState title="You do not have permission to view quotations." className="py-12" />
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Quotations</div>
-          <div className="text-sm text-gray-500 font-medium">List, search and manage quotations</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-        </div>
-      </div>
-
-      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-6 py-4 bg-white">
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <input
-                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150"
-                  placeholder="Search by quote name, code, or client name..."
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                />
-                <svg
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  />
-                </svg>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setIsFilterModalOpen(true)}
-              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
-            >
-              + Filters
-            </button>
-
-            {hasActiveFilters && (
-              <button
-                onClick={clearFilters}
-                className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
-              >
-                Clear Filters
-              </button>
-            )}
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <AppPageHeader
+        title="Quotations"
+        subtitle="List, search and manage quotations"
+        icon={<FileText className="h-4 w-4" />}
+        actions={
+          <div className="text-right">
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
+        }
+      />
+
+      <AppCard bodyClassName={uiSpacing.cardPadding}>
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+          <div className={uiCx('flex shrink-0 items-stretch overflow-hidden', uiRadius.control, uiBorders.subtle)}>
+            <AppButton
+              type="button"
+              variant={viewMode === 'cards' ? 'primary' : 'secondary'}
+              size="sm"
+              className="!rounded-none !px-2.5"
+              onClick={() => setViewAndSort({ view: 'cards' })}
+              title="Cards view"
+              aria-label="Cards view"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </AppButton>
+            <AppButton
+              type="button"
+              variant={viewMode === 'table' ? 'primary' : 'secondary'}
+              size="sm"
+              className="!rounded-none !border-l-0 !px-2.5"
+              onClick={() => setViewAndSort({ view: 'table' })}
+              title="Table view"
+              aria-label="Table view"
+            >
+              <Table className="h-4 w-4" />
+            </AppButton>
+          </div>
+          <div className="min-w-0 flex-1">
+            <AppInput
+              placeholder="Search by quote name, code, or client name..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              leftIcon={<Search className="h-4 w-4" />}
+              aria-label="Search quotations"
+            />
+          </div>
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<SlidersHorizontal className="h-4 w-4" />}
+            onClick={() => setIsFilterModalOpen(true)}
+          >
+            Filters
+          </AppButton>
+          {hasActiveFilters && (
+            <AppButton type="button" variant="ghost" size="sm" onClick={clearFilters}>
+              Clear
+            </AppButton>
+          )}
         </div>
-      </div>
+
+        {!isInitialLoading && (
+          <div
+            className={uiCx(
+              'mt-3 border-t border-gray-100 pt-3',
+              uiLayout.actionsRow,
+              'flex-wrap items-center justify-between gap-3',
+            )}
+          >
+            <div className="min-w-0">
+              <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-baseline gap-x-4 gap-y-1')}>
+                <span className={uiTypography.sectionTitle}>
+                  {summary.count} {summary.count === 1 ? 'quotation' : 'quotations'}
+                </span>
+                <span className={uiTypography.helper}>
+                  Total quoted{' '}
+                  <span className="font-semibold text-brand-red">{formatQuoteCurrency(summary.total)}</span>
+                </span>
+                {summary.count > 0 && (
+                  <span className={uiTypography.helper}>
+                    Average{' '}
+                    <span className="font-medium text-gray-800">{formatQuoteCurrency(summary.average)}</span>
+                  </span>
+                )}
+              </div>
+              {showCapWarning && (
+                <p className="mt-1.5 text-xs text-amber-700">
+                  Totals reflect up to {QUOTES_LIST_CAP} quotations (newest first from server). Narrow filters for
+                  exact totals.
+                </p>
+              )}
+            </div>
+            <div className="w-full sm:w-auto sm:min-w-[180px]">
+              <AppSelect
+                label="Sort"
+                options={SORT_OPTIONS}
+                value={sortKey}
+                onChange={(e) => setViewAndSort({ sort: parseSortKey(e.target.value) })}
+              />
+            </div>
+          </div>
+        )}
+      </AppCard>
 
       {hasActiveFilters && (
-        <div className="mb-4 flex items-center gap-2 flex-wrap">
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
           {currentRules.map((rule) => (
             <FilterChip
               key={rule.id}
@@ -523,79 +628,32 @@ export default function Quotes() {
         </div>
       )}
 
-      {!isInitialLoading && (
-        <QuotesListToolbar
-          summary={summary}
-          showCapWarning={showCapWarning}
-          viewMode={viewMode}
-          sortKey={sortKey}
-          onViewChange={(view) => setViewAndSort({ view })}
-          onSortChange={(sort) => setViewAndSort({ sort })}
-        />
-      )}
-
       <LoadingOverlay isLoading={isInitialLoading} text="Loading quotes...">
-        {viewMode === 'table' ? (
-          <QuotesTable
-            quotes={sortedQuotes}
-            employees={employees}
-            sortKey={sortKey}
-            total={summary.total}
-            isLoading={isLoading}
-            hasEditPermission={hasEditPermission}
-            location={location}
-            onColumnSort={(column) => setViewAndSort({ sort: toggleColumnSort(sortKey, column) })}
-          />
-        ) : (
-          <div
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4"
-            style={
-              animationComplete
-                ? {}
-                : {
-                    opacity: hasAnimated ? 1 : 0,
-                    transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-                    transition: 'opacity 400ms ease-out, transform 400ms ease-out',
-                  }
-            }
-          >
-            {isLoading && !sortedQuotes.length ? (
-              <>
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <div key={i} className="h-64 bg-gray-100 animate-pulse rounded-xl" />
-                ))}
-              </>
-            ) : (
-              <>
-                {hasEditPermission && (
-                  <Link
-                    to="/quotes/new"
-                    state={{ backgroundLocation: location }}
-                    className="border-2 border-dashed border-gray-300 rounded-xl p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]"
-                  >
-                    <div className="text-4xl text-gray-400 mb-2">+</div>
-                    <div className="font-medium text-sm text-gray-700">New Quote</div>
-                    <div className="text-xs text-gray-500 mt-1">Add new quote</div>
-                  </Link>
-                )}
-                {sortedQuotes.length > 0 ? (
-                  sortedQuotes.map((quote) => (
-                    <QuoteListCard
-                      key={quote.id}
-                      quote={quote}
-                      employees={employees}
-                      clientFiles={allClientFiles?.[quote.client_id || ''] || []}
-                    />
-                  ))
-                ) : (
-                  <div className="col-span-2 p-8 text-center text-gray-500 rounded-xl border bg-white">
-                    No quotes found matching your criteria.
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
+        <AppCard className={uiCx(uiShadows.card, listCardAnimClass)} bodyClassName={viewMode === 'table' ? '!p-0' : uiSpacing.cardPadding}>
+          {viewMode === 'table' ? (
+            <QuotesTableView
+              quotes={sortedQuotes}
+              employees={employees}
+              sortColumn={sortColumn}
+              sortDir={sortDir}
+              total={summary.total}
+              isLoading={isLoading}
+              hasEditPermission={hasEditPermission}
+              location={location}
+              onColumnSort={handleColumnSort}
+            />
+          ) : (
+            <QuotesCardsView
+              quotes={sortedQuotes}
+              employees={employees}
+              clientFiles={allClientFiles}
+              isLoading={isLoading}
+              hasEditPermission={hasEditPermission}
+              location={location}
+              listCardAnimClass={listCardAnimClass}
+            />
+          )}
+        </AppCard>
       </LoadingOverlay>
 
       <FilterBuilderModal
@@ -610,120 +668,11 @@ export default function Quotes() {
   );
 }
 
-function QuotesListToolbar({
-  summary,
-  showCapWarning,
-  viewMode,
-  sortKey,
-  onViewChange,
-  onSortChange,
-}: {
-  summary: { count: number; total: number; average: number };
-  showCapWarning: boolean;
-  viewMode: QuoteViewMode;
-  sortKey: QuoteSortKey;
-  onViewChange: (view: QuoteViewMode) => void;
-  onSortChange: (sort: QuoteSortKey) => void;
-}) {
-  return (
-    <div className="mb-4 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-4 py-3 sm:px-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
-            <span className="font-medium text-gray-900">
-              {summary.count} {summary.count === 1 ? 'quotation' : 'quotations'}
-            </span>
-            <span className="text-gray-500">
-              Total quoted{' '}
-              <span className="font-semibold text-[#7f1010]">{formatQuoteCurrency(summary.total)}</span>
-            </span>
-            {summary.count > 0 && (
-              <span className="text-gray-500">
-                Average <span className="font-medium text-gray-800">{formatQuoteCurrency(summary.average)}</span>
-              </span>
-            )}
-          </div>
-          {showCapWarning && (
-            <p className="text-xs text-amber-700 mt-1.5">
-              Totals reflect up to {QUOTES_LIST_CAP} quotations (newest first from server). Narrow filters for exact
-              totals.
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <div className="inline-flex rounded-md border border-gray-200 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => onViewChange('cards')}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                viewMode === 'cards' ? 'bg-brand-red text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              Cards
-            </button>
-            <button
-              type="button"
-              onClick={() => onViewChange('table')}
-              className={`px-3 py-1.5 text-xs font-medium border-l border-gray-200 transition-colors ${
-                viewMode === 'table' ? 'bg-brand-red text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              Table
-            </button>
-          </div>
-
-          <label className="flex items-center gap-2 text-xs text-gray-600">
-            <span className="whitespace-nowrap">Sort</span>
-            <select
-              value={sortKey}
-              onChange={(e) => onSortChange(parseSortKey(e.target.value))}
-              className="border border-gray-200 rounded-md px-2 py-1.5 text-xs bg-white text-gray-900 min-w-[160px]"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SortableTh({
-  column,
-  label,
-  sortKey,
-  onSort,
-  align = 'left',
-}: {
-  column: QuoteTableColumn;
-  label: string;
-  sortKey: QuoteSortKey;
-  onSort: (column: QuoteTableColumn) => void;
-  align?: 'left' | 'right';
-}) {
-  return (
-    <th className={`px-4 py-3 font-medium text-gray-600 ${align === 'right' ? 'text-right' : 'text-left'}`}>
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className="inline-flex items-center gap-0.5 hover:text-gray-900 transition-colors"
-      >
-        {label}
-        <span className="text-brand-red">{sortIndicator(sortKey, column)}</span>
-      </button>
-    </th>
-  );
-}
-
-function QuotesTable({
+function QuotesTableView({
   quotes,
   employees,
-  sortKey,
+  sortColumn,
+  sortDir,
   total,
   isLoading,
   hasEditPermission,
@@ -732,101 +681,207 @@ function QuotesTable({
 }: {
   quotes: Quote[];
   employees?: any[];
-  sortKey: QuoteSortKey;
+  sortColumn: QuoteTableColumn | null;
+  sortDir: 'asc' | 'desc';
   total: number;
   isLoading: boolean;
   hasEditPermission: boolean;
   location: ReturnType<typeof useLocation>;
   onColumnSort: (column: QuoteTableColumn) => void;
 }) {
-  const navigate = useNavigate();
-
   if (isLoading && !quotes.length) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-500 text-sm">
+      <div className={uiCx(uiSpacing.cardPadding, 'text-center', uiTypography.helper)}>
         Loading quotations…
       </div>
     );
   }
 
+  const sortBy = sortColumn ?? 'created';
+
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <div className="flex flex-col">
       {hasEditPermission && (
-        <div className="px-4 py-3 border-b border-gray-100 flex justify-end">
+        <div className={uiSpacing.cardPadding}>
           <Link
             to="/quotes/new"
             state={{ backgroundLocation: location }}
-            className="text-sm font-medium text-brand-red hover:underline"
+            className={getListCreateItemClassName('row', uiCx(QUOTES_TABLE_MIN_WIDTH, 'w-full'))}
           >
-            + New Quote
+            <Plus className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
+            <span className={uiListCreateItem.label}>New Quote</span>
           </Link>
         </div>
       )}
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-            <tr>
-              <SortableTh column="client" label="Client" sortKey={sortKey} onSort={onColumnSort} />
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Document / Code</th>
-              <SortableTh column="created" label="Created" sortKey={sortKey} onSort={onColumnSort} />
-              <SortableTh column="updated" label="Updated" sortKey={sortKey} onSort={onColumnSort} />
-              <SortableTh column="estimator" label="Estimator" sortKey={sortKey} onSort={onColumnSort} />
-              <SortableTh column="value" label="Estimated value" sortKey={sortKey} onSort={onColumnSort} align="right" />
-            </tr>
-          </thead>
-          <tbody>
-            {quotes.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-gray-500">
-                  No quotes found matching your criteria.
-                </td>
-              </tr>
-            ) : (
-              quotes.map((quote, idx) => {
-                const value = getQuoteValue(quote);
-                const created = (quote.created_at || '').slice(0, 10);
-                const updated = (quote.updated_at || '').slice(0, 10);
-                return (
-                  <tr
-                    key={quote.id}
-                    onClick={() => navigate(`/quotes/${encodeURIComponent(String(quote.id))}`)}
-                    className={`cursor-pointer border-b border-gray-100 hover:bg-red-50/40 transition-colors ${
-                      idx % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-gray-900 max-w-[200px] truncate" title={getQuoteClientName(quote)}>
-                      {getQuoteClientName(quote) || 'No client'}
-                    </td>
-                    <td className="px-4 py-3 min-w-[140px]">
-                      <div className="font-medium text-gray-900">{getQuoteDocumentType(quote)}</div>
-                      <div className="text-xs text-gray-500">{quote.code || quote.order_number || '—'}</div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{created || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{updated || '—'}</td>
-                    <td className="px-4 py-3 text-gray-700 max-w-[140px] truncate" title={getEstimatorName(quote, employees)}>
-                      {getEstimatorName(quote, employees)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-[#7f1010] whitespace-nowrap">
-                      {formatQuoteValueDisplay(value)}
-                    </td>
-                  </tr>
-                );
-              })
+
+      {quotes.length === 0 ? (
+        <div className={uiCx(uiSpacing.cardPadding, 'pb-10')}>
+          <AppEmptyState
+            title="No quotes found matching your criteria."
+            className="border-0 bg-transparent p-0 shadow-none"
+          />
+        </div>
+      ) : (
+        <AppSortableEntityList layout="flat">
+          <AppSortableEntityListHeader
+            variant="flat"
+            gridCols={QUOTES_TABLE_GRID}
+            minWidth={QUOTES_TABLE_MIN_WIDTH}
+          >
+            <AppSortableEntityListSortColumn
+              label="Client"
+              column="client"
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSort={onColumnSort}
+              title="Sort by client"
+            />
+            <div className={uiCx('min-w-0', uiTypography.controlLabel)}>Document / Code</div>
+            <AppSortableEntityListSortColumn
+              label="Created"
+              column="created"
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSort={onColumnSort}
+              title="Sort by created date"
+            />
+            <AppSortableEntityListSortColumn
+              label="Updated"
+              column="updated"
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSort={onColumnSort}
+              title="Sort by updated date"
+            />
+            <AppSortableEntityListSortColumn
+              label="Estimator"
+              column="estimator"
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSort={onColumnSort}
+              title="Sort by estimator"
+            />
+            <AppSortableEntityListSortColumn
+              label="Estimated value"
+              column="value"
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSort={onColumnSort}
+              title="Sort by estimated value"
+              className="justify-end text-right"
+            />
+          </AppSortableEntityListHeader>
+
+          <AppSortableEntityListFlatBody gridCols={QUOTES_TABLE_GRID} minWidth={QUOTES_TABLE_MIN_WIDTH}>
+            {quotes.map((quote) => {
+              const value = getQuoteValue(quote);
+              const created = (quote.created_at || '').slice(0, 10);
+              const updated = (quote.updated_at || '').slice(0, 10);
+              const clientName = getQuoteClientName(quote) || 'No client';
+              const documentType = getQuoteDocumentType(quote);
+              const estimatorName = getEstimatorName(quote, employees);
+
+              return (
+                <AppSortableEntityListRow
+                  key={quote.id}
+                  as="link"
+                  to={`/quotes/${encodeURIComponent(String(quote.id))}`}
+                  variant="flat"
+                  gridCols={QUOTES_TABLE_GRID}
+                  minWidth={QUOTES_TABLE_MIN_WIDTH}
+                >
+                  <div className={uiCx('min-w-0 truncate', uiTypography.body)} title={clientName}>
+                    {clientName}
+                  </div>
+                  <div className="min-w-0">
+                    <div className={uiTypography.sectionTitle}>{documentType}</div>
+                    <div className={uiTypography.helper}>{quote.code || quote.order_number || '—'}</div>
+                  </div>
+                  <div className={uiCx('min-w-0 whitespace-nowrap', uiTypography.body)}>{created || '—'}</div>
+                  <div className={uiCx('min-w-0 whitespace-nowrap', uiTypography.body)}>{updated || '—'}</div>
+                  <div className={uiCx('min-w-0 truncate', uiTypography.body)} title={estimatorName}>
+                    {estimatorName}
+                  </div>
+                  <div className={uiCx('min-w-0 text-right font-semibold text-brand-red whitespace-nowrap', uiTypography.body)}>
+                    {formatQuoteValueDisplay(value)}
+                  </div>
+                </AppSortableEntityListRow>
+              );
+            })}
+          </AppSortableEntityListFlatBody>
+
+          <div
+            className={uiCx(
+              QUOTES_TABLE_MIN_WIDTH,
+              'grid w-full items-center gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 sm:gap-3 lg:gap-4',
+              QUOTES_TABLE_GRID,
             )}
-          </tbody>
-          {quotes.length > 0 && (
-            <tfoot className="bg-gray-50 border-t border-gray-200">
-              <tr>
-                <td colSpan={5} className="px-4 py-3 text-right font-semibold text-gray-800">
-                  Total
-                </td>
-                <td className="px-4 py-3 text-right font-bold text-[#7f1010]">{formatQuoteCurrency(total)}</td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
+          >
+            <div className="col-span-5 text-right font-semibold text-gray-800">Total</div>
+            <div className="text-right font-bold text-brand-red">{formatQuoteCurrency(total)}</div>
+          </div>
+        </AppSortableEntityList>
+      )}
     </div>
+  );
+}
+
+function QuotesCardsView({
+  quotes,
+  employees,
+  clientFiles,
+  isLoading,
+  hasEditPermission,
+  location,
+  listCardAnimClass,
+}: {
+  quotes: Quote[];
+  employees?: any[];
+  clientFiles?: Record<string, any[]>;
+  isLoading: boolean;
+  hasEditPermission: boolean;
+  location: ReturnType<typeof useLocation>;
+  listCardAnimClass?: string;
+}) {
+  if (isLoading && !quotes.length) {
+    return (
+      <div className={uiCx('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4', listCardAnimClass)}>
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div key={i} className={uiCx('h-64 animate-pulse bg-gray-100', uiRadius.card)} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className={uiCx('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4', listCardAnimClass)}>
+        {hasEditPermission && (
+          <Link
+            to="/quotes/new"
+            state={{ backgroundLocation: location }}
+            className={getListCreateItemClassName('card', 'min-h-[200px]')}
+          >
+            <Plus className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
+            <span className={uiListCreateItem.label}>New Quote</span>
+          </Link>
+        )}
+        {quotes.map((quote) => (
+          <QuoteListCard
+            key={quote.id}
+            quote={quote}
+            employees={employees}
+            clientFiles={clientFiles?.[quote.client_id || ''] || []}
+          />
+        ))}
+      </div>
+      {!isLoading && quotes.length === 0 && (
+        <AppEmptyState
+          className="mt-4 py-8"
+          title="No quotes found matching your criteria."
+        />
+      )}
+    </>
   );
 }
 
@@ -849,37 +904,52 @@ function QuoteListCard({
   return (
     <Link
       to={`/quotes/${encodeURIComponent(String(quote.id))}`}
-      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
+      className={uiCx(
+        'group relative block h-full transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300',
+        uiBorders.subtle,
+        uiRadius.card,
+        uiColors.surface,
+        'hover:shadow-md',
+      )}
     >
-      <div className="p-4 flex flex-col gap-3">
+      <div className={uiCx('flex flex-col gap-3', uiSpacing.cardPadding)}>
         <div className="min-w-0">
-          <div className="text-xs text-gray-500 truncate min-w-0">{clientName || 'No client'}</div>
+          <div className={uiCx(uiTypography.helper, 'truncate')}>{clientName || 'No client'}</div>
           <div className="min-w-0">
-            <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">
+            <div
+              className={uiCx(
+                uiTypography.sectionTitle,
+                'whitespace-normal break-words transition-colors group-hover:text-brand-red',
+              )}
+            >
               {documentType}
             </div>
-            <div className="text-xs text-gray-600 break-words">{quote.code || quote.order_number || '—'}</div>
+            <div className={uiCx(uiTypography.helper, 'break-words')}>
+              {quote.code || quote.order_number || '—'}
+            </div>
           </div>
         </div>
 
         <div className="border-t border-black/5" />
 
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="grid grid-cols-2 gap-3">
           <div className="min-w-0">
-            <div className="text-xs text-gray-500">Created</div>
-            <div className="font-medium text-gray-900 truncate">{created || '—'}</div>
+            <div className={uiTypography.helper}>Created</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{created || '—'}</div>
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-gray-500">Updated</div>
-            <div className="font-medium text-gray-900 truncate">{updated || '—'}</div>
+            <div className={uiTypography.helper}>Updated</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{updated || '—'}</div>
           </div>
           <div className="min-w-0 truncate" title={estimatorName}>
-            <div className="text-xs text-gray-500">Estimator</div>
-            <div className="font-medium text-gray-900 text-xs">{estimatorName}</div>
+            <div className={uiTypography.helper}>Estimator</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{estimatorName}</div>
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-gray-500">Estimated Value</div>
-            <div className="font-semibold text-[#7f1010] truncate">{formatQuoteValueDisplay(estimatedValue)}</div>
+            <div className={uiTypography.helper}>Estimated Value</div>
+            <div className={uiCx('truncate font-semibold text-brand-red', uiTypography.body)}>
+              {formatQuoteValueDisplay(estimatedValue)}
+            </div>
           </div>
         </div>
       </div>

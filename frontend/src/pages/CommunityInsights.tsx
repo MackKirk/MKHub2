@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { BarChart3 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { CommunityPageHeader } from '@/components/community/CommunityPageHeader';
 import { InsightsToolbar, presetToRange, type DatePresetId } from '@/components/community/insights/InsightsToolbar';
 import { InsightsKpiCard } from '@/components/community/insights/InsightsKpiCard';
 import { InsightsActivityTimeline } from '@/components/community/insights/InsightsActivityTimeline';
@@ -13,6 +13,7 @@ import { InsightsTopContributors } from '@/components/community/insights/Insight
 import { InsightsReadHealth } from '@/components/community/insights/InsightsReadHealth';
 import { InsightsWorkforceReach } from '@/components/community/insights/InsightsWorkforceReach';
 import { computeDelta, type InsightsPayload } from '@/components/community/insights/insightsTypes';
+import { AppCard, AppPageHeader, uiCx, uiSpacing, uiTypography } from '@/components/ui';
 
 const DEFAULT_PRESET: DatePresetId = '14d';
 
@@ -96,23 +97,23 @@ function downloadCsv(filename: string, contents: string) {
 
 function KpiSkeleton() {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm min-w-0 w-full flex flex-col gap-2">
-      <div className="space-y-1.5">
-        <div className="h-3 w-24 max-w-full bg-gray-100 rounded animate-pulse" />
-        <div className="h-5 w-28 max-w-full bg-gray-100 rounded animate-pulse" />
+    <AppCard bodyClassName="flex flex-col gap-2">
+      <div className="space-y-1.5 animate-pulse">
+        <div className="h-3 w-24 max-w-full rounded bg-gray-100" />
+        <div className="h-5 w-28 max-w-full rounded bg-gray-100" />
       </div>
-      <div className="h-8 w-20 bg-gray-100 rounded animate-pulse" />
-      <div className="h-8 w-full min-w-0 bg-gray-50 rounded animate-pulse" />
-    </div>
+      <div className="h-8 w-20 animate-pulse rounded bg-gray-100" />
+      <div className="h-8 min-w-0 w-full animate-pulse rounded bg-gray-50" />
+    </AppCard>
   );
 }
 
 function SectionSkeleton({ height = 240 }: { height?: number }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
-      <div className="h-4 w-40 bg-gray-100 rounded animate-pulse mb-3" />
-      <div className="bg-gray-50 rounded animate-pulse" style={{ height }} />
-    </div>
+    <AppCard>
+      <div className="mb-3 h-4 w-40 animate-pulse rounded bg-gray-100" />
+      <div className="animate-pulse rounded bg-gray-50" style={{ height }} />
+    </AppCard>
   );
 }
 
@@ -187,14 +188,14 @@ export default function CommunityInsights() {
   };
 
   return (
-    <div className="space-y-4 min-w-0 max-w-full">
-      <div className="min-w-0 max-w-full">
-        <CommunityPageHeader
-          title="Insights"
-          subtitle="Analytics and engagement metrics for the selected window."
-          onBack={() => navigate('/community')}
-        />
-      </div>
+    <div className={uiCx(uiSpacing.pageStack, 'min-w-0 max-w-full bg-gray-50')}>
+      <AppPageHeader
+        title="Insights"
+        subtitle="Analytics and engagement metrics for the selected window."
+        onBack={() => navigate('/community')}
+        backLabel="Back to Community"
+        icon={<BarChart3 className="h-4 w-4" />}
+      />
 
       <InsightsToolbar
         preset={preset}
@@ -210,16 +211,15 @@ export default function CommunityInsights() {
       />
 
       {isError ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-800 p-4 text-sm">
-          <div className="font-semibold mb-1">Unable to load insights</div>
-          <div className="text-xs">
+        <AppCard className="border-red-200 bg-red-50" bodyClassName="space-y-1 text-sm text-red-800">
+          <div className={uiTypography.sectionTitle}>Unable to load insights</div>
+          <div className={uiTypography.helper}>
             You need <code className="font-mono">hr:community:write</code> permission to access this page.
           </div>
-          {error instanceof Error ? <div className="text-xs mt-1 text-rose-700/80">{error.message}</div> : null}
-        </div>
+          {error instanceof Error ? <div className={uiCx(uiTypography.helper, 'text-red-700/80')}>{error.message}</div> : null}
+        </AppCard>
       ) : null}
 
-      {/* Hero KPI Strip — auto-fit keeps each card ≥260px wide so chips/sparklines never collide */}
       <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr))]">
         {isLoading || !insights || !deltas ? (
           Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)
@@ -276,15 +276,13 @@ export default function CommunityInsights() {
         )}
       </div>
 
-      {/* Activity Timeline */}
       {isLoading || !insights ? (
         <SectionSkeleton height={260} />
       ) : (
         <InsightsActivityTimeline daily={insights.daily} />
       )}
 
-      {/* Two-column engagement breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
         {isLoading || !insights ? (
           <>
             <SectionSkeleton height={220} />
@@ -298,11 +296,9 @@ export default function CommunityInsights() {
         )}
       </div>
 
-      {/* Top posts */}
       {isLoading || !insights ? <SectionSkeleton height={280} /> : <InsightsTopPosts posts={insights.top_posts} />}
 
-      {/* Top contributors + Read health */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
         {isLoading || !insights ? (
           <>
             <SectionSkeleton height={260} />
@@ -316,7 +312,6 @@ export default function CommunityInsights() {
         )}
       </div>
 
-      {/* Workforce reach */}
       {isLoading || !insights ? (
         <SectionSkeleton height={180} />
       ) : (

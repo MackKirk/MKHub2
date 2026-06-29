@@ -64,6 +64,14 @@ def validate_and_rotate_refresh(db: Session, old_jwt: str) -> tuple[str, str]:
         raise HTTPException(status_code=401, detail="Refresh token invalid or revoked")
 
     from ..auth.security import create_access_token, create_refresh_token
+    from ..services.offboarding_service import enforce_due_revocation_for_user
+
+    if enforce_due_revocation_for_user(db, uid):
+        user = db.query(User).filter(User.id == uid).first()
+    if user is None or not user.is_active:
+        db.delete(row)
+        db.commit()
+        raise HTTPException(status_code=401, detail="Refresh token invalid or revoked")
 
     db.delete(row)
     db.flush()

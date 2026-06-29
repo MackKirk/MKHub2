@@ -330,6 +330,97 @@ def _serialize_course(course: TrainingCourse, progress: Optional[TrainingProgres
     }
 
 
+@router.get("/certificates")
+def list_certificates(
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user)
+):
+    """List user's certificates"""
+    certificates = db.query(TrainingCertificate).filter(
+        TrainingCertificate.user_id == me.id
+    ).order_by(TrainingCertificate.issued_at.desc()).all()
+
+    result = []
+    for cert in certificates:
+        course = db.query(TrainingCourse).filter(TrainingCourse.id == cert.course_id).first()
+        result.append({
+            "id": str(cert.id),
+            "course_id": str(cert.course_id),
+            "course_title": course.title if course else None,
+            "issued_at": cert.issued_at.isoformat(),
+            "expires_at": cert.expires_at.isoformat() if cert.expires_at else None,
+            "certificate_number": cert.certificate_number,
+            "qr_code_data": cert.qr_code_data,
+            "certificate_file_id": str(cert.certificate_file_id) if cert.certificate_file_id else None,
+            "is_expired": cert.expires_at < datetime.utcnow() if cert.expires_at else False,
+        })
+
+    return result
+
+
+def get_storage_for_file(fo: FileObject) -> StorageProvider:
+    """Get the appropriate storage provider for a specific file"""
+    if fo.provider == "blob":
+        if settings.azure_blob_connection and settings.azure_blob_container:
+            try:
+                return BlobStorageProvider()
+            except Exception:
+                pass
+    return LocalStorageProvider()
+
+
+@router.get("/certificates/{certificate_id}/download")
+def download_certificate(
+    certificate_id: str,
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user)
+):
+    """Download certificate PDF"""
+    try:
+        cert_uuid = uuid.UUID(certificate_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid certificate ID")
+
+    certificate = db.query(TrainingCertificate).filter(
+        TrainingCertificate.id == cert_uuid,
+        TrainingCertificate.user_id == me.id
+    ).first()
+
+    if not certificate:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+
+    if not certificate.certificate_file_id:
+        raise HTTPException(status_code=404, detail="Certificate file not generated yet")
+
+    # Get file object
+    file_obj = db.query(FileObject).filter(FileObject.id == certificate.certificate_file_id).first()
+    if not file_obj:
+        raise HTTPException(status_code=404, detail="Certificate file not found")
+
+    # Get storage provider
+    storage = get_storage_for_file(file_obj)
+
+    # For local storage, serve file directly
+    if isinstance(storage, LocalStorageProvider):
+        from pathlib import Path
+        file_path = storage._get_path(file_obj.key)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Certificate file not found on disk")
+
+        return FileResponse(
+            path=str(file_path),
+            media_type="application/pdf",
+            filename=f"certificate-{certificate.certificate_number}.pdf"
+        )
+
+    # For blob storage, return download URL
+    url = storage.get_download_url(file_obj.key, expires_s=300)
+    if not url:
+        raise HTTPException(status_code=500, detail="Failed to generate download URL")
+
+    return {"download_url": url, "expires_in": 300}
+
+
 @router.get("/{course_id}")
 def get_course(
     course_id: str,
@@ -727,97 +818,6 @@ def submit_quiz(
         attempts_used=attempts_used,
         attempts_remaining=attempts_remaining,
     )
-
-
-@router.get("/certificates")
-def list_certificates(
-    db: Session = Depends(get_db),
-    me: User = Depends(get_current_user)
-):
-    """List user's certificates"""
-    certificates = db.query(TrainingCertificate).filter(
-        TrainingCertificate.user_id == me.id
-    ).order_by(TrainingCertificate.issued_at.desc()).all()
-    
-    result = []
-    for cert in certificates:
-        course = db.query(TrainingCourse).filter(TrainingCourse.id == cert.course_id).first()
-        result.append({
-            "id": str(cert.id),
-            "course_id": str(cert.course_id),
-            "course_title": course.title if course else None,
-            "issued_at": cert.issued_at.isoformat(),
-            "expires_at": cert.expires_at.isoformat() if cert.expires_at else None,
-            "certificate_number": cert.certificate_number,
-            "qr_code_data": cert.qr_code_data,
-            "certificate_file_id": str(cert.certificate_file_id) if cert.certificate_file_id else None,
-            "is_expired": cert.expires_at < datetime.utcnow() if cert.expires_at else False,
-        })
-    
-    return result
-
-
-def get_storage_for_file(fo: FileObject) -> StorageProvider:
-    """Get the appropriate storage provider for a specific file"""
-    if fo.provider == "blob":
-        if settings.azure_blob_connection and settings.azure_blob_container:
-            try:
-                return BlobStorageProvider()
-            except Exception:
-                pass
-    return LocalStorageProvider()
-
-
-@router.get("/certificates/{certificate_id}/download")
-def download_certificate(
-    certificate_id: str,
-    db: Session = Depends(get_db),
-    me: User = Depends(get_current_user)
-):
-    """Download certificate PDF"""
-    try:
-        cert_uuid = uuid.UUID(certificate_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid certificate ID")
-    
-    certificate = db.query(TrainingCertificate).filter(
-        TrainingCertificate.id == cert_uuid,
-        TrainingCertificate.user_id == me.id
-    ).first()
-    
-    if not certificate:
-        raise HTTPException(status_code=404, detail="Certificate not found")
-    
-    if not certificate.certificate_file_id:
-        raise HTTPException(status_code=404, detail="Certificate file not generated yet")
-    
-    # Get file object
-    file_obj = db.query(FileObject).filter(FileObject.id == certificate.certificate_file_id).first()
-    if not file_obj:
-        raise HTTPException(status_code=404, detail="Certificate file not found")
-    
-    # Get storage provider
-    storage = get_storage_for_file(file_obj)
-    
-    # For local storage, serve file directly
-    if isinstance(storage, LocalStorageProvider):
-        from pathlib import Path
-        file_path = storage._get_path(file_obj.key)
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="Certificate file not found on disk")
-        
-        return FileResponse(
-            path=str(file_path),
-            media_type="application/pdf",
-            filename=f"certificate-{certificate.certificate_number}.pdf"
-        )
-    
-    # For blob storage, return download URL
-    url = storage.get_download_url(file_obj.key, expires_s=300)
-    if not url:
-        raise HTTPException(status_code=500, detail="Failed to generate download URL")
-    
-    return {"download_url": url, "expires_in": 300}
 
 
 # =====================

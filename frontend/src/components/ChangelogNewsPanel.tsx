@@ -1,24 +1,30 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Megaphone, X } from 'lucide-react';
 import changelogRaw from '@/content/changelog.md?raw';
 import { parseChangelog, type ChangelogEntry } from '@/lib/parseChangelog';
 import OverlayPortal from '@/components/OverlayPortal';
+import { AppBadge, uiBorders, uiCx, uiRadius, uiShadows, uiSpacing, uiTypography } from '@/components/ui';
 
 const STORAGE_KEY = 'mkhub_changelog_seen_id';
 
-function SectionBlock({
-  title,
-  items,
-  accentClass,
-}: {
-  title: string;
-  items: string[];
-  accentClass: string;
-}) {
+const SECTION_VARIANT = {
+  New: 'success',
+  Improved: 'info',
+  Fixed: 'warning',
+  'Known issues': 'danger',
+} as const;
+
+function SectionBlock({ title, items }: { title: string; items: string[] }) {
   if (!items.length) return null;
   return (
     <div className="mb-3 last:mb-0">
-      <div className={`mb-2 text-xs font-bold uppercase tracking-wide ${accentClass}`}>{title}</div>
-      <ul className="list-disc space-y-1.5 pl-5 text-sm text-gray-700">
+      <AppBadge
+        variant={SECTION_VARIANT[title as keyof typeof SECTION_VARIANT] ?? 'neutral'}
+        className="mb-2"
+      >
+        {title}
+      </AppBadge>
+      <ul className={uiCx('list-disc space-y-1.5 pl-5', uiTypography.body)}>
         {items.map((line, idx) => (
           <li key={idx}>{line}</li>
         ))}
@@ -30,10 +36,10 @@ function SectionBlock({
 function ReleaseDetail({ entry }: { entry: ChangelogEntry }) {
   return (
     <div className="text-left">
-      <SectionBlock title="New" items={entry.newItems} accentClass="text-emerald-700" />
-      <SectionBlock title="Improved" items={entry.improved} accentClass="text-blue-700" />
-      <SectionBlock title="Fixed" items={entry.fixed} accentClass="text-amber-800" />
-      <SectionBlock title="Known issues" items={entry.knownIssues} accentClass="text-red-800" />
+      <SectionBlock title="New" items={entry.newItems} />
+      <SectionBlock title="Improved" items={entry.improved} />
+      <SectionBlock title="Fixed" items={entry.fixed} />
+      <SectionBlock title="Known issues" items={entry.knownIssues} />
     </div>
   );
 }
@@ -103,28 +109,21 @@ export default function ChangelogNewsPanel() {
         aria-haspopup="dialog"
         aria-controls={isOpen ? 'mkhub-changelog-modal' : undefined}
       >
-        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.429z"
-          />
-        </svg>
-        {hasUnread && (
+        <Megaphone className="h-5 w-5 text-white" aria-hidden />
+        {hasUnread ? (
           <span
             className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-sky-400 ring-2 ring-gray-900/90"
             aria-label="New updates"
           />
-        )}
+        ) : null}
       </button>
 
-      {isOpen && (
+      {isOpen ? (
         <OverlayPortal>
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 sm:p-6"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm sm:p-6"
             role="presentation"
-            onClick={(e) => {
+            onMouseDown={(e) => {
               if (e.target === e.currentTarget) setIsOpen(false);
             }}
           >
@@ -133,51 +132,60 @@ export default function ChangelogNewsPanel() {
               role="dialog"
               aria-modal="true"
               aria-labelledby="mkhub-changelog-modal-title"
-              className="flex max-h-[min(90vh,880px)] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-gray-200/90 bg-white text-gray-900 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
+              className={uiCx(
+                'flex max-h-[min(90vh,880px)] w-full max-w-4xl flex-col overflow-hidden bg-white',
+                uiRadius.modal,
+                uiShadows.elevated,
+              )}
+              onMouseDown={(e) => e.stopPropagation()}
             >
-              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white px-5 py-4 sm:px-6 sm:py-5">
-                <div className="min-w-0">
-                  <h3 id="mkhub-changelog-modal-title" className="text-lg font-semibold text-gray-900 sm:text-xl">
+              <header
+                className={uiCx(
+                  'flex shrink-0 items-start justify-between gap-3 border-b border-gray-200',
+                  uiSpacing.cardPadding,
+                )}
+              >
+                <div className="min-w-0 space-y-1">
+                  <h3 id="mkhub-changelog-modal-title" className={uiTypography.sectionTitle}>
                     What&apos;s new
                   </h3>
-                  <p className="mt-1 text-sm text-gray-500">Latest product updates</p>
+                  <p className={uiTypography.sectionSubtitle}>Latest product updates</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
-                  aria-label="Close"
+                  className={uiCx(
+                    'inline-flex h-8 w-8 shrink-0 items-center justify-center bg-white text-gray-600 transition-colors hover:bg-gray-100',
+                    uiRadius.control,
+                    uiBorders.input,
+                  )}
+                  aria-label="Close modal"
                 >
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <X className="h-4 w-4" aria-hidden />
                 </button>
-              </div>
+              </header>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6 sm:py-6">
                 {!featured ? (
-                  <p className="py-10 text-center text-sm text-gray-500">No changelog entries yet.</p>
+                  <p className={uiCx('py-10 text-center', uiTypography.helper)}>No changelog entries yet.</p>
                 ) : (
                   <>
                     <div className="mb-6 rounded-xl border border-brand-red/25 bg-red-50/60 p-4 sm:p-5">
                       <div className="mb-3 flex items-baseline justify-between gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-brand-red">Latest</span>
-                        <time className="text-xs text-gray-500" dateTime={featured.date}>
+                        <AppBadge className="!bg-brand-red/10 !text-brand-red">Latest</AppBadge>
+                        <time className={uiTypography.helper} dateTime={featured.date}>
                           {formatDisplayDate(featured.date)}
                         </time>
                       </div>
                       {featured.title ? (
-                        <h4 className="mb-3 text-base font-semibold text-gray-900 sm:text-lg">{featured.title}</h4>
+                        <h4 className={uiCx('mb-3', uiTypography.pageTitle)}>{featured.title}</h4>
                       ) : null}
                       <ReleaseDetail entry={featured} />
                     </div>
 
                     {older.length > 0 ? (
                       <div>
-                        <div className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">
-                          Previous updates
-                        </div>
+                        <div className={uiCx(uiTypography.overline, 'mb-3 text-gray-400')}>Previous updates</div>
                         <div className="space-y-2">
                           {older.map((entry) => (
                             <details
@@ -207,7 +215,7 @@ export default function ChangelogNewsPanel() {
             </div>
           </div>
         </OverlayPortal>
-      )}
+      ) : null}
     </div>
   );
 }

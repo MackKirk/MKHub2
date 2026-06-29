@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { HorizontalBar } from './InsightsCharts';
 import { InsightsSection, InsightsEmptyState } from './InsightsSection';
 import type { ReadHealth } from './insightsTypes';
+import { AppBadge, AppButton, AppCard, uiCx, uiTypography } from '@/components/ui';
 
 function MiniStat({
   label,
@@ -14,7 +15,7 @@ function MiniStat({
   unit?: string;
   tone?: 'default' | 'success' | 'warning' | 'danger';
 }) {
-  const cls =
+  const valueCls =
     tone === 'success'
       ? 'text-emerald-700'
       : tone === 'warning'
@@ -22,14 +23,15 @@ function MiniStat({
         : tone === 'danger'
           ? 'text-rose-700'
           : 'text-gray-900';
+
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 min-w-0">
-      <div className="text-[10px] uppercase tracking-wide text-gray-500 break-words">{label}</div>
-      <div className={`mt-1 text-xl font-semibold tabular-nums ${cls}`}>
+    <AppCard bodyClassName="space-y-1">
+      <div className={uiTypography.overline}>{label}</div>
+      <div className={uiCx('text-xl font-semibold tabular-nums', valueCls)}>
         {value}
-        {unit ? <span className="text-sm font-medium text-gray-500 ml-0.5">{unit}</span> : null}
+        {unit ? <span className="ml-0.5 text-sm font-medium text-gray-500">{unit}</span> : null}
       </div>
-    </div>
+    </AppCard>
   );
 }
 
@@ -43,7 +45,7 @@ export function InsightsReadHealth({ health }: { health: ReadHealth }) {
       title="Read confirmation health"
       subtitle="How well required-read posts are reaching their audience"
     >
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 min-w-0">
+      <div className="mb-4 grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
         <MiniStat label="Required posts" value={health.required_posts_count} />
         <MiniStat
           label="Avg confirmation rate"
@@ -68,18 +70,18 @@ export function InsightsReadHealth({ health }: { health: ReadHealth }) {
           hint="Required-read posts with pending confirmations will appear here."
         />
       ) : (
-        <ul className="divide-y divide-gray-100 min-w-0">
+        <ul className="min-w-0 divide-y divide-gray-100">
           {health.pending_posts.map((p) => (
-            <li key={p.post_id} className="py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 min-w-0">
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2 min-w-0">
+            <li key={p.post_id} className="flex min-w-0 flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
                   <span className="text-sm font-medium text-gray-900 [overflow-wrap:anywhere]">{p.title}</span>
-                  <span className="text-[11px] text-gray-500 tabular-nums shrink-0">
+                  <span className={uiCx(uiTypography.helper, 'shrink-0 tabular-nums')}>
                     {p.confirmed}/{p.audience} confirmed
                   </span>
                 </div>
-                <div className="mt-1 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2 min-w-0">
-                  <div className="flex-1 min-w-0">
+                <div className="mt-1 flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+                  <div className="min-w-0 flex-1">
                     <HorizontalBar
                       value={p.confirmation_rate_pct}
                       max={100}
@@ -87,22 +89,24 @@ export function InsightsReadHealth({ health }: { health: ReadHealth }) {
                       height={6}
                     />
                   </div>
-                  <span className="text-[11px] text-gray-600 tabular-nums shrink-0 sm:w-10 sm:text-right">
+                  <span className={uiCx(uiTypography.helper, 'shrink-0 tabular-nums sm:w-10 sm:text-right')}>
                     {p.confirmation_rate_pct.toFixed(0)}%
                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 tabular-nums">
+              <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
+                <AppBadge variant="warning" className="tabular-nums normal-case tracking-normal">
                   {p.pending} pending
-                </span>
-                <button
+                </AppBadge>
+                <AppButton
                   type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="whitespace-nowrap text-brand-red"
                   onClick={() => navigate(`/community/posts/${p.post_id}/edit`)}
-                  className="text-[11px] font-semibold text-brand-red hover:underline whitespace-nowrap"
                 >
                   View
-                </button>
+                </AppButton>
               </div>
             </li>
           ))}

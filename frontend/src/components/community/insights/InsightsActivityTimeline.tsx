@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { AreaLineChart, type ChartSeries } from './InsightsCharts';
 import { InsightsSection } from './InsightsSection';
 import type { InsightsDaily } from './insightsTypes';
+import { uiBorders, uiCx, uiLayout, uiRadius, uiTypography } from '@/components/ui';
 
 type SeriesId = 'posts' | 'views' | 'engagement' | 'active';
 
@@ -12,6 +13,17 @@ const SERIES_DEFS: Array<{ id: SeriesId; label: string; color: string; filled?: 
   { id: 'active', label: 'Active users', color: '#a16207' },
 ];
 
+/** Chart legend toggles — white/neutral chips so series color dots stay readable (not brand-red pills). */
+function getSeriesToggleClassName(active: boolean) {
+  return uiCx(
+    'inline-flex items-center gap-1.5 px-2.5 py-1 transition-colors',
+    uiRadius.tab,
+    uiTypography.controlLabel,
+    active
+      ? uiCx(uiBorders.strong, 'bg-white text-gray-900 shadow-sm')
+      : uiCx(uiBorders.subtle, 'bg-gray-50 text-gray-400 line-through hover:bg-gray-100 hover:text-gray-500'),
+  );
+}
 /**
  * Daily timeline of community activity. Lets the user toggle which series are
  * shown so they can isolate trends without crowding the chart.
@@ -48,7 +60,7 @@ export function InsightsActivityTimeline({ daily }: { daily: InsightsDaily }) {
       title="Activity timeline"
       subtitle="Daily community activity across the selected window"
       actions={
-        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap justify-end')}>
           {SERIES_DEFS.map((s) => {
             const on = enabled[s.id];
             return (
@@ -56,15 +68,13 @@ export function InsightsActivityTimeline({ daily }: { daily: InsightsDaily }) {
                 key={s.id}
                 type="button"
                 onClick={() => setEnabled((prev) => ({ ...prev, [s.id]: !prev[s.id] }))}
-                className={
-                  on
-                    ? 'inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium bg-gray-900 text-white transition-colors'
-                    : 'inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors'
-                }
+                className={getSeriesToggleClassName(on)}
+                aria-pressed={on}
               >
                 <span
-                  className="inline-block w-2 h-2 rounded-full"
-                  style={{ background: on ? s.color : '#d1d5db' }}
+                  className="inline-block h-2 w-2 shrink-0 rounded-full ring-1 ring-black/5"
+                  style={{ backgroundColor: on ? s.color : '#d1d5db' }}
+                  aria-hidden
                 />
                 {s.label}
               </button>

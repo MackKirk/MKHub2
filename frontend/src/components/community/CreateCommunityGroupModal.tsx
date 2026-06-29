@@ -1,16 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import OverlayPortal from '@/components/OverlayPortal';
-import {
-  SAFETY_MODAL_BTN_CANCEL,
-  SAFETY_MODAL_BTN_PRIMARY,
-  SAFETY_MODAL_FIELD_LABEL,
-  SafetyModalOverlayBackdrop,
-  SafetyFormModalLayout,
-} from '@/components/safety/SafetyModalChrome';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { COMMUNITY_GROUP_DESCRIPTION_MAX_LEN } from '@/components/community/communityGroupTypes';
+import {
+  communityGroupFieldHints,
+  createCommunityGroupQuickInfo,
+} from '@/lib/formModalQuickInfo';
+import { AppButton, AppFormModal, AppInput, AppTextarea, uiLayout, uiSpacing, uiCx } from '@/components/ui';
 
 type Props = {
   open: boolean;
@@ -57,68 +54,54 @@ export function CreateCommunityGroupModal({ open, onClose }: Props) {
     onClose();
   };
 
-  if (!open) return null;
-
   return (
-    <OverlayPortal>
-      <SafetyModalOverlayBackdrop onBackdropClick={() => handleClose()}>
-        <SafetyFormModalLayout
-          widthClass="w-full max-w-md"
-          titleId="create-community-group-title"
-          title="Create group"
-          subtitle="Name your group and optionally add context for collaborators."
-          onClose={handleClose}
-          footer={
-            <>
-              <button type="button" className={SAFETY_MODAL_BTN_CANCEL} onClick={handleClose}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={SAFETY_MODAL_BTN_PRIMARY}
-                disabled={!name.trim() || createMutation.isPending}
-                onClick={handleSubmit}
-              >
-                {createMutation.isPending ? 'Creating…' : 'Create group'}
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="cg-name" className={SAFETY_MODAL_FIELD_LABEL}>
-                Name<span className="text-red-500 normal-case ml-0.5">*</span>
-              </label>
-              <input
-                id="cg-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Warehouse team"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-brand-red"
-                autoFocus
-              />
-            </div>
-            <div>
-              <label htmlFor="cg-desc" className={SAFETY_MODAL_FIELD_LABEL}>
-                Description
-              </label>
-              <textarea
-                id="cg-desc"
-                value={description}
-                onChange={(e) => setDescription(e.target.value.slice(0, COMMUNITY_GROUP_DESCRIPTION_MAX_LEN))}
-                placeholder="Optional notes about who belongs in this group…"
-                rows={4}
-                maxLength={COMMUNITY_GROUP_DESCRIPTION_MAX_LEN}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-brand-red resize-y min-h-[5rem]"
-              />
-              <div className="mt-1 text-[10px] text-gray-400 tabular-nums">
-                {description.length} / {COMMUNITY_GROUP_DESCRIPTION_MAX_LEN}
-              </div>
-            </div>
-          </div>
-        </SafetyFormModalLayout>
-      </SafetyModalOverlayBackdrop>
-    </OverlayPortal>
+    <AppFormModal
+      open={open}
+      onClose={handleClose}
+      title="Create group"
+      description="Name your group and optionally add context for collaborators."
+      quickInfo={createCommunityGroupQuickInfo}
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={handleClose} disabled={createMutation.isPending}>
+            Cancel
+          </AppButton>
+          <AppButton
+            type="button"
+            variant="primary"
+            size="sm"
+            loading={createMutation.isPending}
+            disabled={!name.trim()}
+            onClick={handleSubmit}
+          >
+            {createMutation.isPending ? 'Creating…' : 'Create group'}
+          </AppButton>
+        </div>
+      }
+    >
+      <div className={uiSpacing.sectionStack}>
+        <AppInput
+          id="cg-name"
+          label="Name *"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Warehouse team"
+          autoFocus
+          fieldHint={communityGroupFieldHints.name}
+        />
+        <AppTextarea
+          id="cg-desc"
+          label="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value.slice(0, COMMUNITY_GROUP_DESCRIPTION_MAX_LEN))}
+          placeholder="Optional notes about who belongs in this group…"
+          rows={4}
+          maxLength={COMMUNITY_GROUP_DESCRIPTION_MAX_LEN}
+          helperText={`${description.length} / ${COMMUNITY_GROUP_DESCRIPTION_MAX_LEN}`}
+          fieldHint={communityGroupFieldHints.description}
+        />
+      </div>
+    </AppFormModal>
   );
 }

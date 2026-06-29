@@ -63,6 +63,7 @@ from .routes.bug_report import router as bug_report_router
 from .routes.search import router as search_router
 from .routes.admin_system import router as admin_system_router
 from .routes.onboarding import me_router as onboarding_me_router, router as onboarding_router
+from .routes.offboarding import router as offboarding_router
 
 
 def create_app() -> FastAPI:
@@ -200,6 +201,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_system_router)
     app.include_router(onboarding_router)
     app.include_router(onboarding_me_router)
+    app.include_router(offboarding_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)
@@ -1992,6 +1994,37 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created company_credit_cards tables")
 
+                    # HR Offboarding
+                    rows_ob = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'offboarding_cases'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows_ob:
+                        from .models.models import (
+                            OffboardingActivityLog,
+                            OffboardingAssetLink,
+                            OffboardingCase,
+                            OffboardingChecklistItem,
+                        )
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[
+                                OffboardingCase.__table__,
+                                OffboardingAssetLink.__table__,
+                                OffboardingChecklistItem.__table__,
+                                OffboardingActivityLog.__table__,
+                            ],
+                        )
+                        db.commit()
+                        print("[startup] Created offboarding_* tables")
+
                     # Subcontractor companies, workers, attendance
                     rows_sc = db.execute(
                         text(
@@ -2162,6 +2195,13 @@ def create_app() -> FastAPI:
                 db.close()
         except Exception as e:
             print(f"⚠️  Could not check/seed permissions on startup: {e}")
+
+        try:
+            from .services.offboarding_revocation_scheduler import start_offboarding_revocation_scheduler
+
+            start_offboarding_revocation_scheduler()
+        except Exception as e:
+            print(f"⚠️  Could not start offboarding revocation scheduler: {e}")
 
         print("[startup] Application startup complete - server ready!")
 

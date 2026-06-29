@@ -1,28 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import OverlayPortal from '@/components/OverlayPortal';
 import ImagePicker from '@/components/ImagePicker';
-import {
-  SAFETY_MODAL_BTN_CANCEL,
-  SAFETY_MODAL_BTN_PRIMARY,
-  SAFETY_MODAL_FIELD_LABEL,
-  SafetyModalOverlayBackdrop,
-  SafetyFormModalLayout,
-} from '@/components/safety/SafetyModalChrome';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import type { CommunityGroupDetail, CommunityGroupSummary, ManageGroupTab } from '@/components/community/communityGroupTypes';
 import { COMMUNITY_GROUP_DESCRIPTION_MAX_LEN } from '@/components/community/communityGroupTypes';
+import { communityGroupFieldHints, manageCommunityGroupQuickInfo } from '@/lib/formModalQuickInfo';
+import {
+  AppButton,
+  AppCheckboxControl,
+  AppControlLabelRow,
+  AppFieldHint,
+  AppFormModal,
+  AppInput,
+  AppTabs,
+  AppTextarea,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type EmployeeRow = { id: string; name?: string; profile_photo_file_id?: string };
-
-const TAB_CLASS = (active: boolean) =>
-  `px-3 py-2.5 text-xs font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
-    active
-      ? 'border-brand-red text-brand-red bg-white'
-      : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50/80'
-  }`;
 
 type Props = {
   open: boolean;
@@ -32,6 +35,12 @@ type Props = {
   employees: EmployeeRow[];
   currentUserId?: string | null;
 };
+
+const MANAGE_TABS = [
+  { key: 'details', label: 'Details' },
+  { key: 'members', label: 'Members' },
+  { key: 'danger', label: 'Danger zone' },
+];
 
 async function uploadGroupAvatarBlob(blob: Blob): Promise<string> {
   const fd = new FormData();
@@ -177,51 +186,6 @@ export function ManageCommunityGroupModal({
     return ids;
   };
 
-  const footer =
-    tab === 'details' ? (
-      <>
-        <button
-          type="button"
-          className={SAFETY_MODAL_BTN_CANCEL}
-          onClick={onClose}
-          disabled={saveDetailsMutation.isPending}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className={SAFETY_MODAL_BTN_PRIMARY}
-          disabled={!editName.trim() || saveDetailsMutation.isPending}
-          onClick={() => saveDetailsMutation.mutate()}
-        >
-          {saveDetailsMutation.isPending ? 'Saving…' : 'Save changes'}
-        </button>
-      </>
-    ) : tab === 'members' ? (
-      <>
-        <button
-          type="button"
-          className={SAFETY_MODAL_BTN_CANCEL}
-          onClick={onClose}
-          disabled={saveMembersMutation.isPending}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className={SAFETY_MODAL_BTN_PRIMARY}
-          disabled={saveMembersMutation.isPending || detailLoading}
-          onClick={() => saveMembersMutation.mutate(saveMemberPayload())}
-        >
-          {saveMembersMutation.isPending ? 'Saving…' : 'Save members'}
-        </button>
-      </>
-    ) : (
-      <button type="button" className={SAFETY_MODAL_BTN_CANCEL} onClick={onClose}>
-        Close
-      </button>
-    );
-
   const handleDeleteGroup = async () => {
     if (!group) return;
     const r = await confirm({
@@ -243,240 +207,214 @@ export function ManageCommunityGroupModal({
     }
   };
 
-  if (!open || !group) return null;
-
-  const isOwner = !!group.is_owner;
+  const isPending = saveDetailsMutation.isPending || saveMembersMutation.isPending;
+  const isOwner = !!group?.is_owner;
 
   const readOnlySubtitle = !isOwner
     ? 'You can view this group. Only the creator can edit settings or members.'
     : 'Update details and members.';
 
-  const body = !isOwner ? (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-3 text-sm shadow-sm">
-      <p className="text-gray-600">
-        <span className="font-semibold text-gray-900 tabular-nums">{group.member_count ?? 0}</span> members
+  const quickInfoTab = !isOwner ? 'view' : tab;
+
+  const footer =
+    !isOwner || tab === 'danger' ? (
+      <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+        <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
+          Close
+        </AppButton>
+      </div>
+    ) : tab === 'details' ? (
+      <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+        <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={isPending}>
+          Cancel
+        </AppButton>
+        <AppButton
+          type="button"
+          variant="primary"
+          size="sm"
+          loading={saveDetailsMutation.isPending}
+          disabled={!editName.trim()}
+          onClick={() => saveDetailsMutation.mutate()}
+        >
+          {saveDetailsMutation.isPending ? 'Saving…' : 'Save changes'}
+        </AppButton>
+      </div>
+    ) : (
+      <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+        <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={isPending}>
+          Cancel
+        </AppButton>
+        <AppButton
+          type="button"
+          variant="primary"
+          size="sm"
+          loading={saveMembersMutation.isPending}
+          disabled={detailLoading}
+          onClick={() => saveMembersMutation.mutate(saveMemberPayload())}
+        >
+          {saveMembersMutation.isPending ? 'Saving…' : 'Save members'}
+        </AppButton>
+      </div>
+    );
+
+  const allFilteredSelected =
+    filteredEmployees.length > 0 && filteredEmployees.every((e) => selectedMembers.includes(String(e.id)));
+
+  const body = !group ? null : !isOwner ? (
+    <div className={uiSpacing.sectionStack}>
+      <p className={uiTypography.helper}>
+        <span className="font-semibold tabular-nums text-gray-900">{group.member_count ?? 0}</span> members
       </p>
       {group.description ? (
-        <p className="text-gray-800 leading-relaxed">{group.description}</p>
+        <p className="text-sm leading-relaxed text-gray-800">{group.description}</p>
       ) : (
-        <p className="text-gray-500 italic">No description.</p>
+        <p className={uiCx(uiTypography.helper, 'italic')}>No description.</p>
       )}
     </div>
-  ) : (
-    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden flex flex-col min-h-[280px] max-h-[calc(85vh-10rem)] shadow-sm">
-      <div className="flex overflow-x-auto overflow-y-hidden border-b border-gray-200 bg-gray-50/90 shrink-0">
-        <button type="button" className={TAB_CLASS(tab === 'details')} onClick={() => setTab('details')}>
-          Details
-        </button>
-        <button type="button" className={TAB_CLASS(tab === 'members')} onClick={() => setTab('members')}>
-          Members
-        </button>
-        <button type="button" className={TAB_CLASS(tab === 'danger')} onClick={() => setTab('danger')}>
-          Danger zone
-        </button>
+  ) : tab === 'details' ? (
+    <div className={uiSpacing.sectionStack}>
+      <AppInput
+        id="mg-name"
+        label="Name *"
+        value={editName}
+        onChange={(e) => setEditName(e.target.value)}
+        fieldHint={communityGroupFieldHints.name}
+      />
+      <AppTextarea
+        id="mg-desc"
+        label="Description"
+        value={editDescription}
+        onChange={(e) => setEditDescription(e.target.value.slice(0, COMMUNITY_GROUP_DESCRIPTION_MAX_LEN))}
+        rows={4}
+        maxLength={COMMUNITY_GROUP_DESCRIPTION_MAX_LEN}
+        helperText={`${editDescription.length} / ${COMMUNITY_GROUP_DESCRIPTION_MAX_LEN}`}
+        fieldHint={communityGroupFieldHints.description}
+      />
+      <div>
+        <AppControlLabelRow
+          label="Photo"
+          fieldHint={<AppFieldHint hint={communityGroupFieldHints.photo} />}
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-4">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+            {editPhotoFileId ? (
+              <img
+                src={withFileAccessToken(`/files/${editPhotoFileId}/thumbnail?w=80`)}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className={uiTypography.helper}>No photo</span>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowPicker(true)}>
+              Choose image
+            </AppButton>
+            {editPhotoFileId && (
+              <AppButton type="button" variant="ghost" size="sm" onClick={() => setEditPhotoFileId(null)}>
+                Remove photo
+              </AppButton>
+            )}
+          </div>
+        </div>
       </div>
-      <div className="p-4 overflow-y-auto flex-1 min-h-0">
-        {tab === 'details' && (
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="mg-name" className={SAFETY_MODAL_FIELD_LABEL}>
-                Name<span className="text-red-500 normal-case ml-0.5">*</span>
-              </label>
-              <input
-                id="mg-name"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-brand-red"
-              />
-            </div>
-            <div>
-              <label htmlFor="mg-desc" className={SAFETY_MODAL_FIELD_LABEL}>
-                Description
-              </label>
-              <textarea
-                id="mg-desc"
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value.slice(0, COMMUNITY_GROUP_DESCRIPTION_MAX_LEN))}
-                rows={4}
-                maxLength={COMMUNITY_GROUP_DESCRIPTION_MAX_LEN}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-brand-red resize-y"
-              />
-              <div className="mt-1 text-[10px] text-gray-400 tabular-nums">
-                {editDescription.length} / {COMMUNITY_GROUP_DESCRIPTION_MAX_LEN}
-              </div>
-            </div>
-            <div>
-              <span className={SAFETY_MODAL_FIELD_LABEL}>Photo</span>
-              <div className="mt-2 flex items-center gap-4 flex-wrap">
-                <div className="h-20 w-20 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
-                  {editPhotoFileId ? (
+    </div>
+  ) : tab === 'members' ? (
+    <div className={uiSpacing.sectionStack}>
+      {detailLoading && <p className={uiTypography.helper}>Loading members…</p>}
+      <AppInput
+        type="search"
+        label="Search employees"
+        value={memberSearch}
+        onChange={(e) => setMemberSearch(e.target.value)}
+        placeholder="Search employees…"
+        aria-label="Search employees"
+        fieldHint={communityGroupFieldHints.memberSearch}
+      />
+      <AppControlLabelRow
+        label="Members"
+        fieldHint={<AppFieldHint hint={communityGroupFieldHints.members} />}
+      />
+      <div className={uiCx(uiLayout.actionsRow, 'justify-between text-xs')}>
+        <AppButton type="button" variant="ghost" size="sm" onClick={selectAllFiltered}>
+          {allFilteredSelected ? 'Clear filtered selection' : 'Select all in filter'}
+        </AppButton>
+        <span className={uiTypography.helper}>{selectedMembers.length} selected</span>
+      </div>
+      <div className={uiCx(uiRadius.control, uiBorders.subtle, 'max-h-[min(42vh,22rem)] divide-y divide-gray-100 overflow-y-auto')}>
+        {filteredEmployees.length === 0 ? (
+          <div className={uiCx(uiSpacing.cardPadding, 'text-center text-sm text-gray-500')}>No employees match.</div>
+        ) : (
+          filteredEmployees.map((employee) => {
+            const id = String(employee.id);
+            const checked = selectedMembers.includes(id);
+            return (
+              <label
+                key={id}
+                className="group flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 hover:bg-gray-50/80"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  {employee.profile_photo_file_id ? (
                     <img
-                      src={withFileAccessToken(`/files/${editPhotoFileId}/thumbnail?w=80`)}
+                      src={withFileAccessToken(`/files/${employee.profile_photo_file_id}/thumbnail?w=40`)}
                       alt=""
-                      className="h-full w-full object-cover"
+                      className="h-9 w-9 shrink-0 rounded-full object-cover"
                     />
                   ) : (
-                    <span className="text-xs text-gray-400">No photo</span>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs text-gray-600">
+                      {(employee.name || '?')[0].toUpperCase()}
+                    </div>
                   )}
+                  <span className="truncate text-sm font-medium text-gray-900">{employee.name}</span>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
-                    onClick={() => setShowPicker(true)}
-                  >
-                    Choose image
-                  </button>
-                  {editPhotoFileId && (
-                    <button
-                      type="button"
-                      className="text-xs font-medium text-gray-500 hover:text-gray-800"
-                      onClick={() => setEditPhotoFileId(null)}
-                    >
-                      Remove photo
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {tab === 'members' && (
-          <div className="space-y-3">
-            {detailLoading && <p className="text-xs text-gray-500">Loading members…</p>}
-            <input
-              type="search"
-              value={memberSearch}
-              onChange={(e) => setMemberSearch(e.target.value)}
-              placeholder="Search employees…"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-brand-red"
-            />
-            <div className="flex items-center justify-between text-xs">
-              <button type="button" className="font-semibold text-brand-red hover:underline" onClick={selectAllFiltered}>
-                {filteredEmployees.length > 0 &&
-                filteredEmployees.every((e) => selectedMembers.includes(String(e.id)))
-                  ? 'Clear filtered selection'
-                  : 'Select all in filter'}
-              </button>
-              <span className="text-gray-500">{selectedMembers.length} selected</span>
-            </div>
-            <div className="border border-gray-200 rounded-xl divide-y divide-gray-100 max-h-[min(42vh,22rem)] overflow-y-auto">
-              {filteredEmployees.length === 0 ? (
-                <div className="p-6 text-center text-sm text-gray-500">No employees match.</div>
-              ) : (
-                filteredEmployees.map((employee) => {
-                  const id = String(employee.id);
-                  const checked = selectedMembers.includes(id);
-                  const inputId = `manage-group-member-${id}`;
-                  return (
-                    <label
-                      key={id}
-                      htmlFor={inputId}
-                      className="group flex items-center justify-between gap-3 px-3 py-2.5 hover:bg-gray-50/80 cursor-pointer"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {employee.profile_photo_file_id ? (
-                          <img
-                            src={withFileAccessToken(`/files/${employee.profile_photo_file_id}/thumbnail?w=40`)}
-                            alt=""
-                            className="h-9 w-9 rounded-full object-cover shrink-0"
-                          />
-                        ) : (
-                          <div className="h-9 w-9 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-600 shrink-0">
-                            {(employee.name || '?')[0].toUpperCase()}
-                          </div>
-                        )}
-                        <span className="text-sm font-medium text-gray-900 truncate">{employee.name}</span>
-                      </div>
-                      <input
-                        id={inputId}
-                        type="checkbox"
-                        className="peer sr-only"
-                        checked={checked}
-                        onChange={() => toggleMember(id)}
-                      />
-                      <span
-                        aria-hidden
-                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 shadow-sm transition-all duration-200 ease-out outline-none ring-offset-2 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-red/40 group-hover:border-gray-400 ${
-                          checked ? 'border-brand-red bg-brand-red shadow-md' : 'border-gray-300 bg-white'
-                        }`}
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth={3}
-                          className={`h-3 w-3 text-white transition duration-200 ease-out ${
-                            checked ? 'scale-100 opacity-100' : 'scale-75 opacity-0'
-                          }`}
-                          aria-hidden
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </span>
-                    </label>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
-
-        {tab === 'danger' && (
-          <div className="rounded-xl border border-red-200 bg-red-50/50 p-4 space-y-3">
-            <h4 className="text-sm font-semibold text-red-900">Delete this group</h4>
-            <p className="text-xs text-red-800 leading-relaxed">
-              Removes the group and member assignments. Announcements already sent are unaffected.
-            </p>
-            <button
-              type="button"
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-              onClick={() => void handleDeleteGroup()}
-            >
-              Delete group
-            </button>
-          </div>
+                <AppCheckboxControl
+                  checked={checked}
+                  onChange={() => toggleMember(id)}
+                  aria-label={`Select ${employee.name || 'employee'}`}
+                />
+              </label>
+            );
+          })
         )}
       </div>
+    </div>
+  ) : (
+    <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding, uiSpacing.sectionStack, 'border-red-200 bg-red-50/50')}>
+      <AppControlLabelRow
+        label="Delete this group"
+        fieldHint={<AppFieldHint hint={communityGroupFieldHints.deleteGroup} />}
+      />
+      <p className="text-xs leading-relaxed text-red-800">
+        Removes the group and member assignments. Announcements already sent are unaffected.
+      </p>
+      <AppButton type="button" variant="danger" size="sm" onClick={() => void handleDeleteGroup()}>
+        Delete group
+      </AppButton>
     </div>
   );
 
-  const effectiveFooter =
-    !isOwner ? (
-      <button type="button" className={SAFETY_MODAL_BTN_CANCEL} onClick={onClose}>
-        Close
-      </button>
-    ) : tab === 'danger' ? (
-      <button type="button" className={SAFETY_MODAL_BTN_CANCEL} onClick={onClose}>
-        Close
-      </button>
-    ) : (
-      footer
-    );
-
   return (
     <>
-      <OverlayPortal>
-        <SafetyModalOverlayBackdrop
-          onBackdropClick={
-            !(saveDetailsMutation.isPending || saveMembersMutation.isPending) ? onClose : undefined
-          }
-        >
-          <SafetyFormModalLayout
-            widthClass="w-full max-w-xl"
-            titleId="manage-community-group-title"
-            title={group.name}
-            subtitle={readOnlySubtitle}
-            onClose={onClose}
-            footer={effectiveFooter}
-            innerCard={false}
-            bodyClassName="overflow-y-auto flex-1 p-4 min-h-0"
-          >
-            {body}
-          </SafetyFormModalLayout>
-        </SafetyModalOverlayBackdrop>
-      </OverlayPortal>
+      <AppFormModal
+        open={open && !!group}
+        onClose={() => {
+          if (isPending) return;
+          onClose();
+        }}
+        formWidth="comfortable"
+        title={group?.name ?? 'Group'}
+        description={readOnlySubtitle}
+        quickInfo={manageCommunityGroupQuickInfo(quickInfoTab)}
+        headerExtra={
+          isOwner ? (
+            <AppTabs tabs={MANAGE_TABS} value={tab} onChange={(key) => setTab(key as ManageGroupTab)} />
+          ) : undefined
+        }
+        footer={footer}
+      >
+        {body}
+      </AppFormModal>
       <ImagePicker
         isOpen={showPicker}
         onClose={() => setShowPicker(false)}

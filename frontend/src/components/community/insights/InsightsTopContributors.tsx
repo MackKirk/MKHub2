@@ -3,6 +3,7 @@ import { withFileAccessTokenIfNeeded } from '@/lib/api';
 import { HorizontalBar } from './InsightsCharts';
 import { InsightsSection, InsightsEmptyState } from './InsightsSection';
 import { type TopContributor, getInitials } from './insightsTypes';
+import { AppSelect } from '@/components/ui';
 
 type SortKey = 'posts' | 'views' | 'engagement';
 
@@ -57,19 +58,15 @@ export function InsightsTopContributors({ contributors }: { contributors: TopCon
       title="Top contributors"
       subtitle="Authors who published in this window, ranked by the chosen metric"
       actions={
-        <select
+        <AppSelect
           value={sort}
           onChange={(e) => setSort(e.target.value as SortKey)}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/40"
-        >
-          {SORTS.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+          options={SORTS.map((s) => ({ value: s.id, label: s.label }))}
+          aria-label="Sort top contributors"
+          className="min-w-[10rem]"
+        />
       }
-      bodyClassName="p-0"
+      bodyClassName="!p-0"
     >
       {sorted.length === 0 ? (
         <div className="p-4">

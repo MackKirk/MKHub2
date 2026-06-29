@@ -375,7 +375,7 @@ export function UserReportsSection(props: UserReportsProps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             fieldHint={USER_REPORTS_FIELD_HINTS.search}
-            className="max-w-md"
+            className="w-full"
           />
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">

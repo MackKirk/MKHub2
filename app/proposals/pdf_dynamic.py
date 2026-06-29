@@ -24,6 +24,13 @@ from .pdf_fixed import HEADER_TITLE_MAX_WIDTH, HEADER_TITLE_BASE_SIZE, HEADER_TI
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_CROP_TO_PDF_SCALE = 260 / 1024
+_PORTRAIT_CROP_H = round(235 / _CROP_TO_PDF_SCALE)
+_PORTRAIT_CROP_W = round(_PORTRAIT_CROP_H * 15 / 26)
+SECTION_IMAGE_PDF_LANDSCAPE_W = round(1024 * _CROP_TO_PDF_SCALE)
+SECTION_IMAGE_PDF_LANDSCAPE_H = round(591 * _CROP_TO_PDF_SCALE)
+SECTION_IMAGE_PDF_PORTRAIT_W = round(_PORTRAIT_CROP_W * _CROP_TO_PDF_SCALE)
+SECTION_IMAGE_PDF_PORTRAIT_H = round(_PORTRAIT_CROP_H * _CROP_TO_PDF_SCALE)
 fonts_path = os.path.join(BASE_DIR, "assets", "fonts")
 pdfmetrics.registerFont(TTFont("Montserrat", os.path.join(fonts_path, "Montserrat-Regular.ttf")))
 pdfmetrics.registerFont(TTFont("Montserrat-Bold", os.path.join(fonts_path, "Montserrat-Bold.ttf")))
@@ -942,9 +949,18 @@ def build_dynamic_pages(data, output_path):
                                 tmp_path = os.path.join(BASE_DIR, f"tmp_img_{uuid.uuid4().hex}.jpg")
                                 im.save(tmp_path, format="JPEG", quality=85, optimize=True)
                                 temp_images.append(tmp_path)
-                        
-                        flow.append(Image(tmp_path, width=260, height=150))
-                        flow.append(YellowLine2(width=260))
+
+                        orientation = img.get("orientation", "landscape")
+                        if orientation == "portrait":
+                            img_w = SECTION_IMAGE_PDF_PORTRAIT_W
+                            img_h = SECTION_IMAGE_PDF_PORTRAIT_H
+                            line_w = img_w
+                        else:
+                            img_w = SECTION_IMAGE_PDF_LANDSCAPE_W
+                            img_h = SECTION_IMAGE_PDF_LANDSCAPE_H
+                            line_w = img_w
+                        flow.append(Image(tmp_path, width=img_w, height=img_h))
+                        flow.append(YellowLine2(width=line_w))
                     except Exception:
                         pass
                     # Note: optimized_path is now in temp_images list and will be cleaned up at end of PDF generation

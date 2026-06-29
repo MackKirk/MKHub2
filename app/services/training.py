@@ -18,6 +18,7 @@ from ..models.models import (
     EmployeeTrainingRecord,
     Role,
     SettingItem,
+    SettingList,
     TaskItem,
     FileObject,
     user_divisions,
@@ -146,12 +147,19 @@ def get_required_courses_for_user(user_id: uuid.UUID, db: Session) -> List[Train
     profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
     user_division_ids = []
     if profile and profile.division:
-        # Find division SettingItem by label
-        division_item = db.query(SettingItem).join(SettingItem.list_id).filter(
-            SettingItem.label == profile.division
-        ).first()
-        if division_item:
-            user_division_ids = [division_item.id]
+        # Legacy profile.division label → SettingItem in the divisions list
+        divisions_list = db.query(SettingList).filter(SettingList.name == "divisions").first()
+        if divisions_list:
+            division_item = (
+                db.query(SettingItem)
+                .filter(
+                    SettingItem.list_id == divisions_list.id,
+                    SettingItem.label == profile.division,
+                )
+                .first()
+            )
+            if division_item:
+                user_division_ids = [division_item.id]
     
     # Also check user_divisions association table (User <-> SettingItem)
     for row in (

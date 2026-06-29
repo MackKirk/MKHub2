@@ -54,6 +54,12 @@ export function canEnablePermission(
   if (permKey === 'hr:users:write') {
     return has('hr:users:read');
   }
+  if (permKey === 'hr:offboarding:read') {
+    return has('hr:access');
+  }
+  if (permKey === 'hr:offboarding:write') {
+    return has('hr:offboarding:read');
+  }
   if (permKey === 'business:projects:write') {
     return has('business:projects:read');
   }
@@ -247,6 +253,8 @@ export function applyPermissionUncheckCascade(
     newPerms['hr:users:edit:general'] = false;
     newPerms['hr:users:edit:timesheet'] = false;
     newPerms['hr:users:edit:permissions'] = false;
+  } else if (uncheckedKey === 'hr:offboarding:read') {
+    newPerms['hr:offboarding:write'] = false;
   } else if (uncheckedKey === 'business:customers:read') {
     newPerms['business:customers:write'] = false;
     Object.keys(newPerms).forEach((k) => {

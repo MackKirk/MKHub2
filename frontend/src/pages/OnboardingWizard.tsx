@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { Mail, MapPin, Phone } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
 import { logoutSession } from '@/lib/logoutSession';
 import toast from 'react-hot-toast';
@@ -8,24 +9,67 @@ import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import PostalCodeAutocomplete from '@/components/PostalCodeAutocomplete';
 import { useConfirm } from '@/components/ConfirmProvider';
-import OverlayPortal from '@/components/OverlayPortal';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppCombobox,
+  AppControlLabelRow,
+  AppDatePicker,
+  AppEmptyState,
+  AppFileUpload,
+  AppFormModal,
+  AppInput,
+  AppListCreateItem,
+  AppListRowIconButton,
+  AppPageHeader,
+  AppSectionHeader,
+  AppSelect,
+  AppTextarea,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type ProfileResp = { user: { username: string; email: string; first_name?: string; last_name?: string }, profile?: any };
 
 const LOGO_SRC = '/ui/assets/login/logo-light.svg';
 
-// Field component helper
-function Field({ label, children, required, invalid }: { label: string; children: any; required?: boolean; invalid?: boolean }) {
-  return (
-    <div className="space-y-2">
-      <label className="text-sm text-gray-600">{label} {required && <span className="text-red-600">*</span>}</label>
-      <div className={invalid ? 'ring-2 ring-red-400 rounded-lg p-0.5' : 'p-0'}>
-        {children}
-      </div>
-      {invalid && <div className="text-xs text-red-600">Required</div>}
-    </div>
-  );
-}
+const GENDER_OPTIONS = [
+  { value: 'Male', label: 'Male' },
+  { value: 'Female', label: 'Female' },
+  { value: 'Other', label: 'Other' },
+  { value: 'Prefer not to say', label: 'Prefer not to say' },
+];
+
+const MARITAL_STATUS_OPTIONS = [
+  { value: 'Single', label: 'Single' },
+  { value: 'Married', label: 'Married' },
+  { value: 'Common-law', label: 'Common-law' },
+  { value: 'Divorced', label: 'Divorced' },
+  { value: 'Widowed', label: 'Widowed' },
+  { value: 'Prefer not to say', label: 'Prefer not to say' },
+];
+
+const WORK_ELIGIBILITY_OPTIONS = [
+  { value: 'Canadian Citizen', label: 'Canadian Citizen' },
+  { value: 'Permanent Resident', label: 'Permanent Resident' },
+  { value: 'Temporary Resident (with work authorization)', label: 'Temporary Resident (with work authorization)' },
+  { value: 'Other', label: 'Other' },
+];
+
+const VISA_STATUS_OPTIONS = [
+  { value: 'Active', label: 'Active' },
+  { value: 'Expired', label: 'Expired' },
+  { value: 'Pending', label: 'Pending' },
+];
+
+const ADDRESS_INPUT_CLASS =
+  'w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400';
 
 export default function OnboardingWizard() {
   const navigate = useNavigate();
@@ -540,322 +584,271 @@ export default function OnboardingWizard() {
     setCurrentStep(step);
   };
   
+  const countryOptions = useMemo(
+    () => countries.map((c) => ({ value: c.name, label: c.name })),
+    [countries],
+  );
+  const provinceOptions = useMemo(
+    () => provinces.map((p) => ({ value: p, label: p })),
+    [provinces],
+  );
+  const cityOptions = useMemo(
+    () => cities.map((c) => ({ value: c, label: c })),
+    [cities],
+  );
+
   if (meLoading || profileLoading || !userId) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-600">Loading...</div>
+      <div className={uiCx('flex min-h-screen items-center justify-center bg-gray-50')}>
+        <div className={uiTypography.helper}>Loading...</div>
       </div>
     );
   }
+
+  const stepFooter = (
+    <div className={uiCx('flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between')}>
+      <AppButton type="button" variant="secondary" size="sm" onClick={handlePrevious} disabled={currentStep === 1}>
+        Previous
+      </AppButton>
+      <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+        {currentStep < totalSteps ? (
+          <AppButton type="button" size="sm" disabled={saving} loading={saving} onClick={handleNext}>
+            {saving ? 'Saving...' : 'Next'}
+          </AppButton>
+        ) : null}
+        <AppButton type="button" variant="secondary" size="sm" disabled={saving} loading={saving} onClick={handleSaveAndContinueToHub}>
+          {saving ? 'Saving...' : 'Go to the Hub!'}
+        </AppButton>
+      </div>
+    </div>
+  );
   
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 shadow-sm shrink-0">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-            <div className="flex items-center gap-2 shrink-0">
-              <img src={LOGO_SRC} alt="Company" className="h-14 w-auto max-w-[180px] object-contain object-left" />
-            </div>
-            <div className="hidden sm:block h-10 w-px bg-gray-200 shrink-0" aria-hidden />
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">MK Hub · HR</p>
-              <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Profile onboarding</h1>
-            </div>
-          </div>
-          <nav className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => logoutSession(queryClient, navigate)}
-              className="px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
+    <div className="flex min-h-screen flex-col bg-gray-50">
+      <main className={uiCx('mx-auto w-full max-w-5xl flex-1 px-4 sm:px-6', uiSpacing.pageY, uiSpacing.pageStack, 'pb-10')}>
+        <AppPageHeader
+          title="Profile onboarding"
+          subtitle="MK Hub · HR"
+          icon={
+            <img
+              src={LOGO_SRC}
+              alt="Company"
+              className="h-10 w-auto max-w-[160px] object-contain object-left"
+            />
+          }
+          iconClassName={uiCx('flex h-12 shrink-0 items-center justify-center bg-transparent p-0', uiRadius.control)}
+          actions={
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => logoutSession(queryClient, navigate)}>
               Logout
-            </button>
-          </nav>
-        </div>
-      </header>
+            </AppButton>
+          }
+        />
 
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-10">
-        <div className="space-y-5">
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 sm:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
-              <div className="min-w-0 max-w-xl">
-                <h2 className="text-base sm:text-lg font-semibold text-gray-900">Your progress</h2>
-              </div>
-              <div className="text-right shrink-0">
-                <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Progress</div>
-                <div className="text-sm font-medium text-gray-800 mt-0.5">
-                  Step {currentStep} of {totalSteps}
-                </div>
+        <AppCard
+          title="Your progress"
+          actions={
+            <div className="text-right">
+              <div className={uiTypography.overline}>Progress</div>
+              <div className={uiCx(uiTypography.helper, 'mt-0.5 font-medium text-gray-800')}>
+                Step {currentStep} of {totalSteps}
               </div>
             </div>
-            <div
-              className="flex gap-1 w-full"
-              role="tablist"
-              aria-label="Onboarding steps"
-            >
-              {Array.from({ length: totalSteps }, (_, i) => {
-                const step = i + 1;
-                const reached = step <= currentStep;
-                const isCurrent = step === currentStep;
-                return (
-                  <button
-                    key={step}
-                    type="button"
-                    role="tab"
-                    aria-selected={isCurrent}
-                    aria-current={isCurrent ? 'step' : undefined}
-                    disabled={saving}
-                    onClick={() => handleJumpToStep(step)}
-                    title={STEP_LABELS[step]}
-                    className={`flex-1 min-h-[10px] rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                      reached
-                        ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]'
-                        : 'bg-gray-200'
-                    } ${
-                      isCurrent
-                        ? 'ring-2 ring-brand-red ring-offset-2 ring-offset-white'
-                        : 'hover:brightness-95'
-                    } cursor-pointer`}
-                  />
-                );
-              })}
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-x-2 gap-y-1 mt-3 text-xs">
-              {Array.from({ length: totalSteps }, (_, i) => {
-                const step = i + 1;
-                const isCurrent = step === currentStep;
-                return (
-                  <button
-                    key={step}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => handleJumpToStep(step)}
-                    className={`text-left rounded-md px-1.5 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                      isCurrent
-                        ? 'text-brand-red font-semibold bg-red-50'
-                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-                    }`}
-                  >
-                    <span className="sr-only">Step {step}: </span>
-                    {STEP_LABELS[step]}
-                  </button>
-                );
-              })}
-            </div>
+          }
+        >
+          <div className="flex w-full gap-1" role="tablist" aria-label="Onboarding steps">
+            {Array.from({ length: totalSteps }, (_, i) => {
+              const step = i + 1;
+              const reached = step <= currentStep;
+              const isCurrent = step === currentStep;
+              return (
+                <button
+                  key={step}
+                  type="button"
+                  role="tab"
+                  aria-selected={isCurrent}
+                  aria-current={isCurrent ? 'step' : undefined}
+                  disabled={saving}
+                  onClick={() => handleJumpToStep(step)}
+                  title={STEP_LABELS[step]}
+                  className={uiCx(
+                    'min-h-[10px] flex-1 rounded-full transition-all disabled:cursor-not-allowed disabled:opacity-50',
+                    reached ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]' : 'bg-gray-200',
+                    isCurrent ? 'ring-2 ring-brand-red ring-offset-2 ring-offset-white' : 'cursor-pointer hover:brightness-95',
+                  )}
+                />
+              );
+            })}
           </div>
+          <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-1 text-xs sm:grid-cols-3 md:grid-cols-6">
+            {Array.from({ length: totalSteps }, (_, i) => {
+              const step = i + 1;
+              const isCurrent = step === currentStep;
+              return (
+                <button
+                  key={step}
+                  type="button"
+                  disabled={saving}
+                  onClick={() => handleJumpToStep(step)}
+                  className={uiCx(
+                    'rounded-md px-1.5 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                    isCurrent ? 'bg-red-50 font-semibold text-brand-red' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900',
+                  )}
+                >
+                  <span className="sr-only">Step {step}: </span>
+                  {STEP_LABELS[step]}
+                </button>
+              );
+            })}
+          </div>
+        </AppCard>
 
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 sm:p-6 sm:p-8">
+        <AppCard footer={stepFooter}>
           {/* Step 1: Basic Information */}
           {currentStep === 1 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Basic Information</h2>
-                <p className="text-sm text-gray-500">Core personal details</p>
-              </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <Field label="First name" required invalid={false}>
-                  <input
-                    type="text"
-                    value={form.first_name || ''}
-                    onChange={e => set('first_name', e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                  />
-                </Field>
-                <Field label="Last name" required invalid={false}>
-                  <input
-                    type="text"
-                    value={form.last_name || ''}
-                    onChange={e => set('last_name', e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                  />
-                </Field>
-                <Field label="Middle name">
-                  <input
-                    type="text"
-                    value={form.middle_name || ''}
-                    onChange={e => set('middle_name', e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                  />
-                </Field>
-                <Field label="Preferred name">
-                  <input
-                    type="text"
-                    value={form.prefered_name || ''}
-                    onChange={e => set('prefered_name', e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                  />
-                </Field>
-                <Field label="Gender" required invalid={!form.gender}>
-                  <select
-                    value={form.gender || ''}
-                    onChange={e => set('gender', e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                  >
-                    <option value="">Select...</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                    <option value="Prefer not to say">Prefer not to say</option>
-                  </select>
-                </Field>
-                <Field label="Marital status" required invalid={!form.marital_status}>
-                  <select
-                    value={form.marital_status || ''}
-                    onChange={e => set('marital_status', e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                  >
-                    <option value="">Select...</option>
-                    <option value="Single">Single</option>
-                    <option value="Married">Married</option>
-                    <option value="Common-law">Common-law</option>
-                    <option value="Divorced">Divorced</option>
-                    <option value="Widowed">Widowed</option>
-                    <option value="Prefer not to say">Prefer not to say</option>
-                  </select>
-                </Field>
-                <Field label="Date of birth" required invalid={!form.date_of_birth}>
-                  <input
-                    type="date"
-                    value={form.date_of_birth ? String(form.date_of_birth).slice(0, 10) : ''}
-                    onChange={e => set('date_of_birth', e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                  />
-                </Field>
-                <Field label="Nationality" required invalid={!form.nationality}>
-                  <NationalitySelect value={form.nationality || ''} onChange={v => set('nationality', v)} />
-                </Field>
+            <div className={uiSpacing.sectionStack}>
+              <AppSectionHeader title="Basic Information" description="Core personal details" />
+              <div className="grid gap-4 md:grid-cols-2">
+                <AppInput
+                  label="First name"
+                  value={form.first_name || ''}
+                  onChange={(e) => set('first_name', e.target.value)}
+                />
+                <AppInput
+                  label="Last name"
+                  value={form.last_name || ''}
+                  onChange={(e) => set('last_name', e.target.value)}
+                />
+                <AppInput
+                  label="Middle name"
+                  value={form.middle_name || ''}
+                  onChange={(e) => set('middle_name', e.target.value)}
+                />
+                <AppInput
+                  label="Preferred name"
+                  value={form.prefered_name || ''}
+                  onChange={(e) => set('prefered_name', e.target.value)}
+                />
+                <AppSelect
+                  label="Gender *"
+                  placeholder="Select..."
+                  value={form.gender || ''}
+                  onChange={(e) => set('gender', e.target.value)}
+                  options={GENDER_OPTIONS}
+                />
+                <AppSelect
+                  label="Marital status *"
+                  placeholder="Select..."
+                  value={form.marital_status || ''}
+                  onChange={(e) => set('marital_status', e.target.value)}
+                  options={MARITAL_STATUS_OPTIONS}
+                />
+                <AppDatePicker
+                  label="Date of birth *"
+                  value={form.date_of_birth ? String(form.date_of_birth).slice(0, 10) : ''}
+                  onChange={(e) => set('date_of_birth', e.target.value)}
+                />
+                <div className="space-y-1.5">
+                  <AppControlLabelRow label="Nationality *" />
+                  <NationalitySelect value={form.nationality || ''} onChange={(v) => set('nationality', v)} />
+                </div>
               </div>
             </div>
           )}
           
           {/* Step 2: Address */}
           {currentStep === 2 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Address</h2>
-                <p className="text-sm text-gray-500">Home address for contact and records</p>
-              </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <Field label="Address line 1" required invalid={!form.address_line1}>
+            <div className={uiSpacing.sectionStack}>
+              <AppSectionHeader title="Address" description="Home address for contact and records" />
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <AppControlLabelRow label="Address line 1 *" />
                   <AddressAutocomplete
                     key="address-line1-onboarding"
                     value={form.address_line1 || ''}
                     onChange={handleAddressChange}
                     onAddressSelect={handleAddressSelect}
                     placeholder="Start typing an address..."
-                    className="w-full rounded-lg border px-3 py-2"
+                    className={ADDRESS_INPUT_CLASS}
                   />
-                </Field>
-                <Field label="Complement (e.g., Apt, Unit, Basement)">
-                  <input
-                    type="text"
-                    value={form.address_line1_complement || ''}
-                    onChange={e => set('address_line1_complement', e.target.value)}
-                    placeholder="Apt 101, Unit 2, Basement, etc."
-                    className="w-full rounded-lg border px-3 py-2"
-                  />
-                </Field>
-                {/* Row 1: Country | Province/State */}
-                <Field label="Country" required invalid={!form.country}>
-                  <select
-                    value={form.country || ''}
-                    onChange={e => handleCountryChange(e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                    disabled={loadingStates}
-                  >
-                    <option value="">Select country...</option>
-                    {countries.map((c) => (
-                      <option key={c.name} value={c.name}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Province/State" required invalid={!form.province}>
-                  <select
-                    value={form.province || ''}
-                    onChange={e => handleProvinceChange(e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                    disabled={!form.country || loadingStates || loadingCities}
-                  >
-                    <option value="">{loadingStates ? 'Loading...' : form.country ? 'Select province/state...' : 'Select country first'}</option>
-                    {provinces.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                {/* Row 2: City | Postal Code */}
-                <Field label="City" required invalid={!form.city}>
-                  <select
-                    value={form.city || ''}
-                    onChange={e => set('city', e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                    disabled={!form.country || !form.province || loadingCities}
-                  >
-                    <option value="">{loadingCities ? 'Loading...' : form.province ? 'Select city...' : 'Select province first'}</option>
-                    {cities.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Postal code" required invalid={!form.postal_code}>
+                </div>
+                <AppInput
+                  label="Complement (e.g., Apt, Unit, Basement)"
+                  value={form.address_line1_complement || ''}
+                  onChange={(e) => set('address_line1_complement', e.target.value)}
+                  placeholder="Apt 101, Unit 2, Basement, etc."
+                />
+                <AppCombobox
+                  label="Country *"
+                  value={form.country || ''}
+                  onChange={handleCountryChange}
+                  options={countryOptions}
+                  placeholder={loadingStates ? 'Loading...' : 'Search country...'}
+                  disabled={loadingStates}
+                  leftIcon={null}
+                />
+                <AppCombobox
+                  label="Province/State *"
+                  value={form.province || ''}
+                  onChange={handleProvinceChange}
+                  options={provinceOptions}
+                  placeholder={
+                    loadingStates ? 'Loading...' : form.country ? 'Search province/state...' : 'Select country first'
+                  }
+                  disabled={!form.country || loadingStates || loadingCities}
+                  leftIcon={null}
+                />
+                <AppCombobox
+                  label="City *"
+                  value={form.city || ''}
+                  onChange={(v) => set('city', v)}
+                  options={cityOptions}
+                  placeholder={loadingCities ? 'Loading...' : form.province ? 'Search city...' : 'Select province first'}
+                  disabled={!form.country || !form.province || loadingCities}
+                  leftIcon={null}
+                />
+                <div className="space-y-1.5">
+                  <AppControlLabelRow label="Postal code *" />
                   <PostalCodeAutocomplete
                     value={form.postal_code || ''}
                     onChange={(value) => set('postal_code', value)}
                     onPostalCodeSelect={handlePostalCodeSelect}
                     placeholder="Enter postal code..."
-                    className="w-full rounded-lg border px-3 py-2"
+                    className={ADDRESS_INPUT_CLASS}
                   />
-                </Field>
-                <Field label="Address line 2">
+                </div>
+                <div className="space-y-1.5">
+                  <AppControlLabelRow label="Address line 2" />
                   <AddressAutocomplete
                     value={form.address_line2 || ''}
                     onChange={(value) => set('address_line2', value)}
                     placeholder="Start typing an address..."
-                    className="w-full rounded-lg border px-3 py-2"
+                    className={ADDRESS_INPUT_CLASS}
                   />
-                </Field>
-                <Field label="Complement (e.g., Apt, Unit, Basement)">
-                  <input
-                    type="text"
-                    value={form.address_line2_complement || ''}
-                    onChange={e => set('address_line2_complement', e.target.value)}
-                    placeholder="Apt 101, Unit 2, Basement, etc."
-                    className="w-full rounded-lg border px-3 py-2"
-                  />
-                </Field>
+                </div>
+                <AppInput
+                  label="Complement (e.g., Apt, Unit, Basement)"
+                  value={form.address_line2_complement || ''}
+                  onChange={(e) => set('address_line2_complement', e.target.value)}
+                  placeholder="Apt 101, Unit 2, Basement, etc."
+                />
               </div>
             </div>
           )}
-          
-          {/* Step 3: Contact */}
+
           {currentStep === 3 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Contact</h2>
-                <p className="text-sm text-gray-500">How we can reach you</p>
-              </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <Field label="Phone 1" required invalid={!form.phone}>
-                  <input
-                    type="text"
-                    value={form.phone || ''}
-                    onChange={e => set('phone', formatPhone(e.target.value))}
-                    className="w-full rounded-lg border px-3 py-2"
-                  />
-                </Field>
-                <Field label="Phone 2">
-                  <input
-                    type="text"
-                    value={form.mobile_phone || ''}
-                    onChange={e => set('mobile_phone', formatPhone(e.target.value))}
-                    className="w-full rounded-lg border px-3 py-2"
-                  />
-                </Field>
+            <div className={uiSpacing.sectionStack}>
+              <AppSectionHeader title="Contact" description="How we can reach you" />
+              <div className="grid gap-4 md:grid-cols-2">
+                <AppInput
+                  label="Phone 1 *"
+                  value={form.phone || ''}
+                  onChange={(e) => set('phone', formatPhone(e.target.value))}
+                />
+                <AppInput
+                  label="Phone 2"
+                  value={form.mobile_phone || ''}
+                  onChange={(e) => set('mobile_phone', formatPhone(e.target.value))}
+                />
               </div>
             </div>
           )}
@@ -871,206 +864,169 @@ export default function OnboardingWizard() {
           )}
           
           {/* Step 6: Emergency Contacts */}
-          {currentStep === 6 && userId && (
-            <EmergencyContactsStep userId={userId} />
-          )}
-          
-          {/* Navigation Buttons */}
-          <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              type="button"
-              onClick={handlePrevious}
-              disabled={currentStep === 1}
-              className={`px-5 py-2.5 text-sm font-medium rounded-lg border transition-colors ${
-                currentStep === 1
-                  ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
-                  : 'border-gray-200 text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-300'
-              }`}
-            >
-              Previous
-            </button>
-            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-              {currentStep < totalSteps && (
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  disabled={saving}
-                  className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] rounded-lg hover:opacity-95 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {saving ? 'Saving...' : 'Next'}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleSaveAndContinueToHub}
-                disabled={saving}
-                className="px-5 py-2.5 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {saving ? 'Saving...' : 'Go to the Hub!'}
-              </button>
-            </div>
-          </div>
-        </div>
-        </div>
+          {currentStep === 6 && userId && <EmergencyContactsStep userId={userId} />}
+        </AppCard>
       </main>
     </div>
   );
 }
 
-// Education Step Component (reused from Profile.tsx)
+function formatEducationPeriod(start?: string | null, end?: string | null): string {
+  const fmt = (d?: string | null) => {
+    if (!d) return '';
+    try {
+      const iso = d.length === 7 ? `${d}-01` : d;
+      return new Date(iso).toLocaleDateString('en-CA', { month: 'short', year: 'numeric' });
+    } catch {
+      return String(d).slice(0, 7);
+    }
+  };
+  const from = fmt(start);
+  const to = fmt(end);
+  if (from && to) return `${from} — ${to}`;
+  if (from) return `${from} — Present`;
+  return to || '—';
+}
+
+// Education Step Component
 function EducationStep({ userId }: { userId: string }) {
+  const confirm = useConfirm();
   const { data: rows, refetch, isLoading } = useQuery({
     queryKey: ['education', userId],
-    queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/education`)
+    queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/education`),
   });
   const [showAdd, setShowAdd] = useState(false);
   const [inst, setInst] = useState('');
   const [degree, setDegree] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
-  
+  const [isSaving, setIsSaving] = useState(false);
+
+  const resetAddForm = () => {
+    setInst('');
+    setDegree('');
+    setStart('');
+    setEnd('');
+  };
+
   const add = async () => {
+    if (isSaving) return;
     try {
       if (!inst.trim()) {
         toast.error('Institution required');
         return;
       }
-      // Convert month input (YYYY-MM) to full date (YYYY-MM-01) for API
-      const startDate = start ? `${start}-01` : null;
-      const endDate = end ? `${end}-01` : null;
+      setIsSaving(true);
+      const startDate = start ? `${start.slice(0, 7)}-01` : null;
+      const endDate = end ? `${end.slice(0, 7)}-01` : null;
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/education`, {
         college_institution: inst,
         degree,
         start_date: startDate,
-        end_date: endDate
+        end_date: endDate,
       });
       toast.success('Added');
       setShowAdd(false);
-      setInst('');
-      setDegree('');
-      setStart('');
-      setEnd('');
+      resetAddForm();
       await refetch();
     } catch (_e) {
       toast.error('Failed');
-    }
-  };
-  
-  const del = async (id: string) => {
-    try {
-      await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/education/${encodeURIComponent(id)}`);
-      await refetch();
-    } catch (_e) {
-      toast.error('Failed');
-    }
-  };
-  
-  const formatDateMonthYear = (dateStr: string | null | undefined) => {
-    if (!dateStr) return '';
-    try {
-      const date = new Date(dateStr);
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
-      return `${year}-${month}`;
-    } catch {
-      return dateStr.slice(0, 7); // Fallback to YYYY-MM format
+    } finally {
+      setIsSaving(false);
     }
   };
 
+  const del = async (id: string) => {
+    const result = await confirm({
+      title: 'Delete education record',
+      message: 'Remove this school or degree from the profile?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    try {
+      await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/education/${encodeURIComponent(id)}`);
+      toast.success('Deleted');
+      await refetch();
+    } catch (_e) {
+      toast.error('Failed');
+    }
+  };
+
+  const renderEducationFormFields = () => (
+    <div className="grid gap-2.5 md:grid-cols-2">
+      <AppInput label="Institution *" value={inst} onChange={(e) => setInst(e.target.value)} />
+      <AppInput label="Degree" value={degree} onChange={(e) => setDegree(e.target.value)} />
+      <AppDatePicker label="Start date" value={start} onChange={(e) => setStart(e.target.value)} />
+      <AppDatePicker label="End date" value={end} onChange={(e) => setEnd(e.target.value)} />
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Education</h2>
-        <p className="text-sm text-gray-500">Academic history (optional)</p>
-      </div>
+    <div className={uiSpacing.sectionStack}>
+      <AppSectionHeader title="Education" description="Academic history (optional)" />
       {isLoading ? (
-        <div className="text-sm text-gray-600">Loading...</div>
-      ) : (rows || []).length ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {(rows || []).map((e: any) => (
-            <div key={e.id} className="border rounded-lg p-4 text-sm">
-              <div className="font-medium text-gray-900 mb-1">{e.college_institution || 'Institution'}</div>
-              <div className="text-gray-600 mb-1">
-                {e.degree || ''} {e.major_specialization ? `· ${e.major_specialization}` : ''}
-              </div>
-              <div className="text-gray-500 text-xs">
-                {formatDateMonthYear(e.start_date)}{(e.start_date || e.end_date) ? ' — ' : ''}{formatDateMonthYear(e.end_date)}
-              </div>
-              <div className="mt-3 pt-3 border-t">
-                <button
-                  onClick={() => del(e.id)}
-                  className="px-2 py-1 rounded border text-xs hover:bg-gray-50"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <div className={uiCx('h-28 animate-pulse rounded-lg bg-gray-100', uiRadius.control)} />
       ) : (
-        <div className="text-sm text-gray-600">No education records. Click "Add education" to add one.</div>
+        <div className="flex flex-col gap-3">
+          <AppListCreateItem label="Add education" layout="row" className="w-full" onClick={() => setShowAdd(true)} />
+          {!(rows || []).length ? (
+            <AppEmptyState
+              title="No education records yet"
+              description='Add schools and degrees using "Add education" above.'
+              className="border-0 bg-transparent p-0 py-6 shadow-none"
+            />
+          ) : (
+            (rows || []).map((e: any) => (
+              <AppCard key={e.id} bodyClassName="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className={uiTypography.sectionTitle}>{e.college_institution || 'Institution'}</div>
+                    <div className={uiTypography.helper}>
+                      {[e.degree, e.major_specialization].filter(Boolean).join(' · ') || '—'}
+                    </div>
+                    <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-500')}>
+                      {formatEducationPeriod(e.start_date, e.end_date)}
+                    </div>
+                  </div>
+                  <AppListRowIconButton preset="delete" label="Delete record" onClick={() => del(e.id)} />
+                </div>
+              </AppCard>
+            ))
+          )}
+        </div>
       )}
-      <div className="mt-3">
-        {!showAdd ? (
-          <button
-            onClick={() => setShowAdd(true)}
-            className="px-4 py-2 rounded-lg bg-brand-red text-white font-medium hover:opacity-90"
-          >
-            Add education
-          </button>
-        ) : (
-          <div className="grid md:grid-cols-2 gap-3 p-4 border rounded-lg bg-gray-50">
-            <div>
-              <div className="text-xs text-gray-600 mb-1">Institution *</div>
-              <input
-                className="w-full rounded-lg border px-3 py-2"
-                value={inst}
-                onChange={e => setInst(e.target.value)}
-              />
-            </div>
-            <div>
-              <div className="text-xs text-gray-600 mb-1">Degree</div>
-              <input
-                className="w-full rounded-lg border px-3 py-2"
-                value={degree}
-                onChange={e => setDegree(e.target.value)}
-              />
-            </div>
-            <div>
-              <div className="text-xs text-gray-600 mb-1">Start date</div>
-              <input
-                type="month"
-                className="w-full rounded-lg border px-3 py-2"
-                value={start}
-                onChange={e => setStart(e.target.value)}
-              />
-            </div>
-            <div>
-              <div className="text-xs text-gray-600 mb-1">End date</div>
-              <input
-                type="month"
-                className="w-full rounded-lg border px-3 py-2"
-                value={end}
-                onChange={e => setEnd(e.target.value)}
-              />
-            </div>
-            <div className="md:col-span-2 text-right">
-              <button
-                onClick={() => setShowAdd(false)}
-                className="px-3 py-2 rounded border mr-2 hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={add}
-                className="px-3 py-2 rounded bg-brand-red text-white hover:opacity-90"
-              >
-                Save
-              </button>
-            </div>
+
+      <AppFormModal
+        open={showAdd}
+        onClose={() => {
+          setShowAdd(false);
+          resetAddForm();
+        }}
+        title="Add education"
+        description="School, degree, and study dates."
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setShowAdd(false);
+                resetAddForm();
+              }}
+            >
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" disabled={isSaving} loading={isSaving} onClick={add}>
+              {isSaving ? 'Saving…' : 'Save'}
+            </AppButton>
           </div>
-        )}
-      </div>
+        }
+      >
+        {renderEducationFormFields()}
+      </AppFormModal>
     </div>
   );
 }
@@ -1078,50 +1034,27 @@ function EducationStep({ userId }: { userId: string }) {
 // Legal & Documents Step Component
 function LegalDocumentsStep({ userId, form, set, formatSIN }: { userId: string; form: any; set: (k: string, v: any) => void; formatSIN: (v: string) => string }) {
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Legal & Documents</h2>
-        <p className="text-sm text-gray-500">Legal status and identification</p>
+    <div className={uiSpacing.sectionStack}>
+      <AppSectionHeader title="Legal & Documents" description="Legal status and identification" />
+      <div className="grid gap-4 md:grid-cols-2">
+        <AppInput
+          label="SIN/SSN *"
+          value={form.sin_number || ''}
+          onChange={(e) => set('sin_number', formatSIN(e.target.value))}
+          maxLength={11}
+          placeholder="123-456-789"
+        />
+        <AppSelect
+          label="Work Eligibility Status *"
+          placeholder="Select..."
+          value={form.work_eligibility_status || ''}
+          onChange={(e) => set('work_eligibility_status', e.target.value)}
+          options={WORK_ELIGIBILITY_OPTIONS}
+        />
       </div>
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm text-gray-600">
-            SIN/SSN <span className="text-red-600">*</span>
-          </label>
-          <div className={!form.sin_number ? 'ring-2 ring-red-400 rounded-lg p-0.5' : 'p-0'}>
-            <input
-              value={form.sin_number || ''}
-              onChange={e => set('sin_number', formatSIN(e.target.value))}
-              maxLength={11}
-              placeholder="123-456-789"
-              className="w-full rounded-lg border px-3 py-2"
-            />
-          </div>
-          {!form.sin_number && <div className="text-xs text-red-600">Required</div>}
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm text-gray-600">
-            Work Eligibility Status <span className="text-red-600">*</span>
-          </label>
-          <div className={!form.work_eligibility_status ? 'ring-2 ring-red-400 rounded-lg p-0.5' : 'p-0'}>
-            <select
-              value={form.work_eligibility_status || ''}
-              onChange={e => set('work_eligibility_status', e.target.value)}
-              className="w-full rounded-lg border px-3 py-2"
-            >
-              <option value="">Select...</option>
-              <option value="Canadian Citizen">Canadian Citizen</option>
-              <option value="Permanent Resident">Permanent Resident</option>
-              <option value="Temporary Resident (with work authorization)">Temporary Resident (with work authorization)</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          {!form.work_eligibility_status && <div className="text-xs text-red-600">Required</div>}
-        </div>
-      </div>
-      <WorkEligibilityDocumentsSection 
-        userId={userId} 
-        canEdit={true} 
+      <WorkEligibilityDocumentsSection
+        userId={userId}
+        canEdit={true}
         workEligibilityStatus={form.work_eligibility_status}
       />
     </div>
@@ -1339,314 +1272,248 @@ function EmergencyContactsStep({ userId }: { userId: string }) {
     }
   };
   
+  const resetCreateForm = () => {
+    setName('');
+    setRelationship('');
+    setMobilePhone('');
+    setWorkPhone('');
+    setEmail('');
+    setAddress('');
+    setAddressCity('');
+    setAddressProvince('');
+    setAddressPostalCode('');
+    setAddressCountry('');
+    setIsPrimary(false);
+  };
+
+  const renderContactFormFields = (mode: 'create' | 'edit') => {
+    const isCreate = mode === 'create';
+    return (
+      <div className="grid gap-3 md:grid-cols-2">
+        <AppInput
+          className="md:col-span-2"
+          label="Name *"
+          value={isCreate ? name : eName}
+          onChange={(e) => (isCreate ? setName : setEName)(e.target.value)}
+        />
+        <AppInput
+          label="Relationship *"
+          value={isCreate ? relationship : eRelationship}
+          onChange={(e) => (isCreate ? setRelationship : setERelationship)(e.target.value)}
+        />
+        <AppCheckbox
+          label={isFirstContact && isCreate ? 'Primary contact' : 'Set as primary contact'}
+          checked={isCreate ? isFirstContact || isPrimary : eIsPrimary}
+          onChange={isCreate ? setIsPrimary : setEIsPrimary}
+          disabled={isCreate ? isFirstContact : Boolean(data && data.length === 1 && eIsPrimary)}
+        />
+        <AppInput
+          label="Phone *"
+          value={isCreate ? mobilePhone : eMobilePhone}
+          onChange={(e) => (isCreate ? setMobilePhone : setEMobilePhone)(formatPhone(e.target.value))}
+        />
+        <AppInput
+          label="Work Phone"
+          value={isCreate ? workPhone : eWorkPhone}
+          onChange={(e) => (isCreate ? setWorkPhone : setEWorkPhone)(formatPhone(e.target.value))}
+        />
+        <AppInput
+          className="md:col-span-2"
+          label="Email"
+          type="email"
+          value={isCreate ? email : eEmail}
+          onChange={(e) => (isCreate ? setEmail : setEEmail)(e.target.value)}
+        />
+        <div className="space-y-1.5 md:col-span-2">
+          <AppControlLabelRow label="Address" />
+          <AddressAutocomplete
+            value={(isCreate ? address : eAddress) || ''}
+            onChange={(value) => (isCreate ? setAddress : setEAddress)(value)}
+            onAddressSelect={(addr) => {
+              if (isCreate) {
+                setAddress(addr.address_line1 || '');
+                if (addr.city !== undefined) setAddressCity(addr.city);
+                if (addr.province !== undefined) setAddressProvince(addr.province);
+                if (addr.postal_code !== undefined) setAddressPostalCode(addr.postal_code);
+                if (addr.country !== undefined) setAddressCountry(addr.country);
+              } else {
+                setEAddress(addr.address_line1 || '');
+                if (addr.city !== undefined) setEAddressCity(addr.city);
+                if (addr.province !== undefined) setEAddressProvince(addr.province);
+                if (addr.postal_code !== undefined) setEAddressPostalCode(addr.postal_code);
+                if (addr.country !== undefined) setEAddressCountry(addr.country);
+              }
+            }}
+            placeholder="Start typing an address..."
+            className={ADDRESS_INPUT_CLASS}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const contacts = data || [];
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Emergency Contacts</h2>
-        <p className="text-sm text-gray-500">
-          People to contact in case of emergency. At least one contact is required.
-        </p>
-      </div>
-      
-      {(!data || data.length === 0) && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="text-sm text-red-700">
+    <div className={uiSpacing.sectionStack}>
+      <AppSectionHeader
+        title="Emergency Contacts"
+        description="People to contact in case of emergency. At least one contact is required."
+      />
+
+      {contacts.length === 0 ? (
+        <AppCard bodyClassName="border-red-200 bg-red-50">
+          <p className={uiCx(uiTypography.helper, 'text-red-700')}>
             <strong>Required:</strong> Please add at least one emergency contact to continue.
-          </div>
-        </div>
-      )}
-      
-      <div className="mb-4 flex items-center justify-between">
-        <div></div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold hover:opacity-90"
-        >
-          New Contact
-        </button>
-      </div>
-      
-      <div className="grid md:grid-cols-2 gap-4">
-        {(data || []).map((c: any) => (
-          <div key={c.id} className="rounded-xl border bg-white overflow-hidden flex">
-            <div className="w-28 bg-gray-100 flex items-center justify-center">
-              <div className="w-20 h-20 rounded bg-gray-200 grid place-items-center text-lg font-bold text-gray-600">
-                {(c.name || '?').slice(0, 2).toUpperCase()}
-              </div>
-            </div>
-            <div className="flex-1 p-3 text-sm">
-              {editId === c.id ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold">Edit contact</div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Name *</label>
-                      <input
-                        className="border rounded px-2 py-1 w-full"
-                        value={eName}
-                        onChange={e => setEName(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Relationship *</label>
-                      <input
-                        className="border rounded px-2 py-1 w-full"
-                        value={eRelationship}
-                        onChange={e => setERelationship(e.target.value)}
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-600">Primary</label>
-                      <input
-                        type="checkbox"
-                        checked={eIsPrimary}
-                        onChange={e => setEIsPrimary(e.target.checked)}
-                        disabled={data && data.length === 1 && eIsPrimary}
-                        className="rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Phone *</label>
-                      <input
-                        className="border rounded px-2 py-1 w-full"
-                        value={eMobilePhone}
-                        onChange={e => setEMobilePhone(formatPhone(e.target.value))}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Work Phone</label>
-                      <input
-                        className="border rounded px-2 py-1 w-full"
-                        value={eWorkPhone}
-                        onChange={e => setEWorkPhone(formatPhone(e.target.value))}
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Email</label>
-                      <input
-                        className="border rounded px-2 py-1 w-full"
-                        type="email"
-                        value={eEmail}
-                        onChange={e => setEEmail(e.target.value)}
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Address</label>
-                      <AddressAutocomplete
-                        value={eAddress || ''}
-                        onChange={(value) => setEAddress(value)}
-                        onAddressSelect={(address) => {
-                          setEAddress(address.address_line1 || '');
-                          if (address.city !== undefined) setEAddressCity(address.city);
-                          if (address.province !== undefined) setEAddressProvince(address.province);
-                          if (address.postal_code !== undefined) setEAddressPostalCode(address.postal_code);
-                          if (address.country !== undefined) setEAddressCountry(address.country);
-                        }}
-                        placeholder="Start typing an address..."
-                        className="w-full rounded border px-2 py-1"
-                      />
-                    </div>
-                  </div>
-                  <div className="text-right space-x-2">
-                    <button
-                      onClick={cancelEdit}
-                      className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => handleUpdate(c.id)}
-                      className="px-2 py-1 rounded bg-brand-red text-white hover:opacity-90"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold">{c.name}</div>
-                    <div className="flex items-center gap-2">
-                      {c.is_primary && (
-                        <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">
-                          Primary
-                        </span>
-                      )}
-                      {!c.is_primary && (
-                        <button
-                          onClick={() => handleSetPrimary(c.id)}
-                          className="px-2 py-1 rounded bg-gray-100 text-xs hover:bg-gray-200"
-                        >
-                          Set Primary
-                        </button>
-                      )}
-                      <button
-                        onClick={() => beginEdit(c)}
-                        className="px-2 py-1 rounded bg-gray-100 text-xs hover:bg-gray-200"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(c.id)}
-                        className="px-2 py-1 rounded bg-gray-100 text-xs hover:bg-gray-200"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                  {c.relationship && <div className="text-gray-600 text-xs mt-1">{c.relationship}</div>}
-                  <div className="mt-2 space-y-1">
-                    {c.mobile_phone && (
-                      <div>
-                        <div className="text-[11px] uppercase text-gray-500">Mobile</div>
-                        <div className="text-gray-700">{c.mobile_phone}</div>
-                      </div>
-                    )}
-                    {c.work_phone && (
-                      <div>
-                        <div className="text-[11px] uppercase text-gray-500">Work</div>
-                        <div className="text-gray-700">{c.work_phone}</div>
-                      </div>
-                    )}
-                    {c.email && (
-                      <div>
-                        <div className="text-[11px] uppercase text-gray-500">Email</div>
-                        <div className="text-gray-700">{c.email}</div>
-                      </div>
-                    )}
-                    {c.address && (
-                      <div>
-                        <div className="text-[11px] uppercase text-gray-500">Address</div>
-                        <div className="text-gray-700">{c.address}</div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        ))}
-        {(!data || !data.length) && (
-          <div className="text-sm text-gray-600 col-span-2 py-8 text-center">
-            No emergency contacts. Click "New Contact" to add one.
-          </div>
-        )}
-      </div>
-      
-      {createOpen && (
-        <OverlayPortal>
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between">
-              <div className="font-semibold">New Emergency Contact</div>
-              <button
-                onClick={() => {
-                  setCreateOpen(false);
-                  setName('');
-                  setRelationship('');
-                  setMobilePhone('');
-                  setWorkPhone('');
-                  setEmail('');
-                  setAddress('');
-                  setAddressCity('');
-                  setAddressProvince('');
-                  setAddressPostalCode('');
-                  setAddressCountry('');
-                  setIsPrimary(false);
-                }}
-                className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100"
+          </p>
+        </AppCard>
+      ) : null}
+
+      <AppListCreateItem label="New Contact" layout="row" className="w-full" onClick={() => setCreateOpen(true)} />
+
+      {contacts.length ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          {contacts.map((c: any) => {
+            const phoneEntries = [
+              c.mobile_phone ? { label: 'Mobile', value: c.mobile_phone } : null,
+              c.work_phone ? { label: 'Work', value: c.work_phone } : null,
+            ].filter(Boolean) as { label: string; value: string }[];
+
+            return (
+              <AppCard
+                key={c.id}
+                bodyClassName="p-4"
+                className={uiCx('cursor-pointer transition-colors hover:border-gray-300')}
               >
-                ×
-              </button>
-            </div>
-            <div className="p-4 grid md:grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <label className="text-xs text-gray-600">Name *</label>
-                <input
-                  className="border rounded px-3 py-2 w-full"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Relationship *</label>
-                <input
-                  className="border rounded px-3 py-2 w-full"
-                  value={relationship}
-                  onChange={e => setRelationship(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Primary</label>
-                <div className="flex items-center gap-2 mt-2">
-                  <input
-                    type="checkbox"
-                    checked={isFirstContact || isPrimary}
-                    onChange={e => setIsPrimary(e.target.checked)}
-                    disabled={isFirstContact}
-                    className="rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
-                  <span className="text-xs text-gray-600">
-                    {isFirstContact ? 'Primary contact' : 'Set as primary contact'}
-                  </span>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Phone *</label>
-                <input
-                  className="border rounded px-3 py-2 w-full"
-                  value={mobilePhone}
-                  onChange={e => setMobilePhone(formatPhone(e.target.value))}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Work Phone</label>
-                <input
-                  className="border rounded px-3 py-2 w-full"
-                  value={workPhone}
-                  onChange={e => setWorkPhone(formatPhone(e.target.value))}
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="text-xs text-gray-600">Email</label>
-                <input
-                  className="border rounded px-3 py-2 w-full"
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="text-xs text-gray-600">Address</label>
-                <AddressAutocomplete
-                  value={address || ''}
-                  onChange={(value) => setAddress(value)}
-                  onAddressSelect={(address) => {
-                    setAddress(address.address_line1 || '');
-                    if (address.city !== undefined) setAddressCity(address.city);
-                    if (address.province !== undefined) setAddressProvince(address.province);
-                    if (address.postal_code !== undefined) setAddressPostalCode(address.postal_code);
-                    if (address.country !== undefined) setAddressCountry(address.country);
-                  }}
-                  placeholder="Start typing an address..."
-                  className="w-full rounded border px-3 py-2"
-                />
-              </div>
-              <div className="col-span-2 text-right">
                 <button
-                  onClick={handleCreate}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold hover:opacity-90"
+                  type="button"
+                  className="flex w-full items-center gap-3 text-left"
+                  onClick={() => beginEdit(c)}
                 >
-                  Create
+                  <div
+                    className={uiCx(
+                      'flex h-11 w-11 shrink-0 items-center justify-center text-sm font-semibold text-gray-600',
+                      uiRadius.control,
+                      'bg-gradient-to-br from-gray-100 to-gray-200',
+                    )}
+                  >
+                    {(c.name || '?').slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className={uiTypography.sectionTitle}>{c.name || '—'}</span>
+                      {c.is_primary ? <AppBadge variant="neutral">Primary</AppBadge> : null}
+                    </div>
+                    {c.relationship ? <p className={uiCx(uiTypography.helper, 'truncate')}>{c.relationship}</p> : null}
+                    <div className={uiCx('mt-1 flex flex-col gap-0.5', uiTypography.helper)}>
+                      {c.email ? (
+                        <span className="inline-flex min-w-0 items-center gap-1 truncate text-gray-600">
+                          <Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                          <span className="truncate">{c.email}</span>
+                        </span>
+                      ) : null}
+                      {phoneEntries.map((phone) => (
+                        <span key={`${c.id}-${phone.label}`} className="inline-flex min-w-0 items-center gap-1 truncate text-gray-600">
+                          <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                          <span className="truncate">
+                            {phoneEntries.length > 1 ? `${phone.label}: ` : ''}
+                            {phone.value}
+                          </span>
+                        </span>
+                      ))}
+                      {c.address ? (
+                        <span className="inline-flex min-w-0 items-start gap-1 text-gray-600">
+                          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                          <span className="line-clamp-2">{c.address}</span>
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
                 </button>
-              </div>
-            </div>
-          </div>
+                {!c.is_primary ? (
+                  <div className={uiCx(uiLayout.actionsRow, 'mt-3 justify-end border-t border-gray-100 pt-3')}>
+                    <AppButton type="button" variant="ghost" size="sm" onClick={() => handleSetPrimary(c.id)}>
+                      Set Primary
+                    </AppButton>
+                    <AppButton type="button" variant="ghost" size="sm" onClick={() => beginEdit(c)}>
+                      Edit
+                    </AppButton>
+                    <AppButton type="button" variant="ghost" size="sm" onClick={() => handleDelete(c.id)}>
+                      Delete
+                    </AppButton>
+                  </div>
+                ) : (
+                  <div className={uiCx(uiLayout.actionsRow, 'mt-3 justify-end border-t border-gray-100 pt-3')}>
+                    <AppButton type="button" variant="ghost" size="sm" onClick={() => beginEdit(c)}>
+                      Edit
+                    </AppButton>
+                    <AppButton type="button" variant="ghost" size="sm" onClick={() => handleDelete(c.id)}>
+                      Delete
+                    </AppButton>
+                  </div>
+                )}
+              </AppCard>
+            );
+          })}
         </div>
-        </OverlayPortal>
+      ) : (
+        <AppEmptyState
+          title="No emergency contacts"
+          description='Click "New Contact" above to add one.'
+          className="border-0 bg-transparent p-0 py-6 shadow-none"
+        />
       )}
+
+      <AppFormModal
+        open={createOpen}
+        onClose={() => {
+          setCreateOpen(false);
+          resetCreateForm();
+        }}
+        title="New Emergency Contact"
+        description="Add a person to call in an emergency."
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setCreateOpen(false);
+                resetCreateForm();
+              }}
+            >
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleCreate}>
+              Create
+            </AppButton>
+          </div>
+        }
+      >
+        {renderContactFormFields('create')}
+      </AppFormModal>
+
+      <AppFormModal
+        open={editId !== null}
+        onClose={cancelEdit}
+        title="Edit Emergency Contact"
+        description="Update contact details or mark as primary."
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={cancelEdit}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={() => editId && handleUpdate(editId)}>
+              Save
+            </AppButton>
+          </div>
+        }
+      >
+        {renderContactFormFields('edit')}
+      </AppFormModal>
     </div>
   );
 }
@@ -1657,7 +1524,7 @@ function WorkEligibilityDocumentsSection({ userId, canEdit, workEligibilityStatu
   if (hideVisaAndImmigration) return null;
 
   return (
-    <div className="space-y-4">
+    <div className={uiSpacing.sectionStack}>
       <VisaInformationSection userId={userId} canEdit={canEdit} isRequired={false} showInlineForm={false} />
       <ImmigrationStatusDocumentSection userId={userId} canEdit={canEdit} isRequired={false} />
     </div>
@@ -1666,8 +1533,8 @@ function WorkEligibilityDocumentsSection({ userId, canEdit, workEligibilityStatu
 
 // PR Card Upload Section (for Canadian Citizen and Permanent Resident)
 function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boolean }) {
-  const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [stagingFile, setStagingFile] = useState<File | null>(null);
   const queryClient = useQueryClient();
   const { data: prCardFile, refetch } = useQuery({
     queryKey: ['pr-card-file', userId],
@@ -1675,11 +1542,7 @@ function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boo
   });
   const prCardFileId = prCardFile?.profile?.pr_card_file_id;
 
-  const handleUpload = async () => {
-    const f = fileRef.current?.files?.[0];
-    if (!f) return;
-    
-    // Validate file type
+  const uploadFile = async (f: File) => {
     const isPDF = f.type === 'application/pdf';
     const isImage = f.type.startsWith('image/');
     if (!isPDF && !isImage) {
@@ -1695,24 +1558,25 @@ function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boo
         employee_id: userId,
         category_id: 'pr-card',
         original_name: f.name,
-        content_type: f.type || 'application/pdf'
+        content_type: f.type || 'application/pdf',
       });
       const put = await fetch(up.upload_url, {
         method: 'PUT',
         headers: { 'Content-Type': f.type || 'application/pdf', 'x-ms-blob-type': 'BlockBlob' },
-        body: f
+        body: f,
       });
       if (!put.ok) throw new Error('upload failed');
       const conf: any = await api('POST', '/files/confirm', {
         key: up.key,
         size_bytes: f.size,
         checksum_sha256: 'na',
-        content_type: f.type || 'application/pdf'
+        content_type: f.type || 'application/pdf',
       });
       await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, {
-        pr_card_file_id: conf.id
+        pr_card_file_id: conf.id,
       });
       toast.success('PR Card uploaded successfully');
+      setStagingFile(null);
       await refetch();
       await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
       await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
@@ -1720,82 +1584,64 @@ function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boo
       toast.error(e?.message || 'Failed to upload PR Card');
     } finally {
       setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
   return (
-    <div className="rounded-xl border bg-white p-4">
-      <div className="mb-4 flex items-center gap-2">
-        <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
-          <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
-          </svg>
-        </div>
-        <h5 className="font-semibold text-amber-900">PR Card (Optional)</h5>
-      </div>
+    <AppCard bodyClassName={uiSpacing.sectionStack}>
+      <AppSectionHeader title="PR Card (Optional)" />
       {prCardFileId ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-            <div className="flex-1">
-              <div className="text-sm font-medium text-gray-900">PR Card Document</div>
-              <div className="text-xs text-gray-500">Document uploaded</div>
-            </div>
-            <a
-              href={withFileAccessToken(`/files/${prCardFileId}/download`)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
-            >
-              View
-            </a>
-            {canEdit && (
-              <button
-                onClick={async () => {
-                  try {
-                    await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { pr_card_file_id: null });
-                    toast.success('PR Card removed');
-                    await refetch();
-                    await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
-                    await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
-                  } catch (e: any) {
-                    toast.error(e?.message || 'Failed to remove PR Card');
-                  }
-                }}
-                className="px-3 py-1.5 rounded border border-red-300 text-red-700 text-sm font-medium hover:bg-red-50"
-              >
-                Remove
-              </button>
-            )}
+        <div className={uiCx(uiColors.surfaceSubtle, uiRadius.control, 'flex flex-wrap items-center gap-3 p-3')}>
+          <div className="min-w-0 flex-1">
+            <div className={uiTypography.sectionTitle}>PR Card Document</div>
+            <div className={uiTypography.helper}>Document uploaded</div>
           </div>
-          {canEdit && (
-            <div>
-              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
-              >
-                {uploading ? 'Uploading...' : 'Replace Document'}
-              </button>
-            </div>
-          )}
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => window.open(withFileAccessToken(`/files/${prCardFileId}/download`), '_blank', 'noopener,noreferrer')}
+          >
+            View
+          </AppButton>
+          {canEdit ? (
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="!text-red-600 hover:!bg-red-50"
+              onClick={async () => {
+                try {
+                  await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { pr_card_file_id: null });
+                  toast.success('PR Card removed');
+                  await refetch();
+                  await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
+                  await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
+                } catch (e: any) {
+                  toast.error(e?.message || 'Failed to remove PR Card');
+                }
+              }}
+            >
+              Remove
+            </AppButton>
+          ) : null}
         </div>
-      ) : (
-        canEdit && (
-          <div>
-            <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
-            >
-              {uploading ? 'Uploading...' : 'Upload Document'}
-            </button>
-          </div>
-        )
-      )}
-    </div>
+      ) : null}
+      {canEdit ? (
+        <AppFileUpload
+          mode="single"
+          value={stagingFile}
+          onChange={setStagingFile}
+          accept="image/*,.pdf"
+          label={prCardFileId ? 'Replace document' : 'Upload document'}
+          disabled={uploading}
+          onFilesSelected={async (files) => {
+            const f = files[0];
+            if (f) await uploadFile(f);
+          }}
+        />
+      ) : null}
+    </AppCard>
   );
 }
 
@@ -1824,21 +1670,16 @@ async function getOrCreatePersonalDocumentsFolder(userId: string): Promise<strin
 
 // Immigration Status Document Upload Section (optional)
 function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { userId: string; canEdit: boolean; isRequired?: boolean }) {
-  const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [stagingFile, setStagingFile] = useState<File | null>(null);
   const queryClient = useQueryClient();
-  // In onboarding, userId is always the current user, so use /auth/me/profile (no permission required)
   const { data: permitFile, refetch } = useQuery({
     queryKey: ['permit-file', userId],
     queryFn: () => api<any>('GET', '/auth/me/profile'),
   });
   const permitFileId = permitFile?.profile?.permit_file_id;
 
-  const handleUpload = async () => {
-    const f = fileRef.current?.files?.[0];
-    if (!f) return;
-    
-    // Validate file type
+  const uploadFile = async (f: File) => {
     const isPDF = f.type === 'application/pdf';
     const isImage = f.type.startsWith('image/');
     if (!isPDF && !isImage) {
@@ -1848,54 +1689,48 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
 
     setUploading(true);
     try {
-      // Step 1: Get upload URL
       const up: any = await api('POST', '/files/upload', {
         project_id: null,
         client_id: null,
         employee_id: userId,
         category_id: 'permit',
         original_name: f.name,
-        content_type: f.type || 'application/pdf'
+        content_type: f.type || 'application/pdf',
       });
-      
-      // Step 2: Upload file to storage
+
       const put = await fetch(up.upload_url, {
         method: 'PUT',
         headers: { 'Content-Type': f.type || 'application/pdf', 'x-ms-blob-type': 'BlockBlob' },
-        body: f
+        body: f,
       });
       if (!put.ok) {
         throw new Error(`Upload to storage failed: ${put.status} ${put.statusText}`);
       }
-      
-      // Step 3: Confirm upload
+
       const conf: any = await api('POST', '/files/confirm', {
         key: up.key,
         size_bytes: f.size,
         checksum_sha256: 'na',
-        content_type: f.type || 'application/pdf'
+        content_type: f.type || 'application/pdf',
       });
-      
-      // Step 4: Save to profile - in onboarding, userId is always the current user, so use /auth/me/profile (no permission required)
+
       await api('PUT', '/auth/me/profile', {
-        permit_file_id: conf.id
+        permit_file_id: conf.id,
       });
-      
-      // Step 5: Also add to Personal Documents folder (optional - don't fail if this fails)
+
       try {
         const personalFolderId = await getOrCreatePersonalDocumentsFolder(userId);
         await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, {
           folder_id: personalFolderId,
           title: `Immigration Status Document - ${f.name}`,
-          file_id: conf.id
+          file_id: conf.id,
         });
       } catch (e: any) {
         console.warn('Failed to add document to Personal Documents folder (non-critical):', e);
-        // Don't fail the whole upload if folder creation fails - the file is already saved to profile
-        // This is a nice-to-have feature, not critical for the upload
       }
-      
+
       toast.success('Immigration Status Document uploaded successfully');
+      setStagingFile(null);
       await refetch();
       await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
       await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
@@ -1907,93 +1742,78 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
       toast.error(errorMessage);
     } finally {
       setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
   return (
-    <div className="rounded-xl border bg-white p-4">
-      <div className="mb-4 flex items-center gap-2">
-        <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
-          <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
-          </svg>
-        </div>
-        <h5 className="font-semibold text-amber-900">Immigration Status Document {isRequired && <span className="text-red-600">*</span>}</h5>
-      </div>
+    <AppCard bodyClassName={uiSpacing.sectionStack}>
+      <AppSectionHeader
+        title={
+          <>
+            Immigration Status Document
+            {isRequired ? <span className="text-red-600"> *</span> : null}
+          </>
+        }
+      />
       {permitFileId ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-            <div className="flex-1">
-              <div className="text-sm font-medium text-gray-900">Immigration Status Document</div>
-              <div className="text-xs text-gray-500">Document uploaded</div>
-            </div>
-            <a
-              href={withFileAccessToken(`/files/${permitFileId}/download`)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-            >
-              View
-            </a>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    // In onboarding, userId is always the current user, so use /auth/me/profile
-                    await api('PUT', '/auth/me/profile', { permit_file_id: null });
-                    toast.success('Immigration Status Document removed');
-                    await refetch();
-                    await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
-                    await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
-                  } catch (e: any) {
-                    toast.error(e?.message || 'Failed to remove Immigration Status Document');
-                  }
-                }}
-                className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-50"
-              >
-                Remove
-              </button>
-            )}
+        <div className={uiCx(uiColors.surfaceSubtle, uiRadius.control, 'flex flex-wrap items-center gap-3 p-3')}>
+          <div className="min-w-0 flex-1">
+            <div className={uiTypography.sectionTitle}>Immigration Status Document</div>
+            <div className={uiTypography.helper}>Document uploaded</div>
           </div>
-          {canEdit && (
-            <div>
-              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
-              >
-                {uploading ? 'Uploading...' : 'Replace Document'}
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div>
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => window.open(withFileAccessToken(`/files/${permitFileId}/download`), '_blank', 'noopener,noreferrer')}
+          >
+            View
+          </AppButton>
           {canEdit ? (
-            <>
-              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
-              >
-                {uploading ? 'Uploading...' : 'Upload Document'}
-              </button>
-              {isRequired && !permitFileId && (
-                <div className="mt-2 text-sm text-red-600">Immigration Status Document is required</div>
-              )}
-            </>
-          ) : (
-            <div className="text-sm text-gray-600">No permit document uploaded</div>
-          )}
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="!text-red-600 hover:!bg-red-50"
+              onClick={async () => {
+                try {
+                  await api('PUT', '/auth/me/profile', { permit_file_id: null });
+                  toast.success('Immigration Status Document removed');
+                  await refetch();
+                  await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
+                  await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
+                } catch (e: any) {
+                  toast.error(e?.message || 'Failed to remove Immigration Status Document');
+                }
+              }}
+            >
+              Remove
+            </AppButton>
+          ) : null}
         </div>
-      )}
-    </div>
+      ) : !canEdit ? (
+        <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>No permit document uploaded</div>
+      ) : null}
+      {canEdit ? (
+        <>
+          <AppFileUpload
+            mode="single"
+            value={stagingFile}
+            onChange={setStagingFile}
+            accept="image/*,.pdf"
+            label={permitFileId ? 'Replace document' : 'Upload document'}
+            disabled={uploading}
+            onFilesSelected={async (files) => {
+              const f = files[0];
+              if (f) await uploadFile(f);
+            }}
+          />
+          {isRequired && !permitFileId ? (
+            <p className={uiCx(uiTypography.helper, 'text-red-600')}>Immigration Status Document is required</p>
+          ) : null}
+        </>
+      ) : null}
+    </AppCard>
   );
 }
 
@@ -2111,263 +1931,168 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
     }
   };
   
-  return (
-    <div className="rounded-xl border bg-white p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
-            </svg>
-          </div>
-          <h5 className="font-semibold text-amber-900">Visa Information {isRequired && <span className="text-red-600">*</span>}</h5>
+  const resetCreateForm = () => {
+    setVisaType('');
+    setVisaNumber('');
+    setIssuingCountry('');
+    setIssuedDate('');
+    setExpiryDate('');
+    setStatus('Active');
+    setNotes('');
+  };
+
+  const renderVisaFormFields = (mode: 'create' | 'edit') => {
+    const isCreate = mode === 'create';
+    return (
+      <div className={uiSpacing.sectionStack}>
+        <AppInput
+          label="Visa Type *"
+          value={isCreate ? visaType : eVisaType}
+          onChange={(e) => (isCreate ? setVisaType : setEVisaType)(e.target.value)}
+          placeholder="e.g., Work Permit"
+        />
+        <div className="grid gap-4 md:grid-cols-2">
+          <AppInput
+            label="Visa Number"
+            value={isCreate ? visaNumber : eVisaNumber}
+            onChange={(e) => (isCreate ? setVisaNumber : setEVisaNumber)(e.target.value)}
+          />
+          <AppInput
+            label="Issuing Country"
+            value={isCreate ? issuingCountry : eIssuingCountry}
+            onChange={(e) => (isCreate ? setIssuingCountry : setEIssuingCountry)(e.target.value)}
+          />
+          <AppDatePicker
+            label="Issued Date"
+            value={isCreate ? issuedDate : eIssuedDate}
+            onChange={(e) => (isCreate ? setIssuedDate : setEIssuedDate)(e.target.value)}
+          />
+          <AppDatePicker
+            label="Expiry Date"
+            value={isCreate ? expiryDate : eExpiryDate}
+            onChange={(e) => (isCreate ? setExpiryDate : setEExpiryDate)(e.target.value)}
+          />
+          <AppSelect
+            label="Status"
+            value={isCreate ? status : eStatus}
+            onChange={(e) => (isCreate ? setStatus : setEStatus)(e.target.value)}
+            options={VISA_STATUS_OPTIONS}
+          />
         </div>
-        {canEdit && !showInlineForm && data && data.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800"
-          >
-            Add Entry
-          </button>
-        ) : null}
+        <AppTextarea
+          label="Notes"
+          value={isCreate ? notes : eNotes}
+          onChange={(e) => (isCreate ? setNotes : setENotes)(e.target.value)}
+          rows={3}
+        />
       </div>
-      
-      {data && data.length > 0 ? (
-        <div className="space-y-2">
-          {data.map((v: any) => {
-            const isEditing = editId === v.id;
-            return isEditing ? (
-              <div key={v.id} className="border rounded-lg p-3 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-gray-600">Visa Type *</label>
-                    <input
-                      className="border rounded px-2 py-1 w-full text-sm"
-                      value={eVisaType}
-                      onChange={e => setEVisaType(e.target.value)}
-                    />
+    );
+  };
+
+  const rows = data || [];
+
+  return (
+    <AppCard bodyClassName={uiSpacing.sectionStack}>
+      <AppSectionHeader
+        title={
+          <>
+            Visa Information
+            {isRequired ? <span className="text-red-600"> *</span> : null}
+          </>
+        }
+      />
+
+      {rows.length === 0 ? (
+        canEdit ? (
+          <div className="flex flex-col gap-3">
+            <AppListCreateItem layout="row" label="Add visa entry" onClick={() => setCreateOpen(true)} className="w-full" />
+            {isRequired ? <p className={uiCx(uiTypography.helper, 'text-red-600')}>Visa information is required</p> : null}
+          </div>
+        ) : (
+          <div className={uiCx(uiTypography.helper, 'font-medium text-gray-900')}>—</div>
+        )
+      ) : (
+        <div className="flex flex-col gap-3">
+          {canEdit ? (
+            <AppListCreateItem layout="row" label="Add visa entry" onClick={() => setCreateOpen(true)} className="w-full" />
+          ) : null}
+          {rows.map((v: any) => (
+            <AppCard key={v.id} bodyClassName="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className={uiTypography.sectionTitle}>{v.visa_type}</div>
+                  <div className={uiTypography.helper}>
+                    {[v.visa_number && `#${v.visa_number}`, v.issuing_country].filter(Boolean).join(' · ')}
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-600">Visa Number</label>
-                    <input
-                      className="border rounded px-2 py-1 w-full text-sm"
-                      value={eVisaNumber}
-                      onChange={e => setEVisaNumber(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">Issuing Country</label>
-                    <input
-                      className="border rounded px-2 py-1 w-full text-sm"
-                      value={eIssuingCountry}
-                      onChange={e => setEIssuingCountry(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">Status</label>
-                    <select
-                      className="border rounded px-2 py-1 w-full text-sm"
-                      value={eStatus}
-                      onChange={e => setEStatus(e.target.value)}
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Expired">Expired</option>
-                      <option value="Pending">Pending</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">Issued Date</label>
-                    <input
-                      type="date"
-                      className="border rounded px-2 py-1 w-full text-sm"
-                      value={eIssuedDate}
-                      onChange={e => setEIssuedDate(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">Expiry Date</label>
-                    <input
-                      type="date"
-                      className="border rounded px-2 py-1 w-full text-sm"
-                      value={eExpiryDate}
-                      onChange={e => setEExpiryDate(e.target.value)}
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-xs text-gray-600">Notes</label>
-                    <textarea
-                      className="border rounded px-2 py-1 w-full text-sm"
-                      value={eNotes}
-                      onChange={e => setENotes(e.target.value)}
-                      rows={2}
-                    />
-                  </div>
-                </div>
-                <div className="text-right space-x-2">
-                  <button onClick={cancelEdit} className="px-2 py-1 rounded bg-gray-100 text-xs hover:bg-gray-200">
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => handleUpdate(v.id)}
-                    className="px-2 py-1 rounded bg-amber-600 text-white text-xs hover:opacity-90"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div key={v.id} className="border rounded-lg p-3 flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="font-medium">{v.visa_type}</div>
-                  <div className="text-sm text-gray-600">
-                    {v.visa_number && `#${v.visa_number}`} {v.issuing_country && `· ${v.issuing_country}`}
-                  </div>
-                  <div className="text-xs text-gray-500">
+                  <div className={uiCx(uiTypography.helper, 'mt-1 text-gray-500')}>
                     {v.issued_date ? String(v.issued_date).slice(0, 10) : ''}
                     {v.issued_date && v.expiry_date ? ' — ' : ''}
                     {v.expiry_date ? String(v.expiry_date).slice(0, 10) : ''}
                   </div>
                 </div>
-                {canEdit && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => beginEdit(v)}
-                      className="px-2 py-1 rounded bg-gray-100 text-xs hover:bg-gray-200"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(v.id)}
-                      className="px-2 py-1 rounded bg-gray-100 text-xs hover:bg-gray-200"
-                    >
-                      Delete
-                    </button>
+                {canEdit ? (
+                  <div className={uiCx(uiLayout.actionsRow, 'shrink-0')}>
+                    <AppListRowIconButton preset="edit" label="Edit record" onClick={() => beginEdit(v)} />
+                    <AppListRowIconButton preset="delete" label="Delete record" onClick={() => handleDelete(v.id)} />
                   </div>
-                )}
+                ) : null}
               </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="py-6">
-          {canEdit ? (
-            <div className="flex flex-col items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => setCreateOpen(true)}
-                className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800"
-              >
-                Add Entry
-              </button>
-              {isRequired ? <p className="text-sm text-red-600">Visa information is required</p> : null}
-            </div>
-          ) : (
-            <p className="text-center text-sm text-gray-500">—</p>
-          )}
+            </AppCard>
+          ))}
         </div>
       )}
-      
-      {createOpen && (
-        <OverlayPortal>
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between">
-              <div className="font-semibold">Add Visa Entry</div>
-              <button
-                onClick={() => {
-                  setCreateOpen(false);
-                  setVisaType('');
-                  setVisaNumber('');
-                  setIssuingCountry('');
-                  setIssuedDate('');
-                  setExpiryDate('');
-                  setStatus('Active');
-                  setNotes('');
-                }}
-                className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-4 grid md:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-gray-600">Visa Type *</label>
-                <input
-                  className="border rounded px-3 py-2 w-full"
-                  value={visaType}
-                  onChange={e => setVisaType(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Visa Number</label>
-                <input
-                  className="border rounded px-3 py-2 w-full"
-                  value={visaNumber}
-                  onChange={e => setVisaNumber(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Issuing Country</label>
-                <input
-                  className="border rounded px-3 py-2 w-full"
-                  value={issuingCountry}
-                  onChange={e => setIssuingCountry(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Status</label>
-                <select
-                  className="border rounded px-3 py-2 w-full"
-                  value={status}
-                  onChange={e => setStatus(e.target.value)}
-                >
-                  <option value="Active">Active</option>
-                  <option value="Expired">Expired</option>
-                  <option value="Pending">Pending</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Issued Date</label>
-                <input
-                  type="date"
-                  className="border rounded px-3 py-2 w-full"
-                  value={issuedDate}
-                  onChange={e => setIssuedDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Expiry Date</label>
-                <input
-                  type="date"
-                  className="border rounded px-3 py-2 w-full"
-                  value={expiryDate}
-                  onChange={e => setExpiryDate(e.target.value)}
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="text-xs text-gray-600">Notes</label>
-                <textarea
-                  className="border rounded px-3 py-2 w-full"
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  rows={3}
-                />
-              </div>
-              <div className="col-span-2 text-right">
-                <button
-                  onClick={handleCreate}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold hover:opacity-90"
-                >
-                  Create
-                </button>
-              </div>
-            </div>
+
+      <AppFormModal
+        open={createOpen}
+        onClose={() => {
+          setCreateOpen(false);
+          resetCreateForm();
+        }}
+        title="Add Visa Entry"
+        description="Work permit, study permit, or other visa details."
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setCreateOpen(false);
+                resetCreateForm();
+              }}
+            >
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleCreate}>
+              Create
+            </AppButton>
           </div>
-        </div>
-        </OverlayPortal>
-      )}
-    </div>
+        }
+      >
+        {renderVisaFormFields('create')}
+      </AppFormModal>
+
+      <AppFormModal
+        open={editId !== null}
+        onClose={cancelEdit}
+        title="Edit Visa Entry"
+        description="Update visa details."
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={cancelEdit}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={() => editId && handleUpdate(editId)}>
+              Save
+            </AppButton>
+          </div>
+        }
+      >
+        {renderVisaFormFields('edit')}
+      </AppFormModal>
+    </AppCard>
   );
 }
 

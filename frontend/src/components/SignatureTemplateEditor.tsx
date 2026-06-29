@@ -1,10 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Plus } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { api, getToken } from '@/lib/api';
 import { overlayPxToPdfRect, pdfRectToOverlayStyle, type PdfRect } from '@/lib/pdfCoordinates';
-import OverlayPortal from '@/components/OverlayPortal';
+import { onboardingSignatureTemplateQuickInfo } from '@/lib/formModalQuickInfo';
 import { useConfirm } from '@/components/ConfirmProvider';
+import {
+  AppButton,
+  AppCard,
+  AppCheckbox,
+  AppFormModal,
+  AppSectionHeader,
+  AppSelect,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -102,6 +117,16 @@ function newField(t: TemplateFieldType, pageIndex: number, rect?: PdfRect): Temp
   if (t === 'employee_info') base.employee_info_key = 'full_name';
   return base;
 }
+
+const EMPLOYEE_INFO_OPTIONS = Object.entries(EMPLOYEE_INFO_KEY_LABELS).map(([value, label]) => ({ value, label }));
+
+const ASSIGNEE_OPTIONS = [
+  { value: 'employee', label: 'Employee' },
+  { value: 'user', label: 'User' },
+];
+
+const SIG_TEMPLATE_DIALOG_COLLAPSED = '!max-w-[1400px] !w-[min(1400px,95vw)]';
+const SIG_TEMPLATE_DIALOG_EXPANDED = '!max-w-[calc(1400px+16rem+1.5rem)] !w-[min(calc(1400px+16rem+1.5rem),95vw)]';
 
 type Props = {
   docId: string;
@@ -595,85 +620,106 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
   };
 
   return (
-    <OverlayPortal>
-    <div
-      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
-      onClick={() => void tryClose()}
-    >
-      <div
-        className="w-[1400px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                type="button"
-                onClick={() => void tryClose()}
-                className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center flex-shrink-0"
-                title="Close"
-              >
-                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-              </button>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-gray-900">Edit Signature Template</div>
-                <div className="text-xs text-gray-500 mt-0.5 truncate" title={docName}>
-                  {docName}
-                </div>
-                <div className="text-xs text-gray-500 mt-0.5">Define signature fields and placement on the PDF.</div>
-              </div>
-            </div>
-          </div>
+    <AppFormModal
+      open
+      onClose={() => void tryClose()}
+      title="Edit Signature Template"
+      description={
+        <>
+          <span className="block truncate" title={docName}>
+            {docName}
+          </span>
+          <span className="block">Define signature fields and placement on the PDF.</span>
+        </>
+      }
+      layout="detail"
+      size="lg"
+      dialogClassName={SIG_TEMPLATE_DIALOG_COLLAPSED}
+      dialogClassNameExpanded={SIG_TEMPLATE_DIALOG_EXPANDED}
+      quickInfo={onboardingSignatureTemplateQuickInfo}
+      scrollBody={false}
+      bodyClassName="!p-4 flex min-h-0 flex-1 flex-col overflow-hidden"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={() => void tryClose()}>
+            Cancel
+          </AppButton>
+          <AppButton
+            type="button"
+            size="sm"
+            loading={saving}
+            disabled={saving || loading || !!loadErr}
+            onClick={() => void save()}
+          >
+            Save template
+          </AppButton>
         </div>
-
-        <div className="flex-1 min-h-0 overflow-hidden p-4 flex flex-col">
-          <div className="flex min-h-0 flex-1 flex-col md:flex-row gap-4 overflow-hidden">
-            <div className="flex min-h-[min(40vh,320px)] flex-1 min-w-0 flex-col md:min-h-0">
-              <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm p-2 sm:p-3">
-            {loading && <div className="rounded-lg bg-white p-6 text-sm text-gray-600 shadow">Loading PDF…</div>}
-            {loadErr && <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">{loadErr}</div>}
-            {!loading && !loadErr && pdf && (
+      }
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden md:flex-row">
+        <div className="flex min-h-[min(40vh,320px)] min-w-0 flex-1 flex-col md:min-h-0">
+          <div
+            ref={scrollContainerRef}
+            className={uiCx(
+              'min-h-0 flex-1 overflow-y-auto bg-white p-2 sm:p-3',
+              uiRadius.card,
+              uiBorders.subtle,
+            )}
+          >
+            {loading ? (
+              <div className={uiCx(uiTypography.body, uiSpacing.cardPadding)}>Loading PDF…</div>
+            ) : null}
+            {loadErr ? (
+              <div className={uiCx('bg-red-50 p-4 text-red-700', uiRadius.control, uiTypography.body)}>{loadErr}</div>
+            ) : null}
+            {!loading && !loadErr && pdf ? (
               <div className="mx-auto max-w-full space-y-6">
-                <div className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs shadow">
-                  <span className="font-medium text-gray-600">Zoom</span>
-                  <button
+                <div className={uiCx('flex flex-wrap items-center gap-2 px-3 py-2', uiRadius.control, uiBorders.subtle, 'bg-white')}>
+                  <span className={uiTypography.controlLabel}>Zoom</span>
+                  <AppButton
                     type="button"
-                    className="rounded border border-gray-200 px-2 py-0.5 hover:bg-gray-50"
+                    variant="secondary"
+                    size="sm"
+                    className="min-w-8 px-2"
                     onClick={() => setScale((s) => Math.max(0.6, s - 0.1))}
                   >
                     −
-                  </button>
-                  <span className="tabular-nums">{Math.round(scale * 100)}%</span>
-                  <button
+                  </AppButton>
+                  <span className={uiCx('tabular-nums', uiTypography.body)}>{Math.round(scale * 100)}%</span>
+                  <AppButton
                     type="button"
-                    className="rounded border border-gray-200 px-2 py-0.5 hover:bg-gray-50"
+                    variant="secondary"
+                    size="sm"
+                    className="min-w-8 px-2"
                     onClick={() => setScale((s) => Math.min(2.5, s + 0.1))}
                   >
                     +
-                  </button>
+                  </AppButton>
                   <span className="mx-2 text-gray-300">|</span>
-                  <span className="text-gray-600">Page</span>
-                  <button
+                  <span className={uiTypography.body}>Page</span>
+                  <AppButton
                     type="button"
-                    className="rounded border border-gray-200 px-2 py-0.5 hover:bg-gray-50 disabled:opacity-40"
+                    variant="secondary"
+                    size="sm"
+                    className="min-w-8 px-2"
                     disabled={pageUi <= 1}
                     onClick={() => goPage(-1)}
                   >
                     ‹
-                  </button>
-                  <span className="tabular-nums">
+                  </AppButton>
+                  <span className={uiCx('tabular-nums', uiTypography.body)}>
                     {pageUi} / {numPages}
                   </span>
-                  <button
+                  <AppButton
                     type="button"
-                    className="rounded border border-gray-200 px-2 py-0.5 hover:bg-gray-50 disabled:opacity-40"
+                    variant="secondary"
+                    size="sm"
+                    className="min-w-8 px-2"
                     disabled={pageUi >= numPages}
                     onClick={() => goPage(1)}
                   >
                     ›
-                  </button>
+                  </AppButton>
                 </div>
 
                 {Array.from({ length: numPages }, (_, pi) => {
@@ -729,132 +775,100 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
                           );
                         })}
                       </div>
-                      <div className="absolute -bottom-5 left-0 text-[10px] text-gray-500">Page {pi + 1}</div>
+                      <div className={uiCx('absolute -bottom-5 left-0', uiTypography.helper)}>Page {pi + 1}</div>
                     </div>
                   );
                 })}
               </div>
-            )}
-              </div>
-            </div>
+            ) : null}
+          </div>
+        </div>
 
-            <aside className="flex w-full min-h-[min(36vh,280px)] shrink-0 flex-col md:w-80 md:min-h-0">
-              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm p-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Signature setup</div>
-            <p className="mt-1 text-[11px] leading-snug text-gray-600">
-              New fields are placed in the part of the PDF you are currently looking at (scroll the PDF or use Page ‹ ›), and
-              the view scrolls so the new field is visible. Saved positions use PDF coordinates (bottom-left origin). With a field
-              selected, use Ctrl+C / Ctrl+V (Cmd on Mac) to copy and paste a duplicate (offset slightly; paste uses the page
-              in view).
-            </p>
-            <div className="mt-4 space-y-1.5">
+        <aside className="flex w-full min-h-[min(36vh,280px)] shrink-0 flex-col md:w-80 md:min-h-0">
+          <AppCard className="flex min-h-0 flex-1 flex-col overflow-hidden" bodyClassName={uiCx(uiSpacing.cardPadding, 'flex min-h-0 flex-1 flex-col overflow-y-auto')}>
+            <AppSectionHeader
+              title="Signature setup"
+              description="Add a field type to place it on the page you are viewing."
+            />
+            <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
               {FIELD_TYPES.map(({ type, label }) => (
-                <button
+                <AppButton
                   key={type}
                   type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="w-full justify-start"
                   disabled={!pdf || loading}
+                  leftIcon={<Plus className="h-3.5 w-3.5" />}
                   onClick={() => addField(type)}
-                  className="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs font-medium text-gray-800 hover:bg-amber-50 disabled:opacity-40"
                 >
-                  <span className="text-gray-500">+</span> {label}
-                </button>
+                  {label}
+                </AppButton>
               ))}
             </div>
 
-            {selected && (
-              <div className="mt-6 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs">
-                <div className="font-semibold text-gray-800">Field properties</div>
-                <label className="block">
-                  <span className="text-gray-600">Who completes</span>
-                  <select
-                    className="mt-1 w-full rounded border border-gray-200 px-2 py-1"
+            {selected ? (
+              <AppCard className="mt-6" bodyClassName={uiSpacing.cardPadding}>
+                <AppSectionHeader title="Field properties" />
+                <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
+                  <AppSelect
+                    label="Who completes"
                     value={selected.assignee}
+                    options={ASSIGNEE_OPTIONS}
                     onChange={(e) =>
                       setFields((fs) =>
-                        fs.map((x) => (x.id === selected.id ? { ...x, assignee: e.target.value as 'employee' | 'user' } : x)),
+                        fs.map((x) =>
+                          x.id === selected.id ? { ...x, assignee: e.target.value as 'employee' | 'user' } : x,
+                        ),
                       )
                     }
-                  >
-                    <option value="employee">Employee</option>
-                    <option value="user">User</option>
-                  </select>
-                </label>
-                {selected.type === 'employee_info' && (
-                  <label className="block">
-                    <span className="text-gray-600">Info</span>
-                    <select
-                      className="mt-1 w-full rounded border border-gray-200 px-2 py-1"
+                    fieldHint="Who completes\n\nEmployee = the new hire fills this field. User = a specific signer assigned to the document."
+                  />
+                  {selected.type === 'employee_info' ? (
+                    <AppSelect
+                      label="Info"
                       value={selected.employee_info_key || 'full_name'}
+                      options={EMPLOYEE_INFO_OPTIONS}
                       onChange={(e) =>
                         setFields((fs) =>
                           fs.map((x) => (x.id === selected.id ? { ...x, employee_info_key: e.target.value } : x)),
                         )
                       }
-                    >
-                      <option value="full_name">Full name</option>
-                      <option value="first_name">First name</option>
-                      <option value="last_name">Last name</option>
-                      <option value="email">Email</option>
-                      <option value="phone">Phone</option>
-                      <option value="job_title">Job title</option>
-                      <option value="hire_date">Hire date</option>
-                      <option value="date_of_birth">Date of birth</option>
-                      <option value="sin_number">SIN number</option>
-                      <option value="address">Address</option>
-                      <option value="city">City</option>
-                      <option value="province">Province</option>
-                      <option value="postal_code">Postal code</option>
-                    </select>
-                  </label>
-                )}
-                {selected.type === 'value' && (
-                  <p className="text-gray-600 leading-snug">
-                    The signer will enter a <span className="font-medium">Canadian dollar (CAD)</span> amount when
-                    signing. Placement and label are defined here only.
-                  </p>
-                )}
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
+                      fieldHint="Info\n\nWhich employee profile value is printed in this field when the document is generated."
+                    />
+                  ) : null}
+                  {selected.type === 'value' ? (
+                    <p className={uiTypography.helper}>
+                      The signer will enter a <span className="font-medium">Canadian dollar (CAD)</span> amount when
+                      signing. Placement and label are defined here only.
+                    </p>
+                  ) : null}
+                  <AppCheckbox
+                    label="Required"
                     checked={selected.required}
-                    onChange={(e) =>
-                      setFields((fs) => fs.map((x) => (x.id === selected.id ? { ...x, required: e.target.checked } : x)))
+                    onChange={(checked) =>
+                      setFields((fs) => fs.map((x) => (x.id === selected.id ? { ...x, required: checked } : x)))
                     }
+                    fieldHint="Required\n\nWhen checked, the signer must complete this field before the document can be submitted."
                   />
-                  Required
-                </label>
-                <button
-                  type="button"
-                  className="w-full rounded border border-red-200 bg-white py-1.5 text-red-700 hover:bg-red-50"
-                  onClick={() => {
-                    setFields((fs) => fs.filter((x) => x.id !== selected.id));
-                    setSelectedId(null);
-                  }}
-                >
-                  Remove field
-                </button>
-              </div>
-            )}
-              </div>
-            </aside>
-          </div>
-        </div>
-
-        <footer className="flex flex-shrink-0 items-center gap-3 border-t border-gray-200 bg-white px-4 py-3">
-          <button
-            type="button"
-            disabled={saving || loading || !!loadErr}
-            onClick={() => void save()}
-            className="rounded-lg bg-amber-700 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save template'}
-          </button>
-          <button type="button" onClick={() => void tryClose()} className="text-sm text-gray-600 hover:text-gray-900">
-            Cancel
-          </button>
-        </footer>
+                  <AppButton
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      setFields((fs) => fs.filter((x) => x.id !== selected.id));
+                      setSelectedId(null);
+                    }}
+                  >
+                    Remove field
+                  </AppButton>
+                </div>
+              </AppCard>
+            ) : null}
+          </AppCard>
+        </aside>
       </div>
-    </div>
-    </OverlayPortal>
+    </AppFormModal>
   );
 }

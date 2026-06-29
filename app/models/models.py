@@ -2998,6 +2998,120 @@ class CompanyCreditCardAssignment(Base):
 
 
 # =====================
+# HR Offboarding
+# =====================
+
+
+class OffboardingCase(Base):
+    """Employee offboarding case — orchestrates departure without duplicating subsystems."""
+
+    __tablename__ = "offboarding_cases"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False, index=True)
+    termination_type: Mapped[Optional[str]] = mapped_column(String(32))
+    last_working_day: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    internal_notes: Mapped[Optional[str]] = mapped_column(Text)
+    access_revocation_timing: Mapped[Optional[str]] = mapped_column(String(32))
+    access_revoke_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    access_revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    access_revoked_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    access_revocation_reason: Mapped[Optional[str]] = mapped_column(Text)
+    snapshot_employee_name: Mapped[Optional[str]] = mapped_column(String(255))
+    snapshot_position: Mapped[Optional[str]] = mapped_column(String(255))
+    snapshot_division: Mapped[Optional[str]] = mapped_column(String(255))
+    snapshot_manager_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    snapshot_manager_name: Mapped[Optional[str]] = mapped_column(String(255))
+    snapshot_termination_date_at_create: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    user = relationship("User", foreign_keys=[user_id])
+    asset_links = relationship("OffboardingAssetLink", back_populates="case", cascade="all, delete-orphan")
+    checklist_items = relationship("OffboardingChecklistItem", back_populates="case", cascade="all, delete-orphan")
+    activity_logs = relationship("OffboardingActivityLog", back_populates="case", cascade="all, delete-orphan", order_by="OffboardingActivityLog.created_at.desc()")
+
+    __table_args__ = (
+        Index(
+            "uq_offboarding_active_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status IN ('draft', 'in_progress')"),
+        ),
+        Index("idx_offboarding_status_created", "status", "created_at"),
+    )
+
+
+class OffboardingAssetLink(Base):
+    """Snapshot of assets linked when offboarding started; live return status resolved at read time."""
+
+    __tablename__ = "offboarding_asset_links"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    offboarding_case_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("offboarding_cases.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    asset_name_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
+    asset_type_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    assigned_at_snapshot: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    status_at_case_creation: Mapped[Optional[str]] = mapped_column(String(50))
+    fleet_asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)
+    equipment_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+    case = relationship("OffboardingCase", back_populates="asset_links")
+
+    __table_args__ = (
+        Index("idx_offboarding_asset_link_case_source", "offboarding_case_id", "source_type", "source_id"),
+    )
+
+
+class OffboardingChecklistItem(Base):
+    __tablename__ = "offboarding_checklist_items"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    offboarding_case_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("offboarding_cases.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    item_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_not_applicable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    completed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    case = relationship("OffboardingCase", back_populates="checklist_items")
+
+    __table_args__ = (
+        Index("idx_offboarding_checklist_case_key", "offboarding_case_id", "item_key", unique=True),
+    )
+
+
+class OffboardingActivityLog(Base):
+    __tablename__ = "offboarding_activity_logs"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    offboarding_case_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("offboarding_cases.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    action: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    details: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    case = relationship("OffboardingCase", back_populates="activity_logs")
+    created_by_user = relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (
+        Index("idx_offboarding_activity_case_created", "offboarding_case_id", "created_at"),
+    )
+
+
+# =====================
 # Training & Certification domain
 # =====================
 

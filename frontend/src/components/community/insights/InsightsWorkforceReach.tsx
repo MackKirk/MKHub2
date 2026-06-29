@@ -1,16 +1,17 @@
 import { Donut, type DonutSlice } from './InsightsCharts';
 import { InsightsSection } from './InsightsSection';
 import type { WorkforceReach } from './insightsTypes';
+import { AppCard, uiCx, uiTypography } from '@/components/ui';
 
 function MiniStat({ label, value, unit }: { label: string; value: number | string; unit?: string }) {
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 min-w-0">
-      <div className="text-[10px] uppercase tracking-wide text-gray-500 break-words leading-tight">{label}</div>
-      <div className="mt-1 text-base font-semibold text-gray-900 tabular-nums">
+    <AppCard bodyClassName="space-y-1">
+      <div className={uiCx(uiTypography.overline, 'break-words leading-tight')}>{label}</div>
+      <div className="text-base font-semibold tabular-nums text-gray-900">
         {value}
-        {unit ? <span className="text-xs font-medium text-gray-500 ml-0.5">{unit}</span> : null}
+        {unit ? <span className="ml-0.5 text-xs font-medium text-gray-500">{unit}</span> : null}
       </div>
-    </div>
+    </AppCard>
   );
 }
 
@@ -35,8 +36,8 @@ export function InsightsWorkforceReach({ reach }: { reach: WorkforceReach }) {
       title="Workforce reach"
       subtitle="Share of the active workforce engaging with the community"
     >
-      <div className="flex flex-col md:flex-row items-center gap-5 min-w-0 w-full">
-        <div className="flex-shrink-0 flex items-center justify-center">
+      <div className="flex w-full min-w-0 flex-col items-center gap-5 md:flex-row">
+        <div className="flex shrink-0 items-center justify-center">
           <Donut
             slices={slices}
             size={170}
@@ -46,7 +47,7 @@ export function InsightsWorkforceReach({ reach }: { reach: WorkforceReach }) {
             formatValue={(v, pct) => `${v.toLocaleString()} (${pct.toFixed(0)}%)`}
           />
         </div>
-        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 w-full min-w-0">
+        <div className="grid w-full min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
           <MiniStat label="Active members" value={reach.active_members.toLocaleString()} />
           <MiniStat label="Total members" value={reach.total_members.toLocaleString()} />
           <MiniStat label="Posts / active user" value={reach.posts_per_active_user.toFixed(2)} />
