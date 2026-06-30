@@ -41,6 +41,7 @@ import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
 import OverlayPortal from '@/components/OverlayPortal';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
+import { findLeakInvestigationDivisionId, projectHasLeakInvestigationDivision } from '@/lib/leakInvestigation';
 import {
   hasProjectFeaturePermission,
   hasProjectFeatureReadPermission,
@@ -109,11 +110,10 @@ const HERO_EXPAND_BASE_MS = 1400;
 const HERO_COLLAPSE_MS = 650;
 const OPPORTUNITY_HERO_COLLAPSED_PX = 72;
 
-function salesListPaths(project: { business_line?: string; is_bidding?: boolean; is_leak_investigation?: boolean } | undefined | null) {
+function salesListPaths(project: { business_line?: string; is_bidding?: boolean } | undefined | null) {
   const rm = project?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
   return {
     opportunities: rm ? '/rm-opportunities' : '/opportunities',
-    leakInvestigations: rm ? '/rm-leak-investigations' : '/opportunities',
     projects: rm ? '/rm-projects' : '/projects',
   };
 }
@@ -875,7 +875,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, is_leak_investigation?:boolean, related_leak_investigation_id?:string|null, related_leak_investigation?: { id: string; name?: string | null; code?: string | null } | null, leak_investigation_links?: { id: string; name?: string | null; code?: string | null; is_bidding: boolean }[], lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, related_leak_investigation_id?:string|null, related_leak_investigation?: { id: string; name?: string | null; code?: string | null } | null, leak_investigation_links?: { id: string; name?: string | null; code?: string | null; is_bidding: boolean }[], lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
 
 function projectAwardedRelatedIdsSet(proj: Project | null | undefined): Set<string> {
   const raw = proj?.awarded_related_client_ids;
@@ -944,11 +944,7 @@ export default function ProjectDetail(){
       ),
     enabled: !!id,
   });
-  const isLeakInvestigation = !!proj?.is_leak_investigation;
-  const isOpportunityStyleTabs = !!(proj?.is_bidding || isLeakInvestigation);
-  // Route-based layout (not API) so design system renders on first paint — same pattern as projects.
-  const isLeakInvestigationDetailRoute =
-    location.pathname.startsWith('/rm-leak-investigations/');
+  const isOpportunityStyleTabs = !!proj?.is_bidding;
   const isOpportunityDetailRoute =
     location.pathname.startsWith('/opportunities/') ||
     location.pathname.startsWith('/rm-opportunities/');
@@ -956,7 +952,7 @@ export default function ProjectDetail(){
     location.pathname.startsWith('/projects/') ||
     location.pathname.startsWith('/rm-projects/');
   const useDesignSystem =
-    isLeakInvestigationDetailRoute || isOpportunityDetailRoute || isProjectDetailRoute;
+    isOpportunityDetailRoute || isProjectDetailRoute;
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:projectDivisions } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`), enabled: !!id && !signOnlySafetySession });
@@ -991,6 +987,7 @@ export default function ProjectDetail(){
     () => filterProjectDivisionsForBusinessLine(projectDivisions, projectBusinessLine),
     [projectDivisions, projectBusinessLine]
   );
+  const isLeakInvestigation = projectHasLeakInvestigationDivision(proj, projectDivisionsForPicker);
   const hasEditPermission = isAdmin || permissions.has('business:projects:write');
   const canEditEstimate = isAdmin || permissions.has('business:projects:estimate:write');
   const hasAdministratorAccess = isAdmin || permissions.has('users:write');
@@ -1071,7 +1068,7 @@ export default function ProjectDetail(){
     }
   }, [tab, signOnlySafetySession]);
 
-  const showBillingSection = !tab && !proj?.is_bidding && !isLeakInvestigation;
+  const showBillingSection = !tab && !proj?.is_bidding;
   
   const cover = useMemo(()=>{
     const arr = (files||[]) as ProjectFile[];
@@ -1310,11 +1307,7 @@ export default function ProjectDetail(){
 
   // Helper function to get page title based on active tab
   const getPageTitle = (proj: any, activeTab: typeof tab): string => {
-    const baseTitle = proj?.is_bidding
-      ? 'Opportunity Information'
-      : proj?.is_leak_investigation
-        ? 'Leak investigation'
-        : 'Project Information';
+    const baseTitle = proj?.is_bidding ? 'Opportunity Information' : 'Project Information';
     if (!activeTab || activeTab === 'overview') {
       return baseTitle;
     }
@@ -1337,7 +1330,7 @@ export default function ProjectDetail(){
   // Helper function to get page description based on active tab
   const getPageDescription = (proj: any, activeTab: typeof tab): string => {
     if (!activeTab || activeTab === 'overview') {
-      return proj?.is_bidding || proj?.is_leak_investigation
+      return proj?.is_bidding
         ? 'Overview, files, proposal and estimate.'
         : 'Overview, files, schedule and contacts.';
     }
@@ -1363,7 +1356,7 @@ export default function ProjectDetail(){
     }
     const sp = salesListPaths(proj);
     if (proj?.is_bidding) nav(sp.opportunities);
-    else if (proj?.is_leak_investigation) nav(sp.leakInvestigations);
+    else if (isLeakInvestigation) nav(sp.projects);
     else nav(sp.projects);
   };
 
@@ -1372,9 +1365,7 @@ export default function ProjectDetail(){
       ? 'Back to Overview'
       : proj?.is_bidding
         ? 'Back to Opportunities'
-        : proj?.is_leak_investigation
-          ? 'Back to Leak investigations'
-          : 'Back to Projects';
+        : 'Back to Projects';
 
   const heroCardShell = (extra: string) =>
     useDesignSystem
@@ -1486,7 +1477,7 @@ export default function ProjectDetail(){
   }, [isOpportunityDetailRoute, proj, hasEditPermission]);
 
   const leakCreateRelatedOpportunityAction = useMemo(() => {
-    if (!isLeakInvestigationDetailRoute || !hasEditPermission || !id) return null;
+    if (!(isProjectDetailRoute && isLeakInvestigation) || !hasEditPermission || !id) return null;
     const qs = new URLSearchParams();
     qs.set('is_bidding', 'true');
     qs.set('related_leak_investigation_id', String(id));
@@ -1505,7 +1496,7 @@ export default function ProjectDetail(){
         Create related Opportunity
       </AppButton>
     );
-  }, [isLeakInvestigationDetailRoute, hasEditPermission, id, proj?.client_id, proj?.site_id, proj?.estimator_id, nav]);
+  }, [isProjectDetailRoute && isLeakInvestigation, hasEditPermission, id, proj?.client_id, proj?.site_id, proj?.estimator_id, nav]);
 
   const PageShell = useDesignSystem ? 'main' : 'div';
 
@@ -1521,7 +1512,7 @@ export default function ProjectDetail(){
           title={getPageTitle(proj, tab)}
           subtitle={getPageDescription(proj, tab)}
           icon={
-            isLeakInvestigationDetailRoute ? (
+            isProjectDetailRoute && isLeakInvestigation ? (
               <ClipboardList className="h-4 w-4" />
             ) : isProjectDetailRoute ? (
               <FolderKanban className="h-4 w-4" />
@@ -1791,7 +1782,7 @@ export default function ProjectDetail(){
                           </div>
                           {proj?.related_leak_investigation_id ? (
                             <Link
-                              to={`/rm-leak-investigations/${encodeURIComponent(String(proj.related_leak_investigation_id))}`}
+                              to={`/rm-projects/${encodeURIComponent(String(proj.related_leak_investigation_id))}`}
                               className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
                             >
                               {(proj?.related_leak_investigation?.name || '').trim() || 'Open leak investigation'}
@@ -2029,7 +2020,7 @@ export default function ProjectDetail(){
                           </div>
                           {proj?.related_leak_investigation_id ? (
                             <Link
-                              to={`/rm-leak-investigations/${encodeURIComponent(String(proj.related_leak_investigation_id))}`}
+                              to={`/rm-projects/${encodeURIComponent(String(proj.related_leak_investigation_id))}`}
                               className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
                             >
                               {(proj?.related_leak_investigation?.name || '').trim() || 'Open leak investigation'}
@@ -2623,7 +2614,7 @@ export default function ProjectDetail(){
             useDesignSystem={useDesignSystem}
             isHeroCollapsed={isHeroCollapsed}
             headerEnd={
-              isLeakInvestigationDetailRoute
+              isProjectDetailRoute && isLeakInvestigation
                 ? leakCreateRelatedOpportunityAction
                 : isOpportunityDetailRoute && proj?.is_bidding
                   ? opportunityConvertHeaderAction
@@ -2849,7 +2840,7 @@ export default function ProjectDetail(){
       {/* Create related opportunity — legacy layout only (DS: tab card headerEnd) */}
       {!isOpportunityDetailRoute &&
         !tab &&
-        proj?.is_leak_investigation &&
+        isLeakInvestigation &&
         hasEditPermission &&
         (() => {
           const qs = new URLSearchParams();
@@ -2982,10 +2973,10 @@ export default function ProjectDetail(){
                   const result = await confirm({
                     title: proj?.is_bidding
                       ? 'Delete Opportunity'
-                      : proj?.is_leak_investigation
-                        ? 'Delete Leak investigation'
+                      : isLeakInvestigation
+                        ? 'Delete Project'
                         : 'Delete Project',
-                    message: `Are you sure you want to delete "${proj?.name || (proj?.is_bidding ? 'this opportunity' : proj?.is_leak_investigation ? 'this leak investigation' : 'this project')}"? This action cannot be undone.${proj?.is_bidding || proj?.is_leak_investigation ? '' : ' All related data (updates, notes, timesheets) will also be deleted.'}`,
+                    message: `Are you sure you want to delete "${proj?.name || (proj?.is_bidding ? 'this opportunity' : 'this project')}"? This action cannot be undone.${proj?.is_bidding ? '' : ' All related data (updates, notes, timesheets) will also be deleted.'}`,
                     confirmText: 'Delete',
                     cancelText: 'Cancel',
                   });
@@ -2995,12 +2986,11 @@ export default function ProjectDetail(){
                     toast.success(
                       proj?.is_bidding
                         ? 'Opportunity deleted'
-                        : proj?.is_leak_investigation
-                          ? 'Leak investigation deleted'
+                        : isLeakInvestigation
+                          ? 'Project deleted'
                           : 'Project deleted',
                     );
                     queryClient.removeQueries({ queryKey: ['opportunities'] });
-                    queryClient.removeQueries({ queryKey: ['leak-investigations'] });
                     queryClient.removeQueries({ queryKey: ['projects'] });
                     await Promise.all([
                       queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
@@ -3012,15 +3002,15 @@ export default function ProjectDetail(){
                     } else {
                       const sp = salesListPaths(proj);
                       if (proj?.is_bidding) nav(sp.opportunities);
-                      else if (proj?.is_leak_investigation) nav(sp.leakInvestigations);
+                      else if (isLeakInvestigation) nav(sp.projects);
                       else nav(sp.projects);
                     }
                   } catch (_e) {
                     toast.error(
                       proj?.is_bidding
                         ? 'Failed to delete opportunity'
-                        : proj?.is_leak_investigation
-                          ? 'Failed to delete leak investigation'
+                        : isLeakInvestigation
+                          ? 'Failed to delete project'
                           : 'Failed to delete project',
                     );
                   }
@@ -3028,9 +3018,7 @@ export default function ProjectDetail(){
               >
                 {proj?.is_bidding
                   ? 'Delete Opportunity'
-                  : proj?.is_leak_investigation
-                    ? 'Delete Leak investigation'
-                    : 'Delete Project'}
+                  : 'Delete Project'}
               </AppButton>
               <AppButton
                 type="button"
@@ -3040,8 +3028,8 @@ export default function ProjectDetail(){
                 onClick={async () => {
                   const entityLabel = proj?.is_bidding
                     ? 'Opportunity'
-                    : proj?.is_leak_investigation
-                      ? 'Leak Investigation'
+                    : isLeakInvestigation
+                      ? 'Project'
                       : 'Project';
                   const result = await confirm({
                     title: `Duplicate ${entityLabel}`,
@@ -3057,7 +3045,6 @@ export default function ProjectDetail(){
                     );
                     toast.success(`${entityLabel} duplicated`);
                     queryClient.removeQueries({ queryKey: ['opportunities'] });
-                    queryClient.removeQueries({ queryKey: ['leak-investigations'] });
                     queryClient.removeQueries({ queryKey: ['projects'] });
                     await Promise.all([
                       queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
@@ -3066,8 +3053,8 @@ export default function ProjectDetail(){
                     ]);
                     const rm = proj?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
                     const newIdEnc = encodeURIComponent(res.id);
-                    if (proj?.is_leak_investigation) {
-                      nav(rm ? `/rm-leak-investigations/${newIdEnc}` : `/projects/${newIdEnc}`);
+                    if (isLeakInvestigation) {
+                      nav(rm ? `/rm-projects/${newIdEnc}` : `/projects/${newIdEnc}`);
                     } else if (proj?.is_bidding) {
                       nav(rm ? `/rm-opportunities/${newIdEnc}` : `/opportunities/${newIdEnc}`);
                     } else {
@@ -3077,8 +3064,8 @@ export default function ProjectDetail(){
                     toast.error(
                       proj?.is_bidding
                         ? 'Failed to duplicate opportunity'
-                        : proj?.is_leak_investigation
-                          ? 'Failed to duplicate leak investigation'
+                        : isLeakInvestigation
+                          ? 'Failed to duplicate project'
                           : 'Failed to duplicate project',
                     );
                   }
@@ -3086,8 +3073,8 @@ export default function ProjectDetail(){
               >
                 {proj?.is_bidding
                   ? 'Duplicate Opportunity'
-                  : proj?.is_leak_investigation
-                    ? 'Duplicate Leak Investigation'
+                  : isLeakInvestigation
+                    ? 'Duplicate Project'
                     : 'Duplicate Project'}
               </AppButton>
               <AppButton
@@ -3107,8 +3094,8 @@ export default function ProjectDetail(){
           <div className="flex flex-wrap gap-3">
             <button onClick={async()=>{
               const result = await confirm({ 
-                title: proj?.is_bidding ? 'Delete Opportunity' : proj?.is_leak_investigation ? 'Delete Leak investigation' : 'Delete Project', 
-                message: `Are you sure you want to delete "${proj?.name||(proj?.is_bidding ? 'this opportunity' : proj?.is_leak_investigation ? 'this leak investigation' : 'this project')}"? This action cannot be undone.${proj?.is_bidding || proj?.is_leak_investigation ? '' : ' All related data (updates, notes, timesheets) will also be deleted.'}`,
+                    title: proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project',
+                message: `Are you sure you want to delete "${proj?.name||(proj?.is_bidding ? 'this opportunity' : 'this project')}"? This action cannot be undone.${proj?.is_bidding ? '' : ' All related data (updates, notes, timesheets) will also be deleted.'}`,
                 confirmText: 'Delete',
                 cancelText: 'Cancel'
               });
@@ -3116,11 +3103,10 @@ export default function ProjectDetail(){
               try{
                 await api('DELETE', `/projects/${encodeURIComponent(String(id||''))}`);
                 toast.success(
-                  proj?.is_bidding ? 'Opportunity deleted' : proj?.is_leak_investigation ? 'Leak investigation deleted' : 'Project deleted'
+                      proj?.is_bidding ? 'Opportunity deleted' : 'Project deleted'
                 );
                 // Remove list caches so sidebar navigation shows fresh data immediately
                 queryClient.removeQueries({ queryKey: ['opportunities'] });
-                queryClient.removeQueries({ queryKey: ['leak-investigations'] });
                 queryClient.removeQueries({ queryKey: ['projects'] });
                 await Promise.all([
                   queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
@@ -3132,21 +3118,21 @@ export default function ProjectDetail(){
                 } else {
                   const sp = salesListPaths(proj);
                   if (proj?.is_bidding) nav(sp.opportunities);
-                  else if (proj?.is_leak_investigation) nav(sp.leakInvestigations);
+                  else if (isLeakInvestigation) nav(sp.projects);
                   else nav(sp.projects);
                 }
               }catch(_e){
                 toast.error(
-                  proj?.is_bidding ? 'Failed to delete opportunity' : proj?.is_leak_investigation ? 'Failed to delete leak investigation' : 'Failed to delete project'
+                      proj?.is_bidding ? 'Failed to delete opportunity' : 'Failed to delete project'
                 );
               }
-            }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-medium">{proj?.is_bidding ? 'Delete Opportunity' : proj?.is_leak_investigation ? 'Delete Leak investigation' : 'Delete Project'}</button>
+            }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-medium">{proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project'}</button>
             <button
               type="button"
               onClick={async () => {
                 const entityLabel = proj?.is_bidding
                   ? 'Opportunity'
-                  : proj?.is_leak_investigation
+                  : isLeakInvestigation
                     ? 'Leak Investigation'
                     : 'Project';
                 const result = await confirm({
@@ -3163,7 +3149,6 @@ export default function ProjectDetail(){
                   );
                   toast.success(`${entityLabel} duplicated`);
                   queryClient.removeQueries({ queryKey: ['opportunities'] });
-                  queryClient.removeQueries({ queryKey: ['leak-investigations'] });
                   queryClient.removeQueries({ queryKey: ['projects'] });
                   await Promise.all([
                     queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
@@ -3172,8 +3157,8 @@ export default function ProjectDetail(){
                   ]);
                   const rm = proj?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
                   const newIdEnc = encodeURIComponent(res.id);
-                  if (proj?.is_leak_investigation) {
-                    nav(rm ? `/rm-leak-investigations/${newIdEnc}` : `/projects/${newIdEnc}`);
+                  if (isLeakInvestigation) {
+                    nav(rm ? `/rm-projects/${newIdEnc}` : `/projects/${newIdEnc}`);
                   } else if (proj?.is_bidding) {
                     nav(rm ? `/rm-opportunities/${newIdEnc}` : `/opportunities/${newIdEnc}`);
                   } else {
@@ -3183,8 +3168,8 @@ export default function ProjectDetail(){
                   toast.error(
                     proj?.is_bidding
                       ? 'Failed to duplicate opportunity'
-                      : proj?.is_leak_investigation
-                        ? 'Failed to duplicate leak investigation'
+                      : isLeakInvestigation
+                        ? 'Failed to duplicate project'
                         : 'Failed to duplicate project'
                   );
                 }
@@ -3193,8 +3178,8 @@ export default function ProjectDetail(){
             >
               {proj?.is_bidding
                 ? 'Duplicate Opportunity'
-                : proj?.is_leak_investigation
-                  ? 'Duplicate Leak Investigation'
+                : isLeakInvestigation
+                  ? 'Duplicate Project'
                   : 'Duplicate Project'}
             </button>
             <button 
@@ -3579,7 +3564,7 @@ export default function ProjectDetail(){
           entityLabel={
             proj?.is_bidding
               ? 'opportunity'
-              : proj?.is_leak_investigation
+              : isLeakInvestigation
                 ? 'leak investigation'
                 : 'project'
           }
@@ -4718,13 +4703,20 @@ function EditRelatedLeakInvestigationModal({
     setSelectedId(currentRelatedLeakId || '');
   }, [currentRelatedLeakId]);
 
+  const { data: leakDivisions } = useQuery({
+    queryKey: PROJECT_DIVISIONS_QUERY_KEY,
+    queryFn: () => api<{ id: string; label?: string }[]>('GET', '/settings/project-divisions'),
+    staleTime: 300_000,
+  });
+  const leakDivisionId = findLeakInvestigationDivisionId(leakDivisions);
   const { data: leakPickData } = useQuery({
-    queryKey: ['leak-investigations-pick-detail', BUSINESS_LINE_REPAIRS_MAINTENANCE],
+    queryKey: ['rm-leak-projects-pick-detail', BUSINESS_LINE_REPAIRS_MAINTENANCE, leakDivisionId],
     queryFn: () =>
       api<{ items: { id: string; name?: string; code?: string }[] }>(
         'GET',
-        `/projects/business/leak-investigations?business_line=${encodeURIComponent(BUSINESS_LINE_REPAIRS_MAINTENANCE)}&limit=100`
+        `/projects/business/projects?business_line=${encodeURIComponent(BUSINESS_LINE_REPAIRS_MAINTENANCE)}&limit=100${leakDivisionId ? `&division_id=${encodeURIComponent(leakDivisionId)}` : ''}`
       ),
+    enabled: !!leakDivisionId,
     staleTime: 60_000,
   });
   const leakPickItems = Array.isArray((leakPickData as any)?.items) ? (leakPickData as any).items : [];
@@ -4836,7 +4828,7 @@ function EditLeakInvestigationLinksModal({
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('business_line', BUSINESS_LINE_REPAIRS_MAINTENANCE);
-      params.set('is_leak_investigation', 'false');
+      params.set('is_bidding', 'false');
       if (q.trim()) params.set('q', q.trim());
       const res = await api<any[]>('GET', `/projects?${params.toString()}`);
       return Array.isArray(res) ? res : [];
@@ -4847,7 +4839,7 @@ function EditLeakInvestigationLinksModal({
   const pickable = useMemo(() => {
     return (rows || []).filter((r: any) => {
       if (String(r.id) === leakInvestigationId) return false;
-      if (r?.is_leak_investigation) return false;
+      if (r?.has_leak_investigation_division) return false;
       if (String(r?.related_leak_investigation_id || '') === leakInvestigationId) return false;
       return true;
     });
@@ -8632,7 +8624,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
           </div>
         </div>
         <EmployeeSelect label="Estimator" value={estimator} onChange={setEstimator} employees={employees||[]} />
-        {!(proj?.is_bidding || proj?.is_leak_investigation) && divs.length > 0 && (
+        {!(proj?.is_bidding) && divs.length > 0 && (
           <div className="col-span-2">
             <label className="text-xs text-gray-600 mb-2 block">On-site Leads by Division</label>
             <div className="space-y-2">
@@ -8677,7 +8669,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
                 estimator_id: estimator||null
               };
               // Only include division_onsite_leads if not opportunity-style (bidding or leak investigation)
-              if (!(proj?.is_bidding || proj?.is_leak_investigation)) {
+              if (!(proj?.is_bidding)) {
                 payload.division_onsite_leads = cleanedLeads;
               }
               await api('PATCH', `/projects/${projectId}`, payload); 

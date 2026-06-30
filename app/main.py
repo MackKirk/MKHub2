@@ -1121,25 +1121,6 @@ def create_app() -> FastAPI:
                         db.rollback()
 
                     try:
-                        rows = db.execute(
-                            text(
-                                """
-                                SELECT 1
-                                FROM information_schema.columns
-                                WHERE table_name = 'projects'
-                                  AND column_name = 'is_leak_investigation'
-                                LIMIT 1
-                                """
-                            )
-                        ).fetchall()
-                        if not rows:
-                            db.execute(
-                                text(
-                                    "ALTER TABLE projects ADD COLUMN is_leak_investigation BOOLEAN NOT NULL DEFAULT false"
-                                )
-                            )
-                            db.commit()
-                            print("[startup] Added is_leak_investigation column to projects table")
                         rows2 = db.execute(
                             text(
                                 """
@@ -1230,7 +1211,6 @@ def create_app() -> FastAPI:
                                 .filter(
                                     ProjectModel.deleted_at.is_(None),
                                     ProjectModel.is_bidding.is_(False),
-                                    ProjectModel.is_leak_investigation.is_(False),
                                     ProjectModel.client_id.isnot(None),
                                     ProjectModel.billing_email.is_(None),
                                     ProjectModel.billing_contact.is_(None),

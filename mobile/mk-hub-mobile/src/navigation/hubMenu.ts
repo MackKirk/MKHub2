@@ -107,21 +107,6 @@ export const HUB_MENU_CATEGORIES: HubMenuCategory[] = [
     icon: "construct-outline",
     items: [
       {
-        id: "rm-leak",
-        label: "Leak Investigations",
-        icon: "water-outline",
-        requiredPermission: "business:rm:projects:read",
-        target: {
-          type: "stack",
-          screen: "ProjectsList",
-          params: {
-            listKind: "leak_investigations",
-            businessLine: "repairs_maintenance",
-            title: "Leak Investigations"
-          }
-        }
-      },
-      {
         id: "rm-opportunities",
         label: "Opportunities",
         icon: "document-text-outline",

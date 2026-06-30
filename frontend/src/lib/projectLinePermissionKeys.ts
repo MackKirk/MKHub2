@@ -32,7 +32,7 @@ export function resolveProjectBusinessLine(
   pathname?: string
 ): string {
   if (businessLine) return businessLine;
-  if (pathname && /(^|\/)rm-(projects|opportunities|leak-investigations)/.test(pathname)) {
+  if (pathname && /(^|\/)rm-(projects|opportunities)/.test(pathname)) {
     return BUSINESS_LINE_REPAIRS_MAINTENANCE;
   }
   return BUSINESS_LINE_CONSTRUCTION;

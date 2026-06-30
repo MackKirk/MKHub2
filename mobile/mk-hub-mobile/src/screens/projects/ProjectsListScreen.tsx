@@ -307,9 +307,7 @@ export const ProjectsListScreen: React.FC = () => {
   const searchPlaceholder =
     listKind === "opportunities"
       ? "Search by opportunity name, code, or client..."
-      : listKind === "leak_investigations"
-        ? "Search by leak investigation name, code, or client..."
-        : "Search by project name, code, or client...";
+      : "Search by project name, code, or client...";
 
   return (
     <ScreenLayout scroll={false} contentStyle={styles.layout}>

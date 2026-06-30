@@ -86,7 +86,7 @@ def _project_copy_kwargs_with_db(db: Session, src: Project, *, code: str, name: 
     out["date_awarded"] = None
     out["status_changed_at"] = now
 
-    if getattr(src, "is_bidding", False) or getattr(src, "is_leak_investigation", False):
+    if getattr(src, "is_bidding", False):
         sid, slabel, st_changed = _prospecting_fields(db)
         out["status_id"] = sid
         out["status_label"] = slabel

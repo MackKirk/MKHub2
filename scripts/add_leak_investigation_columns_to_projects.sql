@@ -1,3 +1,5 @@
+-- HISTORICAL: initial leak investigation columns (pre-division migration).
+-- Do not run on new environments after drop_is_leak_investigation_column.sql.
 -- Leak investigations (R&M): special project rows + optional link from opportunities (PostgreSQL)
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_leak_investigation BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS related_leak_investigation_id UUID NULL REFERENCES projects(id) ON DELETE SET NULL;

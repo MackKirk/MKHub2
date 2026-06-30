@@ -18,7 +18,6 @@ const OnboardingAdmin = lazy(() => import('./pages/OnboardingAdmin'));
 const ConstructionProjectDetail = lazy(() => import('./pages/ConstructionProjectDetail'));
 const RmProjectDetail = lazy(() => import('./pages/RmProjectDetail'));
 const RmOpportunityDetail = lazy(() => import('./pages/RmOpportunityDetail'));
-const RmLeakInvestigationDetail = lazy(() => import('./pages/RmLeakInvestigationDetail'));
 const CustomerDetail = lazy(() => import('./pages/CustomerDetail'));
 const DocumentCreator = lazy(() => import('./pages/DocumentCreator'));
 const FleetAssetDetail = lazy(() => import('./pages/FleetAssetDetail'));
@@ -50,8 +49,8 @@ import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
 import ProjectNew from './pages/ProjectNew';
 import Opportunities from './pages/Opportunities';
-import LeakInvestigations from './pages/LeakInvestigations';
 import OpportunityDetail from './pages/OpportunityDetail';
+import { RmLeakInvestigationDetailRedirect, RmLeakInvestigationsListRedirect } from './pages/RmLeakInvestigationRedirects';
 import Users from './pages/Users';
 import HrDataQualityOverview from './pages/HrDataQualityOverview';
 const OffboardingListPage = lazy(() => import('./pages/OffboardingListPage'));
@@ -194,8 +193,8 @@ export default function App(){
           <Route path="/business/subcontractors/workers/:id" element={<AppShell><SubcontractorWorkerPage /></AppShell>} />
           <Route path="/rm-opportunities" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Opportunities /></BusinessLineProvider></AppShell>} />
           <Route path="/rm-opportunities/:id" element={<AppShell><RmOpportunityDetail /></AppShell>} />
-          <Route path="/rm-leak-investigations" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><LeakInvestigations /></BusinessLineProvider></AppShell>} />
-          <Route path="/rm-leak-investigations/:id" element={<AppShell><RmLeakInvestigationDetail /></AppShell>} />
+          <Route path="/rm-leak-investigations" element={<RmLeakInvestigationsListRedirect />} />
+          <Route path="/rm-leak-investigations/:id" element={<RmLeakInvestigationDetailRedirect />} />
           <Route path="/rm-projects" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Projects /></BusinessLineProvider></AppShell>} />
           <Route path="/rm-projects/new" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><ProjectNew /></BusinessLineProvider></AppShell>} />
           <Route path="/rm-projects/:id" element={<AppShell><RmProjectDetail /></AppShell>} />

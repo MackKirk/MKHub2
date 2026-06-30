@@ -31,6 +31,7 @@ import {
 } from '@/components/ui';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
+import { findLeakInvestigationDivisionId } from '@/lib/leakInvestigation';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { filterStatusesForProject } from '@/lib/projectStatusVisibility';
 
@@ -43,7 +44,7 @@ export default function ProjectNew(){
   const businessLine = useBusinessLine();
   const [sp] = useSearchParams();
   const initialClientId = sp.get('client_id')||'';
-  const initialIsLeakInvestigation = sp.get('is_leak_investigation') === 'true';
+  const wantsLeakDivision = sp.get('division') === 'leak_investigations';
   const initialIsBidding = sp.get('is_bidding') === 'true';
   const initialRelatedLeakId = (sp.get('related_leak_investigation_id') || '').trim();
   const initialSiteIdFromUrl = (sp.get('site_id') || '').trim();
@@ -66,9 +67,8 @@ export default function ProjectNew(){
   const [coverBlob, setCoverBlob] = useState<Blob|null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [hiddenPickerOpen, setHiddenPickerOpen] = useState<boolean>(false);
-  const [isLeakInvestigation] = useState<boolean>(initialIsLeakInvestigation);
   const [relatedLeakInvestigationId, setRelatedLeakInvestigationId] = useState<string>(initialRelatedLeakId);
-  const [isBidding] = useState<boolean>(initialIsLeakInvestigation ? false : initialIsBidding);
+  const [isBidding] = useState<boolean>(wantsLeakDivision ? false : initialIsBidding);
   const [relatedClientIds, setRelatedClientIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newContactModalOpen, setNewContactModalOpen] = useState(false);
@@ -81,6 +81,20 @@ export default function ProjectNew(){
     () => filterProjectDivisionsForBusinessLine(projectDivisions, businessLine),
     [projectDivisions, businessLine]
   );
+  const leakDivisionId = useMemo(
+    () => findLeakInvestigationDivisionId(divisionsForPicker),
+    [divisionsForPicker]
+  );
+  const isCreatingLeakInvestigation = !!(
+    leakDivisionId && projectDivisionIds.includes(leakDivisionId)
+  );
+
+  useEffect(() => {
+    if (!wantsLeakDivision || !leakDivisionId) return;
+    setProjectDivisionIds((prev) =>
+      prev.includes(leakDivisionId) ? prev : [...prev, leakDivisionId]
+    );
+  }, [wantsLeakDivision, leakDivisionId]);
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
 
   const ESTIMATOR_DEPARTMENT = 'Sales / Estimating';
@@ -96,7 +110,7 @@ export default function ProjectNew(){
     });
   }, [employees]);
 
-  const limitEstimatorListToSalesDept = isBidding || isLeakInvestigation;
+  const limitEstimatorListToSalesDept = isBidding;
 
   useEffect(() => {
     if (!limitEstimatorListToSalesDept || employees === undefined) return;
@@ -109,14 +123,17 @@ export default function ProjectNew(){
     () => employeesForEstimatorSelect.map((emp: any) => mapEmployeeToAppUserSelect(emp)),
     [employeesForEstimatorSelect],
   );
+  const leakDivisionQuery = leakDivisionId
+    ? `&division_id=${encodeURIComponent(leakDivisionId)}`
+    : '';
   const { data: leakPickData } = useQuery({
-    queryKey: ['leak-investigations-pick', businessLine],
+    queryKey: ['rm-leak-projects-pick', businessLine, leakDivisionId],
     queryFn: () =>
       api<{ items: { id: string; name?: string; code?: string }[] }>(
         'GET',
-        `/projects/business/leak-investigations?business_line=${encodeURIComponent(businessLine)}&limit=100`
+        `/projects/business/projects?business_line=${encodeURIComponent(businessLine)}&limit=100${leakDivisionQuery}`
       ),
-    enabled: !isLeakInvestigation && businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE,
+    enabled: !isCreatingLeakInvestigation && businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE && !!leakDivisionId,
     staleTime: 60_000,
   });
   const leakPickItems = Array.isArray((leakPickData as any)?.items) ? (leakPickData as any).items : [];
@@ -216,14 +233,14 @@ export default function ProjectNew(){
   // Final submit: for opportunities also require at least one division (chosen on step 2).
   const canSubmit = useMemo(()=>{
     if(!canGoToStep2) return false;
-    if((isBidding || isLeakInvestigation) && projectDivisionIds.length === 0) return false;
+    if(isBidding && projectDivisionIds.length === 0) return false;
     return true;
-  }, [canGoToStep2, isBidding, isLeakInvestigation, projectDivisionIds.length]);
+  }, [canGoToStep2, isBidding, projectDivisionIds.length]);
 
   const submit = async()=>{
     if(!canSubmit || isSubmitting) return;
-    if((isBidding || isLeakInvestigation) && projectDivisionIds.length === 0) {
-      toast.error(isLeakInvestigation ? 'Select at least one division for this leak investigation' : 'Select at least one division for this opportunity');
+    if(isBidding && projectDivisionIds.length === 0) {
+      toast.error('Select at least one division for this opportunity');
       return;
     }
     try{
@@ -239,16 +256,15 @@ export default function ProjectNew(){
         description: desc||null, 
         client_id: clientId, 
         site_id: newSiteId||null, 
-        status_label: isBidding || isLeakInvestigation ? null : (statusLabel || null), // Backend sets Prospecting for opportunities / leak investigations
-        division_ids: divisionIds, // Legacy support
-        project_division_ids: projectDivisionIds.length > 0 ? projectDivisionIds : null, // New project divisions
+        status_label: isBidding ? null : (statusLabel || null),
+        division_ids: divisionIds,
+        project_division_ids: projectDivisionIds.length > 0 ? projectDivisionIds : null,
         estimator_id: estimatorId||null, 
         onsite_lead_id: leadId||null, 
         contact_id: contactId||null, 
         is_bidding: isBidding,
-        is_leak_investigation: isLeakInvestigation,
         related_leak_investigation_id:
-          !isLeakInvestigation &&
+          !isCreatingLeakInvestigation &&
           businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE &&
           relatedLeakInvestigationId.trim()
             ? relatedLeakInvestigationId.trim()
@@ -265,11 +281,8 @@ export default function ProjectNew(){
           await api('POST', `/projects/${encodeURIComponent(String(proj?.id||''))}/files?file_object_id=${encodeURIComponent(conf.id)}&category=project-cover-derived&original_name=project-cover.jpg`);
         }catch(_e){ /* silent */ }
       }
-      toast.success(
-        isLeakInvestigation ? 'Leak investigation created' : isBidding ? 'Opportunity created' : 'Project created'
-      );
+      toast.success(isBidding ? 'Opportunity created' : 'Project created');
       queryClient.removeQueries({ queryKey: ['opportunities'] });
-      queryClient.removeQueries({ queryKey: ['leak-investigations'] });
       queryClient.removeQueries({ queryKey: ['projects'] });
       const newId = String(proj?.id || '');
       if (newId) {
@@ -277,11 +290,8 @@ export default function ProjectNew(){
         queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', newId] });
       }
       const oppPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities';
-      const leakPath = '/rm-leak-investigations';
       const projPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects';
-      if (isLeakInvestigation) {
-        nav(`${leakPath}/${encodeURIComponent(newId)}`);
-      } else if (isBidding) {
+      if (isBidding) {
         nav(`${oppPath}/${encodeURIComponent(newId)}`);
       } else {
         nav(`${projPath}/${encodeURIComponent(newId)}`);
@@ -294,15 +304,11 @@ export default function ProjectNew(){
     }
   };
 
-  const modalTitle = isLeakInvestigation
-    ? 'New Leak Investigation'
-    : isBidding
-      ? 'New Opportunity'
-      : 'New Project';
+  const modalTitle = isBidding ? 'New Opportunity' : 'New Project';
   const stepSubtitle =
     step === 1
       ? 'Basic details and site'
-      : isBidding || isLeakInvestigation
+      : isBidding
         ? 'Select divisions, then team and cover'
         : 'Options and cover';
 
@@ -352,7 +358,7 @@ export default function ProjectNew(){
   );
 
   const formQuickInfo =
-    isBidding || isLeakInvestigation ? (
+    isBidding ? (
       <>
         <p>Step 1: opportunity name, customer, and site. Step 2: pick at least one division, then estimator and optional cover.</p>
         {isBidding ? <p>Status is set to Prospecting automatically when the opportunity is created.</p> : null}
@@ -449,7 +455,7 @@ export default function ProjectNew(){
                 onChange={(e) => setDesc(e.target.value)}
                 fieldHint="Description\n\nOptional notes about scope or context."
               />
-              {!isLeakInvestigation && businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE && (
+              {!isCreatingLeakInvestigation && businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE && (
                 <div className="md:col-span-2">
                   <AppCombobox
                     id="project-new-related-leak"
@@ -583,7 +589,7 @@ export default function ProjectNew(){
             <AppSectionHeader
               title="Divisions & team"
               description={
-                isBidding || isLeakInvestigation
+                isBidding
                   ? 'Select at least one division, then assign team and optional cover.'
                   : 'Divisions, status, team, and optional cover.'
               }
@@ -592,26 +598,22 @@ export default function ProjectNew(){
               <AppControlLabelRow
                 label={
                   <>
-                    Project divisions {(isBidding || isLeakInvestigation) ? <span className="text-red-600">*</span> : null}
+                    Project divisions {isBidding ? <span className="text-red-600">*</span> : null}
                   </>
                 }
                 fieldHint={
                   <AppFieldHint
                     hint={
-                      isLeakInvestigation
-                        ? 'Project divisions\n\nSelect at least one division for this leak investigation.'
-                        : isBidding
-                          ? 'Project divisions\n\nSelect at least one division for this opportunity.'
-                          : 'Project divisions\n\nOptional divisions for this project.'
+                      isBidding
+                        ? 'Project divisions\n\nSelect at least one division for this opportunity.'
+                        : 'Project divisions\n\nOptional divisions for this project.'
                     }
                   />
                 }
               />
-              {(isBidding || isLeakInvestigation) && projectDivisionIds.length === 0 && (
+              {isBidding && projectDivisionIds.length === 0 && (
                 <p className="text-xs text-red-600">
-                  {isLeakInvestigation
-                    ? 'Select at least one division for this leak investigation'
-                    : 'Select at least one division for this opportunity'}
+                  Select at least one division for this opportunity
                 </p>
               )}
                   <div className="rounded-lg border border-gray-200 bg-white overflow-hidden divide-y divide-gray-200">
@@ -699,7 +701,7 @@ export default function ProjectNew(){
                     )}
                   </div>
                   {/* Legacy divisions support (deprecated) — not shown for opportunities */}
-                  {!(isBidding || isLeakInvestigation) && settings?.divisions && settings.divisions.length > 0 && (
+                  {!(isBidding) && settings?.divisions && settings.divisions.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-gray-200">
                       <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
                       <div className="flex flex-wrap gap-2 mt-1">
@@ -730,7 +732,7 @@ export default function ProjectNew(){
                   </div>
 
             <div className="grid gap-3 border-t border-gray-200 pt-4 md:grid-cols-2">
-              {!(isBidding || isLeakInvestigation) && (
+              {!isBidding && (
                 <AppSelect
                   label="Status"
                   value={statusLabel}
@@ -757,7 +759,7 @@ export default function ProjectNew(){
                     : 'Estimator\n\nOptional estimator assigned to this record.'
                 }
               />
-              {!(isBidding || isLeakInvestigation) && (
+              {!isBidding && (
                 <AppUserSelect
                   label="On-site lead"
                   value={leadId}

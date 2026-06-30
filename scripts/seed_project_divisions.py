@@ -4,7 +4,8 @@ Seed script for project divisions and subdivisions.
 IMPORTANT (production-safe):
 - Never bulk-delete SettingItem rows: project_division_ids on projects and other FKs depend on stable UUIDs.
 - This script UPSERTs by (list_id, parent_id, label): existing rows keep their id; only sort_index/value/meta are refreshed.
-- Rows present in the database but not in PROJECT_DIVISIONS below are left untouched (not deleted).
+- Rows present in the database but not in PROJECT_DIVISIONS below are left untouched (not deleted),
+  except subdivisions removed per-parent when no longer listed under that division in the seed.
 
 DEPRECATED (never reintroduce):
 - Older versions deleted all items under project_divisions and re-inserted them, which changed UUIDs.
@@ -33,7 +34,7 @@ PROJECT_DIVISIONS = {
     "Green Roofing": [],  # No subdivisions
 }
 
-# Repairs & Maintenance — exclusive divisions (same subdivisions under each parent)
+# Repairs & Maintenance — exclusive divisions (subdivisions only on Commercial Service & Roof Assessments)
 RM_SUBDIVISIONS = [
     "EPDM Repairs",
     "SBS Repairs",
@@ -51,11 +52,28 @@ RM_SUBDIVISIONS = [
 
 RM_PROJECT_DIVISIONS = {
     "Commercial Service": RM_SUBDIVISIONS,
-    "Warranty Repairs": RM_SUBDIVISIONS,
-    "Leak Investigations": RM_SUBDIVISIONS,
     "Roof Assessments": RM_SUBDIVISIONS,
-    "Preventive Maintenance": RM_SUBDIVISIONS,
+    "Leak Investigations": [],
+    "Preventive Maintenance": [],
+    "Warranty Repairs": [],
 }
+
+
+def _remove_stale_subdivisions(db, divisions_list, division: SettingItem, desired_labels: list[str]) -> None:
+    """Drop child rows under this parent that are no longer in the seed (per-parent only)."""
+    desired = set(desired_labels)
+    stale = (
+        db.query(SettingItem)
+        .filter(
+            SettingItem.list_id == divisions_list.id,
+            SettingItem.parent_id == division.id,
+        )
+        .all()
+    )
+    for item in stale:
+        if item.label not in desired:
+            print(f"  Removed subdivision (no longer in seed): {item.label} [{item.id}]")
+            db.delete(item)
 
 
 def seed_project_divisions():
@@ -128,6 +146,8 @@ def seed_project_divisions():
                     db.flush()
                     print(f"  Created subdivision: {sub_name} [{subdivision.id}]")
                 sub_sort_index += 1
+
+            _remove_stale_subdivisions(db, divisions_list, division, subdivisions)
 
         db.commit()
         print(f"\nSuccessfully upserted {len(all_divisions)} divisions (existing UUIDs preserved).")

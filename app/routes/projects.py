@@ -72,6 +72,12 @@ from sqlalchemy import or_, and_, cast, String, Date
 
 from ..services.project_utils import sanitize_division_onsite_leads
 from ..services.project_duplicate import generate_project_code, duplicate_project_deep
+from ..services.leak_investigation import (
+    get_leak_investigation_division_id,
+    project_has_leak_investigation_division,
+    project_is_leak_investigation,
+    resolve_related_leak_investigation_uuid,
+)
 from ..services.billing_snapshot import (
     BILLING_SNAPSHOT_FIELDS,
     apply_billing_snapshot_to_project,
@@ -93,9 +99,7 @@ _BILLING_PATCH_FIELDS = frozenset(
 
 
 def _is_active_project_for_billing(p: Project) -> bool:
-    return not bool(getattr(p, "is_bidding", False)) and not bool(
-        getattr(p, "is_leak_investigation", False)
-    )
+    return not bool(getattr(p, "is_bidding", False))
 
 
 def _assert_active_project_for_billing(p: Project) -> None:
@@ -137,7 +141,7 @@ def _billing_differs_from_customer(p: Project, client: Optional[Client]) -> bool
 
 
 def _should_apply_billing_snapshot_on_create(payload: dict) -> bool:
-    return not bool(payload.get("is_bidding")) and not bool(payload.get("is_leak_investigation"))
+    return not bool(payload.get("is_bidding"))
 
 
 def _user_display_sort_subq(user_id_column):
@@ -246,20 +250,6 @@ def _assert_project_reports_write(user: User, proj: Project) -> None:
     line = getattr(proj, "business_line", None)
     if not _has_project_feature_permission(user, line, "reports", "write"):
         raise HTTPException(status_code=403, detail="Forbidden")
-
-
-def _resolve_related_leak_investigation_uuid(db: Session, raw_rel) -> uuid.UUID:
-    """Validate raw related_leak_investigation_id and return the leak project's UUID."""
-    try:
-        lid_uuid = uuid.UUID(str(raw_rel))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid related_leak_investigation_id")
-    leak = db.query(Project).filter(Project.id == lid_uuid, Project.deleted_at.is_(None)).first()
-    if not leak or not getattr(leak, "is_leak_investigation", False):
-        raise HTTPException(status_code=400, detail="Related leak investigation not found")
-    if getattr(leak, "business_line", None) != BUSINESS_LINE_REPAIRS_MAINTENANCE:
-        raise HTTPException(status_code=400, detail="Invalid related leak investigation")
-    return lid_uuid
 
 
 def _assert_awarded_project_for_safety(p: Project) -> None:
@@ -921,27 +911,25 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
         raise HTTPException(status_code=403, detail="Forbidden")
     payload["business_line"] = bl
 
-    is_leak = bool(payload.get("is_leak_investigation"))
     is_bidding = bool(payload.get("is_bidding"))
-    if is_leak and is_bidding:
-        raise HTTPException(status_code=400, detail="Cannot be both leak investigation and bidding opportunity")
-    if is_leak and bl != BUSINESS_LINE_REPAIRS_MAINTENANCE:
-        raise HTTPException(status_code=400, detail="Leak investigations are only supported for Repairs & Maintenance")
-    payload["is_leak_investigation"] = is_leak
     payload["is_bidding"] = is_bidding
 
     rel_lid = payload.get("related_leak_investigation_id")
-    if is_leak:
-        payload["related_leak_investigation_id"] = None
-    elif rel_lid:
+    if rel_lid:
         if bl != BUSINESS_LINE_REPAIRS_MAINTENANCE:
             raise HTTPException(
                 status_code=400,
                 detail="related_leak_investigation_id is only valid for Repairs & Maintenance",
             )
-        payload["related_leak_investigation_id"] = _resolve_related_leak_investigation_uuid(db, rel_lid)
+        payload["related_leak_investigation_id"] = resolve_related_leak_investigation_uuid(db, rel_lid)
     else:
         payload["related_leak_investigation_id"] = None
+
+    division_ids = payload.get("project_division_ids") or []
+    if bl == BUSINESS_LINE_REPAIRS_MAINTENANCE and division_ids:
+        leak_div_id = get_leak_investigation_division_id(db)
+        if leak_div_id and str(leak_div_id) in {str(d) for d in division_ids}:
+            payload["related_leak_investigation_id"] = None
 
     # Always auto-generate project code: MK-<seq>/<client_code>-<year>
     client_id = payload.get("client_id")
@@ -959,8 +947,8 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
 
     payload["code"] = generate_project_code(db, client)
     
-    # If this is an opportunity or leak investigation, set status to "Prospecting"
-    if payload.get("is_bidding", False) or payload.get("is_leak_investigation"):
+    # If this is an opportunity, set status to "Prospecting"
+    if payload.get("is_bidding", False):
         status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
         if status_list:
             prospecting_status = db.query(SettingItem).filter(
@@ -1127,7 +1115,6 @@ def list_projects(
     q: Optional[str] = None,
     year: Optional[int] = None,
     is_bidding: Optional[bool] = None,
-    is_leak_investigation: Optional[bool] = None,
     business_line: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1162,8 +1149,6 @@ def list_projects(
         query = query.filter(extract('year', Project.created_at) == int(year))
     if is_bidding is not None:
         query = query.filter(Project.is_bidding == is_bidding)
-    if is_leak_investigation is not None:
-        query = query.filter(Project.is_leak_investigation == is_leak_investigation)
     # Never return soft-deleted projects (belt-and-suspenders after ORM fetch).
     rows = [
         p
@@ -1189,7 +1174,7 @@ def list_projects(
             "project_division_ids": getattr(p, 'project_division_ids', None),
             "project_division_percentages": getattr(p, 'project_division_percentages', None),
             "is_bidding": getattr(p, 'is_bidding', False),
-            "is_leak_investigation": bool(getattr(p, "is_leak_investigation", False)),
+            "has_leak_investigation_division": project_has_leak_investigation_division(db, p),
             "related_leak_investigation_id": (
                 str(getattr(p, "related_leak_investigation_id"))
                 if getattr(p, "related_leak_investigation_id", None)
@@ -1278,17 +1263,17 @@ def get_project(
             }
 
     leak_investigation_links: list = []
-    if getattr(p, "is_leak_investigation", False):
+    if project_is_leak_investigation(db, p):
         _children = (
             db.query(Project)
             .filter(
                 Project.related_leak_investigation_id == p.id,
                 Project.deleted_at.is_(None),
-                Project.is_leak_investigation.is_(False),
             )
             .order_by(Project.created_at.asc())
             .all()
         )
+        _children = [ch for ch in _children if not project_is_leak_investigation(db, ch)]
         leak_investigation_links = [
             {
                 "id": str(ch.id),
@@ -1355,7 +1340,7 @@ def get_project(
         "lng": float(p.lng) if getattr(p, 'lng', None) is not None else None,
         "timezone": getattr(p, 'timezone', None),
         "is_bidding": getattr(p, 'is_bidding', False),
-        "is_leak_investigation": bool(getattr(p, "is_leak_investigation", False)),
+        "has_leak_investigation_division": project_has_leak_investigation_division(db, p),
         "related_leak_investigation_id": (
             str(getattr(p, "related_leak_investigation_id"))
             if getattr(p, "related_leak_investigation_id", None)
@@ -1380,11 +1365,10 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
     _assert_project_line_write(user, p)
     if "business_line" in payload:
         payload.pop("business_line", None)
-    payload.pop("is_leak_investigation", None)
     payload.pop("is_bidding", None)
 
     if "related_leak_investigation_id" in payload:
-        if getattr(p, "is_leak_investigation", False):
+        if project_is_leak_investigation(db, p):
             raise HTTPException(
                 status_code=400,
                 detail="related_leak_investigation_id cannot be set on leak investigations",
@@ -1398,7 +1382,7 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         if raw_rel is None or (isinstance(raw_rel, str) and not str(raw_rel).strip()):
             payload["related_leak_investigation_id"] = None
         else:
-            payload["related_leak_investigation_id"] = _resolve_related_leak_investigation_uuid(db, raw_rel)
+            payload["related_leak_investigation_id"] = resolve_related_leak_investigation_uuid(db, raw_rel)
 
     # Capture before state for audit log (hero and key project fields)
     before_state = {
@@ -5365,8 +5349,6 @@ def convert_to_project(
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     _assert_project_line_write(user, p)
-    if getattr(p, "is_leak_investigation", False):
-        raise HTTPException(status_code=400, detail="Leak investigations cannot be converted to projects")
     if not getattr(p, 'is_bidding', False):
         raise HTTPException(status_code=400, detail="This is already a project, not a bidding")
 
@@ -5696,7 +5678,6 @@ def business_dashboard(
         db.query(Project)
         .filter(
             Project.is_bidding == False,
-            func.coalesce(Project.is_leak_investigation, False) == False,
             Project.deleted_at.is_(None),
         )
         .filter(bl_clause)
@@ -6644,7 +6625,7 @@ def _paginate_and_serialize_business_opportunity_style(
             "project_division_ids": getattr(p, 'project_division_ids', None),
             "cost_estimated": getattr(p, 'cost_estimated', None),
             "is_bidding": list_kind == "opportunity",
-            "is_leak_investigation": list_kind == "leak" or bool(getattr(p, "is_leak_investigation", False)),
+            "has_leak_investigation_division": project_has_leak_investigation_division(db, p),
             "cover_image_url": cover_url,
             "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
             "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
@@ -6748,16 +6729,20 @@ def business_leak_investigations(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """R&M leak investigations (same card filters as opportunities)."""
+    """Deprecated alias: R&M projects with Leak Investigations division."""
     bl_clause = _dashboard_business_line_clause(user, business_line)
     if bl_clause is None:
         return {"items": [], "total": 0, "page": page, "limit": limit}
+    leak_div_id = get_leak_investigation_division_id(db)
+    if leak_div_id is None:
+        return {"items": [], "total": 0, "page": page, "limit": limit}
+    leak_div_str = str(leak_div_id)
     query = (
         db.query(Project)
         .filter(
-            Project.is_leak_investigation == True,
             Project.is_bidding == False,
             Project.deleted_at.is_(None),
+            cast(Project.project_division_ids, String).like(f"%{leak_div_str}%"),
         )
         .filter(bl_clause)
     )
@@ -6824,7 +6809,6 @@ def business_projects(
         db.query(Project)
         .filter(
             Project.is_bidding == False,
-            func.coalesce(Project.is_leak_investigation, False) == False,
             Project.deleted_at.is_(None),
         )
         .filter(bl_clause)
@@ -7470,7 +7454,6 @@ def business_divisions_stats(
                 ).filter(bl_clause)
                 proj_query = db.query(Project).filter(
                     Project.is_bidding == False,
-                    func.coalesce(Project.is_leak_investigation, False) == False,
                     Project.deleted_at.is_(None),
                     or_(*conditions)
                 ).filter(bl_clause)
@@ -7606,7 +7589,6 @@ def business_divisions_stats(
                 ).filter(bl_clause)
                 proj_query = db.query(Project).filter(
                     Project.is_bidding == False,
-                    func.coalesce(Project.is_leak_investigation, False) == False,
                     Project.deleted_at.is_(None),
                     or_(*conditions)
                 ).filter(bl_clause)
@@ -7752,7 +7734,6 @@ def business_divisions_stats(
             ).filter(bl_clause)
             proj_query = db.query(Project).filter(
                 Project.is_bidding == False,
-                func.coalesce(Project.is_leak_investigation, False) == False,
                 Project.deleted_at.is_(None),
                 or_(*conditions)
             ).filter(bl_clause)

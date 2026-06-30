@@ -11,7 +11,7 @@ export interface ProjectListItem {
   progress?: number;
   status_label?: string;
   is_bidding?: boolean;
-  is_leak_investigation?: boolean;
+  has_leak_investigation_division?: boolean;
   business_line?: string;
   client_display_name?: string;
   client_name?: string;
@@ -28,10 +28,7 @@ export interface ProjectListResponse {
   limit: number;
 }
 
-export type ProjectListKind =
-  | "projects"
-  | "opportunities"
-  | "leak_investigations";
+export type ProjectListKind = "projects" | "opportunities";
 
 export interface ProjectDetail extends ProjectListItem {
   related_client_ids?: string[];

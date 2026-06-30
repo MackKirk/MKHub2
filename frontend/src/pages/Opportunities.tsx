@@ -102,22 +102,15 @@ const OPPORTUNITY_TAB_ICON_BUTTONS = [
   { key: 'reports', icon: '\u{1F4CB}', label: 'Notes/History', tab: 'reports' },
 ] as const;
 
-type OpportunitiesListKind = 'opportunity' | 'leak';
-
-export default function Opportunities({ listKind = 'opportunity' }: { listKind?: OpportunitiesListKind } = {}) {
+export default function Opportunities() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
   const businessLine = useBusinessLine();
-  const isLeakMode = listKind === 'leak';
-  const opportunityBasePath = isLeakMode
-    ? '/rm-leak-investigations'
-    : (businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities');
+  const opportunityBasePath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities';
   const businessDashboardPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-business' : '/business';
-  const newOpportunityPath = isLeakMode
-    ? '/rm-projects/new?is_leak_investigation=true'
-    : `${businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects'}/new?is_bidding=true`;
+  const newOpportunityPath = `${businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects'}/new?is_bidding=true`;
   
   const [q, setQ] = useState(queryParam);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -132,7 +125,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
       return urlView;
     }
     // Then check localStorage
-    const viewKey = isLeakMode ? 'leak-investigations-view-mode' : 'opportunities-view-mode';
+    const viewKey = 'opportunities-view-mode';
     const saved = localStorage.getItem(viewKey);
     return (saved === 'list' || saved === 'cards') ? saved : 'list';
   });
@@ -146,8 +139,8 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
       params.delete('view');
     }
     setSearchParams(params, { replace: true });
-    localStorage.setItem(isLeakMode ? 'leak-investigations-view-mode' : 'opportunities-view-mode', viewMode);
-  }, [viewMode, searchParams, setSearchParams, isLeakMode]);
+    localStorage.setItem('opportunities-view-mode', viewMode);
+  }, [viewMode, searchParams, setSearchParams]);
   
   // Get current date formatted (same as Dashboard)
   const todayLabel = useMemo(() => {
@@ -193,9 +186,9 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
     return s ? `?${s}` : '';
   }, [searchParams, businessLine]);
   
-  const listEndpoint = isLeakMode ? '/projects/business/leak-investigations' : '/projects/business/opportunities';
+  const listEndpoint = '/projects/business/opportunities';
   const { data, isLoading, refetch } = useQuery({ 
-    queryKey: [isLeakMode ? 'leak-investigations' : 'opportunities', businessLine, qs], 
+    queryKey: ['opportunities', businessLine, qs],
     queryFn: ()=> api<{ items: Opportunity[]; total: number; page: number; limit: number } | Opportunity[]>('GET', `${listEndpoint}${qs}`)
   });
   
@@ -379,7 +372,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
 
   const quickFilterCountQueries = useQueries({
     queries: quickFilterCountTargets.map((target) => ({
-      queryKey: [isLeakMode ? 'leak-investigations' : 'opportunities', 'quick-filter-count', businessLine, target.key, target.qs],
+      queryKey: ['opportunities', 'quick-filter-count', businessLine, target.key, target.qs],
       queryFn: () =>
         api<OpportunityListResponse>('GET', `${listEndpoint}?${target.qs}`).then(opportunityListTotal),
       staleTime: 60_000,
@@ -529,13 +522,13 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
         hasAnimated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-2 scale-[0.98]',
       );
 
-  const newItemLabel = isLeakMode ? 'New Leak Investigation' : 'New Opportunity';
+  const newItemLabel = 'New Opportunity';
 
   return (
     <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
         <AppPageHeader
-          title={isLeakMode ? 'Leak investigations' : 'Opportunities'}
-          subtitle={isLeakMode ? 'Create, edit and track leak investigations' : 'Create, edit and track bids and quotes'}
+          title="Opportunities"
+          subtitle="Create, edit and track bids and quotes"
           onBack={() => navigate(businessDashboardPath)}
           backLabel="Back to Business"
           icon={<LayoutDashboard className="h-4 w-4" />}
@@ -575,15 +568,11 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
             </div>
             <div className="min-w-0 flex-1">
               <AppInput
-                placeholder={
-                  isLeakMode
-                    ? 'Search by leak investigation name, code, or client name...'
-                    : 'Search by opportunity name, code, or client name...'
-                }
+                placeholder="Search by opportunity name, code, or client name..."
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 leftIcon={<Search className="h-4 w-4" />}
-                aria-label={isLeakMode ? 'Search leak investigations' : 'Search opportunities'}
+                aria-label="Search opportunities"
               />
             </div>
             <AppButton
@@ -653,7 +642,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
           </div>
         )}
 
-        <LoadingOverlay isLoading={isInitialLoading} text={isLeakMode ? 'Loading leak investigations...' : 'Loading opportunities...'}>
+        <LoadingOverlay isLoading={isInitialLoading} text="Loading opportunities...">
           <AppCard className={uiCx(uiShadows.card, listCardAnimClass)} bodyClassName={uiSpacing.cardPadding}>
         {viewMode === 'cards' ? (
           <div className={uiCx('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3', listCardAnimClass)}>
@@ -691,12 +680,12 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
             )}
             <AppSortableEntityListHeader preset="opportunities">
               <AppSortableEntityListSortColumn
-                label={isLeakMode ? 'Leak investigation' : 'Opportunity'}
+                label="Opportunity"
                 column="opportunity"
                 sortBy={sortBy}
                 sortDir={sortDir}
                 onSort={setListSort}
-                title={isLeakMode ? 'Sort by leak investigation name' : 'Sort by opportunity name'}
+                title="Sort by opportunity name"
               />
               <AppSortableEntityListSortColumn
                 label="Estimator"
@@ -738,12 +727,8 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
         {!isInitialLoading && arr.length === 0 && (
           <AppEmptyState
             className="py-8"
-            title={isLeakMode ? 'No leak investigations found' : 'No opportunities found'}
-            description={
-              isLeakMode
-                ? 'No leak investigations found matching your criteria.'
-                : 'No opportunities found matching your criteria.'
-            }
+            title="No opportunities found"
+            description="No opportunities found matching your criteria."
           />
         )}
         {!isInitialLoading && totalCount > 0 && (

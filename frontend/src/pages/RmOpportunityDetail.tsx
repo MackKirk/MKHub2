@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import ProjectDetail from './ProjectDetail';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 
-type Project = { id: string; is_bidding?: boolean; business_line?: string; is_leak_investigation?: boolean };
+type Project = { id: string; is_bidding?: boolean; business_line?: string };
 
 export default function RmOpportunityDetail() {
   const { id } = useParams();
@@ -13,9 +13,6 @@ export default function RmOpportunityDetail() {
     queryFn: () => api<Project>('GET', `/projects/${id}`),
   });
 
-  if (proj && proj.is_leak_investigation) {
-    return <Navigate to={`/rm-leak-investigations/${id}`} replace />;
-  }
   if (proj && !proj.is_bidding) {
     return <Navigate to={`/rm-projects/${id}`} replace />;
   }

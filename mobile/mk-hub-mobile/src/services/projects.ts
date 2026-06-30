@@ -30,8 +30,6 @@ function listEndpoint(listKind: ProjectListKind): string {
   switch (listKind) {
     case "opportunities":
       return "/projects/business/opportunities";
-    case "leak_investigations":
-      return "/projects/business/leak-investigations";
     default:
       return "/projects/business/projects";
   }
@@ -41,10 +39,7 @@ export const fetchBusinessProjects = async (
   query: BusinessProjectsQuery
 ): Promise<ProjectListResponse> => {
   const businessLine =
-    query.businessLine ??
-    (query.listKind === "leak_investigations"
-      ? BUSINESS_LINE_REPAIRS
-      : BUSINESS_LINE_CONSTRUCTION);
+    query.businessLine ?? BUSINESS_LINE_CONSTRUCTION;
 
   const response = await api.get<ProjectListResponse | ProjectListItem[]>(
     listEndpoint(query.listKind),
