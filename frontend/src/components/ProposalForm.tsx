@@ -12,6 +12,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -403,7 +404,7 @@ export default function ProposalForm({
   
   // Fetch project divisions for division selection
   const { data:projectDivisions } = useQuery({ 
-    queryKey:['project-divisions'], 
+    queryKey:PROJECT_DIVISIONS_QUERY_KEY, 
     queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), 
     staleTime: 300_000
   });

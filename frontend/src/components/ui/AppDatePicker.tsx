@@ -23,7 +23,7 @@ import {
   toIsoDateLocal,
 } from './datePickerUtils';
 import { uiCx, uiDatePicker, uiDropdown, uiTypography } from './tokens';
-import { useComboboxDropdown } from './useComboboxDropdown';
+import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 const DATE_PICKER_PANEL_WIDTH = 280;
@@ -160,7 +160,7 @@ export function AppDatePicker({
         role="dialog"
         aria-label="Choose date"
         className={uiCx(uiDatePicker.panel, 'w-[280px]')}
-        style={{ top: menuRect.top, left: menuRect.left }}
+        style={comboboxMenuStyle(menuRect)}
       >
         <div className={uiDatePicker.panelHeader}>
           <button

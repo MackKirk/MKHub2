@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { sortByLabel } from '@/lib/sortOptions';
+import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
@@ -4369,7 +4370,7 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
   const isEditable = !!editable;
   const showFieldHints = !!embedded;
   const { data: projectDivisions } = useQuery({ 
-    queryKey:['project-divisions'], 
+    queryKey:PROJECT_DIVISIONS_QUERY_KEY, 
     queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), 
     staleTime: 300_000 
   });

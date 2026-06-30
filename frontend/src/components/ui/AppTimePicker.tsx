@@ -14,7 +14,7 @@ import {
   type TimeAmPm,
 } from '@/lib/timePickerUtils';
 import { uiCx, uiDatePicker, uiDropdown, uiTypography } from './tokens';
-import { useComboboxDropdown } from './useComboboxDropdown';
+import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 const TIME_PICKER_PANEL_WIDTH = 280;
 
@@ -102,7 +102,7 @@ export function AppTimePicker({
         role="dialog"
         aria-label="Choose time"
         className={uiCx(uiDatePicker.panel, 'w-[280px]')}
-        style={{ top: menuRect.top, left: menuRect.left }}
+        style={comboboxMenuStyle(menuRect)}
       >
         <div className="space-y-3 px-3 py-2">
           <div className="flex items-center gap-2">

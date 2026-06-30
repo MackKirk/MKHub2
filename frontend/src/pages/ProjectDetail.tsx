@@ -39,7 +39,7 @@ import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
 import OverlayPortal from '@/components/OverlayPortal';
-import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import {
   hasProjectFeaturePermission,
   hasProjectFeatureReadPermission,
@@ -952,7 +952,7 @@ export default function ProjectDetail(){
   const useDesignSystem =
     isLeakInvestigationDetailRoute || isOpportunityDetailRoute || isProjectDetailRoute;
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
-  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const { data:projectDivisions } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`), enabled: !!id && !signOnlySafetySession });
   const { data:clientFiles } = useQuery({ queryKey:['clientFilesForContacts-project', proj?.client_id||''], queryFn: ()=> proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id||''))}/files`) : Promise.resolve([]), enabled: !!proj?.client_id && !signOnlySafetySession });
   const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`), enabled: !!id && !signOnlySafetySession });
@@ -980,6 +980,10 @@ export default function ProjectDetail(){
   const projectBusinessLine = useMemo(
     () => resolveProjectBusinessLine(proj?.business_line, location.pathname),
     [proj?.business_line, location.pathname]
+  );
+  const projectDivisionsForPicker = useMemo(
+    () => filterProjectDivisionsForBusinessLine(projectDivisions, projectBusinessLine),
+    [projectDivisions, projectBusinessLine]
   );
   const hasEditPermission = isAdmin || permissions.has('business:projects:write');
   const canEditEstimate = isAdmin || permissions.has('business:projects:estimate:write');
@@ -3710,7 +3714,7 @@ export default function ProjectDetail(){
           projectId={String(id)}
           proj={proj}
           employees={employees || []}
-          projectDivisions={projectDivisions || []}
+          projectDivisions={projectDivisionsForPicker || []}
           settings={settings || {}}
           designSystem={useDesignSystem}
           onClose={() => setShowConvertModal(false)}
@@ -8469,6 +8473,7 @@ function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab, useDesig
 }
 
 function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj:any, settings:any }){
+  const location = useLocation();
   const [status, setStatus] = useState<string>(proj?.status_label||'');
   const [divs, setDivs] = useState<string[]>(Array.isArray(proj?.division_ids)? proj.division_ids : []);
   const [progress, setProgress] = useState<number>(Number(proj?.progress||0));
@@ -8478,7 +8483,15 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
   const statuses = (settings?.project_statuses||[]) as any[];
   const divisions = (settings?.divisions||[]) as any[];
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
-  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const { data:projectDivisions } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const projectBusinessLine = useMemo(
+    () => resolveProjectBusinessLine(proj?.business_line, location.pathname),
+    [proj?.business_line, location.pathname]
+  );
+  const projectDivisionsForPicker = useMemo(
+    () => filterProjectDivisionsForBusinessLine(projectDivisions, projectBusinessLine),
+    [projectDivisions, projectBusinessLine]
+  );
   
   useEffect(()=>{
     setProjectDivs(Array.isArray(proj?.project_division_ids)? proj.project_division_ids : []);
@@ -8535,7 +8548,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
         <div className="col-span-2">
           <label className="text-xs font-medium text-gray-600 mb-1.5 block">Project Divisions</label>
           <div className="space-y-2 max-h-64 overflow-y-auto border rounded p-2">
-            {(projectDivisions||[]).map((div:any)=>{
+            {(projectDivisionsForPicker||[]).map((div:any)=>{
               const divId = String(div.id);
               const divSelected = projectDivs.includes(divId);
               const subdivisions = div.subdivisions || [];
@@ -8576,7 +8589,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
                 </div>
               );
             })}
-            {(!projectDivisions || projectDivisions.length === 0) && (
+            {(!projectDivisionsForPicker || projectDivisionsForPicker.length === 0) && (
               <div className="text-xs text-gray-500">No project divisions available.</div>
             )}
           </div>
@@ -10154,8 +10167,17 @@ function ProjectDivisionsHeroSection({
   designSystem?: boolean;
 }) {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const [showEditModal, setShowEditModal] = useState(false);
-  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const { data:projectDivisions } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const projectBusinessLine = useMemo(
+    () => resolveProjectBusinessLine(proj?.business_line, location.pathname),
+    [proj?.business_line, location.pathname]
+  );
+  const projectDivisionsForPicker = useMemo(
+    () => filterProjectDivisionsForBusinessLine(projectDivisions, projectBusinessLine),
+    [projectDivisions, projectBusinessLine]
+  );
   
   // Fetch proposals to get pricing items for percentage calculation
   const { data:proposals } = useQuery({ 
@@ -10295,7 +10317,7 @@ function ProjectDivisionsHeroSection({
           projectId={projectId}
           currentDivisions={projectDivIds}
           currentPercentages={calculatedPercentages}
-          projectDivisions={projectDivisions || []}
+          projectDivisions={projectDivisionsForPicker || []}
           designSystem={designSystem}
           onClose={() => setShowEditModal(false)}
           onSave={async () => {
@@ -10578,6 +10600,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
 
 function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ projectId:string, proj:any, files: ProjectFile[], hasEditPermission?: boolean }){
   const queryClient = useQueryClient();
+  const location = useLocation();
   const [description, setDescription] = useState<string>(proj?.description || '');
   const [projectName, setProjectName] = useState<string>(proj?.name || '');
   const [saving, setSaving] = useState(false);
@@ -10587,7 +10610,15 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
   const [eta, setEta] = useState<string>((proj?.date_eta||'').slice(0,10));
   const [projectDivs, setProjectDivs] = useState<string[]>(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const { data:projectDivisions } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const projectBusinessLine = useMemo(
+    () => resolveProjectBusinessLine(proj?.business_line, location.pathname),
+    [proj?.business_line, location.pathname]
+  );
+  const projectDivisionsForPicker = useMemo(
+    () => filterProjectDivisionsForBusinessLine(projectDivisions, projectBusinessLine),
+    [projectDivisions, projectBusinessLine]
+  );
   const { data:proposals } = useQuery({ queryKey:['projectProposals', projectId], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId||''))}`) });
 
   useEffect(()=>{
@@ -10929,7 +10960,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
           {editingDivisions ? (
             <div className="space-y-2">
               <div className="max-h-64 overflow-y-auto border rounded p-3 bg-gray-50">
-                {(projectDivisions||[]).map((div:any)=>{
+                {(projectDivisionsForPicker||[]).map((div:any)=>{
                   const divId = String(div.id);
                   const divSelected = projectDivs.includes(divId);
                   const subdivisions = div.subdivisions || [];
@@ -10970,7 +11001,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                     </div>
                   );
                 })}
-                {(!projectDivisions || projectDivisions.length === 0) && (
+                {(!projectDivisionsForPicker || projectDivisionsForPicker.length === 0) && (
                   <div className="text-xs text-gray-500 text-center py-4">No project divisions available.</div>
                 )}
               </div>

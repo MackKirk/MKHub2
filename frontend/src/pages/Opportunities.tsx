@@ -14,7 +14,7 @@ import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig, FilterOperator } from '@/components/FilterBuilder/types';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { useBusinessLine } from '@/context/BusinessLineContext';
-import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import {
   buildOpportunityListSearchParams,
   convertParamsToRules,
@@ -201,7 +201,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
   
   // Load project divisions in parallel
   const { data: projectDivisions, isLoading: divisionsLoading } = useQuery({ 
-    queryKey:['project-divisions'], 
+    queryKey:PROJECT_DIVISIONS_QUERY_KEY, 
     queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), 
     staleTime: 300_000
   });
@@ -1177,7 +1177,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
   const src = withFileAccessTokenIfNeeded(opportunity.cover_image_url) || '/ui/assets/placeholders/project.png';
   const { data:details } = useQuery({ queryKey:['opportunity-detail-card', opportunity.id], queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(opportunity.id))}`), staleTime: 60_000 });
   const { data:client } = useQuery({ queryKey:['opportunity-client', opportunity.client_id], queryFn: ()=> opportunity.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(opportunity.client_id||''))}`): Promise.resolve(null), enabled: !!opportunity.client_id, staleTime: 300_000 });
-  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const { data:projectDivisions } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const status = (opportunity as any).status_label || details?.status_label || '';
   const statusLabel = String(status || '').trim();
   const start = (opportunity.date_start || details?.date_start || opportunity.created_at || '').slice(0,10);

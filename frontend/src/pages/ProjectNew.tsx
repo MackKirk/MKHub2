@@ -11,6 +11,7 @@ import { DivisionIcon } from '@/components/DivisionIcon';
 import {
   AppButton,
   AppClientSelect,
+  AppCombobox,
   AppControlLabelRow,
   AppFieldHint,
   AppFormModal,
@@ -29,7 +30,7 @@ import {
   uiTypography,
 } from '@/components/ui';
 import { useBusinessLine } from '@/context/BusinessLineContext';
-import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { filterStatusesForProject } from '@/lib/projectStatusVisibility';
 
@@ -75,7 +76,7 @@ export default function ProjectNew(){
   const [newOppExpandedDivisions, setNewOppExpandedDivisions] = useState<Set<string>>(new Set());
   const { data:sites } = useQuery({ queryKey:['clientSites', clientId], queryFn: ()=> clientId? api<Site[]>('GET', `/clients/${encodeURIComponent(clientId)}/sites`) : Promise.resolve([]), enabled: !!clientId });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=> api<any>('GET','/settings') });
-  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const { data:projectDivisions, isLoading: divisionsLoading } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const divisionsForPicker = useMemo(
     () => filterProjectDivisionsForBusinessLine(projectDivisions, businessLine),
     [projectDivisions, businessLine]
@@ -119,6 +120,17 @@ export default function ProjectNew(){
     staleTime: 60_000,
   });
   const leakPickItems = Array.isArray((leakPickData as any)?.items) ? (leakPickData as any).items : [];
+  const leakInvestigationOptions = useMemo(
+    () => [
+      { value: '', label: 'None' },
+      ...leakPickItems.map((row: { id: string; name?: string; code?: string }) => ({
+        value: row.id,
+        label: (row.name || row.id).trim() || row.id,
+        description: row.code?.trim() || undefined,
+      })),
+    ],
+    [leakPickItems],
+  );
   const { data:contacts } = useQuery({ queryKey:['clientContacts-mini', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/clients/${encodeURIComponent(clientId)}/contacts`) : Promise.resolve([]), enabled: !!clientId });
 
   const { data: clientById } = useQuery({
@@ -438,22 +450,18 @@ export default function ProjectNew(){
                 fieldHint="Description\n\nOptional notes about scope or context."
               />
               {!isLeakInvestigation && businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE && (
-                <AppSelect
-                  className="md:col-span-2"
-                  label="Related Leak Investigation (optional)"
-                  value={relatedLeakInvestigationId}
-                  onChange={(e) => setRelatedLeakInvestigationId(e.target.value)}
-                  searchable
-                  placeholder="Search or select leak investigation…"
-                  options={[
-                    { value: '', label: 'None' },
-                    ...leakPickItems.map((row: { id: string; name?: string; code?: string }) => ({
-                      value: row.id,
-                      label: (row.code ? `${row.code} — ` : '') + (row.name || row.id),
-                    })),
-                  ]}
-                  fieldHint="Related Leak Investigation\n\nLink to an existing leak investigation when applicable."
-                />
+                <div className="md:col-span-2">
+                  <AppCombobox
+                    id="project-new-related-leak"
+                    label="Related Leak Investigation (optional)"
+                    value={relatedLeakInvestigationId}
+                    onChange={setRelatedLeakInvestigationId}
+                    placeholder="Search or select leak investigation…"
+                    options={leakInvestigationOptions}
+                    emptyMessage="No leak investigations found."
+                    fieldHint="Related Leak Investigation\n\nLink to an existing leak investigation when applicable."
+                  />
+                </div>
               )}
             </div>
             {!!clientId && (
@@ -606,16 +614,17 @@ export default function ProjectNew(){
                     : 'Select at least one division for this opportunity'}
                 </p>
               )}
-                  <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-                    {divisionsForPicker && divisionsForPicker.length > 0 ? (
-                      <div className="divide-y divide-gray-100">
-                        {(divisionsForPicker || []).map((div: any) => {
+                  <div className="rounded-lg border border-gray-200 bg-white overflow-hidden divide-y divide-gray-200">
+                    {divisionsLoading ? (
+                      <div className="text-xs text-gray-500 text-center py-6">Loading project divisions…</div>
+                    ) : divisionsForPicker && divisionsForPicker.length > 0 ? (
+                        (divisionsForPicker || []).map((div: any) => {
                           const divId = String(div.id);
                           const subdivisions = Array.isArray(div.subdivisions) ? div.subdivisions : [];
                           const hasSubdivisions = subdivisions.length > 0;
                           const isExpanded = newOppExpandedDivisions.has(divId);
                           return (
-                            <div key={divId} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                            <div key={divId} className="overflow-hidden bg-white">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -682,8 +691,7 @@ export default function ProjectNew(){
                               )}
                             </div>
                           );
-                        })}
-                      </div>
+                        })
                     ) : (
                       <div className="text-xs text-gray-500 text-center py-6">
                         No project divisions available. Please run the seed script.

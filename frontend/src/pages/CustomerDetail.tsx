@@ -4,6 +4,7 @@ import { api, withFileAccessToken, withFileAccessTokenIfNeeded } from '@/lib/api
 import { sortByLabel } from '@/lib/sortOptions';
 import { formatAddressDisplay } from '@/lib/addressUtils';
 import { getClientStatusBadgeVariant } from '@/lib/clientUi';
+import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import { useEffect, useMemo, useState, ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -124,7 +125,7 @@ export default function CustomerDetail(){
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data: projectDivisions } = useQuery({
-    queryKey: ['project-divisions'],
+    queryKey: PROJECT_DIVISIONS_QUERY_KEY,
     queryFn: () => api<any[]>('GET', '/settings/project-divisions'),
     staleTime: 300_000,
     enabled: hasOverviewView || hasProjectsTabView || hasOpportunitiesTabView,

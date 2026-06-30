@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 
 export type ComboboxMenuRect = {
-  top: number;
+  /** Set when the menu opens below the anchor. */
+  top?: number;
+  /** Set when the menu opens above the anchor (keeps the menu flush to the trigger). */
+  bottom?: number;
   left: number;
   width: number;
   maxHeight: number;
@@ -25,7 +28,8 @@ const DEFAULT_MENU_MAX_HEIGHT = 224;
 export function comboboxMenuStyle(rect: ComboboxMenuRect | null): CSSProperties | undefined {
   if (!rect) return undefined;
   return {
-    top: rect.top,
+    ...(rect.top != null ? { top: rect.top } : {}),
+    ...(rect.bottom != null ? { bottom: rect.bottom } : {}),
     left: rect.left,
     width: rect.width,
     maxHeight: rect.maxHeight,
@@ -65,7 +69,7 @@ function computeMenuRect(
 
   if (maxUp > 0) {
     return {
-      top: anchorRect.top - DROPDOWN_GAP - maxUp,
+      bottom: window.innerHeight - anchorRect.top + DROPDOWN_GAP,
       left,
       width,
       maxHeight: maxUp,
