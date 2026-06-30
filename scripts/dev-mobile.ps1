@@ -214,7 +214,7 @@ try {
         "Write-Host 'API (emulador): $ApiBaseUrl' -ForegroundColor Cyan"
         "Write-Host 'Pressione a no menu para reabrir no Android' -ForegroundColor Yellow"
         "Write-Host ''"
-        "npx expo start --android --port $Port"
+        "npx expo start --android --clear --port $Port"
     )
     ($expoLines -join [Environment]::NewLine) | Out-File -FilePath $expoScript -Encoding UTF8
 

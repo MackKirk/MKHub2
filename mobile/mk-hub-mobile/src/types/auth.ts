@@ -11,6 +11,16 @@ export interface MeUser {
   is_active?: boolean;
   first_name?: string | null;
   last_name?: string | null;
+  roles?: string[];
+}
+
+export interface MeResponse {
+  id: string;
+  username: string;
+  email_personal: string;
+  email_corporate?: string | null;
+  roles: string[];
+  permissions: string[];
 }
 
 export interface MeProfile {

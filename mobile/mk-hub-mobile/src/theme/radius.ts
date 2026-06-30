@@ -4,8 +4,10 @@
 export const radius = {
   sm: 8,
   md: 12,
-  xl: 14, // matches web rounded-xl
-  card: 14
+  control: 8,
+  xl: 14,
+  card: 12,
+  pill: 999
 } as const;
 
 export const shadows = {

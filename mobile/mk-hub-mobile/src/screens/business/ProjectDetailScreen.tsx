@@ -13,13 +13,24 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { useHubMenu } from "../../navigation/HubMenuProvider";
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { ScreenLayout } from "../../components/ScreenLayout";
+import { MKPageHeader } from "../../components/MKPageHeader";
 import { MKButton } from "../../components/MKButton";
 import { MKCard } from "../../components/MKCard";
+import { MKProjectGeneralInfo } from "../../components/MKProjectGeneralInfo";
+import { MKProjectEventCalendar } from "../../components/MKProjectEventCalendar";
+import { MKProjectTeamSection } from "../../components/MKProjectTeamSection";
+import {
+  MKProjectDetailTabBar,
+  projectDetailTabBarHeight,
+  type ProjectDetailTabKey
+} from "../../components/MKProjectDetailTabBar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, toApiError } from "../../services/api";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -29,16 +40,26 @@ import {
   uploadProjectFile
 } from "../../services/projects";
 import { getProjectReports, createProjectReport } from "../../services/reports";
-import { getProjectAuditLogs } from "../../services/audit";
+import { getProjectEvents, type ProjectEvent } from "../../services/projectEvents";
+import {
+  extractScheduledWorkerIds,
+  getProjectMembers,
+  getProjectShifts,
+  type ProjectMember
+} from "../../services/projectTeam";
 import { getProjectProposals, getProposal } from "../../services/proposals";
 import { getEstimateItems, getProjectEstimates } from "../../services/estimates";
+import {
+  employeeDisplayName,
+  fetchEmployees,
+  type EmployeeListItem
+} from "../../services/settings";
 import { colors } from "../../theme/colors";
 import { radius } from "../../theme/radius";
 import { spacing } from "../../theme/spacing";
 import { typography } from "../../theme/typography";
-import type { HomeStackParamList } from "../../navigation/tabs/AppTabs";
+import type { RootStackParamList } from "../../navigation/types";
 import type {
-  ProjectAuditLogEntry,
   ProjectDetail,
   ProjectFileCategory,
   ProjectFileItem,
@@ -48,9 +69,12 @@ import type { CreateReportPayload, ProjectReport } from "../../services/reports"
 import type { EstimateItem } from "../../services/estimates";
 import type { Proposal } from "../../services/proposals";
 
-type ProjectDetailRoute = RouteProp<HomeStackParamList, "ProjectDetail">;
-type ProjectDetailNav = NativeStackNavigationProp<HomeStackParamList, "ProjectDetail">;
-type DetailTabKey = "overview" | "notes" | "files" | "proposal";
+type ProjectDetailRoute = RouteProp<RootStackParamList, "ProjectDetail">;
+type ProjectDetailNav = NativeStackNavigationProp<
+  RootStackParamList,
+  "ProjectDetail"
+>;
+type DetailTabKey = ProjectDetailTabKey;
 
 interface ReportCategory {
   id?: string;
@@ -87,15 +111,29 @@ export const ProjectDetailScreen: React.FC = () => {
   const navigation = useNavigation<ProjectDetailNav>();
   const route = useRoute<ProjectDetailRoute>();
   const initialProject = route.params.project;
+  const initialTabParam = route.params.initialTab;
   const { token } = useAuth();
+  const { openMenu } = useHubMenu();
+  const insets = useSafeAreaInsets();
+  const bottomTabHeight = projectDetailTabBarHeight(insets.bottom);
 
-  const [activeTab, setActiveTab] = useState<DetailTabKey>("overview");
+  const mapInitialTab = (
+    tab?: RootStackParamList["ProjectDetail"]["initialTab"]
+  ): DetailTabKey => {
+    if (tab === "reports") return "notes";
+    if (tab === "pricing") return "proposal";
+    if (tab === "files" || tab === "proposal" || tab === "notes") return tab;
+    return "overview";
+  };
+
+  const [activeTab, setActiveTab] = useState<DetailTabKey>(
+    mapInitialTab(initialTabParam)
+  );
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [reports, setReports] = useState<ProjectReport[]>([]);
   const [reportCategories, setReportCategories] = useState<ReportCategory[]>([]);
-  const [auditLogs, setAuditLogs] = useState<ProjectAuditLogEntry[]>([]);
 
   const [files, setFiles] = useState<ProjectFileItem[]>([]);
   const [fileCategories, setFileCategories] = useState<ProjectFileCategory[]>([]);
@@ -106,6 +144,11 @@ export const ProjectDetailScreen: React.FC = () => {
 
   const [proposalData, setProposalData] = useState<ProposalDetailSummary | null>(null);
   const [loadingProposalData, setLoadingProposalData] = useState(false);
+  const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
+  const [projectEvents, setProjectEvents] = useState<ProjectEvent[]>([]);
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
+  const [scheduledWorkerIds, setScheduledWorkerIds] = useState<string[]>([]);
+  const [loadingOverviewExtras, setLoadingOverviewExtras] = useState(true);
 
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [noteTitle, setNoteTitle] = useState("");
@@ -118,19 +161,31 @@ export const ProjectDetailScreen: React.FC = () => {
   const loadCoreData = useCallback(async () => {
     try {
       setLoading(true);
-      const [projectDetail, reportItems, fileItems, logItems, fileCats] =
-        await Promise.all([
-          getProjectDetail(projectId),
-          getProjectReports(projectId),
-          getProjectFiles(projectId),
-          getProjectAuditLogs(projectId, { limit: 8 }),
-          getProjectFileCategories()
-        ]);
+      setLoadingOverviewExtras(true);
+      const [
+        projectDetail,
+        reportItems,
+        fileItems,
+        fileCats,
+        events,
+        members,
+        shifts
+      ] = await Promise.all([
+        getProjectDetail(projectId),
+        getProjectReports(projectId),
+        getProjectFiles(projectId),
+        getProjectFileCategories(),
+        getProjectEvents(projectId).catch(() => []),
+        getProjectMembers(projectId).catch(() => []),
+        getProjectShifts(projectId).catch(() => [])
+      ]);
       setProject(projectDetail);
       setReports(reportItems);
       setFiles(fileItems);
-      setAuditLogs(logItems);
       setFileCategories(fileCats);
+      setProjectEvents(events);
+      setProjectMembers(members);
+      setScheduledWorkerIds(extractScheduledWorkerIds(shifts));
       if (fileCats.length > 0 && !fileCats.some((item) => item.id === uploadCategory)) {
         setUploadCategory(fileCats[0].id);
       }
@@ -139,13 +194,18 @@ export const ProjectDetailScreen: React.FC = () => {
       Alert.alert("Could not load project", apiError.message);
     } finally {
       setLoading(false);
+      setLoadingOverviewExtras(false);
     }
   }, [projectId, uploadCategory]);
 
   const loadSettingsData = useCallback(async () => {
     try {
-      const response = await api.get<{ report_categories?: ReportCategory[] }>("/settings");
-      setReportCategories(response.data?.report_categories || []);
+      const [settingsResponse, employeesData] = await Promise.all([
+        api.get<{ report_categories?: ReportCategory[] }>("/settings"),
+        fetchEmployees()
+      ]);
+      setReportCategories(settingsResponse.data?.report_categories || []);
+      setEmployees(employeesData);
     } catch (err) {
       console.warn("[ProjectDetailScreen] Could not load settings", err);
     }
@@ -190,6 +250,14 @@ export const ProjectDetailScreen: React.FC = () => {
   }, [activeTab, proposalData, loadingProposalData, loadProposalData]);
 
   const displayedProject = project ?? initialProject;
+
+  const employeeLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const emp of employees) {
+      map.set(String(emp.id), employeeDisplayName(emp));
+    }
+    return map;
+  }, [employees]);
 
   const filteredFiles = useMemo(() => {
     if (selectedFileCategory === "all") {
@@ -380,37 +448,17 @@ export const ProjectDetailScreen: React.FC = () => {
       case "overview":
         return (
           <View style={styles.tabContent}>
-            <MKCard style={styles.sectionCard} elevated={true}>
-              <Text style={styles.sectionTitle}>Project snapshot</Text>
-              <View style={styles.statsGrid}>
-                <InfoPill
-                  label="Type"
-                  value={displayedProject.is_bidding ? "Opportunity" : "Project"}
-                />
-                <InfoPill label="Status" value={displayedProject.status_label || "Unknown"} />
-                <InfoPill label="Client" value={displayedProject.client_display_name || "-"} />
-                <InfoPill label="Progress" value={formatPercent(displayedProject.progress)} />
-              </View>
-            </MKCard>
+            <MKProjectEventCalendar
+              events={projectEvents}
+              loading={loadingOverviewExtras}
+            />
 
-            <MKCard style={styles.sectionCard} elevated={true}>
-              <Text style={styles.sectionTitle}>Overview</Text>
-              <InfoRow label="Code" value={displayedProject.code || "-"} />
-              <InfoRow label="Site" value={project?.site_name || "-"} />
-              <InfoRow label="Contact" value={project?.contact_name || "-"} />
-              <InfoRow label="End Date" value={formatDate(project?.date_eta)} />
-              <InfoRow label="Start date" value={formatDate(displayedProject.date_start)} />
-              <InfoRow label="End date" value={formatDate(displayedProject.date_end)} />
-              <InfoRow label="Address" value={buildAddress(project)} />
-            </MKCard>
-
-            <MKCard style={styles.sectionCard} elevated={true}>
-              <Text style={styles.sectionTitle}>Commercial summary</Text>
-              <InfoRow label="Service value" value={formatCurrency(project?.service_value)} />
-              <InfoRow label="Estimated cost" value={formatCurrency(project?.cost_estimated)} />
-              <InfoRow label="Actual cost" value={formatCurrency(project?.cost_actual)} />
-              <InfoRow label="Lead source" value={project?.lead_source || "-"} />
-            </MKCard>
+            <MKProjectTeamSection
+              members={projectMembers}
+              scheduledWorkerIds={scheduledWorkerIds}
+              employeeLookup={employeeLookup}
+              loading={loadingOverviewExtras}
+            />
 
             {project?.description ? (
               <MKCard style={styles.sectionCard} elevated={true}>
@@ -453,22 +501,6 @@ export const ProjectDetailScreen: React.FC = () => {
                         <Text style={styles.timelineText}>{report.description}</Text>
                       ) : null}
                     </View>
-                  </View>
-                ))
-              )}
-            </MKCard>
-
-            <MKCard style={styles.sectionCard} elevated={true}>
-              <Text style={styles.sectionTitle}>Recent activity</Text>
-              {auditLogs.length === 0 ? (
-                <Text style={styles.emptySectionText}>No recent activity.</Text>
-              ) : (
-                auditLogs.map((item) => (
-                  <View key={item.id} style={styles.activityItem}>
-                    <Text style={styles.activityTitle}>
-                      {item.actor_name || "Someone"} {formatAction(item.action)} {item.entity_type || "item"}
-                    </Text>
-                    <Text style={styles.activityMeta}>{formatDate(item.timestamp)}</Text>
                   </View>
                 ))
               )}
@@ -722,91 +754,39 @@ export const ProjectDetailScreen: React.FC = () => {
   }
 
   return (
-    <ScreenLayout scroll={false}>
+    <ScreenLayout scroll={false} contentStyle={styles.screenContent}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: bottomTabHeight + spacing.lg }
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Back to Sales</Text>
-        </TouchableOpacity>
+        <MKPageHeader
+          title={displayedProject.is_bidding ? "Opportunity" : "Project"}
+          subtitle={displayedProject.code || undefined}
+          onBack={() => navigation.goBack()}
+          onMenu={openMenu}
+        />
 
-        <MKCard style={styles.heroCard} elevated={true}>
-          <View style={styles.heroTopRow}>
-            <View style={styles.heroTitleWrap}>
-              <Text style={styles.heroTitle}>{displayedProject.name}</Text>
-              <Text style={styles.heroCode}>{displayedProject.code || "No code"}</Text>
-            </View>
-            <View style={styles.heroBadges}>
-              <View style={styles.heroBadge}>
-                <Text style={styles.heroBadgeText}>
-                  {displayedProject.is_bidding ? "Opportunity" : "Project"}
-                </Text>
-              </View>
-              {displayedProject.status_label ? (
-                <View style={styles.heroStatusBadge}>
-                  <Text style={styles.heroStatusText}>{displayedProject.status_label}</Text>
-                </View>
-              ) : null}
-            </View>
-          </View>
-
-          <Text style={styles.heroSubtitle}>
-            {displayedProject.client_display_name || "No client linked"}
-          </Text>
-
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${Math.max(6, Math.min(displayedProject.progress || 0, 100))}%` }
-              ]}
-            />
-          </View>
-          <Text style={styles.progressLabel}>
-            Progress {formatPercent(displayedProject.progress)}
-          </Text>
-
-          <View style={styles.heroMetaGrid}>
-            <InfoPill label="Site" value={project?.site_name || "-"} />
-            <InfoPill label="Contact" value={project?.contact_name || "-"} />
-            <InfoPill label="Start" value={formatDate(displayedProject.date_start)} />
-            <InfoPill label="End Date" value={formatDate(project?.date_eta)} />
-          </View>
-        </MKCard>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabsScrollContent}
-          style={styles.tabsScroll}
-        >
-          {TABS.map((tab) => (
-            <TouchableOpacity
-              key={tab.key}
-              style={[styles.tabButton, activeTab === tab.key && styles.tabButtonActive]}
-              onPress={() => setActiveTab(tab.key)}
-            >
-              <Ionicons
-                name={tab.icon}
-                size={16}
-                color={activeTab === tab.key ? colors.card : colors.textMuted}
-              />
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  activeTab === tab.key && styles.tabButtonTextActive
-                ]}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <MKProjectGeneralInfo
+          project={displayedProject}
+          detail={project}
+          token={token}
+          employeeLookup={employeeLookup}
+          variant={activeTab === "overview" ? "full" : "compact"}
+        />
 
         {renderTabContent()}
       </ScrollView>
+
+      <MKProjectDetailTabBar
+        tabs={TABS}
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        style={styles.bottomTabBar}
+      />
 
       <Modal
         visible={showNoteModal}
@@ -901,15 +881,6 @@ export const ProjectDetailScreen: React.FC = () => {
   );
 };
 
-const InfoPill: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <View style={styles.infoPill}>
-    <Text style={styles.infoPillLabel}>{label}</Text>
-    <Text style={styles.infoPillValue} numberOfLines={2}>
-      {value}
-    </Text>
-  </View>
-);
-
 const InfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <View style={styles.infoRow}>
     <Text style={styles.infoRowLabel}>{label}</Text>
@@ -917,34 +888,11 @@ const InfoRow: React.FC<{ label: string; value: string }> = ({ label, value }) =
   </View>
 );
 
-const buildAddress = (project: ProjectDetail | null): string => {
-  if (!project) {
-    return "-";
-  }
-
-  const parts = [
-    project.site_address_line1 || project.address,
-    project.site_city || project.address_city,
-    project.site_province || project.address_province,
-    project.site_country || project.address_country,
-    project.site_postal_code || project.address_postal_code
-  ].filter(Boolean);
-
-  return parts.length > 0 ? parts.join(", ") : "-";
-};
-
 const formatDate = (value?: string | null): string => {
   if (!value) {
     return "-";
   }
   return new Date(value).toLocaleDateString();
-};
-
-const formatPercent = (value?: number | null): string => {
-  if (value === undefined || value === null) {
-    return "-";
-  }
-  return `${Math.round(value)}%`;
 };
 
 const formatCurrency = (value?: number | null): string => {
@@ -956,13 +904,6 @@ const formatCurrency = (value?: number | null): string => {
     currency: "USD",
     maximumFractionDigits: 0
   }).format(value);
-};
-
-const formatAction = (value?: string | null): string => {
-  if (!value) {
-    return "updated";
-  }
-  return value.toLowerCase().replaceAll("_", " ");
 };
 
 const buildFileSource = (file: ProjectFileItem, authHeader?: string) => {
@@ -981,11 +922,18 @@ const buildFileSource = (file: ProjectFileItem, authHeader?: string) => {
 };
 
 const styles = StyleSheet.create({
+  screenContent: {
+    flex: 1,
+    paddingBottom: 0
+  },
+  bottomTabBar: {
+    marginHorizontal: -spacing.xl
+  },
   scrollView: {
     flex: 1
   },
   scrollContent: {
-    paddingBottom: spacing.xxl
+    flexGrow: 1
   },
   backButton: {
     marginBottom: spacing.md
@@ -993,123 +941,6 @@ const styles = StyleSheet.create({
   backButtonText: {
     ...typography.body,
     color: colors.primary
-  },
-  heroCard: {
-    marginBottom: spacing.lg
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: spacing.sm
-  },
-  heroTitleWrap: {
-    flex: 1,
-    marginRight: spacing.md
-  },
-  heroTitle: {
-    ...typography.title,
-    marginBottom: spacing.xs
-  },
-  heroCode: {
-    ...typography.caption
-  },
-  heroBadges: {
-    alignItems: "flex-end",
-    gap: spacing.sm
-  },
-  heroBadge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.xl,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  heroBadgeText: {
-    ...typography.caption,
-    color: colors.textPrimary
-  },
-  heroStatusBadge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.xl,
-    backgroundColor: colors.primary
-  },
-  heroStatusText: {
-    ...typography.caption,
-    color: colors.card
-  },
-  heroSubtitle: {
-    ...typography.body,
-    color: colors.textMuted,
-    marginBottom: spacing.md
-  },
-  progressTrack: {
-    height: 8,
-    borderRadius: radius.xl,
-    backgroundColor: colors.border,
-    overflow: "hidden",
-    marginBottom: spacing.xs
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: radius.xl,
-    backgroundColor: colors.primary
-  },
-  progressLabel: {
-    ...typography.caption,
-    marginBottom: spacing.md
-  },
-  heroMetaGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm
-  },
-  infoPill: {
-    minWidth: "47%",
-    flexGrow: 1,
-    padding: spacing.md,
-    borderRadius: radius.card,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  infoPillLabel: {
-    ...typography.caption,
-    marginBottom: spacing.xs
-  },
-  infoPillValue: {
-    ...typography.bodySmall
-  },
-  tabsScroll: {
-    marginBottom: spacing.lg
-  },
-  tabsScrollContent: {
-    gap: spacing.sm,
-    paddingRight: spacing.sm
-  },
-  tabButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.xl,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  tabButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary
-  },
-  tabButtonText: {
-    ...typography.bodySmall,
-    color: colors.textPrimary
-  },
-  tabButtonTextActive: {
-    color: colors.card
   },
   tabContent: {
     gap: spacing.md
@@ -1134,11 +965,6 @@ const styles = StyleSheet.create({
   },
   smallAction: {
     minWidth: 110
-  },
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm
   },
   infoRow: {
     paddingVertical: spacing.sm,
@@ -1185,18 +1011,6 @@ const styles = StyleSheet.create({
   timelineText: {
     ...typography.bodySmall,
     color: colors.textMuted
-  },
-  activityItem: {
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
-  },
-  activityTitle: {
-    ...typography.bodySmall,
-    marginBottom: spacing.xs
-  },
-  activityMeta: {
-    ...typography.caption
   },
   emptySectionText: {
     ...typography.bodySmall,

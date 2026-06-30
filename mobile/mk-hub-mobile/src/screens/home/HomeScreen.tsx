@@ -1,194 +1,184 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { useHubMenu } from "../../navigation/HubMenuProvider";
+import type { CompositeNavigationProp } from "@react-navigation/native";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../../hooks/useAuth";
-import { MKCard } from "../../components/MKCard";
+import { MKPageHeader } from "../../components/MKPageHeader";
+import { ScreenLayout } from "../../components/ScreenLayout";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { typography } from "../../theme/typography";
 import { radius } from "../../theme/radius";
-import type { HomeStackParamList } from "../../navigation/tabs/AppTabs";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { CompositeNavigationProp } from "@react-navigation/native";
-import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
-import type { AppTabParamList } from "../../navigation/tabs/AppTabs";
+import type { AppTabParamList, RootStackParamList } from "../../navigation/types";
 
-type HomeNavProp = NativeStackNavigationProp<HomeStackParamList>;
-type TabNavProp = BottomTabNavigationProp<AppTabParamList>;
-type NavProp = CompositeNavigationProp<HomeNavProp, TabNavProp>;
+type HomeNav = CompositeNavigationProp<
+  BottomTabNavigationProp<AppTabParamList, "Home">,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
-interface ActionCard {
+interface Shortcut {
+  label: string;
   icon: string;
-  title: string;
-  subtitle: string;
-  gradient: [string, string];
   onPress: () => void;
 }
 
 export const HomeScreen: React.FC = () => {
   const { user } = useAuth();
-  const navigation = useNavigation<NavProp>();
+  const navigation = useNavigation<HomeNav>();
 
   const firstName =
     (user?.first_name && user.first_name.trim()) ||
-    (user?.username ?? "there");
+    user?.username ||
+    "there";
 
-  const actions: ActionCard[] = [
+  const { openMenu } = useHubMenu();
+
+  const goStack = (screen: keyof RootStackParamList, params?: object) => {
+    const stackNav = navigation.getParent();
+    if (stackNav) {
+      stackNav.navigate(screen as never, params as never);
+    }
+  };
+
+  const shortcuts: Shortcut[] = [
     {
-      icon: "⏰",
-      title: "Clock In / Out",
-      subtitle: "One-touch attendance",
-      gradient: [colors.primary, colors.primaryDark],
-      onPress: () => {
-        const parent = navigation.getParent();
-        if (parent) {
-          (parent as any).navigate("Clock");
-        }
-      }
+      label: "Projects",
+      icon: "🏗️",
+      onPress: () =>
+        goStack("ProjectsList", {
+          listKind: "projects",
+          businessLine: "construction",
+          title: "Projects"
+        })
     },
     {
+      label: "Opportunities",
+      icon: "📋",
+      onPress: () =>
+        goStack("ProjectsList", {
+          listKind: "opportunities",
+          businessLine: "construction",
+          title: "Opportunities"
+        })
+    },
+    {
+      label: "Schedule",
       icon: "📅",
-      title: "Schedule",
-      subtitle: "View your shifts",
-      gradient: [colors.primary, colors.primaryDark],
-      onPress: () => navigation.navigate("Schedule")
+      onPress: () => goStack("Schedule")
     },
     {
-      icon: "📸",
-      title: "Upload to Project",
-      subtitle: "Photos and videos",
-      gradient: [colors.primary, colors.primaryDark],
-      onPress: () => {
-        const parent = navigation.getParent();
-        if (parent) {
-          (parent as any).navigate("Upload");
-        }
-      }
+      label: "Clock",
+      icon: "⏰",
+      onPress: () => navigation.navigate("Clock")
     },
     {
+      label: "Tasks",
       icon: "✅",
-      title: "My Tasks",
-      subtitle: "See what is assigned",
-      gradient: [colors.primary, colors.primaryDark],
-      onPress: () => {
-        const parent = navigation.getParent();
-        if (parent) {
-          (parent as any).navigate("Tasks");
-        }
-      }
+      onPress: () => navigation.navigate("Tasks")
     },
     {
-      icon: "💼",
-      title: "Business",
-      subtitle: "Projects & opportunities",
-      gradient: [colors.primary, colors.primaryDark],
-      onPress: () => navigation.navigate("Business")
+      label: "Upload",
+      icon: "📸",
+      onPress: () => goStack("Upload")
+    },
+    {
+      label: "R&M Projects",
+      icon: "🔧",
+      onPress: () =>
+        goStack("ProjectsList", {
+          listKind: "projects",
+          businessLine: "repairs_maintenance",
+          title: "R&M Projects"
+        })
+    },
+    {
+      label: "Community",
+      icon: "💬",
+      onPress: () => navigation.navigate("Community")
     }
   ];
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <Text style={styles.greeting}>Welcome back,</Text>
-          <Text style={styles.name}>{firstName}!</Text>
-          <Text style={styles.subtitle}>Quick actions for your day</Text>
-        </View>
+    <ScreenLayout scroll={false} contentStyle={styles.layout}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <MKPageHeader
+          title={`Welcome, ${firstName}`}
+          subtitle="Quick shortcuts for your day"
+          onMenu={openMenu}
+        />
 
         <View style={styles.grid}>
-          {actions.map((action, index) => (
-            <MKCard
-              key={index}
-              style={styles.actionCard}
-              onPress={action.onPress}
-              elevated={true}
+          {shortcuts.map((item) => (
+            <TouchableOpacity
+              key={item.label}
+              style={styles.tile}
+              onPress={item.onPress}
+              activeOpacity={0.75}
             >
-              <LinearGradient
-                colors={action.gradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.cardGradient}
-              >
-                <Text style={styles.cardIcon}>{action.icon}</Text>
-                <Text style={styles.cardTitle}>{action.title}</Text>
-                <Text style={styles.cardSubtitle}>{action.subtitle}</Text>
-              </LinearGradient>
-            </MKCard>
+              <Text style={styles.tileIcon}>{item.icon}</Text>
+              <Text style={styles.tileLabel} numberOfLines={2}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
           ))}
         </View>
+
+        <TouchableOpacity style={styles.menuHint} onPress={openMenu}>
+          <Text style={styles.menuHintText}>
+            Open the full Hub menu for more sections
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
-    </View>
+    </ScreenLayout>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  content: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl
-  },
-  header: {
-    marginBottom: spacing.xl
-  },
-  greeting: {
-    ...typography.title,
-    color: colors.textMuted,
-    marginBottom: spacing.xs
-  },
-  name: {
-    ...typography.title,
-    fontSize: 28,
-    lineHeight: 36,
-    color: colors.primary,
-    marginBottom: spacing.sm
-  },
-  subtitle: {
-    ...typography.body,
-    color: colors.textMuted,
-    marginTop: spacing.xs
+  layout: {
+    flex: 1
   },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "space-between"
+    gap: spacing.md
   },
-  actionCard: {
-    width: "48%",
-    marginBottom: spacing.lg,
-    padding: 0,
-    overflow: "hidden"
-  },
-  cardGradient: {
-    padding: spacing.lg,
+  tile: {
+    width: "47%",
+    minHeight: 110,
+    backgroundColor: colors.card,
     borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: "center",
-    minHeight: 140,
-    justifyContent: "center"
+    justifyContent: "center",
+    padding: spacing.md,
+    gap: spacing.sm
   },
-  cardIcon: {
-    fontSize: 40,
-    marginBottom: spacing.md
+  tileIcon: {
+    fontSize: 32
   },
-  cardTitle: {
-    ...typography.subtitle,
-    color: "#ffffff",
-    marginBottom: spacing.xs,
-    textAlign: "center"
-  },
-  cardSubtitle: {
+  tileLabel: {
     ...typography.bodySmall,
-    color: "#ffffff",
-    opacity: 0.9,
-    textAlign: "center"
+    fontFamily: typography.button.fontFamily,
+    textAlign: "center",
+    color: colors.textPrimary
+  },
+  menuHint: {
+    marginTop: spacing.xl,
+    padding: spacing.md,
+    alignItems: "center"
+  },
+  menuHintText: {
+    ...typography.caption,
+    color: colors.primary
   }
 });
-
-

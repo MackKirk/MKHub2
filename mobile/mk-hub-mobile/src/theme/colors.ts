@@ -9,6 +9,7 @@ export const colors = {
   background: "#f6f7f9", // --bg from web
   card: "#ffffff",
   textPrimary: "#0f172a", // --ink from web
+  textBody: "#374151",
   textMuted: "#6b7280", // --muted from web
   border: "#e5e7eb", // --border from web
   

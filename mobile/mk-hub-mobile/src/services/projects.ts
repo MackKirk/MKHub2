@@ -3,14 +3,79 @@ import type {
   ProjectDetail,
   ProjectFileCategory,
   ProjectFileItem,
-  ProjectListItem
+  ProjectListItem,
+  ProjectListKind,
+  ProjectListResponse
 } from "../types/projects";
+import {
+  BUSINESS_LINE_CONSTRUCTION,
+  BUSINESS_LINE_REPAIRS
+} from "../lib/permissions";
 
-// Projects and file upload integration:
-// - GET /projects?q=...
-// - POST /files/upload-proxy (multipart/form-data)
-// - POST /projects/{project_id}/files (attach uploaded FileObject to project)
+export interface BusinessProjectsQuery {
+  listKind: ProjectListKind;
+  businessLine?: string;
+  q?: string;
+  page?: number;
+  limit?: number;
+  relatedToMe?: boolean;
+  status?: string;
+  statusNot?: string;
+  divisionId?: string;
+  clientId?: string;
+  estimatorId?: string;
+}
 
+function listEndpoint(listKind: ProjectListKind): string {
+  switch (listKind) {
+    case "opportunities":
+      return "/projects/business/opportunities";
+    case "leak_investigations":
+      return "/projects/business/leak-investigations";
+    default:
+      return "/projects/business/projects";
+  }
+}
+
+export const fetchBusinessProjects = async (
+  query: BusinessProjectsQuery
+): Promise<ProjectListResponse> => {
+  const businessLine =
+    query.businessLine ??
+    (query.listKind === "leak_investigations"
+      ? BUSINESS_LINE_REPAIRS
+      : BUSINESS_LINE_CONSTRUCTION);
+
+  const response = await api.get<ProjectListResponse | ProjectListItem[]>(
+    listEndpoint(query.listKind),
+    {
+      params: {
+        business_line: businessLine,
+        q: query.q || undefined,
+        page: query.page ?? 1,
+        limit: query.limit ?? 25,
+        related_to_me: query.relatedToMe ? true : undefined,
+        status: query.status || undefined,
+        status_not: query.statusNot || undefined,
+        division_id: query.divisionId || undefined,
+        client_id: query.clientId || undefined,
+        estimator_id: query.estimatorId || undefined
+      }
+    }
+  );
+
+  if (Array.isArray(response.data)) {
+    return {
+      items: response.data,
+      total: response.data.length,
+      page: 1,
+      limit: response.data.length
+    };
+  }
+  return response.data;
+};
+
+/** Legacy search — kept for upload/clock flows that pick any project. */
 export const searchProjects = async (
   query: string
 ): Promise<ProjectListItem[]> => {
@@ -30,12 +95,18 @@ export const getProjectDetail = async (
 export const getProjectFiles = async (
   projectId: string
 ): Promise<ProjectFileItem[]> => {
-  const response = await api.get<ProjectFileItem[]>(`/projects/${projectId}/files`);
+  const response = await api.get<ProjectFileItem[]>(
+    `/projects/${projectId}/files`
+  );
   return response.data;
 };
 
-export const getProjectFileCategories = async (): Promise<ProjectFileCategory[]> => {
-  const response = await api.get<ProjectFileCategory[]>("/clients/file-categories");
+export const getProjectFileCategories = async (): Promise<
+  ProjectFileCategory[]
+> => {
+  const response = await api.get<ProjectFileCategory[]>(
+    "/clients/file-categories"
+  );
   return response.data;
 };
 
@@ -86,5 +157,3 @@ export const uploadProjectFile = async (
     }
   });
 };
-
-

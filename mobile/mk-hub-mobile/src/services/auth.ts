@@ -1,9 +1,10 @@
 import { api } from "./api";
-import type { TokenResponse, MeProfileResponse } from "../types/auth";
+import type { TokenResponse, MeProfileResponse, MeResponse } from "../types/auth";
 
 // Uses FastAPI auth endpoints:
 // - POST /auth/login (body: { identifier, password }) -> TokenResponse
 // - GET /auth/me/profile -> Me profile with user + profile
+// - GET /auth/me -> roles + permissions
 
 export interface LoginPayload {
   identifier: string;
@@ -23,6 +24,11 @@ export const loginRequest = async (
 
 export const getCurrentUserProfile = async (): Promise<MeProfileResponse> => {
   const response = await api.get<MeProfileResponse>("/auth/me/profile");
+  return response.data;
+};
+
+export const getCurrentUser = async (): Promise<MeResponse> => {
+  const response = await api.get<MeResponse>("/auth/me");
   return response.data;
 };
 

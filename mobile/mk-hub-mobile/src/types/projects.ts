@@ -7,12 +7,31 @@ export interface ProjectListItem {
   created_at?: string;
   date_start?: string;
   date_end?: string;
+  date_eta?: string;
   progress?: number;
   status_label?: string;
   is_bidding?: boolean;
+  is_leak_investigation?: boolean;
+  business_line?: string;
   client_display_name?: string;
   client_name?: string;
+  cover_image_url?: string | null;
+  image_file_object_id?: string | null;
+  service_value?: number | null;
+  cost_actual?: number | null;
 }
+
+export interface ProjectListResponse {
+  items: ProjectListItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export type ProjectListKind =
+  | "projects"
+  | "opportunities"
+  | "leak_investigations";
 
 export interface ProjectDetail extends ProjectListItem {
   related_client_ids?: string[];
@@ -46,6 +65,7 @@ export interface ProjectDetail extends ProjectListItem {
   contact_email?: string | null;
   contact_phone?: string | null;
   date_eta?: string | null;
+  date_awarded?: string | null;
   cost_estimated?: number | null;
   cost_actual?: number | null;
   service_value?: number | null;
