@@ -1171,6 +1171,92 @@ def create_app() -> FastAPI:
                         print(f"[startup] leak investigation columns (non-critical): {e}")
                         db.rollback()
 
+                    # Project + client billing snapshot columns
+                    try:
+                        client_billing_cols = [
+                            ("billing_contact", "VARCHAR(255) NULL"),
+                            ("invoice_to", "VARCHAR(255) NULL"),
+                        ]
+                        for col, col_type in client_billing_cols:
+                            rows = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_name = 'clients' AND column_name = :col LIMIT 1
+                                    """
+                                ),
+                                {"col": col},
+                            ).fetchall()
+                            if not rows:
+                                db.execute(text(f"ALTER TABLE clients ADD COLUMN {col} {col_type}"))
+                                db.commit()
+                                print(f"[startup] Added clients.{col}")
+
+                        project_billing_cols = [
+                            ("purchase_order_number", "VARCHAR(100) NULL"),
+                            ("billing_contact", "VARCHAR(255) NULL"),
+                            ("invoice_to", "VARCHAR(255) NULL"),
+                            ("billing_email", "VARCHAR(255) NULL"),
+                            ("po_required", "BOOLEAN DEFAULT false"),
+                            ("billing_address_line1", "VARCHAR(255) NULL"),
+                            ("billing_address_line2", "VARCHAR(255) NULL"),
+                            ("billing_city", "VARCHAR(100) NULL"),
+                            ("billing_province", "VARCHAR(100) NULL"),
+                            ("billing_postal_code", "VARCHAR(50) NULL"),
+                            ("billing_country", "VARCHAR(100) NULL"),
+                        ]
+                        for col, col_type in project_billing_cols:
+                            rows = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_name = 'projects' AND column_name = :col LIMIT 1
+                                    """
+                                ),
+                                {"col": col},
+                            ).fetchall()
+                            if not rows:
+                                db.execute(text(f"ALTER TABLE projects ADD COLUMN {col} {col_type}"))
+                                db.commit()
+                                print(f"[startup] Added projects.{col}")
+
+                        # Backfill active projects (not opportunities / leak investigations)
+                        try:
+                            from .services.billing_snapshot import billing_snapshot_from_client
+                            from .models.models import Client as ClientModel, Project as ProjectModel
+
+                            candidates = (
+                                db.query(ProjectModel)
+                                .filter(
+                                    ProjectModel.deleted_at.is_(None),
+                                    ProjectModel.is_bidding.is_(False),
+                                    ProjectModel.is_leak_investigation.is_(False),
+                                    ProjectModel.client_id.isnot(None),
+                                    ProjectModel.billing_email.is_(None),
+                                    ProjectModel.billing_contact.is_(None),
+                                    ProjectModel.invoice_to.is_(None),
+                                )
+                                .all()
+                            )
+                            for proj in candidates:
+                                client_row = (
+                                    db.query(ClientModel).filter(ClientModel.id == proj.client_id).first()
+                                )
+                                if not client_row:
+                                    continue
+                                snap = billing_snapshot_from_client(client_row)
+                                for k, v in snap.items():
+                                    setattr(proj, k, v)
+                            if candidates:
+                                db.commit()
+                                print(f"[startup] Backfilled billing snapshot on {len(candidates)} project(s)")
+                        except Exception as e:
+                            print(f"[startup] project billing backfill (non-critical): {e}")
+                            db.rollback()
+                    except Exception as e:
+                        print(f"[startup] billing columns migration (non-critical): {e}")
+                        db.rollback()
+
                     # Check for project_id column in user_documents
                     rows = db.execute(
                         text(

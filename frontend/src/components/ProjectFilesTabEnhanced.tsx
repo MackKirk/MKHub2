@@ -10,6 +10,10 @@ import {
   dataTransferMayContainDirectory,
 } from '@/lib/projectFolderDrop';
 import OverlayPortal from '@/components/OverlayPortal';
+import {
+  FileImagePreviewModal,
+  useFileImageGallery,
+} from '@/components/files';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   hasProjectFeatureWritePermission,
@@ -77,7 +81,7 @@ export default function ProjectFilesTabEnhanced({
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{id:string, file:File, progress:number, status:'pending'|'uploading'|'success'|'error', error?:string}>>([]);
-  const [previewImage, setPreviewImage] = useState<{ url:string, name:string }|null>(null);
+  const imageGallery = useFileImageGallery();
   const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url:string, name:string }|null>(null);
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
@@ -341,7 +345,14 @@ export default function ProjectFilesTabEnhanced({
       }
 
       if (fileType === 'image') {
-        setPreviewImage({ url, name });
+        await imageGallery.openImage(
+          f,
+          currentFiles,
+          (file) => getFileType(file) === 'image',
+          (file) => file.file_object_id,
+          (file) => file.original_name || file.file_object_id,
+        );
+        return;
       } else if (fileType === 'pdf') {
         setPreviewPdf({ url, name });
       } else if (fileType === 'excel') {
@@ -2021,101 +2032,44 @@ export default function ProjectFilesTabEnhanced({
       )}
 
       {/* Image Preview Modal */}
-      {previewImage && designSystem && (
-        <AppModal
-          open
-          onClose={() => setPreviewImage(null)}
-          title={previewImage.name}
-          size="lg"
-          bodyClassName="flex min-h-0 flex-1 items-center justify-center p-3"
-          footer={
-            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end gap-2')}>
-              <AppButton variant="secondary" size="sm" type="button" onClick={() => setPreviewImage(null)}>
-                Close
-              </AppButton>
-              <AppButton
-                size="sm"
-                type="button"
-                onClick={() => {
-                  const a = document.createElement('a');
-                  a.href = previewImage.url;
-                  a.download = previewImage.name;
-                  a.click();
-                }}
-              >
-                Download
-              </AppButton>
-            </div>
-          }
-        >
-          <img
-            src={previewImage.url}
-            alt={previewImage.name}
-            className="max-h-[calc(90vh-120px)] w-full object-contain"
-          />
-        </AppModal>
-      )}
-      {previewImage && !designSystem && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-semibold">{previewImage.name}</h3>
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewImage.url}
-                  download={previewImage.name}
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Download"
-                >
-                  ⬇️
-                </a>
-                <button
-                  onClick={() => {
-                    const printWindow = window.open();
-                    if (printWindow) {
-                      printWindow.document.write(`
-                        <html>
-                          <head><title>${previewImage.name}</title></head>
-                          <body style="margin:0; text-align:center;">
-                            <img src="${previewImage.url}" style="max-width:100%; height:auto;" onload="window.print();" />
-                          </body>
-                        </html>
-                      `);
-                      printWindow.document.close();
-                    }
-                  }}
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Print"
-                >
-                  🖨️
-                </button>
-                <a
-                  href={previewImage.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Open in new tab"
-                >
-                  🔗
-                </a>
-                <button
-                  onClick={() => setPreviewImage(null)}
-                  className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto p-3 min-h-0 flex items-center justify-center">
-              <img
-                src={previewImage.url}
-                alt={previewImage.name}
-                className="max-w-full max-h-full h-auto object-contain"
-              />
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+      <FileImagePreviewModal
+        open={imageGallery.open}
+        items={imageGallery.items}
+        index={imageGallery.index}
+        loading={imageGallery.loading}
+        onClose={imageGallery.close}
+        onPrev={imageGallery.goPrev}
+        onNext={imageGallery.goNext}
+        variant={designSystem ? 'modal' : 'legacy'}
+        legacyActions={
+          designSystem
+            ? undefined
+            : (item) =>
+                item.url ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const printWindow = window.open();
+                      if (printWindow) {
+                        printWindow.document.write(`
+                          <html>
+                            <head><title>${item.name}</title></head>
+                            <body style="margin:0; text-align:center;">
+                              <img src="${item.url}" style="max-width:100%; height:auto;" onload="window.print();" />
+                            </body>
+                          </html>
+                        `);
+                        printWindow.document.close();
+                      }
+                    }}
+                    className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                    title="Print"
+                  >
+                    🖨️
+                  </button>
+                ) : null
+        }
+      />
 
       {/* PDF Preview Modal */}
       {previewPdf && designSystem && (

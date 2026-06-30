@@ -33,6 +33,8 @@ class ClientBase(BaseModel):
     billing_same_as_address: Optional[bool] = False
 
     # Legacy/commercial
+    billing_contact: Optional[str] = None
+    invoice_to: Optional[str] = None
     billing_email: Optional[str] = None
     po_required: Optional[bool] = False
     tax_number: Optional[str] = None
@@ -48,7 +50,7 @@ class ClientBase(BaseModel):
     do_not_contact: Optional[bool] = None
     do_not_contact_reason: Optional[str] = None
 
-    @field_validator('address_line1','address_line2','city','province','postal_code','country','billing_address_line1','billing_address_line2','billing_city','billing_province','billing_postal_code','billing_country','billing_email','tax_number','code','legal_name','display_name','client_type','client_status','lead_source','description','preferred_language','invoice_delivery_method','statement_delivery_method','do_not_contact_reason', mode='before')
+    @field_validator('address_line1','address_line2','city','province','postal_code','country','billing_address_line1','billing_address_line2','billing_city','billing_province','billing_postal_code','billing_country','billing_email','billing_contact','invoice_to','tax_number','code','legal_name','display_name','client_type','client_status','lead_source','description','preferred_language','invoice_delivery_method','statement_delivery_method','do_not_contact_reason', mode='before')
     @classmethod
     def empty_to_none(cls, v):
         if v is None:

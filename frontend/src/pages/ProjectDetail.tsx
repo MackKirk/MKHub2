@@ -35,6 +35,7 @@ import ProjectFilesTabEnhanced from '@/components/ProjectFilesTabEnhanced';
 import OrdersTab from '@/components/OrdersTab';
 import ProjectDocumentsTab from '@/components/ProjectDocumentsTab';
 import ProjectSafetyTab from '@/components/ProjectSafetyTab';
+import ProjectBillingSection from '@/components/ProjectBillingSection';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
@@ -77,6 +78,7 @@ import {
   AppInput,
   AppModal,
   AppSectionHeader,
+  appSectionPresetProps,
   AppSelect,
   AppTabs,
   AppTextarea,
@@ -623,7 +625,11 @@ function ProjectRecentActivity({
   if (useDesignSystem) {
     return (
       <AppCard className="flex min-h-0 flex-col">
-        <AppSectionHeader title="Recent Activity" />
+        <AppSectionHeader
+          title="Recent Activity"
+          description="Latest updates and changes on this record."
+          {...appSectionPresetProps('notesHistory')}
+        />
         <div className="mt-3 min-h-0 flex-1">{activityList}</div>
       </AppCard>
     );
@@ -869,7 +875,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, is_leak_investigation?:boolean, related_leak_investigation_id?:string|null, related_leak_investigation?: { id: string; name?: string | null; code?: string | null } | null, leak_investigation_links?: { id: string; name?: string | null; code?: string | null; is_bidding: boolean }[], lead_source?:string, business_line?: string };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, is_leak_investigation?:boolean, related_leak_investigation_id?:string|null, related_leak_investigation?: { id: string; name?: string | null; code?: string | null } | null, leak_investigation_links?: { id: string; name?: string | null; code?: string | null; is_bidding: boolean }[], lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
 
 function projectAwardedRelatedIdsSet(proj: Project | null | undefined): Set<string> {
   const raw = proj?.awarded_related_client_ids;
@@ -1064,6 +1070,8 @@ export default function ProjectDetail(){
       setIsHeroCollapsed(true);
     }
   }, [tab, signOnlySafetySession]);
+
+  const showBillingSection = !tab && !proj?.is_bidding && !isLeakInvestigation;
   
   const cover = useMemo(()=>{
     const arr = (files||[]) as ProjectFile[];
@@ -2674,6 +2682,7 @@ export default function ProjectDetail(){
                   <AppSectionHeader
                     title="Workload"
                     description="Calendar events for this project."
+                    {...appSectionPresetProps('workload')}
                     action={
                       hasEditPermission ? (
                         <AppButton type="button" size="sm" onClick={() => setWorkloadEventCreateOpen(true)}>
@@ -2732,8 +2741,11 @@ export default function ProjectDetail(){
                 <AppSectionHeader
                   title="Workload"
                   description={
-                    isLeakInvestigation ? undefined : 'Calendar events for this opportunity.'
+                    isLeakInvestigation
+                      ? 'Calendar events for this project.'
+                      : 'Calendar events for this opportunity.'
                   }
+                  {...appSectionPresetProps('workload')}
                   action={
                     hasEditPermission ? (
                       <AppButton type="button" size="sm" onClick={() => setWorkloadEventCreateOpen(true)}>
@@ -2867,6 +2879,14 @@ export default function ProjectDetail(){
           <AppCard className="mt-6">
             <AppSectionHeader
               title="Description"
+              description={
+                proj?.is_bidding
+                  ? 'Additional notes about this opportunity.'
+                  : isLeakInvestigation
+                    ? 'Additional notes about this leak investigation.'
+                    : 'Additional notes about this project.'
+              }
+              {...appSectionPresetProps('description')}
               action={
                 hasEditPermission ? (
                   <AppHeroEditButton
@@ -2923,6 +2943,16 @@ export default function ProjectDetail(){
         )
       )}
 
+      {showBillingSection && (
+        <ProjectBillingSection
+          projectId={String(id ?? '')}
+          project={proj || undefined}
+          canEdit={hasEditPermission}
+          designSystem={useDesignSystem}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['project', id] })}
+        />
+      )}
+
       {/* Recent Activity */}
       {!tab && (
         <div className="mt-6">
@@ -2939,7 +2969,11 @@ export default function ProjectDetail(){
       {!tab && hasAdministratorAccess && (
         useDesignSystem ? (
           <AppCard className={uiCx('mt-6', uiBorders.subtle, 'border-red-200 bg-red-50')}>
-            <AppSectionHeader title="Danger Zone" />
+            <AppSectionHeader
+              title="Danger Zone"
+              description="Permanent actions that cannot be undone."
+              {...appSectionPresetProps('emergency')}
+            />
             <div className={uiCx(uiLayout.actionsRow, 'mt-3 flex-wrap')}>
               <AppButton
                 variant="danger"
@@ -8046,6 +8080,8 @@ function LastReportsCard({ reports, useDesignSystem }: { reports: Report[]; useD
       <AppCard className="flex h-full min-h-0 flex-col">
         <AppSectionHeader
           title="Last Notes"
+          description="Most recent project notes, filtered by category."
+          {...appSectionPresetProps('notesHistory')}
           action={
             <AppSelect
               label=""
@@ -8233,6 +8269,7 @@ function ProjectTeamCard({ projectId, employees, canManageMembers, useDesignSyst
         <AppSectionHeader
           title="Project Team"
           description="Members with project access and workers scheduled on shifts."
+          {...appSectionPresetProps('contact')}
           action={addPeopleControl}
         />
         <div className={uiCx('mt-3 flex min-h-0 flex-1 flex-col', uiSpacing.sectionStack)}>
@@ -11457,7 +11494,11 @@ function ProjectCostsSummary({ projectId, proposals, useDesignSystem }: { projec
   if (useDesignSystem) {
     return (
       <AppCard className="flex h-full min-h-0 flex-col">
-        <AppSectionHeader title="Costs Summary" />
+        <AppSectionHeader
+          title="Costs Summary"
+          description="Totals from linked proposal pricing."
+          {...appSectionPresetProps('pricing')}
+        />
         <div className="mt-3">{costsInner}</div>
       </AppCard>
     );

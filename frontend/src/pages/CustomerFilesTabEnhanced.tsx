@@ -5,6 +5,7 @@ import { api, withFileAccessToken } from '@/lib/api';
 import ImageEditor from '@/components/ImageEditor';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { FileImagePreviewModal, useFileImageGallery } from '@/components/files';
 import { AppSectionHeader, appSectionPresetProps, AppCard, uiSpacing } from '@/components/ui';
 
 export type ClientFileForFiles = { id: string; file_object_id: string; is_image?: boolean; content_type?: string; category?: string; original_name?: string; uploaded_at?: string; site_id?: string };
@@ -22,7 +23,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{ id: string; file: File; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }>>([]);
-  const [previewImage, setPreviewImage] = useState<{ url: string; name: string; fileObjectId?: string } | null>(null);
+  const imageGallery = useFileImageGallery();
   const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
   const [editingImage, setEditingImage] = useState<{ fileObjectId: string; name: string } | null>(null);
@@ -148,8 +149,17 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
         toast.error('Preview not available');
         return;
       }
-      if (fileType === 'image') setPreviewImage({ url, name, fileObjectId: f.file_object_id });
-      else if (fileType === 'pdf') setPreviewPdf({ url, name });
+      if (fileType === 'image') {
+        await imageGallery.openImage(
+          f,
+          currentFiles,
+          (file) => getFileType(file) === 'image',
+          (file) => file.file_object_id,
+          (file) => file.original_name || file.file_object_id,
+        );
+        return;
+      }
+      if (fileType === 'pdf') setPreviewPdf({ url, name });
       else if (fileType === 'excel') setPreviewExcel({ url, name });
       else window.open(url, '_blank');
     } catch {
@@ -744,26 +754,31 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
           </div>
         </div>
       )}
-      {previewImage && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-semibold">{previewImage.name}</h3>
-              <div className="flex items-center gap-2">
-                <a href={previewImage.url} download={previewImage.name} className="text-xs px-2 py-1 rounded border hover:bg-gray-50" title="Download">⬇️</a>
-                {canEditFiles && previewImage.fileObjectId && (
-                  <button onClick={() => { setEditingImage({ fileObjectId: previewImage.fileObjectId!, name: previewImage.name }); setPreviewImage(null); }} className="text-xs px-2 py-1 rounded border hover:bg-blue-50 text-blue-600" title="Edit">✏️ Edit</button>
-                )}
-                <a href={previewImage.url} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded border hover:bg-gray-50" title="Open in new tab">🔗</a>
-                <button onClick={() => setPreviewImage(null)} className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6">×</button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto p-3 min-h-0 flex items-center justify-center">
-              <img src={previewImage.url} alt={previewImage.name} className="max-w-full max-h-full h-auto object-contain" />
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+      <FileImagePreviewModal
+        open={imageGallery.open}
+        items={imageGallery.items}
+        index={imageGallery.index}
+        loading={imageGallery.loading}
+        onClose={imageGallery.close}
+        onPrev={imageGallery.goPrev}
+        onNext={imageGallery.goNext}
+        variant="legacy"
+        legacyActions={(item) =>
+          canEditFiles && item.fileObjectId ? (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingImage({ fileObjectId: item.fileObjectId!, name: item.name });
+                imageGallery.close();
+              }}
+              className="rounded border px-2 py-1 text-xs text-blue-600 hover:bg-blue-50"
+              title="Edit"
+            >
+              ✏️ Edit
+            </button>
+          ) : null
+        }
+      />
       {previewPdf && (
         <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
           <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>

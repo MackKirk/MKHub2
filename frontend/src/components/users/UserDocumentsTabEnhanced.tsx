@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { FileImagePreviewModal, useFileImageGallery } from '@/components/files';
 import {
   projectFilesMoveCategoryQuickInfo,
   projectFilesNewFolderQuickInfo,
@@ -92,7 +93,7 @@ export default function UserDocumentsTabEnhanced({
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const imageGallery = useFileImageGallery();
   const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
@@ -369,8 +370,17 @@ export default function UserDocumentsTabEnhanced({
         return;
       }
       const ft = getFileType(d);
-      if (ft === 'image') setPreviewImage({ url, name });
-      else if (ft === 'pdf') setPreviewPdf({ url, name });
+      if (ft === 'image') {
+        await imageGallery.openImage(
+          d,
+          currentFiles,
+          (doc) => getFileType(doc) === 'image',
+          (doc) => doc.file_id || '',
+          (doc) => doc.title || 'Document',
+        );
+        return;
+      }
+      if (ft === 'pdf') setPreviewPdf({ url, name });
       else if (ft === 'excel') setPreviewExcel({ url, name });
       else window.open(url, '_blank', 'noopener,noreferrer');
     } catch {
@@ -1144,36 +1154,15 @@ export default function UserDocumentsTabEnhanced({
         </AppCard>
       )}
 
-      {previewImage && (
-        <AppModal
-          open
-          onClose={() => setPreviewImage(null)}
-          title={previewImage.name}
-          size="lg"
-          bodyClassName="flex min-h-0 flex-1 items-center justify-center p-3"
-          footer={
-            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end gap-2')}>
-              <AppButton variant="secondary" size="sm" type="button" onClick={() => setPreviewImage(null)}>
-                Close
-              </AppButton>
-              <AppButton
-                size="sm"
-                type="button"
-                onClick={() => {
-                  const a = document.createElement('a');
-                  a.href = previewImage.url;
-                  a.download = previewImage.name;
-                  a.click();
-                }}
-              >
-                Download
-              </AppButton>
-            </div>
-          }
-        >
-          <img src={previewImage.url} alt={previewImage.name} className="max-h-[calc(90vh-120px)] w-full object-contain" />
-        </AppModal>
-      )}
+      <FileImagePreviewModal
+        open={imageGallery.open}
+        items={imageGallery.items}
+        index={imageGallery.index}
+        loading={imageGallery.loading}
+        onClose={imageGallery.close}
+        onPrev={imageGallery.goPrev}
+        onNext={imageGallery.goNext}
+      />
 
       {previewPdf && (
         <AppModal

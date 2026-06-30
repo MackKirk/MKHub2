@@ -42,6 +42,8 @@ export type CustomerGeneralClient = {
   city?: string | null;
   postal_code?: string | null;
   billing_email?: string | null;
+  billing_contact?: string | null;
+  invoice_to?: string | null;
   po_required?: boolean | null;
   billing_same_as_address?: boolean | null;
   billing_address_line1?: string | null;
@@ -142,6 +144,8 @@ export default function EditCustomerGeneralModal({
   const [city, setCity] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [billingEmail, setBillingEmail] = useState('');
+  const [billingContact, setBillingContact] = useState('');
+  const [invoiceTo, setInvoiceTo] = useState('');
   const [poRequired, setPoRequired] = useState<'true' | 'false'>('false');
   const [useDifferentBillingAddress, setUseDifferentBillingAddress] = useState(false);
   const [billingAddressLine1, setBillingAddressLine1] = useState('');
@@ -205,6 +209,8 @@ export default function EditCustomerGeneralModal({
     setCity(c.city || '');
     setPostalCode(c.postal_code || '');
     setBillingEmail(c.billing_email || '');
+    setBillingContact((c as { billing_contact?: string }).billing_contact || '');
+    setInvoiceTo((c as { invoice_to?: string }).invoice_to || '');
     setPoRequired(c.po_required ? 'true' : 'false');
     const different = clientBillingUsesDifferentAddress(c);
     setUseDifferentBillingAddress(different);
@@ -261,6 +267,8 @@ export default function EditCustomerGeneralModal({
       case 'billing': {
         const sameAsPrimary = !useDifferentBillingAddress;
         return {
+          invoice_to: invoiceTo || null,
+          billing_contact: billingContact || null,
           billing_email: billingEmail || null,
           po_required: poRequired === 'true',
           billing_same_as_address: sameAsPrimary,
@@ -458,6 +466,20 @@ export default function EditCustomerGeneralModal({
       {activeSection === 'billing' && (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
+            <AppInput
+              label="Invoice To"
+              value={invoiceTo}
+              onChange={(e) => setInvoiceTo(e.target.value)}
+              disabled={isSaving}
+              fieldHint="Invoice To\n\nName of the invoice recipient (e.g. accounts payable department). This is not your company name."
+            />
+            <AppInput
+              label="Billing Contact"
+              value={billingContact}
+              onChange={(e) => setBillingContact(e.target.value)}
+              disabled={isSaving}
+              fieldHint="Billing Contact\n\nPerson to contact for billing (e.g. accounts payable contact name)."
+            />
             <AppInput
               label="Billing email"
               value={billingEmail}

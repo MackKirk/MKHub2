@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { FileImagePreviewModal, useFileImageGallery } from '@/components/files';
 import {
   AppButton,
   AppCard,
@@ -76,7 +77,7 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [fileSearchQuery, setFileSearchQuery] = useState('');
-  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const imageGallery = useFileImageGallery();
   const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
 
@@ -176,8 +177,17 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
         toast.error('Preview not available');
         return;
       }
-      if (fileType === 'image') setPreviewImage({ url, name });
-      else if (fileType === 'pdf') setPreviewPdf({ url, name });
+      if (fileType === 'image') {
+        await imageGallery.openImage(
+          f,
+          currentFiles,
+          (file) => getFileType(file) === 'image',
+          (file) => file.file_object_id,
+          (file) => file.original_name || file.file_object_id || 'File',
+        );
+        return;
+      }
+      if (fileType === 'pdf') setPreviewPdf({ url, name });
       else if (fileType === 'excel') setPreviewExcel({ url, name });
       else window.open(url, '_blank');
     } catch {
@@ -634,19 +644,15 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
         </AppCard>
       )}
 
-      <AppModal
-        open={!!previewImage}
-        onClose={() => setPreviewImage(null)}
-        title={previewImage?.name}
-        size="lg"
-        dialogClassName="!max-w-[95vw] !max-h-[95vh]"
-        bodyClassName="!p-3 min-h-[50vh] flex items-center justify-center"
-        bodyFill={false}
-      >
-        {previewImage ? (
-          <img src={previewImage.url} alt={previewImage.name} className="max-h-[70vh] max-w-full object-contain" />
-        ) : null}
-      </AppModal>
+      <FileImagePreviewModal
+        open={imageGallery.open}
+        items={imageGallery.items}
+        index={imageGallery.index}
+        loading={imageGallery.loading}
+        onClose={imageGallery.close}
+        onPrev={imageGallery.goPrev}
+        onNext={imageGallery.goNext}
+      />
 
       <AppModal
         open={!!previewPdf}

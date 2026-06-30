@@ -1,4 +1,5 @@
 from typing import Optional
+import time
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,6 +13,43 @@ from ..models.models import User
 
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+# Reuse connections to Google (avoid TLS handshake per keystroke).
+_places_client: httpx.Client | None = None
+_place_details_cache: dict[str, tuple[float, dict]] = {}
+_PLACE_DETAILS_TTL_SEC = 3600.0
+_PLACE_DETAILS_CACHE_MAX = 300
+
+
+def _get_places_client() -> httpx.Client:
+    global _places_client
+    if _places_client is None:
+        _places_client = httpx.Client(
+            timeout=httpx.Timeout(8.0, connect=2.0),
+            limits=httpx.Limits(max_keepalive_connections=8, max_connections=16),
+        )
+    return _places_client
+
+
+def _cached_place_details(place_id: str) -> dict:
+    now = time.time()
+    cached = _place_details_cache.get(place_id)
+    if cached and (now - cached[0]) < _PLACE_DETAILS_TTL_SEC:
+        return cached[1]
+    params = {
+        "place_id": place_id,
+        "fields": "address_component,formatted_address,geometry,name,place_id",
+        "key": settings.google_places_api_key,
+    }
+    client = _get_places_client()
+    r = client.get("https://maps.googleapis.com/maps/api/place/details/json", params=params)
+    r.raise_for_status()
+    data = r.json()
+    if len(_place_details_cache) >= _PLACE_DETAILS_CACHE_MAX:
+        oldest_key = min(_place_details_cache, key=lambda k: _place_details_cache[k][0])
+        _place_details_cache.pop(oldest_key, None)
+    _place_details_cache[place_id] = (now, data)
+    return data
 
 
 @router.get("/status")
@@ -52,13 +90,13 @@ def places_autocomplete(
     if components:
         params["components"] = components
     try:
-        with httpx.Client(timeout=15.0) as client:
-            r = client.get(
-                "https://maps.googleapis.com/maps/api/place/autocomplete/json",
-                params=params,
-            )
-            r.raise_for_status()
-            return r.json()
+        client = _get_places_client()
+        r = client.get(
+            "https://maps.googleapis.com/maps/api/place/autocomplete/json",
+            params=params,
+        )
+        r.raise_for_status()
+        return r.json()
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="Places autocomplete unavailable")
 
@@ -71,19 +109,8 @@ def places_details(
     """Proxy Google Place Details for a place_id from autocomplete."""
     if not settings.google_places_api_key:
         raise HTTPException(status_code=503, detail="Places API not configured")
-    params = {
-        "place_id": place_id,
-        "fields": "address_component,formatted_address,geometry,name,place_id",
-        "key": settings.google_places_api_key,
-    }
     try:
-        with httpx.Client(timeout=15.0) as client:
-            r = client.get(
-                "https://maps.googleapis.com/maps/api/place/details/json",
-                params=params,
-            )
-            r.raise_for_status()
-            data = r.json()
+        data = _cached_place_details(place_id)
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="Places details unavailable")
     st = data.get("status")

@@ -72,9 +72,72 @@ from sqlalchemy import or_, and_, cast, String, Date
 
 from ..services.project_utils import sanitize_division_onsite_leads
 from ..services.project_duplicate import generate_project_code, duplicate_project_deep
+from ..services.billing_snapshot import (
+    BILLING_SNAPSHOT_FIELDS,
+    apply_billing_snapshot_to_project,
+    billing_snapshot_differs_from_client,
+    billing_snapshot_from_client,
+    normalize_purchase_order_number,
+    project_billing_response_fields,
+)
 from ..routes.form_templates import _normalize_definition
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+_BILLING_PATCH_FIELDS = frozenset(
+    {
+        "purchase_order_number",
+        *BILLING_SNAPSHOT_FIELDS,
+    }
+)
+
+
+def _is_active_project_for_billing(p: Project) -> bool:
+    return not bool(getattr(p, "is_bidding", False)) and not bool(
+        getattr(p, "is_leak_investigation", False)
+    )
+
+
+def _assert_active_project_for_billing(p: Project) -> None:
+    if not _is_active_project_for_billing(p):
+        raise HTTPException(
+            status_code=400,
+            detail="Billing information is only available for active projects",
+        )
+
+
+def _normalize_billing_patch(payload: dict) -> None:
+    if "purchase_order_number" in payload:
+        raw = payload.get("purchase_order_number")
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            payload["purchase_order_number"] = None
+        else:
+            payload["purchase_order_number"] = normalize_purchase_order_number(str(raw))
+    if "po_required" in payload and payload["po_required"] is not None:
+        payload["po_required"] = bool(payload["po_required"])
+    for key in BILLING_SNAPSHOT_FIELDS:
+        if key == "po_required":
+            continue
+        if key in payload:
+            val = payload.get(key)
+            if val is None:
+                continue
+            if isinstance(val, str):
+                s = val.strip()
+                payload[key] = s or None
+
+
+def _billing_differs_from_customer(p: Project, client: Optional[Client]) -> bool:
+    if client is None:
+        return False
+    try:
+        return billing_snapshot_differs_from_client(p, client)
+    except Exception:
+        return False
+
+
+def _should_apply_billing_snapshot_on_create(payload: dict) -> bool:
+    return not bool(payload.get("is_bidding")) and not bool(payload.get("is_leak_investigation"))
 
 
 def _user_display_sort_subq(user_id_column):
@@ -955,6 +1018,12 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
         else:
             raise HTTPException(status_code=400, detail="related_client_ids must be a list or null")
     
+    if _should_apply_billing_snapshot_on_create(payload):
+        payload.update(billing_snapshot_from_client(client))
+    else:
+        for key in _BILLING_PATCH_FIELDS:
+            payload.pop(key, None)
+
     payload["created_by_user_id"] = user.id
     proj = Project(**payload)
     db.add(proj)
@@ -1298,6 +1367,8 @@ def get_project(
         "image_file_object_id": str(getattr(p, 'image_file_object_id', None)) if getattr(p, 'image_file_object_id', None) else None,
         "image_manually_set": getattr(p, 'image_manually_set', False),
         "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
+        **project_billing_response_fields(p),
+        "billing_differs_from_customer": _billing_differs_from_customer(p, client),
     }
 
 
@@ -1580,6 +1651,11 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
             except Exception:
                 raise HTTPException(status_code=400, detail="Invalid date_awarded")
     
+    billing_keys_in_payload = [k for k in payload if k in _BILLING_PATCH_FIELDS]
+    if billing_keys_in_payload:
+        _assert_active_project_for_billing(p)
+        _normalize_billing_patch(payload)
+
     # Update project
     for k, v in payload.items():
         setattr(p, k, v)
@@ -1714,6 +1790,31 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         pass  # Don't fail project update if audit log fails
     
     return {"status": "ok"}
+
+
+@router.post("/{project_id}/billing/sync-from-client")
+def sync_project_billing_from_client(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_write(user, p)
+    _assert_active_project_for_billing(p)
+    if not getattr(p, "client_id", None):
+        raise HTTPException(status_code=400, detail="Project has no linked customer")
+    client_row = db.query(Client).filter(Client.id == p.client_id).first()
+    if not client_row:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    apply_billing_snapshot_to_project(p, client_row)
+    db.commit()
+    db.refresh(p)
+    return {
+        **project_billing_response_fields(p),
+        "billing_differs_from_customer": False,
+    }
 
 
 @router.delete("/{project_id}")
@@ -5428,6 +5529,12 @@ def convert_to_project(
 
     p.date_awarded = datetime.combine(datetime.now(timezone.utc).date(), time.min).replace(tzinfo=timezone.utc)
     p.is_bidding = False
+
+    if getattr(p, "client_id", None):
+        client_row = db.query(Client).filter(Client.id == p.client_id).first()
+        if client_row:
+            apply_billing_snapshot_to_project(p, client_row)
+
     db.commit()
 
     # Create audit logs for Recent Activity

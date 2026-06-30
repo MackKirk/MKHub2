@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { FileImagePreviewModal, useFileImageGallery } from '@/components/files';
 import { isAdminRole } from '@/lib/projectLinePermissionKeys';
 import {
   companyFilesMoveDocQuickInfo,
@@ -102,7 +103,7 @@ export default function CompanyFilesTabEnhanced() {
   const [uploadQueue, setUploadQueue] = useState<
     Array<{ id: string; file: File; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }>
   >([]);
-  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const imageGallery = useFileImageGallery();
   const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
@@ -206,17 +207,17 @@ export default function CompanyFilesTabEnhanced() {
   }, [selectedDept]);
 
   useEffect(() => {
-    if (!previewPdf && !previewImage && !previewExcel) return;
+    if (!previewPdf && !imageGallery.open && !previewExcel) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setPreviewPdf(null);
-        setPreviewImage(null);
+        imageGallery.close();
         setPreviewExcel(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [previewPdf, previewImage, previewExcel]);
+  }, [previewPdf, imageGallery.open, imageGallery.close, previewExcel]);
 
   const selectedDeptLabel = useMemo(
     () => (departments || []).find((d) => d.id === selectedDept)?.label || 'Category',
@@ -359,7 +360,14 @@ export default function CompanyFilesTabEnhanced() {
         return;
       }
       if (fileType === 'image') {
-        setPreviewImage({ url, name });
+        await imageGallery.openImage(
+          d,
+          currentFiles,
+          (doc) => getFileType(doc) === 'image',
+          (doc) => doc.file_id || '',
+          (doc) => doc.original_name || doc.title || 'Preview',
+        );
+        return;
       } else if (fileType === 'pdf') {
         setPreviewPdf({ url, name });
       } else if (fileType === 'excel') {
@@ -1549,36 +1557,15 @@ export default function CompanyFilesTabEnhanced() {
         </AppCard>
       ) : null}
 
-      {previewImage ? (
-        <AppModal
-          open
-          onClose={() => setPreviewImage(null)}
-          title={previewImage.name}
-          size="lg"
-          bodyClassName="flex min-h-0 flex-1 items-center justify-center p-3"
-          footer={
-            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end gap-2')}>
-              <AppButton variant="secondary" size="sm" type="button" onClick={() => setPreviewImage(null)}>
-                Close
-              </AppButton>
-              <AppButton
-                size="sm"
-                type="button"
-                onClick={() => {
-                  const a = document.createElement('a');
-                  a.href = previewImage.url;
-                  a.download = previewImage.name;
-                  a.click();
-                }}
-              >
-                Download
-              </AppButton>
-            </div>
-          }
-        >
-          <img src={previewImage.url} alt={previewImage.name} className="max-h-[calc(90vh-120px)] w-full object-contain" />
-        </AppModal>
-      ) : null}
+      <FileImagePreviewModal
+        open={imageGallery.open}
+        items={imageGallery.items}
+        index={imageGallery.index}
+        loading={imageGallery.loading}
+        onClose={imageGallery.close}
+        onPrev={imageGallery.goPrev}
+        onNext={imageGallery.goNext}
+      />
 
       {previewPdf ? (
         <AppModal

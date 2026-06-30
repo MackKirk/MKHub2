@@ -606,6 +606,8 @@ export default function CustomerDetail(){
                     />
                     <div className={uiCx('mt-4 space-y-4')}>
                       <div className="grid gap-4 md:grid-cols-2">
+                        <ReadOnlyField label="Invoice To" value={(client as any)?.invoice_to} />
+                        <ReadOnlyField label="Billing Contact" value={(client as any)?.billing_contact} />
                         <ReadOnlyField label="Billing email" value={(client as any)?.billing_email} />
                         <ReadOnlyField
                           label="PO required"

@@ -53,7 +53,13 @@ export function withFileAccessTokenIfNeeded(url: string | null | undefined): str
   return withFileAccessToken(u);
 }
 
-export async function api<T=any>(method: HttpMethod, path: string, body?: any, headers?: Record<string,string>): Promise<T>{
+export async function api<T=any>(
+  method: HttpMethod,
+  path: string,
+  body?: any,
+  headers?: Record<string,string>,
+  signal?: AbortSignal,
+): Promise<T>{
   const h: Record<string,string> = { ...(headers||{}) };
   const t = getToken(); if (t) h.Authorization = 'Bearer ' + t;
   // Ensure API requests are never treated as page loads by SPA middleware (Accept: text/html)
@@ -74,7 +80,7 @@ export async function api<T=any>(method: HttpMethod, path: string, body?: any, h
     h['Content-Type'] = 'application/json';
   }
   
-  const r = await fetch(path, { method, headers: h, body: bodyData });
+  const r = await fetch(path, { method, headers: h, body: bodyData, signal });
   if (r.status === 401) { 
     localStorage.removeItem('user_token'); 
     window.location.replace('/login'); 
