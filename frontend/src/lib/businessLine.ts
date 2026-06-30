@@ -2,7 +2,19 @@
 export const BUSINESS_LINE_CONSTRUCTION = 'construction';
 export const BUSINESS_LINE_REPAIRS_MAINTENANCE = 'repairs_maintenance';
 
-const RM_LABEL = 'Repairs & Maintenance';
+export const RM_PROJECT_DIVISION_LABELS = [
+  'Commercial Service',
+  'Warranty Repairs',
+  'Leak Investigations',
+  'Roof Assessments',
+  'Preventive Maintenance',
+] as const;
+
+const LEGACY_RM_LABEL = 'Repairs & Maintenance';
+const RM_LABELS = new Set<string>([LEGACY_RM_LABEL, ...RM_PROJECT_DIVISION_LABELS]);
+
+/** Bump when project_divisions seed structure changes (invalidates React Query cache). */
+export const PROJECT_DIVISIONS_QUERY_KEY = ['project-divisions', 'rm-tree-v1'] as const;
 
 /** Filter project_divisions tree for list/detail pickers */
 export function filterProjectDivisionsForBusinessLine<T extends { label?: string; subdivisions?: T[] }>(
@@ -11,15 +23,8 @@ export function filterProjectDivisionsForBusinessLine<T extends { label?: string
 ): T[] {
   if (!Array.isArray(divisions)) return [];
   if (line === BUSINESS_LINE_REPAIRS_MAINTENANCE) {
-    // Only Repairs & Maintenance and its subdivisions (subcategories)
-    return divisions.filter((d) => (d.label || '') === RM_LABEL);
+    const rmSet = new Set<string>(RM_PROJECT_DIVISION_LABELS);
+    return divisions.filter((d) => rmSet.has(d.label || ''));
   }
-  return divisions
-    .filter((d) => (d.label || '') !== RM_LABEL)
-    .map((d) => ({
-      ...d,
-      subdivisions: Array.isArray(d.subdivisions)
-        ? d.subdivisions.filter((s) => (s.label || '') !== RM_LABEL)
-        : d.subdivisions,
-    }));
+  return divisions.filter((d) => !RM_LABELS.has(d.label || ''));
 }

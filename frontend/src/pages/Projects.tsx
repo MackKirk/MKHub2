@@ -15,7 +15,7 @@ import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { getUserDisplayName } from '@/lib/userDisplay';
 import { isRangeOperator } from '@/components/FilterBuilder/utils';
 import { useBusinessLine } from '@/context/BusinessLineContext';
-import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import { effectiveShowInProject } from '@/lib/projectStatusVisibility';
 import { buildOpportunityListSearchParams, resolveProjectQuickStatusFilters } from '@/lib/opportunityFilters';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
@@ -523,7 +523,7 @@ export default function Projects(){
   
   // Load project divisions in parallel (shared across all cards, no individual loading)
   const { data: projectDivisions, isLoading: divisionsLoading } = useQuery({ 
-    queryKey:['project-divisions'], 
+    queryKey:PROJECT_DIVISIONS_QUERY_KEY, 
     queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), 
     staleTime: 300_000
   });

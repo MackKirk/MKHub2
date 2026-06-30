@@ -7,7 +7,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { useBusinessLine } from '@/context/BusinessLineContext';
-import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import {
   AppButton,
   AppCard,
@@ -556,7 +556,7 @@ export default function BusinessDashboard() {
   
   // Get project divisions (hierarchical)
   const { data: divisionsData, isLoading: divisionsLoading, error: divisionsError, refetch: refetchDivisions } = useQuery<ProjectDivision[]>({
-    queryKey: ['project-divisions'],
+    queryKey: PROJECT_DIVISIONS_QUERY_KEY,
     queryFn: async () => {
       const result = await api<ProjectDivision[]>('GET', '/settings/project-divisions');
       console.log('Project divisions loaded:', result, 'Type:', Array.isArray(result), 'Length:', result?.length);
@@ -1635,7 +1635,7 @@ export default function BusinessDashboard() {
                   type="button"
                   size="sm"
                   onClick={() => {
-                    queryClient.invalidateQueries({ queryKey: ['project-divisions'] });
+                    queryClient.invalidateQueries({ queryKey: PROJECT_DIVISIONS_QUERY_KEY });
                     refetchDivisions();
                   }}
                 >

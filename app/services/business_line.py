@@ -13,6 +13,16 @@ BUSINESS_LINE_REPAIRS_MAINTENANCE = "repairs_maintenance"
 
 VALID_BUSINESS_LINES = frozenset({BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS_MAINTENANCE})
 
+LEGACY_RM_DIVISION_LABEL = "Repairs & Maintenance"
+RM_PROJECT_DIVISION_LABELS = frozenset({
+    "Commercial Service",
+    "Warranty Repairs",
+    "Leak Investigations",
+    "Roof Assessments",
+    "Preventive Maintenance",
+})
+RM_DIVISION_LABELS = frozenset({LEGACY_RM_DIVISION_LABEL, *RM_PROJECT_DIVISION_LABELS})
+
 
 def normalize_business_line(raw: Optional[str]) -> str:
     if not raw or str(raw).strip() == "":
@@ -26,27 +36,26 @@ def normalize_business_line(raw: Optional[str]) -> str:
 
 
 def repairs_maintenance_division_ids(db: Session) -> Set[str]:
-    """UUID strings for Repairs & Maintenance division and its subdivisions (if any)."""
+    """UUID strings for all RM project divisions (legacy + new) and their subdivisions."""
     from ..models.models import SettingList, SettingItem
 
     out: Set[str] = set()
     divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
     if not divisions_list:
         return out
-    rm_item = (
+    rm_parents = (
         db.query(SettingItem)
         .filter(
             SettingItem.list_id == divisions_list.id,
             SettingItem.parent_id.is_(None),
-            SettingItem.label == "Repairs & Maintenance",
+            SettingItem.label.in_(RM_DIVISION_LABELS),
         )
-        .first()
+        .all()
     )
-    if not rm_item:
-        return out
-    out.add(str(rm_item.id))
-    for child in db.query(SettingItem).filter(SettingItem.parent_id == rm_item.id).all():
-        out.add(str(child.id))
+    for parent in rm_parents:
+        out.add(str(parent.id))
+        for child in db.query(SettingItem).filter(SettingItem.parent_id == parent.id).all():
+            out.add(str(child.id))
     return out
 
 

@@ -27,6 +27,7 @@ const divisionIconUrls: Record<string, string> = {
   'Structural Upgrading': StructuralUpgradeIcon,
   'Solar PV': SolarPVIcon,
   'Green Roofing': GreenRoofingIcon,
+  'Commercial Service': RepairsMaintenanceIcon,
 };
 
 const fallbackEmoji: Record<string, string> = {
@@ -34,6 +35,11 @@ const fallbackEmoji: Record<string, string> = {
   'Concrete Restoration & Waterproofing': '🏗️',
   'Cladding & Exterior Finishes': '🧱',
   'Repairs & Maintenance': '🔧',
+  'Commercial Service': '🔧',
+  'Warranty Repairs': '🛡️',
+  'Leak Investigations': '🔍',
+  'Roof Assessments': '📋',
+  'Preventive Maintenance': '🗓️',
   'Mechanical': '🔩',
   'Electrical': '⚡',
   'Carpentry': '🪵',

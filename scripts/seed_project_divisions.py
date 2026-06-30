@@ -33,6 +33,30 @@ PROJECT_DIVISIONS = {
     "Green Roofing": [],  # No subdivisions
 }
 
+# Repairs & Maintenance — exclusive divisions (same subdivisions under each parent)
+RM_SUBDIVISIONS = [
+    "EPDM Repairs",
+    "SBS Repairs",
+    "Gutter Repairs",
+    "Metal Roof Repairs",
+    "TPO Repairs",
+    "Waterproofing Repairs",
+    "Parkade Repairs",
+    "Bi-Annual Spring Roof Maintenance",
+    "Bi-Annual Fall Roof Maintenance",
+    "Roof Maintenance",
+    "Penetration Installation",
+    "Skylight Replacement",
+]
+
+RM_PROJECT_DIVISIONS = {
+    "Commercial Service": RM_SUBDIVISIONS,
+    "Warranty Repairs": RM_SUBDIVISIONS,
+    "Leak Investigations": RM_SUBDIVISIONS,
+    "Roof Assessments": RM_SUBDIVISIONS,
+    "Preventive Maintenance": RM_SUBDIVISIONS,
+}
+
 
 def seed_project_divisions():
     db = SessionLocal()
@@ -46,8 +70,9 @@ def seed_project_divisions():
         else:
             print("'project_divisions' SettingList already exists")
 
+        all_divisions = {**PROJECT_DIVISIONS, **RM_PROJECT_DIVISIONS}
         sort_index = 0
-        for division_name, subdivisions in PROJECT_DIVISIONS.items():
+        for division_name, subdivisions in all_divisions.items():
             division = (
                 db.query(SettingItem)
                 .filter(
@@ -105,7 +130,7 @@ def seed_project_divisions():
                 sub_sort_index += 1
 
         db.commit()
-        print(f"\nSuccessfully upserted {len(PROJECT_DIVISIONS)} divisions (existing UUIDs preserved).")
+        print(f"\nSuccessfully upserted {len(all_divisions)} divisions (existing UUIDs preserved).")
 
     except Exception as e:
         db.rollback()

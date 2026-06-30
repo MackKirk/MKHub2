@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { PREDEFINED_JOBS, formatJobPickerLine, isPredefinedJobId } from '@/constants/predefinedJobs';
 import { sortByLabel } from '@/lib/sortOptions';
 import { formatProjectAddressLine, type ProjectPickerItem } from '@/components/ui/projectPickerUtils';
-import { AppControlLabelRow, AppFieldHint, uiCx, uiDropdown, useComboboxDropdown } from '@/components/ui';
+import { AppControlLabelRow, AppFieldHint, comboboxMenuStyle, uiCx, uiDropdown, useComboboxDropdown } from '@/components/ui';
 
 export type JobPickerItem = {
   id: string;
@@ -180,7 +180,7 @@ export function JobSearchCombobox({
         id={portalListId}
         role="listbox"
         className={uiDropdown.menu}
-        style={{ top: menuRect.top, left: menuRect.left, width: menuRect.width }}
+        style={comboboxMenuStyle(menuRect)}
       >
         {isLoading && combinedOptions.length === 0 ? (
           <li className={uiDropdown.optionMuted}>Loading…</li>

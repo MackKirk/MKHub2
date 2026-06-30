@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Donut, InsightsEmptyState, InsightsSection } from '@/components/insights';
 import { api } from '@/lib/api';
+import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import type { OverviewDisplayMode } from './customerOverviewTypes';
 import {
   PROJECT_STATUS_COLORS,
@@ -27,7 +28,7 @@ export function CustomerOverviewPortfolioMix({
   const [view, setView] = useState<'status' | 'division'>('status');
 
   const { data: projectDivisions } = useQuery({
-    queryKey: ['project-divisions'],
+    queryKey: PROJECT_DIVISIONS_QUERY_KEY,
     queryFn: () => api<ProjectDivisionSetting[]>('GET', '/settings/project-divisions'),
     staleTime: 300_000,
   });
