@@ -1,4 +1,4 @@
-﻿import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -9,6 +9,7 @@ import {
   dropLooksLikeFolderTree,
   dataTransferMayContainDirectory,
 } from '@/lib/projectFolderDrop';
+import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
   FileImagePreviewModal,
@@ -31,12 +32,14 @@ import {
   AppEmptyState,
   AppFileUpload,
   AppFormModal,
+  AppHeroEditButton,
   AppInput,
   AppListRowIconButton,
   AppModal,
   AppSectionHeader,
   AppSelect,
   AppTabs,
+  AppTextarea,
   appSectionPresetProps,
   uiBorders,
   uiColors,
@@ -55,6 +58,7 @@ export type ProjectFile = {
   category?: string;
   folder_id?: string | null;
   original_name?: string;
+  notes?: string | null;
   uploaded_at?: string;
 };
 
@@ -96,6 +100,10 @@ export default function ProjectFilesTabEnhanced({
   const [editingFileNameValue, setEditingFileNameValue] = useState('');
   const [moveModalFileId, setMoveModalFileId] = useState<string | null>(null);
   const [moveModalCategory, setMoveModalCategory] = useState<string>('uncategorized');
+  const [notesModalFileId, setNotesModalFileId] = useState<string | null>(null);
+  const [notesModalValue, setNotesModalValue] = useState('');
+  const [notesModalEditing, setNotesModalEditing] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
   /** Admin-only: library vs soft-deleted files pending purge */
   const [filesSection, setFilesSection] = useState<'active' | 'deleted'>('active');
   
@@ -845,6 +853,141 @@ export default function ProjectFilesTabEnhanced({
     setEditingFileNameValue(f.original_name || f.file_object_id || '');
   };
 
+  const canEditFileInCategory = (f: ProjectFile) => {
+    const cat = f.category || 'uncategorized';
+    return canWriteFiles && isWriteCategoryAllowed(cat);
+  };
+
+  const openNotesModal = (f: ProjectFile) => {
+    setNotesModalFileId(f.id);
+    setNotesModalValue(f.notes ?? '');
+    setNotesModalEditing(false);
+  };
+
+  const closeNotesModal = () => {
+    setNotesModalFileId(null);
+    setNotesModalValue('');
+    setNotesModalEditing(false);
+  };
+
+  const startNotesEditing = () => {
+    setNotesModalValue(notesModalFile?.notes ?? '');
+    setNotesModalEditing(true);
+  };
+
+  const cancelNotesEditing = () => {
+    setNotesModalValue(notesModalFile?.notes ?? '');
+    setNotesModalEditing(false);
+  };
+
+  const handleSaveNotes = async () => {
+    if (!notesModalFileId || savingNotes) return;
+    const file = files.find(f => f.id === notesModalFileId);
+    if (!file) return;
+    if (!canEditFileInCategory(file)) {
+      toast.error('You do not have permission to edit notes in this category');
+      return;
+    }
+    const trimmed = notesModalValue.trim();
+    if (trimmed.length > 1000) {
+      toast.error('Notes must be 1000 characters or fewer');
+      return;
+    }
+    setSavingNotes(true);
+    try {
+      await api('PUT', `/projects/${projectId}/files/${notesModalFileId}`, {
+        notes: trimmed || null,
+      });
+      queryClient.setQueryData<ProjectFile[]>(['projectFiles', projectId], (old) =>
+        (old ?? []).map(f =>
+          f.id === notesModalFileId ? { ...f, notes: trimmed || null } : f,
+        ),
+      );
+      setNotesModalEditing(false);
+      toast.success('Notes saved');
+    } catch (_e) {
+      toast.error('Failed to save notes');
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
+  const notesModalFile = useMemo(
+    () => (notesModalFileId ? files.find(f => f.id === notesModalFileId) : undefined),
+    [files, notesModalFileId],
+  );
+  const notesModalCanEdit = notesModalFile ? canEditFileInCategory(notesModalFile) : false;
+  const notesModalSavedText = (notesModalFile?.notes ?? '').trim();
+
+  const renderNotesModalBody = () => {
+    if (notesModalEditing) {
+      if (designSystem) {
+        return (
+          <AppTextarea
+            label="Notes"
+            value={notesModalValue}
+            onChange={(e) => setNotesModalValue(e.target.value)}
+            rows={6}
+            maxLength={1000}
+            autoFocus
+            fieldHint="Notes\n\nOptional note about this file (max 1000 characters)."
+          />
+        );
+      }
+      return (
+        <textarea
+          value={notesModalValue}
+          onChange={(e) => setNotesModalValue(e.target.value)}
+          maxLength={1000}
+          rows={6}
+          autoFocus
+          className="w-full text-xs border rounded px-2 py-1.5 resize-y"
+          placeholder="Optional note about this file..."
+        />
+      );
+    }
+
+    if (!notesModalSavedText) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
+          <p className="text-xs text-gray-500">No notes yet for this file.</p>
+          {notesModalCanEdit && (
+            <AppHeroEditButton title="Add note" onClick={startNotesEditing} />
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-start gap-2">
+        <p className="flex-1 whitespace-pre-wrap text-xs text-gray-800">{notesModalFile?.notes}</p>
+        {notesModalCanEdit && (
+          <AppHeroEditButton title="Edit note" onClick={startNotesEditing} className="shrink-0" />
+        )}
+      </div>
+    );
+  };
+
+  const renderNotesModalFooter = () => {
+    if (notesModalEditing) {
+      return (
+        <>
+          <AppButton variant="secondary" size="sm" type="button" onClick={cancelNotesEditing} disabled={savingNotes}>
+            Cancel
+          </AppButton>
+          <AppButton size="sm" type="button" onClick={handleSaveNotes} loading={savingNotes}>
+            Save
+          </AppButton>
+        </>
+      );
+    }
+    return (
+      <AppButton variant="secondary" size="sm" type="button" onClick={closeNotesModal}>
+        Close
+      </AppButton>
+    );
+  };
+
   const openMoveCategoryModal = (fileId: string) => {
     const f = files.find((x) => x.id === fileId);
     const cat = f?.category;
@@ -1574,6 +1717,21 @@ export default function ProjectFilesTabEnhanced({
                                     </button>
                                     )
                                   )}
+                                  {designSystem ? (
+                                    <AppListRowIconButton
+                                      icon="🗒️"
+                                      label="Notes"
+                                      onClick={(e) => { e.stopPropagation(); openNotesModal(f); }}
+                                    />
+                                  ) : (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); openNotesModal(f); }}
+                                      title="Notes"
+                                      className="p-1 rounded hover:bg-gray-100 text-xs flex-shrink-0"
+                                    >
+                                      Notes
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </td>
@@ -1587,8 +1745,8 @@ export default function ProjectFilesTabEnhanced({
                               className="px-3 py-2 cursor-pointer"
                               onClick={() => handleFilePreview(f)}
                             >
-                              <div className="text-xs text-gray-600">
-                                {f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString('pt-BR') : '-'}
+                              <div className="text-xs text-gray-600 whitespace-nowrap">
+                                {f.uploaded_at ? formatDateTimeVancouver(f.uploaded_at) : '-'}
                               </div>
                             </td>
                             <td className="px-3 py-2">
@@ -1829,6 +1987,79 @@ export default function ProjectFilesTabEnhanced({
             fieldHint="Category\n\nChoose where this file should live. The file moves to the root of that category."
           />
         </AppFormModal>
+      )}
+      {notesModalFileId && designSystem && (
+        <AppFormModal
+          open
+          onClose={closeNotesModal}
+          title="File notes"
+          description={notesModalFile?.original_name || notesModalFile?.file_object_id || undefined}
+          footer={
+            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+              {renderNotesModalFooter()}
+            </div>
+          }
+        >
+          {renderNotesModalBody()}
+        </AppFormModal>
+      )}
+      {notesModalFileId && !designSystem && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            onClick={(e) => e.target === e.currentTarget && closeNotesModal()}
+            role="presentation"
+          >
+            <div
+              className="w-[480px] max-w-[95vw] bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-labelledby="project-file-notes-title"
+            >
+              <div className="px-4 py-3 border-b">
+                <h3 id="project-file-notes-title" className="text-sm font-semibold">File notes</h3>
+                {notesModalFile && (
+                  <p className="text-xs text-gray-500 mt-0.5 truncate">
+                    {notesModalFile.original_name || notesModalFile.file_object_id}
+                  </p>
+                )}
+              </div>
+              <div className="p-4">
+                {renderNotesModalBody()}
+              </div>
+              <div className="px-4 py-3 border-t flex justify-end gap-2">
+                {notesModalEditing ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={cancelNotesEditing}
+                      disabled={savingNotes}
+                      className="px-3 py-1.5 rounded border text-xs disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveNotes}
+                      disabled={savingNotes}
+                      className="px-3 py-1.5 rounded bg-brand-red text-white text-xs disabled:opacity-50"
+                    >
+                      {savingNotes ? 'Saving…' : 'Save'}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={closeNotesModal}
+                    className="px-3 py-1.5 rounded border text-xs"
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
       )}
       {moveModalFileId && !designSystem && (
         <OverlayPortal>

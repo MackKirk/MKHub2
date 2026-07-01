@@ -1726,6 +1726,21 @@ def create_app() -> FastAPI:
                     except Exception as _e:
                         print(f"[startup] client_files soft-delete columns (non-critical): {_e}")
 
+                    try:
+                        _notes_col = db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.columns "
+                                "WHERE table_schema = 'public' AND table_name = 'client_files' "
+                                "AND column_name = 'notes' LIMIT 1"
+                            )
+                        ).fetchall()
+                        if not _notes_col:
+                            db.execute(text("ALTER TABLE client_files ADD COLUMN notes VARCHAR(1000) NULL"))
+                            db.commit()
+                            print("[startup] Added client_files.notes")
+                    except Exception as _e:
+                        print(f"[startup] client_files.notes column (non-critical): {_e}")
+
                     # Soft-delete columns for company file documents (ClientDocument rows)
                     try:
                         _cd_cols = db.execute(

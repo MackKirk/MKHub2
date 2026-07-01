@@ -3,6 +3,31 @@
  * All date formatting should use these functions instead of toISOString() to avoid UTC conversion issues
  */
 
+export const VANCOUVER_TIMEZONE = 'America/Vancouver';
+
+/** Parse API ISO timestamps (UTC or offset) for display. */
+export function parseUtcTimestamp(iso: string): Date {
+  const s = iso.trim();
+  if (!s) return new Date(NaN);
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) {
+    return new Date(s);
+  }
+  const normalized = s.includes('T') ? s : s.replace(' ', 'T');
+  return new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
+}
+
+/** Date and time in Pacific Time (America/Vancouver, PST/PDT). */
+export function formatDateTimeVancouver(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = parseUtcTimestamp(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: VANCOUVER_TIMEZONE,
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  }).format(d);
+}
+
 /**
  * Format date as YYYY-MM-DD in local timezone (not UTC)
  * This ensures dates are displayed correctly regardless of server timezone

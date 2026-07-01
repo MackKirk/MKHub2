@@ -61,6 +61,7 @@ from ..services.business_line import (
     BUSINESS_LINE_REPAIRS_MAINTENANCE,
     normalize_business_line,
 )
+from ..services.rm_pictures_folders import ensure_rm_pictures_default_folders
 from ..services.project_visibility import (
     can_manage_project_members,
     is_project_visible_to_user,
@@ -75,8 +76,6 @@ from ..services.project_duplicate import generate_project_code, duplicate_projec
 from ..services.leak_investigation import (
     get_leak_investigation_division_id,
     project_has_leak_investigation_division,
-    project_is_leak_investigation,
-    resolve_related_leak_investigation_uuid,
 )
 from ..services.billing_snapshot import (
     BILLING_SNAPSHOT_FIELDS,
@@ -913,23 +912,16 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
 
     is_bidding = bool(payload.get("is_bidding"))
     payload["is_bidding"] = is_bidding
+    payload.pop("related_leak_investigation_id", None)
 
-    rel_lid = payload.get("related_leak_investigation_id")
-    if rel_lid:
-        if bl != BUSINESS_LINE_REPAIRS_MAINTENANCE:
-            raise HTTPException(
-                status_code=400,
-                detail="related_leak_investigation_id is only valid for Repairs & Maintenance",
-            )
-        payload["related_leak_investigation_id"] = resolve_related_leak_investigation_uuid(db, rel_lid)
-    else:
-        payload["related_leak_investigation_id"] = None
-
-    division_ids = payload.get("project_division_ids") or []
-    if bl == BUSINESS_LINE_REPAIRS_MAINTENANCE and division_ids:
+    creating_leak_investigation = False
+    if bl == BUSINESS_LINE_REPAIRS_MAINTENANCE:
         leak_div_id = get_leak_investigation_division_id(db)
+        division_ids = payload.get("project_division_ids") or []
         if leak_div_id and str(leak_div_id) in {str(d) for d in division_ids}:
-            payload["related_leak_investigation_id"] = None
+            payload["is_bidding"] = False
+            is_bidding = False
+            creating_leak_investigation = True
 
     # Always auto-generate project code: MK-<seq>/<client_code>-<year>
     client_id = payload.get("client_id")
@@ -958,6 +950,18 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
             if prospecting_status:
                 payload["status_id"] = prospecting_status.id
                 payload["status_label"] = "Prospecting"
+                payload["status_changed_at"] = datetime.now(timezone.utc)
+
+    if creating_leak_investigation:
+        status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
+        if status_list:
+            in_progress_status = db.query(SettingItem).filter(
+                SettingItem.list_id == status_list.id,
+                SettingItem.label == "In Progress",
+            ).first()
+            if in_progress_status:
+                payload["status_id"] = in_progress_status.id
+                payload["status_label"] = "In Progress"
                 payload["status_changed_at"] = datetime.now(timezone.utc)
     
     # If status_label is provided in payload, also set status_changed_at
@@ -1104,6 +1108,12 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
     except Exception:
         db.rollback()
 
+    try:
+        ensure_rm_pictures_default_folders(db, proj)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Failed to create R&M Pictures default folders: %s", e)
+
     return {"id": str(proj.id)}
 
 
@@ -1175,11 +1185,6 @@ def list_projects(
             "project_division_percentages": getattr(p, 'project_division_percentages', None),
             "is_bidding": getattr(p, 'is_bidding', False),
             "has_leak_investigation_division": project_has_leak_investigation_division(db, p),
-            "related_leak_investigation_id": (
-                str(getattr(p, "related_leak_investigation_id"))
-                if getattr(p, "related_leak_investigation_id", None)
-                else None
-            ),
             "business_line": getattr(p, "business_line", None) or BUSINESS_LINE_CONSTRUCTION,
             "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
             "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
@@ -1251,39 +1256,6 @@ def get_project(
         related_ids = []
     _awarded_ids = _effective_awarded_related_client_ids(p)
 
-    related_leak_investigation = None
-    _rel_lid = getattr(p, "related_leak_investigation_id", None)
-    if _rel_lid:
-        _leak_row = db.query(Project).filter(Project.id == _rel_lid, Project.deleted_at.is_(None)).first()
-        if _leak_row:
-            related_leak_investigation = {
-                "id": str(_leak_row.id),
-                "name": getattr(_leak_row, "name", None),
-                "code": getattr(_leak_row, "code", None),
-            }
-
-    leak_investigation_links: list = []
-    if project_is_leak_investigation(db, p):
-        _children = (
-            db.query(Project)
-            .filter(
-                Project.related_leak_investigation_id == p.id,
-                Project.deleted_at.is_(None),
-            )
-            .order_by(Project.created_at.asc())
-            .all()
-        )
-        _children = [ch for ch in _children if not project_is_leak_investigation(db, ch)]
-        leak_investigation_links = [
-            {
-                "id": str(ch.id),
-                "name": ch.name,
-                "code": ch.code,
-                "is_bidding": bool(getattr(ch, "is_bidding", False)),
-            }
-            for ch in _children
-        ]
-
     return {
         "id": str(p.id),
         "code": p.code,
@@ -1341,13 +1313,6 @@ def get_project(
         "timezone": getattr(p, 'timezone', None),
         "is_bidding": getattr(p, 'is_bidding', False),
         "has_leak_investigation_division": project_has_leak_investigation_division(db, p),
-        "related_leak_investigation_id": (
-            str(getattr(p, "related_leak_investigation_id"))
-            if getattr(p, "related_leak_investigation_id", None)
-            else None
-        ),
-        "related_leak_investigation": related_leak_investigation,
-        "leak_investigation_links": leak_investigation_links,
         "business_line": getattr(p, "business_line", None) or BUSINESS_LINE_CONSTRUCTION,
         "image_file_object_id": str(getattr(p, 'image_file_object_id', None)) if getattr(p, 'image_file_object_id', None) else None,
         "image_manually_set": getattr(p, 'image_manually_set', False),
@@ -1366,23 +1331,7 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
     if "business_line" in payload:
         payload.pop("business_line", None)
     payload.pop("is_bidding", None)
-
-    if "related_leak_investigation_id" in payload:
-        if project_is_leak_investigation(db, p):
-            raise HTTPException(
-                status_code=400,
-                detail="related_leak_investigation_id cannot be set on leak investigations",
-            )
-        if getattr(p, "business_line", None) != BUSINESS_LINE_REPAIRS_MAINTENANCE:
-            raise HTTPException(
-                status_code=400,
-                detail="related_leak_investigation_id is only valid for Repairs & Maintenance",
-            )
-        raw_rel = payload.get("related_leak_investigation_id")
-        if raw_rel is None or (isinstance(raw_rel, str) and not str(raw_rel).strip()):
-            payload["related_leak_investigation_id"] = None
-        else:
-            payload["related_leak_investigation_id"] = resolve_related_leak_investigation_uuid(db, raw_rel)
+    payload.pop("related_leak_investigation_id", None)
 
     # Capture before state for audit log (hero and key project fields)
     before_state = {
@@ -1908,6 +1857,10 @@ def list_project_folders(
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     _assert_project_line_read(user, proj)
+    try:
+        ensure_rm_pictures_default_folders(db, proj)
+    except Exception:
+        pass
     q = db.query(ProjectFolder).filter(ProjectFolder.project_id == project_id)
     if category is not None and category != "":
         q = q.filter(ProjectFolder.category == category)
@@ -2333,6 +2286,7 @@ def list_project_files(
             "folder_id": str(cf.folder_id) if getattr(cf, "folder_id", None) else None,
             "key": cf.key,
             "original_name": cf.original_name,
+            "notes": getattr(cf, "notes", None),
             "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
             "content_type": ct,
             "is_image": is_image,
@@ -2582,6 +2536,7 @@ def update_project_file(
         "category": getattr(cf, "category", None),
         "folder_id": str(cf.folder_id) if getattr(cf, "folder_id", None) else None,
         "original_name": getattr(cf, "original_name", None),
+        "notes": getattr(cf, "notes", None),
     }
     
     # Update category if provided
@@ -2609,6 +2564,15 @@ def update_project_file(
                 raise HTTPException(status_code=400, detail="Invalid folder_id")
     if "original_name" in payload:
         cf.original_name = payload["original_name"]
+    if "notes" in payload:
+        raw_notes = payload.get("notes")
+        if raw_notes is None or raw_notes == "":
+            cf.notes = None
+        else:
+            notes_str = str(raw_notes).strip()
+            if len(notes_str) > 1000:
+                raise HTTPException(status_code=400, detail="Notes must be 1000 characters or fewer")
+            cf.notes = notes_str or None
     db.commit()
     
     # Create audit log for file update
@@ -2618,6 +2582,7 @@ def update_project_file(
             "category": getattr(cf, "category", None),
             "folder_id": str(cf.folder_id) if getattr(cf, "folder_id", None) else None,
             "original_name": getattr(cf, "original_name", None),
+            "notes": getattr(cf, "notes", None),
         }
         changes = compute_diff(before_state, after_state)
         if changes:

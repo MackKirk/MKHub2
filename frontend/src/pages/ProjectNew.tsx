@@ -11,7 +11,6 @@ import { DivisionIcon } from '@/components/DivisionIcon';
 import {
   AppButton,
   AppClientSelect,
-  AppCombobox,
   AppControlLabelRow,
   AppFieldHint,
   AppFormModal,
@@ -46,7 +45,6 @@ export default function ProjectNew(){
   const initialClientId = sp.get('client_id')||'';
   const wantsLeakDivision = sp.get('division') === 'leak_investigations';
   const initialIsBidding = sp.get('is_bidding') === 'true';
-  const initialRelatedLeakId = (sp.get('related_leak_investigation_id') || '').trim();
   const initialSiteIdFromUrl = (sp.get('site_id') || '').trim();
   const initialEstimatorIdFromUrl = (sp.get('estimator_id') || '').trim();
 
@@ -67,8 +65,6 @@ export default function ProjectNew(){
   const [coverBlob, setCoverBlob] = useState<Blob|null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [hiddenPickerOpen, setHiddenPickerOpen] = useState<boolean>(false);
-  const [relatedLeakInvestigationId, setRelatedLeakInvestigationId] = useState<string>(initialRelatedLeakId);
-  const [isBidding] = useState<boolean>(wantsLeakDivision ? false : initialIsBidding);
   const [relatedClientIds, setRelatedClientIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newContactModalOpen, setNewContactModalOpen] = useState(false);
@@ -85,9 +81,11 @@ export default function ProjectNew(){
     () => findLeakInvestigationDivisionId(divisionsForPicker),
     [divisionsForPicker]
   );
+  const startedAsOpportunity = initialIsBidding && !wantsLeakDivision;
   const isCreatingLeakInvestigation = !!(
     leakDivisionId && projectDivisionIds.includes(leakDivisionId)
   );
+  const isBidding = startedAsOpportunity && !isCreatingLeakInvestigation;
 
   useEffect(() => {
     if (!wantsLeakDivision || !leakDivisionId) return;
@@ -110,7 +108,7 @@ export default function ProjectNew(){
     });
   }, [employees]);
 
-  const limitEstimatorListToSalesDept = isBidding;
+  const limitEstimatorListToSalesDept = isBidding || isCreatingLeakInvestigation;
 
   useEffect(() => {
     if (!limitEstimatorListToSalesDept || employees === undefined) return;
@@ -122,31 +120,6 @@ export default function ProjectNew(){
   const estimatorUserOptions = useMemo(
     () => employeesForEstimatorSelect.map((emp: any) => mapEmployeeToAppUserSelect(emp)),
     [employeesForEstimatorSelect],
-  );
-  const leakDivisionQuery = leakDivisionId
-    ? `&division_id=${encodeURIComponent(leakDivisionId)}`
-    : '';
-  const { data: leakPickData } = useQuery({
-    queryKey: ['rm-leak-projects-pick', businessLine, leakDivisionId],
-    queryFn: () =>
-      api<{ items: { id: string; name?: string; code?: string }[] }>(
-        'GET',
-        `/projects/business/projects?business_line=${encodeURIComponent(businessLine)}&limit=100${leakDivisionQuery}`
-      ),
-    enabled: !isCreatingLeakInvestigation && businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE && !!leakDivisionId,
-    staleTime: 60_000,
-  });
-  const leakPickItems = Array.isArray((leakPickData as any)?.items) ? (leakPickData as any).items : [];
-  const leakInvestigationOptions = useMemo(
-    () => [
-      { value: '', label: 'None' },
-      ...leakPickItems.map((row: { id: string; name?: string; code?: string }) => ({
-        value: row.id,
-        label: (row.name || row.id).trim() || row.id,
-        description: row.code?.trim() || undefined,
-      })),
-    ],
-    [leakPickItems],
   );
   const { data:contacts } = useQuery({ queryKey:['clientContacts-mini', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/clients/${encodeURIComponent(clientId)}/contacts`) : Promise.resolve([]), enabled: !!clientId });
 
@@ -256,19 +229,17 @@ export default function ProjectNew(){
         description: desc||null, 
         client_id: clientId, 
         site_id: newSiteId||null, 
-        status_label: isBidding ? null : (statusLabel || null),
+        status_label: isBidding
+          ? null
+          : isCreatingLeakInvestigation
+            ? 'In Progress'
+            : (statusLabel || null),
         division_ids: divisionIds,
         project_division_ids: projectDivisionIds.length > 0 ? projectDivisionIds : null,
         estimator_id: estimatorId||null, 
         onsite_lead_id: leadId||null, 
         contact_id: contactId||null, 
         is_bidding: isBidding,
-        related_leak_investigation_id:
-          !isCreatingLeakInvestigation &&
-          businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE &&
-          relatedLeakInvestigationId.trim()
-            ? relatedLeakInvestigationId.trim()
-            : null,
         related_client_ids: relatedClientIds.length > 0 ? relatedClientIds : null,
         business_line: businessLine,
       };
@@ -455,20 +426,6 @@ export default function ProjectNew(){
                 onChange={(e) => setDesc(e.target.value)}
                 fieldHint="Description\n\nOptional notes about scope or context."
               />
-              {!isCreatingLeakInvestigation && businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE && (
-                <div className="md:col-span-2">
-                  <AppCombobox
-                    id="project-new-related-leak"
-                    label="Related Leak Investigation (optional)"
-                    value={relatedLeakInvestigationId}
-                    onChange={setRelatedLeakInvestigationId}
-                    placeholder="Search or select leak investigation…"
-                    options={leakInvestigationOptions}
-                    emptyMessage="No leak investigations found."
-                    fieldHint="Related Leak Investigation\n\nLink to an existing leak investigation when applicable."
-                  />
-                </div>
-              )}
             </div>
             {!!clientId && (
               <div className={uiSpacing.sectionStack}>
@@ -616,6 +573,11 @@ export default function ProjectNew(){
                   Select at least one division for this opportunity
                 </p>
               )}
+              {startedAsOpportunity && isCreatingLeakInvestigation && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Leak Investigations are created as projects, not opportunities.
+                </p>
+              )}
                   <div className="rounded-lg border border-gray-200 bg-white overflow-hidden divide-y divide-gray-200">
                     {divisionsLoading ? (
                       <div className="text-xs text-gray-500 text-center py-6">Loading project divisions…</div>
@@ -700,8 +662,8 @@ export default function ProjectNew(){
                       </div>
                     )}
                   </div>
-                  {/* Legacy divisions support (deprecated) — not shown for opportunities */}
-                  {!(isBidding) && settings?.divisions && settings.divisions.length > 0 && (
+                  {/* Legacy divisions support (deprecated) — hidden for opportunities and leak investigations */}
+                  {!isBidding && !isCreatingLeakInvestigation && settings?.divisions && settings.divisions.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-gray-200">
                       <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
                       <div className="flex flex-wrap gap-2 mt-1">
@@ -732,7 +694,7 @@ export default function ProjectNew(){
                   </div>
 
             <div className="grid gap-3 border-t border-gray-200 pt-4 md:grid-cols-2">
-              {!isBidding && (
+              {!isBidding && !isCreatingLeakInvestigation && (
                 <AppSelect
                   label="Status"
                   value={statusLabel}

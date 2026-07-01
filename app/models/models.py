@@ -213,7 +213,7 @@ class Project(Base):
     notes: Mapped[Optional[str]] = mapped_column(String(2000))
     lead_source: Mapped[Optional[str]] = mapped_column(String(100))  # Lead source (same as Client)
     is_bidding: Mapped[bool] = mapped_column(Boolean, default=False)  # True if this is a bidding (quote), False if it's an active project
-    # Optional link from an R&M opportunity to a leak investigation (informational only)
+    # Optional legacy link from R&M opportunity to leak investigation (column retained; not exposed via API)
     related_leak_investigation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -611,6 +611,7 @@ class ClientFile(Base):
     original_name: Mapped[Optional[str]] = mapped_column(String(255))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     uploaded_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    notes: Mapped[Optional[str]] = mapped_column(String(1000))
     # Soft-delete when removed from project/opportunity files (admin can purge row + storage later)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))

@@ -1,4 +1,4 @@
-﻿import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   useMemo,
   useState,
@@ -41,7 +41,7 @@ import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
 import OverlayPortal from '@/components/OverlayPortal';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
-import { findLeakInvestigationDivisionId, projectHasLeakInvestigationDivision } from '@/lib/leakInvestigation';
+import { projectHasLeakInvestigationDivision } from '@/lib/leakInvestigation';
 import {
   hasProjectFeaturePermission,
   hasProjectFeatureReadPermission,
@@ -875,7 +875,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, related_leak_investigation_id?:string|null, related_leak_investigation?: { id: string; name?: string | null; code?: string | null } | null, leak_investigation_links?: { id: string; name?: string | null; code?: string | null; is_bidding: boolean }[], lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
 
 function projectAwardedRelatedIdsSet(proj: Project | null | undefined): Set<string> {
   const raw = proj?.awarded_related_client_ids;
@@ -913,7 +913,7 @@ function projectRelatedCustomersHeroSplit(proj: Project | null | undefined): {
   return { displayedEntries, nonAwardedEntries, hasAwardedData: true };
 }
 
-type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, folder_id?:string|null, original_name?:string, uploaded_at?:string };
+type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, folder_id?:string|null, original_name?:string, notes?:string|null, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string, financial_value?:number, financial_type?:string, estimate_data?:any, approval_status?:string, approved_by?:string, approved_at?:string };
 type Proposal = { id:string, title?:string, order_number?:string, created_at?:string, data?:any, is_change_order?:boolean, change_order_number?:number, parent_proposal_id?:string, approved_report_id?:string, approval_status?:string };
@@ -1137,8 +1137,6 @@ export default function ProjectDetail(){
   const [editStartDateModal, setEditStartDateModal] = useState(false);
   const [editAwardedDateModal, setEditAwardedDateModal] = useState(false);
   const [editLeadSourceModal, setEditLeadSourceModal] = useState(false);
-  const [editRelatedLeakModal, setEditRelatedLeakModal] = useState(false);
-  const [editLeakInvestigationLinksModal, setEditLeakInvestigationLinksModal] = useState(false);
   const [editRelatedCustomersModal, setEditRelatedCustomersModal] = useState(false);
   const [editDescriptionModal, setEditDescriptionModal] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -1476,28 +1474,6 @@ export default function ProjectDetail(){
     return convertButton;
   }, [isOpportunityDetailRoute, proj, hasEditPermission]);
 
-  const leakCreateRelatedOpportunityAction = useMemo(() => {
-    if (!(isProjectDetailRoute && isLeakInvestigation) || !hasEditPermission || !id) return null;
-    const qs = new URLSearchParams();
-    qs.set('is_bidding', 'true');
-    qs.set('related_leak_investigation_id', String(id));
-    if (proj?.client_id) qs.set('client_id', String(proj.client_id));
-    if (proj?.site_id) qs.set('site_id', String(proj.site_id));
-    if (proj?.estimator_id) qs.set('estimator_id', String(proj.estimator_id));
-    const to = `/rm-projects/new?${qs.toString()}`;
-    return (
-      <AppButton
-        type="button"
-        size="sm"
-        variant="secondary"
-        onClick={() => nav(to)}
-        title="Create a new opportunity linked to this leak investigation"
-      >
-        Create related Opportunity
-      </AppButton>
-    );
-  }, [isProjectDetailRoute && isLeakInvestigation, hasEditPermission, id, proj?.client_id, proj?.site_id, proj?.estimator_id, nav]);
-
   const PageShell = useDesignSystem ? 'main' : 'div';
 
   return (
@@ -1758,41 +1734,6 @@ export default function ProjectDetail(){
                       );
                     })()}
 
-                    {/* Related Leak Investigation — R&M projects only (below Related Customers) */}
-                    {!isOpportunityStyleTabs &&
-                      proj?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE &&
-                      !isLeakInvestigation && (
-                        <div>
-                          <div className="flex items-center gap-1.5 mb-1.5">
-                            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
-                              Related Leak Investigation
-                            </span>
-                            {hasEditPermission && (
-                              <button
-                                type="button"
-                                onClick={() => setEditRelatedLeakModal(true)}
-                                className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
-                                title="Edit related leak investigation"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                          {proj?.related_leak_investigation_id ? (
-                            <Link
-                              to={`/rm-projects/${encodeURIComponent(String(proj.related_leak_investigation_id))}`}
-                              className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
-                            >
-                              {(proj?.related_leak_investigation?.name || '').trim() || 'Open leak investigation'}
-                            </Link>
-                          ) : (
-                            <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
-                          )}
-                        </div>
-                      )}
-
                     {/* Site - only show for projects */}
                     {!isOpportunityStyleTabs && (
                       <div>
@@ -1993,83 +1934,6 @@ export default function ProjectDetail(){
                             return displayName;
                           })()}
                         </div>
-                      </div>
-                    )}
-
-                    {/* Related Leak Investigation — R&M opportunities only (column 2) */}
-                    {proj?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE &&
-                      !isLeakInvestigation &&
-                      !!proj?.is_bidding && (
-                        <div>
-                          <div className="flex items-center gap-1.5 mb-1.5">
-                            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
-                              Related Leak Investigation
-                            </span>
-                            {hasEditPermission && (
-                              <button
-                                type="button"
-                                onClick={() => setEditRelatedLeakModal(true)}
-                                className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
-                                title="Edit related leak investigation"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                          {proj?.related_leak_investigation_id ? (
-                            <Link
-                              to={`/rm-projects/${encodeURIComponent(String(proj.related_leak_investigation_id))}`}
-                              className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
-                            >
-                              {(proj?.related_leak_investigation?.name || '').trim() || 'Open leak investigation'}
-                            </Link>
-                          ) : (
-                            <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
-                          )}
-                        </div>
-                      )}
-
-                    {proj?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE && isLeakInvestigation && (
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
-                            Related Opportunities / Projects
-                          </span>
-                          {hasEditPermission && (
-                            <button
-                              type="button"
-                              onClick={() => setEditLeakInvestigationLinksModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
-                              title="Edit related opportunities and projects"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                        {(proj?.leak_investigation_links?.length ?? 0) > 0 ? (
-                          <ul className="mt-0.5 space-y-1">
-                            {(proj?.leak_investigation_links ?? []).map((row) => (
-                              <li key={row.id} className="min-w-0">
-                                <Link
-                                  to={
-                                    row.is_bidding
-                                      ? `/rm-opportunities/${encodeURIComponent(row.id)}`
-                                      : `/rm-projects/${encodeURIComponent(row.id)}`
-                                  }
-                                  className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words block"
-                                >
-                                  {(row.name || '').trim() || 'View record'}
-                                </Link>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
-                        )}
                       </div>
                     )}
 
@@ -2614,11 +2478,9 @@ export default function ProjectDetail(){
             useDesignSystem={useDesignSystem}
             isHeroCollapsed={isHeroCollapsed}
             headerEnd={
-              isProjectDetailRoute && isLeakInvestigation
-                ? leakCreateRelatedOpportunityAction
-                : isOpportunityDetailRoute && proj?.is_bidding
-                  ? opportunityConvertHeaderAction
-                  : undefined
+              isOpportunityDetailRoute && proj?.is_bidding
+                ? opportunityConvertHeaderAction
+                : undefined
             }
           />
         );
@@ -2836,33 +2698,6 @@ export default function ProjectDetail(){
           </div>
         );
       })()}
-
-      {/* Create related opportunity — legacy layout only (DS: tab card headerEnd) */}
-      {!isOpportunityDetailRoute &&
-        !tab &&
-        isLeakInvestigation &&
-        hasEditPermission &&
-        (() => {
-          const qs = new URLSearchParams();
-          qs.set('is_bidding', 'true');
-          if (id) qs.set('related_leak_investigation_id', String(id));
-          if (proj?.client_id) qs.set('client_id', String(proj.client_id));
-          if (proj?.site_id) qs.set('site_id', String(proj.site_id));
-          if (proj?.estimator_id) qs.set('estimator_id', String(proj.estimator_id));
-          const to = `/rm-projects/new?${qs.toString()}`;
-          return (
-            <div className="mb-4">
-              <Link
-                to={to}
-                className="w-full border-2 border-dashed rounded-lg p-2.5 transition-all text-center bg-white flex items-center justify-center gap-2 min-h-[60px] border-blue-300 hover:border-blue-600 hover:bg-blue-50"
-                title="Create a new opportunity linked to this leak investigation"
-              >
-                <span className="text-lg text-blue-500">+</span>
-                <span className="font-medium text-xs text-blue-700">Create related Opportunity</span>
-              </Link>
-            </div>
-          );
-        })()}
 
       {/* Description card — visible when set, or when user can add one */}
       {!tab && (proj?.description?.trim() || hasEditPermission) && (
@@ -3680,31 +3515,6 @@ export default function ProjectDetail(){
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
             invalidateRecentActivity();
             setEditLeadSourceModal(false);
-          }}
-        />
-      )}
-
-      {editRelatedLeakModal && proj && id && (
-        <EditRelatedLeakInvestigationModal
-          projectId={String(id)}
-          currentRelatedLeakId={proj.related_leak_investigation_id || ''}
-          onClose={() => setEditRelatedLeakModal(false)}
-          onSave={async () => {
-            await queryClient.invalidateQueries({ queryKey: ['project', id] });
-            invalidateRecentActivity();
-            setEditRelatedLeakModal(false);
-          }}
-        />
-      )}
-
-      {editLeakInvestigationLinksModal && id && isLeakInvestigation && (
-        <EditLeakInvestigationLinksModal
-          leakInvestigationId={String(id)}
-          currentLinks={proj?.leak_investigation_links ?? []}
-          onClose={() => setEditLeakInvestigationLinksModal(false)}
-          onChanged={async () => {
-            await queryClient.invalidateQueries({ queryKey: ['project', id] });
-            invalidateRecentActivity();
           }}
         />
       )}
@@ -4682,301 +4492,6 @@ function EditRelatedCustomersModal({
         </div>
       </div>
     </div></OverlayPortal>
-  );
-}
-
-function EditRelatedLeakInvestigationModal({
-  projectId,
-  currentRelatedLeakId,
-  onClose,
-  onSave,
-}: {
-  projectId: string;
-  currentRelatedLeakId: string;
-  onClose: () => void;
-  onSave: () => Promise<void>;
-}) {
-  const [selectedId, setSelectedId] = useState<string>(currentRelatedLeakId || '');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setSelectedId(currentRelatedLeakId || '');
-  }, [currentRelatedLeakId]);
-
-  const { data: leakDivisions } = useQuery({
-    queryKey: PROJECT_DIVISIONS_QUERY_KEY,
-    queryFn: () => api<{ id: string; label?: string }[]>('GET', '/settings/project-divisions'),
-    staleTime: 300_000,
-  });
-  const leakDivisionId = findLeakInvestigationDivisionId(leakDivisions);
-  const { data: leakPickData } = useQuery({
-    queryKey: ['rm-leak-projects-pick-detail', BUSINESS_LINE_REPAIRS_MAINTENANCE, leakDivisionId],
-    queryFn: () =>
-      api<{ items: { id: string; name?: string; code?: string }[] }>(
-        'GET',
-        `/projects/business/projects?business_line=${encodeURIComponent(BUSINESS_LINE_REPAIRS_MAINTENANCE)}&limit=100${leakDivisionId ? `&division_id=${encodeURIComponent(leakDivisionId)}` : ''}`
-      ),
-    enabled: !!leakDivisionId,
-    staleTime: 60_000,
-  });
-  const leakPickItems = Array.isArray((leakPickData as any)?.items) ? (leakPickData as any).items : [];
-
-  const handleSave = async () => {
-    const next = selectedId.trim();
-    const cur = (currentRelatedLeakId || '').trim();
-    if (next === cur) {
-      onClose();
-      return;
-    }
-    try {
-      setSaving(true);
-      await api('PATCH', `/projects/${encodeURIComponent(projectId)}`, {
-        related_leak_investigation_id: next ? next : null,
-      });
-      toast.success('Related leak investigation updated');
-      await onSave();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Failed to update');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <OverlayPortal>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-        <div
-          className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Related Leak Investigation</h2>
-                <p className="text-xs text-gray-500 mt-0.5">At most one investigation, or none</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 min-h-0">
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                Investigation
-              </label>
-              <select
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                value={selectedId}
-                onChange={(e) => setSelectedId(e.target.value)}
-              >
-                <option value="">None</option>
-                {leakPickItems.map((row: { id: string; name?: string; code?: string }) => (
-                  <option key={row.id} value={row.id}>
-                    {(row.name || '').trim() || row.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-white flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 rounded-lg text-sm text-gray-700 border border-gray-200 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </OverlayPortal>
-  );
-}
-
-type LeakInvestigationLinkRow = { id: string; name?: string | null; code?: string | null; is_bidding: boolean };
-
-function EditLeakInvestigationLinksModal({
-  leakInvestigationId,
-  currentLinks,
-  onClose,
-  onChanged,
-}: {
-  leakInvestigationId: string;
-  currentLinks: LeakInvestigationLinkRow[];
-  onClose: () => void;
-  onChanged: () => Promise<void>;
-}) {
-  const confirmDlg = useConfirm();
-  const queryClient = useQueryClient();
-  const [q, setQ] = useState('');
-  const [linkingId, setLinkingId] = useState<string | null>(null);
-  const [removingId, setRemovingId] = useState<string | null>(null);
-
-  const { data: rows = [], isFetching } = useQuery({
-    queryKey: ['rm-projects-for-leak-link', q],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      params.set('business_line', BUSINESS_LINE_REPAIRS_MAINTENANCE);
-      params.set('is_bidding', 'false');
-      if (q.trim()) params.set('q', q.trim());
-      const res = await api<any[]>('GET', `/projects?${params.toString()}`);
-      return Array.isArray(res) ? res : [];
-    },
-    staleTime: 30_000,
-  });
-
-  const pickable = useMemo(() => {
-    return (rows || []).filter((r: any) => {
-      if (String(r.id) === leakInvestigationId) return false;
-      if (r?.has_leak_investigation_division) return false;
-      if (String(r?.related_leak_investigation_id || '') === leakInvestigationId) return false;
-      return true;
-    });
-  }, [rows, leakInvestigationId]);
-
-  const linkToLeak = async (childId: string) => {
-    try {
-      setLinkingId(childId);
-      await api('PATCH', `/projects/${encodeURIComponent(childId)}`, {
-        related_leak_investigation_id: leakInvestigationId,
-      });
-      toast.success('Linked');
-      await queryClient.invalidateQueries({ queryKey: ['project', leakInvestigationId] });
-      await onChanged();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Failed to link');
-    } finally {
-      setLinkingId(null);
-    }
-  };
-
-  const unlinkRow = async (childId: string) => {
-    const ok = await confirmDlg({
-      title: 'Remove link',
-      message: 'Remove this opportunity or project from this leak investigation?',
-      confirmText: 'Remove',
-      cancelText: 'Cancel',
-    });
-    if (ok !== 'confirm') return;
-    try {
-      setRemovingId(childId);
-      await api('PATCH', `/projects/${encodeURIComponent(childId)}`, {
-        related_leak_investigation_id: null,
-      });
-      toast.success('Link removed');
-      await queryClient.invalidateQueries({ queryKey: ['project', leakInvestigationId] });
-      await onChanged();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Failed to remove link');
-    } finally {
-      setRemovingId(null);
-    }
-  };
-
-  const linkListBody = (
-    <div className="space-y-4">
-      <div>
-        <p className={uiTypography.overline}>Linked</p>
-        {currentLinks.length === 0 ? (
-          <p className={uiCx(uiTypography.helper, 'mt-2')}>None yet</p>
-        ) : (
-          <ul className={uiCx(uiBorders.subtle, uiRadius.control, 'mt-2 divide-y max-h-40 overflow-y-auto')}>
-            {currentLinks.map((row) => (
-              <li
-                key={row.id}
-                className={uiCx('flex items-center justify-between gap-2 px-3 py-2', uiColors.surface)}
-              >
-                <span className={uiCx(uiTypography.body, 'truncate text-xs font-semibold')}>
-                  {(row.name || '').trim() || 'Unnamed'}
-                </span>
-                <AppButton
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={removingId === row.id}
-                  onClick={() => unlinkRow(row.id)}
-                  className="text-red-600 hover:text-red-800"
-                >
-                  {removingId === row.id ? '…' : 'Remove'}
-                </AppButton>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <AppInput
-        label="Add link"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search by name..."
-      />
-
-      {isFetching ? (
-        <p className={uiTypography.helper}>Loading...</p>
-      ) : pickable.length === 0 ? (
-        <AppEmptyState title="No matches" className="py-4" />
-      ) : (
-        <div className={uiCx(uiBorders.subtle, uiRadius.control, 'max-h-[40vh] divide-y overflow-y-auto')}>
-          {pickable.map((r: any) => {
-            const nameOnly = (r?.name || '').trim();
-            const kind = r?.is_bidding ? 'Opportunity' : 'Project';
-            return (
-              <div
-                key={String(r.id)}
-                className={uiCx('flex items-center justify-between gap-2 px-3 py-2', uiColors.surface)}
-              >
-                <div className="min-w-0">
-                  <div className={uiCx(uiTypography.body, 'truncate text-xs font-semibold')}>
-                    {nameOnly || 'Unnamed'}
-                  </div>
-                  <div className={uiTypography.helper}>{kind}</div>
-                </div>
-                <AppButton
-                  type="button"
-                  size="sm"
-                  disabled={linkingId === String(r.id)}
-                  loading={linkingId === String(r.id)}
-                  onClick={() => linkToLeak(String(r.id))}
-                >
-                  Link
-                </AppButton>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-
-  return (
-    <AppFormModal
-      open
-      onClose={onClose}
-      title="Related Opportunities / Projects"
-      description="Remove linked records here, or search below to add one"
-      formWidth="comfortable"
-      footer={
-        <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
-          <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
-            Close
-          </AppButton>
-        </div>
-      }
-    >
-      {linkListBody}
-    </AppFormModal>
   );
 }
 

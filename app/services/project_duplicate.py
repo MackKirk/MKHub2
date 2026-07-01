@@ -389,4 +389,10 @@ def duplicate_project_deep(db: Session, src: Project, user: User) -> uuid.UUID:
         pass
 
     ensure_client_folder_for_project(db, new_proj)
+    try:
+        from .rm_pictures_folders import ensure_rm_pictures_default_folders
+
+        ensure_rm_pictures_default_folders(db, new_proj)
+    except Exception as e:
+        logging.getLogger(__name__).warning("Failed to create R&M Pictures default folders on duplicate: %s", e)
     return new_id
