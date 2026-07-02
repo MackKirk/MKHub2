@@ -1,4 +1,4 @@
-"""Leak investigation helpers — division-based (R&M projects with Leak Investigations division)."""
+"""Leak investigation helpers — R&M projects with Leak Investigations subdivision under Commercial Service."""
 
 from __future__ import annotations
 
@@ -10,18 +10,32 @@ from sqlalchemy.orm import Session
 from ..models.models import Project, SettingItem, SettingList
 
 LEAK_INVESTIGATION_DIVISION_LABEL = "Leak Investigations"
+COMMERCIAL_SERVICE_DIVISION_LABEL = "Commercial Service"
 
 
 def get_leak_investigation_division_id(db: Session) -> Optional[uuid.UUID]:
     divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
     if not divisions_list:
         return None
+
+    commercial_service = (
+        db.query(SettingItem)
+        .filter(
+            SettingItem.list_id == divisions_list.id,
+            SettingItem.parent_id.is_(None),
+            SettingItem.label == COMMERCIAL_SERVICE_DIVISION_LABEL,
+        )
+        .first()
+    )
+    if not commercial_service:
+        return None
+
     row = (
         db.query(SettingItem)
         .filter(
             SettingItem.list_id == divisions_list.id,
+            SettingItem.parent_id == commercial_service.id,
             SettingItem.label == LEAK_INVESTIGATION_DIVISION_LABEL,
-            SettingItem.parent_id.is_(None),
         )
         .first()
     )

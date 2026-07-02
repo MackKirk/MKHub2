@@ -30,7 +30,7 @@ import {
 } from '@/components/ui';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
-import { findLeakInvestigationDivisionId } from '@/lib/leakInvestigation';
+import { findCommercialServiceDivisionId, findLeakInvestigationDivisionId } from '@/lib/leakInvestigation';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { filterStatusesForProject } from '@/lib/projectStatusVisibility';
 
@@ -81,6 +81,10 @@ export default function ProjectNew(){
     () => findLeakInvestigationDivisionId(divisionsForPicker),
     [divisionsForPicker]
   );
+  const commercialServiceDivisionId = useMemo(
+    () => findCommercialServiceDivisionId(divisionsForPicker),
+    [divisionsForPicker]
+  );
   const startedAsOpportunity = initialIsBidding && !wantsLeakDivision;
   const isCreatingLeakInvestigation = !!(
     leakDivisionId && projectDivisionIds.includes(leakDivisionId)
@@ -92,7 +96,14 @@ export default function ProjectNew(){
     setProjectDivisionIds((prev) =>
       prev.includes(leakDivisionId) ? prev : [...prev, leakDivisionId]
     );
-  }, [wantsLeakDivision, leakDivisionId]);
+    if (commercialServiceDivisionId) {
+      setNewOppExpandedDivisions((prev) => {
+        const next = new Set(prev);
+        next.add(commercialServiceDivisionId);
+        return next;
+      });
+    }
+  }, [wantsLeakDivision, leakDivisionId, commercialServiceDivisionId]);
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
 
   const ESTIMATOR_DEPARTMENT = 'Sales / Estimating';
@@ -645,7 +656,7 @@ export default function ProjectNew(){
                                         }`}
                                       >
                                         <span className="text-base flex-shrink-0">
-                                          <DivisionIcon label={div.label || ''} size={18} />
+                                          <DivisionIcon label={sub.label || div.label || ''} size={18} />
                                         </span>
                                         <span className="min-w-0">• {sub.label}</span>
                                       </button>

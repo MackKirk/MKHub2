@@ -16,7 +16,6 @@ import MechanicalIcon from '@/icons/mechanical.png';
 import RepairsMaintenanceIcon from '@/icons/repairsMaintenance.png';
 import CommercialServiceIcon from '@/icons/Commercial Service.png';
 import LeakInvestigationsIcon from '@/icons/Leak Investigations.png';
-import PreventiveMaintenanceIcon from '@/icons/Preventive Maintenance.png';
 import RoofAssessmentsIcon from '@/icons/Roof Assessments.png';
 import WarrantyRepairsIcon from '@/icons/Warranty Repairs.png';
 
@@ -34,7 +33,6 @@ const divisionIconUrls: Record<string, string> = {
   'Green Roofing': GreenRoofingIcon,
   'Commercial Service': CommercialServiceIcon,
   'Leak Investigations': LeakInvestigationsIcon,
-  'Preventive Maintenance': PreventiveMaintenanceIcon,
   'Roof Assessments': RoofAssessmentsIcon,
   'Warranty Repairs': WarrantyRepairsIcon,
 };
@@ -48,7 +46,7 @@ const fallbackEmoji: Record<string, string> = {
   'Warranty Repairs': '🛡️',
   'Leak Investigations': '🔍',
   'Roof Assessments': '📋',
-  'Preventive Maintenance': '🗓️',
+  'Roof Repairs and Maintenance': '🔧',
   'Mechanical': '🔩',
   'Electrical': '⚡',
   'Carpentry': '🪵',

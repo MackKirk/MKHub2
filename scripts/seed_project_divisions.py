@@ -48,13 +48,12 @@ RM_SUBDIVISIONS = [
     "Roof Maintenance",
     "Penetration Installation",
     "Skylight Replacement",
+    "Roof Repairs and Maintenance",
 ]
 
 RM_PROJECT_DIVISIONS = {
-    "Commercial Service": RM_SUBDIVISIONS,
+    "Commercial Service": ["Leak Investigations", *RM_SUBDIVISIONS],
     "Roof Assessments": RM_SUBDIVISIONS,
-    "Leak Investigations": [],
-    "Preventive Maintenance": [],
     "Warranty Repairs": [],
 }
 
@@ -119,7 +118,7 @@ def seed_project_divisions():
             sort_index += 1
 
             sub_sort_index = 0
-            for sub_name in subdivisions:
+            for sub_name in sorted(subdivisions, key=lambda s: s.casefold()):
                 subdivision = (
                     db.query(SettingItem)
                     .filter(

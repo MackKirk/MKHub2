@@ -20,6 +20,11 @@ import { effectiveShowInProject } from '@/lib/projectStatusVisibility';
 import { buildOpportunityListSearchParams, resolveProjectQuickStatusFilters } from '@/lib/opportunityFilters';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
 import {
+  getProjectListHeroAddress,
+  normalizeProjectDivisionIds,
+  resolveProjectDivisionIcons,
+} from '@/lib/projectListRowUtils';
+import {
   AppBadge,
   AppButton,
   AppCard,
@@ -77,6 +82,7 @@ type Project = {
   date_eta?:string,
   date_end?:string, 
   project_division_ids?:string[],
+  division_ids?:string[],
   project_division_percentages?: Record<string, number> | null,
   cover_image_url?:string,
   client_name?:string,
@@ -93,15 +99,24 @@ type Project = {
   onsite_lead_id?:string,
   cost_actual?:number,
   service_value?:number,
+  site_address_line1?:string,
+  site_address_line2?:string,
+  site_city?:string,
+  site_postal_code?:string,
+  address?:string,
+  address_city?:string,
+  address_postal_code?:string,
 };
-type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
-type ProjectListResponse = { items: Project[]; total: number; page: number; limit: number } | Project[];
 
-function projectListTotal(data: ProjectListResponse | undefined): number {
-  if (!data) return 0;
-  if (Array.isArray(data)) return data.length;
-  return typeof data.total === 'number' ? data.total : (data.items?.length ?? 0);
-}
+/** Set to true to restore quick-access tab buttons in the project list row. */
+export const SHOW_PROJECT_LIST_SHORTCUTS = false;
+
+export const PROJECT_LIST_GRID_CLASS = SHOW_PROJECT_LIST_SHORTCUTS
+  ? 'grid-cols-[8fr_5fr_3fr_3fr_4fr_3fr_3fr_3fr_auto]'
+  : 'grid-cols-[8fr_5fr_3fr_3fr_4fr_3fr_3fr_3fr]';
+
+export const PROJECT_LIST_MIN_WIDTH = 'min-w-[960px]';
+type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
 // Helper function to calculate Final Total (with GST) from proposal data
 function calculateProposalTotal(proposalData: any): number {
@@ -489,22 +504,29 @@ export default function Projects(){
     return convertParamsToRules(searchParams);
   }, [searchParams]);
   
-  // Sync search query with URL when it changes
+  // Debounce search before syncing to URL (avoids refetch on every keystroke)
+  const [debouncedQ, setDebouncedQ] = useState(queryParam);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQ(q), 350);
+    return () => clearTimeout(timer);
+  }, [q]);
+
   useEffect(() => {
     const params = new URLSearchParams(searchParams);
-    if (q) {
-      params.set('q', q);
-    } else {
-      params.delete('q');
-    }
+    const currentQ = params.get('q') || '';
+    if (debouncedQ === currentQ) return;
+    if (debouncedQ) params.set('q', debouncedQ);
+    else params.delete('q');
+    params.set('page', '1');
     setSearchParams(params, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [debouncedQ]);
   
-  // Sync q state when URL changes
+  // Sync q state when URL changes (e.g. back/forward navigation)
   useEffect(() => {
     const urlQ = searchParams.get('q') || '';
     if (urlQ !== q) setQ(urlQ);
+    if (urlQ !== debouncedQ) setDebouncedQ(urlQ);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
   
@@ -522,7 +544,7 @@ export default function Projects(){
   });
   
   // Load project divisions in parallel (shared across all cards, no individual loading)
-  const { data: projectDivisions, isLoading: divisionsLoading } = useQuery({ 
+  const { data: projectDivisions } = useQuery({ 
     queryKey:PROJECT_DIVISIONS_QUERY_KEY, 
     queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), 
     staleTime: 300_000
@@ -532,8 +554,8 @@ export default function Projects(){
     [projectDivisions, businessLine]
   );
   
-  // Show loading until both projects and divisions are loaded
-  const isInitialLoading = (isLoading && !data) || (divisionsLoading && !projectDivisions);
+  // Show loading until list API returns (divisions load in parallel for icons)
+  const isInitialLoading = isLoading && !data;
   
   // Track when animation completes to remove inline styles for hover to work
   useEffect(() => {
@@ -597,9 +619,10 @@ export default function Projects(){
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
 
   // List sort: read from URL so it persists and is shareable
-  const sortBy = (searchParams.get('sort') as 'project' | 'start' | 'eta' | 'admin' | 'value' | 'status') || 'project';
+  type ProjectListSort = 'project' | 'address' | 'start' | 'eta' | 'admin' | 'value' | 'status' | 'divisions';
+  const sortBy = (searchParams.get('sort') as ProjectListSort) || 'project';
   const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
-  const setListSort = (column: typeof sortBy, direction?: 'asc' | 'desc') => {
+  const setListSort = (column: ProjectListSort, direction?: 'asc' | 'desc') => {
     const params = new URLSearchParams(searchParams);
     const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
     params.set('sort', column);
@@ -744,48 +767,22 @@ export default function Projects(){
     () =>
       buildOpportunityListSearchParams(searchParams, businessLine, {
         omitQuickFilters: true,
-        page: 1,
-        limit: 1,
       }),
     [searchParams, businessLine],
   );
 
-  const quickFilterCountTargets = useMemo(() => {
-    const targets: Array<{ key: string; qs: string }> = [
-      {
-        key: 'related_to_me',
-        qs: (() => {
-          const p = new URLSearchParams(quickFilterCountBaseParams);
-          p.set('related_to_me', '1');
-          return p.toString();
-        })(),
-      },
-    ];
-    for (const filter of projectQuickStatusFilters) {
-      const p = new URLSearchParams(quickFilterCountBaseParams);
-      p.set('status', filter.statusId);
-      targets.push({ key: filter.key, qs: p.toString() });
-    }
-    return targets;
-  }, [quickFilterCountBaseParams, projectQuickStatusFilters]);
-
-  const quickFilterCountQueries = useQueries({
-    queries: quickFilterCountTargets.map((target) => ({
-      queryKey: ['projects', 'quick-filter-count', businessLine, target.key, target.qs],
-      queryFn: () =>
-        api<ProjectListResponse>('GET', `/projects/business/projects?${target.qs}`).then(projectListTotal),
-      staleTime: 60_000,
-    })),
+  const { data: tabCounts } = useQuery({
+    queryKey: ['projects', 'tab-counts', businessLine, quickFilterCountBaseParams.toString()],
+    queryFn: () =>
+      api<Record<string, number>>(
+        'GET',
+        `/projects/business/projects/tab-counts?${quickFilterCountBaseParams.toString()}`,
+      ),
+    enabled: !!data,
+    staleTime: 60_000,
   });
 
-  const quickFilterCountsByKey = useMemo(() => {
-    const counts: Record<string, number> = {};
-    quickFilterCountTargets.forEach((target, index) => {
-      const total = quickFilterCountQueries[index]?.data;
-      if (typeof total === 'number') counts[target.key] = total;
-    });
-    return counts;
-  }, [quickFilterCountTargets, quickFilterCountQueries]);
+  const quickFilterCountsByKey = tabCounts || {};
 
   const listCardAnimClass = animationComplete
     ? undefined
@@ -991,24 +988,28 @@ export default function Projects(){
           <div className={uiCx('flex flex-col gap-2 overflow-x-auto', listCardAnimClass)}>
             <div
               className={uiCx(
-                'grid min-w-[800px] grid-cols-[10fr_3fr_3fr_4fr_4fr_4fr_auto] items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 sm:gap-3 lg:gap-4',
+                'grid items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 sm:gap-3 lg:gap-4',
+                PROJECT_LIST_MIN_WIDTH,
+                PROJECT_LIST_GRID_CLASS,
                 uiTypography.overline,
                 'normal-case tracking-normal text-gray-700',
               )}
               role="row"
             >
               <button type="button" onClick={() => setListSort('project')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by project name">Project{sortBy === 'project' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('address')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by address">Address{sortBy === 'address' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('start')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by start date">Start{sortBy === 'start' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('eta')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by End Date">End Date{sortBy === 'eta' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('admin')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by project admin">Project Admin{sortBy === 'admin' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('value')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by value">Value{sortBy === 'value' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('status')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <div className="min-w-0 w-28" aria-hidden />
+              <button type="button" onClick={() => setListSort('divisions')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by divisions">Divisions{sortBy === 'divisions' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              {SHOW_PROJECT_LIST_SHORTCUTS ? <div className="min-w-0 w-28" aria-hidden /> : null}
             </div>
             {isLoading && !arr.length ? (
               <>
                 {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <div key={i} className={uiCx('h-20 min-w-[800px] animate-pulse bg-gray-100', uiRadius.control)} />
+                  <div key={i} className={uiCx('h-20 animate-pulse bg-gray-100', PROJECT_LIST_MIN_WIDTH, uiRadius.control)} />
                 ))}
               </>
             ) : arr.length > 0 ? (
@@ -1094,9 +1095,6 @@ export default function Projects(){
   );
 }
 
-// Division icons use images from @/icons via DivisionIcon component
-const getDivisionIcon = (label: string, suppressNativeTitle?: boolean) => <DivisionIcon label={label} size={16} suppressNativeTitle={suppressNativeTitle} />;
-
 export function ProjectListItem({ project, projectDivisions, projectStatuses, variant = 'card', projectBasePath = '/projects' }: { project: Project, projectDivisions?: any[], projectStatuses: any[]; variant?: 'card' | 'row'; projectBasePath?: string }){
   const navigate = useNavigate();
 
@@ -1105,30 +1103,24 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   const statusLabel = String(status || '').trim();
   const start = (project.date_start || project.created_at || '').slice(0,10);
   const eta = (project.date_eta || '').slice(0,10);
-  const projectAdminId = project.project_admin_id || null;
+  const estimatedValue = project.service_value || 0;
 
-  const proposalsTotal = useProposalsTotal(project.id);
-  const estimatedValue = proposalsTotal > 0 ? proposalsTotal : (project.service_value || 0);
-
-  const { data: employeesData } = useQuery({
-    queryKey:['employees-for-projects-list'],
-    queryFn: ()=> api<any[]>('GET','/employees'),
-    staleTime: 300_000
-  });
-  const employees = employeesData || [];
-
-  const projectAdmin = useMemo(() => {
-    if (!projectAdminId) return null;
-    return employees.find((e: any) => String(e.id) === String(projectAdminId)) || null;
-  }, [projectAdminId, employees]);
-
-  // Use list payload so name/avatar show before /employees loads
   const listAdminName = (project as any).project_admin_name;
   const listAdminAvatarFileId = (project as any).project_admin_avatar_file_id;
-  const adminDisplayName = listAdminName || (projectAdmin && getUserDisplayName(projectAdmin)) || '—';
-  const userForAdmin = projectAdmin ?? (listAdminName || listAdminAvatarFileId
+  const adminDisplayName = listAdminName || '—';
+  const userForAdmin = listAdminName || listAdminAvatarFileId
     ? { name: listAdminName, profile_photo_file_id: listAdminAvatarFileId, first_name: listAdminName }
-    : null);
+    : null;
+
+  const heroAddress = getProjectListHeroAddress(project);
+  const projectDivIds = useMemo(
+    () => normalizeProjectDivisionIds(project.project_division_ids, project.division_ids),
+    [project.project_division_ids, project.division_ids],
+  );
+  const divisionIcons = useMemo(
+    () => resolveProjectDivisionIcons(projectDivIds, projectDivisions),
+    [projectDivIds, projectDivisions],
+  );
 
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
@@ -1152,6 +1144,11 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
           </>
         )}
       </div>
+    </div>
+  );
+  const colAddress = (
+    <div className="min-w-0 flex items-center">
+      <span className="text-xs font-semibold text-gray-900 truncate">{heroAddress || '—'}</span>
     </div>
   );
   const col2 = (
@@ -1194,6 +1191,28 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
       )}
     </div>
   );
+  const colDivisions = (
+    <div className="min-w-0 flex items-center">
+      {divisionIcons.length > 0 ? (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {divisionIcons.map((div) => (
+            <AppTooltip key={div.id} content={div.label} placement="bottom">
+              <div className="flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
+                {div.icon}
+              </div>
+            </AppTooltip>
+          ))}
+          {projectDivIds.length > 5 && (
+            <AppTooltip content={`${projectDivIds.length - 5} more divisions`} placement="bottom">
+              <div className="text-xs text-gray-400 cursor-pointer">+{projectDivIds.length - 5}</div>
+            </AppTooltip>
+          )}
+        </div>
+      ) : (
+        <span className="text-xs font-semibold text-gray-400">—</span>
+      )}
+    </div>
+  );
   const col7 = (
     <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
       {tabButtons.map((btn) => (
@@ -1225,12 +1244,14 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
         className="group hover:bg-gray-50 cursor-pointer transition-colors"
       >
         <td className="px-3 py-2 align-middle">{col1}</td>
+        <td className="px-3 py-2 align-middle">{colAddress}</td>
         <td className="px-3 py-2 align-middle">{col2}</td>
         <td className="px-3 py-2 align-middle">{col3}</td>
         <td className="px-3 py-2 align-middle">{col4}</td>
         <td className="px-3 py-2 align-middle">{col5}</td>
         <td className="px-3 py-2 align-middle">{col6}</td>
-        <td className="px-3 py-2 align-middle">{col7}</td>
+        <td className="px-3 py-2 align-middle">{colDivisions}</td>
+        {SHOW_PROJECT_LIST_SHORTCUTS ? <td className="px-3 py-2 align-middle">{col7}</td> : null}
       </tr>
     );
   }
@@ -1238,20 +1259,26 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   return (
     <Link
       to={`${projectBasePath}/${encodeURIComponent(String(project.id))}`}
-      className={uiCx('group block min-w-[800px] p-4 transition-all duration-200 hover:border-gray-300', uiBorders.subtle, uiRadius.card, uiColors.surface, 'hover:shadow-md')}
+      className={uiCx('group block p-4 transition-all duration-200 hover:border-gray-300', PROJECT_LIST_MIN_WIDTH, uiBorders.subtle, uiRadius.card, uiColors.surface, 'hover:shadow-md')}
     >
-      <div className="grid grid-cols-[10fr_3fr_3fr_4fr_4fr_4fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
+      <div className={uiCx('grid gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden', PROJECT_LIST_GRID_CLASS)}>
         {col1}
+        {colAddress}
         {col2}
         {col3}
         {col4}
         {col5}
         {col6}
-        {col7}
+        {colDivisions}
+        {SHOW_PROJECT_LIST_SHORTCUTS ? col7 : null}
       </div>
     </Link>
   );
 }
+
+const getDivisionIcon = (label: string, suppressNativeTitle?: boolean) => (
+  <DivisionIcon label={label} size={16} suppressNativeTitle={suppressNativeTitle} />
+);
 
 function ProjectListCard({ project, projectDivisions, projectStatuses, projectBasePath = '/projects' }:{ project: Project, projectDivisions?: any[], projectStatuses: any[]; projectBasePath?: string }){
   const navigate = useNavigate();

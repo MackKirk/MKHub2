@@ -1,4 +1,4 @@
-﻿import { useQueries, useQuery } from '@tanstack/react-query';
+﻿import { useQuery } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
@@ -25,6 +25,11 @@ import {
   setRelatedToMeParam,
 } from '@/lib/opportunityFilters';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
+import {
+  getProjectListHeroAddress,
+  normalizeProjectDivisionIds,
+  resolveProjectDivisionIcons,
+} from '@/lib/projectListRowUtils';
 import { filterStatusesForOpportunity } from '@/lib/projectStatusVisibility';
 import { getUserDisplayName } from '@/lib/userDisplay';
 import {
@@ -84,15 +89,37 @@ function UserAvatar({
   );
 }
 
-type Opportunity = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_eta?:string, date_end?:string, is_bidding?:boolean, project_division_ids?:string[], cover_image_url?:string, estimator_id?:string, estimator_name?:string, cost_estimated?:number };
+type Opportunity = {
+  id: string;
+  code?: string;
+  name?: string;
+  slug?: string;
+  client_id?: string;
+  client_name?: string;
+  client_display_name?: string;
+  created_at?: string;
+  date_start?: string;
+  date_eta?: string;
+  date_end?: string;
+  is_bidding?: boolean;
+  status_label?: string;
+  project_division_ids?: string[];
+  division_ids?: string[];
+  cover_image_url?: string;
+  estimator_id?: string;
+  estimator_ids?: string[];
+  estimator_name?: string;
+  estimator_avatar_file_id?: string;
+  cost_estimated?: number;
+  site_address_line1?: string;
+  site_address_line2?: string;
+  site_city?: string;
+  site_postal_code?: string;
+  address?: string;
+  address_city?: string;
+  address_postal_code?: string;
+};
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
-type OpportunityListResponse = { items: Opportunity[]; total: number; page: number; limit: number } | Opportunity[];
-
-function opportunityListTotal(data: OpportunityListResponse | undefined): number {
-  if (!data) return 0;
-  if (Array.isArray(data)) return data.length;
-  return typeof data.total === 'number' ? data.total : (data.items?.length ?? 0);
-}
 
 /** Same emoji tab icons as before DS migration (UTF-16 escapes avoid file encoding issues). */
 const OPPORTUNITY_TAB_ICON_BUTTONS = [
@@ -101,6 +128,15 @@ const OPPORTUNITY_TAB_ICON_BUTTONS = [
   { key: 'pricing', icon: '\u{1F4B0}', label: 'Pricing', tab: 'pricing' },
   { key: 'reports', icon: '\u{1F4CB}', label: 'Notes/History', tab: 'reports' },
 ] as const;
+
+/** Set to true to restore quick-access tab buttons in the opportunity list row. */
+export const SHOW_OPPORTUNITY_LIST_SHORTCUTS = false;
+
+export const OPPORTUNITY_LIST_GRID_CLASS = SHOW_OPPORTUNITY_LIST_SHORTCUTS
+  ? 'grid-cols-[8fr_5fr_4fr_3fr_3fr_3fr_auto]'
+  : 'grid-cols-[8fr_5fr_4fr_3fr_3fr_3fr]';
+
+export const OPPORTUNITY_LIST_MIN_WIDTH = 'min-w-[960px]';
 
 export default function Opportunities() {
   const location = useLocation();
@@ -157,22 +193,29 @@ export default function Opportunities() {
     return convertParamsToRules(searchParams);
   }, [searchParams]);
   
-  // Sync search query with URL when it changes
+  // Debounce search before syncing to URL (avoids refetch on every keystroke)
+  const [debouncedQ, setDebouncedQ] = useState(queryParam);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQ(q), 350);
+    return () => clearTimeout(timer);
+  }, [q]);
+
   useEffect(() => {
     const params = new URLSearchParams(searchParams);
-    if (q) {
-      params.set('q', q);
-    } else {
-      params.delete('q');
-    }
+    const currentQ = params.get('q') || '';
+    if (debouncedQ === currentQ) return;
+    if (debouncedQ) params.set('q', debouncedQ);
+    else params.delete('q');
+    params.set('page', '1');
     setSearchParams(params, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [debouncedQ]);
   
-  // Sync q state when URL changes
+  // Sync q state when URL changes (e.g. back/forward navigation)
   useEffect(() => {
     const urlQ = searchParams.get('q') || '';
     if (urlQ !== q) setQ(urlQ);
+    if (urlQ !== debouncedQ) setDebouncedQ(urlQ);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
   
@@ -193,7 +236,7 @@ export default function Opportunities() {
   });
   
   // Load project divisions in parallel
-  const { data: projectDivisions, isLoading: divisionsLoading } = useQuery({ 
+  const { data: projectDivisions } = useQuery({ 
     queryKey:PROJECT_DIVISIONS_QUERY_KEY, 
     queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), 
     staleTime: 300_000
@@ -203,8 +246,8 @@ export default function Opportunities() {
     [projectDivisions, businessLine]
   );
   
-  // Show loading until both opportunities and divisions are loaded
-  const isInitialLoading = (isLoading && !data) || (divisionsLoading && !projectDivisions);
+  // Show loading until list API returns (divisions load in parallel for icons)
+  const isInitialLoading = isLoading && !data;
   
   // Track when animation completes to remove inline styles for hover to work
   useEffect(() => {
@@ -249,12 +292,12 @@ export default function Opportunities() {
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
   const [reportModalOpen, setReportModalOpen] = useState<{ open:boolean, projectId?:string }|null>(null);
 
-  type OpportunityListSort = 'opportunity' | 'estimator' | 'value' | 'status';
+  type OpportunityListSort = 'opportunity' | 'address' | 'estimator' | 'value' | 'status' | 'divisions';
   const { sortBy, sortDir, setSort: setListSort } = useAppListSort<OpportunityListSort>({
     searchParams,
     setSearchParams,
     defaultSort: 'opportunity',
-    validSorts: ['opportunity', 'estimator', 'value', 'status'] as const,
+    validSorts: ['opportunity', 'address', 'estimator', 'value', 'status', 'divisions'] as const,
   });
 
   // Get employees for estimator filter
@@ -345,48 +388,22 @@ export default function Opportunities() {
     () =>
       buildOpportunityListSearchParams(searchParams, businessLine, {
         omitQuickFilters: true,
-        page: 1,
-        limit: 1,
       }),
     [searchParams, businessLine],
   );
 
-  const quickFilterCountTargets = useMemo(() => {
-    const targets: Array<{ key: string; qs: string }> = [
-      {
-        key: 'related_to_me',
-        qs: (() => {
-          const p = new URLSearchParams(quickFilterCountBaseParams);
-          setRelatedToMeParam(p, true);
-          return p.toString();
-        })(),
-      },
-    ];
-    for (const filter of opportunityQuickStatusFilters) {
-      const p = new URLSearchParams(quickFilterCountBaseParams);
-      p.set('status', filter.statusId);
-      targets.push({ key: filter.key, qs: p.toString() });
-    }
-    return targets;
-  }, [quickFilterCountBaseParams, opportunityQuickStatusFilters]);
-
-  const quickFilterCountQueries = useQueries({
-    queries: quickFilterCountTargets.map((target) => ({
-      queryKey: ['opportunities', 'quick-filter-count', businessLine, target.key, target.qs],
-      queryFn: () =>
-        api<OpportunityListResponse>('GET', `${listEndpoint}?${target.qs}`).then(opportunityListTotal),
-      staleTime: 60_000,
-    })),
+  const { data: tabCounts } = useQuery({
+    queryKey: ['opportunities', 'tab-counts', businessLine, quickFilterCountBaseParams.toString()],
+    queryFn: () =>
+      api<Record<string, number>>(
+        'GET',
+        `/projects/business/opportunities/tab-counts?${quickFilterCountBaseParams.toString()}`,
+      ),
+    enabled: !!data,
+    staleTime: 60_000,
   });
 
-  const quickFilterCountsByKey = useMemo(() => {
-    const counts: Record<string, number> = {};
-    quickFilterCountTargets.forEach((target, index) => {
-      const total = quickFilterCountQueries[index]?.data;
-      if (typeof total === 'number') counts[target.key] = total;
-    });
-    return counts;
-  }, [quickFilterCountTargets, quickFilterCountQueries]);
+  const quickFilterCountsByKey = tabCounts || {};
 
   const filterFields: FieldConfig[] = useMemo(() => {
     const statusOptions = filterStatusesForOpportunity(projectStatuses)
@@ -672,13 +689,17 @@ export default function Opportunities() {
               <Link
                 to={newOpportunityPath}
                 state={{ backgroundLocation: location }}
-                className={getListCreateItemClassName('row', 'min-h-[60px] min-w-[680px]')}
+                className={getListCreateItemClassName('row', uiCx('min-h-[60px]', OPPORTUNITY_LIST_MIN_WIDTH))}
               >
                 <Plus className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
                 <span className={uiListCreateItem.label}>{newItemLabel}</span>
               </Link>
             )}
-            <AppSortableEntityListHeader preset="opportunities">
+            <AppSortableEntityListHeader
+              preset="opportunities"
+              gridCols={OPPORTUNITY_LIST_GRID_CLASS}
+              minWidth={OPPORTUNITY_LIST_MIN_WIDTH}
+            >
               <AppSortableEntityListSortColumn
                 label="Opportunity"
                 column="opportunity"
@@ -686,6 +707,14 @@ export default function Opportunities() {
                 sortDir={sortDir}
                 onSort={setListSort}
                 title="Sort by opportunity name"
+              />
+              <AppSortableEntityListSortColumn
+                label="Address"
+                column="address"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setListSort}
+                title="Sort by address"
               />
               <AppSortableEntityListSortColumn
                 label="Estimator"
@@ -711,7 +740,15 @@ export default function Opportunities() {
                 onSort={setListSort}
                 title="Sort by status"
               />
-              <div className="min-w-0 w-24" aria-hidden />
+              <AppSortableEntityListSortColumn
+                label="Divisions"
+                column="divisions"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setListSort}
+                title="Sort by divisions"
+              />
+              {SHOW_OPPORTUNITY_LIST_SHORTCUTS ? <div className="min-w-0 w-24" aria-hidden /> : null}
             </AppSortableEntityListHeader>
             {arr.map(p => (
               <OpportunityListItem
@@ -719,6 +756,7 @@ export default function Opportunities() {
                 opportunity={p}
                 onOpenReportModal={(projectId) => setReportModalOpen({ open: true, projectId })}
                 projectStatuses={projectStatuses}
+                projectDivisions={projectDivisions}
                 opportunityBasePath={opportunityBasePath}
               />
             ))}
@@ -988,52 +1026,35 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
   );
 }
 
-export function OpportunityListItem({ opportunity, onOpenReportModal, projectStatuses, variant = 'card', opportunityBasePath = '/opportunities' }: {
+export function OpportunityListItem({ opportunity, onOpenReportModal, projectStatuses, projectDivisions, variant = 'card', opportunityBasePath = '/opportunities' }: {
   opportunity: Opportunity;
   onOpenReportModal: (projectId: string) => void;
   projectStatuses: any[];
+  projectDivisions?: any[];
   variant?: 'card' | 'row';
   opportunityBasePath?: string;
 }){
   const navigate = useNavigate();
-  const { data:client } = useQuery({
-    queryKey:['opportunity-client', opportunity.client_id],
-    queryFn: ()=> opportunity.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(opportunity.client_id||''))}`): Promise.resolve(null),
-    enabled: !!opportunity.client_id,
-    staleTime: 300_000
-  });
-  const { data:details } = useQuery({
-    queryKey:['opportunity-detail-card', opportunity.id],
-    queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(opportunity.id))}`),
-    staleTime: 60_000
-  });
 
-  const status = (opportunity as any).status_label || details?.status_label || '';
-  const statusLabel = String(status || '').trim();
-  const estimatedValue = (opportunity as any).cost_estimated || details?.cost_estimated || 0;
-  const estimatorIds = (opportunity as any).estimator_ids || details?.estimator_ids || ((opportunity as any).estimator_id || details?.estimator_id ? [(opportunity as any).estimator_id || details?.estimator_id] : []);
-  const clientName = client?.display_name || client?.name || '';
-
-  const { data: employeesData } = useQuery({
-    queryKey:['employees-for-opportunities-list'],
-    queryFn: ()=> api<any[]>('GET','/employees'),
-    staleTime: 300_000
-  });
-  const employees = employeesData || [];
-
-  const estimators = useMemo(() => {
-    return estimatorIds
-      .map((id: string) => employees.find((e: any) => String(e.id) === String(id)))
-      .filter(Boolean);
-  }, [estimatorIds, employees]);
-
-  // Use list payload so name/avatar show before /employees loads
-  const listEstimatorName = (opportunity as any).estimator_name;
-  const listEstimatorAvatarFileId = (opportunity as any).estimator_avatar_file_id;
-  const estimatorDisplayName = listEstimatorName || (estimators[0] && getUserDisplayName(estimators[0])) || (estimators.length > 1 ? 'Multiple' : '—');
-  const userForAvatar = estimators[0] ?? (listEstimatorName || listEstimatorAvatarFileId
+  const statusLabel = String(opportunity.status_label || '').trim();
+  const estimatedValue = opportunity.cost_estimated || 0;
+  const clientName = opportunity.client_display_name || opportunity.client_name || '';
+  const listEstimatorName = opportunity.estimator_name;
+  const listEstimatorAvatarFileId = opportunity.estimator_avatar_file_id;
+  const estimatorDisplayName = listEstimatorName || '—';
+  const userForAvatar = listEstimatorName || listEstimatorAvatarFileId
     ? { name: listEstimatorName, profile_photo_file_id: listEstimatorAvatarFileId, first_name: listEstimatorName }
-    : null);
+    : null;
+
+  const heroAddress = getProjectListHeroAddress(opportunity);
+  const projectDivIds = useMemo(
+    () => normalizeProjectDivisionIds(opportunity.project_division_ids, opportunity.division_ids),
+    [opportunity.project_division_ids, opportunity.division_ids],
+  );
+  const divisionIcons = useMemo(
+    () => resolveProjectDivisionIcons(projectDivIds, projectDivisions),
+    [projectDivIds, projectDivisions],
+  );
 
   const col1 = (
     <div className="min-w-0">
@@ -1051,22 +1072,15 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
       </div>
     </div>
   );
+  const colAddress = (
+    <div className="min-w-0 flex items-center">
+      <span className="text-xs font-semibold text-gray-900 truncate">{heroAddress || '—'}</span>
+    </div>
+  );
   const col2 = (
     <div className="min-w-0 flex items-center">
       {!userForAvatar && !listEstimatorName ? (
         <span className="text-xs font-semibold text-gray-400">—</span>
-      ) : estimators.length === 1 ? (
-        <div className="flex items-center gap-2 min-w-0">
-          <UserAvatar user={estimators[0]} size="sm" showTooltip={true} />
-          <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(estimators[0])}</span>
-        </div>
-      ) : estimators.length > 1 ? (
-        <div className="flex items-center gap-1.5">
-          {estimators.slice(0, 2).map((est: any) => (
-            <UserAvatar key={est.id} user={est} size="sm" showTooltip={true} />
-          ))}
-          <span className="text-xs text-gray-500 ml-1">+{estimators.length - 2}</span>
-        </div>
       ) : (
         <div className="flex items-center gap-2 min-w-0">
           <UserAvatar user={userForAvatar} size="sm" showTooltip={true} tooltipText={estimatorDisplayName} />
@@ -1090,6 +1104,28 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
         </AppBadge>
       ) : (
         <span className={uiTypography.helper}>—</span>
+      )}
+    </div>
+  );
+  const colDivisions = (
+    <div className="min-w-0 flex items-center">
+      {divisionIcons.length > 0 ? (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {divisionIcons.map((div) => (
+            <AppTooltip key={div.id} content={div.label} placement="bottom">
+              <div className="flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
+                {div.icon}
+              </div>
+            </AppTooltip>
+          ))}
+          {projectDivIds.length > 5 && (
+            <AppTooltip content={`${projectDivIds.length - 5} more divisions`} placement="bottom">
+              <div className="text-xs text-gray-400 cursor-pointer">+{projectDivIds.length - 5}</div>
+            </AppTooltip>
+          )}
+        </div>
+      ) : (
+        <span className="text-xs font-semibold text-gray-400">—</span>
       )}
     </div>
   );
@@ -1128,10 +1164,12 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
         className="group hover:bg-gray-50 cursor-pointer transition-colors"
       >
         <td className="px-3 py-2 align-middle">{col1}</td>
+        <td className="px-3 py-2 align-middle">{colAddress}</td>
         <td className="px-3 py-2 align-middle">{col2}</td>
         <td className="px-3 py-2 align-middle">{col3}</td>
         <td className="px-3 py-2 align-middle">{col4}</td>
-        <td className="px-3 py-2 align-middle">{col5}</td>
+        <td className="px-3 py-2 align-middle">{colDivisions}</td>
+        {SHOW_OPPORTUNITY_LIST_SHORTCUTS ? <td className="px-3 py-2 align-middle">{col5}</td> : null}
       </tr>
     );
   }
@@ -1140,13 +1178,17 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
     <AppSortableEntityListRow
       as="link"
       preset="opportunities"
+      gridCols={OPPORTUNITY_LIST_GRID_CLASS}
+      minWidth={OPPORTUNITY_LIST_MIN_WIDTH}
       to={`${opportunityBasePath}/${encodeURIComponent(String(opportunity.id))}`}
     >
       {col1}
+      {colAddress}
       {col2}
       {col3}
       {col4}
-      {col5}
+      {colDivisions}
+      {SHOW_OPPORTUNITY_LIST_SHORTCUTS ? col5 : null}
     </AppSortableEntityListRow>
   );
 }

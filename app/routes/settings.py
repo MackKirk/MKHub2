@@ -382,12 +382,14 @@ def get_project_divisions(db: Session = Depends(get_db), user: UserType = Depend
         result = []
         for div in main_divisions:
             div_id_str = str(div.id)
+            subs = subdivisions_map.get(div_id_str, [])
+            subs.sort(key=lambda item: (item.get("label") or "").casefold())
             result.append({
                 "id": str(div.id),
                 "label": div.label,
                 "value": div.value,
                 "sort_index": div.sort_index,
-                "subdivisions": subdivisions_map.get(div_id_str, [])
+                "subdivisions": subs,
             })
         
         logger.info(f"Returning {len(result)} divisions with subdivisions")

@@ -5,18 +5,17 @@ export const BUSINESS_LINE_REPAIRS_MAINTENANCE = 'repairs_maintenance';
 export const RM_PROJECT_DIVISION_LABELS = [
   'Commercial Service',
   'Roof Assessments',
-  'Leak Investigations',
-  'Preventive Maintenance',
   'Warranty Repairs',
 ] as const;
 
 export const LEAK_INVESTIGATION_DIVISION_LABEL = 'Leak Investigations';
+export const COMMERCIAL_SERVICE_DIVISION_LABEL = 'Commercial Service';
 
 const LEGACY_RM_LABEL = 'Repairs & Maintenance';
 const RM_LABELS = new Set<string>([LEGACY_RM_LABEL, ...RM_PROJECT_DIVISION_LABELS]);
 
 /** Bump when project_divisions seed structure changes (invalidates React Query cache). */
-export const PROJECT_DIVISIONS_QUERY_KEY = ['project-divisions', 'rm-tree-v3'] as const;
+export const PROJECT_DIVISIONS_QUERY_KEY = ['project-divisions', 'rm-tree-v4'] as const;
 
 /** Filter project_divisions tree for list/detail pickers */
 export function filterProjectDivisionsForBusinessLine<T extends { label?: string; subdivisions?: T[] }>(

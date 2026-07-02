@@ -33,6 +33,9 @@ export function buildOpportunityListSearchParams(
     params.delete('status');
     params.delete('status_not');
     params.delete('related_to_me');
+    params.delete('view');
+    params.delete('sort');
+    params.delete('dir');
   }
   if (options?.page != null) params.set('page', String(options.page));
   if (options?.limit != null) params.set('limit', String(options.limit));

@@ -6,8 +6,8 @@ import { getAppListSortIndicator, type AppListSortDirection } from './useAppList
 /** Grid + min-width presets aligned with Business list pages. */
 export const APP_SORTABLE_LIST_PRESETS = {
   opportunities: {
-    gridCols: 'grid-cols-[10fr_5fr_5fr_5fr_auto]',
-    minWidth: 'min-w-[680px]',
+    gridCols: 'grid-cols-[8fr_5fr_4fr_3fr_3fr_3fr]',
+    minWidth: 'min-w-[960px]',
   },
   projects: {
     gridCols: 'grid-cols-[10fr_3fr_3fr_4fr_4fr_4fr_auto]',

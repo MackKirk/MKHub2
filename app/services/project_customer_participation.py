@@ -18,6 +18,21 @@ from ..services.business_line import BUSINESS_LINE_CONSTRUCTION
 Participation = Literal["owner", "awarded_related"]
 
 
+def project_site_address_payload(p: Project, site: Any = None) -> Dict[str, Any]:
+    """Site + legacy project address fields for list/card UIs."""
+    return {
+        "address": getattr(p, "address", None),
+        "address_city": getattr(p, "address_city", None),
+        "address_postal_code": getattr(p, "address_postal_code", None),
+        "site_id": str(getattr(p, "site_id", None)) if getattr(p, "site_id", None) else None,
+        "site_name": getattr(site, "site_name", None) if site else None,
+        "site_address_line1": getattr(site, "site_address_line1", None) if site else None,
+        "site_address_line2": getattr(site, "site_address_line2", None) if site else None,
+        "site_city": getattr(site, "site_city", None) if site else None,
+        "site_postal_code": getattr(site, "site_postal_code", None) if site else None,
+    }
+
+
 def effective_awarded_related_client_ids(p: Project) -> List[str]:
     """Match app.routes.projects._effective_awarded_related_client_ids (avoid circular import)."""
     out: List[str] = []
@@ -68,7 +83,7 @@ def participation_query_filter(client_uuid: uuid.UUID, dialect_name: str) -> Any
     return or_(*parts)
 
 
-def serialize_list_row(p: Project, participation: Participation) -> Dict[str, Any]:
+def serialize_list_row(p: Project, participation: Participation, site: Any = None) -> Dict[str, Any]:
     """Same shape as list_projects in projects.py (+ participation)."""
     return {
         "id": str(p.id),
@@ -99,6 +114,7 @@ def serialize_list_row(p: Project, participation: Participation) -> Dict[str, An
         else ([str(getattr(p, "estimator_id", None))] if getattr(p, "estimator_id", None) else []),
         "project_admin_id": str(getattr(p, "project_admin_id", None)) if getattr(p, "project_admin_id", None) else None,
         "participation": participation,
+        **project_site_address_payload(p, site),
     }
 
 
@@ -125,6 +141,19 @@ def build_participation_payload(
     )
     rows: List[Project] = q.all()
 
+    site_ids = list({getattr(p, "site_id", None) for p in rows if getattr(p, "site_id", None)})
+    sites_map: Dict[str, Any] = {}
+    if site_ids:
+        from ..models.models import ClientSite
+
+        sites = db.query(ClientSite).filter(ClientSite.id.in_(site_ids)).all()
+        for site in sites:
+            sites_map[str(site.id)] = site
+
+    def site_for(project: Project) -> Any:
+        sid = getattr(project, "site_id", None)
+        return sites_map.get(str(sid)) if sid else None
+
     rollup: List[Dict[str, Any]] = []
     related_memberships: List[Dict[str, Any]] = []
     seen_rollup: set[str] = set()
@@ -139,11 +168,11 @@ def build_participation_payload(
         if is_owner:
             if pid not in seen_rollup:
                 seen_rollup.add(pid)
-                rollup.append(serialize_list_row(p, "owner"))
+                rollup.append(serialize_list_row(p, "owner", site_for(p)))
         elif is_awarded:
             if pid not in seen_rollup:
                 seen_rollup.add(pid)
-                rollup.append(serialize_list_row(p, "awarded_related"))
+                rollup.append(serialize_list_row(p, "awarded_related", site_for(p)))
 
         # related_memberships: in related_client_ids, not owner
         rel_raw = getattr(p, "related_client_ids", None) or []

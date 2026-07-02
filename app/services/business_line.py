@@ -16,10 +16,8 @@ VALID_BUSINESS_LINES = frozenset({BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPA
 LEGACY_RM_DIVISION_LABEL = "Repairs & Maintenance"
 RM_PROJECT_DIVISION_LABELS = frozenset({
     "Commercial Service",
-    "Warranty Repairs",
-    "Leak Investigations",
     "Roof Assessments",
-    "Preventive Maintenance",
+    "Warranty Repairs",
 })
 RM_DIVISION_LABELS = frozenset({LEGACY_RM_DIVISION_LABEL, *RM_PROJECT_DIVISION_LABELS})
 

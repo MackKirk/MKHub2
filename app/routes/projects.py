@@ -73,6 +73,7 @@ from sqlalchemy import or_, and_, cast, String, Date
 
 from ..services.project_utils import sanitize_division_onsite_leads
 from ..services.project_duplicate import generate_project_code, duplicate_project_deep
+from ..services.project_customer_participation import project_site_address_payload
 from ..services.leak_investigation import (
     get_leak_investigation_division_id,
     project_has_leak_investigation_division,
@@ -230,10 +231,63 @@ def _user_display_sort_subq(user_id_column):
     )
 
 
-def _business_project_order_parts(sort: Optional[str], sort_dir: Optional[str], *, opportunities: bool):
+def _project_address_sort_key():
+    """Sort key aligned with list hero address (site fields, then project address fallbacks)."""
+    site_line = (
+        select(
+            func.lower(
+                func.coalesce(
+                    ClientSite.site_address_line1,
+                    ClientSite.site_city,
+                    ClientSite.site_postal_code,
+                    literal(""),
+                )
+            )
+        )
+        .where(ClientSite.id == Project.site_id)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    project_line = func.lower(
+        func.coalesce(
+            Project.address,
+            Project.address_city,
+            Project.address_postal_code,
+            literal(""),
+        )
+    )
+    return func.coalesce(site_line, project_line, literal(""))
+
+
+def _project_division_sort_key(dialect_name: str):
+    """Sort by alphabetically first division/subdivision label on the project."""
+    if dialect_name != "postgresql":
+        return func.lower(func.coalesce(cast(Project.project_division_ids, String), literal("")))
+
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    div_json = func.coalesce(cast(Project.project_division_ids, JSONB), cast(literal("[]"), JSONB))
+    div_ids_subq = select(func.jsonb_array_elements_text(div_json).label("div_id")).correlate(Project)
+    min_label_subq = (
+        select(func.min(func.lower(SettingItem.label)))
+        .where(cast(SettingItem.id, String).in_(div_ids_subq))
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    return func.coalesce(min_label_subq, literal(""))
+
+
+def _business_project_order_parts(
+    sort: Optional[str],
+    sort_dir: Optional[str],
+    *,
+    opportunities: bool,
+    db: Optional[Session] = None,
+):
     """ORDER BY columns for business opportunity/project lists (full result set, before OFFSET/LIMIT)."""
     asc = (sort_dir or "asc").lower() != "desc"
     s = (sort or "").strip().lower()
+    dialect_name = db.get_bind().dialect.name if db is not None else "postgresql"
     if not s:
         s = "opportunity" if opportunities else "project"
 
@@ -263,6 +317,10 @@ def _business_project_order_parts(sort: Optional[str], sort_dir: Optional[str], 
     if s == "status":
         st = func.lower(func.coalesce(Project.status_label, literal("")))
         return _str_col(st)
+    if s == "address":
+        return _str_col(_project_address_sort_key())
+    if s in ("division", "divisions"):
+        return _str_col(_project_division_sort_key(dialect_name))
     if opportunities and s == "estimator":
         key = _user_display_sort_subq(Project.estimator_id)
         if asc:
@@ -6504,6 +6562,235 @@ def _apply_business_opportunity_list_filters(
     
     return query
 
+
+_LEGACY_COVER_CATEGORIES = frozenset({
+    "project-cover-derived",
+    "project-cover",
+    "cover",
+    "hero-cover",
+    "opportunity-cover-derived",
+    "opportunity-cover",
+})
+
+_PROJECT_TAB_COUNT_STATUS_SPECS = (
+    ("in_progress", ("in progress", "on progress")),
+    ("on_hold", ("on hold",)),
+    ("finished", ("finished",)),
+    ("conflict", ("conflict", "schedule conflict")),
+)
+
+_OPPORTUNITY_TAB_COUNT_STATUS_SPECS = (
+    ("prospecting", ("prospecting",)),
+    ("refused", ("refused",)),
+    ("sent_to_customer", ("sent to customer",)),
+    ("conflict", ("conflict", "schedule conflict")),
+    ("low_and_awarded", ("low & awarded", "lost & awarded", "lost and awarded")),
+)
+
+
+def _status_id_and_label_by_labels(db: Session, labels: tuple[str, ...]) -> tuple[Optional[uuid.UUID], Optional[str]]:
+    status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
+    if not status_list:
+        return None, None
+    label_set = {label.lower().strip() for label in labels}
+    items = db.query(SettingItem).filter(SettingItem.list_id == status_list.id).all()
+    for item in items:
+        item_label = (item.label or "").strip()
+        if item_label.lower() in label_set:
+            return item.id, item_label
+    return None, None
+
+
+def _build_clients_map(db: Session, client_ids: list) -> dict[str, dict]:
+    clients_map: dict[str, dict] = {}
+    if not client_ids:
+        return clients_map
+    clients = db.query(Client).filter(Client.id.in_(client_ids)).all()
+    for client in clients:
+        clients_map[str(client.id)] = {
+            "id": str(client.id),
+            "name": client.name,
+            "display_name": client.display_name,
+        }
+    return clients_map
+
+
+def _build_users_display_map(db: Session, user_ids: list) -> dict[str, dict]:
+    users_map: dict[str, dict] = {}
+    if not user_ids:
+        return users_map
+    rows = (
+        db.query(User, EmployeeProfile)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .filter(User.id.in_(user_ids))
+        .all()
+    )
+    for user_row, ep in rows:
+        name = (getattr(ep, "preferred_name", None) or "").strip() if ep else ""
+        if not name:
+            first = (getattr(ep, "first_name", None) or "").strip() if ep else ""
+            last = (getattr(ep, "last_name", None) or "").strip() if ep else ""
+            name = " ".join([x for x in [first, last] if x])
+        avatar_file_id = (
+            str(getattr(ep, "profile_photo_file_id", None))
+            if getattr(ep, "profile_photo_file_id", None)
+            else None
+        )
+        users_map[str(user_row.id)] = {"name": name or None, "profile_photo_file_id": avatar_file_id}
+    return users_map
+
+
+def _load_legacy_cover_images(db: Session, project_ids: list) -> dict[str, ClientFile]:
+    cover_images: dict[str, ClientFile] = {}
+    if not project_ids:
+        return cover_images
+
+    project_id_set = {str(pid) for pid in project_ids}
+    file_objects = db.query(FileObject).filter(FileObject.project_id.in_(project_ids)).all()
+    if not file_objects:
+        return cover_images
+
+    fo_by_id = {str(fo.id): fo for fo in file_objects}
+    cover_files = (
+        db.query(ClientFile)
+        .filter(
+            ClientFile.file_object_id.in_([fo.id for fo in file_objects]),
+            ClientFile.deleted_at.is_(None),
+        )
+        .order_by(ClientFile.uploaded_at.desc())
+        .all()
+    )
+
+    for cf in cover_files:
+        fo = fo_by_id.get(str(cf.file_object_id))
+        if not fo or not getattr(fo, "project_id", None):
+            continue
+        pid = str(fo.project_id)
+        if pid not in project_id_set:
+            continue
+        ct = getattr(fo, "content_type", None) or ""
+        if not ct.startswith("image/"):
+            continue
+        cat = (cf.category or "").lower().strip()
+        if cat not in _LEGACY_COVER_CATEGORIES:
+            continue
+        if pid not in cover_images:
+            cover_images[pid] = cf
+        elif cat == "project-cover-derived":
+            cover_images[pid] = cf
+    return cover_images
+
+
+def _load_latest_proposals_by_project(db: Session, project_ids: list) -> tuple[dict[str, float], dict[str, str]]:
+    estimated_values_map: dict[str, float] = {}
+    proposal_cover_by_project: dict[str, str] = {}
+    if not project_ids:
+        return estimated_values_map, proposal_cover_by_project
+
+    rows = (
+        db.query(Proposal)
+        .filter(Proposal.project_id.in_(project_ids))
+        .order_by(Proposal.created_at.desc())
+        .all()
+    )
+    for prop in rows:
+        pid = str(prop.project_id) if prop.project_id else None
+        if not pid:
+            continue
+        if pid not in estimated_values_map:
+            try:
+                proposal_data = prop.data or {}
+                grand_total = calculate_proposal_grand_total(proposal_data)
+                if grand_total > 0:
+                    estimated_values_map[pid] = grand_total
+            except Exception:
+                pass
+        if pid not in proposal_cover_by_project:
+            data = prop.data or {}
+            if isinstance(data, dict):
+                foid = data.get("cover_file_object_id")
+                if foid:
+                    proposal_cover_by_project[pid] = str(foid)
+    return estimated_values_map, proposal_cover_by_project
+
+
+def _count_with_status_filter(query, status_id: uuid.UUID, status_label: Optional[str]) -> int:
+    if status_label:
+        return query.filter(
+            or_(
+                Project.status_id == status_id,
+                and_(Project.status_id.is_(None), Project.status_label == status_label),
+            )
+        ).count()
+    return query.filter(Project.status_id == status_id).count()
+
+
+def _business_list_tab_counts(
+    db: Session,
+    user: User,
+    *,
+    is_bidding: bool,
+    business_line: Optional[str],
+    status_specs: tuple[tuple[str, tuple[str, ...]], ...],
+    division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
+    subdivision_id: Optional[str] = None,
+    client_id: Optional[str] = None,
+    client_id_not: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
+    estimator_id: Optional[str] = None,
+    estimator_id_not: Optional[str] = None,
+    eta_start: Optional[str] = None,
+    eta_end: Optional[str] = None,
+    value_min: Optional[int] = None,
+    value_max: Optional[int] = None,
+    q: Optional[str] = None,
+) -> dict[str, int]:
+    bl_clause = _dashboard_business_line_clause(user, business_line)
+    if bl_clause is None:
+        return {"related_to_me": 0, **{key: 0 for key, _ in status_specs}}
+
+    base = (
+        db.query(Project)
+        .filter(Project.is_bidding == is_bidding, Project.deleted_at.is_(None))
+        .filter(bl_clause)
+    )
+    base = _apply_business_opportunity_list_filters(
+        base,
+        db,
+        user,
+        False,
+        division_id,
+        division_id_not,
+        subdivision_id,
+        None,
+        None,
+        client_id,
+        client_id_not,
+        date_start,
+        date_end,
+        estimator_id,
+        estimator_id_not,
+        eta_start,
+        eta_end,
+        value_min,
+        value_max,
+        q,
+    )
+
+    counts: dict[str, int] = {
+        "related_to_me": base.filter(_project_related_to_user_filter(user.id)).count(),
+    }
+    for key, labels in status_specs:
+        status_id, status_label = _status_id_and_label_by_labels(db, labels)
+        if status_id:
+            counts[key] = _count_with_status_filter(base, status_id, status_label)
+        else:
+            counts[key] = 0
+    return counts
+
+
 def _paginate_and_serialize_business_opportunity_style(
     db: Session,
     user: User,
@@ -6517,106 +6804,29 @@ def _paginate_and_serialize_business_opportunity_style(
 ):
     total = query.count()
     offset = (page - 1) * limit
-    order_parts = _business_project_order_parts(sort, sort_dir, opportunities=True)
+    order_parts = _business_project_order_parts(sort, sort_dir, opportunities=True, db=db)
     projects = query.order_by(*order_parts).offset(offset).limit(limit).all()
 
     # Build cover_image_url for cards (same source priority as General Information)
     project_ids = [p.id for p in projects]
     client_ids = list(set([p.client_id for p in projects if getattr(p, 'client_id', None)]))
+    site_ids = list(set([getattr(p, 'site_id', None) for p in projects if getattr(p, 'site_id', None)]))
 
-    legacy_categories = {
-        "project-cover-derived",
-        "project-cover",
-        "cover",
-        "hero-cover",
-        "opportunity-cover-derived",
-        "opportunity-cover",
-    }
+    sites_map = {}
+    if site_ids:
+        sites = db.query(ClientSite).filter(ClientSite.id.in_(site_ids)).all()
+        for site in sites:
+            sites_map[str(site.id)] = site
 
-    cover_images: dict[str, ClientFile] = {}
-    if project_ids and client_ids:
-        cover_files = (
-            db.query(ClientFile)
-            .filter(ClientFile.client_id.in_(client_ids), ClientFile.deleted_at.is_(None))
-            .order_by(ClientFile.uploaded_at.desc())
-            .all()
-        )
-        file_object_ids = [cf.file_object_id for cf in cover_files]
-        file_objects: dict[str, FileObject] = {}
-        if file_object_ids:
-            fos = db.query(FileObject).filter(FileObject.id.in_(file_object_ids)).all()
-            for fo in fos:
-                file_objects[str(fo.id)] = fo
+    cover_images = _load_legacy_cover_images(db, project_ids)
+    estimated_values_map, proposal_cover_by_project = _load_latest_proposals_by_project(db, project_ids)
+    clients_map = _build_clients_map(db, client_ids)
+    leak_div_id = get_leak_investigation_division_id(db)
 
-        project_id_set = set([str(pid) for pid in project_ids])
-        for cf in cover_files:
-            fo = file_objects.get(str(cf.file_object_id))
-            if not fo or not getattr(fo, "project_id", None):
-                continue
-            pid = str(fo.project_id)
-            if pid not in project_id_set:
-                continue
-            ct = getattr(fo, "content_type", None) or ""
-            if not ct.startswith("image/"):
-                continue
-            cat = (cf.category or "").lower().strip()
-            # Only accept explicit legacy cover categories (do NOT fall back to any image)
-            if cat not in legacy_categories:
-                continue
-            if pid not in cover_images:
-                cover_images[pid] = cf
-            elif cat == "project-cover-derived":
-                # Strong preference
-                cover_images[pid] = cf
-
-    # Latest proposal cover per project (batch)
-    proposal_cover_by_project: dict[str, str] = {}
-    if project_ids:
-        rows = db.query(Proposal).filter(Proposal.project_id.in_(project_ids)).order_by(Proposal.created_at.desc()).all()
-        for r in rows:
-            pid = str(getattr(r, "project_id", None) or "")
-            if not pid or pid in proposal_cover_by_project:
-                continue
-            data = getattr(r, "data", None) or {}
-            if isinstance(data, dict):
-                foid = data.get("cover_file_object_id")
-                if foid:
-                    proposal_cover_by_project[pid] = str(foid)
-
-    # Fetch estimator and onsite lead names in batch
     estimator_ids = list(set([getattr(p, 'estimator_id', None) for p in projects if getattr(p, 'estimator_id', None)]))
     onsite_lead_ids = list(set([getattr(p, 'onsite_lead_id', None) for p in projects if getattr(p, 'onsite_lead_id', None)]))
     all_user_ids = list(set(estimator_ids + onsite_lead_ids))
-    
-    users_map = {}
-    if all_user_ids:
-        users = db.query(User).filter(User.id.in_(all_user_ids)).all()
-        for user_row in users:
-            ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_row.id).first()
-            name = (getattr(ep, 'preferred_name', None) or '').strip() if ep else ''
-            if not name:
-                first = (getattr(ep, 'first_name', None) or '').strip() if ep else ''
-                last = (getattr(ep, 'last_name', None) or '').strip() if ep else ''
-                name = ' '.join([x for x in [first, last] if x])
-            avatar_file_id = str(getattr(ep, 'profile_photo_file_id', None)) if getattr(ep, 'profile_photo_file_id', None) else None
-            users_map[str(user_row.id)] = {"name": name or None, "profile_photo_file_id": avatar_file_id}
-    
-    # Fetch latest proposals and calculate Grand Total (Final Total with GST) for each project
-    estimated_values_map = {}
-    if project_ids:
-        # Get latest proposal for each project
-        proposals = db.query(Proposal).filter(Proposal.project_id.in_(project_ids)).order_by(Proposal.created_at.desc()).all()
-        for prop in proposals:
-            pid_str = str(prop.project_id) if prop.project_id else None
-            if pid_str and pid_str not in estimated_values_map:
-                try:
-                    proposal_data = prop.data or {}
-                    grand_total = calculate_proposal_grand_total(proposal_data)
-                    if grand_total > 0:
-                        estimated_values_map[pid_str] = grand_total
-                except Exception:
-                    # If calculation fails, skip this proposal
-                    pass
+    users_map = _build_users_display_map(db, all_user_ids)
 
     out = []
     for p in projects:
@@ -6659,8 +6869,10 @@ def _paginate_and_serialize_business_opportunity_style(
             "project_division_ids": getattr(p, 'project_division_ids', None),
             "cost_estimated": getattr(p, 'cost_estimated', None),
             "is_bidding": list_kind == "opportunity",
-            "has_leak_investigation_division": project_has_leak_investigation_division(db, p),
+            "has_leak_investigation_division": project_has_leak_investigation_division(db, p, leak_div_id=leak_div_id),
             "cover_image_url": cover_url,
+            "client_name": None,
+            "client_display_name": None,
             "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
             "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
             "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
@@ -6687,6 +6899,16 @@ def _paginate_and_serialize_business_opportunity_style(
         # Add estimated value from estimate (Final Total with GST) if available, otherwise use cost_estimated
         if pid in estimated_values_map:
             opp_dict["cost_estimated"] = estimated_values_map[pid]
+
+        client_id_str = str(p.client_id) if getattr(p, 'client_id', None) else None
+        if client_id_str and client_id_str in clients_map:
+            client_info = clients_map[client_id_str]
+            opp_dict["client_name"] = client_info.get("name")
+            opp_dict["client_display_name"] = client_info.get("display_name")
+
+        site_id_str = str(getattr(p, 'site_id', None)) if getattr(p, 'site_id', None) else None
+        site = sites_map.get(site_id_str) if site_id_str else None
+        opp_dict.update(project_site_address_payload(p, site))
     
         out.append(opp_dict)
 
@@ -6733,6 +6955,50 @@ def business_opportunities(
     )
     return _paginate_and_serialize_business_opportunity_style(
         db, user, query, page, limit, sort, sort_dir, list_kind="opportunity",
+    )
+
+
+@router.get("/business/opportunities/tab-counts")
+def business_opportunities_tab_counts(
+    division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
+    subdivision_id: Optional[str] = None,
+    client_id: Optional[str] = None,
+    client_id_not: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
+    estimator_id: Optional[str] = None,
+    estimator_id_not: Optional[str] = None,
+    eta_start: Optional[str] = None,
+    eta_end: Optional[str] = None,
+    value_min: Optional[int] = None,
+    value_max: Optional[int] = None,
+    q: Optional[str] = None,
+    business_line: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Aggregated quick-filter counts for opportunities list (replaces N separate count requests)."""
+    return _business_list_tab_counts(
+        db,
+        user,
+        is_bidding=True,
+        business_line=business_line,
+        status_specs=_OPPORTUNITY_TAB_COUNT_STATUS_SPECS,
+        division_id=division_id,
+        division_id_not=division_id_not,
+        subdivision_id=subdivision_id,
+        client_id=client_id,
+        client_id_not=client_id_not,
+        date_start=date_start,
+        date_end=date_end,
+        estimator_id=estimator_id,
+        estimator_id_not=estimator_id_not,
+        eta_start=eta_start,
+        eta_end=eta_end,
+        value_min=value_min,
+        value_max=value_max,
+        q=q,
     )
 
 
@@ -7105,7 +7371,7 @@ def business_projects(
     total_count = query.count()
     offset = (page - 1) * limit
     # Get projects first (before value filtering if needed)
-    order_parts = _business_project_order_parts(sort, sort_dir, opportunities=False)
+    order_parts = _business_project_order_parts(sort, sort_dir, opportunities=False, db=db)
     projects = query.order_by(*order_parts).offset(offset).limit(limit * 2 if min_value else limit).all()
     
     # Filter by minimum value (considering Grand Total from estimates)
@@ -7179,121 +7445,25 @@ def business_projects(
     # Get all project IDs and client IDs for efficient batch loading
     project_ids = [p.id for p in projects[:limit]]
     client_ids = list(set([p.client_id for p in projects[:limit] if getattr(p, 'client_id', None)]))
+    site_ids = list(set([getattr(p, 'site_id', None) for p in projects[:limit] if getattr(p, 'site_id', None)]))
+
+    sites_map = {}
+    if site_ids:
+        sites = db.query(ClientSite).filter(ClientSite.id.in_(site_ids)).all()
+        for site in sites:
+            sites_map[str(site.id)] = site
     
     # Fetch legacy cover images in one query (ONLY explicit cover categories; do NOT fall back to any image)
-    cover_images = {}
-    if project_ids and client_ids:
-        from ..models.models import ClientFile, FileObject
-        # Find all client files for these clients
-        cover_files = (
-            db.query(ClientFile)
-            .filter(ClientFile.client_id.in_(client_ids), ClientFile.deleted_at.is_(None))
-            .all()
-        )
-        
-        # Get file objects for these files to check project_id
-        file_object_ids = [cf.file_object_id for cf in cover_files]
-        file_objects = {}
-        if file_object_ids:
-            fos = db.query(FileObject).filter(FileObject.id.in_(file_object_ids)).all()
-            for fo in fos:
-                file_objects[str(fo.id)] = fo
-        
-        legacy_categories = {
-            'project-cover-derived',
-            'project-cover',
-            'cover',
-            'hero-cover',
-            'opportunity-cover-derived',
-            'opportunity-cover',
-        }
+    cover_images = _load_legacy_cover_images(db, project_ids)
+    clients_map = _build_clients_map(db, client_ids)
+    estimated_values_map, proposal_cover_by_project = _load_latest_proposals_by_project(db, project_ids)
 
-        # Build map: project_id -> legacy cover file (by category only)
-        for cf in cover_files:
-            fo = file_objects.get(str(cf.file_object_id))
-            if not fo or not getattr(fo, 'project_id', None):
-                continue
-            
-            project_id_str = str(fo.project_id)
-            if project_id_str not in [str(pid) for pid in project_ids]:
-                continue
-            
-            category_lower = (cf.category or '').lower().strip()
-            ct = getattr(fo, 'content_type', None) or ''
-            if not ct.startswith('image/'):
-                continue
-
-            # Only accept explicit legacy cover categories.
-            if category_lower not in legacy_categories:
-                continue
-
-            # Prefer project-cover-derived over others if multiple exist
-            if project_id_str not in cover_images:
-                cover_images[project_id_str] = (cf, fo)
-            elif category_lower == 'project-cover-derived':
-                cover_images[project_id_str] = (cf, fo)
-    
-    # Fetch client information in one query
-    clients_map = {}
-    if client_ids:
-        # Client is already imported at the top of the file
-        clients = db.query(Client).filter(Client.id.in_(client_ids)).all()
-        for client in clients:
-            clients_map[str(client.id)] = {
-                "id": str(client.id),
-                "name": client.name,
-                "display_name": client.display_name,
-            }
-    
     # Fetch estimator, onsite lead and project_admin names/avatars in batch (so UI does not wait for /employees)
     estimator_ids = list(set([getattr(p, 'estimator_id', None) for p in projects[:limit] if getattr(p, 'estimator_id', None)]))
     onsite_lead_ids = list(set([getattr(p, 'onsite_lead_id', None) for p in projects[:limit] if getattr(p, 'onsite_lead_id', None)]))
     project_admin_ids = list(set([getattr(p, 'project_admin_id', None) for p in projects[:limit] if getattr(p, 'project_admin_id', None)]))
     all_user_ids = list(set(estimator_ids + onsite_lead_ids + project_admin_ids))
-    
-    users_map = {}
-    if all_user_ids:
-        users = db.query(User).filter(User.id.in_(all_user_ids)).all()
-        for user in users:
-            ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
-            name = (getattr(ep, 'preferred_name', None) or '').strip() if ep else ''
-            if not name:
-                first = (getattr(ep, 'first_name', None) or '').strip() if ep else ''
-                last = (getattr(ep, 'last_name', None) or '').strip() if ep else ''
-                name = ' '.join([x for x in [first, last] if x])
-            avatar_file_id = str(getattr(ep, 'profile_photo_file_id', None)) if getattr(ep, 'profile_photo_file_id', None) else None
-            users_map[str(user.id)] = {"name": name or None, "profile_photo_file_id": avatar_file_id}
-    
-    # Fetch latest proposals and calculate Grand Total (Final Total with GST) for each project
-    estimated_values_map = {}
-    if project_ids:
-        # Get latest proposal for each project
-        proposals = db.query(Proposal).filter(Proposal.project_id.in_(project_ids)).order_by(Proposal.created_at.desc()).all()
-        for prop in proposals:
-            pid_str = str(prop.project_id) if prop.project_id else None
-            if pid_str and pid_str not in estimated_values_map:
-                try:
-                    proposal_data = prop.data or {}
-                    grand_total = calculate_proposal_grand_total(proposal_data)
-                    if grand_total > 0:
-                        estimated_values_map[pid_str] = grand_total
-                except Exception:
-                    # If calculation fails, skip this proposal
-                    pass
-    
-    # Latest proposal cover per project (batch) - used if cover isn't already present
-    proposal_cover_by_project: dict[str, str] = {}
-    if project_ids:
-        rows = db.query(Proposal).filter(Proposal.project_id.in_(project_ids)).order_by(Proposal.created_at.desc()).all()
-        for r in rows:
-            pid = str(getattr(r, "project_id", None) or "")
-            if not pid or pid in proposal_cover_by_project:
-                continue
-            data = getattr(r, "data", None) or {}
-            if isinstance(data, dict):
-                foid = data.get("cover_file_object_id")
-                if foid:
-                    proposal_cover_by_project[pid] = str(foid)
+    users_map = _build_users_display_map(db, all_user_ids)
 
     # Build response with cover images and client info
     result = []
@@ -7344,7 +7514,7 @@ def business_projects(
             project_dict["cover_image_url"] = f"/files/{str(p.image_file_object_id)}/thumbnail?w=400"
         # 2) Legacy manual cover from files
         if (not project_dict["cover_image_url"]) and project_id_str in cover_images:
-            cover_file, _file_object = cover_images[project_id_str]
+            cover_file = cover_images[project_id_str]
             timestamp = cover_file.uploaded_at.isoformat() if cover_file.uploaded_at else None
             timestamp_param = f"&t={timestamp}" if timestamp else ""
             project_dict["cover_image_url"] = f"/files/{cover_file.file_object_id}/thumbnail?w=400{timestamp_param}"
@@ -7396,10 +7566,58 @@ def business_projects(
         # Add estimated value from estimate (Final Total with GST) if available, otherwise use service_value
         if project_id_str in estimated_values_map:
             project_dict["service_value"] = estimated_values_map[project_id_str]
+
+        site_id_str = str(getattr(p, 'site_id', None)) if getattr(p, 'site_id', None) else None
+        site = sites_map.get(site_id_str) if site_id_str else None
+        project_dict.update(project_site_address_payload(p, site))
         
         result.append(project_dict)
     
     return {"items": result, "total": total_count, "page": page, "limit": limit}
+
+
+@router.get("/business/projects/tab-counts")
+def business_projects_tab_counts(
+    division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
+    subdivision_id: Optional[str] = None,
+    client_id: Optional[str] = None,
+    client_id_not: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
+    estimator_id: Optional[str] = None,
+    estimator_id_not: Optional[str] = None,
+    eta_start: Optional[str] = None,
+    eta_end: Optional[str] = None,
+    value_min: Optional[int] = None,
+    value_max: Optional[int] = None,
+    q: Optional[str] = None,
+    business_line: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Aggregated quick-filter counts for projects list (replaces N separate count requests)."""
+    return _business_list_tab_counts(
+        db,
+        user,
+        is_bidding=False,
+        business_line=business_line,
+        status_specs=_PROJECT_TAB_COUNT_STATUS_SPECS,
+        division_id=division_id,
+        division_id_not=division_id_not,
+        subdivision_id=subdivision_id,
+        client_id=client_id,
+        client_id_not=client_id_not,
+        date_start=date_start,
+        date_end=date_end,
+        estimator_id=estimator_id,
+        estimator_id_not=estimator_id_not,
+        eta_start=eta_start,
+        eta_end=eta_end,
+        value_min=value_min,
+        value_max=value_max,
+        q=q,
+    )
 
 
 def _apply_customer_filter(opp_query, proj_query, customer_id: Optional[str]):

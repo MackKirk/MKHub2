@@ -12,8 +12,8 @@ import ImageEditor from '@/components/ImageEditor';
 import { useConfirm } from '@/components/ConfirmProvider';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { CustomerFilesTabEnhanced } from './CustomerFilesTabEnhanced';
-import { OpportunityListItem, CreateReportModal } from './Opportunities';
-import { ProjectListItem } from './Projects';
+import { OpportunityListItem, CreateReportModal, OPPORTUNITY_LIST_GRID_CLASS, OPPORTUNITY_LIST_MIN_WIDTH, SHOW_OPPORTUNITY_LIST_SHORTCUTS } from './Opportunities';
+import { ProjectListItem, PROJECT_LIST_GRID_CLASS, PROJECT_LIST_MIN_WIDTH, SHOW_PROJECT_LIST_SHORTCUTS } from './Projects';
 import NewContactModal from '@/components/NewContactModal';
 import EditContactModal, { type ClientContactRecord } from '@/components/EditContactModal';
 import SiteFormModal, { type ClientSiteRecord } from '@/components/SiteFormModal';
@@ -687,7 +687,7 @@ export default function CustomerDetail(){
                       <AppListCreateItem
                         label="New Opportunity"
                         layout="row"
-                        className="min-h-[60px] min-w-[680px]"
+                        className={uiCx('min-h-[60px]', OPPORTUNITY_LIST_MIN_WIDTH)}
                         onClick={() =>
                           navigate(`/projects/new?client_id=${encodeURIComponent(String(id || ''))}&is_bidding=true`, {
                             state: { backgroundLocation: location },
@@ -698,14 +698,22 @@ export default function CustomerDetail(){
                     {(opportunities||[]).length > 0 ? (
                       <>
                         <div
-                          className="grid grid-cols-[10fr_5fr_5fr_5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[680px] text-[10px] font-semibold text-gray-700"
+                          className={uiCx(
+                            'grid gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg text-[10px] font-semibold text-gray-700',
+                            OPPORTUNITY_LIST_MIN_WIDTH,
+                            OPPORTUNITY_LIST_GRID_CLASS,
+                          )}
                           aria-hidden
                         >
                           <div className="min-w-0" title="Opportunity name, code and client">Opportunity</div>
+                          <div className="min-w-0" title="Site address">Address</div>
                           <div className="min-w-0" title="Person responsible for the estimate">Estimator</div>
                           <div className="min-w-0" title="Estimated total value">Est. value</div>
                           <div className="min-w-0" title="Current status (e.g. Prospecting, Sent, Refused)">Status</div>
-                          <div className="min-w-0 w-24" title="Quick access to Files, Proposal, Report" aria-hidden />
+                          <div className="min-w-0" title="Project divisions">Divisions</div>
+                          {SHOW_OPPORTUNITY_LIST_SHORTCUTS ? (
+                            <div className="min-w-0 w-24" title="Quick access to Files, Proposal, Report" aria-hidden />
+                          ) : null}
                         </div>
                         {(opportunities||[]).map((p: any) => (
                           <OpportunityListItem
@@ -713,6 +721,7 @@ export default function CustomerDetail(){
                             opportunity={p}
                             onOpenReportModal={(projectId) => setCustomerReportModalOpen({ open: true, projectId })}
                             projectStatuses={projectStatuses}
+                            projectDivisions={projectDivisions || []}
                           />
                         ))}
                       </>
@@ -733,16 +742,24 @@ export default function CustomerDetail(){
                     {(projects||[]).length > 0 ? (
                       <>
                         <div
-                          className="grid grid-cols-[10fr_3fr_3fr_4fr_4fr_4fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[800px] text-[10px] font-semibold text-gray-700"
+                          className={uiCx(
+                            'grid gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg text-[10px] font-semibold text-gray-700',
+                            PROJECT_LIST_MIN_WIDTH,
+                            PROJECT_LIST_GRID_CLASS,
+                          )}
                           aria-hidden
                         >
                           <div className="min-w-0" title="Project name, code and client">Project</div>
+                          <div className="min-w-0" title="Site address">Address</div>
                           <div className="min-w-0" title="Start date">Start</div>
                           <div className="min-w-0" title="End date">End Date</div>
                           <div className="min-w-0" title="Project administrator">Project Admin</div>
                           <div className="min-w-0" title="Estimated or actual value">Value</div>
                           <div className="min-w-0" title="Current status">Status</div>
-                          <div className="min-w-0 w-28" title="Quick access to Files, Proposal, Reports, etc." aria-hidden />
+                          <div className="min-w-0" title="Project divisions">Divisions</div>
+                          {SHOW_PROJECT_LIST_SHORTCUTS ? (
+                            <div className="min-w-0 w-28" title="Quick access to Files, Proposal, Reports, etc." aria-hidden />
+                          ) : null}
                         </div>
                         {(projects||[]).map((p: any) => (
                           <ProjectListItem
