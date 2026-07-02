@@ -79,6 +79,8 @@ type Props = {
   readOnly?: boolean;
   onSaved?: () => void;
   onDeleted?: () => void;
+  /** Raised z-index when opened from another modal (e.g. Edit Project Site). */
+  overlayClassName?: string;
 };
 
 export default function SiteFormModal({
@@ -91,6 +93,7 @@ export default function SiteFormModal({
   readOnly = false,
   onSaved,
   onDeleted,
+  overlayClassName,
 }: Props) {
   const confirm = useConfirm();
   const isEdit = !!site?.id;
@@ -216,6 +219,7 @@ export default function SiteFormModal({
         title={title}
         description={readOnly ? 'Construction site details' : 'Site name, address, and notes'}
         formWidth="wide"
+        overlayClassName={overlayClassName}
         dialogClassName={FORM_MODAL_WIDE_DIALOG_COLLAPSED}
         dialogClassNameExpanded={FORM_MODAL_WIDE_DIALOG_EXPANDED}
         quickInfo={

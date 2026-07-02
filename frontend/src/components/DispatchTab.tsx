@@ -67,6 +67,11 @@ export default function DispatchTab({
   const queryClient = useQueryClient();
   const location = useLocation();
   const nav = useNavigate();
+
+  const invalidateWorkloadTabCounts = () => {
+    queryClient.invalidateQueries({ queryKey: ['projectShifts', projectId] });
+    queryClient.invalidateQueries({ queryKey: ['timesheet', projectId] });
+  };
   
   // Check for subtab query parameter
   const searchParams = new URLSearchParams(location.search);
@@ -407,6 +412,7 @@ export default function DispatchTab({
         queryClient.invalidateQueries({ queryKey: ['dispatch-shifts-all'] }),
         queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] }),
       ]);
+      invalidateWorkloadTabCounts();
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['timesheet'] }),
         queryClient.refetchQueries({ queryKey: ['timesheetLogsMini'] }),
@@ -793,6 +799,7 @@ export default function DispatchTab({
                                           await api('DELETE', '/dispatch/shifts/' + shift.id);
                                           toast.success('Shift deleted');
                                           await refetchShifts();
+                                          invalidateWorkloadTabCounts();
                                         } catch (e: any) {
                                           const errorMsg = e.response?.data?.detail || e.message || 'Failed to delete shift';
                                           toast.error(errorMsg);
@@ -859,6 +866,7 @@ export default function DispatchTab({
                       queryClient.invalidateQueries({ queryKey: ['attendances'] });
                       queryClient.invalidateQueries({ queryKey: ['shifts'] });
                       queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
+                      invalidateWorkloadTabCounts();
                     } catch (e: any) {
                       toast.error(e.message || 'Failed to approve');
                     }
@@ -873,6 +881,7 @@ export default function DispatchTab({
                       queryClient.invalidateQueries({ queryKey: ['attendances'] });
                       queryClient.invalidateQueries({ queryKey: ['shifts'] });
                       queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
+                      invalidateWorkloadTabCounts();
                     } catch (e: any) {
                       toast.error(e.message || 'Failed to reject');
                     }
@@ -905,6 +914,7 @@ export default function DispatchTab({
           onSave={async () => {
             await refetchShifts();
             queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
+            invalidateWorkloadTabCounts();
             setCreateShiftModal(false);
           }}
         />
@@ -923,6 +933,7 @@ export default function DispatchTab({
           onSave={async () => {
             await refetchShifts();
             queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
+            invalidateWorkloadTabCounts();
             setEditShiftModal(null);
           }}
         />

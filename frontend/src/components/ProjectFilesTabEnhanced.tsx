@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -13,7 +13,24 @@ import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
   FileImagePreviewModal,
+  FileListSelectionBar,
+  FileMoveLocationModal,
+  FileListDropHint,
+  dropTargetClass,
+  buildFolderFileCounts,
+  fileDropTargetProps,
+  invalidateQueriesInBackground,
+  isOverNestedFileDropTarget,
+  leaveContainerDragLeave,
+  patchFilesInQueryCache,
+  removeFilesFromQueryCache,
+  restoreQueryCache,
+  getDraggedFileIds,
+  isInternalFileDrag,
+  setDraggedFileIds,
+  useFileDropTarget,
   useFileImageGallery,
+  useFileListSelection,
 } from '@/components/files';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
@@ -24,11 +41,12 @@ import {
 import {
   projectFilesUploadQuickInfo,
   projectFilesNewFolderQuickInfo,
-  projectFilesMoveCategoryQuickInfo,
+  projectFilesMoveLocationQuickInfo,
 } from '@/lib/formModalQuickInfo';
 import {
   AppButton,
   AppCard,
+  AppCheckboxControl,
   AppEmptyState,
   AppFileUpload,
   AppFormModal,
@@ -80,9 +98,11 @@ export default function ProjectFilesTabEnhanced({
   const location = useLocation();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const fileSelection = useFileListSelection();
+  const { dropTarget, setDropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isDragging, setIsDragging] = useState(false);
-  const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{id:string, file:File, progress:number, status:'pending'|'uploading'|'success'|'error', error?:string}>>([]);
   const imageGallery = useFileImageGallery();
@@ -98,8 +118,7 @@ export default function ProjectFilesTabEnhanced({
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
   const [editingFileNameValue, setEditingFileNameValue] = useState('');
-  const [moveModalFileId, setMoveModalFileId] = useState<string | null>(null);
-  const [moveModalCategory, setMoveModalCategory] = useState<string>('uncategorized');
+  const [moveLocationFileId, setMoveLocationFileId] = useState<string | null>(null);
   const [notesModalFileId, setNotesModalFileId] = useState<string | null>(null);
   const [notesModalValue, setNotesModalValue] = useState('');
   const [notesModalEditing, setNotesModalEditing] = useState(false);
@@ -187,18 +206,25 @@ export default function ProjectFilesTabEnhanced({
 
   type ProjectFolderItem = { id: string; name: string; category: string; parent_id: string | null; sort_index: number };
   const { data: projectFoldersRaw } = useQuery({
-    queryKey: ['project-folders', projectId, selectedCategory],
-    queryFn: () => api<ProjectFolderItem[]>('GET', `/projects/${projectId}/folders${selectedCategory && selectedCategory !== 'all' && selectedCategory !== 'uncategorized' ? `?category=${encodeURIComponent(selectedCategory)}` : ''}`),
+    queryKey: ['project-folders', projectId],
+    queryFn: () => api<ProjectFolderItem[]>('GET', `/projects/${projectId}/folders`),
     enabled: !!projectId,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
   const projectFolders = projectFoldersRaw || [];
+
+  const foldersInSelectedCategory = useMemo(() => {
+    if (selectedCategory === 'all' || selectedCategory === 'uncategorized') return [];
+    return projectFolders.filter((f: ProjectFolderItem) => f.category === selectedCategory);
+  }, [projectFolders, selectedCategory]);
 
   // When switching category, clear folder selection if the folder is not in this category
   useEffect(() => {
     if (!selectedFolderId) return;
-    const inCategory = projectFolders.some((f: ProjectFolderItem) => f.id === selectedFolderId);
+    const inCategory = foldersInSelectedCategory.some((f: ProjectFolderItem) => f.id === selectedFolderId);
     if (!inCategory) setSelectedFolderId(null);
-  }, [selectedCategory, projectFolders, selectedFolderId]);
+  }, [selectedCategory, foldersInSelectedCategory, selectedFolderId]);
 
   // Organize files by category
   const filesByCategory = useMemo(() => {
@@ -270,21 +296,158 @@ export default function ProjectFilesTabEnhanced({
     return sorted;
   }, [filesByCategory, selectedCategory, selectedFolderId, sortBy, sortOrder, fileSearchQuery]);
 
+  const visibleFileIds = useMemo(() => currentFiles.map(f => f.id), [currentFiles]);
+  const { allSelected: allVisibleSelected, someSelected: someVisibleSelected } =
+    fileSelection.getSelectionState(visibleFileIds);
+
+  const canSelectInCurrentView = canWriteFiles && filesSection === 'active';
+
+  useEffect(() => {
+    fileSelection.clear();
+  }, [selectedCategory, selectedFolderId, filesSection]);
+
+  const startFileDrag = (e: DragEvent, fileId: string) => {
+    if (!canWriteFiles) return;
+    const ids = fileSelection.resolveDragIds(fileId);
+    setDraggedFileIds(e.dataTransfer, ids);
+    setIsDragging(true);
+  };
+
+  const endFileDrag = () => {
+    setIsDragging(false);
+    clearDropTarget();
+  };
+
+  const moveFilesToLocation = async (
+    fileIds: string[],
+    destination: { category: string; folderId: string | null },
+    label?: string,
+  ) => {
+    const unique = [...new Set(fileIds.filter(Boolean))];
+    if (unique.length === 0) return;
+    if (!canWriteFiles || !isWriteCategoryAllowed(destination.category)) {
+      toast.error('You do not have permission to move files to this category');
+      return;
+    }
+    const categoryValue = destination.category === 'uncategorized' ? null : destination.category;
+    const filesQueryKey = ['projectFiles', projectId] as const;
+    const snapshot = patchFilesInQueryCache(
+      queryClient,
+      filesQueryKey,
+      unique,
+      { category: categoryValue, folder_id: destination.folderId },
+    );
+    fileSelection.clear();
+    const results = await Promise.allSettled(
+      unique.map((fileId) =>
+        api('PUT', `/projects/${projectId}/files/${fileId}`, {
+          category: categoryValue,
+          folder_id: destination.folderId,
+        }),
+      ),
+    );
+    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    if (ok === 0) {
+      restoreQueryCache(queryClient, filesQueryKey, snapshot);
+    } else {
+      invalidateQueriesInBackground(queryClient, [
+        filesQueryKey,
+        ['projectRecentActivity', projectId],
+      ]);
+    }
+    if (ok === unique.length) {
+      toast.success(
+        unique.length === 1
+          ? 'File moved'
+          : `Moved ${ok} files${label ? ` to ${label}` : ''}`,
+      );
+    } else {
+      toast.error(`Moved ${ok} of ${unique.length} files`);
+    }
+  };
+
+  const moveFilesToCategory = async (fileIds: string[], newCategory: string, label?: string) => {
+    await moveFilesToLocation(fileIds, { category: newCategory, folderId: null }, label);
+  };
+
+  const moveFilesToFolder = async (fileIds: string[], folderId: string | null, label?: string) => {
+    const unique = [...new Set(fileIds.filter(Boolean))];
+    if (unique.length === 0) return;
+    const cat = selectedCategory;
+    if (cat === 'all' || cat === 'uncategorized') return;
+    await moveFilesToLocation(fileIds, { category: cat, folderId }, label);
+  };
+
+  const handleBulkDeleteSelected = async () => {
+    const ids = [...fileSelection.selectedIds];
+    if (ids.length === 0) return;
+    const result = await confirm({
+      title: 'Delete selected files',
+      message: `Remove ${ids.length} file(s) from the project library?`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    setBulkDeleting(true);
+    try {
+      const allowed = ids.filter(id => {
+        const file = files.find(f => f.id === id);
+        const cat = file?.category || 'uncategorized';
+        return canWriteFiles && isWriteCategoryAllowed(cat);
+      });
+      if (allowed.length === 0) {
+        toast.error('You do not have permission to delete these files');
+        return;
+      }
+      const results = await Promise.allSettled(
+        allowed.map(fileId => api('DELETE', `/projects/${projectId}/files/${fileId}`)),
+      );
+      const ok = results.filter(r => r.status === 'fulfilled').length;
+      await queryClient.invalidateQueries({ queryKey: ['projectDeletedFiles', projectId] });
+      await onRefresh();
+      fileSelection.clear();
+      if (ok === allowed.length) {
+        toast.success(`Removed ${ok} file(s) from project`);
+      } else {
+        toast.error(`Removed ${ok} of ${allowed.length} file(s)`);
+      }
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const handleDropFileIds = async (
+    e: DragEvent,
+    action: (ids: string[]) => void | Promise<void>,
+  ) => {
+    if (dropLooksLikeFolderTree(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {
+      return false;
+    }
+    const folderId = e.dataTransfer.getData('application/x-project-folder-id');
+    if (folderId) return false;
+    if (!isInternalFileDrag(e.dataTransfer)) return false;
+    const ids = getDraggedFileIds(e.dataTransfer);
+    if (ids.length === 0) return false;
+    await action(ids);
+    endFileDrag();
+    return true;
+  };
+
   // Folders at current level (Windows-style: show in category, click to enter). Root level = parent_id null; inside folder = parent_id = selectedFolderId
   const currentFolderChildren = useMemo(() => {
     if (selectedCategory === 'all' || selectedCategory === 'uncategorized') return [];
     const parentId = selectedFolderId || null;
-    return projectFolders
+    return foldersInSelectedCategory
       .filter((f: ProjectFolderItem) => (f.parent_id || null) === parentId)
       .sort((a: ProjectFolderItem, b: ProjectFolderItem) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
-  }, [projectFolders, selectedCategory, selectedFolderId]);
+  }, [foldersInSelectedCategory, selectedCategory, selectedFolderId]);
 
   // Parent folder id when we're inside a folder (for "Up" navigation)
   const currentParentFolderId = useMemo(() => {
     if (!selectedFolderId) return null;
-    const folder = projectFolders.find((f: ProjectFolderItem) => f.id === selectedFolderId);
+    const folder = foldersInSelectedCategory.find((f: ProjectFolderItem) => f.id === selectedFolderId);
     return folder?.parent_id || null;
-  }, [projectFolders, selectedFolderId]);
+  }, [foldersInSelectedCategory, selectedFolderId]);
 
   // Breadcrumb path from root to current folder (for Location bar: "Root > Pasta A > Pasta B")
   const locationBreadcrumb = useMemo(() => {
@@ -294,14 +457,20 @@ export default function ProjectFilesTabEnhanced({
     let currentId: string | null = selectedFolderId;
     const chain: ProjectFolderItem[] = [];
     while (currentId) {
-      const folder = projectFolders.find((f: ProjectFolderItem) => f.id === currentId);
+      const folder = foldersInSelectedCategory.find((f: ProjectFolderItem) => f.id === currentId);
       if (!folder) break;
       chain.unshift(folder);
       currentId = folder.parent_id || null;
     }
     chain.forEach((f: ProjectFolderItem) => path.push({ id: f.id, name: f.name }));
     return path;
-  }, [selectedCategory, selectedFolderId, projectFolders]);
+  }, [selectedCategory, selectedFolderId, foldersInSelectedCategory]);
+
+  const folderFileCounts = useMemo(() => {
+    if (selectedCategory === 'all' || selectedCategory === 'uncategorized') return {};
+    const categoryFiles = filesByCategory[selectedCategory] || [];
+    return buildFolderFileCounts(categoryFiles, foldersInSelectedCategory);
+  }, [filesByCategory, selectedCategory, foldersInSelectedCategory]);
   
   const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
     if (sortBy === column) {
@@ -675,41 +844,12 @@ export default function ProjectFilesTabEnhanced({
     }
   };
 
-  const handleMoveFile = async (fileId: string, newCategory: string) => {
-    try {
-      if (!canWriteFiles || !isWriteCategoryAllowed(newCategory)) {
-        toast.error('You do not have permission to move files to this category');
-        return;
-      }
-      await api('PUT', `/projects/${projectId}/files/${fileId}`, {
-        category: newCategory === 'uncategorized' ? null : newCategory,
-        folder_id: null, // move to root of the target category
-      });
-      await onRefresh();
-      toast.success('File moved');
-    } catch (_e) {
-      toast.error('Failed to move file');
-    }
-  };
-
   const handleMoveFileToFolder = async (fileId: string, folderId: string | null) => {
-    try {
-      const file = files.find(f => f.id === fileId);
-      const cat = file?.category || selectedCategory;
-      if (cat === 'all' || cat === 'uncategorized') return;
-      if (!canWriteFiles || !isWriteCategoryAllowed(cat)) {
-        toast.error('You do not have permission to move files');
-        return;
-      }
-      await api('PUT', `/projects/${projectId}/files/${fileId}`, {
-        folder_id: folderId,
-        ...(folderId ? {} : { category: cat })
-      });
-      await onRefresh();
-      toast.success('File moved');
-    } catch (_e) {
-      toast.error('Failed to move file');
-    }
+    const ids = fileSelection.resolveDragIds(fileId);
+    const label = folderId
+      ? projectFolders.find((folder) => folder.id === folderId)?.name
+      : 'Root';
+    await moveFilesToFolder(ids, folderId, label);
   };
 
   const handleCreateFolder = async () => {
@@ -988,18 +1128,41 @@ export default function ProjectFilesTabEnhanced({
     );
   };
 
-  const openMoveCategoryModal = (fileId: string) => {
-    const f = files.find((x) => x.id === fileId);
-    const cat = f?.category;
-    if (!cat || cat === 'uncategorized') {
-      setMoveModalCategory('uncategorized');
-    } else if (visibleCategories.some((c: any) => c.id === cat)) {
-      setMoveModalCategory(cat);
-    } else {
-      setMoveModalCategory('uncategorized');
-    }
-    setMoveModalFileId(fileId);
+  const openMoveLocationModal = (fileId: string) => {
+    setMoveLocationFileId(fileId);
   };
+
+  const moveLocationFile = useMemo(
+    () => (moveLocationFileId ? files.find((f) => f.id === moveLocationFileId) ?? null : null),
+    [files, moveLocationFileId],
+  );
+
+  const moveLocationInitialCategory = useMemo(() => {
+    const fileCat = moveLocationFile?.category;
+    if (fileCat && visibleCategories.some((c: { id: string }) => c.id === fileCat)) {
+      return fileCat;
+    }
+    if (fileCat === undefined || fileCat === null || fileCat === '') return 'uncategorized';
+    if (selectedCategory !== 'all' && selectedCategory !== 'uncategorized') return selectedCategory;
+    return 'uncategorized';
+  }, [moveLocationFile, visibleCategories, selectedCategory]);
+
+  const fileLocationFolders = useMemo(
+    () =>
+      projectFolders.map((folder) => ({
+        id: folder.id,
+        name: folder.name,
+        category: folder.category,
+        parent_id: folder.parent_id,
+      })),
+    [projectFolders],
+  );
+
+  const moveLocationSelectedCount = useMemo(() => {
+    if (!moveLocationFileId) return 1;
+    const ids = fileSelection.resolveDragIds(moveLocationFileId);
+    return ids.length;
+  }, [moveLocationFileId, fileSelection]);
 
   const handlePermanentDeleteFile = async (fileId: string) => {
     const result = await confirm({
@@ -1056,17 +1219,6 @@ export default function ProjectFilesTabEnhanced({
       ...visibleCategories.map((cat: any) => ({ value: String(cat.id), label: String(cat.name) })),
     ],
     [visibleCategories],
-  );
-
-  const folderSelectOptions = useMemo(
-    () => [
-      { value: '', label: 'Root' },
-      ...projectFolders.map((folder: ProjectFolderItem) => ({
-        value: folder.id,
-        label: folder.name,
-      })),
-    ],
-    [projectFolders],
   );
 
   const filesBrowserBody = (
@@ -1140,17 +1292,14 @@ export default function ProjectFilesTabEnhanced({
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex flex-wrap items-center gap-1">
-                                  <button
-                                    type="button"
+                                  <AppListRowIconButton
+                                    preset="download"
+                                    label="Download"
                                     onClick={async () => {
                                       const url = await fetchDownloadUrl(df.file_object_id);
                                       if (url) window.open(url, '_blank');
                                     }}
-                                    title="Download"
-                                    className="p-1 rounded hover:bg-gray-100 text-xs"
-                                  >
-                                    ⬇️
-                                  </button>
+                                  />
                                   <button
                                     type="button"
                                     onClick={() => handleRestoreDeletedFile(df.id)}
@@ -1225,44 +1374,29 @@ export default function ProjectFilesTabEnhanced({
                   <button
                     key={cat.id}
                     onClick={() => setSelectedCategory(cat.id)}
+                    {...fileDropTargetProps('category')}
+                    {...(canEditCategory
+                      ? makeDropHandlers('category', cat.id, cat.name, async (e) => {
+                          const dtCat = e.dataTransfer;
+                          if (dropLooksLikeFolderTree(dtCat) || (dtCat.files?.length || 0) > 0) {
+                            await uploadFromDrop(dtCat, cat.id, undefined);
+                            return;
+                          }
+                          const folderId = e.dataTransfer.getData('application/x-project-folder-id');
+                          if (folderId) {
+                            await handleMoveFolderToCategory(folderId, cat.id);
+                            return;
+                          }
+                          await handleDropFileIds(e, ids => moveFilesToCategory(ids, cat.id, cat.name));
+                        })
+                      : {})}
                     onDragOver={canEditCategory ? (e) => {
                       e.preventDefault();
-                      e.stopPropagation();
                       setIsDragging(true);
-                    } : undefined}
-                    onDragLeave={canEditCategory ? (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsDragging(false);
-                    } : undefined}
-                    onDrop={canEditCategory ? async (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsDragging(false);
-                      
-                      // OS file / folder drop (folder tree → create project folders + upload)
-                      const dtCat = e.dataTransfer;
-                      if (dropLooksLikeFolderTree(dtCat) || (dtCat.files?.length || 0) > 0) {
-                        await uploadFromDrop(dtCat, cat.id, undefined);
-                        return;
-                      }
-                      
-                      // Check if moving a folder to this category
-                      const folderId = e.dataTransfer.getData('application/x-project-folder-id');
-                      if (folderId) {
-                        await handleMoveFolderToCategory(folderId, cat.id);
-                        return;
-                      }
-                      
-                      // Check if moving existing file to this category
-                      if (draggedFileId) {
-                        await handleMoveFile(draggedFileId, cat.id);
-                        setDraggedFileId(null);
-                      }
                     } : undefined}
                     className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
                       selectedCategory === cat.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
-                    } ${isDragging && canEditCategory ? 'bg-blue-50' : ''} ${!canEditCategory ? 'opacity-70' : ''}`}
+                    } ${dropTargetClass(isDropActive('category', cat.id), 'category')} ${!canEditCategory ? 'opacity-70' : ''}`}
                   >
                     <div className="flex items-center gap-2">
                       <span className="text-xs">{cat.icon || '📁'}</span>
@@ -1291,14 +1425,13 @@ export default function ProjectFilesTabEnhanced({
                       toast('Folders must stay in a category; drop on a category instead.');
                       return;
                     }
-                    if (draggedFileId) {
-                      await handleMoveFile(draggedFileId, 'uncategorized');
-                      setDraggedFileId(null);
+                    if (await handleDropFileIds(e, ids => moveFilesToCategory(ids, 'uncategorized', 'Uncategorized'))) {
+                      return;
                     }
                   } : undefined}
                   className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
                     selectedCategory === 'uncategorized' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
-                  } ${isDragging && canWriteFiles ? 'bg-blue-50' : ''}`}
+                  } ${dropTargetClass(isDropActive('category', 'uncategorized'), 'category')}`}
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-xs">📦</span>
@@ -1312,22 +1445,35 @@ export default function ProjectFilesTabEnhanced({
 
           {/* Right Content Area */}
           <div 
-            className={`flex-1 overflow-y-auto p-4 ${isDragging && canWriteFiles ? 'bg-blue-50 border-2 border-dashed border-blue-400' : ''}`}
+            className={`flex-1 overflow-y-auto p-4 ${dropTargetClass(
+              selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && isDropActive('root', selectedCategory),
+              'root',
+            )}`}
             onDragOver={canWriteFiles ? (e) => {
               e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(true);
+              if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {
+                setIsDragging(true);
+              }
+              if (
+                selectedCategory !== 'all' &&
+                selectedCategory !== 'uncategorized' &&
+                isInternalFileDrag(e.dataTransfer) &&
+                !isOverNestedFileDropTarget(e)
+              ) {
+                setDropTarget({ kind: 'root', id: selectedCategory, label: 'Root' });
+              }
             } : undefined}
             onDragLeave={canWriteFiles ? (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
+              leaveContainerDragLeave(e, () => {
+                setIsDragging(false);
+                clearDropTarget();
+              });
             } : undefined}
             onDrop={canWriteFiles ? async (e) => {
               e.preventDefault();
               e.stopPropagation();
               setIsDragging(false);
-              
+              clearDropTarget();
               const dtMain = e.dataTransfer;
               if (dropLooksLikeFolderTree(dtMain) || (dtMain.files?.length || 0) > 0) {
                 const category =
@@ -1336,14 +1482,11 @@ export default function ProjectFilesTabEnhanced({
                     : selectedCategory === 'uncategorized'
                       ? null
                       : selectedCategory;
-                await uploadFromDrop(dtMain, category, undefined);
+                await uploadFromDrop(dtMain, category, selectedFolderId || undefined);
                 return;
               }
-              
-              // Check if moving existing file
-              if (draggedFileId && selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
-                await handleMoveFile(draggedFileId, selectedCategory);
-                setDraggedFileId(null);
+              if (selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
+                await handleDropFileIds(e, ids => moveFilesToFolder(ids, null, 'Root'));
               }
             } : undefined}
           >
@@ -1454,7 +1597,7 @@ export default function ProjectFilesTabEnhanced({
                     <p className="text-xs text-gray-600 mb-3">
                       Creating inside{' '}
                       <span className="font-medium text-gray-900">
-                        {projectFolders.find((f: ProjectFolderItem) => f.id === selectedFolderId)?.name ?? 'folder'}
+                        {foldersInSelectedCategory.find((f: ProjectFolderItem) => f.id === selectedFolderId)?.name ?? 'folder'}
                       </span>
                     </p>
                   )}
@@ -1499,14 +1642,37 @@ export default function ProjectFilesTabEnhanced({
             )}
 
             <div className="rounded-lg border overflow-hidden bg-white">
+              <FileListDropHint dropTarget={dropTarget} />
+              {canSelectInCurrentView ? (
+                <FileListSelectionBar
+                  selectedCount={fileSelection.selectedCount}
+                  visibleCount={visibleFileIds.length}
+                  onSelectAll={() => fileSelection.selectAll(visibleFileIds)}
+                  onClear={() => fileSelection.clear()}
+                  onDeleteSelected={handleBulkDeleteSelected}
+                  deleting={bulkDeleting}
+                />
+              ) : null}
               {(selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (currentParentFolderId !== null || currentFolderChildren.length > 0 || currentFiles.length > 0)) || (selectedCategory === 'all' || selectedCategory === 'uncategorized') && currentFiles.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50 border-b">
                       <tr>
+                        {canSelectInCurrentView ? (
+                          <th className="px-2 py-2 w-8">
+                            <AppCheckboxControl
+                              checked={allVisibleSelected}
+                              aria-label={allVisibleSelected ? 'Deselect all files' : 'Select all files'}
+                              onChange={(checked) => {
+                                if (checked) fileSelection.selectAll(visibleFileIds);
+                                else fileSelection.clear();
+                              }}
+                            />
+                          </th>
+                        ) : null}
                         <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12"></th>
                         <th 
-                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none w-full"
                           onClick={() => handleSort('name')}
                         >
                           <div className="flex items-center gap-1">
@@ -1517,7 +1683,7 @@ export default function ProjectFilesTabEnhanced({
                           </div>
                         </th>
                         <th 
-                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                           onClick={() => handleSort('type')}
                         >
                           <div className="flex items-center gap-1">
@@ -1528,7 +1694,7 @@ export default function ProjectFilesTabEnhanced({
                           </div>
                         </th>
                         <th 
-                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                           onClick={() => handleSort('uploaded_at')}
                         >
                           <div className="flex items-center gap-1">
@@ -1538,7 +1704,7 @@ export default function ProjectFilesTabEnhanced({
                             )}
                           </div>
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-24">Actions</th>
+                        <th className="w-[1%] whitespace-nowrap px-3 py-2 text-right text-[10px] font-semibold text-gray-700">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -1548,6 +1714,7 @@ export default function ProjectFilesTabEnhanced({
                           className="hover:bg-gray-50 cursor-pointer bg-gray-50/50"
                           onClick={() => setSelectedFolderId(currentParentFolderId)}
                         >
+                          {canSelectInCurrentView ? <td className="px-2 py-2" /> : null}
                           <td className="px-3 py-2">
                             <div className="w-8 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
@@ -1565,6 +1732,7 @@ export default function ProjectFilesTabEnhanced({
                       {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && currentFolderChildren.map((folder: ProjectFolderItem) => (
                         <tr
                           key={folder.id}
+                          {...fileDropTargetProps('folder')}
                           draggable={canWriteFiles}
                           onDragStart={canWriteFiles ? (e) => {
                             e.dataTransfer.setData('application/x-project-folder-id', folder.id);
@@ -1572,22 +1740,46 @@ export default function ProjectFilesTabEnhanced({
                             setDraggedFolderId(folder.id);
                           } : undefined}
                           onDragEnd={() => setDraggedFolderId(null)}
-                          className={`hover:bg-gray-50 ${canWriteFiles ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${draggedFolderId === folder.id ? 'opacity-50' : ''}`}
+                          {...(canWriteFiles && isWriteCategoryAllowed(selectedCategory)
+                            ? makeDropHandlers('folder', folder.id, folder.name, async (e) => {
+                                const dt = e.dataTransfer;
+                                if (dropLooksLikeFolderTree(dt) || (dt.files?.length || 0) > 0) {
+                                  await uploadFromDrop(dt, selectedCategory, folder.id);
+                                  return;
+                                }
+                                await handleDropFileIds(e, ids =>
+                                  moveFilesToFolder(ids, folder.id, folder.name),
+                                );
+                              })
+                            : {})}
+                          className={uiCx(
+                            'hover:bg-gray-50',
+                            canWriteFiles ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
+                            draggedFolderId === folder.id ? 'opacity-50' : '',
+                            dropTargetClass(isDropActive('folder', folder.id), 'folder'),
+                          )}
                           onClick={() => setSelectedFolderId(folder.id)}
                         >
+                          {canSelectInCurrentView ? <td className="px-2 py-2" /> : null}
                           <td className="px-3 py-2">
                             <div className="w-8 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
                             </div>
                           </td>
                           <td className="px-3 py-2">
-                            <div className="text-xs font-semibold truncate max-w-xs">{folder.name}</div>
+                            <div className="flex max-w-xs items-center gap-2">
+                              <span className="truncate text-xs font-semibold">{folder.name}</span>
+                              <span className="ml-auto shrink-0 text-[10px] font-normal text-gray-500">
+                                ({folderFileCounts[folder.id] ?? 0})
+                              </span>
+                            </div>
                           </td>
                           <td className="px-3 py-2 text-xs text-gray-600">Folder</td>
                           <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                          <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                          <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
                             {canWriteFiles && (
-                              designSystem ? (
+                              <div className="flex items-center justify-end">
+                                {designSystem ? (
                                 <AppListRowIconButton
                                   preset="delete"
                                   label="Delete folder"
@@ -1602,7 +1794,8 @@ export default function ProjectFilesTabEnhanced({
                               >
                                 🗑️
                               </button>
-                              )
+                              )}
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -1617,10 +1810,27 @@ export default function ProjectFilesTabEnhanced({
                           <tr
                             key={f.id}
                             draggable={canWriteFiles}
-                            onDragStart={() => canWriteFiles && setDraggedFileId(f.id)}
-                            onDragEnd={() => setDraggedFileId(null)}
-                            className={`hover:bg-gray-50 ${canWriteFiles ? 'cursor-move' : ''}`}
+                            onDragStart={(e) => startFileDrag(e, f.id)}
+                            onDragEnd={endFileDrag}
+                            className={uiCx(
+                              'hover:bg-gray-50',
+                              canWriteFiles ? 'cursor-move' : '',
+                              fileSelection.isSelected(f.id) ? 'bg-brand-red/5' : '',
+                            )}
                           >
+                            {canSelectInCurrentView ? (
+                              <td className="px-2 py-2" onClick={e => e.stopPropagation()}>
+                                <AppCheckboxControl
+                                  checked={fileSelection.isSelected(f.id)}
+                                  aria-label={`Select ${name}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (e.shiftKey) fileSelection.toggleRange(f.id, visibleFileIds);
+                                    else fileSelection.toggle(f.id);
+                                  }}
+                                />
+                              </td>
+                            ) : null}
                             <td className="px-3 py-2">
                               {isImg ? (
                                 <div 
@@ -1749,61 +1959,27 @@ export default function ProjectFilesTabEnhanced({
                                 {f.uploaded_at ? formatDateTimeVancouver(f.uploaded_at) : '-'}
                               </div>
                             </td>
-                            <td className="px-3 py-2">
-                              <div className="flex items-center gap-0.5">
-                                <button
+                            <td className="px-3 py-2 text-right">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <AppListRowIconButton
+                                  preset="download"
+                                  label="Download"
                                   onClick={async (e) => {
                                     e.stopPropagation();
                                     const url = await fetchDownloadUrl(f.file_object_id);
                                     if (url) window.open(url, '_blank');
                                   }}
-                                  title="Download"
-                                  className="p-1 rounded hover:bg-gray-100 text-xs"
-                                >
-                                  ⬇️
-                                </button>
+                                />
                                 {canWriteFiles && (
                                   <>
-                                    <button
+                                    <AppListRowIconButton
+                                      preset="move"
+                                      label="Move to…"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        openMoveCategoryModal(f.id);
+                                        openMoveLocationModal(f.id);
                                       }}
-                                      title="Move to category"
-                                      className="p-1 rounded hover:bg-gray-100 text-xs"
-                                    >
-                                      📦
-                                    </button>
-                                    {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (
-                                      designSystem ? (
-                                        <AppSelect
-                                          className="max-w-[100px]"
-                                          value={f.folder_id || ''}
-                                          options={folderSelectOptions}
-                                          onChange={(e) => {
-                                            const v = e.target.value;
-                                            handleMoveFileToFolder(f.id, v === '' ? null : v);
-                                          }}
-                                          fieldHint={'Folder\n\nMove this file to another folder in the category.'}
-                                        />
-                                      ) : (
-                                      <select
-                                        title="Move to folder"
-                                        value={f.folder_id || ''}
-                                        onChange={(e) => {
-                                          const v = e.target.value;
-                                          handleMoveFileToFolder(f.id, v === '' ? null : v);
-                                        }}
-                                        onClick={e => e.stopPropagation()}
-                                        className="p-1 rounded border text-xs max-w-[100px]"
-                                      >
-                                        <option value="">Root</option>
-                                        {projectFolders.map((folder: ProjectFolderItem) => (
-                                          <option key={folder.id} value={folder.id}>{folder.name}</option>
-                                        ))}
-                                      </select>
-                                      )
-                                    )}
+                                    />
                                     {designSystem ? (
                                     <AppListRowIconButton
                                       preset="delete"
@@ -1954,40 +2130,32 @@ export default function ProjectFilesTabEnhanced({
         </div></OverlayPortal>
       )}
 
-      {moveModalFileId && designSystem && (
-        <AppFormModal
+      {moveLocationFileId ? (
+        <FileMoveLocationModal
           open
-          onClose={() => setMoveModalFileId(null)}
-          title="Move to category"
-          quickInfo={projectFilesMoveCategoryQuickInfo}
-          footer={
-            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-              <AppButton variant="secondary" size="sm" type="button" onClick={() => setMoveModalFileId(null)}>
-                Cancel
-              </AppButton>
-              <AppButton
-                size="sm"
-                type="button"
-                onClick={async () => {
-                  if (!moveModalFileId) return;
-                  await handleMoveFile(moveModalFileId, moveModalCategory);
-                  setMoveModalFileId(null);
-                }}
-              >
-                Move
-              </AppButton>
-            </div>
-          }
-        >
-          <AppSelect
-            label="Category"
-            value={moveModalCategory}
-            options={moveCategoryOptions}
-            onChange={(e) => setMoveModalCategory(e.target.value)}
-            fieldHint="Category\n\nChoose where this file should live. The file moves to the root of that category."
-          />
-        </AppFormModal>
-      )}
+          onClose={() => setMoveLocationFileId(null)}
+          title="Move files"
+          quickInfo={projectFilesMoveLocationQuickInfo}
+          categoryOptions={moveCategoryOptions}
+          folders={fileLocationFolders}
+          initialCategory={moveLocationInitialCategory}
+          initialFolderId={moveLocationFile?.folder_id}
+          selectedFileCount={moveLocationSelectedCount}
+          onMove={async (destination) => {
+            if (!moveLocationFileId) return;
+            const ids = fileSelection.resolveDragIds(moveLocationFileId);
+            const folderLabel =
+              destination.folderId === null
+                ? 'Root'
+                : projectFolders.find((folder) => folder.id === destination.folderId)?.name;
+            const categoryLabel =
+              moveCategoryOptions.find((option) => option.value === destination.category)?.label ??
+              destination.category;
+            const label = folderLabel ? `${categoryLabel} / ${folderLabel}` : categoryLabel;
+            await moveFilesToLocation(ids, destination, label);
+          }}
+        />
+      ) : null}
       {notesModalFileId && designSystem && (
         <AppFormModal
           open
@@ -2056,64 +2224,6 @@ export default function ProjectFilesTabEnhanced({
                     Close
                   </button>
                 )}
-              </div>
-            </div>
-          </div>
-        </OverlayPortal>
-      )}
-      {moveModalFileId && !designSystem && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-            onClick={(e) => e.target === e.currentTarget && setMoveModalFileId(null)}
-            role="presentation"
-          >
-            <div
-              className="w-[480px] max-w-[95vw] bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-              role="dialog"
-              aria-labelledby="project-move-category-title"
-            >
-              <div id="project-move-category-title" className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900">
-                Move to category
-              </div>
-              <div className="p-4 text-xs text-gray-700">
-                <label htmlFor="project-move-category-select" className="block mb-2 font-medium text-gray-800">
-                  Category
-                </label>
-                <select
-                  id="project-move-category-select"
-                  value={moveModalCategory}
-                  onChange={(e) => setMoveModalCategory(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white"
-                >
-                  <option value="uncategorized">Uncategorized</option>
-                  {visibleCategories.map((cat: any) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="p-4 flex items-center justify-end gap-2 border-t border-gray-200">
-                <button
-                  type="button"
-                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all"
-                  onClick={() => setMoveModalFileId(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg px-3 py-2 bg-brand-red text-white text-xs font-medium hover:opacity-90 transition-all"
-                  onClick={async () => {
-                    if (!moveModalFileId) return;
-                    await handleMoveFile(moveModalFileId, moveModalCategory);
-                    setMoveModalFileId(null);
-                  }}
-                >
-                  Move
-                </button>
               </div>
             </div>
           </div>
@@ -2234,7 +2344,7 @@ export default function ProjectFilesTabEnhanced({
               <p className={uiTypography.helper}>
                 Creating inside{' '}
                 <span className="font-medium text-gray-900">
-                  {projectFolders.find((f: ProjectFolderItem) => f.id === selectedFolderId)?.name ?? 'folder'}
+                  {foldersInSelectedCategory.find((f: ProjectFolderItem) => f.id === selectedFolderId)?.name ?? 'folder'}
                 </span>
               </p>
             )}

@@ -1,12 +1,30 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import ImageEditor from '@/components/ImageEditor';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { FileImagePreviewModal, useFileImageGallery } from '@/components/files';
-import { AppSectionHeader, appSectionPresetProps, AppCard, uiSpacing } from '@/components/ui';
+import {
+  FileImagePreviewModal,
+  FileListSelectionBar,
+  FileMoveLocationModal,
+  FileListDropHint,
+  dropTargetClass,
+  fileDropTargetProps,
+  invalidateQueriesInBackground,
+  leaveContainerDragLeave,
+  patchFilesInQueryCache,
+  restoreQueryCache,
+  getDraggedFileIds,
+  isInternalFileDrag,
+  setDraggedFileIds,
+  useFileDropTarget,
+  useFileImageGallery,
+  useFileListSelection,
+} from '@/components/files';
+import { libraryFilesMoveCategoryQuickInfo } from '@/lib/formModalQuickInfo';
+import { AppSectionHeader, appSectionPresetProps, AppCard, AppCheckboxControl, AppListRowIconButton, uiCx, uiSpacing } from '@/components/ui';
 
 export type ClientFileForFiles = { id: string; file_object_id: string; is_image?: boolean; content_type?: string; category?: string; original_name?: string; uploaded_at?: string; site_id?: string };
 
@@ -20,7 +38,9 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   const [filesSection, setFilesSection] = useState<'active' | 'deleted'>('active');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isDragging, setIsDragging] = useState(false);
-  const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const fileSelection = useFileListSelection();
+  const { dropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
   const [showUpload, setShowUpload] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{ id: string; file: File; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }>>([]);
   const imageGallery = useFileImageGallery();
@@ -31,8 +51,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
   const [editingFileNameValue, setEditingFileNameValue] = useState('');
-  const [moveModalFileId, setMoveModalFileId] = useState<string | null>(null);
-  const [moveModalCategory, setMoveModalCategory] = useState<string>('uncategorized');
+  const [moveLocationFileId, setMoveLocationFileId] = useState<string | null>(null);
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
@@ -105,6 +124,91 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
       return 0;
     });
   }, [filesByCategory, selectedCategory, sortBy, sortOrder]);
+
+  const visibleFileIds = useMemo(() => currentFiles.map((f) => f.id), [currentFiles]);
+  const { allSelected: allVisibleSelected } = fileSelection.getSelectionState(visibleFileIds);
+  const canSelectInCurrentView = canEditFiles && filesSection === 'active';
+
+  useEffect(() => {
+    fileSelection.clear();
+  }, [selectedCategory, filesSection]);
+
+  const startFileDrag = (e: DragEvent, fileId: string) => {
+    if (!canEditFiles) return;
+    setDraggedFileIds(e.dataTransfer, fileSelection.resolveDragIds(fileId));
+    setIsDragging(true);
+  };
+
+  const endFileDrag = () => {
+    setIsDragging(false);
+    clearDropTarget();
+  };
+
+  const moveFilesToCategory = async (fileIds: string[], newCategory: string, label?: string) => {
+    const unique = [...new Set(fileIds.filter(Boolean))];
+    if (unique.length === 0 || !canEditFiles) return;
+    const categoryValue = newCategory === 'uncategorized' ? null : newCategory;
+    const filesQueryKey = ['clientFiles', clientId] as const;
+    const snapshot = patchFilesInQueryCache(
+      queryClient,
+      filesQueryKey,
+      unique,
+      { category: categoryValue ?? undefined },
+    );
+    fileSelection.clear();
+    const results = await Promise.allSettled(
+      unique.map((fileId) =>
+        api('PUT', `/clients/${clientId}/files/${fileId}`, { category: categoryValue }),
+      ),
+    );
+    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    if (ok === 0) {
+      restoreQueryCache(queryClient, filesQueryKey, snapshot);
+    } else {
+      invalidateQueriesInBackground(queryClient, [filesQueryKey]);
+    }
+    if (ok === unique.length) {
+      toast.success(unique.length === 1 ? 'File moved' : `Moved ${ok} files${label ? ` to ${label}` : ''}`);
+    } else {
+      toast.error(`Moved ${ok} of ${unique.length} files`);
+    }
+  };
+
+  const handleDropFileIds = async (e: DragEvent, action: (ids: string[]) => void | Promise<void>) => {
+    if ((e.dataTransfer.files?.length || 0) > 0) return false;
+    if (!isInternalFileDrag(e.dataTransfer)) return false;
+    const ids = getDraggedFileIds(e.dataTransfer);
+    if (ids.length === 0) return false;
+    await action(ids);
+    endFileDrag();
+    return true;
+  };
+
+  const handleBulkDeleteSelected = async () => {
+    const ids = [...fileSelection.selectedIds];
+    if (ids.length === 0) return;
+    const result = await confirm({
+      title: 'Delete selected files',
+      message: `Remove ${ids.length} file(s) from the customer library?`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    if (!canEditFiles) return;
+    setBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((fileId) => api('DELETE', `/clients/${clientId}/files/${fileId}`)),
+      );
+      const ok = results.filter((r) => r.status === 'fulfilled').length;
+      await queryClient.invalidateQueries({ queryKey: ['clientDeletedFiles', clientId] });
+      await onRefresh();
+      fileSelection.clear();
+      toast.success(ok === ids.length ? `Removed ${ok} file(s)` : `Removed ${ok} of ${ids.length} file(s)`);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
     if (sortBy === column) setSortOrder((s) => (s === 'asc' ? 'desc' : 'asc'));
@@ -217,14 +321,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   };
 
   const handleMoveFile = async (fileId: string, newCategory: string) => {
-    try {
-      if (!canEditFiles) return;
-      await api('PUT', `/clients/${clientId}/files/${fileId}`, { category: newCategory === 'uncategorized' ? null : newCategory });
-      await onRefresh();
-      toast.success('File moved');
-    } catch {
-      toast.error('Failed to move file');
-    }
+    await moveFilesToCategory([fileId], newCategory);
   };
 
   const handleDeleteFile = async (fileId: string) => {
@@ -302,18 +399,37 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
     setEditingFileNameValue(f.original_name || f.file_object_id || '');
   };
 
-  const openMoveCategoryModal = (fileId: string) => {
-    const f = files.find((x) => x.id === fileId);
-    const cat = f?.category;
-    if (!cat || cat === 'uncategorized') {
-      setMoveModalCategory('uncategorized');
-    } else if (visibleCategories.some((c: any) => c.id === cat)) {
-      setMoveModalCategory(cat);
-    } else {
-      setMoveModalCategory('uncategorized');
-    }
-    setMoveModalFileId(fileId);
+  const moveCategoryOptions = useMemo(
+    () => [
+      { value: 'uncategorized', label: 'Uncategorized' },
+      ...visibleCategories.map((cat: { id: string; name: string }) => ({
+        value: String(cat.id),
+        label: String(cat.name),
+      })),
+    ],
+    [visibleCategories],
+  );
+
+  const openMoveLocationModal = (fileId: string) => {
+    setMoveLocationFileId(fileId);
   };
+
+  const moveLocationFile = useMemo(
+    () => (moveLocationFileId ? files.find((f) => f.id === moveLocationFileId) ?? null : null),
+    [files, moveLocationFileId],
+  );
+
+  const moveLocationInitialCategory = useMemo(() => {
+    const fileCat = moveLocationFile?.category;
+    if (fileCat && visibleCategories.some((c: { id: string }) => c.id === fileCat)) return fileCat;
+    if (selectedCategory !== 'all' && selectedCategory !== 'uncategorized') return selectedCategory;
+    return 'uncategorized';
+  }, [moveLocationFile, visibleCategories, selectedCategory]);
+
+  const moveLocationSelectedCount = useMemo(() => {
+    if (!moveLocationFileId) return 1;
+    return fileSelection.resolveDragIds(moveLocationFileId).length;
+  }, [moveLocationFileId, fileSelection]);
 
   const filesViewToggle = isAdmin ? (
     <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-0.5" role="tablist" aria-label="File views">
@@ -420,17 +536,14 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex flex-wrap items-center gap-1">
-                                  <button
-                                    type="button"
+                                  <AppListRowIconButton
+                                    preset="download"
+                                    label="Download"
                                     onClick={async () => {
                                       const url = await fetchDownloadUrl(df.file_object_id);
                                       if (url) window.open(url, '_blank');
                                     }}
-                                    title="Download"
-                                    className="p-1 rounded hover:bg-gray-100 text-xs"
-                                  >
-                                    ⬇️
-                                  </button>
+                                  />
                                   <button
                                     type="button"
                                     onClick={() => handleRestoreDeletedFile(df.id)}
@@ -486,24 +599,23 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                   const canEditCat = canEditFiles;
                   return (
                     <button
-                      key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id)}
-                      onDragOver={canEditCat ? (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); } : undefined}
-                      onDragLeave={canEditCat ? (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); } : undefined}
-                      onDrop={canEditCat ? async (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsDragging(false);
-                        if (e.dataTransfer.files?.length) {
-                          await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
-                          return;
-                        }
-                        if (draggedFileId) {
-                          await handleMoveFile(draggedFileId, cat.id);
-                          setDraggedFileId(null);
-                        }
-                      } : undefined}
-                      className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${selectedCategory === cat.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'} ${isDragging && canEditCat ? 'bg-blue-50' : ''}`}
+                    key={cat.id}
+                    {...fileDropTargetProps('category')}
+                    onClick={() => setSelectedCategory(cat.id)}
+                      {...(canEditCat
+                        ? makeDropHandlers('category', cat.id, cat.name, async (e) => {
+                            if (e.dataTransfer.files?.length) {
+                              await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
+                              return;
+                            }
+                            await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, cat.id, cat.name));
+                          })
+                        : {})}
+                      className={uiCx(
+                        'w-full text-left px-3 py-2 border-b hover:bg-white transition-colors',
+                        selectedCategory === cat.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700',
+                        dropTargetClass(isDropActive('category', cat.id), 'category'),
+                      )}
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-xs">{cat.icon || '📁'}</span>
@@ -514,7 +626,24 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                   );
                 })}
                 {filesByCategory['uncategorized']?.length > 0 && (
-                  <button onClick={() => setSelectedCategory('uncategorized')} className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${selectedCategory === 'uncategorized' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'}`}>
+                  <button
+                    {...fileDropTargetProps('category')}
+                    onClick={() => setSelectedCategory('uncategorized')}
+                    {...(canEditFiles
+                      ? makeDropHandlers('category', 'uncategorized', 'Uncategorized', async (e) => {
+                          if (e.dataTransfer.files?.length) {
+                            await uploadMultiple(Array.from(e.dataTransfer.files), 'uncategorized');
+                            return;
+                          }
+                          await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, 'uncategorized', 'Uncategorized'));
+                        })
+                      : {})}
+                    className={uiCx(
+                      'w-full text-left px-3 py-2 border-b hover:bg-white transition-colors',
+                      selectedCategory === 'uncategorized' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700',
+                      dropTargetClass(isDropActive('category', 'uncategorized'), 'category'),
+                    )}
+                  >
                     <div className="flex items-center gap-2">
                       <span className="text-xs">📦</span>
                       <span className="text-xs">Uncategorized</span>
@@ -525,21 +654,26 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
               </div>
             </div>
             <div
-              className={`flex-1 overflow-y-auto p-4 ${isDragging && canEditFiles ? 'bg-blue-50 border-2 border-dashed border-blue-400' : ''}`}
-              onDragOver={canEditFiles ? (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); } : undefined}
-              onDragLeave={canEditFiles ? (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); } : undefined}
+              className={uiCx('flex-1 overflow-y-auto p-4', isDragging && canEditFiles ? 'bg-blue-50/50' : '')}
+              onDragOver={canEditFiles ? (e) => { e.preventDefault(); if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) setIsDragging(true); } : undefined}
+              onDragLeave={canEditFiles ? (e) => {
+                leaveContainerDragLeave(e, () => {
+                  setIsDragging(false);
+                  clearDropTarget();
+                });
+              } : undefined}
               onDrop={canEditFiles ? async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 setIsDragging(false);
+                clearDropTarget();
                 if (e.dataTransfer.files?.length) {
                   const category = selectedCategory === 'all' ? undefined : selectedCategory === 'uncategorized' ? null : selectedCategory;
                   await uploadMultiple(Array.from(e.dataTransfer.files), category);
                   return;
                 }
-                if (draggedFileId && selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
-                  await handleMoveFile(draggedFileId, selectedCategory);
-                  setDraggedFileId(null);
+                if (selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
+                  await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, selectedCategory));
                 }
               } : undefined}
             >
@@ -555,11 +689,35 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                 )}
               </div>
               <div className="rounded-lg border overflow-hidden bg-white">
+                <FileListDropHint dropTarget={dropTarget} />
+                {canSelectInCurrentView ? (
+                  <FileListSelectionBar
+                    selectedCount={fileSelection.selectedCount}
+                    visibleCount={visibleFileIds.length}
+                    onSelectAll={() => fileSelection.selectAll(visibleFileIds)}
+                    onClear={() => fileSelection.clear()}
+                    onDeleteSelected={handleBulkDeleteSelected}
+                    deleting={bulkDeleting}
+                    className="m-3 mb-0"
+                  />
+                ) : null}
                 {currentFiles.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-50 border-b">
                         <tr>
+                          {canSelectInCurrentView ? (
+                            <th className="px-2 py-2 w-8">
+                              <AppCheckboxControl
+                                checked={allVisibleSelected}
+                                aria-label={allVisibleSelected ? 'Deselect all files' : 'Select all files'}
+                                onChange={(checked) => {
+                                  if (checked) fileSelection.selectAll(visibleFileIds);
+                                  else fileSelection.clear();
+                                }}
+                              />
+                            </th>
+                          ) : null}
                           <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12"></th>
                           <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none" onClick={() => handleSort('name')}>
                             <div className="flex items-center gap-1">Name {sortBy === 'name' && <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>}</div>
@@ -579,7 +737,30 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                           const isImg = f.is_image || String(f.content_type || '').startsWith('image/');
                           const name = f.original_name || f.file_object_id;
                           return (
-                            <tr key={f.id} draggable={canEditFiles} onDragStart={() => canEditFiles && setDraggedFileId(f.id)} onDragEnd={() => setDraggedFileId(null)} className={`hover:bg-gray-50 ${canEditFiles ? 'cursor-move' : ''}`}>
+                            <tr
+                              key={f.id}
+                              draggable={canEditFiles}
+                              onDragStart={(e) => startFileDrag(e, f.id)}
+                              onDragEnd={endFileDrag}
+                              className={uiCx(
+                                'hover:bg-gray-50',
+                                canEditFiles ? 'cursor-move' : '',
+                                fileSelection.isSelected(f.id) ? 'bg-brand-red/5' : '',
+                              )}
+                            >
+                              {canSelectInCurrentView ? (
+                                <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                                  <AppCheckboxControl
+                                    checked={fileSelection.isSelected(f.id)}
+                                    aria-label={`Select ${name}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (e.shiftKey) fileSelection.toggleRange(f.id, visibleFileIds);
+                                      else fileSelection.toggle(f.id);
+                                    }}
+                                  />
+                                </td>
+                              ) : null}
                               <td className="px-3 py-2">
                                 {isImg ? (
                                   <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 cursor-pointer flex-shrink-0" onClick={() => handleFilePreview(f)}>
@@ -624,15 +805,37 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                                 <div className="text-xs text-gray-600">{f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString('pt-BR') : '-'}</div>
                               </td>
                               <td className="px-3 py-2">
-                                <div className="flex items-center gap-0.5">
-                                  <button onClick={async (e) => { e.stopPropagation(); const url = await fetchDownloadUrl(f.file_object_id); if (url) window.open(url, '_blank'); }} title="Download" className="p-1 rounded hover:bg-gray-100 text-xs">⬇️</button>
+                                <div className="flex items-center justify-end gap-0.5">
+                                  <AppListRowIconButton
+                                    preset="download"
+                                    label="Download"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      const url = await fetchDownloadUrl(f.file_object_id);
+                                      if (url) window.open(url, '_blank');
+                                    }}
+                                  />
                                   {isImg && canEditFiles && (
                                     <button onClick={(e) => { e.stopPropagation(); setEditingImage({ fileObjectId: f.file_object_id, name: f.original_name || 'image' }); }} title="Edit" className="p-1 rounded hover:bg-blue-50 text-blue-600 text-xs">✏️</button>
                                   )}
                                   {canEditFiles && (
                                     <>
-                                      <button onClick={(e) => { e.stopPropagation(); openMoveCategoryModal(f.id); }} title="Move to category" className="p-1 rounded hover:bg-gray-100 text-xs">📦</button>
-                                      <button onClick={(e) => { e.stopPropagation(); handleDeleteFile(f.id); }} title="Delete" className="p-1 rounded hover:bg-red-50 text-red-600 text-xs">🗑️</button>
+                                      <AppListRowIconButton
+                                        preset="move"
+                                        label="Move to…"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openMoveLocationModal(f.id);
+                                        }}
+                                      />
+                                      <AppListRowIconButton
+                                        preset="delete"
+                                        label="Delete"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteFile(f.id);
+                                        }}
+                                      />
                                     </>
                                   )}
                                 </div>
@@ -673,64 +876,27 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
           </div>
         </div></OverlayPortal>
       )}
-      {moveModalFileId && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-            onClick={(e) => e.target === e.currentTarget && setMoveModalFileId(null)}
-            role="presentation"
-          >
-            <div
-              className="w-[480px] max-w-[95vw] bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-              role="dialog"
-              aria-labelledby="move-category-title"
-            >
-              <div id="move-category-title" className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900">
-                Move to category
-              </div>
-              <div className="p-4 text-xs text-gray-700">
-                <label htmlFor="move-category-select" className="block mb-2 font-medium text-gray-800">
-                  Category
-                </label>
-                <select
-                  id="move-category-select"
-                  value={moveModalCategory}
-                  onChange={(e) => setMoveModalCategory(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white"
-                >
-                  <option value="uncategorized">Uncategorized</option>
-                  {visibleCategories.map((cat: any) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="p-4 flex items-center justify-end gap-2 border-t border-gray-200">
-                <button
-                  type="button"
-                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all"
-                  onClick={() => setMoveModalFileId(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg px-3 py-2 bg-brand-red text-white text-xs font-medium hover:opacity-90 transition-all"
-                  onClick={async () => {
-                    if (!moveModalFileId) return;
-                    await handleMoveFile(moveModalFileId, moveModalCategory);
-                    setMoveModalFileId(null);
-                  }}
-                >
-                  Move
-                </button>
-              </div>
-            </div>
-          </div>
-        </OverlayPortal>
-      )}
+      {moveLocationFileId ? (
+        <FileMoveLocationModal
+          open
+          onClose={() => setMoveLocationFileId(null)}
+          title="Move files"
+          quickInfo={libraryFilesMoveCategoryQuickInfo}
+          showFolderSelect={false}
+          categoryOptions={moveCategoryOptions}
+          folders={[]}
+          initialCategory={moveLocationInitialCategory}
+          selectedFileCount={moveLocationSelectedCount}
+          onMove={async (destination) => {
+            if (!moveLocationFileId) return;
+            const ids = fileSelection.resolveDragIds(moveLocationFileId);
+            const label =
+              moveCategoryOptions.find((option) => option.value === destination.category)?.label ??
+              destination.category;
+            await moveFilesToCategory(ids, destination.category, label);
+          }}
+        />
+      ) : null}
       {uploadQueue.length > 0 && (
         <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-2xl border w-80 max-h-96 overflow-hidden z-50">
           <div className="p-2.5 border-b bg-gray-50 flex items-center justify-between">

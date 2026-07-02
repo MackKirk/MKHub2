@@ -1201,6 +1201,26 @@ def create_app() -> FastAPI:
                                 db.commit()
                                 print(f"[startup] Added projects.{col}")
 
+                        project_field_brief_cols = [
+                            ("scope_of_work", "TEXT NULL"),
+                            ("job_completion_estimate", "VARCHAR(500) NULL"),
+                            ("crew_material_list", "JSON NULL"),
+                        ]
+                        for col, col_type in project_field_brief_cols:
+                            rows = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_name = 'projects' AND column_name = :col LIMIT 1
+                                    """
+                                ),
+                                {"col": col},
+                            ).fetchall()
+                            if not rows:
+                                db.execute(text(f"ALTER TABLE projects ADD COLUMN {col} {col_type}"))
+                                db.commit()
+                                print(f"[startup] Added projects.{col}")
+
                         # Backfill active projects (not opportunities / leak investigations)
                         try:
                             from .services.billing_snapshot import billing_snapshot_from_client

@@ -210,6 +210,9 @@ class Project(Base):
     cost_actual: Mapped[Optional[int]] = mapped_column(BigInteger)
     service_value: Mapped[Optional[int]] = mapped_column(BigInteger)
     description: Mapped[Optional[str]] = mapped_column(String(2000))
+    scope_of_work: Mapped[Optional[str]] = mapped_column(Text())
+    job_completion_estimate: Mapped[Optional[str]] = mapped_column(String(500))
+    crew_material_list: Mapped[Optional[list]] = mapped_column(JSON)
     notes: Mapped[Optional[str]] = mapped_column(String(2000))
     lead_source: Mapped[Optional[str]] = mapped_column(String(100))  # Lead source (same as Client)
     is_bidding: Mapped[bool] = mapped_column(Boolean, default=False)  # True if this is a bidding (quote), False if it's an active project

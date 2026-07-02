@@ -1,21 +1,41 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { FileImagePreviewModal, useFileImageGallery } from '@/components/files';
+import {
+  FileImagePreviewModal,
+  FileListSelectionBar,
+  FileMoveLocationModal,
+  FileListDropHint,
+  dropTargetClass,
+  buildFolderFileCounts,
+  fileDropTargetProps,
+  invalidateQueriesInBackground,
+  isOverNestedFileDropTarget,
+  leaveContainerDragLeave,
+  removeFilesFromQueryCache,
+  restoreQueryCache,
+  getDraggedFileIds,
+  isInternalFileDrag,
+  setDraggedFileIds,
+  useFileDropTarget,
+  useFileImageGallery,
+  useFileListSelection,
+} from '@/components/files';
 import { isAdminRole } from '@/lib/projectLinePermissionKeys';
 import {
-  companyFilesMoveDocQuickInfo,
   companyFilesNewFolderQuickInfo,
   companyFilesPermissionsQuickInfo,
   companyFilesUploadQuickInfo,
+  companyFilesMoveDocQuickInfo,
 } from '@/lib/formModalQuickInfo';
 import {
   AppButton,
   AppCard,
   AppCheckbox,
+  AppCheckboxControl,
   AppEmptyState,
   AppFileUpload,
   AppFormModal,
@@ -66,6 +86,9 @@ type DivisionOption = { id: string; label: string };
 export default function CompanyFilesTabEnhanced() {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
+  const fileSelection = useFileListSelection();
+  const { dropTarget, setDropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<Record<string, unknown>>('GET', '/auth/me') });
   const isAdmin = isAdminRole(me?.roles as string[] | undefined);
@@ -109,8 +132,10 @@ export default function CompanyFilesTabEnhanced() {
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
   const [editingFileNameValue, setEditingFileNameValue] = useState('');
   const [renameFolder, setRenameFolder] = useState<{ id: string; name: string } | null>(null);
-  const [moveDoc, setMoveDoc] = useState<{ id: string } | null>(null);
-  const [moveDocFolderId, setMoveDocFolderId] = useState('');
+  const [moveLocationDocId, setMoveLocationDocId] = useState<string | null>(null);
+  const [moveModalDept, setMoveModalDept] = useState('');
+  const [moveModalFolders, setMoveModalFolders] = useState<FolderItem[]>([]);
+  const [moveModalRootFolderId, setMoveModalRootFolderId] = useState<string | null>(null);
   const [permissionsFolder, setPermissionsFolder] = useState<{ id: string; name: string } | null>(null);
   const [permissionsData, setPermissionsData] = useState<Record<string, unknown> | null>(null);
   const [isPublic, setIsPublic] = useState(true);
@@ -233,6 +258,18 @@ export default function CompanyFilesTabEnhanced() {
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
   }, [allFolders, listParentId]);
 
+  const allDeptDocsForCounts = useMemo(() => {
+    if (!selectedDept || !departments?.length) return [];
+    const deptIndex = departments.findIndex((dept) => dept.id === selectedDept);
+    if (deptIndex < 0) return [];
+    return deptCountQueries[deptIndex]?.data ?? [];
+  }, [selectedDept, departments, deptCountQueries]);
+
+  const folderFileCounts = useMemo(
+    () => buildFolderFileCounts(allDeptDocsForCounts, allFolders),
+    [allDeptDocsForCounts, allFolders],
+  );
+
   const currentParentFolderId = useMemo(() => {
     if (!selectedFolderId) return null;
     const folder = allFolders.find((f) => f.id === selectedFolderId);
@@ -295,6 +332,73 @@ export default function CompanyFilesTabEnhanced() {
       return 0;
     });
   }, [docs, fileSearchQuery, sortBy, sortOrder]);
+
+  const visibleFileIds = useMemo(() => currentFiles.map(d => d.id), [currentFiles]);
+  const { allSelected: allVisibleSelected } = fileSelection.getSelectionState(visibleFileIds);
+  const canSelectInCurrentView = canMove && filesSection === 'active';
+
+  useEffect(() => {
+    fileSelection.clear();
+  }, [selectedDept, selectedFolderId, filesSection]);
+
+  const startFileDrag = (e: DragEvent, docId: string) => {
+    if (!canMove) return;
+    setDraggedFileIds(e.dataTransfer, fileSelection.resolveDragIds(docId));
+    setIsDragging(true);
+  };
+
+  const endFileDrag = () => {
+    setIsDragging(false);
+    clearDropTarget();
+  };
+
+  const moveDocsToLocation = async (docIds: string[], folderId: string | null, label?: string) => {
+    const unique = [...new Set(docIds.filter(Boolean))];
+    if (unique.length === 0 || !canMove) return;
+    const targetFolder = folderId;
+    if (!targetFolder) {
+      toast.error('Select a destination folder');
+      return;
+    }
+    const docsQueryKey = ['company-docs', selectedDept, effectiveFolderId] as const;
+    const snapshot = removeFilesFromQueryCache(queryClient, docsQueryKey, unique);
+    fileSelection.clear();
+    const results = await Promise.allSettled(
+      unique.map((docId) =>
+        api('PUT', `/company/files/documents/${encodeURIComponent(docId)}`, {
+          folder_id: targetFolder,
+        }),
+      ),
+    );
+    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    if (ok === 0) {
+      restoreQueryCache(queryClient, docsQueryKey, snapshot);
+    } else {
+      invalidateQueriesInBackground(queryClient, [
+        ['company-docs'],
+        ['company-docs-count'],
+      ]);
+    }
+    if (ok === unique.length) {
+      toast.success(unique.length === 1 ? 'Moved' : `Moved ${ok} files${label ? ` to ${label}` : ''}`);
+    } else {
+      toast.error(`Moved ${ok} of ${unique.length} files`);
+    }
+  };
+
+  const moveDocsToFolder = async (docIds: string[], folderId: string | null, label?: string) => {
+    await moveDocsToLocation(docIds, folderId || rootFolderId, label);
+  };
+
+  const handleDropDocIds = async (e: DragEvent, action: (ids: string[]) => void | Promise<void>) => {
+    if ((e.dataTransfer.files?.length || 0) > 0) return false;
+    if (!isInternalFileDrag(e.dataTransfer)) return false;
+    const ids = getDraggedFileIds(e.dataTransfer);
+    if (ids.length === 0) return false;
+    await action(ids);
+    endFileDrag();
+    return true;
+  };
 
   const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
     if (sortBy === column) {
@@ -387,6 +491,34 @@ export default function CompanyFilesTabEnhanced() {
       queryClient.invalidateQueries({ queryKey: ['company-docs-count'] }),
     ]);
   }, [refetchDocs, refetchFolderTree, queryClient]);
+
+  const handleBulkDeleteSelected = async () => {
+    const ids = [...fileSelection.selectedIds];
+    if (ids.length === 0) return;
+    const result = await confirm({
+      title: 'Delete selected files',
+      message: `Delete ${ids.length} document(s)?`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    if (!canDelete) {
+      toast.error('You do not have permission to delete documents');
+      return;
+    }
+    setBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map(docId => api('DELETE', `/company/files/documents/${encodeURIComponent(docId)}`)),
+      );
+      const ok = results.filter(r => r.status === 'fulfilled').length;
+      await refreshAll();
+      fileSelection.clear();
+      toast.success(ok === ids.length ? `Deleted ${ok} file(s)` : `Deleted ${ok} of ${ids.length} file(s)`);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   const uploadSingleFile = async (file: File, customTitle?: string, folderId?: string) => {
     const targetFolderId = folderId || effectiveFolderId;
@@ -567,21 +699,59 @@ export default function CompanyFilesTabEnhanced() {
     setEditingFileNameValue(d.title || d.original_name || '');
   };
 
-  const handleMoveFileToFolder = async (docId: string, folderId: string | null) => {
-    if (!canMove) {
-      toast.error('You do not have permission to move documents');
+  const loadMoveModalFolders = useCallback(async (deptId: string) => {
+    if (!deptId) {
+      setMoveModalFolders([]);
+      setMoveModalRootFolderId(null);
       return;
     }
-    try {
-      await api('PUT', `/company/files/documents/${encodeURIComponent(docId)}`, {
-        folder_id: folderId || rootFolderId,
-      });
-      await refetchDocs();
-      toast.success('Moved');
-    } catch {
-      toast.error('Failed to move');
-    }
+    const data = await api<{ root_folder_id: string; folders: FolderItem[] }>(
+      'GET',
+      `/company/files/folders/tree?department_id=${encodeURIComponent(deptId)}`,
+    );
+    setMoveModalRootFolderId(data.root_folder_id);
+    setMoveModalFolders(data.folders.filter((folder) => folder.id !== data.root_folder_id));
+  }, []);
+
+  const openMoveLocationModal = (docId: string) => {
+    const dept = selectedDept;
+    setMoveLocationDocId(docId);
+    setMoveModalDept(dept);
+    void loadMoveModalFolders(dept);
   };
+
+  const moveLocationDoc = useMemo(
+    () => (moveLocationDocId ? docs.find((doc) => doc.id === moveLocationDocId) ?? null : null),
+    [docs, moveLocationDocId],
+  );
+
+  const departmentCategoryOptions = useMemo(
+    () => (departments || []).map((dept) => ({ value: dept.id, label: dept.label })),
+    [departments],
+  );
+
+  const moveModalFileLocationFolders = useMemo(
+    () =>
+      moveModalFolders.map((folder) => ({
+        id: folder.id,
+        name: folder.name,
+        category: moveModalDept,
+      })),
+    [moveModalFolders, moveModalDept],
+  );
+
+  const handleMoveFileToFolder = async (docId: string, folderId: string | null) => {
+    const ids = fileSelection.resolveDragIds(docId);
+    const label = folderId
+      ? allFolders.find((folder) => folder.id === folderId)?.name
+      : 'Root';
+    await moveDocsToFolder(ids, folderId, label);
+  };
+
+  const moveLocationSelectedCount = useMemo(() => {
+    if (!moveLocationDocId) return 1;
+    return fileSelection.resolveDragIds(moveLocationDocId).length;
+  }, [moveLocationDocId, fileSelection]);
 
   const handleRestoreDeletedFile = async (docId: string) => {
     try {
@@ -627,21 +797,6 @@ export default function CompanyFilesTabEnhanced() {
     }
   };
 
-  const submitMoveDoc = async () => {
-    if (!moveDoc) return;
-    try {
-      await api('PUT', `/company/files/documents/${encodeURIComponent(moveDoc.id)}`, {
-        folder_id: moveDocFolderId || rootFolderId,
-      });
-      toast.success('Moved');
-      setMoveDoc(null);
-      setMoveDocFolderId('');
-      await refetchDocs();
-    } catch {
-      toast.error('Failed to move');
-    }
-  };
-
   const savePermissions = async () => {
     if (!permissionsFolder) return;
     try {
@@ -668,16 +823,6 @@ export default function CompanyFilesTabEnhanced() {
         (u.email || '').toLowerCase().includes(userSearch.toLowerCase())
     );
   }, [usersOptions, userSearch]);
-
-  const folderSelectOptions = useMemo(
-    () => [
-      { value: '', label: 'Root' },
-      ...allFolders
-        .filter((f) => f.id !== rootFolderId)
-        .map((f) => ({ value: f.id, label: f.name })),
-    ],
-    [allFolders, rootFolderId]
-  );
 
   const filesSectionTabs = isAdmin ? (
     <AppTabs
@@ -766,17 +911,14 @@ export default function CompanyFilesTabEnhanced() {
                             <td className="px-3 py-2">
                               <div className="flex flex-wrap items-center gap-1">
                                 {canRead && df.file_id ? (
-                                  <button
-                                    type="button"
+                                  <AppListRowIconButton
+                                    preset="download"
+                                    label="Download"
                                     onClick={async () => {
                                       const url = await fetchDownloadUrl(df.file_id!);
                                       if (url) window.open(url, '_blank');
                                     }}
-                                    title="Download"
-                                    className="rounded p-1 text-xs hover:bg-gray-100"
-                                  >
-                                    ⬇️
-                                  </button>
+                                  />
                                 ) : null}
                                 <button
                                   type="button"
@@ -859,23 +1001,28 @@ export default function CompanyFilesTabEnhanced() {
             <div
               className={uiCx(
                 'flex-1 overflow-y-auto p-4',
-                isDragging && canWrite && 'border-2 border-dashed border-blue-400 bg-blue-50'
+                dropTargetClass(isDropActive('root', selectedDept || ''), 'root'),
               )}
               onDragOver={
                 canWrite && selectedDept
                   ? (e) => {
                       e.preventDefault();
-                      e.stopPropagation();
-                      setIsDragging(true);
+                      if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {
+                        setIsDragging(true);
+                      }
+                      if (isInternalFileDrag(e.dataTransfer) && !isOverNestedFileDropTarget(e)) {
+                        setDropTarget({ kind: 'root', id: selectedDept, label: 'Root' });
+                      }
                     }
                   : undefined
               }
               onDragLeave={
                 canWrite
                   ? (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsDragging(false);
+                      leaveContainerDragLeave(e, () => {
+                        setIsDragging(false);
+                        clearDropTarget();
+                      });
                     }
                   : undefined
               }
@@ -885,9 +1032,12 @@ export default function CompanyFilesTabEnhanced() {
                       e.preventDefault();
                       e.stopPropagation();
                       setIsDragging(false);
+                      clearDropTarget();
                       if (e.dataTransfer.files?.length) {
                         await uploadMultiple(e.dataTransfer.files);
+                        return;
                       }
+                      await handleDropDocIds(e, ids => moveDocsToFolder(ids, null, 'Root'));
                     }
                   : undefined
               }
@@ -956,14 +1106,38 @@ export default function CompanyFilesTabEnhanced() {
                   </div>
 
                   <div className="overflow-hidden rounded-lg border bg-white">
+                    <FileListDropHint dropTarget={dropTarget} />
+                    {canSelectInCurrentView ? (
+                      <FileListSelectionBar
+                        selectedCount={fileSelection.selectedCount}
+                        visibleCount={visibleFileIds.length}
+                        onSelectAll={() => fileSelection.selectAll(visibleFileIds)}
+                        onClear={() => fileSelection.clear()}
+                        onDeleteSelected={handleBulkDeleteSelected}
+                        deleting={bulkDeleting}
+                        className="m-3 mb-0"
+                      />
+                    ) : null}
                     {showTable ? (
                       <div className="overflow-x-auto">
                         <table className="w-full">
                           <thead className="border-b bg-gray-50">
                             <tr>
+                              {canSelectInCurrentView ? (
+                                <th className="w-8 px-2 py-2">
+                                  <AppCheckboxControl
+                                    checked={allVisibleSelected}
+                                    aria-label={allVisibleSelected ? 'Deselect all files' : 'Select all files'}
+                                    onChange={(checked) => {
+                                      if (checked) fileSelection.selectAll(visibleFileIds);
+                                      else fileSelection.clear();
+                                    }}
+                                  />
+                                </th>
+                              ) : null}
                               <th className="w-12 px-3 py-2 text-left text-[10px] font-semibold text-gray-700" />
                               <th
-                                className="cursor-pointer select-none px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
+                                className="w-full cursor-pointer select-none px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
                                 onClick={() => handleSort('name')}
                               >
                                 <div className="flex items-center gap-1">
@@ -972,7 +1146,7 @@ export default function CompanyFilesTabEnhanced() {
                                 </div>
                               </th>
                               <th
-                                className="cursor-pointer select-none px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
+                                className="cursor-pointer select-none whitespace-nowrap px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
                                 onClick={() => handleSort('type')}
                               >
                                 <div className="flex items-center gap-1">
@@ -981,7 +1155,7 @@ export default function CompanyFilesTabEnhanced() {
                                 </div>
                               </th>
                               <th
-                                className="cursor-pointer select-none px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
+                                className="cursor-pointer select-none whitespace-nowrap px-3 py-2 text-left text-[10px] font-semibold text-gray-700 hover:bg-gray-100"
                                 onClick={() => handleSort('uploaded_at')}
                               >
                                 <div className="flex items-center gap-1">
@@ -991,7 +1165,7 @@ export default function CompanyFilesTabEnhanced() {
                                   )}
                                 </div>
                               </th>
-                              <th className="w-24 px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Actions</th>
+                              <th className="w-[1%] whitespace-nowrap px-3 py-2 text-right text-[10px] font-semibold text-gray-700">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y">
@@ -1000,6 +1174,7 @@ export default function CompanyFilesTabEnhanced() {
                                 className="cursor-pointer bg-gray-50/50 hover:bg-gray-50"
                                 onClick={() => setSelectedFolderId(currentParentFolderId)}
                               >
+                                {canSelectInCurrentView ? <td className="px-2 py-2" /> : null}
                                 <td className="px-3 py-2">
                                   <div className="flex h-10 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
                                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1022,21 +1197,25 @@ export default function CompanyFilesTabEnhanced() {
                             {currentFolderChildren.map((folder) => (
                               <tr
                                 key={folder.id}
-                                className="cursor-pointer hover:bg-gray-50"
+                                {...fileDropTargetProps('folder')}
+                                className={uiCx(
+                                  'cursor-pointer hover:bg-gray-50',
+                                  dropTargetClass(isDropActive('folder', folder.id), 'folder'),
+                                )}
                                 onClick={() => setSelectedFolderId(folder.id)}
-                                onDragOver={(e) => e.preventDefault()}
-                                onDrop={
-                                  canWrite
-                                    ? async (e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        if (e.dataTransfer.files?.length) {
-                                          await uploadMultiple(e.dataTransfer.files, folder.id);
-                                        }
+                                {...(canWrite
+                                  ? makeDropHandlers('folder', folder.id, folder.name, async (e) => {
+                                      if (e.dataTransfer.files?.length) {
+                                        await uploadMultiple(e.dataTransfer.files, folder.id);
+                                        return;
                                       }
-                                    : undefined
-                                }
+                                      await handleDropDocIds(e, ids =>
+                                        moveDocsToFolder(ids, folder.id, folder.name),
+                                      );
+                                    })
+                                  : {})}
                               >
+                                {canSelectInCurrentView ? <td className="px-2 py-2" /> : null}
                                 <td className="px-3 py-2">
                                   <div className="flex h-10 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
                                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1050,12 +1229,17 @@ export default function CompanyFilesTabEnhanced() {
                                   </div>
                                 </td>
                                 <td className="px-3 py-2">
-                                  <div className="max-w-xs truncate text-xs font-semibold">{folder.name}</div>
+                                  <div className="flex max-w-xs items-center gap-2">
+                                    <span className="truncate text-xs font-semibold">{folder.name}</span>
+                                    <span className="ml-auto shrink-0 text-[10px] font-normal text-gray-500">
+                                      ({folderFileCounts[folder.id] ?? 0})
+                                    </span>
+                                  </div>
                                 </td>
                                 <td className="px-3 py-2 text-xs text-gray-600">Folder</td>
                                 <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                                <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex items-center gap-0.5">
+                                <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center justify-end gap-0.5">
                                     {canMove ? (
                                       <AppListRowIconButton
                                         label="Permissions"
@@ -1087,7 +1271,30 @@ export default function CompanyFilesTabEnhanced() {
                               const isImg = d.is_image || String(d.content_type || '').startsWith('image/');
                               const name = d.original_name || d.title || 'Document';
                               return (
-                                <tr key={d.id} className="hover:bg-gray-50">
+                                <tr
+                                  key={d.id}
+                                  draggable={canMove}
+                                  onDragStart={(e) => startFileDrag(e, d.id)}
+                                  onDragEnd={endFileDrag}
+                                  className={uiCx(
+                                    'hover:bg-gray-50',
+                                    canMove ? 'cursor-move' : '',
+                                    fileSelection.isSelected(d.id) ? 'bg-brand-red/5' : '',
+                                  )}
+                                >
+                                  {canSelectInCurrentView ? (
+                                    <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                                      <AppCheckboxControl
+                                        checked={fileSelection.isSelected(d.id)}
+                                        aria-label={`Select ${name}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (e.shiftKey) fileSelection.toggleRange(d.id, visibleFileIds);
+                                          else fileSelection.toggle(d.id);
+                                        }}
+                                      />
+                                    </td>
+                                  ) : null}
                                   <td className="px-3 py-2">
                                     {isImg && d.file_id ? (
                                       <div
@@ -1177,46 +1384,27 @@ export default function CompanyFilesTabEnhanced() {
                                       {d.created_at ? new Date(d.created_at).toLocaleDateString('pt-BR') : '-'}
                                     </div>
                                   </td>
-                                  <td className="px-3 py-2">
-                                    <div className="flex items-center gap-0.5">
+                                  <td className="px-3 py-2 text-right">
+                                    <div className="flex items-center justify-end gap-0.5">
                                       {canRead && d.file_id ? (
-                                        <button
-                                          type="button"
+                                        <AppListRowIconButton
+                                          preset="download"
+                                          label="Download"
                                           onClick={async (e) => {
                                             e.stopPropagation();
                                             const url = await fetchDownloadUrl(d.file_id!);
                                             if (url) window.open(url, '_blank');
                                           }}
-                                          title="Download"
-                                          className="rounded p-1 text-xs hover:bg-gray-100"
-                                        >
-                                          ⬇️
-                                        </button>
+                                        />
                                       ) : null}
                                       {canMove ? (
-                                        <button
-                                          type="button"
+                                        <AppListRowIconButton
+                                          preset="move"
+                                          label="Move to…"
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            setMoveDoc({ id: d.id });
-                                            setMoveDocFolderId(d.folder_id || '');
+                                            openMoveLocationModal(d.id);
                                           }}
-                                          title="Move to folder"
-                                          className="rounded p-1 text-xs hover:bg-gray-100"
-                                        >
-                                          📦
-                                        </button>
-                                      ) : null}
-                                      {canMove ? (
-                                        <AppSelect
-                                          className="max-w-[100px]"
-                                          value={!d.folder_id || d.folder_id === rootFolderId ? '' : d.folder_id}
-                                          options={folderSelectOptions}
-                                          onChange={(e) => {
-                                            const v = e.target.value;
-                                            handleMoveFileToFolder(d.id, v === '' ? rootFolderId : v);
-                                          }}
-                                          fieldHint="Folder\n\nMove this file to another folder in the category."
                                         />
                                       ) : null}
                                       {canDelete ? (
@@ -1340,42 +1528,38 @@ export default function CompanyFilesTabEnhanced() {
         </AppFormModal>
       ) : null}
 
-      {moveDoc ? (
-        <AppFormModal
+      {moveLocationDocId ? (
+        <FileMoveLocationModal
           open
-          onClose={() => {
-            setMoveDoc(null);
-            setMoveDocFolderId('');
-          }}
-          title="Move Document"
+          onClose={() => setMoveLocationDocId(null)}
+          title="Move files"
           quickInfo={companyFilesMoveDocQuickInfo}
-          footer={
-            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-              <AppButton
-                variant="secondary"
-                size="sm"
-                type="button"
-                onClick={() => {
-                  setMoveDoc(null);
-                  setMoveDocFolderId('');
-                }}
-              >
-                Cancel
-              </AppButton>
-              <AppButton size="sm" type="button" onClick={submitMoveDoc}>
-                Move
-              </AppButton>
-            </div>
-          }
-        >
-          <AppSelect
-            label="Destination folder"
-            value={moveDocFolderId}
-            options={folderSelectOptions}
-            onChange={(e) => setMoveDocFolderId(e.target.value)}
-            fieldHint="Destination folder\n\nPick the folder where this document should live next."
-          />
-        </AppFormModal>
+          categoryLabel="File category"
+          folderLabel="Folder"
+          categoryOptions={departmentCategoryOptions}
+          folders={moveModalFileLocationFolders}
+          initialCategory={moveModalDept || selectedDept}
+          initialFolderId={moveLocationDoc?.folder_id}
+          rootFolderId={moveModalRootFolderId}
+          selectedFileCount={moveLocationSelectedCount}
+          onCategoryChange={(deptId) => {
+            setMoveModalDept(deptId);
+            void loadMoveModalFolders(deptId);
+          }}
+          onMove={async (destination) => {
+            if (!moveLocationDocId) return;
+            const ids = fileSelection.resolveDragIds(moveLocationDocId);
+            const folderLabel =
+              destination.folderId === moveModalRootFolderId
+                ? 'Root'
+                : moveModalFolders.find((folder) => folder.id === destination.folderId)?.name;
+            const categoryLabel =
+              departmentCategoryOptions.find((option) => option.value === destination.category)?.label ??
+              destination.category;
+            const label = folderLabel ? `${categoryLabel} / ${folderLabel}` : categoryLabel;
+            await moveDocsToLocation(ids, destination.folderId, label);
+          }}
+        />
       ) : null}
 
       {renameFolder ? (

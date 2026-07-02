@@ -1,13 +1,32 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { FileImagePreviewModal, useFileImageGallery } from '@/components/files';
+import {
+  FileImagePreviewModal,
+  FileListSelectionBar,
+  FileMoveLocationModal,
+  FileListDropHint,
+  dropTargetClass,
+  fileDropTargetProps,
+  invalidateQueriesInBackground,
+  leaveContainerDragLeave,
+  patchFilesInQueryCache,
+  restoreQueryCache,
+  getDraggedFileIds,
+  isInternalFileDrag,
+  setDraggedFileIds,
+  useFileDropTarget,
+  useFileImageGallery,
+  useFileListSelection,
+} from '@/components/files';
+import { libraryFilesMoveCategoryQuickInfo } from '@/lib/formModalQuickInfo';
 import {
   AppButton,
   AppCard,
+  AppCheckboxControl,
   AppEmptyState,
   AppFileUpload,
   AppFormModal,
@@ -40,7 +59,7 @@ const WO_FILE_CATEGORIES = [
   { id: 'outros', label: 'Other' },
 ] as const;
 
-const FILES_GRID_COLS = 'grid-cols-[56px_minmax(0,1fr)_5.5rem_7rem_auto]';
+const FILES_GRID_COLS = 'grid-cols-[2rem_56px_minmax(0,1fr)_5.5rem_7rem_auto]';
 
 type WorkOrderFileItem = {
   id: string;
@@ -63,7 +82,9 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [uploadCategory, setUploadCategory] = useState<string>('outros');
   const [isDragging, setIsDragging] = useState(false);
-  const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const fileSelection = useFileListSelection();
+  const { dropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
   const [showUpload, setShowUpload] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<
     Array<{
@@ -80,6 +101,7 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
   const imageGallery = useFileImageGallery();
   const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
+  const [moveLocationFileId, setMoveLocationFileId] = useState<string | null>(null);
 
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['workOrderFiles', workOrderId],
@@ -134,6 +156,104 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
       return 0;
     });
   }, [filesByCategory, selectedCategory, fileSearchQuery, sortBy, sortOrder]);
+
+  const visibleFileIds = useMemo(() => currentFiles.map((f) => f.id), [currentFiles]);
+  const { allSelected: allVisibleSelected } = fileSelection.getSelectionState(visibleFileIds);
+
+  useEffect(() => {
+    fileSelection.clear();
+  }, [selectedCategory]);
+
+  const startFileDrag = (e: DragEvent, fileId: string) => {
+    setDraggedFileIds(e.dataTransfer, fileSelection.resolveDragIds(fileId));
+    setIsDragging(true);
+  };
+
+  const endFileDrag = () => {
+    setIsDragging(false);
+    clearDropTarget();
+  };
+
+  const moveFilesToCategory = async (fileIds: string[], newCategory: string, label?: string) => {
+    const unique = [...new Set(fileIds.filter(Boolean))];
+    if (unique.length === 0 || newCategory === 'all') return;
+    const movable = unique.filter((id) => {
+      const item = files.find((f) => f.id === id);
+      return item && !item.is_legacy;
+    });
+    if (movable.length === 0) {
+      toast.error('Legacy files cannot be moved');
+      return;
+    }
+    const filesQueryKey = ['workOrderFiles', workOrderId] as const;
+    const snapshot = patchFilesInQueryCache(
+      queryClient,
+      filesQueryKey,
+      movable,
+      { category: newCategory },
+    );
+    fileSelection.clear();
+    const results = await Promise.allSettled(
+      movable.map((fileId) =>
+        api('PUT', `/fleet/work-orders/${workOrderId}/files/${fileId}?category=${encodeURIComponent(newCategory)}`),
+      ),
+    );
+    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    if (ok === 0) {
+      restoreQueryCache(queryClient, filesQueryKey, snapshot);
+    } else {
+      invalidateQueriesInBackground(queryClient, [filesQueryKey]);
+    }
+    if (ok === movable.length) {
+      const catLabel = WO_FILE_CATEGORIES.find((c) => c.id === newCategory)?.label ?? label ?? newCategory;
+      toast.success(movable.length === 1 ? 'File moved' : `Moved ${ok} files to ${catLabel}`);
+    } else {
+      toast.error(`Moved ${ok} of ${movable.length} files`);
+    }
+  };
+
+  const handleDropFileIds = async (e: DragEvent, action: (ids: string[]) => void | Promise<void>) => {
+    if ((e.dataTransfer.files?.length || 0) > 0) return false;
+    if (!isInternalFileDrag(e.dataTransfer)) return false;
+    const ids = getDraggedFileIds(e.dataTransfer);
+    if (ids.length === 0) return false;
+    await action(ids);
+    endFileDrag();
+    return true;
+  };
+
+  const handleBulkDeleteSelected = async () => {
+    const ids = [...fileSelection.selectedIds];
+    if (ids.length === 0) return;
+    const ok = await confirm({
+      title: 'Remove selected files',
+      message: `Remove ${ids.length} file(s) from this work order?`,
+    });
+    if (!ok) return;
+    setBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map(async (fileId) => {
+          const item = files.find((f) => f.id === fileId);
+          if (!item) return;
+          if (item.is_legacy && item.id.startsWith('legacy-')) {
+            return api(
+              'DELETE',
+              `/fleet/work-orders/${workOrderId}/files/legacy/${item.file_object_id}?category=${encodeURIComponent(item.category)}`,
+            );
+          }
+          return api('DELETE', `/fleet/work-orders/${workOrderId}/files/${item.id}`);
+        }),
+      );
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      queryClient.invalidateQueries({ queryKey: ['workOrderFiles', workOrderId] });
+      queryClient.invalidateQueries({ queryKey: ['workOrderActivity', workOrderId] });
+      fileSelection.clear();
+      toast.success(succeeded === ids.length ? `Removed ${succeeded} file(s)` : `Removed ${succeeded} of ${ids.length} file(s)`);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
     if (sortBy === column) setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
@@ -267,25 +387,6 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
     onError: () => toast.error('Failed to remove file'),
   });
 
-  const updateCategoryMutation = useMutation({
-    mutationFn: async ({ fileId, category }: { fileId: string; category: string }) => {
-      return api('PUT', `/fleet/work-orders/${workOrderId}/files/${fileId}?category=${encodeURIComponent(category)}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workOrderFiles', workOrderId] });
-      toast.success('File moved');
-    },
-    onError: () => toast.error('Failed to move file'),
-  });
-
-  const handleMoveFile = (item: WorkOrderFileItem, newCategory: string) => {
-    if (item.is_legacy) {
-      toast.error('Legacy files cannot be moved. Remove and re-upload into the desired category.');
-      return;
-    }
-    updateCategoryMutation.mutate({ fileId: item.id, category: newCategory });
-  };
-
   const handleDeleteFile = async (f: WorkOrderFileItem) => {
     const ok = await confirm({
       title: 'Remove file',
@@ -304,34 +405,18 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
     }
   };
 
-  const onDropRight = async (e: React.DragEvent) => {
+  const onDropRight = async (e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
+    clearDropTarget();
     if (e.dataTransfer.files?.length) {
       const category = selectedCategory === 'all' ? uploadCategory : selectedCategory;
       await uploadMultiple(Array.from(e.dataTransfer.files), category);
       return;
     }
-    if (draggedFileId && selectedCategory !== 'all') {
-      const item = files.find((f) => f.id === draggedFileId);
-      if (item) handleMoveFile(item, selectedCategory);
-      setDraggedFileId(null);
-    }
-  };
-
-  const onDropCategory = async (e: React.DragEvent, categoryId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    if (e.dataTransfer.files?.length) {
-      await uploadMultiple(Array.from(e.dataTransfer.files), categoryId);
-      return;
-    }
-    if (draggedFileId && categoryId !== 'all') {
-      const item = files.find((f) => f.id === draggedFileId);
-      if (item) handleMoveFile(item, categoryId);
-      setDraggedFileId(null);
+    if (selectedCategory !== 'all') {
+      await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, selectedCategory));
     }
   };
 
@@ -339,6 +424,29 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
     value: c.id,
     label: c.label,
   }));
+
+  const moveCategoryOptions = uploadCategoryOptions;
+
+  const openMoveLocationModal = (fileId: string) => {
+    setMoveLocationFileId(fileId);
+  };
+
+  const moveLocationFile = useMemo(
+    () => (moveLocationFileId ? files.find((f) => f.id === moveLocationFileId) ?? null : null),
+    [files, moveLocationFileId],
+  );
+
+  const moveLocationInitialCategory = useMemo(() => {
+    const fileCat = moveLocationFile?.category;
+    if (fileCat && WO_FILE_CATEGORIES.some((c) => c.id === fileCat && c.id !== 'all')) return fileCat;
+    if (selectedCategory !== 'all') return selectedCategory;
+    return 'outros';
+  }, [moveLocationFile, selectedCategory]);
+
+  const moveLocationSelectedCount = useMemo(() => {
+    if (!moveLocationFileId) return 1;
+    return fileSelection.resolveDragIds(moveLocationFileId).length;
+  }, [moveLocationFileId, fileSelection]);
 
   const selectedCategoryLabel = WO_FILE_CATEGORIES.find((c) => c.id === selectedCategory)?.label ?? selectedCategory;
 
@@ -381,17 +489,17 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                       <button
                         key={cat.id}
                         type="button"
+                        {...(cat.id !== 'all' ? fileDropTargetProps('category') : {})}
                         onClick={() => setSelectedCategory(cat.id)}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setIsDragging(true);
-                        }}
-                        onDragLeave={(e) => {
-                          e.preventDefault();
-                          setIsDragging(false);
-                        }}
-                        onDrop={(e) => cat.id !== 'all' && onDropCategory(e, cat.id)}
+                        {...(cat.id !== 'all'
+                          ? makeDropHandlers('category', cat.id, cat.label, async (e) => {
+                              if (e.dataTransfer.files?.length) {
+                                await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
+                                return;
+                              }
+                              await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, cat.id, cat.label));
+                            })
+                          : {})}
                         className={uiCx(
                           'w-full border-b text-left transition-colors',
                           uiBorders.subtle,
@@ -399,7 +507,7 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                           'px-3 py-2 hover:bg-white',
                           selectedCategory === cat.id &&
                             'border-l-4 border-l-brand-red bg-white font-semibold text-gray-900',
-                          isDragging && cat.id !== 'all' && 'bg-blue-50',
+                          cat.id !== 'all' ? dropTargetClass(isDropActive('category', cat.id), 'category') : '',
                         )}
                       >
                         <span className="flex items-center gap-2">
@@ -416,16 +524,19 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                 <div
                   className={uiCx(
                     'min-w-0 flex-1 overflow-y-auto p-4',
-                    isDragging && 'border-2 border-dashed border-blue-400 bg-blue-50/50',
+                    isDragging && 'bg-blue-50/50',
                   )}
                   onDragOver={(e) => {
                     e.preventDefault();
-                    e.stopPropagation();
-                    setIsDragging(true);
+                    if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {
+                      setIsDragging(true);
+                    }
                   }}
                   onDragLeave={(e) => {
-                    e.preventDefault();
-                    setIsDragging(false);
+                    leaveContainerDragLeave(e, () => {
+                      setIsDragging(false);
+                      clearDropTarget();
+                    });
                   }}
                   onDrop={onDropRight}
                 >
@@ -455,9 +566,30 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                     )}
                   </div>
 
+                  <FileListDropHint dropTarget={dropTarget} />
+                  <FileListSelectionBar
+                    selectedCount={fileSelection.selectedCount}
+                    visibleCount={visibleFileIds.length}
+                    onSelectAll={() => fileSelection.selectAll(visibleFileIds)}
+                    onClear={() => fileSelection.clear()}
+                    onDeleteSelected={handleBulkDeleteSelected}
+                    deleting={bulkDeleting}
+                    className="mb-3"
+                  />
+
                   {currentFiles.length > 0 ? (
                     <AppSortableEntityList layout="flat" className={uiCx(uiRadius.card, uiBorders.subtle, 'overflow-hidden')}>
                       <AppSortableEntityListHeader variant="flat" gridCols={FILES_GRID_COLS} minWidth="min-w-0">
+                        <div className="flex items-center justify-center">
+                          <AppCheckboxControl
+                            checked={allVisibleSelected}
+                            aria-label={allVisibleSelected ? 'Deselect all files' : 'Select all files'}
+                            onChange={(checked) => {
+                              if (checked) fileSelection.selectAll(visibleFileIds);
+                              else fileSelection.clear();
+                            }}
+                          />
+                        </div>
                         <div className="min-w-0" aria-hidden />
                         <AppSortableEntityListSortColumn
                           label="Name"
@@ -494,11 +626,25 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                               variant="flat"
                               gridCols={FILES_GRID_COLS}
                               minWidth="min-w-0"
-                              className="cursor-move"
+                              className={uiCx(
+                                'cursor-move',
+                                fileSelection.isSelected(f.id) ? 'bg-brand-red/5' : '',
+                              )}
                               draggable
-                              onDragStart={() => setDraggedFileId(f.id)}
-                              onDragEnd={() => setDraggedFileId(null)}
+                              onDragStart={(e) => startFileDrag(e, f.id)}
+                              onDragEnd={endFileDrag}
                             >
+                              <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                                <AppCheckboxControl
+                                  checked={fileSelection.isSelected(f.id)}
+                                  aria-label={`Select ${name}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (e.shiftKey) fileSelection.toggleRange(f.id, visibleFileIds);
+                                    else fileSelection.toggle(f.id);
+                                  }}
+                                />
+                              </div>
                               <div className="flex justify-center">
                                 {isImg ? (
                                   <button
@@ -544,8 +690,15 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                                 {f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString() : '—'}
                               </span>
                               <div className="flex w-24 shrink-0 items-center justify-end gap-1.5">
+                                {!f.is_legacy ? (
+                                  <AppListRowIconButton
+                                    preset="move"
+                                    label="Move to…"
+                                    onClick={() => openMoveLocationModal(f.id)}
+                                  />
+                                ) : null}
                                 <AppListRowIconButton
-                                  icon="⬇️"
+                                  preset="download"
                                   label="Download"
                                   onClick={async () => {
                                     const url = await fetchDownloadUrl(f.file_object_id);
@@ -643,6 +796,28 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
           </div>
         </AppCard>
       )}
+
+      {moveLocationFileId ? (
+        <FileMoveLocationModal
+          open
+          onClose={() => setMoveLocationFileId(null)}
+          title="Move files"
+          quickInfo={libraryFilesMoveCategoryQuickInfo}
+          showFolderSelect={false}
+          categoryOptions={moveCategoryOptions}
+          folders={[]}
+          initialCategory={moveLocationInitialCategory}
+          selectedFileCount={moveLocationSelectedCount}
+          onMove={async (destination) => {
+            if (!moveLocationFileId) return;
+            const ids = fileSelection.resolveDragIds(moveLocationFileId);
+            const label =
+              moveCategoryOptions.find((option) => option.value === destination.category)?.label ??
+              destination.category;
+            await moveFilesToCategory(ids, destination.category, label);
+          }}
+        />
+      ) : null}
 
       <FileImagePreviewModal
         open={imageGallery.open}

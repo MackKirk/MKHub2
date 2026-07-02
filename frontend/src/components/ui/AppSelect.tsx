@@ -43,6 +43,8 @@ export type AppSelectProps = {
   searchable?: boolean;
   /** When false with `optionGroups`, keeps caller-defined order inside each group. Default: true for flat `options` only. */
   sortOptions?: boolean;
+  /** Fixed dropdown menu width in px (defaults to trigger width). */
+  menuWidth?: number;
   /** @deprecated Use triggerClassName */
   selectClassName?: string;
   triggerClassName?: string;
@@ -127,6 +129,7 @@ export function AppSelect({
   emptyMessage = 'No options found.',
   searchable = false,
   sortOptions: sortOptionsProp,
+  menuWidth,
   id,
   value,
   defaultValue,
@@ -138,7 +141,7 @@ export function AppSelect({
 }: AppSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const { anchorRef, portalListId, menuRect, closeDropdown } = useComboboxDropdown(open, setOpen);
+  const { anchorRef, portalListId, menuRect, closeDropdown } = useComboboxDropdown(open, setOpen, { menuWidth });
 
   const isGrouped = Boolean(optionGroups && optionGroups.length > 0);
   const sortOptions = sortOptionsProp ?? !isGrouped;

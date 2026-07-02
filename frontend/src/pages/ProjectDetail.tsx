@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
+import { formatSiteHeroAddress } from '@/lib/addressUtils';
 import toast from 'react-hot-toast';
 import {
   readAllDirectoryEntries,
@@ -35,6 +36,8 @@ import ProjectFilesTabEnhanced from '@/components/ProjectFilesTabEnhanced';
 import OrdersTab from '@/components/OrdersTab';
 import ProjectDocumentsTab from '@/components/ProjectDocumentsTab';
 import ProjectSafetyTab from '@/components/ProjectSafetyTab';
+import ProjectFieldBriefCard from '@/components/ProjectFieldBriefCard';
+import SiteFormModal, { type ClientSiteRecord } from '@/components/SiteFormModal';
 import ProjectBillingSection from '@/components/ProjectBillingSection';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import { DivisionIcon } from '@/components/DivisionIcon';
@@ -81,6 +84,7 @@ import {
   AppSectionHeader,
   appSectionPresetProps,
   AppSelect,
+  AppTabCountBadge,
   AppTabs,
   AppTextarea,
   AppTooltip,
@@ -91,12 +95,14 @@ import {
   uiColors,
   uiCx,
   uiLayout,
+  uiModalLayer,
   uiRadius,
   uiSpacing,
   uiTypography,
   uiUserSelect,
 } from '@/components/ui';
 import { Briefcase, ChevronDown, ChevronUp, ClipboardList, FolderKanban } from 'lucide-react';
+import { useProjectTabCounts } from '@/hooks/useProjectTabCounts';
 
 /** Hero expand/collapse — same timing as CustomerDetail. */
 const HERO_PANEL_EASE = 'ease-[cubic-bezier(0.22,1,0.36,1)]';
@@ -263,6 +269,9 @@ const PROJECT_UPDATE_LABELS: Record<string, string> = {
   code: 'Code',
   related_client_ids: 'Related customers',
   awarded_related_client_ids: 'Awarded related customers',
+  scope_of_work: 'Scope of work',
+  job_completion_estimate: 'Job completion estimate',
+  crew_material_list: 'Material list',
 };
 
 const REPORT_FIELD_LABELS: Record<string, string> = {
@@ -875,7 +884,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, scope_of_work?:string|null, job_completion_estimate?:string|null, crew_material_list?:{ id: string; name: string; quantity?: string|null; unit?: string|null; notes?: string|null }[]|null, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
 
 function projectAwardedRelatedIdsSet(proj: Project | null | undefined): Set<string> {
   const raw = proj?.awarded_related_client_ids;
@@ -911,6 +920,62 @@ function projectRelatedCustomersHeroSplit(proj: Project | null | undefined): {
   const displayedEntries = all.filter((e) => awardedSet.has(String(e.id)));
   const nonAwardedEntries = all.filter((e) => !awardedSet.has(String(e.id)));
   return { displayedEntries, nonAwardedEntries, hasAwardedData: true };
+}
+
+function ProjectHeroSiteField({
+  proj,
+  hasEditPermission,
+  onEdit,
+}: {
+  proj: Project | null | undefined;
+  hasEditPermission: boolean;
+  onEdit: () => void;
+}) {
+  const siteName = proj?.site_name?.trim();
+  const city = (proj?.site_city || proj?.address_city || '').trim();
+  const province = (proj?.site_province || proj?.address_province || '').trim();
+  const heroAddress = formatSiteHeroAddress({
+    address_line1: proj?.site_address_line1 || proj?.address,
+    address_line2: proj?.site_address_line2,
+    city: proj?.site_city || proj?.address_city,
+    postal_code: proj?.site_postal_code || proj?.address_postal_code,
+  });
+
+  const displayName =
+    siteName ||
+    heroAddress ||
+    (city && province ? `${city}, ${province}` : city || province || '—');
+  const addressBelow = siteName && heroAddress ? heroAddress : null;
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Site</span>
+        {hasEditPermission ? (
+          <button
+            onClick={onEdit}
+            className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+            title="Edit Site"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+              />
+            </svg>
+          </button>
+        ) : null}
+      </div>
+      <div className="text-xs font-semibold text-gray-900 break-words">{displayName}</div>
+      {addressBelow ? (
+        <div className="mt-0.5 text-[11px] font-normal leading-snug text-gray-600 break-words">
+          {addressBelow}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, folder_id?:string|null, original_name?:string, notes?:string|null, uploaded_at?:string };
@@ -1037,6 +1102,11 @@ export default function ProjectDetail(){
       }
       if (tabParam === 'overview' || hasTabPermission(tabParam)) {
         setTab(tabParam === 'overview' ? null : tabParam);
+        if (tabParam === 'files' && id) {
+          const projectId = String(id);
+          queryClient.invalidateQueries({ queryKey: ['projectFiles', projectId] });
+          queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
+        }
       } else {
         setTab(null);
         toast.error('You do not have permission to access this tab');
@@ -1044,7 +1114,7 @@ export default function ProjectDetail(){
     } else {
       setTab(null);
     }
-  }, [location.search, hasTabPermission, me]);
+  }, [location.search, hasTabPermission, me, id, queryClient]);
 
   useEffect(() => {
     if (isLoading || !proj) return;
@@ -1162,6 +1232,15 @@ export default function ProjectDetail(){
     });
   }, [baseAvailableTabs, hasTabPermission, me, signOnlySafetySession]);
 
+  const tabCounts = useProjectTabCounts({
+    projectId: id,
+    availableTabs,
+    signOnlySafetySession,
+    reports,
+    files,
+    proposals,
+  });
+
   // Invalidate Recent Activity when project data changes (so card updates without waiting for refetch interval)
   const invalidateRecentActivity = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', String(id ?? '')] });
@@ -1175,6 +1254,7 @@ export default function ProjectDetail(){
     switch (tabName) {
       case 'files':
         queryClient.invalidateQueries({ queryKey: ['projectFiles', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
         break;
       case 'documents':
         queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
@@ -1197,6 +1277,7 @@ export default function ProjectDetail(){
       case 'dispatch':
         queryClient.invalidateQueries({ queryKey: ['dispatch-shifts-all'] });
         queryClient.invalidateQueries({ queryKey: ['dispatch-shifts', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['projectShifts', projectId] });
         queryClient.invalidateQueries({ queryKey: ['dispatch-pending', projectId] });
         queryClient.invalidateQueries({ queryKey: ['shifts'] });
         queryClient.invalidateQueries({ queryKey: ['attendances'] });
@@ -1736,61 +1817,11 @@ export default function ProjectDetail(){
 
                     {/* Site - only show for projects */}
                     {!isOpportunityStyleTabs && (
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Site</span>
-                          {hasEditPermission && (
-                            <button
-                              onClick={() => setEditSiteModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
-                              title="Edit Site"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                        <div className="text-xs font-semibold text-gray-900">
-                          {(() => {
-                            const siteName = proj?.site_name;
-                            const addressLine1 = proj?.site_address_line1 || proj?.address;
-                            const addressLine2 = (proj as any)?.site_address_line2;
-                            const city = proj?.address_city || proj?.site_city;
-                            const province = proj?.address_province || proj?.site_province;
-                            const postal = proj?.address_postal_code || proj?.site_postal_code;
-                            const country = proj?.address_country || proj?.site_country;
-
-                            const addressParts = [];
-                            if (addressLine1) addressParts.push(addressLine1);
-                            if (addressLine2) addressParts.push(addressLine2);
-                            if (city) addressParts.push(city);
-                            if (province) addressParts.push(province);
-                            if (postal) addressParts.push(postal);
-                            if (country) addressParts.push(country);
-                            const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : null;
-
-                            const displayName = siteName || (city && province ? `${city}, ${province}` : city || province || '—');
-
-                            if (fullAddress && displayName !== '—') {
-                              return (
-                                <div className="relative group inline-block">
-                                  <span className="cursor-help underline decoration-dotted decoration-gray-400 hover:decoration-gray-600 transition-colors">
-                                    {displayName}
-                                  </span>
-                                  <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl whitespace-normal max-w-xs opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-50">
-                                    {siteName && <div className="font-semibold mb-1.5 text-white">{siteName}</div>}
-                                    <div className="text-gray-200 leading-relaxed">{fullAddress}</div>
-                                    <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            return displayName;
-                          })()}
-                        </div>
-                      </div>
+                      <ProjectHeroSiteField
+                        proj={proj}
+                        hasEditPermission={hasEditPermission}
+                        onEdit={() => setEditSiteModal(true)}
+                      />
                     )}
 
                     {/* Status */}
@@ -1880,61 +1911,11 @@ export default function ProjectDetail(){
 
                     {/* Site - opportunities and leak investigations */}
                     {isOpportunityStyleTabs && (
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Site</span>
-                          {hasEditPermission && (
-                            <button
-                              onClick={() => setEditSiteModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
-                              title="Edit Site"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                        <div className="text-xs font-semibold text-gray-900">
-                          {(() => {
-                            const siteName = proj?.site_name;
-                            const addressLine1 = proj?.site_address_line1 || proj?.address;
-                            const addressLine2 = (proj as any)?.site_address_line2;
-                            const city = proj?.address_city || proj?.site_city;
-                            const province = proj?.address_province || proj?.site_province;
-                            const postal = proj?.address_postal_code || proj?.site_postal_code;
-                            const country = proj?.address_country || proj?.site_country;
-
-                            const addressParts = [];
-                            if (addressLine1) addressParts.push(addressLine1);
-                            if (addressLine2) addressParts.push(addressLine2);
-                            if (city) addressParts.push(city);
-                            if (province) addressParts.push(province);
-                            if (postal) addressParts.push(postal);
-                            if (country) addressParts.push(country);
-                            const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : null;
-
-                            const displayName = siteName || (city && province ? `${city}, ${province}` : city || province || '—');
-
-                            if (fullAddress && displayName !== '—') {
-                              return (
-                                <div className="relative group inline-block">
-                                  <span className="cursor-help underline decoration-dotted decoration-gray-400 hover:decoration-gray-600 transition-colors">
-                                    {displayName}
-                                  </span>
-                                  <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl whitespace-normal max-w-xs opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-50">
-                                    {siteName && <div className="font-semibold mb-1.5 text-white">{siteName}</div>}
-                                    <div className="text-gray-200 leading-relaxed">{fullAddress}</div>
-                                    <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            return displayName;
-                          })()}
-                        </div>
-                      </div>
+                      <ProjectHeroSiteField
+                        proj={proj}
+                        hasEditPermission={hasEditPermission}
+                        onEdit={() => setEditSiteModal(true)}
+                      />
                     )}
 
                     {/* Lead Source - opportunities and leak investigations */}
@@ -2472,6 +2453,7 @@ export default function ProjectDetail(){
         const tabCards = (
           <ProjectTabCards
             availableTabs={availableTabs}
+            tabCounts={tabCounts}
             onTabClick={handleTabClick}
             proj={proj}
             currentTab={tab}
@@ -2525,12 +2507,12 @@ export default function ProjectDetail(){
         <div className="mt-16 mb-4 shrink-0" aria-hidden />
       )}
 
-      {/* Calendar / team / costs — overview (primary page, tab null) */}
+      {/* Calendar / team — overview (primary page, tab null) */}
       {!tab && (
         <>
           {useDesignSystem && !isOpportunityStyleTabs ? (
             <>
-              <div className={uiCx(uiLayout.pageTwoColumn, 'mb-4')}>
+              <div className={uiCx(uiLayout.pageTwoColumn, 'mb-4 auto-rows-auto')}>
                 <AppCard className="flex h-full min-h-0 flex-col">
                   <AppSectionHeader
                     title="Workload"
@@ -2556,10 +2538,6 @@ export default function ProjectDetail(){
                     />
                   </div>
                 </AppCard>
-                <ProjectCostsSummary projectId={String(id)} proposals={proposals || []} useDesignSystem />
-              </div>
-              <div className={uiCx(uiLayout.pageTwoColumn, 'mb-4')}>
-                <LastReportsCard reports={reports || []} useDesignSystem />
                 <ProjectTeamCard
                   projectId={String(id)}
                   employees={employees || []}
@@ -2567,24 +2545,64 @@ export default function ProjectDetail(){
                   useDesignSystem
                 />
               </div>
+              <ProjectDescriptionCard
+                proj={proj}
+                hasEditPermission={hasEditPermission}
+                useDesignSystem
+                isLeakInvestigation={isLeakInvestigation}
+                className="mb-4"
+                onEdit={() => setEditDescriptionModal(true)}
+              />
+              <div className={uiCx(uiLayout.pageTwoColumn, 'mb-4 auto-rows-auto')}>
+                <LastReportsCard reports={reports || []} useDesignSystem />
+                <ProjectFieldBriefCard
+                  projectId={String(id)}
+                  proj={proj || {}}
+                  hasEditPermission={hasEditPermission}
+                  designSystem
+                  onSaved={(updated) => {
+                    queryClient.setQueryData<Project | undefined>(projectQueryKey, (old) =>
+                      old ? { ...old, ...updated } : old,
+                    );
+                    queryClient.invalidateQueries({ queryKey: projectQueryKey });
+                    invalidateRecentActivity();
+                  }}
+                />
+              </div>
             </>
           ) : !isOpportunityStyleTabs ? (
             <>
-              <div className="mb-4 grid md:grid-cols-2 gap-4">
+              <div className="mb-4 grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-3">Workload</h4>
                   <CalendarMock title="Project Calendar" projectId={String(id)} hasEditPermission={hasEditPermission} />
                 </div>
-                <ProjectCostsSummary projectId={String(id)} proposals={proposals||[]} />
-              </div>
-              
-              {/* Last Notes/History and Project Team Cards */}
-              <div className="mb-4 grid md:grid-cols-2 gap-4">
-                <LastReportsCard reports={reports||[]} />
                 <ProjectTeamCard
                   projectId={String(id)}
                   employees={employees||[]}
                   canManageMembers={canManageMembers}
+                />
+              </div>
+              <ProjectDescriptionCard
+                proj={proj}
+                hasEditPermission={hasEditPermission}
+                isLeakInvestigation={isLeakInvestigation}
+                className="mb-4"
+                onEdit={() => setEditDescriptionModal(true)}
+              />
+              <div className="mb-4 grid gap-4 md:grid-cols-2">
+                <LastReportsCard reports={reports||[]} />
+                <ProjectFieldBriefCard
+                  projectId={String(id)}
+                  proj={proj || {}}
+                  hasEditPermission={hasEditPermission}
+                  onSaved={(updated) => {
+                    queryClient.setQueryData<Project | undefined>(projectQueryKey, (old) =>
+                      old ? { ...old, ...updated } : old,
+                    );
+                    queryClient.invalidateQueries({ queryKey: projectQueryKey });
+                    invalidateRecentActivity();
+                  }}
                 />
               </div>
             </>
@@ -2699,74 +2717,16 @@ export default function ProjectDetail(){
         );
       })()}
 
-      {/* Description card — visible when set, or when user can add one */}
-      {!tab && (proj?.description?.trim() || hasEditPermission) && (
-        useDesignSystem ? (
-          <AppCard className="mt-6">
-            <AppSectionHeader
-              title="Description"
-              description={
-                proj?.is_bidding
-                  ? 'Additional notes about this opportunity.'
-                  : isLeakInvestigation
-                    ? 'Additional notes about this leak investigation.'
-                    : 'Additional notes about this project.'
-              }
-              {...appSectionPresetProps('description')}
-              action={
-                hasEditPermission ? (
-                  <AppHeroEditButton
-                    title="Edit Description"
-                    onClick={() => setEditDescriptionModal(true)}
-                  />
-                ) : null
-              }
-            />
-            <p
-              className={uiCx(
-                uiTypography.body,
-                'mt-3 whitespace-pre-wrap leading-snug',
-                hasEditPermission && 'cursor-pointer',
-              )}
-              onClick={() => hasEditPermission && setEditDescriptionModal(true)}
-            >
-              {proj?.description?.trim() ? (
-                proj.description.trim()
-              ) : (
-                <span className="text-gray-400 italic">No description</span>
-              )}
-            </p>
-          </AppCard>
-        ) : (
-          <div className="mt-6">
-            <div className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80">
-              <div className="p-3">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Description</div>
-                  {hasEditPermission && (
-                    <AppHeroEditButton
-                      title="Edit Description"
-                      onClick={() => setEditDescriptionModal(true)}
-                    />
-                  )}
-                </div>
-                <p
-                  className={uiCx(
-                    'text-sm text-gray-700 leading-snug whitespace-pre-wrap',
-                    hasEditPermission && 'cursor-pointer',
-                  )}
-                  onClick={() => hasEditPermission && setEditDescriptionModal(true)}
-                >
-                  {proj?.description?.trim() ? (
-                    proj.description.trim()
-                  ) : (
-                    <span className="text-gray-400 italic">No description</span>
-                  )}
-                </p>
-              </div>
-            </div>
-          </div>
-        )
+      {/* Description card — opportunities only (projects show it in overview grid) */}
+      {!tab && isOpportunityStyleTabs && (
+        <ProjectDescriptionCard
+          proj={proj}
+          hasEditPermission={hasEditPermission}
+          useDesignSystem={useDesignSystem}
+          isLeakInvestigation={isLeakInvestigation}
+          className="mt-6"
+          onEdit={() => setEditDescriptionModal(true)}
+        />
       )}
 
       {showBillingSection && (
@@ -3055,7 +3015,6 @@ export default function ProjectDetail(){
                       <h4 className="text-sm font-semibold text-gray-900 mb-2">Estimated Time of Completion</h4>
                       <ProjectEtaEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
                     </div>
-                    <ProjectCostsSummary projectId={String(id)} proposals={proposals||[]} />
                     {!isOpportunityStyleTabs && (
                       <div className="md:col-span-3 rounded-xl border bg-white p-4">
                         <h4 className="text-sm font-semibold text-gray-900 mb-2">Workload</h4>
@@ -3421,9 +3380,13 @@ export default function ProjectDetail(){
           designSystem={useDesignSystem}
           onClose={() => setEditSiteModal(false)}
           onSave={async () => {
-            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            await queryClient.invalidateQueries({ queryKey: projectQueryKey });
             invalidateRecentActivity();
             setEditSiteModal(false);
+          }}
+          onSiteRecordUpdated={async () => {
+            await queryClient.invalidateQueries({ queryKey: projectQueryKey });
+            invalidateRecentActivity();
           }}
         />
       )}
@@ -7475,6 +7438,86 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
   );
 }
 
+function ProjectDescriptionCard({
+  proj,
+  hasEditPermission,
+  useDesignSystem,
+  isLeakInvestigation,
+  className,
+  onEdit,
+}: {
+  proj: any;
+  hasEditPermission: boolean;
+  useDesignSystem?: boolean;
+  isLeakInvestigation?: boolean;
+  className?: string;
+  onEdit: () => void;
+}) {
+  const visible = !!(proj?.description?.trim() || hasEditPermission);
+  if (!visible) return null;
+
+  const sectionDescription = proj?.is_bidding
+    ? 'Additional notes about this opportunity.'
+    : isLeakInvestigation
+      ? 'Additional notes about this leak investigation.'
+      : 'Additional notes about this project.';
+
+  if (useDesignSystem) {
+    return (
+      <AppCard className={className}>
+        <AppSectionHeader
+          title="Description"
+          description={sectionDescription}
+          {...appSectionPresetProps('description')}
+          action={
+            hasEditPermission ? <AppHeroEditButton title="Edit Description" onClick={onEdit} /> : null
+          }
+        />
+        <p
+          className={uiCx(
+            uiTypography.body,
+            'mt-3 whitespace-pre-wrap leading-snug',
+            hasEditPermission && 'cursor-pointer',
+          )}
+          onClick={() => hasEditPermission && onEdit()}
+        >
+          {proj?.description?.trim() ? (
+            proj.description.trim()
+          ) : (
+            <span className="text-gray-400 italic">No description</span>
+          )}
+        </p>
+      </AppCard>
+    );
+  }
+
+  return (
+    <div className={className}>
+      <div className="overflow-hidden rounded-xl border border-gray-200/90 bg-white shadow-md transition-shadow duration-200 hover:border-gray-300/80 hover:shadow-lg">
+        <div className="p-3">
+          <div className="mb-2 flex items-center gap-1.5">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Description</div>
+            {hasEditPermission ? <AppHeroEditButton title="Edit Description" onClick={onEdit} /> : null}
+          </div>
+          <p
+            className={uiCx(
+              'text-sm leading-snug text-gray-700 whitespace-pre-wrap',
+              hasEditPermission && 'cursor-pointer',
+            )}
+            onClick={() => hasEditPermission && onEdit()}
+          >
+            {proj?.description?.trim() ? (
+              proj.description.trim()
+            ) : (
+              <span className="text-gray-400 italic">No description</span>
+            )}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LastReportsCard({ reports, useDesignSystem }: { reports: Report[]; useDesignSystem?: boolean }){
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>(''); // Empty string = all categories
   const { data: settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
@@ -7942,8 +7985,9 @@ function ProjectTeamCard({ projectId, employees, canManageMembers, useDesignSyst
   return <div className="rounded-xl border bg-white p-4">{teamBody}</div>;
 }
 
-function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab, useDesignSystem, isHeroCollapsed, headerEnd }: { 
+function ProjectTabCards({ availableTabs, tabCounts, onTabClick, proj, currentTab, useDesignSystem, isHeroCollapsed, headerEnd }: { 
   availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety')[], 
+  tabCounts?: Partial<Record<string, number>>,
   onTabClick: (tab: typeof availableTabs[number] | 'overview' | null) => void,
   proj: any,
   currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null,
@@ -7972,6 +8016,7 @@ function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab, useDesig
     const appTabItems = tabsToShow.map((tabKey) => ({
       key: tabKey,
       label: tabConfig[tabKey]?.label || tabKey,
+      count: tabCounts?.[tabKey],
     }));
     const activeKey = currentTab === null ? 'overview' : currentTab;
     return (
@@ -8008,6 +8053,9 @@ function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab, useDesig
             >
               <span className="text-xs leading-none">{config.icon}</span>
               {config.label}
+              {typeof tabCounts?.[tabKey] === 'number' ? (
+                <AppTabCountBadge count={tabCounts[tabKey]!} isActive={isActive} />
+              ) : null}
             </button>
           );
         })}
@@ -8726,41 +8774,123 @@ function EditDescriptionModal({ projectId, currentDescription, entityLabel, desi
 }
 
 // Edit Site Modal Component
-function EditSiteModal({ projectId, project, designSystem, onClose, onSave }: {
+function EditSiteModal({ projectId, project, designSystem, onClose, onSave, onSiteRecordUpdated }: {
   projectId: string;
   project: any;
   designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
+  onSiteRecordUpdated?: () => void | Promise<void>;
 }) {
   const [siteId, setSiteId] = useState(project?.site_id || '');
   const [saving, setSaving] = useState(false);
   const [sites, setSites] = useState<any[]>([]);
   const [loadingSites, setLoadingSites] = useState(false);
+  const [siteEditOpen, setSiteEditOpen] = useState(false);
 
   useEffect(() => {
     setSiteId(project?.site_id || '');
   }, [project?.site_id]);
 
-  // Load sites when modal opens
-  useEffect(() => {
-    if (project?.client_id) {
-      setLoadingSites(true);
-      api<any[]>('GET', `/clients/${encodeURIComponent(String(project.client_id))}/sites`)
-        .then(data => {
-          setSites(data || []);
-        })
-        .catch(() => {
-          setSites([]);
-        })
-        .finally(() => {
-          setLoadingSites(false);
-        });
+  const loadSites = useCallback(async () => {
+    if (!project?.client_id) {
+      setSites([]);
+      return;
+    }
+    setLoadingSites(true);
+    try {
+      const data = await api<any[]>('GET', `/clients/${encodeURIComponent(String(project.client_id))}/sites`);
+      setSites(data || []);
+    } catch {
+      setSites([]);
+    } finally {
+      setLoadingSites(false);
     }
   }, [project?.client_id]);
 
+  useEffect(() => {
+    void loadSites();
+  }, [loadSites]);
+
   const selectedSite = sites.find(s => String(s.id) === String(siteId));
   const currentSite = sites.find(s => String(s.id) === String(project?.site_id));
+  const selectedSiteRecord: ClientSiteRecord | null = selectedSite
+    ? { ...selectedSite, id: String(selectedSite.id) }
+    : null;
+
+  const handleSiteRecordSaved = async () => {
+    await loadSites();
+    setSiteEditOpen(false);
+    await onSiteRecordUpdated?.();
+  };
+
+  const handleSiteRecordDeleted = async () => {
+    const deletedId = selectedSite?.id;
+    await loadSites();
+    setSiteEditOpen(false);
+    if (deletedId && String(siteId) === String(deletedId)) {
+      setSiteId('');
+    }
+    await onSiteRecordUpdated?.();
+  };
+
+  const siteInformationPanel = selectedSite ? (
+    <div className="space-y-2 text-sm">
+      {selectedSite.site_name && (
+        <div>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Name:</span>
+          <span className="ml-2 text-gray-900">{selectedSite.site_name}</span>
+        </div>
+      )}
+      {selectedSite.site_address_line1 && (
+        <div>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Address:</span>
+          <span className="ml-2 text-gray-900">{selectedSite.site_address_line1}</span>
+          {selectedSite.site_address_line2 && (
+            <div className={designSystem ? 'ml-12 text-gray-700' : 'ml-20 text-gray-700'}>
+              {selectedSite.site_address_line2}
+            </div>
+          )}
+        </div>
+      )}
+      {(selectedSite.site_city || selectedSite.site_province || selectedSite.site_postal_code) && (
+        <div>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Location:</span>
+          <span className="ml-2 text-gray-900">
+            {[selectedSite.site_city, selectedSite.site_province, selectedSite.site_postal_code]
+              .filter(Boolean)
+              .join(', ')}
+          </span>
+        </div>
+      )}
+      {selectedSite.site_country && (
+        <div>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Country:</span>
+          <span className="ml-2 text-gray-900">{selectedSite.site_country}</span>
+        </div>
+      )}
+      {selectedSite.site_notes && (
+        <div>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Notes:</span>
+          <div className="ml-2 mt-1 text-gray-900">{selectedSite.site_notes}</div>
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  const siteEditModal =
+    siteEditOpen && selectedSiteRecord && project?.client_id ? (
+      <SiteFormModal
+        open
+        onClose={() => setSiteEditOpen(false)}
+        clientId={String(project.client_id)}
+        clientDisplayName={project?.client_display_name || project?.client_name}
+        site={selectedSiteRecord}
+        overlayClassName={uiModalLayer.stacked}
+        onSaved={handleSiteRecordSaved}
+        onDeleted={handleSiteRecordDeleted}
+      />
+    ) : null;
 
   const handleSave = async () => {
     if (siteId === (project?.site_id || '')) {
@@ -8797,98 +8927,67 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave }: {
 
   if (designSystem) {
     return (
-      <AppFormModal
-        open
-        onClose={onClose}
-        title="Edit Project Site"
-        description="Choose the job site linked to this opportunity"
-        formWidth="comfortable"
-        quickInfo={opportunityEditSiteQuickInfo}
-        footer={
-          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
-              Cancel
-            </AppButton>
-            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving || loadingSites} loading={saving}>
-              {saving ? 'Saving…' : 'Save'}
-            </AppButton>
+      <>
+        <AppFormModal
+          open
+          onClose={onClose}
+          title="Edit Project Site"
+          description="Choose the job site linked to this opportunity"
+          formWidth="comfortable"
+          quickInfo={opportunityEditSiteQuickInfo}
+          footer={
+            <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+              <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+                Cancel
+              </AppButton>
+              <AppButton type="button" size="sm" onClick={handleSave} disabled={saving || loadingSites} loading={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </AppButton>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            {loadingSites ? (
+              <p className={uiTypography.helper}>Loading sites…</p>
+            ) : (
+              <AppSelect
+                label="Site"
+                value={String(siteId || '')}
+                onChange={(e) => setSiteId(e.target.value)}
+                options={siteOptions}
+                searchable={siteOptions.length > 8}
+                placeholder="Select site…"
+                fieldHint="Site\n\nJob site under the project owner customer. Required before converting to a project."
+              />
+            )}
+
+            {selectedSite && (
+              <AppCard bodyClassName="p-4">
+                <div className="mb-3 flex items-center gap-1.5">
+                  <p className={uiTypography.sectionTitle}>Site information</p>
+                  <AppHeroEditButton title="Edit Site" onClick={() => setSiteEditOpen(true)} />
+                </div>
+                {siteInformationPanel}
+              </AppCard>
+            )}
+
+            {currentSite && siteId !== (project?.site_id || '') && (
+              <p className={uiCx(uiTypography.helper, 'rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900')}>
+                Changing from <strong>{currentSite.site_name || currentSite.site_address_line1 || 'current site'}</strong>{' '}
+                to <strong>{selectedSite?.site_name || selectedSite?.site_address_line1 || 'new site'}</strong> updates
+                location on this opportunity.
+              </p>
+            )}
           </div>
-        }
-      >
-        <div className="space-y-4">
-          {loadingSites ? (
-            <p className={uiTypography.helper}>Loading sites…</p>
-          ) : (
-            <AppSelect
-              label="Site"
-              value={String(siteId || '')}
-              onChange={(e) => setSiteId(e.target.value)}
-              options={siteOptions}
-              searchable={siteOptions.length > 8}
-              placeholder="Select site…"
-              fieldHint="Site\n\nJob site under the project owner customer. Required before converting to a project."
-            />
-          )}
-
-          {selectedSite && (
-            <AppCard bodyClassName="p-4">
-              <p className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Site information</p>
-              <div className="space-y-2 text-sm">
-                {selectedSite.site_name && (
-                  <div>
-                    <span className={uiTypography.helper}>Name:</span>
-                    <span className="ml-2 text-gray-900">{selectedSite.site_name}</span>
-                  </div>
-                )}
-                {selectedSite.site_address_line1 && (
-                  <div>
-                    <span className={uiTypography.helper}>Address:</span>
-                    <span className="ml-2 text-gray-900">{selectedSite.site_address_line1}</span>
-                    {selectedSite.site_address_line2 && (
-                      <div className="ml-12 text-gray-700">{selectedSite.site_address_line2}</div>
-                    )}
-                  </div>
-                )}
-                {(selectedSite.site_city || selectedSite.site_province || selectedSite.site_postal_code) && (
-                  <div>
-                    <span className={uiTypography.helper}>Location:</span>
-                    <span className="ml-2 text-gray-900">
-                      {[selectedSite.site_city, selectedSite.site_province, selectedSite.site_postal_code]
-                        .filter(Boolean)
-                        .join(', ')}
-                    </span>
-                  </div>
-                )}
-                {selectedSite.site_country && (
-                  <div>
-                    <span className={uiTypography.helper}>Country:</span>
-                    <span className="ml-2 text-gray-900">{selectedSite.site_country}</span>
-                  </div>
-                )}
-                {selectedSite.site_notes && (
-                  <div>
-                    <span className={uiTypography.helper}>Notes:</span>
-                    <div className="ml-2 mt-1 text-gray-900">{selectedSite.site_notes}</div>
-                  </div>
-                )}
-              </div>
-            </AppCard>
-          )}
-
-          {currentSite && siteId !== (project?.site_id || '') && (
-            <p className={uiCx(uiTypography.helper, 'rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900')}>
-              Changing from <strong>{currentSite.site_name || currentSite.site_address_line1 || 'current site'}</strong>{' '}
-              to <strong>{selectedSite?.site_name || selectedSite?.site_address_line1 || 'new site'}</strong> updates
-              location on this opportunity.
-            </p>
-          )}
-        </div>
-      </AppFormModal>
+        </AppFormModal>
+        {siteEditModal}
+      </>
     );
   }
 
   return (
-    <OverlayPortal><div
+    <>
+      <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
@@ -8937,44 +9036,11 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave }: {
 
           {selectedSite && (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <div className="text-sm font-medium text-gray-900 mb-3">Site Information</div>
-              <div className="space-y-2 text-sm">
-                {selectedSite.site_name && (
-                  <div>
-                    <span className="text-gray-600 font-medium">Name:</span>
-                    <span className="ml-2 text-gray-900">{selectedSite.site_name}</span>
-                  </div>
-                )}
-                {selectedSite.site_address_line1 && (
-                  <div>
-                    <span className="text-gray-600 font-medium">Address:</span>
-                    <span className="ml-2 text-gray-900">{selectedSite.site_address_line1}</span>
-                    {selectedSite.site_address_line2 && (
-                      <div className="ml-20 text-gray-700">{selectedSite.site_address_line2}</div>
-                    )}
-                  </div>
-                )}
-                {(selectedSite.site_city || selectedSite.site_province || selectedSite.site_postal_code) && (
-                  <div>
-                    <span className="text-gray-600 font-medium">Location:</span>
-                    <span className="ml-2 text-gray-900">
-                      {[selectedSite.site_city, selectedSite.site_province, selectedSite.site_postal_code].filter(Boolean).join(', ')}
-                    </span>
-                  </div>
-                )}
-                {selectedSite.site_country && (
-                  <div>
-                    <span className="text-gray-600 font-medium">Country:</span>
-                    <span className="ml-2 text-gray-900">{selectedSite.site_country}</span>
-                  </div>
-                )}
-                {selectedSite.site_notes && (
-                  <div>
-                    <span className="text-gray-600 font-medium">Notes:</span>
-                    <div className="ml-2 text-gray-900 mt-1">{selectedSite.site_notes}</div>
-                  </div>
-                )}
+              <div className="mb-3 flex items-center gap-1.5">
+                <div className="text-sm font-medium text-gray-900">Site Information</div>
+                <AppHeroEditButton title="Edit Site" onClick={() => setSiteEditOpen(true)} />
               </div>
+              {siteInformationPanel}
             </div>
           )}
 
@@ -9013,6 +9079,8 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave }: {
         </div>
       </div>
     </div></OverlayPortal>
+      {siteEditModal}
+    </>
   );
 }
 
@@ -10900,130 +10968,6 @@ function ProjectHeroPricingArea({ projectId, proposals }: { projectId: string; p
       <div className="text-xs font-semibold text-gray-900">
         ${costPerArea.toFixed(2)}/{formatAreaLabel(displayUnit)}
       </div>
-    </div>
-  );
-}
-
-function ProjectCostsSummary({ projectId, proposals, useDesignSystem }: { projectId: string; proposals: any[]; useDesignSystem?: boolean }) {
-  // Organize proposals: original first, then Change Orders sorted by number
-  const organizedProposals = useMemo(() => {
-    const original = proposals.find(p => !p.is_change_order);
-    const changeOrders = proposals
-      .filter(p => p.is_change_order)
-      .sort((a, b) => (a.change_order_number || 0) - (b.change_order_number || 0));
-    
-    return {
-      original: original || null,
-      changeOrders: changeOrders
-    };
-  }, [proposals]);
-  
-  // Fetch full proposal data for original proposal
-  const { data: originalProposalData } = useQuery({ 
-    queryKey: ['proposal', organizedProposals.original?.id], 
-    queryFn: () => organizedProposals.original?.id ? api<any>('GET', `/proposals/${organizedProposals.original.id}`) : Promise.resolve(null),
-    enabled: !!organizedProposals.original?.id,
-    refetchInterval: 2000
-  });
-  
-  // Fetch full proposal data for all change orders using useQueries
-  const changeOrderQueries = useQueries({
-    queries: organizedProposals.changeOrders.map(co => ({
-      queryKey: ['proposal', co.id],
-      queryFn: () => api<any>('GET', `/proposals/${co.id}`),
-      enabled: !!co.id,
-      refetchInterval: 2000
-    }))
-  });
-  
-  // Calculate totals for each proposal
-  const originalTotal = useMemo(() => {
-    if (!organizedProposals.original) return 0;
-    // Use full proposal data if available, otherwise use the proposal object itself
-    const dataToUse = originalProposalData || organizedProposals.original;
-    return calculateProposalTotal(dataToUse);
-  }, [originalProposalData, organizedProposals.original]);
-  
-  const changeOrderTotals = useMemo(() => {
-    return organizedProposals.changeOrders.map((co, idx) => {
-      const queryResult = changeOrderQueries[idx];
-      // Use full proposal data if available, otherwise use the proposal object itself
-      const dataToUse = queryResult?.data || co;
-      return {
-        changeOrder: co,
-        total: calculateProposalTotal(dataToUse),
-        number: co.change_order_number || idx + 1
-      };
-    });
-  }, [organizedProposals.changeOrders, changeOrderQueries]);
-  
-  // Calculate grand total (sum of all)
-  const grandTotal = useMemo(() => {
-    return originalTotal + changeOrderTotals.reduce((sum, co) => sum + co.total, 0);
-  }, [originalTotal, changeOrderTotals]);
-  
-  // Check if we have any pricing data
-  const hasPricingData = originalTotal > 0 || changeOrderTotals.some(co => co.total > 0);
-  
-  const costsInner = !hasPricingData ? (
-    <p className={uiTypography.helper}>No proposal pricing available</p>
-  ) : (
-    <>
-      <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-        {[
-          ...(originalTotal > 0 ? [{ label: 'Total Estimate', value: originalTotal }] : []),
-          ...changeOrderTotals
-            .filter((co) => co.total > 0)
-            .map((co) => ({ label: `Change Order ${co.number}`, value: co.total })),
-        ].map((item, idx) => (
-          <div key={idx} className="text-center">
-            <div className={uiTypography.helper}>{item.label}</div>
-            <div className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>${item.value.toFixed(2)}</div>
-          </div>
-        ))}
-      </div>
-      <div className={uiCx('flex items-center justify-between border-t-2 border-gray-300 pt-3')}>
-        <div className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>Total</div>
-        <div className="text-lg font-bold text-brand-red">${grandTotal.toFixed(2)}</div>
-      </div>
-    </>
-  );
-
-  if (!hasPricingData && !useDesignSystem) {
-    return (
-      <div className="rounded-xl border bg-white p-4">
-        <h4 className="text-sm font-semibold text-gray-900 mb-2">Costs Summary</h4>
-        <div className="text-xs text-gray-600">No proposal pricing available</div>
-      </div>
-    );
-  }
-
-  if (useDesignSystem) {
-    return (
-      <AppCard className="flex h-full min-h-0 flex-col">
-        <AppSectionHeader
-          title="Costs Summary"
-          description="Totals from linked proposal pricing."
-          {...appSectionPresetProps('pricing')}
-        />
-        <div className="mt-3">{costsInner}</div>
-      </AppCard>
-    );
-  }
-
-  if (!hasPricingData) {
-    return (
-      <div className="rounded-xl border bg-white p-4">
-        <h4 className="text-sm font-semibold text-gray-900 mb-2">Costs Summary</h4>
-        <div className="text-xs text-gray-600">No proposal pricing available</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border bg-white p-4">
-      <h4 className="text-sm font-semibold text-gray-900 mb-3">Costs Summary</h4>
-      {costsInner}
     </div>
   );
 }

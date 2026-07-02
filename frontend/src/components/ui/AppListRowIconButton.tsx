@@ -6,6 +6,8 @@ import { uiCx, uiListRowIconButton } from './tokens';
 export const APP_LIST_ROW_ACTION_GLYPH = {
   edit: '\u{1F4DD}',
   delete: '\u{1F5D1}',
+  download: '\u{1F4E5}',
+  move: '\u{1F4E6}',
 } as const;
 
 export type AppListRowIconButtonPreset = keyof typeof APP_LIST_ROW_ACTION_GLYPH;

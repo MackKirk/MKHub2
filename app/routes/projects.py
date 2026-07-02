@@ -97,6 +97,66 @@ _BILLING_PATCH_FIELDS = frozenset(
 )
 
 
+def _normalize_optional_text(value) -> Optional[str]:
+    if value is None:
+        return None
+    s = str(value).strip()
+    return s if s else None
+
+
+def _normalize_crew_material_list(raw) -> Optional[list]:
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="crew_material_list must be an array")
+    out: list = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail="crew_material_list items must be objects")
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        item_id = item.get("id")
+        try:
+            normalized_id = str(uuid.UUID(str(item_id))) if item_id else str(uuid.uuid4())
+        except (ValueError, TypeError, AttributeError):
+            normalized_id = str(uuid.uuid4())
+        out.append(
+            {
+                "id": normalized_id,
+                "name": name,
+                "quantity": _normalize_optional_text(item.get("quantity")),
+                "unit": _normalize_optional_text(item.get("unit")),
+                "notes": _normalize_optional_text(item.get("notes")),
+            }
+        )
+    return out if out else None
+
+
+def _normalize_field_brief_patch(payload: dict) -> None:
+    if "scope_of_work" in payload:
+        payload["scope_of_work"] = _normalize_optional_text(payload.get("scope_of_work"))
+    if "job_completion_estimate" in payload:
+        raw = payload.get("job_completion_estimate")
+        if raw is None:
+            payload["job_completion_estimate"] = None
+        else:
+            s = str(raw).strip()
+            if len(s) > 500:
+                raise HTTPException(status_code=400, detail="job_completion_estimate must be 500 characters or less")
+            payload["job_completion_estimate"] = s if s else None
+    if "crew_material_list" in payload:
+        payload["crew_material_list"] = _normalize_crew_material_list(payload.get("crew_material_list"))
+
+
+def _field_brief_audit_snapshot(p: Project) -> dict:
+    return {
+        "scope_of_work": getattr(p, "scope_of_work", None),
+        "job_completion_estimate": getattr(p, "job_completion_estimate", None),
+        "crew_material_list": getattr(p, "crew_material_list", None),
+    }
+
+
 def _is_active_project_for_billing(p: Project) -> bool:
     return not bool(getattr(p, "is_bidding", False))
 
@@ -1273,6 +1333,9 @@ def get_project(
         "address_country": getattr(p, 'address_country', None),
         "address_postal_code": getattr(p, 'address_postal_code', None),
         "description": getattr(p, 'description', None),
+        "scope_of_work": getattr(p, 'scope_of_work', None),
+        "job_completion_estimate": getattr(p, 'job_completion_estimate', None),
+        "crew_material_list": getattr(p, 'crew_material_list', None),
         "status_id": getattr(p, 'status_id', None),
         "division_id": getattr(p, 'division_id', None),
         "status_label": getattr(p, 'status_label', None),
@@ -1359,6 +1422,7 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         )
         or None,
         "awarded_related_client_ids": sorted(_effective_awarded_related_client_ids(p)) or None,
+        **_field_brief_audit_snapshot(p),
     }
     
     # Do not allow changing auto-generated code
@@ -1589,12 +1653,16 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         _assert_active_project_for_billing(p)
         _normalize_billing_patch(payload)
 
+    _normalize_field_brief_patch(payload)
+
     # Update project
     for k, v in payload.items():
         setattr(p, k, v)
 
     if "awarded_related_client_ids" in payload:
         flag_modified(p, "awarded_related_client_ids")
+    if "crew_material_list" in payload:
+        flag_modified(p, "crew_material_list")
 
     # Edit Project Divisions: items priced under a removed division → not approved (original proposal)
     if "project_division_ids" in payload:
@@ -1697,6 +1765,7 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
             )
             or None,
             "awarded_related_client_ids": sorted(_effective_awarded_related_client_ids(p)) or None,
+            **_field_brief_audit_snapshot(p),
         }
         changes = compute_diff(before_state, after_state)
         if changes:  # Only log if there were actual changes

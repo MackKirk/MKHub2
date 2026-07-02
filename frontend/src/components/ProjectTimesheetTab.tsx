@@ -859,6 +859,7 @@ export default function ProjectTimesheetTab({
       // Invalidate all related queries to ensure UI updates immediately
       queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
       queryClient.invalidateQueries({ queryKey: ['timesheetLogsMini', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['timesheet', projectId] });
       queryClient.invalidateQueries({ queryKey: ['attendances'] });
       queryClient.invalidateQueries({ queryKey: ['shifts'] });
       queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
@@ -990,6 +991,7 @@ export default function ProjectTimesheetTab({
       await refetchAttendances();
       await refetchShifts();
       queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['timesheet', projectId] });
       queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
       toast.success('Time entry updated');
       resetEditForm();
@@ -1012,6 +1014,7 @@ export default function ProjectTimesheetTab({
       await refetchAttendances();
       await refetchShifts();
       queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['timesheet', projectId] });
       queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
       toast.success('Time entry deleted');
     } catch (err: any) {

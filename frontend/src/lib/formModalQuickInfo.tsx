@@ -985,6 +985,33 @@ export const editProjectDivisionsQuickInfo = formModalQuickInfo({
   ),
 });
 
+/** Project overview — edit field brief (scope, materials, job completion). */
+export const editFieldBriefQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Share scope, materials, and job completion details with the crew on the project overview — without needing
+      access to Proposal or Estimate tabs.
+    </>
+  ),
+  howToUse: (
+    <>
+      Fill in {uiLabel('Scope of Work')}, add a {uiLabel('Job Completion Estimate')}, and use {uiLabel('+ Add row')} to
+      list materials with quantity and unit. Tap {uiLabel('?')} beside any field for more detail.
+    </>
+  ),
+  behavior: (
+    <>
+      Material rows need a name to be saved; empty rows are ignored. Use the red {uiLabel('×')} to remove a material row
+      when you have more than one.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} updates the Field Brief on the project overview.
+    </>
+  ),
+});
+
 /** Opportunity / project calendar — create or edit event. */
 export const projectCalendarEventQuickInfo = formModalQuickInfo({
   purpose: (
@@ -1225,7 +1252,34 @@ export const projectFilesNewFolderQuickInfo = formModalQuickInfo({
   ),
 });
 
-/** Project Files tab — move a file to another category. */
+/** Project Files tab — move file(s) to another category and optional folder. */
+export const projectFilesMoveLocationQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Move one or more project files to another category, optionally inside a subfolder — for example, from
+      Uncategorized into Plans, or into a folder under Pictures.
+    </>
+  ),
+  howToUse: (
+    <>
+      Choose {uiLabel('Category')}, then {uiLabel('Folder')} ({uiLabel('Root')} or a folder in that category).
+      Changing category updates the folder list.
+    </>
+  ),
+  behavior: (
+    <>
+      If multiple files are selected, opening move from any of them moves all selected files to the same destination.
+      You can also drag files onto categories or folders in the sidebar.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without moving. {uiLabel('Move')} updates file locations and refreshes the library.
+    </>
+  ),
+});
+
+/** Project Files tab — move a file to another category (category only, e.g. user documents). */
 export const projectFilesMoveCategoryQuickInfo = formModalQuickInfo({
   purpose: <>Move a file from its current category to another — for example, from Uncategorized into Plans.</>,
   howToUse: (
@@ -1323,13 +1377,44 @@ export const companyFilesNewFolderQuickInfo = formModalQuickInfo({
   ),
 });
 
-/** Company Files — move document. */
+/** Company Files — move document(s) to another category or folder. */
 export const companyFilesMoveDocQuickInfo = formModalQuickInfo({
-  purpose: <>Move a document to a different folder within Company Files.</>,
-  howToUse: <>Pick the {uiLabel('Destination folder')}, then confirm the move.</>,
+  purpose: <>Move one or more company documents to a different file category or folder within Company Files.</>,
+  howToUse: (
+    <>
+      Choose {uiLabel('File category')}, then {uiLabel('Folder')} ({uiLabel('Root')} or a subfolder in that category).
+      Changing category reloads folders for that department.
+    </>
+  ),
+  behavior: (
+    <>
+      When several documents are selected, they all move to the same destination. You can also drag files onto folders
+      in the tree.
+    </>
+  ),
   actions: (
     <>
-      {uiLabel('Move')} updates the document location. {uiLabel('Cancel')} closes without changes.
+      {uiLabel('Move')} updates document locations. {uiLabel('Cancel')} closes without changes.
+    </>
+  ),
+});
+
+/** Customer, subcontractor, and work order file libraries — move to another category. */
+export const libraryFilesMoveCategoryQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Move one or more files to another category in this library — for example, from Uncategorized into Contracts.
+    </>
+  ),
+  howToUse: <>Choose {uiLabel('Category')}, then confirm the move.</>,
+  behavior: (
+    <>
+      If multiple files are selected, they all move together. You can also drag files onto a category in the sidebar.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without moving. {uiLabel('Move')} updates the file category and refreshes the list.
     </>
   ),
 });
