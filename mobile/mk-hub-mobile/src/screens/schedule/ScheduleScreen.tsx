@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Alert, FlatList, StyleSheet, Text, View } from "react-native";
+import { useHubMenu } from "../../navigation/HubMenuProvider";
+import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
@@ -7,7 +9,6 @@ import { typography } from "../../theme/typography";
 import { getShifts } from "../../services/shifts";
 import type { ShiftSummary } from "../../types/shifts";
 import { toApiError } from "../../services/api";
-import { Alert } from "react-native";
 
 interface Row {
   id: string;
@@ -21,8 +22,18 @@ interface Row {
 const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export const ScheduleScreen: React.FC = () => {
+  const { openMenu } = useHubMenu();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const weekLabel = useMemo(() => {
+    const { start, end } = currentWeekRange();
+    const startDate = new Date(`${start}T12:00:00`);
+    const endDate = new Date(`${end}T12:00:00`);
+    const fmt = (d: Date) =>
+      d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return `${fmt(startDate)} – ${fmt(endDate)}`;
+  }, []);
 
   const load = async () => {
     try {
@@ -43,7 +54,12 @@ export const ScheduleScreen: React.FC = () => {
   }, []);
 
   return (
-    <ScreenLayout title="Schedule" scroll={false}>
+    <ScreenLayout scroll={false}>
+      <MKHomeStyleHeader
+        title="Schedule"
+        subtitle={weekLabel}
+        onLeftPress={openMenu}
+      />
       <FlatList
         data={rows}
         keyExtractor={(item) => item.id}
@@ -138,5 +154,3 @@ const styles = StyleSheet.create({
     color: colors.textMuted
   }
 });
-
-

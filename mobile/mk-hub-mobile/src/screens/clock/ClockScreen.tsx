@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,9 @@ import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { MKButton } from "../../components/MKButton";
 import { MKCard } from "../../components/MKCard";
+import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
 import { ScreenLayout } from "../../components/ScreenLayout";
+import { useHubMenu } from "../../navigation/HubMenuProvider";
 import { useAuth } from "../../hooks/useAuth";
 import { typography } from "../../theme/typography";
 import { getTodayShiftAndAttendance, postAttendance } from "../../services/shifts";
@@ -24,10 +26,21 @@ type ClockStatus = "not_started" | "in_progress" | "completed";
 
 export const ClockScreen: React.FC = () => {
   const { user } = useAuth();
+  const { openMenu } = useHubMenu();
   const [shiftInfo, setShiftInfo] = useState<TodayShiftInfo | null>(null);
   const [status, setStatus] = useState<ClockStatus>("not_started");
   const [loading, setLoading] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "short",
+        day: "numeric"
+      }),
+    []
+  );
 
   const loadData = useCallback(async () => {
     if (!user) {
@@ -116,7 +129,12 @@ export const ClockScreen: React.FC = () => {
 
   if (loading && !shiftInfo) {
     return (
-      <ScreenLayout title="Clock" scroll={false}>
+      <ScreenLayout scroll={false}>
+        <MKHomeStyleHeader
+          title="Clock"
+          subtitle={todayLabel}
+          onLeftPress={openMenu}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading shift information...</Text>
@@ -126,7 +144,12 @@ export const ClockScreen: React.FC = () => {
   }
 
   return (
-    <ScreenLayout title="Clock" scroll={false}>
+    <ScreenLayout scroll={false}>
+      <MKHomeStyleHeader
+        title="Clock"
+        subtitle={todayLabel}
+        onLeftPress={openMenu}
+      />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}

@@ -97,7 +97,10 @@ export const HubMenuProvider: React.FC<{ children: React.ReactNode }> = ({
           name: "App",
           params: {
             screen: "MainTabs",
-            params: { screen: target.screen }
+            params:
+              target.screen === "Home"
+                ? { screen: "Home", params: { screen: "HomeMain" } }
+                : { screen: target.screen }
           }
         })
       );
@@ -107,8 +110,14 @@ export const HubMenuProvider: React.FC<{ children: React.ReactNode }> = ({
       CommonActions.navigate({
         name: "App",
         params: {
-          screen: target.screen,
-          params: target.params
+          screen: "MainTabs",
+          params: {
+            screen: "Home",
+            params: {
+              screen: target.screen,
+              params: target.params
+            }
+          }
         }
       })
     );

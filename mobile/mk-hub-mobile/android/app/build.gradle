@@ -3,6 +3,17 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+def hasUploadSigningConfig = [
+    "MK_UPLOAD_STORE_FILE",
+    "MK_UPLOAD_STORE_PASSWORD",
+    "MK_UPLOAD_KEY_ALIAS",
+    "MK_UPLOAD_KEY_PASSWORD"
+].every { keystoreProperties[it] }
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -87,12 +98,12 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.mkhub.mobile'
+    namespace 'com.mkhub.m54'
     defaultConfig {
-        applicationId 'com.mkhub.mobile'
+        applicationId 'com.mkhub.m54'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        versionCode 2
         versionName "1.0.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
@@ -104,15 +115,21 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (hasUploadSigningConfig) {
+                storeFile rootProject.file(keystoreProperties["MK_UPLOAD_STORE_FILE"])
+                storePassword keystoreProperties["MK_UPLOAD_STORE_PASSWORD"]
+                keyAlias keystoreProperties["MK_UPLOAD_KEY_ALIAS"]
+                keyPassword keystoreProperties["MK_UPLOAD_KEY_PASSWORD"]
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig hasUploadSigningConfig ? signingConfigs.release : signingConfigs.debug
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

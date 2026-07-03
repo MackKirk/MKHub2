@@ -12,10 +12,12 @@ web-build/
 
 # Native
 *.orig.*
+android/local.properties
 *.jks
 *.p8
 *.p12
 *.key
+android/keystore.properties
 *.mobileprovision
 
 # Metro

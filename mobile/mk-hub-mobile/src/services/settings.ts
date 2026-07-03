@@ -78,6 +78,16 @@ export function employeeDisplayName(emp: EmployeeListItem): string {
   return [emp.first_name, emp.last_name].filter(Boolean).join(" ").trim() || "Unknown";
 }
 
+export function sortEmployeesByDisplayName(
+  employees: EmployeeListItem[]
+): EmployeeListItem[] {
+  return [...employees].sort((a, b) =>
+    employeeDisplayName(a).localeCompare(employeeDisplayName(b), undefined, {
+      sensitivity: "base"
+    })
+  );
+}
+
 export function clientDisplayName(client: ClientListItem): string {
   return client.display_name || client.name || "Unknown";
 }

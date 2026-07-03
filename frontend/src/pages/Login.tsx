@@ -150,6 +150,11 @@ export default function Login() {
               </AppButton>
             </div>
           </form>
+          <div className="mt-6 text-center text-xs text-gray-500">
+            <a href="/privacy-policy" className="font-medium underline decoration-gray-300 underline-offset-4 hover:text-brand-red">
+              Privacy Policy
+            </a>
+          </div>
         </section>
       </div>
 

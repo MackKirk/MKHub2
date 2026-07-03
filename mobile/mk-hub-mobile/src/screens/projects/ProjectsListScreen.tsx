@@ -13,12 +13,15 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   useNavigation,
   useRoute,
+  CommonActions,
+  type CompositeNavigationProp,
   type RouteProp
 } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
 import { ScreenLayout } from "../../components/ScreenLayout";
-import { MKPageHeader } from "../../components/MKPageHeader";
+import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
 import { MKQuickFilterBar } from "../../components/MKQuickFilterBar";
 import { MKProjectListRow } from "../../components/MKProjectListRow";
 import { MKProjectFiltersModal } from "../../components/MKProjectFiltersModal";
@@ -52,13 +55,20 @@ import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { typography } from "../../theme/typography";
 import { radius } from "../../theme/radius";
-import type { RootStackParamList } from "../../navigation/types";
+import type {
+  AppTabParamList,
+  HomeStackParamList,
+  RootStackParamList
+} from "../../navigation/types";
 import type { ProjectListItem } from "../../types/projects";
 
-type ProjectsListRoute = RouteProp<RootStackParamList, "ProjectsList">;
-type ProjectsListNav = NativeStackNavigationProp<
-  RootStackParamList,
-  "ProjectsList"
+type ProjectsListRoute = RouteProp<HomeStackParamList, "ProjectsList">;
+type ProjectsListNav = CompositeNavigationProp<
+  NativeStackNavigationProp<HomeStackParamList, "ProjectsList">,
+  CompositeNavigationProp<
+    BottomTabNavigationProp<AppTabParamList>,
+    NativeStackNavigationProp<RootStackParamList>
+  >
 >;
 
 function buildListQuery(
@@ -301,7 +311,12 @@ export const ProjectsListScreen: React.FC = () => {
   };
 
   const openProject = (project: ProjectListItem) => {
-    navigation.navigate("ProjectDetail", { project });
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: "ProjectDetail",
+        params: { project }
+      })
+    );
   };
 
   const searchPlaceholder =
@@ -311,14 +326,10 @@ export const ProjectsListScreen: React.FC = () => {
 
   return (
     <ScreenLayout scroll={false} contentStyle={styles.layout}>
-      <MKPageHeader
+      <MKHomeStyleHeader
         title={title}
         subtitle={total > 0 ? `${total} total` : undefined}
-        icon={
-          <Ionicons name="folder-open-outline" size={18} color="#1d4ed8" />
-        }
-        onBack={() => navigation.goBack()}
-        onMenu={openMenu}
+        onLeftPress={openMenu}
       />
 
       <View style={styles.filterCard}>

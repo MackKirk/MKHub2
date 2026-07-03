@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,7 +20,9 @@ import { typography } from "../../theme/typography";
 import { spacing } from "../../theme/spacing";
 import { MKButton } from "../../components/MKButton";
 import { MKCard } from "../../components/MKCard";
+import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
 import { ScreenLayout } from "../../components/ScreenLayout";
+import { useHubMenu } from "../../navigation/HubMenuProvider";
 import {
   getCommunityPosts,
   markPostViewed,
@@ -66,6 +68,7 @@ function fileUrlWithAccessToken(relativePath: string): string {
 }
 
 export const CommunityScreen: React.FC = () => {
+  const { openMenu } = useHubMenu();
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
@@ -74,6 +77,12 @@ export const CommunityScreen: React.FC = () => {
   const [commentText, setCommentText] = useState("");
   const [loadingComments, setLoadingComments] = useState(false);
   const [submittingComment, setSubmittingComment] = useState(false);
+
+  const communitySummary = useMemo(() => {
+    const unreadCount = posts.filter((post) => post.is_unread).length;
+    if (unreadCount === 0) return "All caught up";
+    return unreadCount === 1 ? "1 unread post" : `${unreadCount} unread posts`;
+  }, [posts]);
 
   const loadPosts = async () => {
     try {
@@ -264,7 +273,12 @@ export const CommunityScreen: React.FC = () => {
   };
 
   return (
-    <ScreenLayout title="Community" scroll={false}>
+    <ScreenLayout scroll={false}>
+      <MKHomeStyleHeader
+        title="Community"
+        subtitle={communitySummary}
+        onLeftPress={openMenu}
+      />
       <View style={styles.filterRow}>
         {(["all", "unread", "urgent", "required", "announcements"] as Filter[]).map((f) => (
           <TouchableOpacity

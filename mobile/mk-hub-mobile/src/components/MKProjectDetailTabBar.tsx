@@ -14,7 +14,9 @@ export type ProjectDetailTabKey =
   | "overview"
   | "notes"
   | "files"
-  | "proposal";
+  | "documents"
+  | "pricing"
+  | "safety";
 
 export interface ProjectDetailTabItem {
   key: ProjectDetailTabKey;
@@ -49,41 +51,45 @@ export const MKProjectDetailTabBar: React.FC<MKProjectDetailTabBarProps> = ({
         style
       ]}
     >
-      {tabs.map((tab) => {
-        const active = tab.key === activeKey;
-        return (
-          <TouchableOpacity
-            key={tab.key}
-            style={styles.item}
-            onPress={() => onChange(tab.key)}
-            accessibilityRole="button"
-            accessibilityLabel={tab.label}
-            accessibilityState={{ selected: active }}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={tab.icon}
-              size={24}
-              color={active ? colors.primary : colors.textMuted}
-            />
-            {active ? <View style={styles.activeIndicator} /> : null}
-          </TouchableOpacity>
-        );
-      })}
+      <View style={styles.row}>
+        {tabs.map((tab) => {
+          const active = tab.key === activeKey;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={styles.item}
+              onPress={() => onChange(tab.key)}
+              accessibilityRole="button"
+              accessibilityLabel={tab.label}
+              accessibilityState={{ selected: active }}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={tab.icon}
+                size={22}
+                color={active ? colors.primary : colors.textMuted}
+              />
+              {active ? <View style={styles.activeIndicator} /> : null}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   bar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-around",
     backgroundColor: colors.card,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: spacing.sm,
     minHeight: 56
+  },
+  row: {
+    flexDirection: "row",
+    width: "100%",
+    alignItems: "center"
   },
   item: {
     flex: 1,

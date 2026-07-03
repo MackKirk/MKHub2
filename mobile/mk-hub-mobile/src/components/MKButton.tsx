@@ -21,6 +21,7 @@ interface MKButtonProps {
   loading?: boolean;
   style?: ViewStyle;
   variant?: "primary" | "secondary";
+  size?: "default" | "compact";
 }
 
 export const MKButton: React.FC<MKButtonProps> = ({
@@ -29,91 +30,101 @@ export const MKButton: React.FC<MKButtonProps> = ({
   disabled,
   loading,
   style,
-  variant = "primary"
+  variant = "primary",
+  size = "default"
 }) => {
   const isDisabled = disabled || loading;
+  const innerStyle = size === "compact" ? styles.innerCompact : styles.inner;
 
-  const ButtonContent = (
-    <>
-      {loading ? (
-        <ActivityIndicator color="#ffffff" size="small" />
-      ) : (
-        <Text style={styles.text}>{title}</Text>
-      )}
-    </>
-  );
+  const content =
+    loading ? (
+      <ActivityIndicator
+        color={variant === "primary" ? "#ffffff" : colors.primary}
+        size="small"
+      />
+    ) : variant === "primary" ? (
+      <Text style={styles.text}>{title}</Text>
+    ) : (
+      <Text style={styles.textSecondary}>{title}</Text>
+    );
 
   if (isDisabled) {
     return (
-      <View style={[styles.button, styles.buttonDisabled, style]}>
-        {ButtonContent}
+      <View style={[styles.wrapper, styles.buttonDisabled, style]}>
+        <View style={innerStyle}>{content}</View>
       </View>
     );
   }
 
   if (variant === "primary") {
     return (
-      <TouchableOpacity
-        style={[styles.button, styles.buttonPrimaryShadow, style]}
-        activeOpacity={0.8}
-        onPress={onPress}
-        disabled={isDisabled}
-      >
-        <LinearGradient
-          colors={[colors.primary, colors.primaryDark]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.gradient}
+      <View style={[styles.wrapper, styles.buttonPrimaryShadow, style]}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onPress}
+          disabled={isDisabled}
+          style={styles.touchable}
         >
-          {ButtonContent}
-        </LinearGradient>
-      </TouchableOpacity>
+          <LinearGradient
+            colors={[colors.primary, colors.primaryDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={innerStyle}
+          >
+            {content}
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
     );
   }
 
   return (
     <TouchableOpacity
-      style={[styles.button, styles.buttonSecondary, style]}
-      activeOpacity={0.8}
+      style={[styles.wrapper, styles.buttonSecondary, style]}
+      activeOpacity={0.85}
       onPress={onPress}
       disabled={isDisabled}
     >
-      {loading ? (
-        <ActivityIndicator color={colors.primary} size="small" />
-      ) : (
-        <Text style={styles.textSecondary}>{title}</Text>
-      )}
+      <View style={innerStyle}>{content}</View>
     </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
-  button: {
+  wrapper: {
     borderRadius: radius.xl,
+    overflow: "hidden",
+    alignSelf: "flex-start"
+  },
+  touchable: {
+    borderRadius: radius.xl,
+    overflow: "hidden"
+  },
+  buttonPrimaryShadow: {
+    ...shadows.buttonPrimary,
+    backgroundColor: colors.primaryDark
+  },
+  inner: {
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 48
   },
-  buttonPrimaryShadow: shadows.buttonPrimary,
-  gradient: {
-    borderRadius: radius.xl,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
+  innerCompact: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 48
+    minHeight: 40
   },
   buttonSecondary: {
     backgroundColor: colors.card,
     borderWidth: 2,
-    borderColor: colors.primary,
-    shadowOpacity: 0
+    borderColor: colors.primary
   },
   buttonDisabled: {
-    backgroundColor: "#cccccc",
-    shadowOpacity: 0
+    backgroundColor: "#cccccc"
   },
   text: {
     color: "#ffffff",
@@ -124,5 +135,3 @@ const styles = StyleSheet.create({
     ...typography.buttonSmall
   }
 });
-
-

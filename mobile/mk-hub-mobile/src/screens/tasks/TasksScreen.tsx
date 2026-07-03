@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,9 @@ import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { MKCard } from "../../components/MKCard";
 import { MKButton } from "../../components/MKButton";
+import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
 import { ScreenLayout } from "../../components/ScreenLayout";
+import { useHubMenu } from "../../navigation/HubMenuProvider";
 import { typography } from "../../theme/typography";
 import { getMyTasks, startTask, concludeTask } from "../../services/tasks";
 import { toApiError } from "../../services/api";
@@ -28,8 +30,17 @@ interface Section {
 }
 
 export const TasksScreen: React.FC = () => {
+  const { openMenu } = useHubMenu();
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const taskSummary = useMemo(() => {
+    const openCount = sections
+      .flatMap((section) => section.data)
+      .filter((task) => task.status !== "done").length;
+    if (openCount === 0) return "No open tasks";
+    return openCount === 1 ? "1 open task" : `${openCount} open tasks`;
+  }, [sections]);
 
   const loadTasks = async () => {
     try {
@@ -137,7 +148,12 @@ export const TasksScreen: React.FC = () => {
   };
 
   return (
-    <ScreenLayout title="Tasks" scroll={false}>
+    <ScreenLayout scroll={false}>
+      <MKHomeStyleHeader
+        title="Tasks"
+        subtitle={taskSummary}
+        onLeftPress={openMenu}
+      />
       {loading && sections.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />

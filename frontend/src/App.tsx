@@ -10,6 +10,7 @@ import AppShell from './AppShell';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import PasswordReset from './pages/PasswordReset';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import Protected from './lib/protected';
 
 import OnboardingWizard from './pages/OnboardingWizard';
@@ -156,6 +157,8 @@ export default function App(){
         <Route path="/register" element={<Register/>} />
         <Route path="/password-reset" element={<PasswordReset/>} />
         <Route path="/install" element={<Install/>} />
+        <Route path="/privacy" element={<PrivacyPolicy/>} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy/>} />
         <Route element={<Protected/>}>
           <Route path="/onboarding" element={<OnboardingWizard />} />
           <Route path="/onboarding/documents" element={<OnboardingDocuments />} />
