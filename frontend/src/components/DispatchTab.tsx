@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { AlertTriangle } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -26,6 +27,7 @@ import {
   AppTabs,
   type AppTabItem,
   AppTimePicker,
+  AppTooltip,
   AppUserSelect,
   appSectionPresetProps,
   uiBorders,
@@ -49,6 +51,16 @@ function formatTime12h(timeStr: string | null | undefined): string {
   const period = hours >= 12 ? 'PM' : 'AM';
   const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
   return `${hours12}:${minutes} ${period}`;
+}
+
+function shiftHasNotes(shift: { notes?: string | null }): boolean {
+  return Boolean(shift.notes?.trim());
+}
+
+function shiftNotesPreview(notes: string, maxLen = 120): string {
+  const trimmed = notes.trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  return `${trimmed.slice(0, maxLen)}…`;
 }
 
 
@@ -757,8 +769,30 @@ export default function DispatchTab({
                                     </div>
                                   )} */}
                                 </div>
-                                {!deleteMode && canEditWorkload && (
-                                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                {!deleteMode && (
+                                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                                    {shiftHasNotes(shift) && (
+                                      <AppTooltip
+                                        content={shiftNotesPreview(String(shift.notes))}
+                                        placement="top"
+                                      >
+                                        <span
+                                          className="flex items-center justify-center p-0.5 text-amber-600"
+                                          aria-label="Shift has notes"
+                                          onMouseDown={(e) => e.stopPropagation()}
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <AlertTriangle className="w-2.5 h-2.5" strokeWidth={2.5} />
+                                        </span>
+                                      </AppTooltip>
+                                    )}
+                                    {canEditWorkload && (
+                                      <div
+                                        className={uiCx(
+                                          'flex items-center gap-0.5',
+                                          !shiftHasNotes(shift) && 'opacity-0 group-hover:opacity-100 transition-opacity',
+                                        )}
+                                      >
                                     <button
                                       onMouseDown={(e) => e.stopPropagation()}
                                       onClick={(e) => {
@@ -813,6 +847,8 @@ export default function DispatchTab({
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                       </svg>
                                     </button>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>

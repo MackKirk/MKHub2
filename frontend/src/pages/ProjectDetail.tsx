@@ -324,6 +324,7 @@ const SHIFT_FIELD_LABELS: Record<string, string> = {
   status: 'Status',
   job_name: 'Job type',
   geofences: 'Geofences',
+  notes: 'Notes',
 };
 
 const PROPOSAL_FIELD_LABELS: Record<string, string> = {

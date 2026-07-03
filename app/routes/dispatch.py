@@ -66,6 +66,41 @@ def get_geofences_for_shift(shift: Shift, project: Project, db: Session) -> List
     return []
 
 
+def _normalize_shift_notes(raw) -> Optional[str]:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    if len(text) > 2000:
+        raise HTTPException(status_code=400, detail="Notes must be 2000 characters or fewer")
+    return text
+
+
+def _shift_to_dict(shift: Shift, *, geofences: list, project_name: Optional[str] = None) -> dict:
+    payload = {
+        "id": str(shift.id),
+        "project_id": str(shift.project_id),
+        "worker_id": str(shift.worker_id),
+        "date": shift.date.isoformat(),
+        "start_time": shift.start_time.isoformat(),
+        "end_time": shift.end_time.isoformat(),
+        "status": shift.status,
+        "default_break_min": shift.default_break_min,
+        "geofences": geofences,
+        "job_id": str(shift.job_id) if shift.job_id else None,
+        "job_name": shift.job_name,
+        "notes": shift.notes,
+        "created_by": str(shift.created_by),
+        "created_at": shift.created_at.isoformat() if shift.created_at else None,
+    }
+    if project_name is not None:
+        payload["project_name"] = project_name
+    if shift.updated_at:
+        payload["updated_at"] = shift.updated_at.isoformat()
+    return payload
+
+
 # Shift Management
 
 @router.post("/projects/{project_id}/shifts")
@@ -227,21 +262,11 @@ def create_shift(
         timezone_str=project_timezone
     )
     
-    return {
-        "id": str(shift.id),
-        "project_id": str(shift.project_id),
-        "worker_id": str(shift.worker_id),
-        "date": shift.date.isoformat(),
-        "start_time": shift.start_time.isoformat(),
-        "end_time": shift.end_time.isoformat(),
-        "status": shift.status,
-        "default_break_min": shift.default_break_min,
-        "geofences": shift.geofences,
-        "job_id": str(shift.job_id) if shift.job_id else None,
-        "job_name": shift.job_name,
-        "created_by": str(shift.created_by),
-        "created_at": shift.created_at.isoformat() if shift.created_at else None,
-    }
+    return _shift_to_dict(
+        shift,
+        geofences=get_geofences_for_shift(shift, project, db),
+        project_name=project.name,
+    )
 
 
 @router.post("/shifts/without-project")
@@ -385,6 +410,7 @@ def create_shift_without_project(
         "end_time": shift.end_time.isoformat(),
         "status": shift.status,
         "job_name": shift.job_name,
+        "notes": shift.notes,
         "created_at": shift.created_at.isoformat() if shift.created_at else None,
     }
 
@@ -438,22 +464,7 @@ def list_shifts(
         # Get geofences (from shift or project)
         geofences = get_geofences_for_shift(s, project, db)
         
-        result.append({
-            "id": str(s.id),
-            "project_id": str(s.project_id),
-            "project_name": project.name if project else None,
-            "worker_id": str(s.worker_id),
-            "date": s.date.isoformat(),
-            "start_time": s.start_time.isoformat(),
-            "end_time": s.end_time.isoformat(),
-            "status": s.status,
-            "default_break_min": s.default_break_min,
-            "geofences": geofences,
-            "job_id": str(s.job_id) if s.job_id else None,
-            "job_name": s.job_name,
-            "created_by": str(s.created_by),
-            "created_at": s.created_at.isoformat() if s.created_at else None,
-        })
+        result.append(_shift_to_dict(s, geofences=geofences, project_name=project.name if project else None))
     
     return result
 
@@ -520,22 +531,7 @@ def list_all_shifts(
         # Get geofences (from shift or project)
         geofences = get_geofences_for_shift(s, project, db)
         
-        result.append({
-            "id": str(s.id),
-            "project_id": str(s.project_id),
-            "worker_id": str(s.worker_id),
-            "date": s.date.isoformat(),
-            "start_time": s.start_time.isoformat(),
-            "end_time": s.end_time.isoformat(),
-            "status": s.status,
-            "default_break_min": s.default_break_min,
-            "geofences": geofences,
-            "job_id": str(s.job_id) if s.job_id else None,
-            "job_name": s.job_name,
-            "created_by": str(s.created_by),
-            "created_at": s.created_at.isoformat() if s.created_at else None,
-            "project_name": project.name if project else None,
-        })
+        result.append(_shift_to_dict(s, geofences=geofences, project_name=project.name if project else None))
     
     return result
 
@@ -568,23 +564,7 @@ def get_shift(
     # Get project name
     project_name = project.name if project else None
     
-    return {
-        "id": str(shift.id),
-        "project_id": str(shift.project_id),
-        "project_name": project_name,
-        "worker_id": str(shift.worker_id),
-        "date": shift.date.isoformat(),
-        "start_time": shift.start_time.isoformat(),
-        "end_time": shift.end_time.isoformat(),
-        "status": shift.status,
-        "default_break_min": shift.default_break_min,
-        "geofences": geofences,
-        "job_id": str(shift.job_id) if shift.job_id else None,
-        "job_name": shift.job_name,
-        "created_by": str(shift.created_by),
-        "created_at": shift.created_at.isoformat() if shift.created_at else None,
-        "updated_at": shift.updated_at.isoformat() if shift.updated_at else None,
-    }
+    return _shift_to_dict(shift, geofences=geofences, project_name=project_name)
 
 
 @router.patch("/shifts/{shift_id}")
@@ -614,6 +594,7 @@ def update_shift(
         "end_time": shift.end_time.isoformat(),
         "status": shift.status,
         "geofences": shift.geofences,
+        "notes": shift.notes,
     }
     
     # Update fields
@@ -689,6 +670,12 @@ def update_shift(
     if "geofences" in payload:
         shift.geofences = payload["geofences"]
         updated = True
+
+    if "notes" in payload:
+        new_notes = _normalize_shift_notes(payload.get("notes"))
+        if new_notes != shift.notes:
+            shift.notes = new_notes
+            updated = True
     
     # If times changed, re-check for conflicts
     if updated and (new_date != shift.date or new_start_time != shift.start_time or new_end_time != shift.end_time):
@@ -723,6 +710,7 @@ def update_shift(
         "end_time": shift.end_time.isoformat(),
         "status": shift.status,
         "geofences": shift.geofences,
+        "notes": shift.notes,
     }
     changes = compute_diff(before_state, after_state)
     
@@ -764,20 +752,7 @@ def update_shift(
     # Get geofences (from shift or project)
     geofences = get_geofences_for_shift(shift, project, db)
     
-    return {
-        "id": str(shift.id),
-        "project_id": str(shift.project_id),
-        "worker_id": str(shift.worker_id),
-        "date": shift.date.isoformat(),
-        "start_time": shift.start_time.isoformat(),
-        "end_time": shift.end_time.isoformat(),
-        "status": shift.status,
-        "default_break_min": shift.default_break_min,
-        "geofences": geofences,
-        "job_id": str(shift.job_id) if shift.job_id else None,
-        "job_name": shift.job_name,
-        "updated_at": shift.updated_at.isoformat() if shift.updated_at else None,
-    }
+    return _shift_to_dict(shift, geofences=geofences)
 
 
 @router.delete("/shifts/{shift_id}")

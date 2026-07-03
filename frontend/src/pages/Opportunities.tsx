@@ -24,6 +24,11 @@ import {
   resolveOpportunityQuickStatusFilters,
   setRelatedToMeParam,
 } from '@/lib/opportunityFilters';
+import {
+  effectiveListPageLimit,
+  listPageSizeSelectOptions,
+  parseListPageLimit,
+} from '@/lib/listPagination';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
 import {
   getProjectListHeroAddress,
@@ -173,6 +178,7 @@ export default function Opportunities() {
       params.set('view', 'list');
     } else {
       params.delete('view');
+      params.delete('limit');
     }
     setSearchParams(params, { replace: true });
     localStorage.setItem('opportunities-view-mode', viewMode);
@@ -223,11 +229,11 @@ export default function Opportunities() {
   const qs = useMemo(() => {
     const params = buildOpportunityListSearchParams(searchParams, businessLine, {
       page: Number(searchParams.get('page') || '1') || 1,
-      limit: Number(searchParams.get('limit') || '25') || 25,
+      limit: effectiveListPageLimit(viewMode, searchParams.get('limit')),
     });
     const s = params.toString();
     return s ? `?${s}` : '';
-  }, [searchParams, businessLine]);
+  }, [searchParams, businessLine, viewMode]);
   
   const listEndpoint = '/projects/business/opportunities';
   const { data, isLoading, refetch } = useQuery({ 
@@ -287,7 +293,11 @@ export default function Opportunities() {
   const arr = paginated ? (data.items || []) : (Array.isArray(data) ? data : []);
   const totalCount = paginated && typeof (data as any).total === 'number' ? (data as any).total : arr.length;
   const currentPage = paginated && typeof (data as any).page === 'number' ? (data as any).page : 1;
-  const limitPage = paginated && typeof (data as any).limit === 'number' ? (data as any).limit : 25;
+  const limitPage = paginated && typeof (data as any).limit === 'number'
+    ? (data as any).limit
+    : effectiveListPageLimit(viewMode, searchParams.get('limit'));
+  const listPageSizeOptions = useMemo(() => listPageSizeSelectOptions(), []);
+  const currentListPageSize = String(parseListPageLimit(searchParams.get('limit')));
   const totalPages = Math.max(1, Math.ceil(totalCount / limitPage));
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
   const [reportModalOpen, setReportModalOpen] = useState<{ open:boolean, projectId?:string }|null>(null);
@@ -774,7 +784,25 @@ export default function Opportunities() {
             <p className={uiTypography.helper}>
               Page {currentPage} of {totalPages} ({totalCount} total)
             </p>
-            <div className={uiCx(uiLayout.actionsRow, 'items-center')}>
+            <div className={uiCx(uiLayout.actionsRow, 'items-center flex-wrap gap-3')}>
+              {viewMode === 'list' && (
+                <div className="flex items-center gap-2">
+                  <span className={uiTypography.helper}>Rows per page</span>
+                  <AppSelect
+                    size="sm"
+                    value={currentListPageSize}
+                    onChange={(e) => {
+                      const p = new URLSearchParams(searchParams);
+                      p.set('limit', e.target.value);
+                      p.set('page', '1');
+                      setSearchParams(p);
+                    }}
+                    options={listPageSizeOptions}
+                    sortOptions={false}
+                    className="w-20"
+                  />
+                </div>
+              )}
               <AppButton
                 type="button"
                 variant="secondary"

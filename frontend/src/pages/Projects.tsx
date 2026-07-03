@@ -18,6 +18,11 @@ import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import { effectiveShowInProject } from '@/lib/projectStatusVisibility';
 import { buildOpportunityListSearchParams, resolveProjectQuickStatusFilters } from '@/lib/opportunityFilters';
+import {
+  effectiveListPageLimit,
+  listPageSizeSelectOptions,
+  parseListPageLimit,
+} from '@/lib/listPagination';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
 import {
   getProjectListHeroAddress,
@@ -31,6 +36,7 @@ import {
   AppEmptyState,
   AppInput,
   AppPageHeader,
+  AppSelect,
   AppTabCountBadge,
   AppTooltip,
   AppUserAvatar,
@@ -494,6 +500,7 @@ export default function Projects(){
       params.set('view', 'list');
     } else {
       params.delete('view');
+      params.delete('limit');
     }
     setSearchParams(params, { replace: true });
     localStorage.setItem('projects-view-mode', viewMode);
@@ -533,10 +540,10 @@ export default function Projects(){
   const qs = useMemo(()=> {
     const params = new URLSearchParams(searchParams);
     if (!params.has('page')) params.set('page', '1');
-    if (!params.has('limit')) params.set('limit', '25');
+    params.set('limit', String(effectiveListPageLimit(viewMode, searchParams.get('limit'))));
     params.set('business_line', businessLine);
     return params.toString() ? '?' + params.toString() : '';
-  }, [searchParams, businessLine]);
+  }, [searchParams, businessLine, viewMode]);
   
   const { data, isLoading, refetch } = useQuery({ 
     queryKey:['projects', businessLine, qs], 
@@ -614,7 +621,11 @@ export default function Projects(){
   const arr = paginated ? (data.items || []) : (Array.isArray(data) ? data : []);
   const totalCount = paginated && typeof (data as any).total === 'number' ? (data as any).total : arr.length;
   const currentPage = paginated && typeof (data as any).page === 'number' ? (data as any).page : 1;
-  const limitPage = paginated && typeof (data as any).limit === 'number' ? (data as any).limit : 25;
+  const limitPage = paginated && typeof (data as any).limit === 'number'
+    ? (data as any).limit
+    : effectiveListPageLimit(viewMode, searchParams.get('limit'));
+  const listPageSizeOptions = useMemo(() => listPageSizeSelectOptions(), []);
+  const currentListPageSize = String(parseListPageLimit(searchParams.get('limit')));
   const totalPages = Math.max(1, Math.ceil(totalCount / limitPage));
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
 
@@ -1037,7 +1048,25 @@ export default function Projects(){
             <p className={uiTypography.helper}>
               Page {currentPage} of {totalPages} ({totalCount} total)
             </p>
-            <div className={uiCx(uiLayout.actionsRow, 'items-center')}>
+            <div className={uiCx(uiLayout.actionsRow, 'items-center flex-wrap gap-3')}>
+              {viewMode === 'list' && (
+                <div className="flex items-center gap-2">
+                  <span className={uiTypography.helper}>Rows per page</span>
+                  <AppSelect
+                    size="sm"
+                    value={currentListPageSize}
+                    onChange={(e) => {
+                      const p = new URLSearchParams(searchParams);
+                      p.set('limit', e.target.value);
+                      p.set('page', '1');
+                      setSearchParams(p);
+                    }}
+                    options={listPageSizeOptions}
+                    sortOptions={false}
+                    className="w-20"
+                  />
+                </div>
+              )}
               <AppButton
                 type="button"
                 variant="secondary"

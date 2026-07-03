@@ -1957,6 +1957,7 @@ class Shift(Base):
     geofences: Mapped[Optional[list]] = mapped_column(JSON)  # List of {lat, lng, radius_m} geofences
     job_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)  # Job type/task identifier (to be linked to Job model when available)
     job_name: Mapped[Optional[str]] = mapped_column(String(255))  # Job name snapshot (for reference)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

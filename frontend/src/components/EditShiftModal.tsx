@@ -11,6 +11,7 @@ import {
   AppFormModal,
   AppInput,
   AppSelect,
+  AppTextarea,
   AppTimePicker,
   uiCx,
   uiLayout,
@@ -43,6 +44,7 @@ export default function EditShiftModal({
   const [startTime, setStartTime] = useState(shift?.start_time?.slice(0, 5) || '09:00');
   const [endTime, setEndTime] = useState(shift?.end_time?.slice(0, 5) || '17:00');
   const [jobType, setJobType] = useState(shift?.job_name || shift?.job_id || '');
+  const [notes, setNotes] = useState(shift?.notes || '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -54,6 +56,7 @@ export default function EditShiftModal({
       setStartTime(shift.start_time?.slice(0, 5) || '09:00');
       setEndTime(shift.end_time?.slice(0, 5) || '17:00');
       setJobType(shift.job_name || shift.job_id || '');
+      setNotes(shift.notes || '');
     }
   }, [shift]);
 
@@ -91,6 +94,7 @@ export default function EditShiftModal({
         end_time: endTime,
         job_type: jobType || null,
         job_name: jobType || null,
+        notes: notes.trim() || null,
       });
 
       toast.success('Shift updated');
@@ -128,7 +132,7 @@ export default function EditShiftModal({
         title={canEdit ? 'Edit Shift' : 'View Shift'}
         description={
           canEdit
-            ? 'Update shift time and job type'
+            ? 'Update shift time, job type, and notes'
             : 'Read-only — you do not have permission to edit shifts'
         }
         quickInfo={editShiftQuickInfo}
@@ -183,6 +187,16 @@ export default function EditShiftModal({
             disabled={!canEdit}
             fieldHint="Job Type\n\nOptional label for the type of work during this shift."
           />
+
+          <AppTextarea
+            label="Notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            disabled={!canEdit}
+            rows={3}
+            placeholder="Optional notes for this shift..."
+            helperText="Visible on the calendar when notes are saved."
+          />
         </div>
       </AppFormModal>
     );
@@ -221,7 +235,7 @@ export default function EditShiftModal({
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {canEdit
-                    ? 'Update shift time and job type'
+                    ? 'Update shift time, job type, and notes'
                     : 'Read-only — you do not have permission to edit shifts'}
                 </p>
               </div>
@@ -303,6 +317,20 @@ export default function EditShiftModal({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className={labelClass}>
+                  Notes <span className="text-gray-400 text-xs font-normal normal-case">(optional)</span>
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  disabled={!canEdit}
+                  rows={3}
+                  placeholder="Optional notes for this shift..."
+                  className={`${inputBase} ${!canEdit ? inputDisabled : ''} resize-y min-h-[72px]`}
+                />
               </div>
             </div>
           </div>
