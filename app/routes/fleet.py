@@ -609,6 +609,24 @@ def list_fleet_assets(
     for a in assets:
         d = FleetAssetResponse.model_validate(a).model_dump(mode="json")
         d["driver_name"] = get_user_display(db, a.driver_id) if a.driver_id else None
+        open_assignment = (
+            db.query(AssetAssignment)
+            .filter(
+                AssetAssignment.fleet_asset_id == a.id,
+                AssetAssignment.returned_at.is_(None),
+            )
+            .order_by(AssetAssignment.assigned_at.desc())
+            .first()
+        )
+        if open_assignment:
+            assignee = (open_assignment.assigned_to_name or "").strip() or (
+                get_user_display(db, open_assignment.assigned_to_user_id)
+                if open_assignment.assigned_to_user_id
+                else None
+            )
+            d["assigned_to_name"] = assignee
+        else:
+            d["assigned_to_name"] = None
         items.append(d)
 
     # Fetch distinct fuel types for filter dropdown (when viewing vehicles or all)

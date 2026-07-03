@@ -20,5 +20,18 @@ allprojects {
   }
 }
 
+subprojects { subproject ->
+  subproject.plugins.withId("com.android.application") {
+    subproject.android.defaultConfig.externalNativeBuild.cmake {
+      arguments "-DCMAKE_CXX_STANDARD_LIBRARIES=-lc++_shared -latomic -lm"
+    }
+  }
+  subproject.plugins.withId("com.android.library") {
+    subproject.android.defaultConfig.externalNativeBuild.cmake {
+      arguments "-DCMAKE_CXX_STANDARD_LIBRARIES=-lc++_shared -latomic -lm"
+    }
+  }
+}
+
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"

@@ -205,14 +205,15 @@ try {
     Write-Host "Iniciando Expo em nova janela..." -ForegroundColor Yellow
 
     $expoLines = @(
-        "`$env:CI = 'true'"
+        "`$env:CI = `$null"
         "`$env:ANDROID_HOME = '$sdkRoot'"
         "`$env:PATH = '$sdkRoot\platform-tools;$sdkRoot\emulator;' + `$env:PATH"
         "`$env:EXPO_PUBLIC_API_BASE_URL = '$ApiBaseUrl'"
         "Set-Location '$mobileDir'"
         "Write-Host 'Expo: http://localhost:$Port' -ForegroundColor Cyan"
         "Write-Host 'API (emulador): $ApiBaseUrl' -ForegroundColor Cyan"
-        "Write-Host 'Pressione a no menu para reabrir no Android' -ForegroundColor Yellow"
+        "Write-Host 'Salve o arquivo no editor para ver mudancas (Fast Refresh)' -ForegroundColor Yellow"
+        "Write-Host 'Pressione r na janela do Expo para recarregar manualmente' -ForegroundColor Yellow"
         "Write-Host ''"
         "npx expo start --android --clear --port $Port"
     )

@@ -5,12 +5,23 @@ const defineConfig = (): ExpoConfig => ({
   name: "MK Hub Mobile",
   slug: "mk-hub-mobile",
   version: "1.0.0",
+  icon: "./assets/icon.png",
   orientation: "portrait",
   userInterfaceStyle: "light",
   ios: {
+    bundleIdentifier: "com.mkhub.m54",
+    buildNumber: "1",
+    icon: "./assets/icon.png",
     supportsTablet: false
   },
-  android: {},
+  android: {
+    package: "com.mkhub.m54",
+    versionCode: 2,
+    adaptiveIcon: {
+      foregroundImage: "./assets/adaptive-icon.png",
+      backgroundColor: "#FFFFFF"
+    }
+  },
   web: {
     bundler: "metro"
   },

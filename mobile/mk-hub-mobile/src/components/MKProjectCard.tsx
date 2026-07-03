@@ -20,7 +20,6 @@ import type { ProjectListItem } from "../types/projects";
 
 export type ProjectQuickTab =
   | "files"
-  | "proposal"
   | "pricing"
   | "reports"
   | "overview";
@@ -36,7 +35,6 @@ interface MKProjectCardProps {
 
 const QUICK_ACTIONS: Array<{ tab: ProjectQuickTab; icon: string }> = [
   { tab: "files", icon: "📁" },
-  { tab: "proposal", icon: "📄" },
   { tab: "pricing", icon: "💰" },
   { tab: "reports", icon: "📝" }
 ];

@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { api } from "../services/api";
 
 const API_BASE_URL: string =
   (Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined)
@@ -28,4 +29,41 @@ export function resolveFileUrl(
     return `${base}${normalized}`;
   }
   return `${base}${normalized}`;
+}
+
+export function buildAuthenticatedFileUrl(
+  fileObjectId: string,
+  options: {
+    token?: string | null;
+    variant?: "inline" | "download" | "thumbnail";
+    thumbnailWidth?: number;
+  } = {}
+): { uri: string; headers?: { Authorization: string } } {
+  const variant = options.variant ?? "inline";
+  const path =
+    variant === "thumbnail"
+      ? `/files/${fileObjectId}/thumbnail?w=${options.thumbnailWidth ?? 200}`
+      : variant === "download"
+        ? `/files/${fileObjectId}/download`
+        : `/files/${fileObjectId}`;
+  const url = new URL(path, api.defaults.baseURL);
+  const authHeader = options.token ? `Bearer ${options.token}` : undefined;
+
+  if (authHeader?.startsWith("Bearer ")) {
+    url.searchParams.set("access_token", authHeader.slice(7).trim());
+  }
+
+  return {
+    uri: url.toString(),
+    headers: authHeader ? { Authorization: authHeader } : undefined
+  };
+}
+
+export function isImageContentType(
+  contentType?: string | null,
+  originalName?: string | null
+): boolean {
+  if (contentType?.startsWith("image/")) return true;
+  const name = String(originalName || "").toLowerCase();
+  return /\.(jpe?g|png|gif|webp|bmp|heic)$/i.test(name);
 }

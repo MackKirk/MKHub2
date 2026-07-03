@@ -3,12 +3,12 @@ import { StyleSheet, Text, View } from "react-native";
 import { useRoute, type RouteProp } from "@react-navigation/native";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { MKPageHeader } from "../../components/MKPageHeader";
-import type { RootStackParamList } from "../../navigation/types";
+import type { HomeStackParamList } from "../../navigation/types";
 import { colors } from "../../theme/colors";
 import { typography } from "../../theme/typography";
 import { spacing } from "../../theme/spacing";
 
-type PlaceholderRoute = RouteProp<RootStackParamList, "Placeholder">;
+type PlaceholderRoute = RouteProp<HomeStackParamList, "Placeholder">;
 
 export const PlaceholderScreen: React.FC = () => {
   const route = useRoute<PlaceholderRoute>();
