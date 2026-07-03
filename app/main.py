@@ -227,6 +227,12 @@ def create_app() -> FastAPI:
     app.mount("/ui", StaticFiles(directory="app/ui", html=True), name="ui")
     # React frontend (SPA) - fallback router that serves index.html for unknown paths
     FRONT_DIST = os.path.join("frontend", "dist")
+    PRIVACY_POLICY_PATH = os.path.join("app", "ui", "privacy.html")
+
+    @app.get("/privacy")
+    @app.get("/privacy-policy")
+    def privacy_policy():
+        return FileResponse(PRIVACY_POLICY_PATH, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
     # Metrics (disabled in production — avoids public /metrics exposure)
     if (settings.environment or "").lower() not in ("prod", "production"):
@@ -240,7 +246,7 @@ def create_app() -> FastAPI:
             path = request.url.path or "/"
             if "text/html" in accept and request.method == "GET":
                 # Allowlist actual non-SPA paths
-                if not (path.startswith("/api") or path.startswith("/auth") or path.startswith("/files") or path.startswith("/ui") or path.startswith("/assets") or path in {"/favicon.ico","/robots.txt","/metrics"}):
+                if not (path.startswith("/api") or path.startswith("/auth") or path.startswith("/files") or path.startswith("/ui") or path.startswith("/assets") or path in {"/favicon.ico","/robots.txt","/metrics","/privacy","/privacy-policy"}):
                     if os.path.isdir(FRONT_DIST):
                         index_path = os.path.join(FRONT_DIST, "index.html")
                         if os.path.exists(index_path):
