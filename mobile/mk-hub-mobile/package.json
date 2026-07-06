@@ -45,6 +45,7 @@
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@types/react": "~19.1.10",
+    "babel-preset-expo": "^57.0.1",
     "dotenv": "^17.2.3",
     "react-native-svg-transformer": "^1.5.3",
     "typescript": "~5.9.2"
