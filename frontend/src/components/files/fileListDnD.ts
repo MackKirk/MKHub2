@@ -53,3 +53,8 @@ export function isInternalFileDrag(dataTransfer: DataTransfer): boolean {
     dataTransfer.types.includes(MKHUB_FILE_ID_MIME)
   );
 }
+
+/** OS file import — not an in-app move (gallery image drags still set MKHUB mime types). */
+export function isExternalFileDrop(dataTransfer: DataTransfer): boolean {
+  return !isInternalFileDrag(dataTransfer) && (dataTransfer.files?.length ?? 0) > 0;
+}

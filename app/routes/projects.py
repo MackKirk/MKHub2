@@ -307,10 +307,17 @@ def _business_project_order_parts(
             return (name_k.asc(), code_k.asc())
         return (name_k.desc(), code_k.desc())
     if s == "start":
-        eff = func.coalesce(Project.date_start, Project.created_at)
-        return (eff.asc().nulls_last(),) if asc else (eff.desc().nulls_last(),)
+        # UI shows (date_start || created_at) as YYYY-MM-DD; filters use DATE-only COALESCE.
+        eff = cast(func.coalesce(Project.date_start, Project.created_at), Date)
+        secondary = func.coalesce(Project.date_start, Project.created_at)
+        if asc:
+            return (eff.asc().nulls_last(), secondary.asc().nulls_last(), Project.code.asc())
+        return (eff.desc().nulls_last(), secondary.desc().nulls_last(), Project.code.desc())
     if s == "eta":
-        return (Project.date_eta.asc().nulls_last(),) if asc else (Project.date_eta.desc().nulls_last(),)
+        eff = cast(Project.date_eta, Date)
+        if asc:
+            return (eff.asc().nulls_last(), Project.date_eta.asc().nulls_last(), Project.code.asc())
+        return (eff.desc().nulls_last(), Project.date_eta.desc().nulls_last(), Project.code.desc())
     if s == "value":
         v = func.coalesce(Project.service_value, Project.cost_estimated, literal(0))
         return (v.asc().nulls_last(),) if asc else (v.desc().nulls_last(),)

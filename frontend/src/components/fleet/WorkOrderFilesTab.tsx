@@ -17,10 +17,18 @@ import {
   restoreQueryCache,
   getDraggedFileIds,
   isInternalFileDrag,
+  isExternalFileDrop,
   setDraggedFileIds,
   useFileDropTarget,
   useFileImageGallery,
   useFileListSelection,
+  usePersistedFileViewMode,
+  FileViewModeToolbar,
+  FileImageGrid,
+  FileGridNonImageList,
+  partitionGridFiles,
+  toGridFileFromWorkOrder,
+  isFileGridImage,
 } from '@/components/files';
 import { libraryFilesMoveCategoryQuickInfo } from '@/lib/formModalQuickInfo';
 import {
@@ -80,6 +88,9 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const { viewMode, tileSize, setViewMode, setTileSize } = usePersistedFileViewMode('work-order-files-view', {
+    category: selectedCategory === 'all' ? undefined : selectedCategory,
+  });
   const [uploadCategory, setUploadCategory] = useState<string>('outros');
   const [isDragging, setIsDragging] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -160,6 +171,18 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
   const visibleFileIds = useMemo(() => currentFiles.map((f) => f.id), [currentFiles]);
   const { allSelected: allVisibleSelected } = fileSelection.getSelectionState(visibleFileIds);
 
+  const isImageFile = (f: WorkOrderFileItem) => isFileGridImage(f);
+  const { imageFiles: gridImageFiles, nonImageFiles: gridNonImageFiles } = useMemo(
+    () => partitionGridFiles(currentFiles, isImageFile, (f) => toGridFileFromWorkOrder(f)),
+    [currentFiles],
+  );
+  const showGridToggle = selectedCategory === 'photos' || currentFiles.some(isImageFile);
+  const workOrderFileById = useMemo(() => {
+    const map = new Map<string, WorkOrderFileItem>();
+    currentFiles.forEach((f) => map.set(f.id, f));
+    return map;
+  }, [currentFiles]);
+
   useEffect(() => {
     fileSelection.clear();
   }, [selectedCategory]);
@@ -213,7 +236,7 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
   };
 
   const handleDropFileIds = async (e: DragEvent, action: (ids: string[]) => void | Promise<void>) => {
-    if ((e.dataTransfer.files?.length || 0) > 0) return false;
+    if (!isInternalFileDrag(e.dataTransfer)) return false;
     if (!isInternalFileDrag(e.dataTransfer)) return false;
     const ids = getDraggedFileIds(e.dataTransfer);
     if (ids.length === 0) return false;
@@ -410,13 +433,15 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
     e.stopPropagation();
     setIsDragging(false);
     clearDropTarget();
-    if (e.dataTransfer.files?.length) {
-      const category = selectedCategory === 'all' ? uploadCategory : selectedCategory;
-      await uploadMultiple(Array.from(e.dataTransfer.files), category);
+    if (isInternalFileDrag(e.dataTransfer)) {
+      if (selectedCategory !== 'all') {
+        await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, selectedCategory));
+      }
       return;
     }
-    if (selectedCategory !== 'all') {
-      await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, selectedCategory));
+    if (isExternalFileDrop(e.dataTransfer)) {
+      const category = selectedCategory === 'all' ? uploadCategory : selectedCategory;
+      await uploadMultiple(Array.from(e.dataTransfer.files), category);
     }
   };
 
@@ -493,11 +518,13 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                         onClick={() => setSelectedCategory(cat.id)}
                         {...(cat.id !== 'all'
                           ? makeDropHandlers('category', cat.id, cat.label, async (e) => {
-                              if (e.dataTransfer.files?.length) {
-                                await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
+                              if (isInternalFileDrag(e.dataTransfer)) {
+                                await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, cat.id, cat.label));
                                 return;
                               }
-                              await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, cat.id, cat.label));
+                              if (isExternalFileDrop(e.dataTransfer)) {
+                                await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
+                              }
                             })
                           : {})}
                         className={uiCx(
@@ -556,6 +583,14 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                         <span className="ml-1 font-normal text-gray-500">({currentFiles.length})</span>
                       </p>
                     </div>
+                    <div className={uiCx(uiLayout.actionsRow, 'shrink-0 flex-wrap gap-2')}>
+                      <FileViewModeToolbar
+                        viewMode={viewMode}
+                        tileSize={tileSize}
+                        showGridToggle={showGridToggle}
+                        onViewModeChange={setViewMode}
+                        onTileSizeChange={setTileSize}
+                      />
                     {selectedCategory === 'all' && (
                       <AppSelect
                         value={uploadCategory}
@@ -564,6 +599,7 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                         aria-label="Upload category"
                       />
                     )}
+                    </div>
                   </div>
 
                   <FileListDropHint dropTarget={dropTarget} />
@@ -578,6 +614,66 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                   />
 
                   {currentFiles.length > 0 ? (
+                    viewMode === 'grid' ? (
+                      <div className={uiCx(uiRadius.card, uiBorders.subtle, 'overflow-hidden bg-white')}>
+                        <FileImageGrid
+                          files={gridImageFiles}
+                          tileSize={tileSize}
+                          selectedIds={fileSelection.selectedIds}
+                          canSelect
+                          canWrite
+                          onPreviewFile={(file) => {
+                            const original = workOrderFileById.get(file.id);
+                            if (original) void handleFilePreview(original);
+                          }}
+                          onSelectFile={(fileId, shiftKey) => {
+                            if (shiftKey) fileSelection.toggleRange(fileId, visibleFileIds);
+                            else fileSelection.toggle(fileId);
+                          }}
+                          onFileDragStart={(e, fileId) => startFileDrag(e, fileId)}
+                          onFileDragEnd={endFileDrag}
+                          nonImageSection={
+                            gridNonImageFiles.length > 0 ? (
+                              <FileGridNonImageList>
+                                <AppSortableEntityList layout="flat" className={uiCx(uiRadius.card, uiBorders.subtle, 'overflow-hidden')}>
+                                  <AppSortableEntityListFlatBody gridCols={FILES_GRID_COLS} minWidth="min-w-0">
+                                    {gridNonImageFiles.map((f) => {
+                                      const icon = iconFor(f);
+                                      const name = f.original_name || f.file_object_id || 'File';
+                                      return (
+                                        <AppSortableEntityListRow
+                                          key={f.id}
+                                          as="div"
+                                          variant="flat"
+                                          gridCols={FILES_GRID_COLS}
+                                          minWidth="min-w-0"
+                                          className="cursor-pointer"
+                                          onClick={() => void handleFilePreview(f)}
+                                        >
+                                          <div />
+                                          <div className="flex justify-center">
+                                            <div className={uiCx('flex h-10 w-8 items-center justify-center text-[10px] font-extrabold text-white', uiRadius.control, icon.color)}>
+                                              {icon.label}
+                                            </div>
+                                          </div>
+                                          <span className="min-w-0 truncate text-sm font-bold text-gray-900">{name}</span>
+                                          <span className={uiCx(uiTypography.helper, 'text-gray-600')}>{getFileTypeLabel(f)}</span>
+                                          <span className={uiCx(uiTypography.helper, 'text-gray-600')}>
+                                            {f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString() : '—'}
+                                          </span>
+                                          <div />
+                                        </AppSortableEntityListRow>
+                                      );
+                                    })}
+                                  </AppSortableEntityListFlatBody>
+                                </AppSortableEntityList>
+                              </FileGridNonImageList>
+                            ) : undefined
+                          }
+                          emptyMessage="No images in this view."
+                        />
+                      </div>
+                    ) : (
                     <AppSortableEntityList layout="flat" className={uiCx(uiRadius.card, uiBorders.subtle, 'overflow-hidden')}>
                       <AppSortableEntityListHeader variant="flat" gridCols={FILES_GRID_COLS} minWidth="min-w-0">
                         <div className="flex items-center justify-center">
@@ -717,6 +813,7 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                         })}
                       </AppSortableEntityListFlatBody>
                     </AppSortableEntityList>
+                    )
                   ) : (
                     <AppEmptyState
                       title="No files in this category"

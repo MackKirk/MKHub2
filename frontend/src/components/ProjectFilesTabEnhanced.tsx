@@ -27,10 +27,19 @@ import {
   restoreQueryCache,
   getDraggedFileIds,
   isInternalFileDrag,
+  isExternalFileDrop,
   setDraggedFileIds,
   useFileDropTarget,
   useFileImageGallery,
   useFileListSelection,
+  usePersistedFileViewMode,
+  FileViewModeToolbar,
+  FileImageGrid,
+  FileGridNonImageList,
+  partitionGridFiles,
+  toGridFileFromClientLike,
+  isFileGridImage,
+  type FileGridFileItem,
 } from '@/components/files';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
@@ -101,6 +110,10 @@ export default function ProjectFilesTabEnhanced({
   const fileSelection = useFileListSelection();
   const { dropTarget, setDropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const { viewMode, tileSize, setViewMode, setTileSize } = usePersistedFileViewMode('project-files-view', {
+    category:
+      selectedCategory === 'all' || selectedCategory === 'uncategorized' ? undefined : selectedCategory,
+  });
   const [isDragging, setIsDragging] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -420,9 +433,7 @@ export default function ProjectFilesTabEnhanced({
     e: DragEvent,
     action: (ids: string[]) => void | Promise<void>,
   ) => {
-    if (dropLooksLikeFolderTree(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {
-      return false;
-    }
+    if (dropLooksLikeFolderTree(e.dataTransfer)) return false;
     const folderId = e.dataTransfer.getData('application/x-project-folder-id');
     if (folderId) return false;
     if (!isInternalFileDrag(e.dataTransfer)) return false;
@@ -471,6 +482,36 @@ export default function ProjectFilesTabEnhanced({
     const categoryFiles = filesByCategory[selectedCategory] || [];
     return buildFolderFileCounts(categoryFiles, foldersInSelectedCategory);
   }, [filesByCategory, selectedCategory, foldersInSelectedCategory]);
+
+  const isImageFile = useCallback(
+    (f: ProjectFile) => isFileGridImage(f),
+    [],
+  );
+
+  const { imageFiles: gridImageFiles, nonImageFiles: gridNonImageFiles } = useMemo(
+    () => partitionGridFiles(currentFiles, isImageFile, (f) => toGridFileFromClientLike(f)),
+    [currentFiles, isImageFile],
+  );
+
+  const gridFolders = useMemo(
+    () =>
+      currentFolderChildren.map((folder: ProjectFolderItem) => ({
+        id: folder.id,
+        name: folder.name,
+        fileCount: folderFileCounts[folder.id] ?? 0,
+      })),
+    [currentFolderChildren, folderFileCounts],
+  );
+
+  const showGridToggle =
+    filesSection === 'active' &&
+    (selectedCategory === 'pictures' || currentFiles.some(isImageFile));
+
+  const projectFileById = useMemo(() => {
+    const map = new Map<string, ProjectFile>();
+    currentFiles.forEach((f) => map.set(f.id, f));
+    return map;
+  }, [currentFiles]);
   
   const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
     if (sortBy === column) {
@@ -1378,16 +1419,18 @@ export default function ProjectFilesTabEnhanced({
                     {...(canEditCategory
                       ? makeDropHandlers('category', cat.id, cat.name, async (e) => {
                           const dtCat = e.dataTransfer;
-                          if (dropLooksLikeFolderTree(dtCat) || (dtCat.files?.length || 0) > 0) {
+                          if (isInternalFileDrag(dtCat)) {
+                            const folderId = e.dataTransfer.getData('application/x-project-folder-id');
+                            if (folderId) {
+                              await handleMoveFolderToCategory(folderId, cat.id);
+                              return;
+                            }
+                            await handleDropFileIds(e, ids => moveFilesToCategory(ids, cat.id, cat.name));
+                            return;
+                          }
+                          if (dropLooksLikeFolderTree(dtCat) || isExternalFileDrop(dtCat)) {
                             await uploadFromDrop(dtCat, cat.id, undefined);
-                            return;
                           }
-                          const folderId = e.dataTransfer.getData('application/x-project-folder-id');
-                          if (folderId) {
-                            await handleMoveFolderToCategory(folderId, cat.id);
-                            return;
-                          }
-                          await handleDropFileIds(e, ids => moveFilesToCategory(ids, cat.id, cat.name));
                         })
                       : {})}
                     onDragOver={canEditCategory ? (e) => {
@@ -1416,17 +1459,17 @@ export default function ProjectFilesTabEnhanced({
                     e.stopPropagation();
                     setIsDragging(false);
                     const dtUnc = e.dataTransfer;
-                    if (dropLooksLikeFolderTree(dtUnc) || (dtUnc.files?.length || 0) > 0) {
+                    if (isInternalFileDrag(dtUnc)) {
+                      const folderId = e.dataTransfer.getData('application/x-project-folder-id');
+                      if (folderId) {
+                        toast('Folders must stay in a category; drop on a category instead.');
+                        return;
+                      }
+                      await handleDropFileIds(e, ids => moveFilesToCategory(ids, 'uncategorized', 'Uncategorized'));
+                      return;
+                    }
+                    if (dropLooksLikeFolderTree(dtUnc) || isExternalFileDrop(dtUnc)) {
                       await uploadFromDrop(dtUnc, 'uncategorized', undefined);
-                      return;
-                    }
-                    const folderId = e.dataTransfer.getData('application/x-project-folder-id');
-                    if (folderId) {
-                      toast('Folders must stay in a category; drop on a category instead.');
-                      return;
-                    }
-                    if (await handleDropFileIds(e, ids => moveFilesToCategory(ids, 'uncategorized', 'Uncategorized'))) {
-                      return;
                     }
                   } : undefined}
                   className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
@@ -1475,7 +1518,13 @@ export default function ProjectFilesTabEnhanced({
               setIsDragging(false);
               clearDropTarget();
               const dtMain = e.dataTransfer;
-              if (dropLooksLikeFolderTree(dtMain) || (dtMain.files?.length || 0) > 0) {
+              if (isInternalFileDrag(dtMain)) {
+                if (selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
+                  await handleDropFileIds(e, ids => moveFilesToFolder(ids, null, 'Root'));
+                }
+                return;
+              }
+              if (dropLooksLikeFolderTree(dtMain) || isExternalFileDrop(dtMain)) {
                 const category =
                   selectedCategory === 'all'
                     ? undefined
@@ -1483,10 +1532,6 @@ export default function ProjectFilesTabEnhanced({
                       ? null
                       : selectedCategory;
                 await uploadFromDrop(dtMain, category, selectedFolderId || undefined);
-                return;
-              }
-              if (selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
-                await handleDropFileIds(e, ids => moveFilesToFolder(ids, null, 'Root'));
               }
             } : undefined}
           >
@@ -1531,8 +1576,16 @@ export default function ProjectFilesTabEnhanced({
                   <span className="ml-1 text-gray-500">({currentFiles.length})</span>
                 </div>
               </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <FileViewModeToolbar
+                  viewMode={viewMode}
+                  tileSize={tileSize}
+                  showGridToggle={showGridToggle}
+                  onViewModeChange={setViewMode}
+                  onTileSizeChange={setTileSize}
+                />
               {canWriteFiles && (
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <>
                   {designSystem ? (
                     <>
                       <AppButton
@@ -1566,8 +1619,9 @@ export default function ProjectFilesTabEnhanced({
                   </button>
                     </>
                   )}
-                </div>
+                </>
               )}
+              </div>
             </div>
 
             {/* Location: breadcrumb only (hierarchy of current path) */}
@@ -1654,6 +1708,111 @@ export default function ProjectFilesTabEnhanced({
                 />
               ) : null}
               {(selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (currentParentFolderId !== null || currentFolderChildren.length > 0 || currentFiles.length > 0)) || (selectedCategory === 'all' || selectedCategory === 'uncategorized') && currentFiles.length > 0 ? (
+                viewMode === 'grid' ? (
+                  <FileImageGrid
+                    folders={gridFolders}
+                    files={gridImageFiles}
+                    tileSize={tileSize}
+                    selectedIds={fileSelection.selectedIds}
+                    canSelect={canSelectInCurrentView}
+                    canWrite={canWriteFiles}
+                    showParentTile={
+                      selectedCategory !== 'all' &&
+                      selectedCategory !== 'uncategorized' &&
+                      currentParentFolderId !== null
+                    }
+                    onParentNavigate={() => setSelectedFolderId(currentParentFolderId)}
+                    onOpenFolder={(folderId) => setSelectedFolderId(folderId)}
+                    onPreviewFile={(file) => {
+                      const original = projectFileById.get(file.id);
+                      if (original) void handleFilePreview(original);
+                    }}
+                    onSelectFile={(fileId, shiftKey) => {
+                      if (shiftKey) fileSelection.toggleRange(fileId, visibleFileIds);
+                      else fileSelection.toggle(fileId);
+                    }}
+                    onFileDragStart={(e, fileId) => startFileDrag(e, fileId)}
+                    onFileDragEnd={endFileDrag}
+                    onFolderDragStart={(e, folderId) => {
+                      e.dataTransfer.setData('application/x-project-folder-id', folderId);
+                      e.dataTransfer.effectAllowed = 'move';
+                      setDraggedFolderId(folderId);
+                    }}
+                    onFolderDragEnd={() => setDraggedFolderId(null)}
+                    makeFolderDropHandlers={(folderId, folderName) => {
+                      const handlers =
+                        canWriteFiles && isWriteCategoryAllowed(selectedCategory)
+                          ? makeDropHandlers('folder', folderId, folderName, async (e) => {
+                              const dt = e.dataTransfer;
+                              if (isInternalFileDrag(dt)) {
+                                await handleDropFileIds(e, (ids) =>
+                                  moveFilesToFolder(ids, folderId, folderName),
+                                );
+                                return;
+                              }
+                              if (dropLooksLikeFolderTree(dt) || isExternalFileDrop(dt)) {
+                                await uploadFromDrop(dt, selectedCategory, folderId);
+                              }
+                            })
+                          : {};
+                      return {
+                        ...handlers,
+                        isDropActive: isDropActive('folder', folderId),
+                      };
+                    }}
+                    renderFolderActions={(folder) =>
+                      canWriteFiles ? (
+                        <AppListRowIconButton
+                          preset="delete"
+                          label="Delete folder"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteFolder(folder.id);
+                          }}
+                        />
+                      ) : null
+                    }
+                    nonImageSection={
+                      gridNonImageFiles.length > 0 ? (
+                        <FileGridNonImageList>
+                          <div className="overflow-x-auto rounded-lg border border-gray-200">
+                            <table className="w-full">
+                              <tbody className="divide-y">
+                                {gridNonImageFiles.map((f) => {
+                                  const icon = iconFor(f);
+                                  const name = f.original_name || f.file_object_id;
+                                  return (
+                                    <tr key={f.id} className="hover:bg-gray-50">
+                                      <td className="px-3 py-2">
+                                        <div
+                                          className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold cursor-pointer`}
+                                          onClick={() => handleFilePreview(f)}
+                                        >
+                                          {icon.label}
+                                        </div>
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <button
+                                          type="button"
+                                          className="text-xs font-semibold truncate max-w-xs text-left"
+                                          onClick={() => handleFilePreview(f)}
+                                        >
+                                          {name}
+                                        </button>
+                                      </td>
+                                      <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(f)}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </FileGridNonImageList>
+                      ) : undefined
+                    }
+                    emptyMessage="No images in this view."
+                  />
+                ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50 border-b">
@@ -1743,13 +1902,15 @@ export default function ProjectFilesTabEnhanced({
                           {...(canWriteFiles && isWriteCategoryAllowed(selectedCategory)
                             ? makeDropHandlers('folder', folder.id, folder.name, async (e) => {
                                 const dt = e.dataTransfer;
-                                if (dropLooksLikeFolderTree(dt) || (dt.files?.length || 0) > 0) {
-                                  await uploadFromDrop(dt, selectedCategory, folder.id);
+                                if (isInternalFileDrag(dt)) {
+                                  await handleDropFileIds(e, ids =>
+                                    moveFilesToFolder(ids, folder.id, folder.name),
+                                  );
                                   return;
                                 }
-                                await handleDropFileIds(e, ids =>
-                                  moveFilesToFolder(ids, folder.id, folder.name),
-                                );
+                                if (dropLooksLikeFolderTree(dt) || isExternalFileDrop(dt)) {
+                                  await uploadFromDrop(dt, selectedCategory, folder.id);
+                                }
                               })
                             : {})}
                           className={uiCx(
@@ -2008,6 +2169,7 @@ export default function ProjectFilesTabEnhanced({
                     </tbody>
                   </table>
                 </div>
+                )
               ) : designSystem ? (
                 <AppEmptyState
                   className="border-0 py-6 shadow-none"

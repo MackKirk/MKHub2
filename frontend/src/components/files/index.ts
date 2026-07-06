@@ -8,6 +8,7 @@ export {
   getDraggedFileIds,
   dropTargetClass,
   isInternalFileDrag,
+  isExternalFileDrop,
   type FileDropTarget,
   type FileDropTargetKind,
 } from './fileListDnD';
@@ -29,3 +30,24 @@ export {
   restoreQueryCache,
   invalidateQueriesInBackground,
 } from './fileListMoveCache';
+export {
+  getDefaultViewMode,
+  getDefaultTileSize,
+  getTileSizeConfig,
+  usePersistedFileViewMode,
+  type FileGridTileSize,
+  type FileViewMode,
+  type FileViewModeContext,
+} from './fileViewMode';
+export {
+  isFileGridImage,
+  partitionGridFiles,
+  toGridFileFromClientLike,
+  toGridFileFromCompanyDoc,
+  toGridFileFromWorkOrder,
+  type FileGridFileItem,
+  type FileGridFolderItem,
+} from './fileGridTypes';
+export { FileViewModeToolbar } from './FileViewModeToolbar';
+export { FileFolderGridTile, FileParentGridTile } from './FileFolderGridTile';
+export { FileImageGrid, FileGridNonImageList } from './FileImageGrid';

@@ -40,6 +40,20 @@ export function normalizeProjectDivisionIds(...sources: unknown[]): string[] {
   return [];
 }
 
+/** Effective list "Start" date (matches backend COALESCE + DATE sort and card display). */
+export function getProjectListStartDate(project: {
+  date_start?: string | null;
+  created_at?: string | null;
+}): string {
+  const raw = project.date_start || project.created_at;
+  if (!raw) return '';
+  const s = String(raw);
+  if (s.length >= 10 && s[4] === '-' && s[7] === '-') return s.slice(0, 10);
+  const parsed = new Date(s);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return s.slice(0, 10);
+}
+
 export function getProjectListHeroAddress(project: ProjectListAddressFields): string | null {
   return formatSiteHeroAddress({
     address_line1: project.site_address_line1 || project.address,

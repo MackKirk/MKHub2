@@ -26,9 +26,14 @@ import {
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
 import {
   getProjectListHeroAddress,
+  getProjectListStartDate,
   normalizeProjectDivisionIds,
   resolveProjectDivisionIcons,
 } from '@/lib/projectListRowUtils';
+import {
+  getAppListSortIndicator,
+  useAppListSort,
+} from '@/components/ui/useAppListSort';
 import {
   AppBadge,
   AppButton,
@@ -493,18 +498,22 @@ export default function Projects(){
     return (saved === 'list' || saved === 'cards') ? saved : 'list';
   });
   
-  // Sync viewMode with URL and localStorage
+  // Sync viewMode with URL and localStorage (only when view mode changes — avoid re-writing URL on sort/filter updates).
   useEffect(() => {
-    const params = new URLSearchParams(searchParams);
-    if (viewMode === 'list') {
-      params.set('view', 'list');
-    } else {
-      params.delete('view');
-      params.delete('limit');
-    }
-    setSearchParams(params, { replace: true });
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (viewMode === 'list') {
+        if (params.get('view') === 'list') return prev;
+        params.set('view', 'list');
+      } else {
+        if (!params.has('view') && !params.has('limit')) return prev;
+        params.delete('view');
+        params.delete('limit');
+      }
+      return params;
+    }, { replace: true });
     localStorage.setItem('projects-view-mode', viewMode);
-  }, [viewMode, searchParams, setSearchParams]);
+  }, [viewMode, setSearchParams]);
   
   // Convert current URL params to rules for modal
   const currentRules = useMemo(() => {
@@ -537,15 +546,16 @@ export default function Projects(){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
   
-  const qs = useMemo(()=> {
-    const params = new URLSearchParams(searchParams);
-    if (!params.has('page')) params.set('page', '1');
-    params.set('limit', String(effectiveListPageLimit(viewMode, searchParams.get('limit'))));
-    params.set('business_line', businessLine);
-    return params.toString() ? '?' + params.toString() : '';
+  const qs = useMemo(() => {
+    const params = buildOpportunityListSearchParams(searchParams, businessLine, {
+      page: Number(searchParams.get('page') || '1') || 1,
+      limit: effectiveListPageLimit(viewMode, searchParams.get('limit')),
+    });
+    const s = params.toString();
+    return s ? `?${s}` : '';
   }, [searchParams, businessLine, viewMode]);
   
-  const { data, isLoading, refetch } = useQuery({ 
+  const { data, isLoading, isFetching, refetch } = useQuery({ 
     queryKey:['projects', businessLine, qs], 
     queryFn: ()=> api<{ items: Project[]; total: number; page: number; limit: number } | Project[]>('GET', `/projects/business/projects${qs}`)
   });
@@ -629,18 +639,14 @@ export default function Projects(){
   const totalPages = Math.max(1, Math.ceil(totalCount / limitPage));
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
 
-  // List sort: read from URL so it persists and is shareable
   type ProjectListSort = 'project' | 'address' | 'start' | 'eta' | 'admin' | 'value' | 'status' | 'divisions';
-  const sortBy = (searchParams.get('sort') as ProjectListSort) || 'project';
-  const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
-  const setListSort = (column: ProjectListSort, direction?: 'asc' | 'desc') => {
-    const params = new URLSearchParams(searchParams);
-    const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
-    params.set('sort', column);
-    params.set('dir', nextDir);
-    params.set('page', '1');
-    setSearchParams(params, { replace: true });
-  };
+  const PROJECT_LIST_SORTS: ProjectListSort[] = ['project', 'address', 'start', 'eta', 'admin', 'value', 'status', 'divisions'];
+  const { sortBy, sortDir, setSort: setListSort } = useAppListSort<ProjectListSort>({
+    searchParams,
+    setSearchParams,
+    defaultSort: 'project',
+    validSorts: PROJECT_LIST_SORTS,
+  });
 
   // Filter Builder Configuration
   const filterFields: FieldConfig[] = useMemo(() => [
@@ -719,6 +725,10 @@ export default function Projects(){
 
   const handleApplyFilters = (rules: FilterRule[]) => {
     const params = convertRulesToParams(rules);
+    for (const key of ['sort', 'dir', 'view', 'limit'] as const) {
+      const value = searchParams.get(key);
+      if (value) params.set(key, value);
+    }
     if (q) params.set('q', q);
     if (searchParams.get('related_to_me') === '1') params.set('related_to_me', '1');
     params.set('page', '1');
@@ -996,7 +1006,7 @@ export default function Projects(){
             ) : null}
           </div>
         ) : (
-          <div className={uiCx('flex flex-col gap-2 overflow-x-auto', listCardAnimClass)}>
+          <div className={uiCx('flex flex-col gap-2 overflow-x-auto', listCardAnimClass, isFetching && arr.length > 0 ? 'opacity-60 pointer-events-none' : undefined)}>
             <div
               className={uiCx(
                 'grid items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 sm:gap-3 lg:gap-4',
@@ -1007,14 +1017,14 @@ export default function Projects(){
               )}
               role="row"
             >
-              <button type="button" onClick={() => setListSort('project')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by project name">Project{sortBy === 'project' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('address')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by address">Address{sortBy === 'address' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('start')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by start date">Start{sortBy === 'start' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('eta')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by End Date">End Date{sortBy === 'eta' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('admin')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by project admin">Project Admin{sortBy === 'admin' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('value')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by value">Value{sortBy === 'value' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('status')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('divisions')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by divisions">Divisions{sortBy === 'divisions' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('project')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by project name">Project{getAppListSortIndicator(sortBy, 'project', sortDir)}</button>
+              <button type="button" onClick={() => setListSort('address')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by address">Address{getAppListSortIndicator(sortBy, 'address', sortDir)}</button>
+              <button type="button" onClick={() => setListSort('start')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by start date">Start{getAppListSortIndicator(sortBy, 'start', sortDir)}</button>
+              <button type="button" onClick={() => setListSort('eta')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by End Date">End Date{getAppListSortIndicator(sortBy, 'eta', sortDir)}</button>
+              <button type="button" onClick={() => setListSort('admin')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by project admin">Project Admin{getAppListSortIndicator(sortBy, 'admin', sortDir)}</button>
+              <button type="button" onClick={() => setListSort('value')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by value">Value{getAppListSortIndicator(sortBy, 'value', sortDir)}</button>
+              <button type="button" onClick={() => setListSort('status')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by status">Status{getAppListSortIndicator(sortBy, 'status', sortDir)}</button>
+              <button type="button" onClick={() => setListSort('divisions')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by divisions">Divisions{getAppListSortIndicator(sortBy, 'divisions', sortDir)}</button>
               {SHOW_PROJECT_LIST_SHORTCUTS ? <div className="min-w-0 w-28" aria-hidden /> : null}
             </div>
             {isLoading && !arr.length ? (
@@ -1130,7 +1140,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   const clientName = project.client_display_name || project.client_name || '';
   const status = project.status_label || '';
   const statusLabel = String(status || '').trim();
-  const start = (project.date_start || project.created_at || '').slice(0,10);
+  const start = getProjectListStartDate(project);
   const eta = (project.date_eta || '').slice(0,10);
   const estimatedValue = project.service_value || 0;
 
@@ -1324,7 +1334,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
   const status = project.status_label || '';
   const statusLabel = String(status || '').trim();
   const progress = Math.max(0, Math.min(100, Number(project.progress ?? 0)));
-  const start = (project.date_start || project.created_at || '').slice(0,10);
+  const start = getProjectListStartDate(project);
   const eta = (project.date_eta || '').slice(0,10);
   const projectAdminId = project.project_admin_id || null;
   const actualValue = project.cost_actual || 0;

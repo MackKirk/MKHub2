@@ -19,10 +19,19 @@ import {
   restoreQueryCache,
   getDraggedFileIds,
   isInternalFileDrag,
+  isExternalFileDrop,
   setDraggedFileIds,
   useFileDropTarget,
   useFileImageGallery,
   useFileListSelection,
+  usePersistedFileViewMode,
+  FileViewModeToolbar,
+  FileImageGrid,
+  FileGridNonImageList,
+  partitionGridFiles,
+  toGridFileFromCompanyDoc,
+  isFileGridImage,
+  type FileGridFileItem,
 } from '@/components/files';
 import { isAdminRole } from '@/lib/projectLinePermissionKeys';
 import {
@@ -114,6 +123,7 @@ export default function CompanyFilesTabEnhanced() {
     (me?.permissions as string[] | undefined)?.includes('clients:write');
 
   const [selectedDept, setSelectedDept] = useState('');
+  const { viewMode, tileSize, setViewMode, setTileSize } = usePersistedFileViewMode('company-files-view');
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [filesSection, setFilesSection] = useState<'active' | 'deleted'>('active');
   const [fileSearchQuery, setFileSearchQuery] = useState('');
@@ -337,6 +347,27 @@ export default function CompanyFilesTabEnhanced() {
   const { allSelected: allVisibleSelected } = fileSelection.getSelectionState(visibleFileIds);
   const canSelectInCurrentView = canMove && filesSection === 'active';
 
+  const isImageDoc = (d: CompanyDocument) => isFileGridImage(d);
+  const { imageFiles: gridImageFiles, nonImageFiles: gridNonImageDocs } = useMemo(
+    () => partitionGridFiles(currentFiles, isImageDoc, (d) => toGridFileFromCompanyDoc(d)),
+    [currentFiles],
+  );
+  const gridFolders = useMemo(
+    () =>
+      currentFolderChildren.map((folder) => ({
+        id: folder.id,
+        name: folder.name,
+        fileCount: folderFileCounts[folder.id] ?? 0,
+      })),
+    [currentFolderChildren, folderFileCounts],
+  );
+  const showGridToggle = filesSection === 'active' && currentFiles.some(isImageDoc);
+  const companyDocById = useMemo(() => {
+    const map = new Map<string, CompanyDocument>();
+    currentFiles.forEach((d) => map.set(d.id, d));
+    return map;
+  }, [currentFiles]);
+
   useEffect(() => {
     fileSelection.clear();
   }, [selectedDept, selectedFolderId, filesSection]);
@@ -391,7 +422,7 @@ export default function CompanyFilesTabEnhanced() {
   };
 
   const handleDropDocIds = async (e: DragEvent, action: (ids: string[]) => void | Promise<void>) => {
-    if ((e.dataTransfer.files?.length || 0) > 0) return false;
+    if (!isInternalFileDrag(e.dataTransfer)) return false;
     if (!isInternalFileDrag(e.dataTransfer)) return false;
     const ids = getDraggedFileIds(e.dataTransfer);
     if (ids.length === 0) return false;
@@ -1033,11 +1064,13 @@ export default function CompanyFilesTabEnhanced() {
                       e.stopPropagation();
                       setIsDragging(false);
                       clearDropTarget();
-                      if (e.dataTransfer.files?.length) {
-                        await uploadMultiple(e.dataTransfer.files);
+                      if (isInternalFileDrag(e.dataTransfer)) {
+                        await handleDropDocIds(e, ids => moveDocsToFolder(ids, null, 'Root'));
                         return;
                       }
-                      await handleDropDocIds(e, ids => moveDocsToFolder(ids, null, 'Root'));
+                      if (isExternalFileDrop(e.dataTransfer)) {
+                        await uploadMultiple(e.dataTransfer.files);
+                      }
                     }
                   : undefined
               }
@@ -1064,6 +1097,14 @@ export default function CompanyFilesTabEnhanced() {
                         <span className="ml-1 text-gray-500">({currentFiles.length})</span>
                       </div>
                     </div>
+                    <div className="flex flex-shrink-0 items-center gap-2">
+                      <FileViewModeToolbar
+                        viewMode={viewMode}
+                        tileSize={tileSize}
+                        showGridToggle={showGridToggle}
+                        onViewModeChange={setViewMode}
+                        onTileSizeChange={setTileSize}
+                      />
                     {canWrite ? (
                       <div className="flex flex-shrink-0 items-center gap-2">
                         <AppButton
@@ -1082,6 +1123,7 @@ export default function CompanyFilesTabEnhanced() {
                         </AppButton>
                       </div>
                     ) : null}
+                    </div>
                   </div>
 
                   <div className="mb-3 flex flex-wrap items-center gap-1">
@@ -1119,6 +1161,123 @@ export default function CompanyFilesTabEnhanced() {
                       />
                     ) : null}
                     {showTable ? (
+                      viewMode === 'grid' ? (
+                        <FileImageGrid
+                          folders={gridFolders}
+                          files={gridImageFiles}
+                          tileSize={tileSize}
+                          selectedIds={fileSelection.selectedIds}
+                          canSelect={canSelectInCurrentView}
+                          canWrite={canMove}
+                          showParentTile={currentParentFolderId !== null}
+                          onParentNavigate={() => setSelectedFolderId(currentParentFolderId)}
+                          onOpenFolder={(folderId) => setSelectedFolderId(folderId)}
+                          onPreviewFile={(file) => {
+                            const original = companyDocById.get(file.id);
+                            if (original) void handleFilePreview(original);
+                          }}
+                          onSelectFile={(fileId, shiftKey) => {
+                            if (shiftKey) fileSelection.toggleRange(fileId, visibleFileIds);
+                            else fileSelection.toggle(fileId);
+                          }}
+                          onFileDragStart={(e, docId) => startFileDrag(e, docId)}
+                          onFileDragEnd={endFileDrag}
+                          makeFolderDropHandlers={(folderId, folderName) => {
+                            const handlers = canWrite
+                              ? makeDropHandlers('folder', folderId, folderName, async (e) => {
+                                  if (isInternalFileDrag(e.dataTransfer)) {
+                                    await handleDropDocIds(e, (ids) =>
+                                      moveDocsToFolder(ids, folderId, folderName),
+                                    );
+                                    return;
+                                  }
+                                  if (isExternalFileDrop(e.dataTransfer)) {
+                                    await uploadMultiple(e.dataTransfer.files, folderId);
+                                  }
+                                })
+                              : {};
+                            return {
+                              ...handlers,
+                              isDropActive: isDropActive('folder', folderId),
+                            };
+                          }}
+                          renderFolderActions={(folder) => (
+                            <div className="flex items-center gap-0.5">
+                              {canMove ? (
+                                <AppListRowIconButton
+                                  label="Permissions"
+                                  icon="🔒"
+                                  onClick={() => setPermissionsFolder({ id: folder.id, name: folder.name })}
+                                />
+                              ) : null}
+                              {canMove ? (
+                                <AppListRowIconButton
+                                  preset="edit"
+                                  label="Rename"
+                                  onClick={() => setRenameFolder({ id: folder.id, name: folder.name })}
+                                />
+                              ) : null}
+                              {canDelete ? (
+                                <AppListRowIconButton
+                                  preset="delete"
+                                  label="Delete folder"
+                                  onClick={() => handleDeleteFolder(folder.id, folder.name)}
+                                />
+                              ) : null}
+                            </div>
+                          )}
+                          renderFileActions={(file: FileGridFileItem) => (
+                            <div className="flex items-center gap-0.5">
+                              {canDelete ? (
+                                <AppListRowIconButton
+                                  preset="delete"
+                                  label="Delete"
+                                  onClick={() => handleDeleteFile(file.id)}
+                                />
+                              ) : null}
+                            </div>
+                          )}
+                          nonImageSection={
+                            gridNonImageDocs.length > 0 ? (
+                              <FileGridNonImageList>
+                                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                                  <table className="w-full">
+                                    <tbody className="divide-y">
+                                      {gridNonImageDocs.map((d) => {
+                                        const icon = iconFor(d);
+                                        const name = d.original_name || d.title || 'Document';
+                                        return (
+                                          <tr key={d.id} className="hover:bg-gray-50">
+                                            <td className="px-3 py-2">
+                                              <div
+                                                className={`flex h-10 w-8 items-center justify-center rounded-lg ${icon.color} text-[10px] font-extrabold text-white cursor-pointer`}
+                                                onClick={() => handleFilePreview(d)}
+                                              >
+                                                {icon.label}
+                                              </div>
+                                            </td>
+                                            <td className="px-3 py-2">
+                                              <button
+                                                type="button"
+                                                className="max-w-xs truncate text-left text-xs font-semibold"
+                                                onClick={() => handleFilePreview(d)}
+                                              >
+                                                {name}
+                                              </button>
+                                            </td>
+                                            <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(d)}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </FileGridNonImageList>
+                            ) : undefined
+                          }
+                          emptyMessage="No images in this view."
+                        />
+                      ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full">
                           <thead className="border-b bg-gray-50">
@@ -1205,13 +1364,15 @@ export default function CompanyFilesTabEnhanced() {
                                 onClick={() => setSelectedFolderId(folder.id)}
                                 {...(canWrite
                                   ? makeDropHandlers('folder', folder.id, folder.name, async (e) => {
-                                      if (e.dataTransfer.files?.length) {
-                                        await uploadMultiple(e.dataTransfer.files, folder.id);
+                                      if (isInternalFileDrag(e.dataTransfer)) {
+                                        await handleDropDocIds(e, ids =>
+                                          moveDocsToFolder(ids, folder.id, folder.name),
+                                        );
                                         return;
                                       }
-                                      await handleDropDocIds(e, ids =>
-                                        moveDocsToFolder(ids, folder.id, folder.name),
-                                      );
+                                      if (isExternalFileDrop(e.dataTransfer)) {
+                                        await uploadMultiple(e.dataTransfer.files, folder.id);
+                                      }
                                     })
                                   : {})}
                               >
@@ -1425,6 +1586,7 @@ export default function CompanyFilesTabEnhanced() {
                           </tbody>
                         </table>
                       </div>
+                      )
                     ) : (
                       <AppEmptyState
                         className="border-0 py-6 shadow-none"

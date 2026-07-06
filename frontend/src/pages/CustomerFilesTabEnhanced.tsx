@@ -18,10 +18,18 @@ import {
   restoreQueryCache,
   getDraggedFileIds,
   isInternalFileDrag,
+  isExternalFileDrop,
   setDraggedFileIds,
   useFileDropTarget,
   useFileImageGallery,
   useFileListSelection,
+  usePersistedFileViewMode,
+  FileViewModeToolbar,
+  FileImageGrid,
+  FileGridNonImageList,
+  partitionGridFiles,
+  toGridFileFromClientLike,
+  isFileGridImage,
 } from '@/components/files';
 import { libraryFilesMoveCategoryQuickInfo } from '@/lib/formModalQuickInfo';
 import { AppSectionHeader, appSectionPresetProps, AppCard, AppCheckboxControl, AppListRowIconButton, uiCx, uiSpacing } from '@/components/ui';
@@ -37,6 +45,10 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   /** Admin-only: Library vs soft-deleted customer files (same pattern as project Files tab). */
   const [filesSection, setFilesSection] = useState<'active' | 'deleted'>('active');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const { viewMode, tileSize, setViewMode, setTileSize } = usePersistedFileViewMode('customer-files-view', {
+    category:
+      selectedCategory === 'all' || selectedCategory === 'uncategorized' ? undefined : selectedCategory,
+  });
   const [isDragging, setIsDragging] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const fileSelection = useFileListSelection();
@@ -129,6 +141,20 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   const { allSelected: allVisibleSelected } = fileSelection.getSelectionState(visibleFileIds);
   const canSelectInCurrentView = canEditFiles && filesSection === 'active';
 
+  const isImageFile = (f: ClientFileForFiles) => isFileGridImage(f);
+  const { imageFiles: gridImageFiles, nonImageFiles: gridNonImageFiles } = useMemo(
+    () => partitionGridFiles(currentFiles, isImageFile, (f) => toGridFileFromClientLike(f)),
+    [currentFiles],
+  );
+  const showGridToggle =
+    filesSection === 'active' &&
+    (selectedCategory === 'pictures' || currentFiles.some(isImageFile));
+  const clientFileById = useMemo(() => {
+    const map = new Map<string, ClientFileForFiles>();
+    currentFiles.forEach((f) => map.set(f.id, f));
+    return map;
+  }, [currentFiles]);
+
   useEffect(() => {
     fileSelection.clear();
   }, [selectedCategory, filesSection]);
@@ -175,7 +201,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   };
 
   const handleDropFileIds = async (e: DragEvent, action: (ids: string[]) => void | Promise<void>) => {
-    if ((e.dataTransfer.files?.length || 0) > 0) return false;
+    if (!isInternalFileDrag(e.dataTransfer)) return false;
     if (!isInternalFileDrag(e.dataTransfer)) return false;
     const ids = getDraggedFileIds(e.dataTransfer);
     if (ids.length === 0) return false;
@@ -604,11 +630,13 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                     onClick={() => setSelectedCategory(cat.id)}
                       {...(canEditCat
                         ? makeDropHandlers('category', cat.id, cat.name, async (e) => {
-                            if (e.dataTransfer.files?.length) {
-                              await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
+                            if (isInternalFileDrag(e.dataTransfer)) {
+                              await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, cat.id, cat.name));
                               return;
                             }
-                            await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, cat.id, cat.name));
+                            if (isExternalFileDrop(e.dataTransfer)) {
+                              await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
+                            }
                           })
                         : {})}
                       className={uiCx(
@@ -631,11 +659,13 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                     onClick={() => setSelectedCategory('uncategorized')}
                     {...(canEditFiles
                       ? makeDropHandlers('category', 'uncategorized', 'Uncategorized', async (e) => {
-                          if (e.dataTransfer.files?.length) {
-                            await uploadMultiple(Array.from(e.dataTransfer.files), 'uncategorized');
+                          if (isInternalFileDrag(e.dataTransfer)) {
+                            await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, 'uncategorized', 'Uncategorized'));
                             return;
                           }
-                          await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, 'uncategorized', 'Uncategorized'));
+                          if (isExternalFileDrop(e.dataTransfer)) {
+                            await uploadMultiple(Array.from(e.dataTransfer.files), 'uncategorized');
+                          }
                         })
                       : {})}
                     className={uiCx(
@@ -667,26 +697,37 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                 e.stopPropagation();
                 setIsDragging(false);
                 clearDropTarget();
-                if (e.dataTransfer.files?.length) {
-                  const category = selectedCategory === 'all' ? undefined : selectedCategory === 'uncategorized' ? null : selectedCategory;
-                  await uploadMultiple(Array.from(e.dataTransfer.files), category);
+                if (isInternalFileDrag(e.dataTransfer)) {
+                  if (selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
+                    await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, selectedCategory));
+                  }
                   return;
                 }
-                if (selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
-                  await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, selectedCategory));
+                if (isExternalFileDrop(e.dataTransfer)) {
+                  const category = selectedCategory === 'all' ? undefined : selectedCategory === 'uncategorized' ? null : selectedCategory;
+                  await uploadMultiple(Array.from(e.dataTransfer.files), category);
                 }
               } : undefined}
             >
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="text-xs font-semibold">
                   {selectedCategory === 'all' ? 'All Files' : selectedCategory === 'uncategorized' ? 'Uncategorized Files' : visibleCategories.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
                   <span className="ml-2 text-gray-500">({currentFiles.length})</span>
                 </div>
+                <div className="flex items-center gap-2">
+                  <FileViewModeToolbar
+                    viewMode={viewMode}
+                    tileSize={tileSize}
+                    showGridToggle={showGridToggle}
+                    onViewModeChange={setViewMode}
+                    onTileSizeChange={setTileSize}
+                  />
                 {canEditFiles && (
                   <button onClick={() => setShowUpload(true)} className="px-2 py-1 rounded bg-brand-red text-white text-xs">
                     + Upload File
                   </button>
                 )}
+                </div>
               </div>
               <div className="rounded-lg border overflow-hidden bg-white">
                 <FileListDropHint dropTarget={dropTarget} />
@@ -702,6 +743,60 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                   />
                 ) : null}
                 {currentFiles.length > 0 ? (
+                  viewMode === 'grid' ? (
+                    <FileImageGrid
+                      files={gridImageFiles}
+                      tileSize={tileSize}
+                      selectedIds={fileSelection.selectedIds}
+                      canSelect={canSelectInCurrentView}
+                      canWrite={canEditFiles}
+                      onPreviewFile={(file) => {
+                        const original = clientFileById.get(file.id);
+                        if (original) void handleFilePreview(original);
+                      }}
+                      onSelectFile={(fileId, shiftKey) => {
+                        if (shiftKey) fileSelection.toggleRange(fileId, visibleFileIds);
+                        else fileSelection.toggle(fileId);
+                      }}
+                      onFileDragStart={(e, fileId) => startFileDrag(e, fileId)}
+                      onFileDragEnd={endFileDrag}
+                      nonImageSection={
+                        gridNonImageFiles.length > 0 ? (
+                          <FileGridNonImageList>
+                            <div className="overflow-x-auto rounded-lg border border-gray-200">
+                              <table className="w-full">
+                                <tbody className="divide-y">
+                                  {gridNonImageFiles.map((f) => {
+                                    const icon = iconFor(f);
+                                    const name = f.original_name || f.file_object_id;
+                                    return (
+                                      <tr key={f.id} className="hover:bg-gray-50">
+                                        <td className="px-3 py-2">
+                                          <div
+                                            className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold cursor-pointer`}
+                                            onClick={() => handleFilePreview(f)}
+                                          >
+                                            {icon.label}
+                                          </div>
+                                        </td>
+                                        <td className="px-3 py-2">
+                                          <button type="button" className="text-xs font-semibold truncate max-w-xs text-left" onClick={() => handleFilePreview(f)}>
+                                            {name}
+                                          </button>
+                                        </td>
+                                        <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(f)}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </FileGridNonImageList>
+                        ) : undefined
+                      }
+                      emptyMessage="No images in this view."
+                    />
+                  ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-50 border-b">
@@ -846,6 +941,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                       </tbody>
                     </table>
                   </div>
+                  )
                 ) : (
                   <div className="px-3 py-6 text-center text-gray-500">
                     <div className="text-2xl mb-2">📁</div>
