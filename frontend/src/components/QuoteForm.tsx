@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   useRef,
@@ -7,6 +8,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
 } from 'react';
+import { clampOverflowScrollAncestors, findScrollableAncestor } from '@/lib/clampScroll';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -21,6 +23,7 @@ import NewSupplierModal from '@/components/NewSupplierModal';
 import {
   AppButton,
   AppCheckbox,
+  AppCheckboxControl,
   AppControlLabel,
   AppControlLabelRow,
   AppDatePicker,
@@ -30,7 +33,6 @@ import {
   AppModal,
   AppSelect,
   AppTextarea,
-  SelectDropdownCheckbox,
   uiBorders,
   uiColors,
   uiCx,
@@ -137,28 +139,16 @@ function ProposalInlineCheckbox({
   onChange?: (checked: boolean) => void;
   disabled?: boolean;
 }) {
-  const interactive = Boolean(onChange) && !disabled;
   return (
     <div className="flex shrink-0 flex-col">
       <ProposalInlineLabelRow label={label} fieldHint={fieldHint} />
-      <label
-        className={uiCx(
-          'flex items-center',
-          QUOTE_INLINE_CONTROL_H,
-          interactive ? 'cursor-pointer' : 'cursor-default',
-          disabled && 'cursor-not-allowed opacity-50',
-        )}
-      >
-        <input
-          type="checkbox"
-          className="sr-only"
-          checked={checked}
-          disabled={disabled}
-          readOnly={!onChange}
-          onChange={onChange ? (e) => onChange(e.target.checked) : undefined}
-        />
-        <SelectDropdownCheckbox checked={checked} />
-      </label>
+      <AppCheckboxControl
+        checked={checked}
+        disabled={disabled || !onChange}
+        onClick={onChange ? () => onChange(!checked) : undefined}
+        aria-label={label}
+        className={QUOTE_INLINE_CONTROL_H}
+      />
     </div>
   );
 }
@@ -416,6 +406,27 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   const lastPrefilledQuoteIdRef = useRef<string | null>(null);
   const handleSaveRef = useRef<() => Promise<void>>();
   const estimateBuilderRef = useRef<EstimateBuilderRef | null>(null);
+  const formRootRef = useRef<HTMLDivElement>(null);
+  const preservedScrollTopRef = useRef<number | null>(null);
+
+  const captureScrollForPricingUpdate = useCallback(() => {
+    const scrollEl = findScrollableAncestor(formRootRef.current);
+    preservedScrollTopRef.current = scrollEl?.scrollTop ?? null;
+  }, []);
+
+  const setPricingItemTax = useCallback(
+    (sectionIndex: number, itemIndex: number, field: 'pst' | 'gst', checked: boolean) => {
+      captureScrollForPricingUpdate();
+      setPricingSections((arr) =>
+        arr.map((s, idx) =>
+          idx === sectionIndex
+            ? { ...s, items: s.items.map((x, j) => (j === itemIndex ? { ...x, [field]: checked } : x)) }
+            : s,
+        ),
+      );
+    },
+    [captureScrollForPricingUpdate],
+  );
 
   // --- Helpers declared early so effects can safely reference them
   const sanitizeSections = (arr:any[])=> (arr||[]).map((sec:any)=>{
@@ -771,6 +782,17 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
 
     fetchProductImages();
   }, [isReady, pricingSections]);
+
+  // Pricing tax toggles can shrink the summary block; clamp scroll so the page does not stay stuck past content.
+  useLayoutEffect(() => {
+    const scrollEl = findScrollableAncestor(formRootRef.current);
+    const saved = preservedScrollTopRef.current;
+    if (scrollEl != null && saved != null) {
+      scrollEl.scrollTop = saved;
+      preservedScrollTopRef.current = null;
+    }
+    clampOverflowScrollAncestors(formRootRef.current);
+  }, [pricingSections]);
 
   // Focus management
   useEffect(()=>{
@@ -1494,7 +1516,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   const dsFieldLabelClass = undefined;
   const dsReadonlyClass = uiTypography.sectionTitle;
   return (
-    <div onKeyDown={!disabled ? (e)=>{
+    <div ref={formRootRef} onKeyDown={!disabled ? (e)=>{
       const tgt = e.target as HTMLElement;
       if (!e.altKey) return;
       if (e.key==='ArrowUp' || e.key==='ArrowDown'){
@@ -2068,7 +2090,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
               <div className={dsSectionBodyPad}>
                 <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table{sectionNumber}" section will be hidden in the PDF.</div>
                 {!disabled && (
-                  <div className="sticky top-0 z-30 mb-3 border-b bg-white/95 py-2 backdrop-blur">
+                  <div className="mb-3 border-b bg-white py-2">
                     <div className="flex items-center gap-2">
                       <div className="ml-auto flex items-center gap-3">
                         <AppInput
@@ -2121,7 +2143,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                 )}
                 
                 {/* Pricing items list */}
-                <div className="space-y-2">
+                <div className="space-y-2 [overflow-anchor:none]">
                   {section.items.map((c, i)=> {
                     // Calculate line total: price × quantity
                     const priceNum = parseFloat(parseAccounting(c.price || '0').replace(/,/g, '')) || 0;
@@ -2286,26 +2308,14 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                             label="PST"
                             fieldHint={QUOTE_FIELD_HINTS.pst}
                             checked={c.pst === true}
-                            onChange={(checked) =>
-                              setPricingSections((arr) =>
-                                arr.map((s, idx) =>
-                                  idx === sectionIndex ? { ...s, items: s.items.map((x, j) => (j === i ? { ...x, pst: checked } : x)) } : s,
-                                ),
-                              )
-                            }
+                            onChange={(checked) => setPricingItemTax(sectionIndex, i, 'pst', checked)}
                             disabled={disabled}
                           />
                           <ProposalInlineCheckbox
                             label="GST"
                             fieldHint={QUOTE_FIELD_HINTS.gst}
                             checked={c.gst === true}
-                            onChange={(checked) =>
-                              setPricingSections((arr) =>
-                                arr.map((s, idx) =>
-                                  idx === sectionIndex ? { ...s, items: s.items.map((x, j) => (j === i ? { ...x, gst: checked } : x)) } : s,
-                                ),
-                              )
-                            }
+                            onChange={(checked) => setPricingItemTax(sectionIndex, i, 'gst', checked)}
                             disabled={disabled}
                           />
                         </div>
@@ -2361,7 +2371,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                 )}
 
                 {/* Summary Section */}
-                <div className="mt-6">
+                <div className="mt-6 [overflow-anchor:none]">
                   <div className="rounded-xl border bg-white overflow-hidden">
                     {/* Summary Header - Gray */}
                     <div className="bg-gray-500 p-3 text-white font-semibold">
@@ -2375,18 +2385,30 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                         <div className="rounded-xl border bg-white p-4">
                           <div className="space-y-1 text-sm">
                             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Costs</span><span className="font-bold">${sectionTotals.totalNum.toFixed(2)}</span></div>
-                            {sectionTotals.showPstInPdf && sectionTotals.pst > 0 && (
-                              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({section.pstRate}%)</span><span>${sectionTotals.pst.toFixed(2)}</span></div>
-                            )}
+                            <div
+                              className={uiCx(
+                                'flex items-center justify-between rounded px-1 py-1 -mx-1 hover:bg-gray-50',
+                                !(sectionTotals.showPstInPdf && sectionTotals.pst > 0) && 'invisible min-h-[1.5rem]',
+                              )}
+                            >
+                              <span>PST ({section.pstRate}%)</span>
+                              <span>${sectionTotals.pst.toFixed(2)}</span>
+                            </div>
                             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${sectionTotals.subtotal.toFixed(2)}</span></div>
                           </div>
                         </div>
                         {/* Right Card */}
                         <div className="rounded-xl border bg-white p-4">
                           <div className="space-y-1 text-sm">
-                            {sectionTotals.showGstInPdf && sectionTotals.gst > 0 && (
-                              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({section.gstRate}%)</span><span>${sectionTotals.gst.toFixed(2)}</span></div>
-                            )}
+                            <div
+                              className={uiCx(
+                                'flex items-center justify-between rounded px-1 py-1 -mx-1 hover:bg-gray-50',
+                                !(sectionTotals.showGstInPdf && sectionTotals.gst > 0) && 'invisible min-h-[1.5rem]',
+                              )}
+                            >
+                              <span>GST ({section.gstRate}%)</span>
+                              <span>${sectionTotals.gst.toFixed(2)}</span>
+                            </div>
                             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${sectionTotals.grandTotal.toFixed(2)}</span></div>
                           </div>
                         </div>

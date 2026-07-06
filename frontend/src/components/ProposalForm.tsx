@@ -22,6 +22,7 @@ import OverlayPortal from '@/components/OverlayPortal';
 import {
   AppButton,
   AppCheckbox,
+  AppCheckboxControl,
   AppControlLabel,
   AppControlLabelRow,
   AppDatePicker,
@@ -39,7 +40,6 @@ import {
   uiRadius,
   uiSpacing,
   uiTypography,
-  SelectDropdownCheckbox,
 } from '@/components/ui';
 import {
   PROPOSAL_SECTION_IMAGE_EXPORT_SCALE,
@@ -143,28 +143,16 @@ function ProposalInlineCheckbox({
   onChange?: (checked: boolean) => void;
   disabled?: boolean;
 }) {
-  const interactive = Boolean(onChange) && !disabled;
   return (
     <div className="flex shrink-0 flex-col">
       <ProposalInlineLabelRow label={label} fieldHint={fieldHint} />
-      <label
-        className={uiCx(
-          'flex items-center',
-          PROPOSAL_INLINE_CONTROL_H,
-          interactive ? 'cursor-pointer' : 'cursor-default',
-          disabled && 'cursor-not-allowed opacity-50',
-        )}
-      >
-        <input
-          type="checkbox"
-          className="sr-only"
-          checked={checked}
-          disabled={disabled}
-          readOnly={!onChange}
-          onChange={onChange ? (e) => onChange(e.target.checked) : undefined}
-        />
-        <SelectDropdownCheckbox checked={checked} />
-      </label>
+      <AppCheckboxControl
+        checked={checked}
+        disabled={disabled || !onChange}
+        onClick={onChange ? () => onChange(!checked) : undefined}
+        aria-label={label}
+        className={PROPOSAL_INLINE_CONTROL_H}
+      />
     </div>
   );
 }
