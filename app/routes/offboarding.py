@@ -24,6 +24,7 @@ from ..services.offboarding_service import (
     case_to_detail,
     complete_case,
     deactivate_hub_access,
+    delete_case,
     eligible_employees,
     list_cases,
     merged_checklist,
@@ -57,6 +58,12 @@ def _require_read(user: User = Depends(get_current_user)) -> User:
 
 def _require_write(user: User = Depends(get_current_user)) -> User:
     if not _can_write(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return user
+
+
+def _require_admin(user: User = Depends(get_current_user)) -> User:
+    if not any(r.name == "admin" for r in user.roles):
         raise HTTPException(status_code=403, detail="Forbidden")
     return user
 
@@ -218,6 +225,16 @@ def post_cancel(
         reason=payload.reason,
     )
     return case_to_detail(db, case, include_notes=True)
+
+
+@router.delete("/{case_id}")
+def delete_offboarding_case(
+    case_id: UUID,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(_require_admin),
+):
+    delete_case(db, case_id)
+    return {"ok": True}
 
 
 @router.get("/{case_id}/assets")

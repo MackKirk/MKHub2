@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { ExternalLink, UserMinus } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import StartOffboardingModal from '@/components/offboarding/StartOffboardingModal';
@@ -13,15 +14,27 @@ import OffboardingActivityLogTab from '@/components/offboarding/OffboardingActiv
 import OffboardingCompleteModal from '@/components/offboarding/OffboardingCompleteModal';
 import OffboardingCancelModal from '@/components/offboarding/OffboardingCancelModal';
 import { HubAccessBadge, OffboardingStatusBadge } from '@/components/offboarding/OffboardingStatusBadge';
-import { fmtDate, type OffboardingDetail } from '@/components/offboarding/offboardingUtils';
+import {
+  accessRevocationLabel,
+  fmtDate,
+  fmtDateTime,
+  terminationTypeLabel,
+  type OffboardingDetail,
+} from '@/components/offboarding/offboardingUtils';
+import LoadingOverlay from '@/components/LoadingOverlay';
 import {
   AppButton,
   AppCard,
+  AppEmptyState,
   AppPageHeader,
+  AppSectionHeader,
   AppTabs,
+  appSectionPresetProps,
+  uiBorders,
   uiCx,
   uiLayout,
   uiSpacing,
+  uiTypography,
 } from '@/components/ui';
 
 const TABS = [
@@ -33,6 +46,15 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
+
+function MetaField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <div className={uiTypography.overline}>{label}</div>
+      <div className={uiCx(uiTypography.helper, 'mt-0.5 font-semibold text-gray-900')}>{children}</div>
+    </div>
+  );
+}
 
 export default function OffboardingDetailPage() {
   const { caseId = '' } = useParams();
@@ -46,6 +68,18 @@ export default function OffboardingDetailPage() {
   const [completeOpen, setCompleteOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString('en-CA', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }),
+    [],
+  );
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const canWrite = useMemo(() => {
@@ -54,6 +88,11 @@ export default function OffboardingDetailPage() {
     const perms = me.permissions || [];
     return perms.includes('hr:offboarding:write') || perms.includes('users:write');
   }, [me]);
+
+  const isAdmin = useMemo(
+    () => !!(me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin'),
+    [me],
+  );
 
   const { data: detail, isLoading, refetch } = useQuery({
     queryKey: ['offboarding', caseId],
@@ -125,124 +164,208 @@ export default function OffboardingDetailPage() {
     }
   };
 
-  if (isLoading || !detail) {
-    return <div className="p-6 text-sm text-gray-500">Loading offboarding case…</div>;
+  const handleDelete = async () => {
+    if (!detail || deleting) return;
+    const result = await confirm({
+      title: 'Delete offboarding',
+      message: `Permanently delete the offboarding case for "${detail.employee_name}"? All checklist items, asset links, and activity log entries will be removed. This cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    setDeleting(true);
+    try {
+      await api('DELETE', `/offboarding/${encodeURIComponent(caseId)}`);
+      toast.success('Offboarding case deleted');
+      queryClient.invalidateQueries({ queryKey: ['offboarding'] });
+      navigate('/human-resources/offboarding');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to delete offboarding case');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  if (!caseId) {
+    return (
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+        <AppEmptyState title="Offboarding case not found" />
+      </div>
+    );
   }
 
-  const s = detail.operational_summary as Record<string, number>;
+  const s = (detail?.operational_summary || {}) as Record<string, number>;
   const showDeactivate =
     canWrite &&
-    detail.status === 'in_progress' &&
+    detail?.status === 'in_progress' &&
     detail.access_revocation_timing === 'manually_later' &&
     detail.hub_access_active;
-  const showComplete = canWrite && detail.status === 'in_progress';
-  const showCancel = canWrite && (detail.status === 'draft' || detail.status === 'in_progress');
-  const showStart = canWrite && detail.status === 'draft';
-  const showEdit = canWrite && detail.status !== 'completed' && detail.status !== 'cancelled';
+  const showComplete = canWrite && detail?.status === 'in_progress';
+  const showCancel = canWrite && (detail?.status === 'draft' || detail?.status === 'in_progress');
+  const showStart = canWrite && detail?.status === 'draft';
+  const showEdit = canWrite && detail?.status !== 'completed' && detail?.status !== 'cancelled';
 
   return (
-    <div className={uiCx(uiLayout.pageStack, uiSpacing.sectionGap)}>
-      <AppPageHeader
-        title={`${detail.employee_name} — Offboarding`}
-        subtitle={[detail.position, detail.division].filter(Boolean).join(' · ') || undefined}
-        onBack={() => navigate('/human-resources/offboarding')}
-      />
+    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <LoadingOverlay isLoading={isLoading && !detail} text="Loading offboarding case…">
+        {detail ? (
+          <>
+            <AppPageHeader
+              title={detail.employee_name}
+              subtitle={
+                [detail.position, detail.division].filter(Boolean).join(' · ') ||
+                'Employee offboarding case'
+              }
+              icon={<UserMinus className="h-4 w-4" />}
+              onBack={() => navigate('/human-resources/offboarding')}
+              backLabel="Back to Offboarding"
+              actions={
+                <div className="text-right">
+                  <div className={uiTypography.overline}>Today</div>
+                  <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
+                </div>
+              }
+            />
 
-      <AppCard className="p-4 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-          <div><span className="text-gray-500">Manager:</span> {detail.manager_name || '—'}</div>
-          <div><span className="text-gray-500">Termination Date:</span> {fmtDate(detail.termination_date)}</div>
-          <div><span className="text-gray-500">Last Working Day:</span> {fmtDate(detail.last_working_day)}</div>
-          <div><span className="text-gray-500">Termination Type:</span> {detail.termination_type || '—'}</div>
-          <div className="flex items-center gap-2">
-            <span className="text-gray-500">Hub Access:</span>
-            <HubAccessBadge active={detail.hub_access_active} />
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-gray-500">Status:</span>
-            <OffboardingStatusBadge status={detail.status} actionRequired={detail.action_required} />
-          </div>
-        </div>
+            <AppCard bodyClassName={uiSpacing.cardPadding}>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-4 md:grid-cols-3 lg:grid-cols-4">
+                <MetaField label="Manager">{detail.manager_name || '—'}</MetaField>
+                <MetaField label="Termination Date">{fmtDate(detail.termination_date)}</MetaField>
+                <MetaField label="Last Working Day">{fmtDate(detail.last_working_day)}</MetaField>
+                <MetaField label="Termination Type">{terminationTypeLabel(detail.termination_type)}</MetaField>
+                <MetaField label="Access Revocation">{accessRevocationLabel(detail.access_revocation_timing)}</MetaField>
+                {detail.access_revocation_timing === 'scheduled' && detail.access_revoke_at_local ? (
+                  <MetaField label="Scheduled Revocation">
+                    {fmtDateTime(detail.access_revoke_at_local)}
+                    <span className="ml-1 font-normal text-gray-500">({detail.company_timezone})</span>
+                  </MetaField>
+                ) : null}
+                <div className="min-w-0">
+                  <div className={uiTypography.overline}>Hub Access</div>
+                  <div className="mt-1">
+                    <HubAccessBadge active={detail.hub_access_active} />
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <div className={uiTypography.overline}>Status</div>
+                  <div className="mt-1">
+                    <OffboardingStatusBadge status={detail.status} actionRequired={detail.action_required} />
+                  </div>
+                </div>
+              </div>
 
-        <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
-          {showEdit ? (
-            <AppButton variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
-              Edit Offboarding
-            </AppButton>
-          ) : null}
-          {showStart ? (
-            <AppButton size="sm" onClick={() => setEditOpen(true)}>
-              Start Offboarding
-            </AppButton>
-          ) : null}
-          {showDeactivate ? (
-            <AppButton variant="danger" size="sm" onClick={handleDeactivate} loading={actionLoading}>
-              Deactivate Hub Access
-            </AppButton>
-          ) : null}
-          {showComplete ? (
-            <AppButton size="sm" onClick={() => setCompleteOpen(true)}>
-              Complete Offboarding
-            </AppButton>
-          ) : null}
-          {showCancel ? (
-            <AppButton variant="secondary" size="sm" onClick={() => setCancelOpen(true)}>
-              Cancel Offboarding
-            </AppButton>
-          ) : null}
-          <Link className="text-sm text-brand-red hover:underline self-center" to={`/users/${encodeURIComponent(detail.user_id)}`}>
-            View Employee
-          </Link>
-        </div>
-      </AppCard>
+              <div className={uiCx(uiLayout.actionsRow, 'mt-4 flex-wrap border-t border-gray-100 pt-4')}>
+                {showEdit ? (
+                  <AppButton variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
+                    Edit Offboarding
+                  </AppButton>
+                ) : null}
+                {showStart ? (
+                  <AppButton size="sm" onClick={() => setEditOpen(true)}>
+                    Start Offboarding
+                  </AppButton>
+                ) : null}
+                {showDeactivate ? (
+                  <AppButton variant="danger" size="sm" onClick={handleDeactivate} loading={actionLoading}>
+                    Deactivate Hub Access
+                  </AppButton>
+                ) : null}
+                {showComplete ? (
+                  <AppButton size="sm" onClick={() => setCompleteOpen(true)}>
+                    Complete Offboarding
+                  </AppButton>
+                ) : null}
+                {showCancel ? (
+                  <AppButton variant="secondary" size="sm" onClick={() => setCancelOpen(true)}>
+                    Cancel Offboarding
+                  </AppButton>
+                ) : null}
+                <AppButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  leftIcon={<ExternalLink className="h-3.5 w-3.5" />}
+                  onClick={() => navigate(`/users/${encodeURIComponent(detail.user_id)}`)}
+                >
+                  View Employee
+                </AppButton>
+              </div>
+            </AppCard>
 
-      <AppTabs
-        tabs={TABS.map((t) => ({ key: t.id, label: t.label }))}
-        value={tab}
-        onChange={(id) => setSearchParams({ tab: id })}
-      />
+            <AppCard bodyClassName="!py-3">
+              <AppTabs
+                tabs={TABS.map((t) => ({ key: t.id, label: t.label }))}
+                value={tab}
+                onChange={(id) => setSearchParams({ tab: id })}
+              />
+            </AppCard>
 
-      <AppCard className="p-4">
-        {tab === 'overview' ? <OffboardingOverviewTab detail={detail} /> : null}
-        {tab === 'assets' ? <OffboardingAssetsTab caseId={caseId} /> : null}
-        {tab === 'work' ? <OffboardingWorkTab detail={detail} /> : null}
-        {tab === 'checklist' ? (
-          <OffboardingChecklistTab caseId={caseId} canEdit={canWrite} status={detail.status} />
+            <AppCard bodyClassName="min-w-0 overflow-hidden">
+              {tab === 'overview' ? <OffboardingOverviewTab detail={detail} /> : null}
+              {tab === 'assets' ? <OffboardingAssetsTab caseId={caseId} /> : null}
+              {tab === 'work' ? <OffboardingWorkTab detail={detail} /> : null}
+              {tab === 'checklist' ? (
+                <OffboardingChecklistTab caseId={caseId} canEdit={canWrite} status={detail.status} />
+              ) : null}
+              {tab === 'activity' ? <OffboardingActivityLogTab caseId={caseId} /> : null}
+            </AppCard>
+
+            {isAdmin ? (
+              <AppCard className={uiCx(uiBorders.subtle, 'border-red-200 bg-red-50')}>
+                <AppSectionHeader
+                  title="Danger Zone"
+                  description="Permanent actions that cannot be undone. System administrators only."
+                  {...appSectionPresetProps('emergency')}
+                />
+                <div className={uiCx(uiLayout.actionsRow, 'mt-3 flex-wrap')}>
+                  <AppButton
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    loading={deleting}
+                    disabled={deleting}
+                    onClick={handleDelete}
+                  >
+                    Delete offboarding
+                  </AppButton>
+                </div>
+              </AppCard>
+            ) : null}
+
+            <StartOffboardingModal
+              open={editOpen}
+              onClose={() => setEditOpen(false)}
+              initial={detail}
+              mode="edit"
+              onSaved={() => {
+                refetch();
+                setEditOpen(false);
+              }}
+            />
+
+            <OffboardingCompleteModal
+              open={completeOpen}
+              onClose={() => setCompleteOpen(false)}
+              onConfirm={handleComplete}
+              loading={actionLoading}
+              hubAccessActive={detail.hub_access_active}
+              assetsPending={s.assets_pending_return || 0}
+              futureShifts={s.future_shifts || 0}
+              pendingTimesheets={s.pending_timesheets || 0}
+              projectRoles={(s.project_admin_roles || 0) + (s.onsite_lead_roles || 0)}
+              blockers={detail.completion_blockers}
+              warnings={detail.completion_warnings}
+            />
+
+            <OffboardingCancelModal
+              open={cancelOpen}
+              onClose={() => setCancelOpen(false)}
+              onConfirm={handleCancel}
+              loading={actionLoading}
+            />
+          </>
         ) : null}
-        {tab === 'activity' ? <OffboardingActivityLogTab caseId={caseId} /> : null}
-      </AppCard>
-
-      <StartOffboardingModal
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        initial={detail}
-        mode="edit"
-        onSaved={() => {
-          refetch();
-          setEditOpen(false);
-        }}
-      />
-
-      <OffboardingCompleteModal
-        open={completeOpen}
-        onClose={() => setCompleteOpen(false)}
-        onConfirm={handleComplete}
-        loading={actionLoading}
-        hubAccessActive={detail.hub_access_active}
-        assetsPending={s.assets_pending_return || 0}
-        futureShifts={s.future_shifts || 0}
-        pendingTimesheets={s.pending_timesheets || 0}
-        projectRoles={(s.project_admin_roles || 0) + (s.onsite_lead_roles || 0)}
-        blockers={detail.completion_blockers}
-        warnings={detail.completion_warnings}
-      />
-
-      <OffboardingCancelModal
-        open={cancelOpen}
-        onClose={() => setCancelOpen(false)}
-        onConfirm={handleCancel}
-        loading={actionLoading}
-      />
+      </LoadingOverlay>
     </div>
   );
 }

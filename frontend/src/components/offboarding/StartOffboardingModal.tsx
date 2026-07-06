@@ -1,22 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
+import { formModalQuickInfo, uiLabel } from '@/lib/formModalQuickInfo';
 import {
   ACCESS_REVOCATION_OPTIONS,
+  OFFBOARDING_START_FIELD_HINTS as H,
   TERMINATION_TYPES,
   type OffboardingDetail,
 } from './offboardingUtils';
+import { isCompleteLocalDatetime, LocalDateTimeFields } from '@/components/LocalDateTimeFields';
 import {
   AppButton,
   AppDatePicker,
-  AppFieldHint,
   AppFormModal,
-  AppInput,
   AppSelect,
   AppTextarea,
   AppUserSelect,
-  type AppUserSelectUser,
+  uiSpacing,
 } from '@/components/ui';
 
 type Props = {
@@ -27,9 +28,56 @@ type Props = {
   mode?: 'create' | 'edit';
 };
 
+const START_OFFBOARDING_QUICK_INFO = formModalQuickInfo({
+  purpose: (
+    <>
+      Open an offboarding case for an employee leaving the company and capture termination details, access
+      revocation, and internal notes.
+    </>
+  ),
+  howToUse: (
+    <>
+      Select {uiLabel('Employee')}, then complete {uiLabel('Termination Type')}, {uiLabel('Termination Date')},{' '}
+      {uiLabel('Last Working Day')}, and {uiLabel('Access Revocation Timing')}. A profile summary appears after you
+      choose someone.
+    </>
+  ),
+  behavior: (
+    <>
+      {uiLabel('Save Draft')} only requires an employee. {uiLabel('Start Offboarding')} needs every field marked with{' '}
+      {uiLabel('*')}. Choosing {uiLabel('Scheduled')} shows when Hub access will be revoked in company local time.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save Draft')} stores a draft you can finish later.{' '}
+      {uiLabel('Start Offboarding')} begins the workflow and opens the case.
+    </>
+  ),
+});
+
 function endOfDayLocal(dateStr: string): string {
   if (!dateStr) return '';
-  return `${dateStr}T23:59:59`;
+  return `${dateStr}T23:59`;
+}
+
+function validateStartFields(payload: {
+  userId: string;
+  terminationType: string;
+  terminationDate: string;
+  lastWorkingDay: string;
+  accessTiming: string;
+  accessRevokeLocal: string;
+}): string | null {
+  if (!payload.userId) return 'Select an employee';
+  if (!payload.terminationType) return 'Select a termination type';
+  if (!payload.terminationDate) return 'Select a termination date';
+  if (!payload.lastWorkingDay) return 'Select a last working day';
+  if (!payload.accessTiming) return 'Select access revocation timing';
+  if (payload.accessTiming === 'scheduled' && !isCompleteLocalDatetime(payload.accessRevokeLocal)) {
+    return 'Set a complete scheduled revocation date and time';
+  }
+  return null;
 }
 
 export default function StartOffboardingModal({
@@ -54,29 +102,11 @@ export default function StartOffboardingModal({
     enabled: open,
   });
 
-  const { data: eligible = [] } = useQuery({
-    queryKey: ['offboarding-eligible'],
-    queryFn: () => api<{ id: string; name?: string; username?: string }[]>('GET', '/offboarding/eligible-employees'),
-    enabled: open && mode === 'create',
-  });
-
   const { data: profile } = useQuery({
     queryKey: ['offboarding-employee-profile', userId],
     queryFn: () => api<any>('GET', `/auth/users/${encodeURIComponent(userId)}/profile`),
     enabled: open && !!userId,
   });
-
-  const eligibleUsers: AppUserSelectUser[] = useMemo(() => {
-    const base = (eligible as any[]).map((u) => ({
-      id: u.id,
-      name: u.name || u.username,
-      username: u.username,
-    }));
-    if (initial?.user_id && !base.some((u) => u.id === initial.user_id)) {
-      base.unshift({ id: initial.user_id, name: initial.employee_name, username: undefined });
-    }
-    return base;
-  }, [eligible, initial]);
 
   useEffect(() => {
     if (!open) return;
@@ -137,8 +167,16 @@ export default function StartOffboardingModal({
   };
 
   const handleStart = async () => {
-    if (!userId) {
-      toast.error('Select an employee');
+    const validationError = validateStartFields({
+      userId,
+      terminationType,
+      terminationDate,
+      lastWorkingDay,
+      accessTiming,
+      accessRevokeLocal,
+    });
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
     setSubmitting('start');
@@ -175,6 +213,8 @@ export default function StartOffboardingModal({
       onClose={onClose}
       title={mode === 'edit' ? 'Edit Offboarding' : 'Start Offboarding'}
       size="lg"
+      formWidth="comfortable"
+      quickInfo={START_OFFBOARDING_QUICK_INFO}
       footer={
         <div className="flex flex-wrap justify-end gap-2">
           <AppButton variant="secondary" onClick={onClose} disabled={!!submitting}>
@@ -197,17 +237,16 @@ export default function StartOffboardingModal({
         </div>
       }
     >
-      <div className="space-y-4">
-        <div>
-          <label className="text-sm font-medium text-gray-700">Employee</label>
-          <AppUserSelect
-            value={userId}
-            onChange={(id) => setUserId(id)}
-            users={eligibleUsers}
-            disabled={mode === 'edit' && initial?.status !== 'draft'}
-            placeholder="Select employee…"
-          />
-        </div>
+      <div className={uiSpacing.sectionStack}>
+        <AppUserSelect
+          mode="single"
+          label="Employee *"
+          value={userId}
+          onChange={(id) => setUserId(id)}
+          disabled={mode === 'edit' && initial?.status !== 'draft'}
+          placeholder="Search or select user…"
+          fieldHint={H.employee}
+        />
 
         {userId && profile ? (
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 space-y-1">
@@ -225,21 +264,26 @@ export default function StartOffboardingModal({
         ) : null}
 
         <AppSelect
-          label="Termination Type"
+          label="Termination Type *"
           value={terminationType}
           onChange={(e) => setTerminationType(e.target.value)}
           options={[{ value: '', label: 'Select…' }, ...TERMINATION_TYPES.map((t) => ({ value: t.value, label: t.label }))]}
+          fieldHint={H.termination_type}
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-sm font-medium text-gray-700">Termination Date</label>
-            <AppDatePicker value={terminationDate} onChange={setTerminationDate} />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700">Last Working Day</label>
-            <AppDatePicker value={lastWorkingDay} onChange={setLastWorkingDay} />
-          </div>
+          <AppDatePicker
+            label="Termination Date *"
+            value={terminationDate}
+            onChange={(e) => setTerminationDate(e.target.value)}
+            fieldHint={H.termination_date}
+          />
+          <AppDatePicker
+            label="Last Working Day *"
+            value={lastWorkingDay}
+            onChange={(e) => setLastWorkingDay(e.target.value)}
+            fieldHint={H.last_working_day}
+          />
         </div>
 
         <AppTextarea
@@ -247,31 +291,29 @@ export default function StartOffboardingModal({
           value={internalNotes}
           onChange={(e) => setInternalNotes(e.target.value)}
           rows={3}
+          fieldHint={H.internal_notes}
         />
 
         <AppSelect
-          label="Access Revocation Timing"
+          label="Access Revocation Timing *"
           value={accessTiming}
           onChange={(e) => setAccessTiming(e.target.value)}
           options={[
             { value: '', label: 'Select…' },
             ...ACCESS_REVOCATION_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
           ]}
+          fieldHint={H.access_revocation_timing}
         />
 
         {accessTiming === 'scheduled' ? (
-          <div>
-            <AppInput
-              label="Scheduled Revocation (company time)"
-              type="datetime-local"
-              value={accessRevokeLocal ? accessRevokeLocal.slice(0, 16) : ''}
-              onChange={(e) => {
-                const v = e.target.value;
-                setAccessRevokeLocal(v ? `${v}:00` : '');
-              }}
-            />
-            <AppFieldHint>Timezone: {companyTz}</AppFieldHint>
-          </div>
+          <LocalDateTimeFields
+            label="Scheduled Revocation"
+            value={accessRevokeLocal}
+            onChange={setAccessRevokeLocal}
+            required
+            dateFieldHint={`${H.scheduled_revocation_date}\n\nTimezone: ${companyTz}.`}
+            timeFieldHint={H.scheduled_revocation_time}
+          />
         ) : null}
       </div>
     </AppFormModal>
