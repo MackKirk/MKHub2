@@ -6,7 +6,18 @@ import { api } from '@/lib/api';
 import FleetReturnModal from '@/components/fleet/FleetReturnModal';
 import EquipmentReturnModal from '@/components/companyAssets/EquipmentReturnModal';
 import { fmtDate, returnStatusLabel } from './offboardingUtils';
-import { AppBadge, AppButton, AppEmptyState, AppTable } from '@/components/ui';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppSectionHeader,
+  AppTable,
+  appSectionPresetProps,
+  uiCx,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type AssetRow = {
   id: string;
@@ -39,6 +50,7 @@ export default function OffboardingAssetsTab({ caseId }: { caseId: string }) {
   });
 
   const rows = data?.items || [];
+  const hasRows = rows.length > 0;
 
   const openAssignment = useMemo(
     () => ({ odometer_out: fleetReturn?.odometerOut }),
@@ -76,11 +88,6 @@ export default function OffboardingAssetsTab({ caseId }: { caseId: string }) {
       setEquipmentSubmitting(false);
     }
   };
-
-  if (isLoading) return <div className="text-sm text-gray-500 p-4">Loading assets…</div>;
-  if (!rows.length) {
-    return <AppEmptyState title="No assets were linked at offboarding start" />;
-  }
 
   const tableRows = rows.map((row) => {
     const rs = row.return_status;
@@ -141,10 +148,29 @@ export default function OffboardingAssetsTab({ caseId }: { caseId: string }) {
 
   return (
     <>
-      <AppTable
-        columns={['Asset', 'Asset Type', 'Assigned Since', 'Current Status', 'Return Status', 'Action']}
-        rows={tableRows}
-      />
+      <div className={uiSpacing.sectionStack}>
+        <AppSectionHeader
+          title="Assets and returns"
+          description="Fleet, equipment, and other assigned items linked when offboarding started."
+          {...appSectionPresetProps('files')}
+        />
+
+        <AppCard className="min-w-0" bodyClassName="!p-0">
+          {isLoading ? (
+            <div className={uiCx(uiTypography.helper, 'px-4 py-8 text-center')}>Loading assets…</div>
+          ) : !hasRows ? (
+            <AppEmptyState
+              title="No assets were linked at offboarding start"
+              className="border-0 bg-transparent p-0 py-6 shadow-none"
+            />
+          ) : (
+            <AppTable
+              columns={['Asset', 'Asset Type', 'Assigned Since', 'Current Status', 'Return Status', 'Action']}
+              rows={tableRows}
+            />
+          )}
+        </AppCard>
+      </div>
 
       <FleetReturnModal
         open={!!fleetReturn}

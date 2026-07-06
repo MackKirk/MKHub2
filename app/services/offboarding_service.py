@@ -88,6 +88,20 @@ def _parse_date_str(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _parse_calendar_date_str(value: Optional[str]) -> Optional[datetime]:
+    """Parse YYYY-MM-DD as a calendar date in company local time (stored as UTC)."""
+    if not value:
+        return None
+    s = str(value).strip()[:10]
+    if not s:
+        return None
+    try:
+        raw = datetime.strptime(s, "%Y-%m-%d")
+        return local_to_utc(raw, settings.tz_default)
+    except Exception:
+        return None
+
+
 def _parse_local_datetime(value: Optional[str], tz: Optional[str] = None) -> Optional[datetime]:
     if not value:
         return None
@@ -720,8 +734,18 @@ def _validate_start_fields(data: dict) -> None:
         raise HTTPException(status_code=400, detail="Invalid termination type")
     if data["access_revocation_timing"] not in ACCESS_REVOCATION_TIMINGS:
         raise HTTPException(status_code=400, detail="Invalid access revocation timing")
-    if data["access_revocation_timing"] == "scheduled" and not data.get("access_revoke_at"):
-        raise HTTPException(status_code=400, detail="access_revoke_at required for scheduled revocation")
+    if data["access_revocation_timing"] == "scheduled":
+        last_day = _parse_calendar_date_str(data.get("last_working_day"))
+        revoke_at = _resolve_access_revoke_at(
+            data["access_revocation_timing"],
+            last_day,
+            data.get("access_revoke_at_local"),
+        )
+        if not revoke_at:
+            raise HTTPException(
+                status_code=400,
+                detail="Scheduled revocation date and time required",
+            )
 
 
 def _resolve_access_revoke_at(
@@ -754,7 +778,7 @@ def save_draft(
 
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
     snap = _snapshot_employee_context(db, target, ep)
-    last_day = _parse_date_str(payload.get("last_working_day"))
+    last_day = _parse_calendar_date_str(payload.get("last_working_day"))
     revoke_at = _resolve_access_revoke_at(
         payload.get("access_revocation_timing"),
         last_day,
@@ -795,8 +819,8 @@ def start_offboarding(
 ) -> OffboardingCase:
     _validate_start_fields(payload)
     user_id = uuid.UUID(str(payload["user_id"]))
-    termination_date = _parse_date_str(payload.get("termination_date"))
-    last_day = _parse_date_str(payload.get("last_working_day"))
+    termination_date = _parse_calendar_date_str(payload.get("termination_date"))
+    last_day = _parse_calendar_date_str(payload.get("last_working_day"))
     if not termination_date or not last_day:
         raise HTTPException(status_code=400, detail="Invalid termination or last working day date")
 
@@ -871,9 +895,9 @@ def update_case(db: Session, actor: User, case_id: uuid.UUID, payload: dict) -> 
         raise HTTPException(status_code=400, detail="Cannot edit a completed or cancelled case")
 
     changes: dict = {}
-    last_day = _parse_date_str(payload.get("last_working_day")) if "last_working_day" in payload else None
+    last_day = _parse_calendar_date_str(payload.get("last_working_day")) if "last_working_day" in payload else None
     if "termination_date" in payload and case.status == "in_progress":
-        td = _parse_date_str(payload.get("termination_date"))
+        td = _parse_calendar_date_str(payload.get("termination_date"))
         _sync_termination_date_to_profile(db, case.user_id, td, actor.id)
         changes["termination_date"] = _format_date_iso(td)
 
@@ -974,6 +998,14 @@ def cancel_case(
     db.commit()
     db.refresh(case)
     return case
+
+
+def delete_case(db: Session, case_id: uuid.UUID) -> None:
+    case = db.query(OffboardingCase).filter(OffboardingCase.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Offboarding case not found")
+    db.delete(case)
+    db.commit()
 
 
 def toggle_checklist_item(
