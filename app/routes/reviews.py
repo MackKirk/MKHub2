@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 import json
 import re
+from difflib import SequenceMatcher
 
 from ..db import get_db
 from ..models.models import (
@@ -344,6 +345,85 @@ def _label_norm_to_key(definition: dict) -> tuple[Dict[str, str], List[str]]:
     return out, warnings
 
 
+def _legacy_type_matches_field(legacy_type: str, field_type: str) -> bool:
+    lt = (legacy_type or "").strip().lower()
+    ft = (field_type or "").strip()
+    if lt == "scale":
+        return ft == "scale_1_5"
+    if lt == "yesno":
+        return ft == "yes_no_na"
+    if lt == "text":
+        return ft in ("short_text", "long_text", "text_info", "number")
+    return False
+
+
+def _iter_definition_fields(definition: dict):
+    for sec in definition.get("sections") or []:
+        if not isinstance(sec, dict):
+            continue
+        for f in sec.get("fields") or []:
+            if not isinstance(f, dict):
+                continue
+            k = f.get("key")
+            if not isinstance(k, str) or not k.strip():
+                continue
+            lab = ((f.get("label") or k) or "").strip() or k.strip()
+            ft = f.get("type")
+            yield k.strip(), (ft or "").strip() if isinstance(ft, str) else "", lab
+
+
+def _resolve_legacy_field_key(
+    definition: dict, qnorm: str, lt_s: str
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Pick template field for a legacy row. Prefers label match where field type matches legacy type
+    (yesno -> yes_no_na, scale -> scale_1_5). Falls back to fuzzy yes/no label match when the only
+    exact label hit is the wrong type (common when a field was saved as Scale instead of Yes/No).
+    """
+    matches = [
+        (k, ft, lab)
+        for k, ft, lab in _iter_definition_fields(definition)
+        if _norm_review_label(lab) == qnorm
+    ]
+    compatible = [(k, ft) for k, ft, _ in matches if _legacy_type_matches_field(lt_s, ft)]
+    if len(compatible) == 1:
+        return compatible[0][0], compatible[0][1], None
+    if len(compatible) > 1:
+        return (
+            compatible[0][0],
+            compatible[0][1],
+            f'Ambiguous label "{qnorm}": using {compatible[0][0]} ({len(compatible)} type-compatible fields)',
+        )
+
+    if lt_s == "yesno":
+        yesno_fields = [(k, ft, lab) for k, ft, lab in _iter_definition_fields(definition) if ft == "yes_no_na"]
+        if yesno_fields:
+            best_key: Optional[str] = None
+            best_ft: Optional[str] = None
+            best_lab: Optional[str] = None
+            best_ratio = 0.0
+            for k, ft, lab in yesno_fields:
+                fn = _norm_review_label(lab)
+                if fn == qnorm:
+                    return k, ft, None
+                ratio = SequenceMatcher(None, qnorm, fn).ratio()
+                if ratio > best_ratio:
+                    best_ratio = ratio
+                    best_key, best_ft, best_lab = k, ft, lab
+            if best_key and best_ratio >= 0.88:
+                wrong = matches[0][0] if matches else None
+                note = (
+                    f'Used yes/no field {best_key} ("{best_lab}") — ~{int(best_ratio * 100)}% label match'
+                )
+                if wrong:
+                    note += f" (exact label was on {wrong} with wrong type)"
+                return best_key, best_ft, note
+
+    if matches:
+        return matches[0][0], matches[0][1], None
+    return None, None, None
+
+
 def _legacy_coerce_value_for_field(
     field_type: str, legacy_type: str, raw_value: Any
 ) -> tuple[Any, Optional[str]]:
@@ -355,7 +435,9 @@ def _legacy_coerce_value_for_field(
         return None, f"legacy scale does not match field type {ft!r}"
 
     if lt == "yesno" and ft != "yes_no_na":
-        return None, f"legacy yesno does not match field type {ft!r}"
+        return None, (
+            f"legacy yesno does not match field type {ft!r} — set template field to Yes/No/N/A (yes_no_na)"
+        )
 
     if lt == "text" and ft not in ("short_text", "long_text", "text_info", "number"):
         if ft == "scale_1_5" or ft == "yes_no_na":
@@ -420,11 +502,10 @@ def _legacy_json_to_form_payload(
     is_supervisor_payload: bool,
 ) -> tuple[Dict[str, Any], List[str], List[str]]:
     """Build form_payload for reviews storage. Returns (form_payload, unmapped_questions, warnings)."""
-    label_to_key, amb_warnings = _label_norm_to_key(definition)
     key_types = _field_key_types_from_definition(definition)
     form_payload: Dict[str, Any] = {}
     unmapped: List[str] = []
-    warnings = list(amb_warnings)
+    warnings: List[str] = []
 
     for item in legacy_items:
         qraw = item.get("question")
@@ -432,12 +513,6 @@ def _legacy_json_to_form_payload(
             warnings.append("skipped row with missing question")
             continue
         qnorm = _norm_review_label(qraw)
-        key = label_to_key.get(qnorm)
-        if not key:
-            unmapped.append(qraw.strip())
-            continue
-
-        ft = key_types.get(key, "")
         lt = item.get("type")
         lt_s = str(lt).strip().lower() if lt is not None else ""
 
@@ -450,6 +525,15 @@ def _legacy_json_to_form_payload(
         else:
             warnings.append(f'unknown legacy type {lt!r} for question "{qraw[:60]}"')
             lt_s = str(lt_s or "")
+
+        key, ft, resolve_note = _resolve_legacy_field_key(definition, qnorm, lt_s)
+        if resolve_note:
+            warnings.append(resolve_note)
+        if not key:
+            unmapped.append(qraw.strip())
+            continue
+        if not ft:
+            ft = key_types.get(key, "")
 
         if lt_s == "text":
             val, w = _legacy_coerce_value_for_field(ft, "text", item.get("value"))
@@ -612,12 +696,25 @@ def _normalize_participant_scope(raw: Any) -> Optional[dict]:
                 out.append(str(u))
         return out
 
+    user_ids = _uuid_str_list("user_ids")
+    department_ids = _uuid_str_list("department_ids")
+    project_division_ids = _uuid_str_list("project_division_ids")
+    if not user_ids and not department_ids and not project_division_ids:
+        return None
     return {
         "mode": "explicit",
-        "user_ids": _uuid_str_list("user_ids"),
-        "department_ids": _uuid_str_list("department_ids"),
-        "project_division_ids": _uuid_str_list("project_division_ids"),
+        "user_ids": user_ids,
+        "department_ids": department_ids,
+        "project_division_ids": project_division_ids,
     }
+
+
+def _scoped_reviewee_ids(cycle: ReviewCycle, db: Session) -> Set[uuid.UUID]:
+    """Everyone who participates in this cycle (company-wide = all users)."""
+    eligible = _eligible_reviewee_ids(cycle, db)
+    if eligible is not None:
+        return eligible
+    return {u.id for u in db.query(User).all()}
 
 
 def _eligible_reviewee_ids(cycle: ReviewCycle, db: Session) -> Optional[Set[uuid.UUID]]:
@@ -626,6 +723,9 @@ def _eligible_reviewee_ids(cycle: ReviewCycle, db: Session) -> Optional[Set[uuid
     if not raw or not isinstance(raw, dict):
         return None
     if str(raw.get("mode") or "").strip().lower() != "explicit":
+        return None
+
+    if not (raw.get("user_ids") or raw.get("department_ids") or raw.get("project_division_ids")):
         return None
 
     eligible: Set[uuid.UUID] = set()
@@ -876,6 +976,9 @@ def cycle_hr_status(cycle_id: str, db: Session = Depends(get_db), _=Depends(requ
     for a in assigns:
         by_reviewee[str(a.reviewee_user_id)].append(a)
 
+    for rid in _scoped_reviewee_ids(c, db):
+        by_reviewee.setdefault(str(rid), [])
+
     all_uids: Set[uuid.UUID] = set()
     for rid, arr in by_reviewee.items():
         u = _uuid_or_none(rid)
@@ -914,11 +1017,14 @@ def cycle_hr_status(cycle_id: str, db: Session = Depends(get_db), _=Depends(requ
         mgr_a = next((a for a in arr if str(a.reviewee_user_id) != str(a.reviewer_user_id)), None)
         st_self = (self_a.status or "").lower() if self_a else ""
         st_mgr = (mgr_a.status or "").lower() if mgr_a else ""
-        employee_self_done = self_a is not None and st_self == "submitted"
-        supervisor_done = mgr_a is not None and st_mgr == "submitted"
-        both_done = employee_self_done and supervisor_done
+        has_self_assignment = self_a is not None
+        has_supervisor_assignment = mgr_a is not None
+        employee_self_done = has_self_assignment and st_self == "submitted"
+        supervisor_done = has_supervisor_assignment and st_mgr == "submitted"
+        # No manager task in org chart → supervisor step does not block cycle completion.
+        both_done = employee_self_done and (supervisor_done or not has_supervisor_assignment)
         missing_employee = not employee_self_done
-        missing_supervisor = not supervisor_done
+        missing_supervisor = has_supervisor_assignment and not supervisor_done
         disp = _label(rid) or str(rid)
         sup_uid = mgr_a.reviewer_user_id if mgr_a else None
         meet = merged_sched.get(str(rid))

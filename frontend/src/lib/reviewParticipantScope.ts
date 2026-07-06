@@ -53,6 +53,25 @@ export type ParticipantScopeLike = {
   project_division_ids?: string[];
 } | null | undefined;
 
+/** Employees in /employees that match cycle scope (same rule as CreateReviewCycleWizardModal). */
+export function employeesMatchingCycleScope(
+  employees: ReviewParticipantEmp[],
+  participant_scope: ParticipantScopeLike
+): ReviewParticipantEmp[] {
+  const rows = employees || [];
+  const ps = participant_scope;
+  if (!ps || String(ps.mode || '').toLowerCase() !== 'explicit') {
+    return rows;
+  }
+  const u = new Set(ps.user_ids || []);
+  const d = new Set(ps.department_ids || []);
+  const p = new Set(ps.project_division_ids || []);
+  if (u.size === 0 && d.size === 0 && p.size === 0) {
+    return [];
+  }
+  return rows.filter((emp) => employeeMatchesParticipantScope(emp, u, d, p));
+}
+
 /** Count employees in /employees that match explicit scope (same as wizard). Company-wide returns null count. */
 export function countEmployeesMatchingCycleScope(
   employees: ReviewParticipantEmp[],

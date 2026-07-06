@@ -12,7 +12,7 @@ import toast from 'react-hot-toast';
 
 import { sortByLabel } from '@/lib/sortOptions';
 
-import { countEmployeesMatchingCycleScope, type ReviewParticipantEmp } from '@/lib/reviewParticipantScope';
+import { countEmployeesMatchingCycleScope, employeesMatchingCycleScope, employeeDivisionKeys, type ReviewParticipantEmp } from '@/lib/reviewParticipantScope';
 
 import { useConfirm } from '@/components/ConfirmProvider';
 
@@ -27,6 +27,8 @@ import {
   AppEmptyState,
 
   AppInput,
+
+  AppModal,
 
   AppPageHeader,
 
@@ -46,6 +48,8 @@ import {
   uiCx,
 
   uiLayout,
+
+  uiModalLayer,
 
   uiRadius,
 
@@ -284,6 +288,10 @@ export default function ReviewCycleDetailPage() {
   >('all');
 
   const [progressSearch, setProgressSearch] = useState('');
+
+  const [scopePeopleModalOpen, setScopePeopleModalOpen] = useState(false);
+
+  const [scopeModalSearch, setScopeModalSearch] = useState('');
 
   const id = cycleId || '';
 
@@ -742,6 +750,86 @@ export default function ReviewCycleDetailPage() {
 
 
 
+  const scopedEmployees = useMemo(
+
+    () =>
+
+      sortByLabel(
+
+        employeesMatchingCycleScope(employees as ReviewParticipantEmp[], cycle?.participant_scope) as EmpRow[],
+
+        (e) => (e.name || e.username || e.id).toString(),
+
+      ),
+
+    [employees, cycle?.participant_scope],
+
+  );
+
+
+
+  const scopedEmployeesModalRows = useMemo(() => {
+
+    const q = scopeModalSearch.trim().toLowerCase();
+
+    if (!q) return scopedEmployees;
+
+    return scopedEmployees.filter((e) => {
+
+      const blob = `${e.name || ''} ${e.username || ''} ${e.id} ${(e.department || '').toString()}`.toLowerCase();
+
+      return blob.includes(q);
+
+    });
+
+  }, [scopedEmployees, scopeModalSearch]);
+
+
+
+  const scopeParticipantTableRows = useMemo(
+
+    () =>
+
+      scopedEmployeesModalRows.map((e) => [
+
+        <Link
+
+          key={`${e.id}-name`}
+
+          to={`/users/${encodeURIComponent(e.id)}`}
+
+          className="font-medium text-brand-red hover:underline"
+
+          onClick={() => setScopePeopleModalOpen(false)}
+
+        >
+
+          {e.name || e.username || e.id}
+
+        </Link>,
+
+        e.username || '—',
+
+        employeeDivisionKeys(e)[0] || '—',
+
+        (e.project_division_ids || []).length
+
+          ? (e.project_division_ids || [])
+
+              .map((pid) => projDivLabel.get(String(pid)) || String(pid))
+
+              .join(', ')
+
+          : '—',
+
+      ]),
+
+    [scopedEmployeesModalRows, projDivLabel],
+
+  );
+
+
+
   const runGenerateReviewTasks = async () => {
 
     setGeneratingTasks(true);
@@ -1096,6 +1184,34 @@ export default function ReviewCycleDetailPage() {
 
                     </p>
 
+                    {scopedEmployees.length > 0 ? (
+
+                      <AppButton
+
+                        type="button"
+
+                        variant="secondary"
+
+                        size="sm"
+
+                        className="mt-3"
+
+                        onClick={() => {
+
+                          setScopeModalSearch('');
+
+                          setScopePeopleModalOpen(true);
+
+                        }}
+
+                      >
+
+                        View list ({scopedEmployees.length})
+
+                      </AppButton>
+
+                    ) : null}
+
                   </>
 
                 ) : (
@@ -1127,6 +1243,34 @@ export default function ReviewCycleDetailPage() {
                       </p>
 
                     )}
+
+                    {scopedEmployees.length > 0 ? (
+
+                      <AppButton
+
+                        type="button"
+
+                        variant="secondary"
+
+                        size="sm"
+
+                        className="mt-3"
+
+                        onClick={() => {
+
+                          setScopeModalSearch('');
+
+                          setScopePeopleModalOpen(true);
+
+                        }}
+
+                      >
+
+                        View list ({scopedEmployees.length})
+
+                      </AppButton>
+
+                    ) : null}
 
                   </>
 
@@ -1440,9 +1584,23 @@ export default function ReviewCycleDetailPage() {
 
                   <>
 
-                    Use <span className="font-semibold text-gray-900">Create review tasks</span> on the Cycle details tab
+                    {cycle.assignment_count === 0 ? (
 
-                    so assignments exist; this table then fills automatically.
+                      <>
+
+                        Use <span className="font-semibold text-gray-900">Create review tasks</span> on the Cycle details
+
+                        tab so assignments exist. People in this cycle&apos;s scope appear here even before tasks are
+
+                        created — refresh after saving the cycle if the list is still empty.
+
+                      </>
+
+                    ) : (
+
+                      <>No rows match the current filter or search.</>
+
+                    )}
 
                   </>
 
@@ -1514,6 +1672,76 @@ export default function ReviewCycleDetailPage() {
         )}
 
       </AppCard>
+
+
+
+      <AppModal
+
+        open={scopePeopleModalOpen}
+
+        onClose={() => setScopePeopleModalOpen(false)}
+
+        title="People in this cycle"
+
+        description={
+
+          <>
+
+            <span className="tabular-nums">{scopedEmployees.length}</span> people in scope
+
+          </>
+
+        }
+
+        size="lg"
+
+        dialogClassName="!max-w-3xl"
+
+        overlayClassName={uiModalLayer.stacked}
+
+        bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'max-h-[min(68vh,40rem)] overflow-y-auto')}
+
+        footer={
+
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+
+            <AppButton variant="secondary" onClick={() => setScopePeopleModalOpen(false)}>
+
+              Close
+
+            </AppButton>
+
+          </div>
+
+        }
+
+      >
+
+        <AppInput
+
+          placeholder="Filter…"
+
+          value={scopeModalSearch}
+
+          onChange={(e) => setScopeModalSearch(e.target.value)}
+
+          leftIcon={<Search className="h-4 w-4" />}
+
+          aria-label="Filter people in scope"
+
+        />
+
+        <AppTable
+
+          columns={['Name', 'Username', 'Primary HR', 'Project div.']}
+
+          rows={scopeParticipantTableRows}
+
+          emptyState="No matches."
+
+        />
+
+      </AppModal>
 
     </div>
 
