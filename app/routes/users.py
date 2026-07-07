@@ -847,7 +847,6 @@ def delete_user(
 @router.post("/sync-bamboohr-all")
 def sync_all_users_from_bamboohr(
     payload: dict = Body(default={}),
-    db: Session = Depends(get_db),
     _=Depends(require_permissions("hr:users:write", "users:write"))
 ):
     """

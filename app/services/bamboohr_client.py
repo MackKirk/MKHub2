@@ -278,28 +278,24 @@ class BambooHRClient:
         return self._request("GET", "/meta/tables")
     
     def get_table_data(self, table_name: str, employee_id: str) -> Optional[Dict[str, Any]]:
-        """Get data from a custom table for an employee"""
-        # Try the standard endpoint first
-        try:
-            result = self._request("GET", f"/employees/{employee_id}/tables/{table_name}")
-            return result
-        except Exception as e:
-            # If that fails, try alternative endpoints or formats
-            # Some tables might use fieldId or different URL patterns
+        """Get data from a custom table for an employee. Returns None if the table is missing."""
+        endpoints = [
+            f"/employees/{employee_id}/tables/{table_name}",
+            f"/employees/{employee_id}/tables/{table_name}/data",
+        ]
+        if table_name.isdigit():
+            endpoints.append(f"/employees/{employee_id}/tables/{table_name}")
+
+        for endpoint in endpoints:
             try:
-                # Try with /data suffix
-                result = self._request("GET", f"/employees/{employee_id}/tables/{table_name}/data")
-                return result
+                return self._request("GET", endpoint)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    continue
+                raise
             except Exception:
-                # Try using the table name as fieldId if it's numeric
-                if table_name.isdigit():
-                    try:
-                        result = self._request("GET", f"/employees/{employee_id}/tables/{table_name}")
-                        return result
-                    except Exception:
-                        pass
-                # Re-raise the original exception
-                raise e
+                continue
+        return None
     
     def get_employee_table_by_field_id(self, employee_id: str, field_id: str) -> Optional[Dict[str, Any]]:
         """Get custom table data using fieldId directly"""

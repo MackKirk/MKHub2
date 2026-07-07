@@ -14,6 +14,9 @@ type Props = {
   'aria-label'?: string;
 };
 
+/** Fixed width — View + divider + Edit (all rows share this exact size). */
+const ACCESS_CONTROL_WIDTH = 'w-[calc(2*(3.25rem+1.25rem)+1px)]';
+
 function stopPointerBubble(e: MouseEvent) {
   e.stopPropagation();
 }
@@ -21,6 +24,24 @@ function stopPointerBubble(e: MouseEvent) {
 function preventFocusScroll(e: MouseEvent) {
   e.preventDefault();
   e.stopPropagation();
+}
+
+/** Empty column slot — preserves View/Edit alignment without looking interactive. */
+function AccessColumnSpacer({ alignLabel }: { alignLabel: string }) {
+  return (
+    <div
+      className="pointer-events-none flex w-full min-w-0 flex-col items-center gap-1 px-2.5 py-1.5"
+      aria-hidden
+    >
+      <span className={uiCx(permissionUi.columnTitle, 'invisible select-none')}>{alignLabel}</span>
+      <span
+        className={uiCx(
+          'h-4 w-4 shrink-0 rounded-sm bg-white',
+          'bg-[repeating-linear-gradient(135deg,#ececec_0,#ececec_0.5px,transparent_0.5px,transparent_4px)]',
+        )}
+      />
+    </div>
+  );
 }
 
 function AccessCheckbox({
@@ -39,7 +60,7 @@ function AccessCheckbox({
   if (!interactive) {
     return (
       <div
-        className="flex min-w-[3.25rem] cursor-not-allowed flex-col items-center gap-1 px-2.5 py-1.5 opacity-50"
+        className="flex w-full min-w-0 cursor-not-allowed flex-col items-center gap-1 px-2.5 py-1.5 opacity-50"
         aria-hidden
       >
         <span className={permissionUi.columnTitle}>{label}</span>
@@ -55,7 +76,7 @@ function AccessCheckbox({
       aria-checked={checked}
       aria-label={label}
       className={uiCx(
-        'flex min-w-[3.25rem] flex-col items-center gap-1 px-2.5 py-1.5',
+        'flex w-full min-w-0 flex-col items-center gap-1 px-2.5 py-1.5',
         'cursor-pointer hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30',
       )}
       onMouseDown={preventFocusScroll}
@@ -104,7 +125,11 @@ export function PermissionAccessLevelSelect({
 
   return (
     <div
-      className="flex shrink-0 overflow-hidden rounded-lg border border-gray-200/80 bg-white shadow-sm"
+      className={uiCx(
+        'flex shrink-0 overflow-hidden rounded-lg border border-gray-200/80 bg-white shadow-sm',
+        ACCESS_CONTROL_WIDTH,
+        isWriteOnly ? 'justify-center' : 'grid grid-cols-[1fr_1px_1fr]',
+      )}
       role="group"
       aria-label={ariaLabel}
       onMouseDown={stopPointerBubble}
@@ -127,7 +152,7 @@ export function PermissionAccessLevelSelect({
               onToggle={handleViewToggle}
             />
           ) : null}
-          {hasView && hasEdit ? <div className="w-px self-stretch bg-gray-200/90" aria-hidden /> : null}
+          {hasView ? <div className="self-stretch bg-gray-200/90" aria-hidden /> : null}
           {hasEdit ? (
             <AccessCheckbox
               label="Edit"
@@ -135,6 +160,8 @@ export function PermissionAccessLevelSelect({
               disabled={disabled}
               onToggle={handleEditToggle}
             />
+          ) : hasView ? (
+            <AccessColumnSpacer alignLabel="Edit" />
           ) : null}
         </>
       )}
