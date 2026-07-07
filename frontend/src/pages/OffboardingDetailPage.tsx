@@ -349,6 +349,9 @@ export default function OffboardingDetailPage() {
               onConfirm={handleComplete}
               loading={actionLoading}
               hubAccessActive={detail.hub_access_active}
+              accessRevocationTiming={detail.access_revocation_timing}
+              accessRevokeAtLocal={detail.access_revoke_at_local}
+              companyTimezone={detail.company_timezone}
               assetsPending={s.assets_pending_return || 0}
               futureShifts={s.future_shifts || 0}
               pendingTimesheets={s.pending_timesheets || 0}

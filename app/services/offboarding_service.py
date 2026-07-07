@@ -632,6 +632,46 @@ def compute_action_required(db: Session, case: OffboardingCase, user: User, summ
     return False
 
 
+def _hub_access_allows_complete_with_active(case: OffboardingCase) -> bool:
+    return case.access_revocation_timing in ("scheduled", "manually_later")
+
+
+def _format_scheduled_revocation_display(case: OffboardingCase) -> Optional[str]:
+    if not case.access_revoke_at:
+        return None
+    local = utc_to_local(case.access_revoke_at, settings.tz_default)
+    when = local.strftime("%Y-%m-%d %H:%M")
+    return f"{when} ({settings.tz_default})"
+
+
+def _hub_access_completion_messages(case: OffboardingCase, user: User) -> Tuple[List[str], List[str]]:
+    """Return (blockers, warnings) for active hub access at completion time."""
+    blockers: List[str] = []
+    warnings: List[str] = []
+    if not user or not user.is_active:
+        return blockers, warnings
+    if _hub_access_allows_complete_with_active(case):
+        if case.access_revocation_timing == "scheduled":
+            when = _format_scheduled_revocation_display(case)
+            if when:
+                warnings.append(
+                    f"Hub access is still Active. It is scheduled to be revoked on {when}."
+                )
+            else:
+                warnings.append(
+                    "Hub access is still Active. A scheduled revocation date is not set."
+                )
+        else:
+            warnings.append(
+                "Hub access is still Active. Revocation is set to manual — access will remain until deactivated."
+            )
+    else:
+        blockers.append(
+            "Hub access is still Active — immediate revocation was selected but access has not been deactivated."
+        )
+    return blockers, warnings
+
+
 def deactivate_hub_access(
     db: Session,
     case: OffboardingCase,
@@ -673,7 +713,7 @@ def enforce_due_revocation_for_user(db: Session, user_id: uuid.UUID) -> bool:
         db.query(OffboardingCase)
         .filter(
             OffboardingCase.user_id == user_id,
-            OffboardingCase.status == "in_progress",
+            OffboardingCase.status.in_(("in_progress", "completed")),
             OffboardingCase.access_revocation_timing == "scheduled",
             OffboardingCase.access_revoke_at.isnot(None),
             OffboardingCase.access_revoke_at <= now,
@@ -699,7 +739,7 @@ def process_due_scheduled_revocations(db: Session) -> int:
     cases = (
         db.query(OffboardingCase)
         .filter(
-            OffboardingCase.status == "in_progress",
+            OffboardingCase.status.in_(("in_progress", "completed")),
             OffboardingCase.access_revocation_timing == "scheduled",
             OffboardingCase.access_revoke_at.isnot(None),
             OffboardingCase.access_revoke_at <= now,
@@ -936,8 +976,11 @@ def complete_case(db: Session, actor: User, case_id: uuid.UUID) -> OffboardingCa
         raise HTTPException(status_code=400, detail="Only in-progress cases can be completed")
 
     user = db.query(User).filter(User.id == case.user_id).first()
-    if user and user.is_active:
-        raise HTTPException(status_code=400, detail="Cannot complete while Hub access is still Active")
+    if user and user.is_active and not _hub_access_allows_complete_with_active(case):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot complete while Hub access is still Active",
+        )
 
     pending = count_pending_asset_returns(db, case.id)
     if pending > 0:
@@ -1104,8 +1147,9 @@ def case_to_detail(db: Session, case: OffboardingCase, include_notes: bool = Fal
 
     blockers: List[str] = []
     warnings: List[str] = []
-    if user and user.is_active:
-        blockers.append("Hub access is still Active")
+    hub_blockers, hub_warnings = _hub_access_completion_messages(case, user) if user else ([], [])
+    blockers.extend(hub_blockers)
+    warnings.extend(hub_warnings)
     if summary["assets_pending_return"] > 0:
         blockers.append(f"{summary['assets_pending_return']} asset(s) pending return")
     if summary["future_shifts"] > 0:
