@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
+import { useConfirm } from '@/components/ConfirmProvider';
 import DynamicSafetyForm from '@/components/DynamicSafetyForm';
 import { normalizeDefinition, type SafetyFormDefinition } from '@/types/safetyFormTemplate';
 import { fieldLabelFromDefinition, SUPERVISOR_COMMENT_KEY_SUFFIX } from '@/lib/employeeReviewForm';
@@ -18,6 +19,7 @@ import {
   AppEmptyState,
   AppFileUpload,
   AppFormModal,
+  AppListRowIconButton,
   AppSectionHeader,
   AppSelect,
   AppSortableEntityList,
@@ -78,6 +80,8 @@ export type UserEmployeeReviewsTabProps = {
   enabled?: boolean;
   /** HR: show legacy import from previous platform (JSON). */
   canImportLegacy?: boolean;
+  /** System admin: delete individual review assignment rows. */
+  canDeleteReviewAssignments?: boolean;
 };
 
 type ReviewBadgeVariant = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
@@ -120,8 +124,10 @@ export function UserEmployeeReviewsSection({
   userId,
   enabled = true,
   canImportLegacy = false,
+  canDeleteReviewAssignments = false,
 }: UserEmployeeReviewsTabProps) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [reviewViewId, setReviewViewId] = useState('');
   const [reviewViewPayload, setReviewViewPayload] = useState<Record<string, unknown>>({});
 
@@ -316,12 +322,42 @@ export function UserEmployeeReviewsSection({
     [reviewCycles],
   );
 
+  const reviewListGridCols = canDeleteReviewAssignments
+    ? undefined
+    : ('grid-cols-[5fr_3fr_3fr_4fr_3fr_3fr]' as const);
+
   const openReviewView = (assignmentId: string) => {
     setReviewViewId(assignmentId);
   };
 
   const closeReviewView = () => {
     setReviewViewId('');
+  };
+
+  const deleteAssignmentMutation = useMutation({
+    mutationFn: (assignmentId: string) =>
+      api('DELETE', `/reviews/assignments/${encodeURIComponent(assignmentId)}`),
+    onSuccess: (_data, assignmentId) => {
+      toast.success('Review assignment deleted.');
+      queryClient.invalidateQueries({ queryKey: ['user-reviewee-assignments', userId] });
+      queryClient.removeQueries({ queryKey: ['assignment-submission', assignmentId] });
+      if (reviewViewId === assignmentId) closeReviewView();
+    },
+    onError: () => {
+      toast.error('Could not delete review assignment.');
+    },
+  });
+
+  const handleDeleteAssignment = async (row: RevieweeAssignmentRow) => {
+    const label = row.is_self_review ? 'self-review' : 'supervisor review';
+    const result = await confirm({
+      title: 'Delete review assignment',
+      message: `Remove this ${label} for "${row.cycle_name}"? Answers will be permanently deleted.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    deleteAssignmentMutation.mutate(row.assignment_id);
   };
 
   return (
@@ -365,7 +401,7 @@ export function UserEmployeeReviewsSection({
                 />
               ) : (
                 <AppSortableEntityList layout="flat">
-                  <AppSortableEntityListHeader preset="employeeReviews" variant="flat">
+                  <AppSortableEntityListHeader preset="employeeReviews" variant="flat" gridCols={reviewListGridCols}>
                     <AppSortableEntityListSortColumn
                       label="Cycle"
                       column="cycle"
@@ -408,6 +444,7 @@ export function UserEmployeeReviewsSection({
                       sortDir={sortDir}
                       onSort={setSort}
                     />
+                    {canDeleteReviewAssignments ? <div className="min-w-0 w-10" aria-hidden /> : null}
                   </AppSortableEntityListHeader>
                   <AppSortableEntityListFlatBody preset="employeeReviews">
                     {sortedAssignments.map((row) => (
@@ -416,6 +453,7 @@ export function UserEmployeeReviewsSection({
                         as="div"
                         variant="flat"
                         preset="employeeReviews"
+                        gridCols={reviewListGridCols}
                         className="group"
                         role="button"
                         tabIndex={0}
@@ -452,6 +490,19 @@ export function UserEmployeeReviewsSection({
                         <div className="min-w-0">
                           <AppBadge variant={reviewStatusVariant(row.status)}>{row.status}</AppBadge>
                         </div>
+                        {canDeleteReviewAssignments ? (
+                          <div className="flex w-10 shrink-0 items-center justify-end">
+                            <AppListRowIconButton
+                              preset="delete"
+                              label={`Delete ${row.is_self_review ? 'self-review' : 'supervisor review'} for ${row.cycle_name}`}
+                              disabled={deleteAssignmentMutation.isPending}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleDeleteAssignment(row);
+                              }}
+                            />
+                          </div>
+                        ) : null}
                       </AppSortableEntityListRow>
                     ))}
                   </AppSortableEntityListFlatBody>

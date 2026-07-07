@@ -244,7 +244,11 @@ export default function UserDetail(){
 
       {tab === 'reviews' && canViewReviews && id && (
         <div className="rounded-xl border bg-white p-4">
-          <UserEmployeeReviewsSection userId={String(id)} enabled={tab === 'reviews'} />
+          <UserEmployeeReviewsSection
+            userId={String(id)}
+            enabled={tab === 'reviews'}
+            canDeleteReviewAssignments={isAdministrator}
+          />
         </div>
       )}
     </div>

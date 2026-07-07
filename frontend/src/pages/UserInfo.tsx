@@ -523,6 +523,11 @@ export default function UserInfo(){
     return perms.includes('hr:reviews:admin') || perms.includes('reviews:admin');
   }, [me]);
 
+  const canDeleteReviewAssignments = useMemo(
+    () => (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin'),
+    [me],
+  );
+
   useEffect(() => {
     if (tab !== 'activity' || canViewActivity) return;
     if (canViewGeneral || canSelfEdit) setTab('personal');
@@ -1260,6 +1265,7 @@ export default function UserInfo(){
                   userId={String(userId)}
                   enabled={tab === 'reviews'}
                   canImportLegacy={canImportLegacyReviews}
+                  canDeleteReviewAssignments={canDeleteReviewAssignments}
                 />
               )}
               {tab==='permissions' && canViewPermissions && <UserPermissionsSection ref={permissionsRef} userId={String(userId)} onDirtyChange={setPermissionsDirty} canEdit={canEditPermissions} />}

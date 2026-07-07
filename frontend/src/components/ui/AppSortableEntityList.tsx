@@ -54,8 +54,8 @@ export const APP_SORTABLE_LIST_PRESETS = {
     minWidth: 'min-w-[720px]',
   },
   employeeReviews: {
-    gridCols: 'grid-cols-[5fr_3fr_3fr_4fr_3fr_3fr]',
-    minWidth: 'min-w-[800px]',
+    gridCols: 'grid-cols-[5fr_3fr_3fr_4fr_3fr_3fr_auto]',
+    minWidth: 'min-w-[840px]',
   },
   employeeActivityLog: {
     gridCols: 'grid-cols-[8fr_4fr]',

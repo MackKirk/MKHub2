@@ -22,8 +22,13 @@ from ..models.models import (
     SettingItem,
     Notification,
 )
-from ..auth.security import get_current_user, require_permissions, _has_permission
+from ..auth.security import get_current_user, require_permissions, require_roles, _has_permission
 from ..services.hierarchy import get_direct_reports
+from ..services.legacy_review_import import (
+    auto_patch_field_type_for_legacy_row,
+    detect_definition_type_fixes,
+    patch_definition_field_types,
+)
 from ..routes.form_templates import _normalize_definition, EMPLOYEE_REVIEW_CATEGORY
 
 
@@ -500,12 +505,13 @@ def _legacy_json_to_form_payload(
     legacy_items: List[dict],
     *,
     is_supervisor_payload: bool,
-) -> tuple[Dict[str, Any], List[str], List[str]]:
-    """Build form_payload for reviews storage. Returns (form_payload, unmapped_questions, warnings)."""
+) -> tuple[Dict[str, Any], List[str], List[str], Dict[str, str]]:
+    """Build form_payload for reviews storage. Returns (form_payload, unmapped, warnings, type_patches)."""
     key_types = _field_key_types_from_definition(definition)
     form_payload: Dict[str, Any] = {}
     unmapped: List[str] = []
     warnings: List[str] = []
+    type_patches: Dict[str, str] = {}
 
     for item in legacy_items:
         qraw = item.get("question")
@@ -539,8 +545,24 @@ def _legacy_json_to_form_payload(
             val, w = _legacy_coerce_value_for_field(ft, "text", item.get("value"))
         elif lt_s == "scale":
             val, w = _legacy_coerce_value_for_field(ft, "scale", item.get("value"))
+            if val is None:
+                patched_ft, patch_note = auto_patch_field_type_for_legacy_row(key, ft, "scale")
+                if patched_ft:
+                    val, w = _legacy_coerce_value_for_field(patched_ft, "scale", item.get("value"))
+                    if val is not None:
+                        type_patches[key] = patched_ft
+                        ft = patched_ft
+                        w = patch_note
         elif lt_s == "yesno":
             val, w = _legacy_coerce_value_for_field(ft, "yesno", item.get("value"))
+            if val is None:
+                patched_ft, patch_note = auto_patch_field_type_for_legacy_row(key, ft, "yesno")
+                if patched_ft:
+                    val, w = _legacy_coerce_value_for_field(patched_ft, "yesno", item.get("value"))
+                    if val is not None:
+                        type_patches[key] = patched_ft
+                        ft = patched_ft
+                        w = patch_note
         else:
             val, w = None, f"unsupported legacy type {lt!r}"
 
@@ -566,7 +588,7 @@ def _legacy_json_to_form_payload(
                 ck = f"{key}{SUPERVISOR_COMMENT_SUFFIX}"
                 form_payload[ck] = cmt.strip()
 
-    return form_payload, unmapped, warnings
+    return form_payload, unmapped, warnings, type_patches
 
 
 def _parse_legacy_json_array(raw: Any) -> List[dict]:
@@ -1609,11 +1631,14 @@ def _legacy_import_run(db: Session, reviewee_uid: uuid.UUID, payload: dict, *, a
     reviewer_uid = reviewee_uid if kind == "self" else supervisor_uid  # type: ignore[assignment]
 
     definition = _normalize_definition(_definition_for_reviewee(cycle, reviewee_uid, db))
-    form_payload, unmapped, warnings = _legacy_json_to_form_payload(
+    template_patches, template_fix_notes = detect_definition_type_fixes(definition, legacy_items)
+    form_payload, unmapped, warnings, import_patches = _legacy_json_to_form_payload(
         definition,
         legacy_items,
         is_supervisor_payload=(kind == "supervisor"),
     )
+    type_patches = {**template_patches, **import_patches}
+    warnings.extend(template_fix_notes)
     mapped_keys = [k for k in form_payload if not k.endswith(SUPERVISOR_COMMENT_SUFFIX)]
     comment_keys = [k for k in form_payload if k.endswith(SUPERVISOR_COMMENT_SUFFIX)]
 
@@ -1625,9 +1650,13 @@ def _legacy_import_run(db: Session, reviewee_uid: uuid.UUID, payload: dict, *, a
             "unmapped_questions": unmapped,
             "warnings": warnings,
             "total_legacy_rows": len(legacy_items),
+            "type_patches": type_patches,
         }
 
     a = _get_or_create_manual_review_assignment(db, cycle, reviewee_uid, reviewer_uid)
+    if type_patches:
+        snap = a.form_definition_snapshot if isinstance(a.form_definition_snapshot, dict) else definition
+        a.form_definition_snapshot = _normalize_definition(patch_definition_field_types(snap, type_patches))
     _admin_write_form_payload_to_assignment(db, a, cycle, form_payload)
     db.commit()
     db.refresh(a)
@@ -1639,6 +1668,7 @@ def _legacy_import_run(db: Session, reviewee_uid: uuid.UUID, payload: dict, *, a
         "unmapped_questions": unmapped,
         "warnings": warnings,
         "total_legacy_rows": len(legacy_items),
+        "type_patches": type_patches,
         "status": a.status,
     }
 
@@ -1702,6 +1732,24 @@ def assignment_submission(
         "cycle_id": str(cycle.id),
         "cycle_name": cycle.name,
     }
+
+
+@router.delete("/assignments/{assignment_id}")
+def delete_assignment(
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    """System admin only — remove one review assignment and its answers."""
+    aid = _uuid_or_none(assignment_id)
+    if not aid:
+        raise HTTPException(status_code=400, detail="Invalid assignment_id")
+    a = db.query(ReviewAssignment).filter(ReviewAssignment.id == aid).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    db.delete(a)
+    db.commit()
+    return {"ok": True, "assignment_id": str(aid)}
 
 
 @router.get("/assignments/{assignment_id}/questions")
