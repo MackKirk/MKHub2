@@ -66,16 +66,59 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'documents:delete',
   'documents:move',
   'fleet:access',
+  'fleet:dashboard:read',
   'fleet:vehicles:read',
   'fleet:vehicles:write',
+  'fleet:vehicles:general:read',
+  'fleet:vehicles:general:write',
+  'fleet:vehicles:inspections:read',
+  'fleet:vehicles:inspections:write',
+  'fleet:vehicles:work_orders:read',
+  'fleet:vehicles:work_orders:write',
+  'fleet:vehicles:compliance:read',
+  'fleet:vehicles:compliance:write',
+  'fleet:vehicles:history:read',
+  'fleet:work_orders:read',
+  'fleet:work_orders:write',
+  'fleet:work_orders:general:read',
+  'fleet:work_orders:general:write',
+  'fleet:work_orders:costs:read',
+  'fleet:work_orders:costs:write',
+  'fleet:work_orders:files:read',
+  'fleet:work_orders:files:write',
+  'fleet:work_orders:activity:read',
+  'fleet:work_orders:assign',
+  'fleet:inspections:read',
+  'fleet:inspections:write',
+  'fleet:inspections:schedules:read',
+  'fleet:inspections:schedules:write',
+  'fleet:inspections:execution:read',
+  'fleet:inspections:execution:write',
+  'company_assets:access',
   'fleet:equipment:read',
   'fleet:equipment:write',
+  'fleet:equipment:general:read',
+  'fleet:equipment:general:write',
+  'fleet:equipment:work_orders:read',
+  'fleet:equipment:work_orders:write',
+  'fleet:equipment:history:read',
   'company_cards:read',
   'company_cards:write',
   'inventory:suppliers:read',
   'inventory:suppliers:write',
+  'inventory:suppliers:overview:read',
+  'inventory:suppliers:overview:write',
+  'inventory:suppliers:contacts:read',
+  'inventory:suppliers:contacts:write',
+  'inventory:suppliers:products:read',
+  'inventory:suppliers:products:write',
   'inventory:products:read',
   'inventory:products:write',
+  'inventory:products:details:read',
+  'inventory:products:details:write',
+  'inventory:products:usage:read',
+  'inventory:products:related:read',
+  'inventory:products:related:write',
   'business:customers:read',
   'business:customers:write',
   'business:customers:overview:read',
@@ -122,7 +165,23 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
 
 /** Permissions hidden from permission UIs (retired tabs, unused area gates). */
 export function isHiddenPermissionKey(key: string): boolean {
-  return key === 'inventory:access' || isHiddenProjectLinePermissionKey(key);
+  if (key === 'inventory:access') return true;
+  if (isHiddenProjectLinePermissionKey(key)) return true;
+  if (key === 'fleet:read' || key === 'fleet:write' || key === 'fleet:manage') return true;
+  if (key === 'equipment:read' || key === 'equipment:write' || key === 'equipment:manage') return true;
+  if (key === 'work_orders:read' || key === 'work_orders:write' || key === 'work_orders:assign') return true;
+  if (key === 'inspections:read' || key === 'inspections:write') return true;
+  if (key === 'users:read' || key === 'users:write') return true;
+  if (
+    key === 'timesheet:read' ||
+    key === 'timesheet:write' ||
+    key === 'timesheet:approve' ||
+    key === 'timesheet:unrestricted_clock'
+  ) {
+    return true;
+  }
+  if (key === 'reviews:read' || key === 'reviews:admin') return true;
+  return false;
 }
 
 /** Legacy/shared project permissions (hidden in line UIs; backend fallback). */

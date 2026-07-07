@@ -24,6 +24,18 @@ import {
   supplierFormQuickInfo,
 } from '@/lib/formModalQuickInfo';
 import {
+  canAccessSupplierList,
+  canEditSupplierRecord,
+  canReadSupplierTab,
+  canWriteSupplierTab,
+  type SupplierTab,
+} from '@/lib/supplierPermissions';
+import {
+  canEditProductRecord,
+  canReadProductTab,
+  canWriteProductTab,
+} from '@/lib/productPermissions';
+import {
   AppButton,
   AppCard,
   AppControlLabelRow,
@@ -218,9 +230,14 @@ export default function InventorySuppliers() {
   const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
   const permissions = new Set(me?.permissions || []);
-  const canViewSuppliers = isAdmin || permissions.has('inventory:suppliers:read');
-  const canEditSuppliers = isAdmin || permissions.has('inventory:suppliers:write');
-  const canEditProducts = isAdmin || permissions.has('inventory:products:write');
+  const canViewSuppliers = canAccessSupplierList(isAdmin, permissions);
+  const canEditSuppliers = canEditSupplierRecord(isAdmin, permissions);
+  const canEditSupplierOverview = canWriteSupplierTab(isAdmin, permissions, 'overview');
+  const canEditSupplierContacts = canWriteSupplierTab(isAdmin, permissions, 'contacts');
+  const canEditSupplierProductsTab = canWriteSupplierTab(isAdmin, permissions, 'products');
+  const canEditProducts = canEditProductRecord(isAdmin, permissions);
+  const canEditProductDetails = canWriteProductTab(isAdmin, permissions, 'details');
+  const canEditProductRelated = canWriteProductTab(isAdmin, permissions, 'related');
   const [q, setQ] = useState('');
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
@@ -876,25 +893,35 @@ export default function InventorySuppliers() {
   }, [isInitialLoading, hasAnimated]);
 
   const supplierTabItems = useMemo(
-    () => [
-      { key: 'overview', label: 'Overview' },
-      { key: 'contacts', label: 'Contacts' },
-      { key: 'products', label: 'Products' },
-    ],
-    [],
+    () =>
+      (
+        [
+          { key: 'overview', label: 'Overview' },
+          { key: 'contacts', label: 'Contacts' },
+          { key: 'products', label: 'Products' },
+        ] as const
+      ).filter((t) => canReadSupplierTab(isAdmin, permissions, t.key as SupplierTab)),
+    [isAdmin, permissions],
   );
+
+  useEffect(() => {
+    if (supplierTabItems.length === 0) return;
+    if (!supplierTabItems.some((t) => t.key === supplierTab)) {
+      setSupplierTab(supplierTabItems[0].key);
+    }
+  }, [supplierTabItems, supplierTab]);
 
   const productTabItems = useMemo(() => {
     const items = [
       { key: 'details', label: 'Details' },
       { key: 'usage', label: productUsage.length > 0 ? `Usage (${productUsage.length})` : 'Usage' },
     ];
-    if (canEditProducts && viewingProduct) {
+    if (canReadProductTab(isAdmin, permissions, 'related') && viewingProduct) {
       const count = relatedCounts[viewingProduct.id];
       items.push({ key: 'related', label: count ? `Related (${count})` : 'Related' });
     }
-    return items;
-  }, [canEditProducts, viewingProduct, productUsage.length, relatedCounts]);
+    return items.filter((t) => canReadProductTab(isAdmin, permissions, t.key as 'details' | 'usage' | 'related'));
+  }, [isAdmin, permissions, viewingProduct, productUsage.length, relatedCounts]);
 
   const showEmptyList =
     suppliersPayload != null && rows.length === 0 && (suppliersTotal === 0 || rows.length === 0);
@@ -1208,7 +1235,7 @@ export default function InventorySuppliers() {
         headerExtra={isNewSupplierForm ? supplierFormStepPills(supplierFormStep, 2) : undefined}
         quickInfo={
           viewing && !editing
-            ? supplierDetailQuickInfo(canEditSuppliers)
+            ? supplierDetailQuickInfo(canEditSupplierOverview)
             : supplierFormQuickInfo(!!editing)
         }
         bodyClassName={viewing && !editing ? uiCx(uiSpacing.cardPadding, 'min-w-0') : undefined}
@@ -1219,8 +1246,9 @@ export default function InventorySuppliers() {
                 <AppButton type="button" variant="secondary" size="sm" onClick={closeSupplierModal}>
                   Close
                 </AppButton>
-                {canEditSuppliers ? (
+                {canEditSuppliers || canEditSupplierOverview ? (
                   <>
+                    {canEditSuppliers ? (
                     <AppButton type="button" variant="danger" size="sm" onClick={async () => {
                       const ok = await confirm({
                         title: 'Delete supplier',
@@ -1235,9 +1263,12 @@ export default function InventorySuppliers() {
                     }}>
                       Delete
                     </AppButton>
+                    ) : null}
+                    {canEditSupplierOverview ? (
                     <AppButton type="button" size="sm" onClick={openEditModal}>
                       Edit
                     </AppButton>
+                    ) : null}
                   </>
                 ) : null}
               </>
@@ -1399,7 +1430,7 @@ export default function InventorySuppliers() {
                 <SupplierContactsCard
                   supplierId={viewing.id}
                   supplierDisplayName={viewing.name}
-                  hasEditPermission={canEditSuppliers}
+                  hasEditPermission={canEditSupplierContacts}
                 />
               ) : (
                 <div>
@@ -1409,7 +1440,7 @@ export default function InventorySuppliers() {
                         </div>
                       ) : supplierProducts && supplierProducts.length > 0 ? (
                         <div className="grid grid-cols-6 gap-3">
-                          {canEditProducts && (
+                          {(canEditSupplierProductsTab || canEditProducts) && (
                             <button
                               onClick={() => setNewProductModalOpen(true)}
                               className="border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]"
@@ -1461,7 +1492,7 @@ export default function InventorySuppliers() {
                       ) : (
                         <div className="flex flex-col items-center justify-center py-12 text-gray-500">
                           <div className="mb-4">No products found for this supplier</div>
-                          {canEditProducts && (
+                          {(canEditSupplierProductsTab || canEditProducts) && (
                             <button
                               onClick={() => setNewProductModalOpen(true)}
                               className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center w-64"
@@ -1818,7 +1849,7 @@ export default function InventorySuppliers() {
               : undefined
         }
         quickInfo={
-          viewingProduct && !editingProduct ? productDetailQuickInfo(canEditProducts) : undefined
+          viewingProduct && !editingProduct ? productDetailQuickInfo(canEditProductDetails) : undefined
         }
         bodyClassName={viewingProduct && !editingProduct ? uiCx(uiSpacing.cardPadding, 'min-w-0') : undefined}
         footer={
@@ -1836,7 +1867,7 @@ export default function InventorySuppliers() {
                 >
                   Close
                 </AppButton>
-                {canEditProducts ? (
+                {canEditProductDetails ? (
                   <AppButton type="button" size="sm" onClick={openEditProductModal}>
                     Edit
                   </AppButton>
@@ -2154,7 +2185,7 @@ export default function InventorySuppliers() {
                                   </div>
                                 )}
                               </div>
-                              {canEditProducts && (
+                              {canEditProductRelated && (
                                 <button
                                   type="button"
                                   onClick={() => deleteRelation(viewingProduct.id, r.id)}
@@ -2166,7 +2197,7 @@ export default function InventorySuppliers() {
                             </div>
                           ))}
                         </div>
-                        {canEditProducts && (
+                        {canEditProductRelated && (
                           <button
                             type="button"
                             onClick={() => handleAddRelated(viewingProduct.id)}
@@ -2180,7 +2211,7 @@ export default function InventorySuppliers() {
                       <div className="py-8 text-center text-sm text-gray-500">
                         <div className="text-base mb-2">🔗</div>
                         <div>This product has no related products.</div>
-                        {canEditProducts && (
+                        {canEditProductRelated && (
                           <button
                             type="button"
                             onClick={() => handleAddRelated(viewingProduct.id)}

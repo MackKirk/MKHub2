@@ -8,7 +8,14 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..config import settings
-from ..auth.security import get_current_user, require_permissions
+from ..auth.security import (
+    get_current_user,
+    require_permissions,
+    has_supplier_list_permission,
+    has_supplier_detail_access,
+    assert_supplier_tab,
+    User,
+)
 from ..models.models import (
     InventoryProduct,
     Supplier,
@@ -102,7 +109,10 @@ def list_suppliers(
     sort_dir: Optional[str] = Query("asc", alias="dir"),
     envelope: bool = Query(False),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> Any:
+    if not has_supplier_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     try:
         query = db.query(Supplier)
         if q:
@@ -177,7 +187,11 @@ def list_suppliers(
 
 
 @router.post("/suppliers")
-def create_supplier(body: dict, db: Session = Depends(get_db)):
+def create_supplier(
+    body: dict,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("inventory:suppliers:write")),
+):
     import traceback
     try:
         print("=" * 80)
@@ -249,7 +263,13 @@ def create_supplier(body: dict, db: Session = Depends(get_db)):
 
 
 @router.put("/suppliers/{supplier_id}")
-def update_supplier(supplier_id: uuid.UUID, body: dict, db: Session = Depends(get_db)):
+def update_supplier(
+    supplier_id: uuid.UUID,
+    body: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_supplier_tab(user, "overview", "write")
     import traceback
     try:
         print(f"UPDATE SUPPLIER - Attempting to update: {supplier_id}")
@@ -293,7 +313,11 @@ def update_supplier(supplier_id: uuid.UUID, body: dict, db: Session = Depends(ge
 
 
 @router.delete("/suppliers/{supplier_id}")
-def delete_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db)):
+def delete_supplier(
+    supplier_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("inventory:suppliers:write")),
+):
     import traceback
     from sqlalchemy import func
     try:
@@ -353,7 +377,9 @@ def delete_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/suppliers/{supplier_id}")
-def get_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not has_supplier_detail_access(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Supplier not found")
@@ -362,12 +388,22 @@ def get_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db)):
 
 # ---------- SUPPLIER CONTACTS ----------
 @router.get("/suppliers/{supplier_id}/contacts", response_model=List[SupplierContactResponse])
-def list_contacts(supplier_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+def list_contacts(
+    supplier_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_supplier_tab(user, "contacts", "read")
     return db.query(SupplierContact).filter(SupplierContact.supplier_id == supplier_id).all()
 
 
 @router.post("/contacts", response_model=SupplierContactResponse)
-def create_contact(contact: SupplierContactCreate, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def create_contact(
+    contact: SupplierContactCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_supplier_tab(user, "contacts", "write")
     row = SupplierContact(**contact.dict())
     db.add(row)
     db.commit()
@@ -376,7 +412,13 @@ def create_contact(contact: SupplierContactCreate, db: Session = Depends(get_db)
 
 
 @router.put("/contacts/{contact_id}", response_model=SupplierContactResponse)
-def update_contact(contact_id: uuid.UUID, body: dict, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def update_contact(
+    contact_id: uuid.UUID,
+    body: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_supplier_tab(user, "contacts", "write")
     row = db.query(SupplierContact).filter(SupplierContact.id == contact_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -396,7 +438,12 @@ def update_contact(contact_id: uuid.UUID, body: dict, db: Session = Depends(get_
 
 
 @router.delete("/contacts/{contact_id}")
-def delete_contact(contact_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def delete_contact(
+    contact_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_supplier_tab(user, "contacts", "write")
     row = db.query(SupplierContact).filter(SupplierContact.id == contact_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Contact not found")

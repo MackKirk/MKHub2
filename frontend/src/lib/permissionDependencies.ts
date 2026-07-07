@@ -60,11 +60,29 @@ export function canEnablePermission(
   if (permKey === 'hr:offboarding:write') {
     return has('hr:offboarding:read');
   }
+  if (permKey === 'hr:attendance:write') {
+    return has('hr:attendance:read');
+  }
+  if (permKey === 'hr:community:write') {
+    return has('hr:community:read');
+  }
+  if (permKey === 'hr:timesheet:write') {
+    return has('hr:timesheet:read');
+  }
+  if (permKey === 'hr:timesheet:approve') {
+    return has('hr:timesheet:read');
+  }
   if (permKey === 'business:projects:write') {
     return has('business:projects:read');
   }
   if (permKey === 'business:customers:write') {
     return has('business:customers:read');
+  }
+  if (permKey === 'inventory:suppliers:write') {
+    return has('inventory:suppliers:read');
+  }
+  if (permKey === 'inventory:products:write') {
+    return has('inventory:products:read');
   }
   if (
     permKey.startsWith('business:customers:') &&
@@ -77,6 +95,34 @@ export function canEnablePermission(
     permKey.startsWith('business:customers:') &&
     permKey.endsWith(':write') &&
     permKey !== 'business:customers:write'
+  ) {
+    return has(permKey.replace(':write', ':read'));
+  }
+  if (
+    permKey.startsWith('inventory:suppliers:') &&
+    permKey.endsWith(':read') &&
+    permKey !== 'inventory:suppliers:read'
+  ) {
+    return has('inventory:suppliers:read');
+  }
+  if (
+    permKey.startsWith('inventory:suppliers:') &&
+    permKey.endsWith(':write') &&
+    permKey !== 'inventory:suppliers:write'
+  ) {
+    return has(permKey.replace(':write', ':read'));
+  }
+  if (
+    permKey.startsWith('inventory:products:') &&
+    permKey.endsWith(':read') &&
+    permKey !== 'inventory:products:read'
+  ) {
+    return has('inventory:products:read');
+  }
+  if (
+    permKey.startsWith('inventory:products:') &&
+    permKey.endsWith(':write') &&
+    permKey !== 'inventory:products:write'
   ) {
     return has(permKey.replace(':write', ':read'));
   }
@@ -164,6 +210,32 @@ export function canEnablePermission(
   if (permKey === 'fleet:equipment:write') {
     return has('fleet:equipment:read');
   }
+  if (permKey === 'company_cards:write') {
+    return has('company_cards:read');
+  }
+  if (permKey === 'fleet:work_orders:write') {
+    return has('fleet:work_orders:read');
+  }
+  if (permKey === 'fleet:inspections:write') {
+    return has('fleet:inspections:read');
+  }
+  if (permKey === 'fleet:work_orders:assign') {
+    return has('fleet:work_orders:read');
+  }
+  const fleetMainReadByPrefix: Record<string, string> = {
+    'fleet:vehicles:': 'fleet:vehicles:read',
+    'fleet:work_orders:': 'fleet:work_orders:read',
+    'fleet:inspections:': 'fleet:inspections:read',
+    'fleet:equipment:': 'fleet:equipment:read',
+  };
+  for (const [prefix, mainRead] of Object.entries(fleetMainReadByPrefix)) {
+    if (permKey.startsWith(prefix) && permKey.endsWith(':read') && permKey !== mainRead) {
+      return has(mainRead);
+    }
+    if (permKey.startsWith(prefix) && permKey.endsWith(':write') && permKey !== mainRead.replace(':read', ':write')) {
+      return has(permKey.replace(':write', ':read'));
+    }
+  }
   return true;
 }
 
@@ -212,6 +284,34 @@ export function permissionEnableBlockedMessage(permKey: string): string | null {
     return 'Requires "View Customers" first';
   }
   if (
+    permKey.startsWith('inventory:suppliers:') &&
+    permKey.endsWith(':write') &&
+    permKey !== 'inventory:suppliers:write'
+  ) {
+    return 'Requires the corresponding supplier view permission first';
+  }
+  if (
+    permKey.startsWith('inventory:suppliers:') &&
+    permKey.endsWith(':read') &&
+    permKey !== 'inventory:suppliers:read'
+  ) {
+    return 'Requires "View Suppliers" first';
+  }
+  if (
+    permKey.startsWith('inventory:products:') &&
+    permKey.endsWith(':write') &&
+    permKey !== 'inventory:products:write'
+  ) {
+    return 'Requires the corresponding product view permission first';
+  }
+  if (
+    permKey.startsWith('inventory:products:') &&
+    permKey.endsWith(':read') &&
+    permKey !== 'inventory:products:read'
+  ) {
+    return 'Requires "View Products" first';
+  }
+  if (
     permKey.startsWith('business:projects:') &&
     permKey.endsWith(':write') &&
     permKey !== 'business:projects:write'
@@ -230,12 +330,84 @@ export function applyPermissionUncheckCascade(
 
   if (uncheckedKey === 'fleet:access') {
     Object.keys(newPerms).forEach((k) => {
-      if (k.startsWith('fleet:') && k !== 'fleet:access') newPerms[k] = false;
+      if (k.startsWith('fleet:') && k !== 'fleet:access' && !k.startsWith('fleet:equipment:')) {
+        newPerms[k] = false;
+      }
+    });
+  } else if (uncheckedKey === 'company_assets:access') {
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('fleet:equipment:') || k.startsWith('company_cards:')) {
+        newPerms[k] = false;
+      }
     });
   } else if (uncheckedKey === 'fleet:vehicles:read') {
-    newPerms['fleet:vehicles:write'] = false;
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('fleet:vehicles:') && k !== 'fleet:vehicles:read') {
+        newPerms[k] = false;
+      }
+    });
+  } else if (uncheckedKey === 'fleet:work_orders:read') {
+    newPerms['fleet:work_orders:write'] = false;
+    newPerms['fleet:work_orders:assign'] = false;
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('fleet:work_orders:') && k !== 'fleet:work_orders:read') {
+        newPerms[k] = false;
+      }
+    });
+  } else if (uncheckedKey === 'fleet:inspections:read') {
+    newPerms['fleet:inspections:write'] = false;
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('fleet:inspections:') && k !== 'fleet:inspections:read') {
+        newPerms[k] = false;
+      }
+    });
   } else if (uncheckedKey === 'fleet:equipment:read') {
-    newPerms['fleet:equipment:write'] = false;
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('fleet:equipment:') && k !== 'fleet:equipment:read') {
+        newPerms[k] = false;
+      }
+    });
+  } else if (uncheckedKey === 'company_cards:read') {
+    newPerms['company_cards:write'] = false;
+  } else if (
+    uncheckedKey.startsWith('fleet:vehicles:') &&
+    uncheckedKey.endsWith(':read') &&
+    uncheckedKey !== 'fleet:vehicles:read'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
+  } else if (
+    uncheckedKey.startsWith('fleet:work_orders:') &&
+    uncheckedKey.endsWith(':read') &&
+    uncheckedKey !== 'fleet:work_orders:read'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
+  } else if (
+    uncheckedKey.startsWith('fleet:inspections:') &&
+    uncheckedKey.endsWith(':read') &&
+    uncheckedKey !== 'fleet:inspections:read'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
+  } else if (
+    uncheckedKey.startsWith('fleet:equipment:') &&
+    uncheckedKey.endsWith(':read') &&
+    uncheckedKey !== 'fleet:equipment:read'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
+  } else if (uncheckedKey === 'hr:access') {
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('hr:') && k !== 'hr:access') {
+        newPerms[k] = false;
+      }
+    });
+  } else if (uncheckedKey === 'hr:attendance:read') {
+    newPerms['hr:attendance:write'] = false;
+  } else if (uncheckedKey === 'hr:community:read') {
+    newPerms['hr:community:write'] = false;
+  } else if (uncheckedKey === 'hr:timesheet:read') {
+    newPerms['hr:timesheet:write'] = false;
+    newPerms['hr:timesheet:approve'] = false;
+  } else if (uncheckedKey === 'hr:offboarding:read') {
+    newPerms['hr:offboarding:write'] = false;
   } else if (uncheckedKey === 'hr:users:view:general') {
     newPerms['hr:users:edit:general'] = false;
     newPerms['hr:users:view:job:compensation'] = false;
@@ -253,8 +425,6 @@ export function applyPermissionUncheckCascade(
     newPerms['hr:users:edit:general'] = false;
     newPerms['hr:users:edit:timesheet'] = false;
     newPerms['hr:users:edit:permissions'] = false;
-  } else if (uncheckedKey === 'hr:offboarding:read') {
-    newPerms['hr:offboarding:write'] = false;
   } else if (uncheckedKey === 'business:customers:read') {
     newPerms['business:customers:write'] = false;
     Object.keys(newPerms).forEach((k) => {
@@ -266,6 +436,32 @@ export function applyPermissionUncheckCascade(
     uncheckedKey.startsWith('business:customers:') &&
     uncheckedKey.endsWith(':read') &&
     uncheckedKey !== 'business:customers:read'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
+  } else if (uncheckedKey === 'inventory:suppliers:read') {
+    newPerms['inventory:suppliers:write'] = false;
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('inventory:suppliers:') && k !== 'inventory:suppliers:read') {
+        newPerms[k] = false;
+      }
+    });
+  } else if (
+    uncheckedKey.startsWith('inventory:suppliers:') &&
+    uncheckedKey.endsWith(':read') &&
+    uncheckedKey !== 'inventory:suppliers:read'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
+  } else if (uncheckedKey === 'inventory:products:read') {
+    newPerms['inventory:products:write'] = false;
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('inventory:products:') && k !== 'inventory:products:read') {
+        newPerms[k] = false;
+      }
+    });
+  } else if (
+    uncheckedKey.startsWith('inventory:products:') &&
+    uncheckedKey.endsWith(':read') &&
+    uncheckedKey !== 'inventory:products:read'
   ) {
     newPerms[uncheckedKey.replace(':read', ':write')] = false;
   } else if (uncheckedKey === 'sales:quotations:read') {

@@ -1,22 +1,17 @@
 """
-Script para adicionar permissões de Inventory com estrutura hierárquica.
-A primeira permissão sempre é a liberação da área (inventory:access).
-Se bloquear inventory:access, automaticamente bloqueia todas as sub-permissões.
+Script para adicionar permissões de Inventory com estrutura hierárquica (Suppliers / Products + tabs).
 """
 import sys
 import os
 
-# Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Load environment variables first
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except Exception as e:
     print(f"WARNING: Could not load .env file: {e}")
 
-# Check database type before importing
 database_url = os.getenv("DATABASE_URL", "sqlite:///./var/dev.db")
 
 if database_url.startswith("postgresql"):
@@ -35,62 +30,123 @@ except ImportError as e:
 
 
 def seed_inventory_permissions():
-    """Seed Inventory permissions with hierarchical structure"""
+    """Seed Inventory permissions with hierarchical structure."""
     db = SessionLocal()
-    
+
     try:
-        # Create or get Inventory category
         category = db.query(PermissionCategory).filter(PermissionCategory.name == "inventory").first()
         if category:
-            print(f"Category 'inventory' already exists, updating...")
+            print("Category 'inventory' already exists, updating...")
             category.label = "Inventory"
-            category.description = "Permissions for Inventory area. Blocking access blocks all sub-permissions."
+            category.description = "Permissions for Inventory area (Suppliers and Products)."
             category.is_active = True
         else:
             category = PermissionCategory(
                 name="inventory",
                 label="Inventory",
-                description="Permissions for Inventory area. Blocking access blocks all sub-permissions.",
-                sort_index=2,  # After Business
+                description="Permissions for Inventory area (Suppliers and Products).",
+                sort_index=2,
             )
             db.add(category)
-        
-        db.flush()  # To get the category ID
-        
-        # Define Inventory permissions with hierarchical structure
-        # First permission is always the area access
+
+        db.flush()
+
         inventory_permissions = [
             {
                 "key": "inventory:suppliers:read",
-                "label": "View Suppliers",
-                "description": "Allows viewing suppliers list and suppliers details.",
+                "label": "Suppliers",
+                "description": "Allows viewing the suppliers list and opening supplier records",
                 "sort_index": 1,
             },
             {
                 "key": "inventory:suppliers:write",
-                "label": "Edit Suppliers",
-                "description": "Allows creating, updating, and deleting suppliers.",
+                "label": "Suppliers (create/delete)",
+                "description": "Allows creating and deleting supplier records",
                 "sort_index": 2,
             },
             {
+                "key": "inventory:suppliers:overview:read",
+                "label": "Overview",
+                "description": "Allows viewing the supplier Overview tab (profile and address)",
+                "sort_index": 11,
+            },
+            {
+                "key": "inventory:suppliers:overview:write",
+                "label": "Overview",
+                "description": "Allows editing supplier profile on the Overview tab",
+                "sort_index": 12,
+            },
+            {
+                "key": "inventory:suppliers:contacts:read",
+                "label": "Contacts",
+                "description": "Allows viewing supplier contacts",
+                "sort_index": 13,
+            },
+            {
+                "key": "inventory:suppliers:contacts:write",
+                "label": "Contacts",
+                "description": "Allows creating, updating, and deleting supplier contacts",
+                "sort_index": 14,
+            },
+            {
+                "key": "inventory:suppliers:products:read",
+                "label": "Products",
+                "description": "Allows viewing products linked to the supplier",
+                "sort_index": 15,
+            },
+            {
+                "key": "inventory:suppliers:products:write",
+                "label": "Products",
+                "description": "Allows adding products from the supplier page",
+                "sort_index": 16,
+            },
+            {
                 "key": "inventory:products:read",
-                "label": "View Products",
-                "description": "Allows viewing products list and products details.",
+                "label": "Products",
+                "description": "Allows viewing the products list and opening product records",
                 "sort_index": 3,
             },
             {
                 "key": "inventory:products:write",
-                "label": "Edit Products",
-                "description": "Allows creating, updating, and deleting products.",
+                "label": "Products (create/delete)",
+                "description": "Allows creating and deleting product records",
                 "sort_index": 4,
             },
+            {
+                "key": "inventory:products:details:read",
+                "label": "Details",
+                "description": "Allows viewing the product Details tab",
+                "sort_index": 21,
+            },
+            {
+                "key": "inventory:products:details:write",
+                "label": "Details",
+                "description": "Allows editing product details",
+                "sort_index": 22,
+            },
+            {
+                "key": "inventory:products:usage:read",
+                "label": "Usage",
+                "description": "Allows viewing where the product is used in estimates and projects",
+                "sort_index": 23,
+            },
+            {
+                "key": "inventory:products:related:read",
+                "label": "Related",
+                "description": "Allows viewing related products",
+                "sort_index": 24,
+            },
+            {
+                "key": "inventory:products:related:write",
+                "label": "Related",
+                "description": "Allows managing related product links",
+                "sort_index": 25,
+            },
         ]
-        
+
         for perm_data in inventory_permissions:
-            # Find or create permission
             permission = db.query(PermissionDefinition).filter(PermissionDefinition.key == perm_data["key"]).first()
             if permission:
-                # Update existing permission
                 permission.category_id = category.id
                 permission.label = perm_data["label"]
                 permission.description = perm_data.get("description")
@@ -98,7 +154,6 @@ def seed_inventory_permissions():
                 permission.is_active = True
                 print(f"Updated permission: {perm_data['key']}")
             else:
-                # Create new permission
                 permission = PermissionDefinition(
                     category_id=category.id,
                     key=perm_data["key"],
@@ -108,7 +163,7 @@ def seed_inventory_permissions():
                 )
                 db.add(permission)
                 print(f"Created permission: {perm_data['key']}")
-        
+
         access_perm = (
             db.query(PermissionDefinition)
             .filter(PermissionDefinition.key == "inventory:access")
@@ -119,9 +174,9 @@ def seed_inventory_permissions():
             print("Deactivated permission: inventory:access")
 
         db.commit()
-        print(f"\nSuccessfully seeded Inventory permissions!")
+        print("\nSuccessfully seeded Inventory permissions!")
         print(f"Total permissions: {len(inventory_permissions)}")
-        
+
     except Exception as e:
         db.rollback()
         print(f"Error seeding Inventory permissions: {e}")
@@ -132,4 +187,3 @@ def seed_inventory_permissions():
 
 if __name__ == "__main__":
     seed_inventory_permissions()
-

@@ -1,9 +1,9 @@
 import { EntityPermissionsGrid } from '@/components/EntityPermissionsGrid';
 import {
-  buildCustomerPermissionRows,
-  getCustomerAccessLevel,
-  type CustomerAccessLevel,
-} from '@/lib/customerPermissions';
+  buildProductPermissionRows,
+  getProductAccessLevel,
+  type ProductAccessLevel,
+} from '@/lib/productPermissions';
 
 type Perm = {
   id: string;
@@ -12,7 +12,7 @@ type Perm = {
   description?: string;
 };
 
-export function CustomerPermissionsGrid({
+export function ProductPermissionsGrid({
   areaPerms,
   permissions,
   canEdit,
@@ -24,18 +24,18 @@ export function CustomerPermissionsGrid({
   onAccessLevelChange: (
     readKey: string,
     writeKey: string | undefined,
-    level: CustomerAccessLevel,
+    level: ProductAccessLevel,
   ) => void;
 }) {
-  const rows = buildCustomerPermissionRows(areaPerms);
+  const rows = buildProductPermissionRows(areaPerms);
 
   return (
     <EntityPermissionsGrid
-      title="Customers"
+      title="Products"
       rows={rows}
       permissions={permissions}
       canEdit={canEdit}
-      getAccessLevel={getCustomerAccessLevel}
+      getAccessLevel={getProductAccessLevel}
       onAccessLevelChange={onAccessLevelChange}
     />
   );

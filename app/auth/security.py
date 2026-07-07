@@ -290,14 +290,29 @@ def _line_has_project_write(perm_map: dict, line: Optional[str]) -> bool:
 
 
 def _fleet_area_unlocked(perm_map: dict) -> bool:
-    """True if user may use Fleet & Equipment scoped permissions (UI + legacy keys)."""
-    if perm_map.get("fleet:access") or perm_map.get("fleet:read"):
+    """True if user may use Fleet scoped permissions (UI + legacy keys)."""
+    if is_granted_perm_value(perm_map.get("fleet:access")) or is_granted_perm_value(perm_map.get("fleet:read")):
         return True
     return bool(
-        perm_map.get("fleet:vehicles:read")
-        or perm_map.get("fleet:vehicles:write")
-        or perm_map.get("fleet:equipment:read")
-        or perm_map.get("fleet:equipment:write")
+        is_granted_perm_value(perm_map.get("fleet:dashboard:read"))
+        or is_granted_perm_value(perm_map.get("fleet:vehicles:read"))
+        or is_granted_perm_value(perm_map.get("fleet:vehicles:write"))
+        or is_granted_perm_value(perm_map.get("fleet:work_orders:read"))
+        or is_granted_perm_value(perm_map.get("fleet:work_orders:write"))
+        or is_granted_perm_value(perm_map.get("fleet:inspections:read"))
+        or is_granted_perm_value(perm_map.get("fleet:inspections:write"))
+    )
+
+
+def _company_assets_area_unlocked(perm_map: dict) -> bool:
+    """True if user may use Company Assets scoped permissions."""
+    if is_granted_perm_value(perm_map.get("company_assets:access")):
+        return True
+    return bool(
+        is_granted_perm_value(perm_map.get("fleet:equipment:read"))
+        or is_granted_perm_value(perm_map.get("fleet:equipment:write"))
+        or is_granted_perm_value(perm_map.get("company_cards:read"))
+        or is_granted_perm_value(perm_map.get("company_cards:write"))
     )
 
 
@@ -308,38 +323,59 @@ def _perm_matches_map(perm_map: dict, perm: str) -> bool:
     if perm == "fleet:access":
         return _fleet_area_unlocked(perm_map)
     if perm == "fleet:read":
-        return bool(perm_map.get("fleet:vehicles:read"))
+        return bool(
+            is_granted_perm_value(perm_map.get("fleet:vehicles:read"))
+            or is_granted_perm_value(perm_map.get("fleet:dashboard:read"))
+        )
     if perm == "fleet:write":
-        return bool(perm_map.get("fleet:vehicles:write"))
+        return bool(is_granted_perm_value(perm_map.get("fleet:vehicles:write")))
+    if perm == "company_assets:access":
+        return _company_assets_area_unlocked(perm_map)
     if perm == "equipment:read":
-        return bool(perm_map.get("fleet:equipment:read") and _fleet_area_unlocked(perm_map))
+        return bool(
+            is_granted_perm_value(perm_map.get("fleet:equipment:read"))
+            and _company_assets_area_unlocked(perm_map)
+        )
     if perm == "equipment:write":
-        return bool(perm_map.get("fleet:equipment:write") and _fleet_area_unlocked(perm_map))
-    # Work orders & inspections live under Fleet in the UI; fleet tab permissions imply access here.
-    # (There is no work_orders:access / inspections:access in the permission seed.)
+        return bool(
+            is_granted_perm_value(perm_map.get("fleet:equipment:write"))
+            and _company_assets_area_unlocked(perm_map)
+        )
+    # Work orders & inspections — new tab keys with legacy aliases
     if perm == "work_orders:read":
-        return _fleet_area_unlocked(perm_map)
+        return bool(
+            is_granted_perm_value(perm_map.get("fleet:work_orders:read"))
+            or is_granted_perm_value(perm_map.get("work_orders:read"))
+            or _fleet_area_unlocked(perm_map)
+        )
     if perm == "work_orders:write":
         return bool(
-            perm_map.get("fleet:write")
-            or perm_map.get("fleet:vehicles:write")
-            or perm_map.get("fleet:equipment:write")
+            is_granted_perm_value(perm_map.get("fleet:work_orders:write"))
+            or is_granted_perm_value(perm_map.get("work_orders:write"))
+            or is_granted_perm_value(perm_map.get("fleet:write"))
+            or is_granted_perm_value(perm_map.get("fleet:vehicles:write"))
         )
     if perm == "work_orders:assign":
         return bool(
-            perm_map.get("work_orders:assign")
-            or perm_map.get("work_orders:write")
-            or perm_map.get("fleet:write")
-            or perm_map.get("fleet:vehicles:write")
-            or perm_map.get("fleet:equipment:write")
+            is_granted_perm_value(perm_map.get("fleet:work_orders:assign"))
+            or is_granted_perm_value(perm_map.get("work_orders:assign"))
+            or is_granted_perm_value(perm_map.get("work_orders:write"))
+            or is_granted_perm_value(perm_map.get("fleet:work_orders:write"))
+            or is_granted_perm_value(perm_map.get("fleet:write"))
+            or is_granted_perm_value(perm_map.get("fleet:vehicles:write"))
         )
     if perm == "inspections:read":
-        return _fleet_area_unlocked(perm_map)
+        return bool(
+            is_granted_perm_value(perm_map.get("fleet:inspections:read"))
+            or is_granted_perm_value(perm_map.get("inspections:read"))
+            or _fleet_area_unlocked(perm_map)
+        )
     if perm == "inspections:write":
         return bool(
-            perm_map.get("fleet:write")
-            or perm_map.get("fleet:vehicles:write")
-            or perm_map.get("fleet:equipment:write")
+            is_granted_perm_value(perm_map.get("fleet:inspections:write"))
+            or is_granted_perm_value(perm_map.get("inspections:write"))
+            or is_granted_perm_value(perm_map.get("fleet:write"))
+            or is_granted_perm_value(perm_map.get("fleet:vehicles:write"))
         )
     if perm == "company_cards:read":
         return bool(perm_map.get("company_cards:read"))
@@ -382,12 +418,22 @@ def _has_permission(user: User, perm: str) -> bool:
                     # Skip area access check for inventory products/suppliers permissions
                     pass
                 # Fleet: allow granular tab permissions without a stored fleet:access row (legacy UI gap)
+                elif perm.startswith("fleet:equipment:"):
+                    if "company_assets:access" in perm_map and not perm_map.get("company_assets:access"):
+                        return False
+                    if not _company_assets_area_unlocked(perm_map):
+                        return False
                 elif area == 'fleet' and perm != 'fleet:access':
                     if area_access_key in perm_map and not perm_map.get(area_access_key):
                         return False
                     if not _fleet_area_unlocked(perm_map):
                         return False
-                # Equipment API uses equipment:read/write; those are granted via fleet:equipment:* + fleet area
+                elif area == 'company_assets' and perm != 'company_assets:access':
+                    if area_access_key in perm_map and not perm_map.get(area_access_key):
+                        return False
+                    if not _company_assets_area_unlocked(perm_map):
+                        return False
+                # Equipment API uses equipment:read/write; those are granted via fleet:equipment:* + company assets
                 elif area == 'equipment' and perm in ('equipment:read', 'equipment:write'):
                     pass
                 elif area == 'company_cards' and perm in ('company_cards:read', 'company_cards:write'):
@@ -535,6 +581,130 @@ def assert_customer_tab(
     action: Literal["read", "write"] = "read",
 ) -> None:
     if not has_customer_tab_permission(user, tab, action):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+SUPPLIER_TAB_KEYS: tuple[str, ...] = ("overview", "contacts", "products")
+PRODUCT_TAB_KEYS: tuple[str, ...] = ("details", "usage", "related")
+
+
+def has_supplier_list_permission(user: User) -> bool:
+    return _has_permission(user, "inventory:suppliers:read") or _has_permission(
+        user, "inventory:suppliers:write"
+    )
+
+
+def has_supplier_detail_access(user: User) -> bool:
+    if has_supplier_list_permission(user):
+        return True
+    for tab in SUPPLIER_TAB_KEYS:
+        if has_supplier_tab_permission(user, tab, "read"):
+            return True
+    return False
+
+
+def has_supplier_tab_permission(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> bool:
+    if action not in ("read", "write"):
+        return False
+    t = (tab or "").strip().lower()
+    if t not in SUPPLIER_TAB_KEYS:
+        return False
+
+    read_key = f"inventory:suppliers:{t}:read"
+    write_key = f"inventory:suppliers:{t}:write"
+
+    if action == "write":
+        if _has_permission(user, write_key):
+            return True
+        if t in ("overview", "contacts") and _has_permission(user, "inventory:suppliers:write"):
+            return True
+        if t == "products" and _has_permission(user, "inventory:products:write"):
+            return True
+        return False
+
+    if _has_permission(user, read_key) or _has_permission(user, write_key):
+        return True
+
+    if t in ("overview", "contacts"):
+        if _has_permission(user, "inventory:suppliers:read") or _has_permission(
+            user, "inventory:suppliers:write"
+        ):
+            return True
+    if t == "products":
+        if _has_permission(user, "inventory:products:read") or _has_permission(
+            user, "inventory:products:write"
+        ):
+            return True
+    return False
+
+
+def assert_supplier_tab(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> None:
+    if not has_supplier_tab_permission(user, tab, action):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def has_product_list_permission(user: User) -> bool:
+    return _has_permission(user, "inventory:products:read") or _has_permission(
+        user, "inventory:products:write"
+    )
+
+
+def has_product_detail_access(user: User) -> bool:
+    if has_product_list_permission(user):
+        return True
+    for tab in PRODUCT_TAB_KEYS:
+        if has_product_tab_permission(user, tab, "read"):
+            return True
+    return False
+
+
+def has_product_tab_permission(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> bool:
+    if action not in ("read", "write"):
+        return False
+    t = (tab or "").strip().lower()
+    if t not in PRODUCT_TAB_KEYS:
+        return False
+
+    read_key = f"inventory:products:{t}:read"
+    write_key = f"inventory:products:{t}:write"
+
+    if action == "write":
+        if t == "usage":
+            return False
+        if _has_permission(user, write_key):
+            return True
+        if _has_permission(user, "inventory:products:write"):
+            return True
+        return False
+
+    if _has_permission(user, read_key) or _has_permission(user, write_key):
+        return True
+
+    if _has_permission(user, "inventory:products:read") or _has_permission(
+        user, "inventory:products:write"
+    ):
+        return True
+    return False
+
+
+def assert_product_tab(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> None:
+    if not has_product_tab_permission(user, tab, action):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 

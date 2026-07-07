@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import func, or_
 
-from ..auth.security import require_permissions, get_current_user
+from ..auth.security import require_permissions, get_current_user, assert_product_tab, User
 from ..db import get_db
 from ..models.models import Material, RelatedProduct, Estimate, EstimateItem, Project, Client
 
@@ -135,7 +135,13 @@ def create_product(body: MaterialIn, db: Session = Depends(get_db), _=Depends(re
 
 
 @router.put("/products/{product_id}")
-def update_product(product_id: int, body: MaterialIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
+def update_product(
+    product_id: int,
+    body: MaterialIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_product_tab(user, "details", "write")
     row = db.query(Material).filter(Material.id == product_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -149,7 +155,12 @@ def update_product(product_id: int, body: MaterialIn, db: Session = Depends(get_
 
 
 @router.get("/products/{product_id}/usage")
-def get_product_usage(product_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:read"))):
+def get_product_usage(
+    product_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_product_tab(user, "usage", "read")
     """Get list of projects/estimates where this product is being used"""
     from ..models.models import Project, Client
     
@@ -299,7 +310,12 @@ class RelatedIn(BaseModel):
 
 
 @router.get("/related/count")
-def related_count(ids: str = Query(...), db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:read"))):
+def related_count(
+    ids: str = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_product_tab(user, "related", "read")
     id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
     if not id_list:
         return {}
@@ -316,7 +332,12 @@ def related_count(ids: str = Query(...), db: Session = Depends(get_db), _=Depend
 
 
 @router.get("/related/{product_id}")
-def list_related(product_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:read"))):
+def list_related(
+    product_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_product_tab(user, "related", "read")
     links = db.query(RelatedProduct).filter(
         (RelatedProduct.product_a_id == product_id) | (RelatedProduct.product_b_id == product_id)
     ).all()
@@ -347,7 +368,13 @@ def list_related(product_id: int, db: Session = Depends(get_db), _=Depends(requi
 
 
 @router.post("/related/{product_id}")
-def add_related(product_id: int, body: RelatedIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
+def add_related(
+    product_id: int,
+    body: RelatedIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_product_tab(user, "related", "write")
     if product_id == body.related_id:
         raise HTTPException(status_code=400, detail="Cannot relate a product to itself")
     a, b = (product_id, body.related_id) if product_id < body.related_id else (body.related_id, product_id)
@@ -360,7 +387,13 @@ def add_related(product_id: int, body: RelatedIn, db: Session = Depends(get_db),
 
 
 @router.delete("/related/{product_a_id}/{product_b_id}")
-def delete_relation(product_a_id: int, product_b_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
+def delete_relation(
+    product_a_id: int,
+    product_b_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    assert_product_tab(user, "related", "write")
     rel1 = db.query(RelatedProduct).filter(RelatedProduct.product_a_id == product_a_id, RelatedProduct.product_b_id == product_b_id).first()
     if rel1:
         db.delete(rel1)

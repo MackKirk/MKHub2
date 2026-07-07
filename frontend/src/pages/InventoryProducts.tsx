@@ -14,6 +14,13 @@ import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { inventoryNewProductQuickInfo, productDetailQuickInfo } from '@/lib/formModalQuickInfo';
 import {
+  canAccessProductList,
+  canEditProductRecord,
+  canReadProductTab,
+  canWriteProductTab,
+  type ProductTab,
+} from '@/lib/productPermissions';
+import {
   AppBadge,
   AppButton,
   AppCard,
@@ -196,8 +203,10 @@ export default function InventoryProducts(){
   const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
   const permissions = new Set(me?.permissions || []);
-  const canViewProducts = isAdmin || permissions.has('inventory:products:read');
-  const canEditProducts = isAdmin || permissions.has('inventory:products:write');
+  const canViewProducts = canAccessProductList(isAdmin, permissions);
+  const canEditProducts = canEditProductRecord(isAdmin, permissions);
+  const canEditProductDetails = canWriteProductTab(isAdmin, permissions, 'details');
+  const canEditProductRelated = canWriteProductTab(isAdmin, permissions, 'related');
   const [q, setQ] = useState('');
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
@@ -660,12 +669,19 @@ export default function InventoryProducts(){
       { key: 'details', label: 'Details' },
       { key: 'usage', label: productUsage.length > 0 ? `Usage (${productUsage.length})` : 'Usage' },
     ];
-    if (canEditProducts && viewing) {
+    if (viewing) {
       const count = relatedCounts[viewing.id];
       items.push({ key: 'related', label: count ? `Related (${count})` : 'Related' });
     }
-    return items;
-  }, [canEditProducts, viewing, productUsage.length, relatedCounts]);
+    return items.filter((t) => canReadProductTab(isAdmin, permissions, t.key as ProductTab));
+  }, [isAdmin, permissions, viewing, productUsage.length, relatedCounts]);
+
+  useEffect(() => {
+    if (productTabItems.length === 0) return;
+    if (!productTabItems.some((t) => t.key === productTab)) {
+      setProductTab(productTabItems[0].key as typeof productTab);
+    }
+  }, [productTabItems, productTab]);
 
   const listCardAnimClass = animationComplete
     ? undefined
@@ -951,7 +967,7 @@ export default function InventoryProducts(){
         }
         quickInfo={
           viewing && !editing
-            ? productDetailQuickInfo(canEditProducts)
+            ? productDetailQuickInfo(canEditProductDetails)
             : !editing
               ? inventoryNewProductQuickInfo
               : undefined
@@ -964,7 +980,7 @@ export default function InventoryProducts(){
                 <AppButton type="button" variant="secondary" size="sm" onClick={closeProductModal}>
                   Close
                 </AppButton>
-                {canEditProducts ? (
+                {canEditProductDetails ? (
                   <AppButton type="button" size="sm" onClick={openEditModal}>
                     Edit
                   </AppButton>
@@ -1197,7 +1213,7 @@ export default function InventoryProducts(){
                               </div>
                             )}
                           </div>
-                          {canEditProducts && (
+                          {canEditProductRelated && (
                             <AppButton
                               type="button"
                               variant="danger"
@@ -1210,7 +1226,7 @@ export default function InventoryProducts(){
                         </div>
                       ))}
                     </div>
-                    {canEditProducts && (
+                    {canEditProductRelated && (
                       <AppButton type="button" size="sm" onClick={() => handleAddRelated(viewing.id)}>
                         + Add Related Product
                       </AppButton>
@@ -1222,7 +1238,7 @@ export default function InventoryProducts(){
                       title="This product has no related products."
                       className="border-0 bg-transparent p-0 shadow-none"
                     />
-                    {canEditProducts && (
+                    {canEditProductRelated && (
                       <AppButton type="button" size="sm" onClick={() => handleAddRelated(viewing.id)}>
                         + Add Related Product
                       </AppButton>

@@ -6,11 +6,43 @@ import { api } from '@/lib/api';
 import ProjectFilesCategoriesModal from '@/components/ProjectFilesCategoriesModal';
 import ProjectReportCategoriesModal from '@/components/ProjectReportCategoriesModal';
 import { CustomerPermissionsGrid } from '@/components/CustomerPermissionsGrid';
+import { SupplierPermissionsGrid } from '@/components/SupplierPermissionsGrid';
+import { ProductPermissionsGrid } from '@/components/ProductPermissionsGrid';
+import { FleetPermissionsPanel } from '@/components/FleetPermissionsPanel';
+import { CompanyAssetsPermissionsPanel } from '@/components/CompanyAssetsPermissionsPanel';
+import { HrPermissionsPanel } from '@/components/HrPermissionsPanel';
 import { ProjectLinePermissionsGrid } from '@/components/ProjectLinePermissionsGrid';
 import {
   applyCustomerAccessLevel,
   type CustomerAccessLevel,
 } from '@/lib/customerPermissions';
+import {
+  applySupplierAccessLevel,
+  type SupplierAccessLevel,
+} from '@/lib/supplierPermissions';
+import {
+  applyProductAccessLevel,
+  type ProductAccessLevel,
+} from '@/lib/productPermissions';
+import {
+  applyFleetAccessLevel,
+  applyFleetWorkOrderAssignLevel,
+  filterFleetAreaPermissions,
+  FLEET_ACCESS,
+  type FleetAccessLevel,
+} from '@/lib/fleetPermissions';
+import {
+  applyCompanyAssetsAccessLevel,
+  filterCompanyAssetsAreaPermissions,
+  COMPANY_ASSETS_ACCESS,
+  type CompanyAssetsAccessLevel,
+} from '@/lib/companyAssetsPermissions';
+import {
+  applyHrAccessLevel,
+  applyHrWriteOnlyLevel,
+  HR_ACCESS,
+  type HrAccessLevel,
+} from '@/lib/hrPermissions';
 import {
   applyProjectLineAccessLevel,
   type ProjectLine,
@@ -354,16 +386,42 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       
       newPerms[key] = newValue;
 
-      // Fleet & Equipment: enabling any fleet sub-permission turns on area access (matches UserDetail / backend hierarchy)
-      if (newValue && key.startsWith('fleet:') && key !== 'fleet:access') {
-        newPerms['fleet:access'] = true;
+      // Fleet: enabling sub-permissions turns on fleet:access (equipment uses company_assets)
+      if (newValue && key.startsWith('fleet:') && key !== FLEET_ACCESS && !key.startsWith('fleet:equipment:')) {
+        newPerms[FLEET_ACCESS] = true;
+      }
+      if (
+        newValue &&
+        (key.startsWith('fleet:equipment:') || key.startsWith('company_cards:')) &&
+        key !== COMPANY_ASSETS_ACCESS
+      ) {
+        newPerms[COMPANY_ASSETS_ACCESS] = true;
+      }
+      if (newValue && key.startsWith('hr:') && key !== HR_ACCESS) {
+        newPerms[HR_ACCESS] = true;
       }
       
       // If disabling a view permission, also disable the corresponding edit permission
       if (!newValue) {
-        if (key === 'fleet:access') {
+        if (key === FLEET_ACCESS) {
           Object.keys(newPerms).forEach((k) => {
-            if (k.startsWith('fleet:') && k !== 'fleet:access') {
+            if (
+              k.startsWith('fleet:') &&
+              k !== FLEET_ACCESS &&
+              !k.startsWith('fleet:equipment:')
+            ) {
+              newPerms[k] = false;
+            }
+          });
+        } else if (key === COMPANY_ASSETS_ACCESS) {
+          Object.keys(newPerms).forEach((k) => {
+            if (k.startsWith('fleet:equipment:') || k.startsWith('company_cards:')) {
+              newPerms[k] = false;
+            }
+          });
+        } else if (key === HR_ACCESS) {
+          Object.keys(newPerms).forEach((k) => {
+            if (k.startsWith('hr:') && k !== HR_ACCESS) {
               newPerms[k] = false;
             }
           });
@@ -447,6 +505,68 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     },
     []
   );
+
+  const handleSupplierAccessLevel = useCallback(
+    (readKey: string, writeKey: string | undefined, level: SupplierAccessLevel) => {
+      setPermissions((prev) => applySupplierAccessLevel(prev, readKey, writeKey, level));
+    },
+    []
+  );
+
+  const handleProductAccessLevel = useCallback(
+    (readKey: string, writeKey: string | undefined, level: ProductAccessLevel) => {
+      setPermissions((prev) => applyProductAccessLevel(prev, readKey, writeKey, level));
+    },
+    []
+  );
+
+  const handleFleetAccessLevel = useCallback(
+    (readKey: string, writeKey: string | undefined, level: FleetAccessLevel) => {
+      setPermissions((prev) => {
+        const next = applyFleetAccessLevel(prev, readKey, writeKey, level);
+        if (level !== 'blocked' && readKey.startsWith('fleet:')) {
+          next[FLEET_ACCESS] = true;
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleFleetAssignLevel = useCallback((level: FleetAccessLevel) => {
+    setPermissions((prev) => {
+      const next = applyFleetWorkOrderAssignLevel(prev, level);
+      if (level === 'edit') {
+        next[FLEET_ACCESS] = true;
+        if (!next['fleet:work_orders:read']) next['fleet:work_orders:read'] = true;
+      }
+      return next;
+    });
+  }, []);
+
+  const handleCompanyAssetsAccessLevel = useCallback(
+    (readKey: string, writeKey: string | undefined, level: CompanyAssetsAccessLevel) => {
+      setPermissions((prev) => {
+        const next = applyCompanyAssetsAccessLevel(prev, readKey, writeKey, level);
+        if (level !== 'blocked') {
+          next[COMPANY_ASSETS_ACCESS] = true;
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleHrAccessLevel = useCallback(
+    (readKey: string, writeKey: string | undefined, level: HrAccessLevel) => {
+      setPermissions((prev) => applyHrAccessLevel(prev, readKey, writeKey, level));
+    },
+    []
+  );
+
+  const handleHrWriteOnlyLevel = useCallback((key: string, level: HrAccessLevel) => {
+    setPermissions((prev) => applyHrWriteOnlyLevel(prev, key, level));
+  }, []);
 
   const handleProjectLineAccessLevel = useCallback(
     (
@@ -796,6 +916,35 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                 inventoryCategory = cat;
               } else if (cat.category.name === 'sales') {
                 quotationsCategory = cat;
+              } else if (cat.category.name === 'fleet') {
+                const fleetOnlyPerms = filterFleetAreaPermissions(cat.permissions);
+                if (fleetOnlyPerms.length > 0) {
+                  processedCategories.push({
+                    ...cat,
+                    category: {
+                      ...cat.category,
+                      name: 'fleet',
+                      label: 'Fleet',
+                      id: 'fleet',
+                      description: 'Fleet dashboard, assets, work orders, and inspections.',
+                    },
+                    permissions: fleetOnlyPerms,
+                  });
+                }
+              } else if (cat.category.name === 'company_assets') {
+                processedCategories.push({
+                  ...cat,
+                  category: {
+                    ...cat.category,
+                    name: 'company_assets',
+                    label: 'Company Assets',
+                    id: 'company_assets',
+                    description: 'Equipment and corporate cards.',
+                  },
+                  permissions: filterCompanyAssetsAreaPermissions(cat.permissions),
+                });
+              } else if (cat.category.name === 'work_orders' || cat.category.name === 'inspections') {
+                // Legacy categories — superseded by fleet:* keys in UI
               } else {
                 processedCategories.push(cat);
               }
@@ -895,71 +1044,19 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                   <div className={uiCx('border-t bg-gray-50/40 px-4 pb-4 pt-3', uiBorders.subtle)}>
                     {/* Special handling for HR category - group by area (users, attendance, community, etc.) */}
                     {cat.category.name === 'human_resources' ? (
-                      <div className="space-y-4">
-                        {/* Group permissions by area */}
-                        {['users', 'attendance', 'community', 'reviews', 'timesheet'].map((area: string) => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes(`hr:${area}`));
-                          if (areaPerms.length === 0) return null;
-                          
-                          const areaLabel = area.charAt(0).toUpperCase() + area.slice(1);
-                          const viewPerms = areaPerms.filter((p: any) => {
-                            const key = p.key;
-                            return key.includes(':view:') || (key.includes(':read') && !key.includes(':write') && !key.includes(':edit:'));
-                          });
-                          const editPerms = areaPerms.filter((p: any) => {
-                            const key = p.key;
-                            return key.includes(':edit:') || (key.includes(':write') && !key.includes(':view:')) || key.includes(':admin') || key.includes(':unrestricted') || key.includes(':approve');
-                          });
-                          
-                          return (
-                            <div key={area} className="rounded-lg bg-gray-50/80 p-2.5">
-                              <div className={uiCx(permissionUi.subgroupTitle, 'mb-2')}>{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-2.5">
-                                {/* View Permissions Column */}
-                                {viewPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <PermissionColumnTitle>View</PermissionColumnTitle>
-                                    {viewPerms.map((perm: any) => {
-                                      const isViewPermission = perm.key.startsWith('hr:users:view:');
-                                      const canEnable = canEdit && (!isViewPermission || canEnableEditPermission(perm.key, permissions));
-                                      const isSubPermission = perm.key === 'hr:users:view:job:compensation';
-                                      return (
-                                        <PermissionCheckboxItem
-                                          key={perm.id}
-                                          perm={perm}
-                                          checked={!!permissions[perm.key]}
-                                          disabled={!canEnable}
-                                          onToggle={() => handleToggle(perm.key)}
-                                          className={isSubPermission ? 'ml-4' : undefined}
-                                        />
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                                {/* Edit Permissions Column */}
-                                {editPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <PermissionColumnTitle>Edit</PermissionColumnTitle>
-                                    {editPerms.map((perm: any) => {
-                                      const isEditPermission = perm.key.startsWith('hr:users:edit:') || perm.key === 'hr:users:write';
-                                      const canEnable = canEdit && (!isEditPermission || canEnableEditPermission(perm.key, permissions));
-                                      return (
-                                        <PermissionCheckboxItem
-                                          key={perm.id}
-                                          perm={perm}
-                                          checked={!!permissions[perm.key]}
-                                          disabled={!canEnable}
-                                          onToggle={() => handleToggle(perm.key)}
-                                        />
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <HrPermissionsPanel
+                        areaPerms={subPermissions}
+                        permissions={permissions}
+                        canEdit={canEdit}
+                        onAccessLevelChange={handleHrAccessLevel}
+                        onWriteOnlyChange={handleHrWriteOnlyLevel}
+                        accessPerm={areaAccessPerm}
+                        onAccessToggle={
+                          canEdit && areaAccessPerm
+                            ? () => handleToggle(areaAccessPerm.key)
+                            : undefined
+                        }
+                      />
                     ) : cat.category.name === 'repairs_maintenance' ? (
                       <div className="space-y-4">
                         {(() => {
@@ -1008,117 +1105,65 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                             />
                           );
                         })()}
-                        
-                        {/* Suppliers and Products */}
-                        {['suppliers', 'products'].map((area: string) => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes(`inventory:${area}`));
-                          if (areaPerms.length === 0) return null;
-                          
-                          const areaLabel = area.charAt(0).toUpperCase() + area.slice(1);
-                          const viewPerms = areaPerms.filter((p: any) => p.key.includes(':read'));
-                          const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
-                          
-                          return (
-                            <div key={area} className="rounded-lg bg-gray-50/80 p-2.5">
-                              <div className={uiCx(permissionUi.subgroupTitle, 'mb-2')}>{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-2.5">
-                                {/* View Permissions Column */}
-                                {viewPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <PermissionColumnTitle>View</PermissionColumnTitle>
-                                    {viewPerms.map((perm: any) => (
-                                        <PermissionCheckboxItem
-                                          key={perm.id}
-                                          perm={perm}
-                                          checked={!!permissions[perm.key]}
-                                          disabled={!canEdit}
-                                          onToggle={() => handleToggle(perm.key)}
-                                        />
-                                    ))}
-                                  </div>
-                                )}
-                                {/* Edit Permissions Column */}
-                                {editPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <PermissionColumnTitle>Edit</PermissionColumnTitle>
-                                    {editPerms.map((perm: any) => (
-                                        <PermissionCheckboxItem
-                                          key={perm.id}
-                                          perm={perm}
-                                          checked={!!permissions[perm.key]}
-                                          disabled={!canEdit}
-                                          onToggle={() => handleToggle(perm.key)}
-                                        />
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
+
+                        {(() => {
+                          const areaPerms = subPermissions.filter((p: any) =>
+                            p.key.startsWith('inventory:suppliers:')
                           );
-                        })}
+                          if (areaPerms.length === 0) return null;
+                          return (
+                            <SupplierPermissionsGrid
+                              areaPerms={areaPerms}
+                              permissions={permissions}
+                              canEdit={canEdit}
+                              onAccessLevelChange={handleSupplierAccessLevel}
+                            />
+                          );
+                        })()}
+
+                        {(() => {
+                          const areaPerms = subPermissions.filter((p: any) =>
+                            p.key.startsWith('inventory:products:')
+                          );
+                          if (areaPerms.length === 0) return null;
+                          return (
+                            <ProductPermissionsGrid
+                              areaPerms={areaPerms}
+                              permissions={permissions}
+                              canEdit={canEdit}
+                              onAccessLevelChange={handleProductAccessLevel}
+                            />
+                          );
+                        })()}
                       </div>
                     ) : cat.category.name === 'fleet' ? (
-                      /* Special handling for Fleet & Equipment category - group by vehicles and equipment */
-                      <div className="space-y-4">
-                        {areaAccessPerm && (
-                          <PermissionToggleLabel
-                            label={areaAccessPerm.label}
-                            description={areaAccessPerm.description}
-                            checked={!!permissions[areaAccessPerm.key]}
-                            disabled={!canEdit}
-                            onToggle={() => handleToggle(areaAccessPerm.key)}
-                          />
-                        )}
-                        {['vehicles', 'equipment'].map((area: string) => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes(`fleet:${area}`));
-                          if (areaPerms.length === 0) return null;
-                          
-                          const areaLabel = area.charAt(0).toUpperCase() + area.slice(1);
-                          const viewPerms = areaPerms.filter((p: any) => p.key.includes(':read'));
-                          const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
-                          
-                          return (
-                            <div key={area} className="rounded-lg bg-gray-50/80 p-2.5">
-                              <div className={uiCx(permissionUi.subgroupTitle, 'mb-2')}>{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-2.5">
-                                {/* View Permissions Column */}
-                                {viewPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <PermissionColumnTitle>View</PermissionColumnTitle>
-                                    {viewPerms.map((perm: any) => (
-                                        <PermissionCheckboxItem
-                                          key={perm.id}
-                                          perm={perm}
-                                          checked={!!permissions[perm.key]}
-                                          disabled={!canEdit}
-                                          onToggle={() => handleToggle(perm.key)}
-                                        />
-                                    ))}
-                                  </div>
-                                )}
-                                {/* Edit Permissions Column */}
-                                {editPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <PermissionColumnTitle>Edit</PermissionColumnTitle>
-                                    {editPerms.map((perm: any) => {
-                                      const canEnableFleetEdit = canEdit && canEnableEditPermission(perm.key, permissions);
-                                      return (
-                                        <PermissionCheckboxItem
-                                          key={perm.id}
-                                          perm={perm}
-                                          checked={!!permissions[perm.key]}
-                                          disabled={!canEnableFleetEdit}
-                                          onToggle={() => handleToggle(perm.key)}
-                                        />
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <FleetPermissionsPanel
+                        areaPerms={subPermissions}
+                        permissions={permissions}
+                        canEdit={canEdit}
+                        onAccessLevelChange={handleFleetAccessLevel}
+                        onAssignChange={handleFleetAssignLevel}
+                        showAccessToggle={!!areaAccessPerm}
+                        accessChecked={!!permissions[FLEET_ACCESS]}
+                        onAccessToggle={
+                          canEdit ? () => handleToggle(FLEET_ACCESS) : undefined
+                        }
+                        accessLabel={areaAccessPerm?.label}
+                        accessDescription={areaAccessPerm?.description}
+                      />
+                    ) : cat.category.name === 'company_assets' ? (
+                      <CompanyAssetsPermissionsPanel
+                        areaPerms={subPermissions}
+                        permissions={permissions}
+                        canEdit={canEdit}
+                        onAccessLevelChange={handleCompanyAssetsAccessLevel}
+                        accessPerm={areaAccessPerm}
+                        onAccessToggle={
+                          canEdit && areaAccessPerm
+                            ? () => handleToggle(areaAccessPerm.key)
+                            : undefined
+                        }
+                      />
                     ) : cat.category.name === 'construction' ? (
                       <div className="space-y-4">
                         {(() => {
