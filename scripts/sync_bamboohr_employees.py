@@ -9,7 +9,7 @@ import os
 import uuid
 import re
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Set, List
 import argparse
 
 # Add parent directory to path
@@ -27,6 +27,155 @@ from app.storage.blob_provider import BlobStorageProvider
 from app.storage.provider import StorageProvider
 import hashlib
 from io import BytesIO
+
+
+def safe_db_rollback(db: Session) -> None:
+    """Reset the SQLAlchemy session after a failed flush/commit so sync can continue."""
+    try:
+        db.rollback()
+    except Exception:
+        pass
+
+
+EMAIL_LOOKUP_FIELDS = [
+    "homeEmail",
+    "personalEmail",
+    "workEmail",
+    "firstName",
+    "lastName",
+    "status",
+]
+
+
+def extract_personal_email(employee_data: Dict[str, Any]) -> Optional[str]:
+    email = (
+        employee_data.get("homeEmail")
+        or employee_data.get("personalEmail")
+        or employee_data.get("workEmail")
+    )
+    if email:
+        email = str(email).strip()
+    return email or None
+
+
+def load_existing_user_emails(db: Session) -> Set[str]:
+    emails: Set[str] = set()
+    for personal, corporate in db.query(User.email_personal, User.email_corporate).all():
+        if personal:
+            emails.add(personal.strip().lower())
+        if corporate:
+            emails.add(corporate.strip().lower())
+    return emails
+
+
+class BambooSyncCache:
+    """Per-run cache — avoids repeated BambooHR metadata API calls across employees."""
+
+    def __init__(self, client: BambooHRClient):
+        self.client = client
+        self._available_tables: Optional[List[Any]] = None
+        self.resolved_visa_table: Optional[str] = None
+        self.resolved_emergency_table: Optional[str] = None
+        self._visa_table_candidates: Optional[List[str]] = None
+        self._emergency_table_candidates: Optional[List[str]] = None
+        self._visa_candidates_exhausted = False
+
+    def get_available_tables(self) -> List[Any]:
+        if self._available_tables is None:
+            try:
+                self._available_tables = self.client.get_tables() or []
+            except Exception:
+                self._available_tables = []
+        return self._available_tables
+
+    def _dedupe(self, names: List[str]) -> List[str]:
+        seen: Set[str] = set()
+        out: List[str] = []
+        for name in names:
+            if name and name not in seen:
+                seen.add(name)
+                out.append(name)
+        return out
+
+    def visa_table_candidates(self) -> List[str]:
+        if self.resolved_visa_table:
+            return [self.resolved_visa_table]
+        if self._visa_table_candidates is None:
+            names = [
+                "employeeVisas",
+                "employee_visas",
+                "EmployeeVisas",
+                "visa",
+                "Visa",
+                "4168",
+            ]
+            for table in self.get_available_tables():
+                if isinstance(table, dict):
+                    table_name = table.get("name") or table.get("alias")
+                    if table_name and "visa" in str(table_name).lower() and table_name not in names:
+                        names.insert(0, str(table_name))
+            self._visa_table_candidates = self._dedupe(names)
+        return self._visa_table_candidates
+
+    def mark_visa_table_resolved(self, table_name: str) -> None:
+        self.resolved_visa_table = table_name
+
+    def mark_visa_candidates_exhausted(self) -> None:
+        if not self.resolved_visa_table and self._visa_table_candidates:
+            self.resolved_visa_table = self._visa_table_candidates[0]
+        self._visa_candidates_exhausted = True
+
+    def emergency_table_candidates(self) -> List[str]:
+        if self.resolved_emergency_table:
+            return [self.resolved_emergency_table]
+        if self._emergency_table_candidates is None:
+            names = ["emergencyContact", "emergency_contact", "emergencyContacts", "emergency_contacts"]
+            for table in self.get_available_tables():
+                if isinstance(table, dict):
+                    table_name = table.get("name")
+                    if (
+                        table_name
+                        and "emergency" in table_name.lower()
+                        and "contact" in table_name.lower()
+                        and table_name not in names
+                    ):
+                        names.insert(0, table_name)
+            self._emergency_table_candidates = self._dedupe(names)
+        return self._emergency_table_candidates
+
+    def mark_emergency_table_resolved(self, table_name: str) -> None:
+        self.resolved_emergency_table = table_name
+
+
+def should_skip_existing_import(
+    client: BambooHRClient,
+    emp_id: str,
+    directory_entry: Dict[str, Any],
+    existing_emails: Set[str],
+    update_existing: bool,
+) -> tuple[bool, Optional[str]]:
+    """When importing only new users, skip before the full employee API fetch when possible."""
+    if update_existing:
+        return False, None
+
+    merged = dict(directory_entry)
+    email = extract_personal_email(merged)
+    if not email:
+        try:
+            minimal = client.get_employee(str(emp_id), fields=EMAIL_LOOKUP_FIELDS)
+            if isinstance(minimal, dict):
+                merged.update(minimal)
+            email = extract_personal_email(merged)
+        except Exception:
+            return False, None
+
+    if not email:
+        return True, None
+
+    if email.lower() in existing_emails:
+        return True, email
+
+    return False, None
 
 
 def parse_date(date_str: Optional[str]) -> Optional[datetime]:
@@ -272,127 +421,35 @@ def sync_employee_visas(
     user: User,
     bamboohr_id: str,
     employee_data: Optional[Dict[str, Any]] = None,
-    dry_run: bool = False
+    dry_run: bool = False,
+    sync_cache: Optional[BambooSyncCache] = None,
 ) -> int:
     """Sync employee visa information from BambooHR custom table"""
-    
-    # First, try to get list of available tables to find the correct name
-    # Note: Based on user's network request, fieldId: "4168" and tableType: "visa"
-    # We'll try fieldId first, then tableType and variations
-    visa_table_name_from_list = None
-    visa_table_index = None
-    visa_field_id = "4168"  # Known fieldId from user's network request - try this first!
-    
-    try:
-        available_tables = client.get_tables()
-        if available_tables:
-            print(f"  [DEBUG] Available tables count: {len(available_tables)}")
-            # Look for visa/work permit related tables
-            # The response might be a list of strings (field names) or dicts
-            for idx, table in enumerate(available_tables):
-                table_str = str(table).lower()
-                # Check if the table description contains visa-related fields
-                if 'visa' in table_str and ('date' in table_str or 'issuing' in table_str or 'expiration' in table_str):
-                    print(f"  [DEBUG] Found visa-related table at index {idx}: {str(table)[:200]}")
-                    visa_table_index = idx
-                    # Try to extract table name - it might be in the string or as a dict key
-                    if isinstance(table, dict):
-                        visa_table_name_from_list = table.get('name') or table.get('id') or table.get('alias')
-                        print(f"  [INFO] Found visa table name from dict: {visa_table_name_from_list}")
-                    elif isinstance(table, str):
-                        # If it's a string with field names like "['Visa:Date', 'Visa', ...]"
-                        # The table name might be "Visa" or we need to try common names
-                        # Extract potential table name from the string
-                        if "visa" in table_str:
-                            # Try to find the table name - it might be before the colon or in the field names
-                            # Common pattern: "Visa" or "Visa Information"
-                            # Based on BambooHR API, table names in URLs are often camelCase or PascalCase
-                            visa_table_name_from_list = "Visa"  # Most likely based on field names
-                            print(f"  [INFO] Detected visa table from field names, trying: {visa_table_name_from_list}")
-                    break
-    except Exception as e:
-        print(f"  [DEBUG] Could not list tables: {e}")
-        import traceback
-        print(f"  [DEBUG] Traceback: {traceback.format_exc()}")
-    
-    # Try common table names for visa information
-    # Based on BambooHR API documentation: table name is "employeeVisas"
-    # Fields: date, visaType, country, issued, expires, note
-    visa_table_names = []
-    visa_field_id = None  # Initialize fieldId variable
-    
-    # Official table name from BambooHR API documentation - try this first!
-    visa_table_names.append("employeeVisas")
-    print(f"  [INFO] Will try official table name first: employeeVisas")
-    
-    # If we found a table name from the list, try it next
-    if visa_table_name_from_list:
-        visa_table_names.append(visa_table_name_from_list)
-        # Also try variations
-        visa_table_names.append(visa_table_name_from_list.lower())
-        visa_table_names.append(visa_table_name_from_list.replace(' ', ''))
-        visa_table_names.append(visa_table_name_from_list.replace(' ', '_'))
-    
-    # Add common variations as fallback
-    visa_table_names.extend([
-        "employee_visas",  # snake_case
-        "EmployeeVisas",  # PascalCase
-        "visa",  # Based on tableType from API response
-        "Visa", 
-        "VisaInformation",  # camelCase
-        "visaInformation",  # camelCase lowercase first
-        "Visa Information",  # With space (URL encoded)
-        "visa_information",  # snake_case
-        "workPermit", 
-        "work_permit",
-        "WorkPermit",
-        "Work Permit",
-    ])
-    
-    # Try fieldId as last resort (known from user's network request: "4168")
-    if not visa_field_id:
-        visa_field_id = "4168"  # Known fieldId from user's network request
-    visa_table_names.append(visa_field_id)
-    
-    # If we found the table index, try using it as a table identifier
-    if visa_table_index is not None:
-        visa_table_names.append(str(visa_table_index))
-    
-    # Remove duplicates while preserving order
-    seen = set()
-    visa_table_names = [x for x in visa_table_names if not (x in seen or seen.add(x))]
-    
+
+    visa_field_id = "4168"
+    visa_table_names = sync_cache.visa_table_candidates() if sync_cache else ["employeeVisas", "4168"]
+
     visas_synced = 0
-    visa_data = None  # Initialize before the loop
-    
-    print(f"  [DEBUG] Will try {len(visa_table_names)} table name variations: {visa_table_names[:5]}...")
-    
+    visa_data = None
+
     for table_name in visa_table_names:
         try:
-            # Get visa data from custom table
-            # Note: Based on user's network request, the actual endpoint might be different
-            # The API returns fieldId: "4168" and tableType: "visa"
-            # We'll try the standard endpoint first
             visa_data = client.get_table_data(table_name, bamboohr_id)
-            print(f"  [SUCCESS] Found visa data for table '{table_name}': {type(visa_data)} - {str(visa_data)[:200] if visa_data else 'None'}")
-            
-            # If we got data, break out of the loop
-            if visa_data:
+            if visa_data and sync_cache:
+                sync_cache.mark_visa_table_resolved(table_name)
                 break
         except Exception as e:
-            # Continue to next table name if this one fails
-            print(f"  [DEBUG] Error trying table '{table_name}': {e}")
+            print(f"  [DEBUG] Error trying visa table '{table_name}': {e}")
             continue
-    
-    # If we still don't have data and we have a fieldId, try using it directly
-    if not visa_data and visa_field_id:
-        print(f"  [INFO] Trying to get visa data using fieldId directly: {visa_field_id}")
+
+    if sync_cache and not visa_data and not sync_cache.resolved_visa_table:
+        sync_cache.mark_visa_candidates_exhausted()
+
+    if not visa_data and visa_field_id and (not sync_cache or not sync_cache.resolved_visa_table):
         try:
             visa_data = client.get_employee_table_by_field_id(bamboohr_id, visa_field_id)
-            if visa_data:
-                print(f"  [SUCCESS] Found visa data using fieldId '{visa_field_id}': {type(visa_data)} - {str(visa_data)[:200] if visa_data else 'None'}")
         except Exception as e:
-            print(f"  [DEBUG] Error trying fieldId '{visa_field_id}': {e}")
+            print(f"  [DEBUG] Error trying visa fieldId '{visa_field_id}': {e}")
     
     if visa_data:
         # Handle different response formats
@@ -685,34 +742,27 @@ def sync_employee_emergency_contacts(
     user: User,
     bamboohr_id: str,
     employee_data: Dict[str, Any],
-    dry_run: bool = False
+    dry_run: bool = False,
+    sync_cache: Optional[BambooSyncCache] = None,
 ) -> int:
     """Sync employee emergency contacts from BambooHR"""
-    
+
     contacts_synced = 0
-    
-    # First, try to get list of available tables to find the correct name
-    try:
-        available_tables = client.get_tables()
-        if available_tables:
-            print(f"  [DEBUG] Available tables: {[t.get('name') if isinstance(t, dict) else str(t) for t in available_tables[:10]]}")
-            # Look for emergency contact related tables
-            for table in available_tables:
-                if isinstance(table, dict):
-                    table_name = table.get('name', '').lower()
-                    if 'emergency' in table_name and 'contact' in table_name:
-                        print(f"  [INFO] Found potential emergency contact table: {table.get('name')}")
-    except Exception as e:
-        print(f"  [DEBUG] Could not list tables: {e}")
-    
-    # First, try to get from custom table (most reliable for multiple contacts)
-    emergency_contact_table_names = ["emergencyContact", "emergency_contact", "emergencyContacts", "emergency_contacts"]
-    
+    emergency_contact_table_names = (
+        sync_cache.emergency_table_candidates()
+        if sync_cache
+        else ["emergencyContact", "emergency_contact", "emergencyContacts", "emergency_contacts"]
+    )
+
     found_in_table = False
     for table_name in emergency_contact_table_names:
         try:
             contact_data = client.get_table_data(table_name, bamboohr_id)
-            print(f"  [DEBUG] Raw response for '{table_name}': {type(contact_data)} - {str(contact_data)[:200] if contact_data else 'None'}")
+            if not contact_data:
+                continue
+            if sync_cache:
+                sync_cache.mark_emergency_table_resolved(table_name)
+            print(f"  [DEBUG] Raw response for '{table_name}': {type(contact_data)} - {str(contact_data)[:200]}")
             
             # Handle different response formats
             rows = []
@@ -907,11 +957,12 @@ def sync_employee_emergency_contacts(
                 break
                 
         except Exception as e:
-            # Table might not exist, continue to next
-            print(f"  [DEBUG] Error trying emergency contact table '{table_name}': {e}")
-            import traceback
-            print(f"  [DEBUG] Traceback: {traceback.format_exc()}")
+            safe_db_rollback(db)
+            print(f"  [DEBUG] Emergency contact table '{table_name}' unavailable: {e}")
             continue
+
+    if sync_cache and not sync_cache.resolved_emergency_table and emergency_contact_table_names:
+        sync_cache.mark_emergency_table_resolved(emergency_contact_table_names[0])
     
     # If no custom table found, try to get from basic employee fields
     if not found_in_table:
@@ -1032,7 +1083,7 @@ def create_or_update_user(
     
     if existing_user and not update_existing:
         print(f"  [SKIP] Skipping existing user: {email}")
-        return existing_user, False
+        return None, False
     
     # Prepare user data
     first_name = employee_data.get("firstName", "").strip()
@@ -1346,6 +1397,13 @@ def sync_employees(
     created_count = 0
     updated_count = 0
     skipped_count = 0
+    sync_cache = BambooSyncCache(client)
+    existing_emails: Set[str] = set()
+    if not dry_run:
+        existing_emails = load_existing_user_emails(db)
+        print(f"   Loaded {len(existing_emails)} existing user emails for fast skip checks")
+    # Warm table metadata once (visa / emergency contact resolution)
+    sync_cache.get_available_tables()
     
     try:
         for idx, emp in enumerate(employees, 1):
@@ -1354,10 +1412,20 @@ def sync_employees(
             if not name:
                 name = f"Employee {emp_id}"
             print(f"\n[{idx}/{len(employees)}] Processing: {name} (ID: {emp_id})")
+
+            skip_existing, skip_email = should_skip_existing_import(
+                client, str(emp_id), emp, existing_emails, update_existing
+            )
+            if skip_existing:
+                if skip_email:
+                    print(f"  [SKIP] Already in MKHub: {skip_email}")
+                else:
+                    print(f"  [SKIP] No personal email in BambooHR directory")
+                skipped_count += 1
+                continue
             
             # Get full employee details
             try:
-                # Get all available fields
                 employee_data = client.get_employee(str(emp_id))
                 # Ensure ID is in the data and merge with directory data
                 employee_data["id"] = str(emp_id)
@@ -1367,12 +1435,19 @@ def sync_employees(
                         employee_data[key] = value
             except Exception as e:
                 print(f"  [ERROR] Error fetching employee details: {e}")
+                safe_db_rollback(db)
                 skipped_count += 1
                 continue
             
-            user, created = create_or_update_user(
-                db, employee_data, client=client, dry_run=dry_run, update_existing=update_existing, preserve_manual_fields=True
-            )
+            try:
+                user, created = create_or_update_user(
+                    db, employee_data, client=client, dry_run=dry_run, update_existing=update_existing, preserve_manual_fields=True
+                )
+            except Exception as e:
+                print(f"  [ERROR] Error creating/updating user: {e}")
+                safe_db_rollback(db)
+                skipped_count += 1
+                continue
             
             if user:
                 # Sync profile photo if requested
@@ -1384,32 +1459,50 @@ def sync_employees(
                         )
                     except Exception as e:
                         print(f"  [WARN] Error syncing photo: {e}")
+                        safe_db_rollback(db)
                 
                 # Sync visa information from custom tables
                 try:
                     sync_employee_visas(
-                        db, client, user, str(emp_id), employee_data=employee_data, dry_run=dry_run
+                        db, client, user, str(emp_id), employee_data=employee_data, dry_run=dry_run, sync_cache=sync_cache
                     )
                 except Exception as e:
                     print(f"  [WARN] Error syncing visas: {e}")
+                    safe_db_rollback(db)
                 
                 # Sync emergency contacts from custom tables or basic fields
                 try:
                     sync_employee_emergency_contacts(
-                        db, client, user, str(emp_id), employee_data, dry_run=dry_run
+                        db, client, user, str(emp_id), employee_data, dry_run=dry_run, sync_cache=sync_cache
                     )
                 except Exception as e:
                     print(f"  [WARN] Error syncing emergency contacts: {e}")
+                    safe_db_rollback(db)
+
+                if not dry_run:
+                    try:
+                        db.commit()
+                    except Exception as e:
+                        print(f"  [WARN] Error committing employee changes: {e}")
+                        safe_db_rollback(db)
+                        skipped_count += 1
+                        continue
                 
                 if created:
                     created_count += 1
+                    email = extract_personal_email(employee_data)
+                    if email:
+                        existing_emails.add(email.lower())
                 else:
                     updated_count += 1
             else:
                 skipped_count += 1
         
         if not dry_run:
-            db.commit()
+            try:
+                db.commit()
+            except Exception:
+                safe_db_rollback(db)
         
         print("\n" + "="*50)
         print("[STATS] Synchronization Summary:")
@@ -1424,7 +1517,7 @@ def sync_employees(
         import traceback
         traceback.print_exc()
         if not dry_run:
-            db.rollback()
+            safe_db_rollback(db)
     finally:
         db.close()
 
