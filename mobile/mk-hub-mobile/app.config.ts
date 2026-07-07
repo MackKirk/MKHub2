@@ -10,7 +10,7 @@ const defineConfig = (): ExpoConfig => ({
   userInterfaceStyle: "light",
   ios: {
     bundleIdentifier: "com.mkhub.m54",
-    buildNumber: "1",
+    buildNumber: "2",
     icon: "./assets/icon.png",
     supportsTablet: false
   },
