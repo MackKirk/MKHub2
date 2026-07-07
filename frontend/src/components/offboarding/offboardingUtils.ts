@@ -74,6 +74,27 @@ export function fmtDateTime(iso: string | null | undefined): string {
   return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+/** Company-local scheduled revocation datetime from API (`access_revoke_at_local`). */
+export function formatScheduledRevocationLabel(
+  accessRevokeAtLocal: string | null | undefined,
+  companyTimezone?: string | null,
+): string {
+  if (!accessRevokeAtLocal) return '—';
+  const normalized = accessRevokeAtLocal.includes('T')
+    ? accessRevokeAtLocal
+    : `${accessRevokeAtLocal}T00:00:00`;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return '—';
+  const when = d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return companyTimezone ? `${when} (${companyTimezone})` : when;
+}
+
+export function hubAccessAllowsCompleteWithActive(
+  accessRevocationTiming: string | null | undefined,
+): boolean {
+  return accessRevocationTiming === 'scheduled' || accessRevocationTiming === 'manually_later';
+}
+
 export const OFFBOARDING_CHECKLIST_LABELS: Record<string, string> = {
   termination_date_recorded: 'Termination date recorded',
   hub_access_deactivated: 'Hub access deactivated',

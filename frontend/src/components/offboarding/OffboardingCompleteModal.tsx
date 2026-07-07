@@ -1,4 +1,9 @@
-import { AppButton, AppModal } from '@/components/ui';
+import { useEffect, useState } from 'react';
+import {
+  formatScheduledRevocationLabel,
+  hubAccessAllowsCompleteWithActive,
+} from './offboardingUtils';
+import { AppButton, AppCheckbox, AppModal } from '@/components/ui';
 import { HubAccessBadge } from './OffboardingStatusBadge';
 
 type Props = {
@@ -7,6 +12,9 @@ type Props = {
   onConfirm: () => void;
   loading?: boolean;
   hubAccessActive: boolean;
+  accessRevocationTiming?: string | null;
+  accessRevokeAtLocal?: string | null;
+  companyTimezone?: string | null;
   assetsPending: number;
   futureShifts: number;
   pendingTimesheets: number;
@@ -21,6 +29,9 @@ export default function OffboardingCompleteModal({
   onConfirm,
   loading,
   hubAccessActive,
+  accessRevocationTiming,
+  accessRevokeAtLocal,
+  companyTimezone,
   assetsPending,
   futureShifts,
   pendingTimesheets,
@@ -28,7 +39,29 @@ export default function OffboardingCompleteModal({
   blockers,
   warnings,
 }: Props) {
-  const canComplete = blockers.length === 0;
+  const [hubAcknowledged, setHubAcknowledged] = useState(false);
+
+  const requiresHubAcknowledgment =
+    hubAccessActive && hubAccessAllowsCompleteWithActive(accessRevocationTiming);
+
+  const canComplete =
+    blockers.length === 0 && (!requiresHubAcknowledgment || hubAcknowledged);
+
+  useEffect(() => {
+    if (!open) {
+      setHubAcknowledged(false);
+    }
+  }, [open]);
+
+  const scheduledRevocationLabel =
+    accessRevocationTiming === 'scheduled'
+      ? formatScheduledRevocationLabel(accessRevokeAtLocal, companyTimezone)
+      : null;
+
+  const hubAcknowledgmentLabel =
+    accessRevocationTiming === 'scheduled'
+      ? `I understand Hub access is still active and will be revoked on ${scheduledRevocationLabel || 'the scheduled date'}.`
+      : 'I understand Hub access is still active and will remain until manually deactivated.';
 
   return (
     <AppModal open={open} onClose={onClose} title="Complete Offboarding" size="md">
@@ -40,6 +73,18 @@ export default function OffboardingCompleteModal({
             <span>Hub Access</span>
             <HubAccessBadge active={hubAccessActive} />
           </div>
+          {accessRevocationTiming === 'scheduled' && hubAccessActive ? (
+            <div className="flex items-center justify-between gap-3 p-3 text-gray-600">
+              <span>Scheduled revocation</span>
+              <span className="text-right font-medium text-gray-900">{scheduledRevocationLabel}</span>
+            </div>
+          ) : null}
+          {accessRevocationTiming === 'manually_later' && hubAccessActive ? (
+            <div className="flex items-center justify-between gap-3 p-3 text-gray-600">
+              <span>Access revocation</span>
+              <span className="text-right font-medium text-gray-900">Manual — when deactivated</span>
+            </div>
+          ) : null}
           <div className="flex items-center justify-between p-3">
             <span>Assets Pending Return</span>
             <span className={assetsPending > 0 ? 'font-semibold text-red-600' : ''}>{assetsPending}</span>
@@ -78,6 +123,13 @@ export default function OffboardingCompleteModal({
               ))}
             </ul>
           </div>
+        ) : null}
+
+        {requiresHubAcknowledgment ? (
+          <label className="flex items-start gap-2 cursor-pointer rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+            <AppCheckbox checked={hubAcknowledged} onChange={setHubAcknowledged} />
+            <span className="text-amber-950">{hubAcknowledgmentLabel}</span>
+          </label>
         ) : null}
 
         <div className="flex justify-end gap-2 pt-2">
