@@ -50,6 +50,7 @@ export function resolveProjectQuickStatusFilters(
     { key: "in_progress", label: "In Progress", labels: ["in progress", "on progress"] },
     { key: "on_hold", label: "On Hold", labels: ["on hold"] },
     { key: "finished", label: "Finished", labels: ["finished"] },
+    { key: "cancelled", label: "Cancelled", labels: ["cancelled", "canceled"] },
     { key: "conflict", label: "Conflict", labels: ["conflict", "schedule conflict"] }
   ]);
 }
@@ -60,6 +61,7 @@ export function resolveOpportunityQuickStatusFilters(
   return resolveQuickStatusFilters(statuses, [
     { key: "prospecting", label: "Prospecting", labels: ["prospecting"] },
     { key: "refused", label: "Refused", labels: ["refused"] },
+    { key: "cancelled", label: "Cancelled", labels: ["cancelled", "canceled"] },
     {
       key: "sent_to_customer",
       label: "Sent to Customer",

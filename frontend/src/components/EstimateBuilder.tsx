@@ -72,8 +72,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       if (isBidding) {
         // Always allow "prospecting" status
         if (statusLabelStr === 'prospecting') return true;
-        // Restrict "Sent to Customer" and "Refused" statuses
-        if (statusLabelStr === 'sent to customer' || statusLabelStr === 'refused') return false;
+        // Restrict "Sent to Customer", "Refused", and "Cancelled" statuses
+        if (statusLabelStr === 'sent to customer' || statusLabelStr === 'refused' || statusLabelStr === 'cancelled' || statusLabelStr === 'canceled') return false;
         // Default to allow for other statuses (backward compatibility)
         return true;
       }
@@ -82,8 +82,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       // Always allow "estimating", "prospecting", and "In Progress" status
       if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting' || statusLabelStr === 'in progress') return true;
       
-      // Restrict "On Hold" (same as proposals)
-      if (statusLabelStr === 'on hold') return false;
+      // Restrict "On Hold" and "Cancelled" (same as proposals)
+      if (statusLabelStr === 'on hold' || statusLabelStr === 'cancelled' || statusLabelStr === 'canceled') return false;
       
       // If no settings or project_statuses, allow editing
       if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;
@@ -113,8 +113,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     if (isBidding) {
       // Always allow "prospecting" status
       if (statusLabelStr === 'prospecting') return true;
-      // Restrict "Sent to Customer" and "Refused" statuses
-      if (statusLabelStr === 'sent to customer' || statusLabelStr === 'refused') return false;
+      // Restrict "Sent to Customer", "Refused", and "Cancelled" statuses
+      if (statusLabelStr === 'sent to customer' || statusLabelStr === 'refused' || statusLabelStr === 'cancelled' || statusLabelStr === 'canceled') return false;
       // Default to allow for other statuses (backward compatibility)
       return true;
     }
@@ -123,8 +123,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     // Always allow "estimating", "prospecting", and "In Progress" status
     if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting' || statusLabelStr === 'in progress') return true;
     
-    // Restrict "On Hold" (same as proposals)
-    if (statusLabelStr === 'on hold') return false;
+    // Restrict "On Hold" and "Cancelled" (same as proposals)
+    if (statusLabelStr === 'on hold' || statusLabelStr === 'cancelled' || statusLabelStr === 'canceled') return false;
     
     // If no settings or project_statuses, allow editing
     if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;

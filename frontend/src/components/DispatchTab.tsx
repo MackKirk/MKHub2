@@ -105,7 +105,7 @@ export default function DispatchTab({
   const isEditingRestricted = useMemo(() => {
     if (!statusLabel) return false;
     const statusLower = String(statusLabel).trim().toLowerCase();
-    return statusLower === 'finished';
+    return statusLower === 'finished' || statusLower === 'cancelled' || statusLower === 'canceled';
   }, [statusLabel]);
 
   const canEditWorkload = canWriteWorkload && !isEditingRestricted;

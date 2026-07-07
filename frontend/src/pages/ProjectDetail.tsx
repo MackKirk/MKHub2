@@ -55,6 +55,8 @@ import {
 } from '@/lib/projectLinePermissionKeys';
 import { filterStatusesForOpportunity, filterStatusesForProject } from '@/lib/projectStatusVisibility';
 import { isHiddenReportCategory, isHiddenReportNote } from '@/lib/reportCategories';
+import { formatReportListSubtitle, reportHasStatusBadges } from '@/lib/reportNotes';
+import { ReportStatusChangeBadges } from '@/components/ReportStatusChangeBadges';
 import { buildReportCategorySelectGroups } from '@/lib/reportCategorySelectGroups';
 import { employeeHasSalesOrEstimatingDepartment, mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import {
@@ -115,6 +117,7 @@ const CUSTOMER_HERO_EXPANDED_MAX_PX = 320;
 const HERO_EXPAND_BASE_MS = 1400;
 const HERO_COLLAPSE_MS = 650;
 const OPPORTUNITY_HERO_COLLAPSED_PX = 72;
+const HERO_FIELD_STACK = uiSpacing.sectionStack;
 
 function salesListPaths(project: { business_line?: string; is_bidding?: boolean } | undefined | null) {
   const rm = project?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
@@ -134,12 +137,12 @@ function getTimeSinceStatusChange(project: any): string {
   const statusLabel = (project as any).status_label || '';
   const isBidding = (project as any).is_bidding || false;
   
-  if (isBidding && statusLabel.toLowerCase().trim() === 'refused') {
-    return ''; // Don't show timer for Refused opportunities
+  if (isBidding && (statusLabel.toLowerCase().trim() === 'refused' || statusLabel.toLowerCase().trim() === 'cancelled' || statusLabel.toLowerCase().trim() === 'canceled')) {
+    return ''; // Don't show timer for Refused or Cancelled opportunities
   }
   
-  if (!isBidding && statusLabel.toLowerCase().trim() === 'finished') {
-    return ''; // Don't show timer for Finished projects
+  if (!isBidding && (statusLabel.toLowerCase().trim() === 'finished' || statusLabel.toLowerCase().trim() === 'cancelled' || statusLabel.toLowerCase().trim() === 'canceled')) {
+    return ''; // Don't show timer for Finished or Cancelled projects
   }
   
   // Use status_changed_at if available (this is when status was last changed)
@@ -981,7 +984,32 @@ function ProjectHeroSiteField({
 
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, folder_id?:string|null, original_name?:string, notes?:string|null, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
-type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string, financial_value?:number, financial_type?:string, estimate_data?:any, approval_status?:string, approved_by?:string, approved_at?:string };
+type Report = {
+  id: string;
+  title?: string;
+  category_id?: string;
+  division_id?: string;
+  description?: string;
+  images?: {
+    attachments?: any[];
+    status_change?: {
+      from_label?: string;
+      to_label?: string;
+      from_id?: string | null;
+      to_id?: string | null;
+    };
+  };
+  status?: string;
+  created_at?: string;
+  created_by?: string;
+  created_by_name?: string;
+  financial_value?: number;
+  financial_type?: string;
+  estimate_data?: any;
+  approval_status?: string;
+  approved_by?: string;
+  approved_at?: string;
+};
 type Proposal = { id:string, title?:string, order_number?:string, created_at?:string, data?:any, is_change_order?:boolean, change_order_number?:number, parent_proposal_id?:string, approved_report_id?:string, approval_status?:string };
 
 export default function ProjectDetail(){
@@ -1652,14 +1680,13 @@ export default function ProjectDetail(){
           >
             <div className={uiCx('flex items-start', useDesignSystem ? 'gap-5' : 'gap-4')}>
               {/* Left Section - Image and Project Divisions */}
-              <div className="w-48 flex-shrink-0 overflow-visible">
+              <div className={uiCx('w-48 flex-shrink-0 overflow-visible', HERO_FIELD_STACK)}>
                 {/* Image */}
                 <div
                   className={uiCx(
                     'h-36 w-48 overflow-hidden group relative overflow-visible',
                     uiRadius.card,
                     uiBorders.subtle,
-                    'mb-3',
                   )}
                 >
                   <img src={cover} className="w-full h-full object-cover" alt="" />
@@ -1724,7 +1751,7 @@ export default function ProjectDetail(){
                 )}
               >
                   {/* Column 1 */}
-                  <div className="min-w-0">
+                  <div className={uiCx('min-w-0', HERO_FIELD_STACK)}>
                     {/* Code */}
                     <div>
                       <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Code</span>
@@ -1855,7 +1882,7 @@ export default function ProjectDetail(){
                   </div>
 
                   {/* Column 2 */}
-                  <div className="min-w-0">
+                  <div className={uiCx('min-w-0', HERO_FIELD_STACK)}>
                     {/* Project Owner / Source - opportunities and leak investigations */}
                     {isOpportunityStyleTabs && (
                       <div>
@@ -1963,7 +1990,7 @@ export default function ProjectDetail(){
 
                     {/* Start Date - only show for projects, not opportunities */}
                     {!isOpportunityStyleTabs && (
-                      <div className="mb-4">
+                      <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Start Date</span>
                           {hasEditPermission && (
@@ -1984,7 +2011,7 @@ export default function ProjectDetail(){
 
                     {/* Awarded Date - only show for projects, not opportunities */}
                     {!isOpportunityStyleTabs && (
-                      <div className="mb-4">
+                      <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Awarded Date</span>
                           {hasEditPermission && (
@@ -2005,7 +2032,7 @@ export default function ProjectDetail(){
 
                     {/* End date - only show for projects, not opportunities */}
                     {!isOpportunityStyleTabs && (
-                      <div className="mb-4">
+                      <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">End Date</span>
                           {hasEditPermission && (
@@ -2026,7 +2053,7 @@ export default function ProjectDetail(){
                   </div>
                   
                   {/* Column 3 */}
-                  <div className="min-w-0">
+                  <div className={uiCx('min-w-0', HERO_FIELD_STACK)}>
                     {/* Estimators - for opportunities and leak investigations, show in column 3 */}
                     {isOpportunityStyleTabs && (
                       <div>
@@ -2258,7 +2285,7 @@ export default function ProjectDetail(){
 
                     {/* Progress - below On-site Leads, projects only */}
                     {!isOpportunityStyleTabs && (
-                      <div className="mb-4 mt-4">
+                      <div>
                         <div className="flex items-center gap-1.5 mb-2">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Progress</span>
                           {hasEditPermission && (
@@ -5381,12 +5408,13 @@ function ReportsTabEnhanced({
   const location = useLocation();
   const confirm = useConfirm();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<{file_object_id: string, original_name: string, content_type: string}|null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>(''); // Empty string = all categories
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
-  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any>('GET','/employees') });
+  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any>('GET','/employees?limit=5000') });
   
   // Check permissions for reports (using local scope variables)
   const { data: meReports } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
@@ -5558,13 +5586,34 @@ function ReportsTabEnhanced({
     return text.substring(0, maxLength).trim() + '...';
   };
 
-  const getAuthorInfo = (createdBy: string | null | undefined) => {
-    if (!createdBy || !employees) return { name: 'Unknown', avatar: '/ui/assets/login/logo-light.svg' };
-    const author = employees.find((e: any) => e.id === createdBy);
-    if (!author) return { name: 'Unknown', avatar: '/ui/assets/login/logo-light.svg' };
+  const getAuthorInfo = (createdBy: string | null | undefined, createdByName?: string | null) => {
+    const fallbackAvatar = '/ui/assets/login/logo-light.svg';
+    const resolveAvatar = (userLike: any) =>
+      userLike?.profile_photo_file_id
+        ? withFileAccessToken(`/files/${userLike.profile_photo_file_id}/thumbnail?w=40`)
+        : fallbackAvatar;
+
+    const meMatch =
+      createdBy && me && String(me.id) === String(createdBy)
+        ? { name: getUserDisplayName(me) || me.username || 'Unknown', avatar: resolveAvatar(me) }
+        : null;
+
+    if (createdByName?.trim()) {
+      const author = employees?.find((e: any) => String(e.id) === String(createdBy));
+      return {
+        name: createdByName.trim(),
+        avatar: author ? resolveAvatar(author) : meMatch?.avatar || fallbackAvatar,
+      };
+    }
+
+    if (meMatch) return meMatch;
+    if (!createdBy || !employees) return { name: 'Unknown', avatar: fallbackAvatar };
+
+    const author = employees.find((e: any) => String(e.id) === String(createdBy));
+    if (!author) return { name: 'Unknown', avatar: fallbackAvatar };
     return {
-      name: author.name || author.username || 'Unknown',
-      avatar: author.profile_photo_file_id ? withFileAccessToken(`/files/${author.profile_photo_file_id}/thumbnail?w=40`) : '/ui/assets/login/logo-light.svg'
+      name: getUserDisplayName(author) || author.username || 'Unknown',
+      avatar: resolveAvatar(author),
     };
   };
 
@@ -5629,21 +5678,30 @@ function ReportsTabEnhanced({
           onRefresh={onRefresh}
           confirm={confirm}
           onNewNote={() => setShowCreateModal(true)}
+          onEditNote={() => {
+            if (selectedReport) setEditingReport(selectedReport);
+          }}
           previewAttachment={previewAttachment}
           onClosePreview={() => setPreviewAttachment(null)}
         />
-        {showCreateModal && (
+        {(showCreateModal || editingReport) && (
           <CreateReportModal
             projectId={projectId}
             reportCategories={reportCategories}
             isReadCategoryAllowed={isReadCategoryAllowed}
             isWriteCategoryAllowed={isWriteCategoryAllowed}
             designSystem
-            onClose={() => setShowCreateModal(false)}
-            onSuccess={async () => {
+            report={editingReport || undefined}
+            onClose={() => {
               setShowCreateModal(false);
+              setEditingReport(null);
+            }}
+            onSuccess={async () => {
+              const wasEdit = Boolean(editingReport);
+              setShowCreateModal(false);
+              setEditingReport(null);
               await onRefresh();
-              toast.success('Note created');
+              toast.success(wasEdit ? 'Note updated' : 'Note created');
             }}
           />
         )}
@@ -5733,8 +5791,10 @@ function ReportsTabEnhanced({
               const reportDate = r.created_at ? new Date(r.created_at) : null;
               const attachments = r.images?.attachments || [];
               const isSelected = selectedReportId === r.id;
-              const authorInfo = getAuthorInfo(r.created_by);
+              const authorInfo = getAuthorInfo(r.created_by, r.created_by_name);
               const preview = getPreviewText(r.description || '');
+              const listSubtitle = formatReportListSubtitle(r, authorInfo.name);
+              const hasStatusBadges = reportHasStatusBadges(r);
               
               return (
                 <div 
@@ -5750,8 +5810,17 @@ function ReportsTabEnhanced({
                       <div className={`font-semibold text-xs mb-1 ${isSelected ? 'text-gray-900' : 'text-gray-800'}`}>
                         {r.title || 'Untitled Note'}
                       </div>
-                      <div className="text-[10px] text-gray-500 mb-1">
-                        {authorInfo.name}
+                      <div className="text-[10px] text-gray-500 mb-1 flex flex-wrap items-center gap-1.5">
+                        {hasStatusBadges && (
+                          <ReportStatusChangeBadges
+                            report={r}
+                            designSystem={designSystem}
+                            statusColors={(settings || {}).project_statuses || []}
+                            compact
+                          />
+                        )}
+                        {hasStatusBadges && <span className="text-gray-400">·</span>}
+                        <span>{listSubtitle}</span>
                       </div>
                       {preview && (
                         <div className="text-[10px] text-gray-600 line-clamp-2 mb-1">
@@ -5798,7 +5867,8 @@ function ReportsTabEnhanced({
           {selectedReport ? (() => {
             const reportDate = selectedReport.created_at ? new Date(selectedReport.created_at) : null;
             const attachments = selectedReport.images?.attachments || [];
-            const authorInfo = getAuthorInfo(selectedReport.created_by);
+            const authorInfo = getAuthorInfo(selectedReport.created_by, selectedReport.created_by_name);
+            const hasStatusBadges = reportHasStatusBadges(selectedReport);
             const categoryLabel = reportCategories.find(c => c.value === selectedReport.category_id)?.label || selectedReport.category_id || 'General';
             
             return (
@@ -5810,6 +5880,15 @@ function ReportsTabEnhanced({
                       <h2 className="text-sm font-semibold text-gray-900 mb-2">
                         {selectedReport.title || 'Untitled Note'}
                       </h2>
+                      {hasStatusBadges && (
+                        <div className="mb-2">
+                          <ReportStatusChangeBadges
+                            report={selectedReport}
+                            designSystem={designSystem}
+                            statusColors={(settings || {}).project_statuses || []}
+                          />
+                        </div>
+                      )}
                       <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex items-center gap-2">
                           <img src={authorInfo.avatar} className="w-6 h-6 rounded-full" alt={authorInfo.name} />
@@ -5871,8 +5950,16 @@ function ReportsTabEnhanced({
                         </span>
                       )}
                       {canWriteReports && isWriteCategoryAllowed(selectedReport.category_id) && (
-                        <button
-                          onClick={async () => {
+                        <>
+                          <button
+                            onClick={() => setEditingReport(selectedReport)}
+                            className="px-2.5 py-1.5 rounded text-gray-600 hover:bg-gray-100 text-xs font-medium flex-shrink-0 border border-gray-200"
+                            title="Edit note"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={async () => {
                             const result = await confirm({
                               title: 'Delete Note',
                               message: `Are you sure you want to delete "${selectedReport.title || 'this note'}"? This action cannot be undone.`,
@@ -5894,6 +5981,7 @@ function ReportsTabEnhanced({
                         >
                           🗑️ Delete
                         </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -6129,16 +6217,22 @@ function ReportsTabEnhanced({
         </div>
       </div>
 
-      {showCreateModal && (
+      {(showCreateModal || editingReport) && (
         <CreateReportModal
           projectId={projectId}
           reportCategories={reportCategories}
           isWriteCategoryAllowed={isWriteCategoryAllowed}
-          onClose={() => setShowCreateModal(false)}
-          onSuccess={async () => {
+          report={editingReport || undefined}
+          onClose={() => {
             setShowCreateModal(false);
+            setEditingReport(null);
+          }}
+          onSuccess={async () => {
+            const wasEdit = Boolean(editingReport);
+            setShowCreateModal(false);
+            setEditingReport(null);
             await onRefresh();
-            toast.success('Note created');
+            toast.success(wasEdit ? 'Note updated' : 'Note created');
           }}
         />
       )}
@@ -6169,15 +6263,17 @@ function ReportsTabEnhanced({
   );
 }
 
-function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed, isWriteCategoryAllowed, designSystem, onClose, onSuccess }: {
+function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed, isWriteCategoryAllowed, designSystem, report, onClose, onSuccess }: {
   projectId: string,
   reportCategories: any[],
   isReadCategoryAllowed?: (categoryId?: string | null) => boolean,
   isWriteCategoryAllowed: (categoryId?: string | null) => boolean,
   designSystem?: boolean,
+  report?: Report,
   onClose: () => void,
   onSuccess: () => Promise<void>
 }){
+  const isEditing = Boolean(report);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [desc, setDesc] = useState('');
@@ -6186,6 +6282,27 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
   const [uploading, setUploading] = useState(false);
   const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
   const isBidding = project?.is_bidding === true;
+
+  useEffect(() => {
+    if (report) {
+      setTitle(report.title || '');
+      setCategory(report.category_id || '');
+      setDesc(report.description || '');
+      setFinancialValue(report.financial_value || 0);
+      setFiles([]);
+      return;
+    }
+    setTitle('');
+    setCategory('');
+    setDesc('');
+    setFinancialValue(0);
+    setFiles([]);
+  }, [report]);
+
+  const existingAttachments = useMemo(() => {
+    const attachments = report?.images?.attachments;
+    return Array.isArray(attachments) ? attachments : [];
+  }, [report]);
 
   const isCategoryListed = useCallback(
     (categoryId?: string | null) => {
@@ -6236,13 +6353,13 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories, isCategoryListed]);
 
-  const handleCreate = async () => {
+  const handleSave = async () => {
     if (!title.trim()) {
       toast.error('Please enter a title');
       return;
     }
     if (category && !isWriteCategoryAllowed(category)) {
-      toast.error('You do not have permission to create notes in this category');
+      toast.error('You do not have permission to save notes in this category');
       return;
     }
     if ((category === 'additional-income' || category === 'additional-expense') && financialValue <= 0) {
@@ -6255,7 +6372,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
     }
     setUploading(true);
     try {
-      const attachments: any[] = [];
+      const newAttachments: any[] = [];
       for (const file of files) {
         const up: any = await api('POST', '/files/upload', {
           project_id: projectId,
@@ -6279,7 +6396,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
           checksum_sha256: 'na',
           content_type: file.type || 'application/octet-stream'
         });
-        attachments.push({
+        newAttachments.push({
           file_object_id: conf.id,
           original_name: file.name,
           content_type: file.type || 'application/octet-stream'
@@ -6290,7 +6407,6 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
         title: title.trim(),
         category_id: category || null,
         description: desc,
-        images: attachments.length > 0 ? { attachments } : undefined
       };
 
       if (category === 'additional-income' || category === 'additional-expense') {
@@ -6298,7 +6414,20 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
         payload.financial_type = category;
       }
 
-      await api('POST', `/projects/${projectId}/reports`, payload);
+      if (isEditing && report) {
+        const existingImages = report.images && typeof report.images === 'object' ? report.images : {};
+        payload.images = {
+          ...existingImages,
+          attachments: [...existingAttachments, ...newAttachments],
+        };
+        await api('PATCH', `/projects/${projectId}/reports/${report.id}`, payload);
+      } else {
+        if (newAttachments.length > 0) {
+          payload.images = { attachments: newAttachments };
+        }
+        await api('POST', `/projects/${projectId}/reports`, payload);
+      }
+
       setTitle('');
       setCategory('');
       setDesc('');
@@ -6306,7 +6435,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
       setFinancialValue(0);
       await onSuccess();
     } catch (_e) {
-      toast.error('Failed to create note');
+      toast.error(isEditing ? 'Failed to update note' : 'Failed to create note');
     } finally {
       setUploading(false);
     }
@@ -6328,8 +6457,12 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
       <AppFormModal
         open
         onClose={onClose}
-        title="New Note"
-        description="Add a note to this opportunity"
+        title={isEditing ? 'Edit Note' : 'New Note'}
+        description={
+          isEditing
+            ? 'Update this note on the project timeline'
+            : 'Add a note to this opportunity'
+        }
         formWidth="comfortable"
         quickInfo={opportunityCreateNoteQuickInfo}
         footer={
@@ -6340,11 +6473,11 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
             <AppButton
               type="button"
               size="sm"
-              onClick={handleCreate}
+              onClick={handleSave}
               disabled={uploading}
               loading={uploading}
             >
-              {uploading ? 'Creating…' : 'Create Note'}
+              {uploading ? (isEditing ? 'Saving…' : 'Creating…') : isEditing ? 'Save Note' : 'Create Note'}
             </AppButton>
           </div>
         }
@@ -6398,9 +6531,23 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
             files={files}
             setFiles={setFiles}
             accept="image/*,.pdf,.doc,.docx"
-            label="Attachments (optional – multiple allowed)"
+            label={
+              isEditing
+                ? 'Add attachments (optional – existing files are kept)'
+                : 'Attachments (optional – multiple allowed)'
+            }
             fieldHint="Attachments\n\nDrag, click, or paste (Ctrl+V). Optional images, PDFs, or documents linked to this note."
           />
+          {isEditing && existingAttachments.length > 0 && (
+            <div className={uiTypography.helper}>
+              <div className="mb-1 font-medium text-gray-700">Existing attachments</div>
+              <ul className="list-disc pl-4 space-y-0.5">
+                {existingAttachments.map((a: any, i: number) => (
+                  <li key={a.file_object_id || i}>{a.original_name || 'Attachment'}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </AppFormModal>
     );
@@ -6427,15 +6574,17 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
               </svg>
             </button>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">New Note</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Add a note or report to this project</p>
+              <h2 className="text-sm font-semibold text-gray-900">{isEditing ? 'Edit Note' : 'New Note'}</h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {isEditing ? 'Update this note or report' : 'Add a note or report to this project'}
+              </p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           <form
             id="create-note-form-project"
-            onSubmit={(e) => { e.preventDefault(); handleCreate(); }}
+            onSubmit={(e) => { e.preventDefault(); handleSave(); }}
             className="rounded-xl border border-gray-200 bg-white p-4 space-y-4"
           >
             <div>
@@ -6510,7 +6659,26 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
                 onChange={e => setDesc(e.target.value)}
               />
             </div>
-            <ReportAttachmentAreaMultiple files={files} setFiles={setFiles} accept="image/*,.pdf,.doc,.docx" label="Attachments (optional – multiple allowed)" />
+            <ReportAttachmentAreaMultiple
+              files={files}
+              setFiles={setFiles}
+              accept="image/*,.pdf,.doc,.docx"
+              label={
+                isEditing
+                  ? 'Add attachments (optional – existing files are kept)'
+                  : 'Attachments (optional – multiple allowed)'
+              }
+            />
+            {isEditing && existingAttachments.length > 0 && (
+              <div className="text-xs text-gray-600">
+                <div className="font-medium text-gray-700 mb-1">Existing attachments</div>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {existingAttachments.map((a: any, i: number) => (
+                    <li key={a.file_object_id || i}>{a.original_name || 'Attachment'}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </form>
         </div>
         <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
@@ -6528,7 +6696,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
             disabled={uploading}
             className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {uploading ? 'Creating...' : 'Create Note'}
+            {uploading ? (isEditing ? 'Saving...' : 'Creating...') : isEditing ? 'Save Note' : 'Create Note'}
           </button>
         </div>
       </div>
@@ -8237,10 +8405,20 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
 
       if (noteText) {
         try {
+          const statusChanged = String(currentStatus || '') !== String(selectedStatusId || '');
           await api('POST', `/projects/${projectId}/reports`, {
             title: 'Status Change',
             category_id: commercialGeneralCategoryId,
             description: noteText,
+            images: {
+              status_change: {
+                from_label: currentStatusLabel || '—',
+                to_label: selectedStatus?.label || '—',
+                from_id: currentStatus || null,
+                to_id: selectedStatusId || null,
+                status_changed: statusChanged,
+              },
+            },
           });
         } catch (noteErr: any) {
           toast.error(noteErr?.response?.data?.detail || 'Status updated, but failed to add note');
@@ -9811,7 +9989,7 @@ function ProjectDivisionsHeroSection({
 
   return (
     <>
-      <div className={compact ? 'mb-0' : 'mb-6'}>
+      <div>
         <div className={uiCx('flex items-center gap-1.5', compact ? 'mb-1' : 'mb-2')}>
           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Divisions</span>
           {hasEditPermission && (
@@ -10884,14 +11062,18 @@ function ProjectHeroPricingArea({ projectId, proposals }: { projectId: string; p
   const costPerArea = displayArea > 0 ? grandTotal / displayArea : 0;
 
   return (
-    <div className="mt-2 space-y-0.5">
-      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Total Area (Pricing)</div>
-      <div className="text-xs font-semibold text-gray-900">
-        {displayArea.toLocaleString('en-US', { maximumFractionDigits: 2 })} {formatAreaLabel(displayUnit)}
+    <div className={HERO_FIELD_STACK}>
+      <div>
+        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Total Area (Pricing)</div>
+        <div className="text-xs font-semibold text-gray-900">
+          {displayArea.toLocaleString('en-US', { maximumFractionDigits: 2 })} {formatAreaLabel(displayUnit)}
+        </div>
       </div>
-      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mt-1">Cost per Area</div>
-      <div className="text-xs font-semibold text-gray-900">
-        ${costPerArea.toFixed(2)}/{formatAreaLabel(displayUnit)}
+      <div>
+        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Cost per Area</div>
+        <div className="text-xs font-semibold text-gray-900">
+          ${costPerArea.toFixed(2)}/{formatAreaLabel(displayUnit)}
+        </div>
       </div>
     </div>
   );

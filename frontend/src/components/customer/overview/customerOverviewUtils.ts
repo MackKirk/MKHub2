@@ -120,6 +120,7 @@ export const PROJECT_STATUS_COLORS: Record<string, string> = {
   'In Progress': '#1d4ed8',
   'On Hold': '#f59e0b',
   Finished: '#15803d',
+  Cancelled: '#b91c1c',
 };
 
 export const FUNNEL_COLORS = {

@@ -315,7 +315,7 @@ def _funnel(rollup: List[Dict[str, Any]], values: Dict[str, float], d_from: str,
 def _portfolio(rollup: List[Dict[str, Any]], values: Dict[str, float]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     status_map: Dict[str, Dict[str, float]] = {}
     division_map: Dict[str, Dict[str, float]] = {}
-    label_map = {"in progress": "In Progress", "on hold": "On Hold", "finished": "Finished"}
+    label_map = {"in progress": "In Progress", "on hold": "On Hold", "finished": "Finished", "cancelled": "Cancelled", "canceled": "Cancelled"}
 
     for r in rollup:
         if r.get("is_bidding") is True:

@@ -46,6 +46,10 @@ def seed_project_status_colors():
             "on hold": "#fef3c7",     # Light yellow/amber - indicates paused/waiting
             "Finished": "#d1fae5",   # Light green - indicates completion
             "finished": "#d1fae5",   # Light green - indicates completion
+            "Cancelled": "#fee2e2",  # Light red - indicates cancelled
+            "cancelled": "#fee2e2",
+            "Canceled": "#fee2e2",
+            "canceled": "#fee2e2",
         }
         
         # First, let's see what statuses exist
@@ -84,6 +88,8 @@ def seed_project_status_colors():
                     color_value = "#fef3c7"  # Light yellow/amber
                 elif "finish" in label_lower or "complete" in label_lower or "done" in label_lower:
                     color_value = "#d1fae5"  # Light green
+                elif "cancel" in label_lower:
+                    color_value = "#fee2e2"  # Light red
                 else:
                     # Default subtle gray for unknown statuses
                     color_value = "#f3f4f6"

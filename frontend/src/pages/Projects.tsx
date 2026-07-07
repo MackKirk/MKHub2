@@ -657,7 +657,7 @@ export default function Projects(){
       operators: ['is', 'is_not'],
       getOptions: () => {
         // Allowed statuses for projects (case-insensitive matching)
-        const allowedStatuses = ['in progress', 'on progress', 'on hold', 'finished'];
+        const allowedStatuses = ['in progress', 'on progress', 'on hold', 'finished', 'cancelled', 'canceled'];
         return projectStatuses
           .filter((s: any) => {
             if (!effectiveShowInProject(s)) return false;
