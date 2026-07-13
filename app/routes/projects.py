@@ -131,6 +131,12 @@ def _normalize_crew_material_list(raw) -> Optional[list]:
                 "notes": _normalize_optional_text(item.get("notes")),
             }
         )
+        source = item.get("source")
+        if source in ("estimate", "manual"):
+            out[-1]["source"] = source
+        source_ref = _normalize_optional_text(item.get("source_ref"))
+        if source_ref:
+            out[-1]["source_ref"] = source_ref
     return out if out else None
 
 

@@ -6,6 +6,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, defer
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import func, or_
 
@@ -15,6 +16,111 @@ from ..models.models import Material, RelatedProduct, Estimate, EstimateItem, Pr
 
 
 router = APIRouter(prefix="/estimate", tags=["estimate"])
+
+_LABOURISH_SECTIONS = {"Labour", "Sub-Contractors", "Shop", "Miscellaneous"}
+
+
+def _is_product_section(section: Optional[str]) -> bool:
+    s = section or ""
+    if s in _LABOURISH_SECTIONS:
+        return False
+    if (
+        s.startswith("Labour Section")
+        or s.startswith("Sub-Contractor Section")
+        or s.startswith("Shop Section")
+        or s.startswith("Miscellaneous Section")
+    ):
+        return False
+    return True
+
+
+def _section_display_name(section: str, section_names: Optional[dict]) -> str:
+    names = section_names or {}
+    if section in names and names[section]:
+        return str(names[section])
+    if section.startswith("Product Section"):
+        return "Product Section"
+    return section or "Products"
+
+
+def _sync_project_crew_material_list_from_estimate_body(
+    project_id,
+    body: "EstimateIn",
+    db: Session,
+) -> None:
+    """Replace project Material List with product lines from the Costs estimate."""
+    if not project_id:
+        return
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return
+
+    section_names = body.section_names if isinstance(getattr(body, "section_names", None), dict) else {}
+    previous = project.crew_material_list if isinstance(project.crew_material_list, list) else []
+    previous_by_ref = {
+        str(row.get("source_ref")): row
+        for row in previous
+        if isinstance(row, dict) and row.get("source") == "estimate" and row.get("source_ref")
+    }
+
+    seen = set()
+    rows = []
+    for it in body.items or []:
+        section = it.section or ""
+        if not _is_product_section(section):
+            continue
+        if (it.item_type or "product") != "product":
+            continue
+
+        name = str(it.name or it.description or "").strip()
+        if not name and it.material_id is not None:
+            material = db.query(Material).filter(Material.id == it.material_id).first()
+            if material:
+                name = str(material.name or "").strip()
+        if not name:
+            continue
+
+        key = f"m:{it.material_id}" if it.material_id is not None else f"n:{name.lower()}"
+        source_ref = f"{section}|{key}"
+        if source_ref in seen:
+            continue
+        seen.add(source_ref)
+
+        prev = previous_by_ref.get(source_ref) or {}
+        qty_value = it.qty_required if it.qty_required is not None else it.quantity
+        quantity = None
+        if qty_value is not None:
+            try:
+                quantity = str(qty_value)
+            except Exception:
+                quantity = None
+        if not quantity and prev.get("quantity") is not None:
+            quantity = str(prev.get("quantity"))
+
+        unit = str(it.unit_required or it.unit or prev.get("unit") or "").strip() or None
+        default_notes = _section_display_name(section, section_names)
+        prev_notes = str(prev.get("notes") or "").strip()
+        notes = prev_notes or default_notes or None
+
+        try:
+            row_id = str(uuid.UUID(str(prev["id"]))) if prev.get("id") else str(uuid.uuid4())
+        except (ValueError, TypeError, AttributeError):
+            row_id = str(uuid.uuid4())
+
+        rows.append(
+            {
+                "id": row_id,
+                "name": name,
+                "quantity": quantity,
+                "unit": unit,
+                "notes": notes,
+                "source": "estimate",
+                "source_ref": source_ref,
+            }
+        )
+
+    project.crew_material_list = rows if rows else None
+    flag_modified(project, "crew_material_list")
 
 
 # ===================== Products (Materials) =====================
@@ -146,6 +252,37 @@ def update_product(
     if not row:
         raise HTTPException(status_code=404, detail="Product not found")
     data = body.dict(exclude_unset=True)
+
+    next_name = (data.get("name") if "name" in data else row.name) or ""
+    next_name = str(next_name).strip()
+    next_supplier = (
+        data.get("supplier_name") if "supplier_name" in data else row.supplier_name
+    ) or ""
+    next_supplier = str(next_supplier).strip()
+    if not next_name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if not next_supplier:
+        raise HTTPException(status_code=400, detail="Supplier is required")
+
+    existing = (
+        db.query(Material)
+        .filter(Material.id != product_id)
+        .filter(Material.supplier_name.isnot(None))
+        .filter(func.lower(Material.name) == next_name.lower())
+        .filter(func.lower(Material.supplier_name) == next_supplier.lower())
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="A product with this name already exists for this supplier",
+        )
+
+    if "name" in data:
+        data["name"] = next_name
+    if "supplier_name" in data:
+        data["supplier_name"] = next_supplier
+
     for k, v in data.items():
         setattr(row, k, v)
     row.last_updated = datetime.utcnow()
@@ -428,17 +565,24 @@ class EstimateItemIn(BaseModel):
     labour_journey: Optional[float] = None
     labour_men: Optional[int] = None
     labour_journey_type: Optional[str] = None  # 'days', 'hours', 'contract'
+    labour_days: Optional[float] = None  # Original days (time-based display)
+    labour_hours_per_day: Optional[float] = None  # Hours/day (time-based display)
+    labour_price_unit: Optional[str] = None  # 'day' | 'hour'
+    product_image: Optional[str] = None
+    pst: Optional[bool] = None
+    gst: Optional[bool] = None
 
 
 class EstimateIn(BaseModel):
     project_id: uuid.UUID
     markup: Optional[float] = 0.0
     notes: Optional[str] = None
-    pst_rate: Optional[float] = None  # PST rate
-    gst_rate: Optional[float] = None  # GST rate
+    pst_rate: Optional[float] = None  # PST rate (legacy / fallback)
+    gst_rate: Optional[float] = None  # GST rate (legacy / fallback)
     profit_rate: Optional[float] = None  # Profit rate
     section_order: Optional[List[str]] = None  # Section order
     section_names: Optional[dict] = None  # Section display names
+    section_tax_rates: Optional[dict] = None  # Per-section { pstRate, gstRate }
     items: List[EstimateItemIn] = []
 
 
@@ -492,7 +636,6 @@ def list_estimates(project_id: Optional[uuid.UUID] = None, db: Session = Depends
                 pst_rate = ui_state.get('pst_rate', 7.0)
                 gst_rate = ui_state.get('gst_rate', 5.0)
                 profit_rate = ui_state.get('profit_rate', 0.0)
-                markup = est.markup or 0.0
                 
                 # Get items to calculate taxable total
                 items = db.query(EstimateItem).filter(EstimateItem.estimate_id == est.id).all()
@@ -517,12 +660,11 @@ def list_estimates(project_id: Optional[uuid.UUID] = None, db: Session = Depends
                     if item_extras_map.get(f'item_{item.id}', {}).get('taxable', True) is not False:
                         taxable_total += item_total
                 
-                # Calculate PST, subtotal, markup, profit, total estimate, GST, grand total
+                # Calculate PST, subtotal, profit, total estimate, GST, grand total (no markup)
                 pst = taxable_total * (pst_rate / 100)
                 subtotal = total + pst
-                markup_value = subtotal * (markup / 100)
                 profit_value = subtotal * (profit_rate / 100)
-                final_total = subtotal + markup_value + profit_value
+                final_total = subtotal + profit_value
                 gst = final_total * (gst_rate / 100)
                 grand_total = final_total + gst
                 
@@ -582,6 +724,11 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
         ui_state['section_names'] = body.section_names
     elif 'section_names' in existing_ui_state:
         ui_state['section_names'] = existing_ui_state['section_names']
+
+    if body.section_tax_rates is not None:
+        ui_state['section_tax_rates'] = body.section_tax_rates
+    elif 'section_tax_rates' in existing_ui_state:
+        ui_state['section_tax_rates'] = existing_ui_state['section_tax_rates']
     
     # Delete existing items (but first get old extras to preserve if items match)
     old_items = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).all()
@@ -677,6 +824,10 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
             extras['markup'] = it.markup
         if it.taxable is not None:
             extras['taxable'] = it.taxable
+        if it.pst is not None:
+            extras['pst'] = it.pst
+        if it.gst is not None:
+            extras['gst'] = it.gst
         # Store labour fields
         if it.labour_journey is not None:
             extras['labour_journey'] = it.labour_journey
@@ -684,9 +835,17 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
             extras['labour_men'] = it.labour_men
         if it.labour_journey_type:
             extras['labour_journey_type'] = it.labour_journey_type
+        if it.labour_days is not None:
+            extras['labour_days'] = it.labour_days
+        if it.labour_hours_per_day is not None:
+            extras['labour_hours_per_day'] = it.labour_hours_per_day
+        if it.labour_price_unit:
+            extras['labour_price_unit'] = it.labour_price_unit
         # Store unit for subcontractor, shop, and miscellaneous items (for composition display)
         if it.unit:
             extras['unit'] = it.unit
+        if it.product_image:
+            extras['product_image'] = it.product_image
         
         # If no new values, try to preserve from old item
         if not extras:
@@ -706,6 +865,7 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
     est.notes = json.dumps(ui_state) if ui_state else None
     
     est.total_cost = total
+    _sync_project_crew_material_list_from_estimate_body(est.project_id, body, db)
     db.commit()
     db.refresh(est)
     return est
@@ -818,6 +978,10 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
             extras['markup'] = it.markup
         if it.taxable is not None:
             extras['taxable'] = it.taxable
+        if it.pst is not None:
+            extras['pst'] = it.pst
+        if it.gst is not None:
+            extras['gst'] = it.gst
         # Store labour fields
         if it.labour_journey is not None:
             extras['labour_journey'] = it.labour_journey
@@ -825,9 +989,17 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
             extras['labour_men'] = it.labour_men
         if it.labour_journey_type:
             extras['labour_journey_type'] = it.labour_journey_type
+        if it.labour_days is not None:
+            extras['labour_days'] = it.labour_days
+        if it.labour_hours_per_day is not None:
+            extras['labour_hours_per_day'] = it.labour_hours_per_day
+        if it.labour_price_unit:
+            extras['labour_price_unit'] = it.labour_price_unit
         # Store unit for subcontractor, shop, and miscellaneous items (for composition display)
         if it.unit:
             extras['unit'] = it.unit
+        if it.product_image:
+            extras['product_image'] = it.product_image
         if extras:
             item_extras[f'item_{estimate_item.id}'] = extras
     
@@ -849,6 +1021,7 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
     est.notes = notes_json
     
     est.total_cost = total
+    _sync_project_crew_material_list_from_estimate_body(body.project_id, body, db)
     db.commit()
     db.refresh(est)
     
@@ -924,15 +1097,27 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
                 item_dict["markup"] = extras['markup']
             if 'taxable' in extras:
                 item_dict["taxable"] = extras['taxable']
+            if 'pst' in extras:
+                item_dict["pst"] = extras['pst']
+            if 'gst' in extras:
+                item_dict["gst"] = extras['gst']
             if 'labour_journey' in extras:
                 item_dict["labour_journey"] = extras['labour_journey']
             if 'labour_men' in extras:
                 item_dict["labour_men"] = extras['labour_men']
             if 'labour_journey_type' in extras:
                 item_dict["labour_journey_type"] = extras['labour_journey_type']
+            if 'labour_days' in extras:
+                item_dict["labour_days"] = extras['labour_days']
+            if 'labour_hours_per_day' in extras:
+                item_dict["labour_hours_per_day"] = extras['labour_hours_per_day']
+            if 'labour_price_unit' in extras:
+                item_dict["labour_price_unit"] = extras['labour_price_unit']
             # Get unit from extras for subcontractor, shop, and miscellaneous items
             if 'unit' in extras:
                 item_dict["unit"] = extras['unit']
+            if 'product_image' in extras:
+                item_dict["product_image"] = extras['product_image']
         
         # If material_id exists, get material details
         # Use snapshot data if available (preserves product data at time of addition)
@@ -985,7 +1170,8 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
         "gst_rate": gst_rate if "gst_rate" in ui_state else None,
         "profit_rate": profit_rate if "profit_rate" in ui_state else None,
         "section_order": ui_state.get("section_order"),
-        "section_names": ui_state.get("section_names")
+        "section_names": ui_state.get("section_names"),
+        "section_tax_rates": ui_state.get("section_tax_rates"),
     }
 
 
@@ -1081,6 +1267,7 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
     profit_rate = ui_state.get('profit_rate', 0.0)
     section_order = ui_state.get('section_order', [])
     section_names = ui_state.get('section_names', {})
+    section_tax_rates = ui_state.get('section_tax_rates', {})
     global_markup = ui_state.get('markup', est.markup or 0.0)
     
     # Get item extras from notes to include labour_journey, labour_men, labour_journey_type
@@ -1113,6 +1300,12 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
                 item_dict["labour_men"] = extras['labour_men']
             if 'labour_journey_type' in extras:
                 item_dict["labour_journey_type"] = extras['labour_journey_type']
+            if 'labour_days' in extras:
+                item_dict["labour_days"] = extras['labour_days']
+            if 'labour_hours_per_day' in extras:
+                item_dict["labour_hours_per_day"] = extras['labour_hours_per_day']
+            if 'labour_price_unit' in extras:
+                item_dict["labour_price_unit"] = extras['labour_price_unit']
             if 'qty_required' in extras:
                 item_dict["qty_required"] = extras['qty_required']
             if 'unit_required' in extras:
@@ -1121,9 +1314,15 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
                 item_dict["markup"] = extras['markup']
             if 'taxable' in extras:
                 item_dict["taxable"] = extras['taxable']
+            if 'pst' in extras:
+                item_dict["pst"] = extras['pst']
+            if 'gst' in extras:
+                item_dict["gst"] = extras['gst']
             # Get unit from extras for subcontractor, shop, and miscellaneous items
             if 'unit' in extras:
                 item_dict["unit"] = extras['unit']
+            if 'product_image' in extras:
+                item_dict["product_image"] = extras['product_image']
         
         # Get material details if available
         # Use snapshot data if available (preserves product data at time of addition)
@@ -1181,46 +1380,61 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
             "items": items_by_section[section_name]
         })
     
-    # Calculate totals considering item types (labour has different calculation)
-    # Match frontend calculations: total without markup, totalWithMarkup with individual markups, taxableTotal with markup
+    # Calculate totals (quote-style: PST/GST per section on checked lines)
     total = 0.0
     total_with_markup = 0.0
-    taxable_total_with_markup = 0.0
-    
+
+    def get_section_rates(section_name: str) -> dict:
+        if section_name in section_tax_rates:
+            rates = section_tax_rates[section_name]
+            return {
+                'pst_rate': rates.get('pstRate', pst_rate),
+                'gst_rate': rates.get('gstRate', gst_rate),
+            }
+        return {'pst_rate': pst_rate, 'gst_rate': gst_rate}
+
+    def item_base_total(item_row, extras, item_type, section_name):
+        is_product_section = not (
+            section_name in ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous']
+            or section_name.startswith('Labour Section')
+            or section_name.startswith('Sub-Contractor Section')
+            or section_name.startswith('Shop Section')
+            or section_name.startswith('Miscellaneous Section')
+        )
+        if item_type == 'product' or is_product_section:
+            return (item_row.quantity or 0.0) * (item_row.unit_price or 0.0)
+        if item_type == 'labour' and extras.get('labour_journey_type'):
+            if extras['labour_journey_type'] == 'contract':
+                return (extras.get('labour_journey', 0) or 0) * (item_row.unit_price or 0.0)
+            return (extras.get('labour_journey', 0) or 0) * (extras.get('labour_men', 0) or 0) * (item_row.unit_price or 0.0)
+        return (item_row.quantity or 0.0) * (item_row.unit_price or 0.0)
+
+    pst = 0.0
+    gst = 0.0
     for item in items_data:
         item_key = f'item_{item.id}'
         extras = item_extras_map.get(item_key, {})
         item_type = item.item_type or 'product'
-        taxable = extras.get('taxable', True)  # Default to True if not specified
-        item_markup = extras.get('markup')  # Individual item markup (can be None)
-        
-        # Calculate item total without markup
-        if item_type == 'labour' and extras.get('labour_journey_type'):
-            if extras['labour_journey_type'] == 'contract':
-                item_total = (extras.get('labour_journey', 0) or 0) * (item.unit_price or 0.0)
-            else:
-                item_total = (extras.get('labour_journey', 0) or 0) * (extras.get('labour_men', 0) or 0) * (item.unit_price or 0.0)
-        else:
-            item_total = (item.quantity or 0.0) * (item.unit_price or 0.0)
-        
-        # Apply markup (individual or global)
-        markup_percent = item_markup if item_markup is not None else global_markup
-        item_total_with_markup = item_total * (1 + (markup_percent / 100))
-        
-        total += item_total
-        total_with_markup += item_total_with_markup
-        
-        # PST only applies to taxable items (with markup)
-        if taxable:
-            taxable_total_with_markup += item_total_with_markup
+        section_name = item.section or 'Miscellaneous'
+        line_total = item_base_total(item, extras, item_type, section_name)
+
+        total += line_total
+        total_with_markup += line_total
+
+        rates = get_section_rates(section_name)
+        pst_flag = extras.get('pst')
+        gst_flag = extras.get('gst')
+        if pst_flag is None and extras.get('taxable', True):
+            pst_flag = True
+        if pst_flag:
+            pst += line_total * (rates['pst_rate'] / 100)
+        if gst_flag:
+            gst += line_total * (rates['gst_rate'] / 100)
+
+    # Markup is no longer applied to line totals (legacy field kept on payload at 0)
+    markup_value = 0.0
     
-    # Calculate markup value as difference between total with markup and total without markup
-    markup_value = total_with_markup - total
-    
-    # Calculate PST on taxable items with markup
-    pst = taxable_total_with_markup * (pst_rate / 100)
-    
-    # Subtotal = total with markup + PST
+    # Subtotal = direct costs + PST
     subtotal = total_with_markup + pst
     
     # Profit is calculated on subtotal
@@ -1229,14 +1443,11 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
     # Final total = subtotal + profit
     final_total = subtotal + profit_value
     
-    # GST is calculated on final total
-    gst = final_total * (gst_rate / 100)
-    
-    # Grand total = final total + GST
+    # Grand total = final total + GST (line-based, not on final total)
     grand_total = final_total + gst
     
     # Prepare data for PDF generation
-    # Note: "total" is used for "Total Direct Costs" in PDF, which should be total_with_markup (matching frontend)
+    # Note: "total" is used for "Total Direct Costs" in PDF
     estimate_data = {
         "cover_title": f"ESTIMATE - {project_name}",
         "order_number": str(estimate_id),
@@ -1245,7 +1456,7 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
         "project_name": project_name,
         "date": est.created_at.strftime("%Y-%m-%d") if est.created_at else "",
         "sections": sections_data,
-        "total": total_with_markup,  # Total Direct Costs should show total with markup (matching frontend)
+        "total": total_with_markup,
         "pst": pst,
         "pst_rate": pst_rate,
         "subtotal": subtotal,

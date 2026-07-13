@@ -852,6 +852,186 @@ export const inventoryNewProductQuickInfo = formModalQuickInfo({
   ),
 });
 
+/** Estimate — add a catalog product line. */
+export const estimateAddProductQuickInfo = formModalQuickInfo({
+  purpose: <>Pick a product from your catalog and add it as a line on this estimate.</>,
+  howToUse: (
+    <>
+      Search in {uiLabel('Product')} by name, supplier, or unit. Use the search button beside the field to{' '}
+      {uiLabel('Browse by supplier')}. When a product is selected, review price and sell unit, then choose{' '}
+      {uiLabel('Section')} if needed.
+    </>
+  ),
+  behavior: (
+    <>
+      After adding, set {uiLabel('Qty')} in the product&apos;s sell unit (Roll, Box, etc.). Edit {uiLabel('Price')}
+      on the line if needed. Use {uiLabel('PST')} and {uiLabel('GST')} checkboxes per line (off by default for new
+      items). Coverage hints appear under each line when the catalog product has coverage data. Use{' '}
+      {uiLabel('Create new product')} if nothing matches, or {uiLabel('Compare')} for substitutes.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without adding a line. {uiLabel('Add Item')} inserts the product on the estimate.
+    </>
+  ),
+});
+
+/** Estimate — browse products grouped by supplier. */
+export const estimateBrowseProductsBySupplierQuickInfo = formModalQuickInfo({
+  purpose: <>Find products by vendor when you know the supplier but not the exact product name.</>,
+  howToUse: (
+    <>
+      Select a supplier on the left. Search or scroll the product list on the right. Click a row to choose that
+      product.
+    </>
+  ),
+  behavior: (
+    <>
+      The list shows how many products each supplier has. Use {uiLabel('+ New Product')} to add a catalog row for the
+      selected supplier without leaving the estimate.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Close')} returns without selecting. Clicking a product selects it and returns to{' '}
+      {uiLabel('Add Product')}.
+    </>
+  ),
+});
+
+/** Estimate — compare related products. */
+export const estimateCompareProductsQuickInfo = formModalQuickInfo({
+  purpose: <>Review substitute or related products for the one you selected.</>,
+  howToUse: (
+    <>
+      Your current selection is shown at the top. Click a related product below to switch your choice.
+    </>
+  ),
+  behavior: (
+    <>
+      Related links are configured in {uiLabel('Inventory')}. If none exist, the list stays empty.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Close')} keeps your current selection. Click a related product to replace it.
+    </>
+  ),
+});
+
+/** Estimate — create a catalog product while building the estimate. */
+export const estimateNewProductQuickInfo = formModalQuickInfo({
+  purpose: <>Add a new product to the catalog without leaving the estimate.</>,
+  howToUse: (
+    <>
+      Enter {uiLabel('Name')}, {uiLabel('Supplier')}, and {uiLabel('Price ($)')}. Set unit type, category, coverage,
+      image, or technical manual as needed.
+    </>
+  ),
+  behavior: (
+    <>
+      You can {uiLabel('+ Create New Supplier')} if the vendor is not in the list yet. The new product is saved to
+      inventory and selected for this estimate line.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Create Product')} adds the product and selects it.
+    </>
+  ),
+});
+
+/** Estimate — add a labour line. */
+export const estimateAddLabourQuickInfo = formModalQuickInfo({
+  purpose: <>Add a labour cost line — time-based crew days (with optional hours/day and day or hour rates) or a contract amount.</>,
+  howToUse: (
+    <>
+      Enter the {uiLabel('Labour')} description and choose {uiLabel('Time-based')} or {uiLabel('Contract')}. For
+      time-based, set {uiLabel('Men')}, {uiLabel('Days')}, optional {uiLabel('Hours per Day')}, and whether the rate is{' '}
+      {uiLabel('Per day')} or {uiLabel('Per hour')}. The total preview updates as you type.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without adding. {uiLabel('Add Labour')} inserts the line on the estimate.
+    </>
+  ),
+});
+
+/** Estimate — add a sub-contractor line. */
+export const estimateAddSubContractorQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>Add sub-contractor costs such as debris cartage, portable washroom rental, or a custom line.</>
+  ),
+  howToUse: (
+    <>
+      Choose a {uiLabel('Sub-Contractor Type')}, then fill in the fields for that type. The total preview shows the
+      calculated amount.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without adding. {uiLabel('Add Sub-Contractors')} inserts the line on the estimate.
+    </>
+  ),
+});
+
+/** Estimate — add a shop line. */
+export const estimateAddShopQuickInfo = formModalQuickInfo({
+  purpose: <>Add a shop or fabrication cost line to the estimate.</>,
+  howToUse: (
+    <>
+      Enter {uiLabel('Name/Description')}, {uiLabel('Quantity')} with unit, and {uiLabel('Price per Unit ($)')}. The
+      total preview updates as you type.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without adding. {uiLabel('Add Shop')} inserts the line on the estimate.
+    </>
+  ),
+});
+
+/** Estimate — add a miscellaneous line. */
+export const estimateAddMiscellaneousQuickInfo = formModalQuickInfo({
+  purpose: <>Add a miscellaneous cost line that does not fit products, labour, shop, or sub-contractors.</>,
+  howToUse: (
+    <>
+      Enter {uiLabel('Name/Description')}, {uiLabel('Quantity')} with unit, and {uiLabel('Price per Unit ($)')}. The
+      total preview updates as you type.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without adding. {uiLabel('Add Miscellaneous')} inserts the line on the estimate.
+    </>
+  ),
+});
+
+/** Estimate — summary and analysis read-only view. */
+export const estimateSummaryQuickInfo = formModalQuickInfo({
+  purpose: <>Review cost breakdown, labour and product analysis, markups, taxes, and final totals for this estimate.</>,
+  howToUse: (
+    <>
+      Scroll through each section — cost by section, labour, products, sub-contractors, shop, mark-up, PST, profit, GST,
+      and grand total.
+    </>
+  ),
+  actions: <>{uiLabel('Close')} returns to the estimate editor.</>,
+});
+
+/** Estimate — read-only product details from a line. */
+export const estimateProductViewQuickInfo = formModalQuickInfo({
+  purpose: <>Inspect catalog details for a product already on the estimate — pricing, units, and coverage.</>,
+  howToUse: (
+    <>
+      Review supplier, category, sell unit, unit type, price, coverage, and description. This view is read-only.
+    </>
+  ),
+  actions: <>{uiLabel('Close')} returns to the estimate.</>,
+});
+
 /** Inventory — supplier contact create/edit. */
 export function inventoryContactFormQuickInfo(editing: boolean): ReactNode {
   return formModalQuickInfo({
@@ -985,24 +1165,24 @@ export const editProjectDivisionsQuickInfo = formModalQuickInfo({
   ),
 });
 
-/** Project overview — edit field brief (scope, materials, job completion). */
+/** Project overview — edit field brief (scope, job completion). */
 export const editFieldBriefQuickInfo = formModalQuickInfo({
   purpose: (
     <>
-      Share scope, materials, and job completion details with the crew on the project overview — without needing
-      access to Proposal or Estimate tabs.
+      Share scope and job completion details with the crew on the project overview. Material List comes from the{' '}
+      {uiLabel('Costs')} tab.
     </>
   ),
   howToUse: (
     <>
-      Fill in {uiLabel('Scope of Work')}, add a {uiLabel('Job Completion Estimate')}, and use {uiLabel('+ Add row')} to
-      list materials with quantity and unit. Tap {uiLabel('?')} beside any field for more detail.
+      Fill in {uiLabel('Scope of Work')} and {uiLabel('Job Completion Estimate')}. To change materials, edit product
+      lines in the {uiLabel('Costs')} tab — the Material List updates from there.
     </>
   ),
   behavior: (
     <>
-      Material rows need a name to be saved; empty rows are ignored. Use the red {uiLabel('×')} to remove a material row
-      when you have more than one.
+      Saving updates only scope and job completion. The Material List is read-only here and is replaced whenever Costs
+      is saved.
     </>
   ),
   actions: (

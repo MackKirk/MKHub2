@@ -200,7 +200,7 @@ const LEGACY_PROJECT_SUB_FEATURES = [
 ] as const;
 
 /** Sub-features removed from the app — hidden in permission UIs (tab no longer exists). */
-const HIDDEN_LINE_PROJECT_SUB_FEATURES = ['estimate', 'orders'] as const;
+const HIDDEN_LINE_PROJECT_SUB_FEATURES = ['orders'] as const;
 
 export function isHiddenProjectLinePermissionKey(key: string): boolean {
   return HIDDEN_LINE_PROJECT_SUB_FEATURES.some((feat) => key.includes(`:${feat}:`));

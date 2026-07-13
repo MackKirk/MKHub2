@@ -72,6 +72,10 @@ import {
 } from '@/lib/formModalQuickInfo';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
 import {
+  mapEstimateProductsToCrewMaterials,
+  type EstimateMaterialSourceItem,
+} from '@/lib/estimateMaterialList';
+import {
   AppBadge,
   AppButton,
   AppCard,
@@ -1055,10 +1059,26 @@ export default function ProjectDetail(){
   const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`), enabled: !!id && !signOnlySafetySession });
   const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`), enabled: !!id && !signOnlySafetySession });
   const { data:projectEstimates } = useQuery({ queryKey:['projectEstimates', id], queryFn: ()=>api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(id||''))}`), enabled: !!id && !signOnlySafetySession });
-  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
+  const primaryCostsEstimateId = projectEstimates?.[0]?.id as number | undefined;
   // Tab query parameter (searchParams above)
   const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null) || null;
   const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null>(initialTab);
+  const { data: costsEstimateDetail } = useQuery({
+    queryKey: ['estimate', primaryCostsEstimateId],
+    queryFn: () => api<any>('GET', `/estimate/estimates/${primaryCostsEstimateId}`),
+    enabled: !!primaryCostsEstimateId && !signOnlySafetySession && (tab === null || tab === 'overview'),
+  });
+  const fieldBriefProj = useMemo(() => {
+    const base = proj || {};
+    if (!costsEstimateDetail?.items) return base;
+    const mapped = mapEstimateProductsToCrewMaterials(
+      costsEstimateDetail.items as EstimateMaterialSourceItem[],
+      (costsEstimateDetail.section_names || {}) as Record<string, string>,
+      Array.isArray(base.crew_material_list) ? base.crew_material_list : [],
+    );
+    return { ...base, crew_material_list: mapped.length > 0 ? mapped : null };
+  }, [proj, costsEstimateDetail]);
+  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   // Live pricing items (from ProposalForm) to update division percentages instantly without reload.
   const [livePricingItems, setLivePricingItems] = useState<any[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -1243,8 +1263,8 @@ export default function ProjectDetail(){
 
   // Base available tabs (leak investigations use the same strip as opportunities)
   const baseAvailableTabs = isOpportunityStyleTabs
-    ? (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing'] as const)
-    : (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','orders','safety'] as const);
+    ? (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','estimate'] as const)
+    : (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','estimate','orders','safety'] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
   const availableTabs = useMemo(() => {
@@ -1274,6 +1294,26 @@ export default function ProjectDetail(){
   const invalidateRecentActivity = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', String(id ?? '')] });
   }, [id, queryClient]);
+
+  const syncMaterialListFromEstimate = useCallback(
+    async (payload: { items: EstimateMaterialSourceItem[]; sectionNames: Record<string, string> }) => {
+      if (!id) return;
+      const existing = Array.isArray(proj?.crew_material_list) ? proj.crew_material_list : [];
+      const nextList = mapEstimateProductsToCrewMaterials(
+        payload.items,
+        payload.sectionNames,
+        existing,
+      );
+      const crew_material_list = nextList.length > 0 ? nextList : null;
+      // Backend already persists Material List on Costs save; refresh local cache + project query.
+      queryClient.setQueryData<Project | undefined>(projectQueryKey, (old) =>
+        old ? { ...old, crew_material_list } : old,
+      );
+      await queryClient.invalidateQueries({ queryKey: projectQueryKey });
+      invalidateRecentActivity();
+    },
+    [id, proj?.crew_material_list, projectQueryKey, queryClient, invalidateRecentActivity],
+  );
 
   // Invalidate queries for a tab so that when we switch to it we see fresh data (e.g. after save elsewhere)
   const invalidateQueriesForTab = useCallback((tabName: typeof availableTabs[number] | 'estimate' | null) => {
@@ -1361,7 +1401,7 @@ export default function ProjectDetail(){
     if (leavingEstimateWithUnsaved || leavingProposalPricingWithUnsaved || leavingSafetyWithUnsaved) {
       const tabLabel =
         tab === 'estimate'
-          ? 'Estimate'
+          ? 'Costs'
           : tab === 'safety'
             ? 'Safety'
             : tab === 'pricing'
@@ -1427,7 +1467,7 @@ export default function ProjectDetail(){
       'documents': 'Documents',
       'proposal': 'Proposal',
       'pricing': 'Pricing',
-      'estimate': 'Estimate',
+      'estimate': 'Costs',
       'orders': 'Orders',
       'safety': 'Safety',
     };
@@ -1439,7 +1479,7 @@ export default function ProjectDetail(){
   const getPageDescription = (proj: any, activeTab: typeof tab): string => {
     if (!activeTab || activeTab === 'overview') {
       return proj?.is_bidding
-        ? 'Overview, files, proposal and estimate.'
+        ? 'Overview, files, proposal and costs.'
         : 'Overview, files, schedule and contacts.';
     }
     const tabDescriptions: Record<string, string> = {
@@ -1450,7 +1490,7 @@ export default function ProjectDetail(){
       'documents': 'Create and edit documents, export to PDF',
       'proposal': 'Full proposal with General Information, Sections, Pricing, Optional Services, Terms',
       'pricing': 'Project pricing',
-      'estimate': 'Cost estimates and budgets',
+      'estimate': 'Project costs and budgets',
       'orders': 'Purchase orders and supplies',
       'safety': 'Site safety inspections',
     };
@@ -2585,7 +2625,7 @@ export default function ProjectDetail(){
                 <LastReportsCard reports={reports || []} useDesignSystem />
                 <ProjectFieldBriefCard
                   projectId={String(id)}
-                  proj={proj || {}}
+                  proj={fieldBriefProj}
                   hasEditPermission={hasEditPermission}
                   designSystem
                   onSaved={(updated) => {
@@ -2622,7 +2662,7 @@ export default function ProjectDetail(){
                 <LastReportsCard reports={reports||[]} />
                 <ProjectFieldBriefCard
                   projectId={String(id)}
-                  proj={proj || {}}
+                  proj={fieldBriefProj}
                   hasEditPermission={hasEditPermission}
                   onSaved={(updated) => {
                     queryClient.setQueryData<Project | undefined>(projectQueryKey, (old) =>
@@ -3141,9 +3181,39 @@ export default function ProjectDetail(){
               )}
 
               {tab==='estimate' && (
-                <div className="rounded-xl border bg-white p-4">
-                  <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={isOpportunityStyleTabs} canEdit={canEditEstimate} />
-                </div>
+                useDesignSystem ? (
+                  <AppCard className="!rounded-2xl" bodyClassName={uiSpacing.cardPadding}>
+                    <AppSectionHeader
+                      title="Costs"
+                      description="Project costs and budgets"
+                      {...appSectionPresetProps('pricing')}
+                    />
+                    <div className="mt-4">
+                      <EstimateBuilder
+                        ref={estimateBuilderRef}
+                        projectId={String(id)}
+                        statusLabel={proj?.status_label||''}
+                        settings={settings||{}}
+                        isBidding={isOpportunityStyleTabs}
+                        canEdit={canEditEstimate}
+                        designSystem
+                        onEstimateSaved={syncMaterialListFromEstimate}
+                      />
+                    </div>
+                  </AppCard>
+                ) : (
+                  <div className="rounded-xl border bg-white p-4">
+                    <EstimateBuilder
+                      ref={estimateBuilderRef}
+                      projectId={String(id)}
+                      statusLabel={proj?.status_label||''}
+                      settings={settings||{}}
+                      isBidding={isOpportunityStyleTabs}
+                      canEdit={canEditEstimate}
+                      onEstimateSaved={syncMaterialListFromEstimate}
+                    />
+                  </div>
+                )
               )}
 
               {tab==='orders' && (
@@ -6012,7 +6082,7 @@ function ReportsTabEnhanced({
                     const sectionOrder = estimateData?.section_order || [];
                     const sectionNames = estimateData?.section_names || {};
                     
-                    // Calculate item total base (without markup)
+                    // Calculate item line total (no markup)
                     const calculateItemTotal = (item: any): number => {
                       if (item.item_type === 'labour' && item.labour_journey_type) {
                         if (item.labour_journey_type === 'contract') {
@@ -6024,12 +6094,7 @@ function ReportsTabEnhanced({
                       return (item.quantity || 0) * (item.unit_price || 0);
                     };
                     
-                    // Calculate item total with markup applied
-                    const calculateItemTotalWithMarkup = (item: any): number => {
-                      const itemTotal = calculateItemTotal(item);
-                      const itemMarkup = item.markup !== undefined && item.markup !== null ? item.markup : (estimateData?.markup || 0);
-                      return itemTotal * (1 + (itemMarkup / 100));
-                    };
+                    const calculateItemTotalWithMarkup = (item: any): number => calculateItemTotal(item);
                     
                     const grandTotal = items.reduce((sum: number, item: any) => sum + calculateItemTotalWithMarkup(item), 0);
                     
@@ -6108,11 +6173,6 @@ function ReportsTabEnhanced({
                                                 {item.supplier_name && (
                                                   <span>
                                                     <span className="font-medium">Supplier:</span> {item.supplier_name}
-                                                  </span>
-                                                )}
-                                                {item.markup !== undefined && item.markup !== null && item.markup > 0 && (
-                                                  <span>
-                                                    <span className="font-medium">Markup:</span> {item.markup.toFixed(1)}%
                                                   </span>
                                                 )}
                                                 {item.taxable && (
@@ -8097,7 +8157,7 @@ function ProjectTabCards({ availableTabs, tabCounts, onTabClick, proj, currentTa
     documents: { label: 'Documents', icon: '📄' },
     proposal: { label: 'Proposal', icon: '📄' },
     pricing: { label: 'Pricing', icon: '💰' },
-    estimate: { label: 'Estimate', icon: '💰' },
+    estimate: { label: 'Costs', icon: '💰' },
     orders: { label: 'Orders', icon: '🛒' },
     safety: { label: 'Safety', icon: '🦺' },
   };

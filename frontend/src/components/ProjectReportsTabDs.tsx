@@ -105,12 +105,7 @@ function EstimateChangesBlock({ selectedReport }: { selectedReport: ProjectRepor
     return (item.quantity || 0) * (item.unit_price || 0);
   };
 
-  const calculateItemTotalWithMarkup = (item: any): number => {
-    const itemTotal = calculateItemTotal(item);
-    const itemMarkup =
-      item.markup !== undefined && item.markup !== null ? item.markup : estimateData?.markup || 0;
-    return itemTotal * (1 + itemMarkup / 100);
-  };
+  const calculateItemTotalWithMarkup = (item: any): number => calculateItemTotal(item);
 
   const grandTotal = items.reduce(
     (sum: number, item: any) => sum + calculateItemTotalWithMarkup(item),
@@ -215,14 +210,6 @@ function EstimateChangesBlock({ selectedReport }: { selectedReport: ProjectRepor
                                   <span className="font-medium">Supplier:</span> {item.supplier_name}
                                 </span>
                               )}
-                              {item.markup !== undefined &&
-                                item.markup !== null &&
-                                item.markup > 0 && (
-                                  <span>
-                                    <span className="font-medium">Markup:</span>{' '}
-                                    {item.markup.toFixed(1)}%
-                                  </span>
-                                )}
                               {item.taxable && (
                                 <span className="font-medium text-green-700">Taxable</span>
                               )}

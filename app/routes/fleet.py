@@ -2918,6 +2918,8 @@ def create_inspection(
 ):
     """Create a new inspection (body or mechanical)."""
     data = inspection.model_dump()
+    if "photos" in data:
+        data["photos"] = _fleet_asset_json_file_id_list(data.get("photos"))
     new_inspection = FleetInspection(**data, created_by=user.id)
     db.add(new_inspection)
     db.flush()
@@ -3025,6 +3027,9 @@ def update_inspection(
     before = snapshot_fleet_inspection(inspection)
     update_data = inspection_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
+        # JSON column cannot serialize uuid.UUID (same as fleet asset photos/documents)
+        if key == "photos":
+            value = _fleet_asset_json_file_id_list(value)
         setattr(inspection, key, value)
 
     _result_lower = (inspection.result or "").lower()
