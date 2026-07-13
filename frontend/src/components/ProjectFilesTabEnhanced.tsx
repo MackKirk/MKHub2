@@ -13,6 +13,7 @@ import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
   FileImagePreviewModal,
+  FilePdfPreviewModal,
   FileOfficePreviewModal,
   FileListSelectionBar,
   FileMoveLocationModal,
@@ -64,7 +65,6 @@ import {
   AppHeroEditButton,
   AppInput,
   AppListRowIconButton,
-  AppModal,
   AppSectionHeader,
   AppSelect,
   AppTabs,
@@ -2577,66 +2577,12 @@ export default function ProjectFilesTabEnhanced({
         }
       />
 
-      {/* PDF Preview Modal */}
-      {previewPdf && designSystem && (
-        <AppModal
-          open
-          onClose={() => setPreviewPdf(null)}
-          title={previewPdf.name}
-          size="lg"
-          bodyClassName="p-0"
-          bodyFill
-          footer={
-            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end gap-2')}>
-              <AppButton variant="secondary" size="sm" type="button" onClick={() => setPreviewPdf(null)}>
-                Close
-              </AppButton>
-              <AppButton
-                size="sm"
-                type="button"
-                onClick={() => window.open(previewPdf.url, '_blank')}
-              >
-                Download
-              </AppButton>
-            </div>
-          }
-        >
-          <iframe src={previewPdf.url} className="h-full w-full border-0" title={previewPdf.name} />
-        </AppModal>
-      )}
-      {previewPdf && !designSystem && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-semibold">{previewPdf.name}</h3>
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewPdf.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                  title="Open in new tab"
-                >
-                  🔗
-                </a>
-                <button
-                  onClick={() => setPreviewPdf(null)}
-                  className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-hidden min-h-0">
-              <iframe
-                src={previewPdf.url}
-                className="w-full h-full border-0"
-                title={previewPdf.name}
-              />
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+      <FilePdfPreviewModal
+        open={!!previewPdf}
+        url={previewPdf?.url}
+        name={previewPdf?.name}
+        onClose={() => setPreviewPdf(null)}
+      />
 
       {/* Excel / spreadsheet preview (Office Online when URL is publicly reachable) */}
       <FileOfficePreviewModal

@@ -6,6 +6,8 @@ import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   FileImagePreviewModal,
+  FilePdfPreviewModal,
+  FileOfficePreviewModal,
   FileListSelectionBar,
   FileMoveLocationModal,
   FileListDropHint,
@@ -50,7 +52,6 @@ import {
   AppFormModal,
   AppInput,
   AppListRowIconButton,
-  AppModal,
   AppSectionHeader,
   AppSelect,
   AppTabs,
@@ -1913,65 +1914,19 @@ export default function CompanyFilesTabEnhanced() {
         onNext={imageGallery.goNext}
       />
 
-      {previewPdf ? (
-        <AppModal
-          open
-          onClose={() => setPreviewPdf(null)}
-          title={previewPdf.name}
-          size="lg"
-          bodyClassName="p-0"
-          bodyFill
-          footer={
-            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end gap-2')}>
-              <AppButton variant="secondary" size="sm" type="button" onClick={() => setPreviewPdf(null)}>
-                Close
-              </AppButton>
-              <AppButton size="sm" type="button" onClick={() => window.open(previewPdf.url, '_blank')}>
-                Download
-              </AppButton>
-            </div>
-          }
-        >
-          <iframe src={previewPdf.url} className="h-full w-full border-0" title={previewPdf.name} />
-        </AppModal>
-      ) : null}
+      <FilePdfPreviewModal
+        open={!!previewPdf}
+        url={previewPdf?.url}
+        name={previewPdf?.name}
+        onClose={() => setPreviewPdf(null)}
+      />
 
-      {previewExcel ? (
-        <AppModal
-          open
-          onClose={() => setPreviewExcel(null)}
-          title={previewExcel.name}
-          size="lg"
-          bodyClassName="p-0"
-          bodyFill
-          footer={
-            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end gap-2')}>
-              <AppButton variant="secondary" size="sm" type="button" onClick={() => setPreviewExcel(null)}>
-                Close
-              </AppButton>
-              <AppButton
-                size="sm"
-                type="button"
-                onClick={() => {
-                  const a = document.createElement('a');
-                  a.href = previewExcel.url;
-                  a.download = previewExcel.name;
-                  a.click();
-                }}
-              >
-                Download
-              </AppButton>
-            </div>
-          }
-        >
-          <iframe
-            src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewExcel.url)}`}
-            className="h-full w-full border-0"
-            title={previewExcel.name}
-            allow="fullscreen"
-          />
-        </AppModal>
-      ) : null}
+      <FileOfficePreviewModal
+        open={!!previewExcel}
+        url={previewExcel?.url}
+        name={previewExcel?.name}
+        onClose={() => setPreviewExcel(null)}
+      />
     </>
   );
 }

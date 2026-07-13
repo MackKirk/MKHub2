@@ -1,4 +1,5 @@
 export { default as FileImagePreviewModal } from './FileImagePreviewModal';
+export { FilePdfPreviewModal } from './FilePdfPreviewModal';
 export { FileOfficePreviewModal } from './FileOfficePreviewModal';
 export { canEmbedWithOfficeOnline, officeOnlineEmbedSrc } from './officeOnlinePreview';
 export { FILE_LIBRARY_ACCEPT, FILE_LIBRARY_UPLOAD_HINT } from './fileLibraryAccept';

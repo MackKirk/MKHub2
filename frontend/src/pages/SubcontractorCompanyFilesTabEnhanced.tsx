@@ -7,6 +7,8 @@ import OverlayPortal from '@/components/OverlayPortal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   FileImagePreviewModal,
+  FilePdfPreviewModal,
+  FileOfficePreviewModal,
   FileListSelectionBar,
   FileMoveLocationModal,
   FileListDropHint,
@@ -1058,39 +1060,18 @@ export function SubcontractorCompanyFilesTabEnhanced({
           ) : null
         }
       />
-      {previewPdf && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-semibold">{previewPdf.name}</h3>
-              <div className="flex items-center gap-2">
-                <a href={previewPdf.url} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded border hover:bg-gray-50">🔗</a>
-                <button onClick={() => setPreviewPdf(null)} className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6">×</button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-hidden min-h-0">
-              <iframe src={previewPdf.url} className="w-full h-full border-0" title={previewPdf.name} />
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
-      {previewExcel && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewExcel(null)}>
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-semibold">{previewExcel.name}</h3>
-              <div className="flex items-center gap-2">
-                <a href={previewExcel.url} download={previewExcel.name} className="text-xs px-2 py-1 rounded border hover:bg-gray-50">⬇️</a>
-                <a href={previewExcel.url} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded border hover:bg-gray-50">🔗</a>
-                <button onClick={() => setPreviewExcel(null)} className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6">×</button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-hidden min-h-0">
-              <iframe src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewExcel.url)}`} className="w-full h-full border-0" title={previewExcel.name} allow="fullscreen" />
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+      <FilePdfPreviewModal
+        open={!!previewPdf}
+        url={previewPdf?.url}
+        name={previewPdf?.name}
+        onClose={() => setPreviewPdf(null)}
+      />
+      <FileOfficePreviewModal
+        open={!!previewExcel}
+        url={previewExcel?.url}
+        name={previewExcel?.name}
+        onClose={() => setPreviewExcel(null)}
+      />
       {editingImage && (
         <ImageEditor
           isOpen={!!editingImage}

@@ -35,7 +35,7 @@ export function FileOfficePreviewModal({ open, url, name, onClose }: Props) {
       onClose={onClose}
       title={fileName}
       size="lg"
-      dialogClassName="!max-w-[95vw] !max-h-[95vh]"
+      dialogClassName="!max-h-[95vh]"
       bodyClassName={canEmbed ? '!p-0 min-h-[70vh]' : undefined}
       bodyFill={false}
       footer={

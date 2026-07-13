@@ -6,6 +6,7 @@ import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   FileImagePreviewModal,
+  FilePdfPreviewModal,
   FileOfficePreviewModal,
   FileListSelectionBar,
   FileMoveLocationModal,
@@ -43,7 +44,6 @@ import {
   AppFormModal,
   AppInput,
   AppListRowIconButton,
-  AppModal,
   AppSectionHeader,
   AppSelect,
   AppSortableEntityList,
@@ -934,17 +934,12 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
         onNext={imageGallery.goNext}
       />
 
-      <AppModal
+      <FilePdfPreviewModal
         open={!!previewPdf}
+        url={previewPdf?.url}
+        name={previewPdf?.name}
         onClose={() => setPreviewPdf(null)}
-        title={previewPdf?.name}
-        size="lg"
-        dialogClassName="!max-w-[95vw] !max-h-[95vh]"
-        bodyClassName="!p-0 min-h-[70vh]"
-        bodyFill={false}
-      >
-        {previewPdf ? <iframe src={previewPdf.url} className="h-[70vh] w-full border-0" title={previewPdf.name} /> : null}
-      </AppModal>
+      />
 
       <FileOfficePreviewModal
         open={!!previewExcel}
