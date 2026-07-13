@@ -1265,43 +1265,32 @@ export default function InventoryProducts(){
               error={nameError && !name.trim() ? 'This field is required' : undefined}
               fieldHint="Name\n\nProduct name as shown in estimates and the catalog."
             />
-            {editing ? (
-              <AppInput
-                label="Supplier *"
-                value={editing.supplier_name || newSupplier}
-                readOnly
-                tabIndex={-1}
-                inputClassName="cursor-default bg-gray-50"
-                fieldHint="Supplier\n\nSupplier cannot be changed from this form."
+            <div className="space-y-1.5">
+              <AppControlLabelRow
+                label={
+                  <>
+                    Supplier <span className="text-red-600">*</span>
+                  </>
+                }
+                fieldHint={
+                  <AppFieldHint hint="Supplier *\n\nVendor that supplies this product. Use + New Supplier if missing." />
+                }
               />
-            ) : (
-              <div className="space-y-1.5">
-                <AppControlLabelRow
-                  label={
-                    <>
-                      Supplier <span className="text-red-600">*</span>
-                    </>
-                  }
-                  fieldHint={
-                    <AppFieldHint hint="Supplier *\n\nVendor that supplies this product. Use + New Supplier if missing." />
-                  }
-                />
-                <SupplierSelect
-                  value={newSupplier}
-                  onChange={(value) => {
-                    setNewSupplier(value);
-                    if (supplierError) setSupplierError(false);
-                  }}
-                  onOpenNewSupplierModal={() => setNewSupplierModalOpen(true)}
-                  error={supplierError && !newSupplier.trim()}
-                  placeholder="Select a supplier"
-                  className="[&_button]:text-sm"
-                />
-                {supplierError && !newSupplier.trim() && (
-                  <p className="text-[11px] text-red-600">This field is required</p>
-                )}
-              </div>
-            )}
+              <SupplierSelect
+                value={newSupplier}
+                onChange={(value) => {
+                  setNewSupplier(value);
+                  if (supplierError) setSupplierError(false);
+                }}
+                onOpenNewSupplierModal={() => setNewSupplierModalOpen(true)}
+                error={supplierError && !newSupplier.trim()}
+                placeholder="Select a supplier"
+                className="[&_button]:text-sm"
+              />
+              {supplierError && !newSupplier.trim() && (
+                <p className="text-[11px] text-red-600">This field is required</p>
+              )}
+            </div>
             <AppInput
               label="Category"
               value={newCategory}

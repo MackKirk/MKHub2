@@ -33,6 +33,7 @@ import {
   AppPageHeader,
   AppTabs,
   uiCx,
+  uiLayout,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
@@ -526,17 +527,19 @@ export default function EquipmentDetail() {
           size="lg"
           bodyClassName="flex items-center justify-center bg-gray-50 p-4"
           footer={
-            <>
+            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-between')}>
               <AppButton variant="danger" onClick={() => void removeHeroPhoto()} disabled={heroPhotoBusy}>
                 Remove
               </AppButton>
-              <AppButton variant="secondary" onClick={() => setShowHeroPhotoViewModal(false)}>
-                Close
-              </AppButton>
-              <AppButton onClick={() => equipmentHeroPhotoInputRef.current?.click()} disabled={heroPhotoBusy}>
-                Replace image
-              </AppButton>
-            </>
+              <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+                <AppButton variant="secondary" onClick={() => setShowHeroPhotoViewModal(false)}>
+                  Close
+                </AppButton>
+                <AppButton onClick={() => equipmentHeroPhotoInputRef.current?.click()} disabled={heroPhotoBusy}>
+                  Replace image
+                </AppButton>
+              </div>
+            </div>
           }
         >
           <img

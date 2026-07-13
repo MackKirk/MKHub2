@@ -11,6 +11,7 @@ import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import SupplierContactsCard from '@/components/SupplierContactsCard';
+import SupplierSelect from '@/components/SupplierSelect';
 import {
   SupplierAddressFields,
   SupplierCompanyFields,
@@ -339,6 +340,8 @@ export default function InventorySuppliers() {
   // Edit product form fields (separate from new product)
   const [editProductName, setEditProductName] = useState('');
   const [editProductNameError, setEditProductNameError] = useState(false);
+  const [editProductSupplier, setEditProductSupplier] = useState('');
+  const [editProductSupplierError, setEditProductSupplierError] = useState(false);
   const [editProductCategory, setEditProductCategory] = useState('');
   const [editProductUnit, setEditProductUnit] = useState('');
   const [editProductPrice, setEditProductPrice] = useState<string>('');
@@ -622,6 +625,8 @@ export default function InventorySuppliers() {
     setEditingProduct(viewingProduct);
     setEditProductName(viewingProduct.name);
     setEditProductNameError(false);
+    setEditProductSupplier(viewingProduct.supplier_name || viewing?.name || '');
+    setEditProductSupplierError(false);
     setEditProductCategory(viewingProduct.category || '');
     setEditProductUnit(viewingProduct.unit || '');
     setEditProductPrice(viewingProduct.price?.toString() || '');
@@ -1884,6 +1889,8 @@ export default function InventorySuppliers() {
                     setEditingProduct(null);
                     setEditProductName('');
                     setEditProductNameError(false);
+                    setEditProductSupplier('');
+                    setEditProductSupplierError(false);
                     setEditProductCategory('');
                     setEditProductUnit('');
                     setEditProductPrice('');
@@ -1914,6 +1921,11 @@ export default function InventorySuppliers() {
                       toast.error('Name is required');
                       return;
                     }
+                    if (!editProductSupplier.trim()) {
+                      setEditProductSupplierError(true);
+                      toast.error('Supplier is required');
+                      return;
+                    }
                     const priceValue = parseCurrency(editProductPrice);
                     if (!priceValue || !priceValue.trim() || Number(priceValue) <= 0) {
                       setEditProductPriceError(true);
@@ -1924,7 +1936,7 @@ export default function InventorySuppliers() {
                       setIsSavingEditProduct(true);
                       const payload = {
                         name: editProductName.trim(),
-                        supplier_name: editingProduct.supplier_name,
+                        supplier_name: editProductSupplier.trim(),
                         category: editProductCategory || null,
                         unit: editProductUnit || null,
                         price: Number(parseCurrency(editProductPrice)),
@@ -1951,6 +1963,8 @@ export default function InventorySuppliers() {
                       setEditingProduct(null);
                       setEditProductName('');
                       setEditProductNameError(false);
+                      setEditProductSupplier('');
+                      setEditProductSupplierError(false);
                       setEditProductCategory('');
                       setEditProductUnit('');
                       setEditProductPrice('');
@@ -1967,6 +1981,8 @@ export default function InventorySuppliers() {
                       setEditProductTechnicalManualUrl('');
                       await refetchSupplierProducts();
                       queryClient.invalidateQueries({ queryKey: ['supplierProducts'] });
+                      queryClient.invalidateQueries({ queryKey: ['estimateProducts'] });
+                      queryClient.invalidateQueries({ queryKey: ['invProducts'] });
                     } catch (e: any) {
                       toast.error(e?.message || 'Failed to update product');
                     } finally {
@@ -2244,12 +2260,22 @@ export default function InventorySuppliers() {
                       )}
                     </div>
                     <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Supplier</label>
-                      <input 
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed"
-                        value={editingProduct?.supplier_name || ''}
-                        readOnly
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                        Supplier <span className="text-red-600">*</span>
+                      </label>
+                      <SupplierSelect
+                        value={editProductSupplier}
+                        onChange={(value) => {
+                          setEditProductSupplier(value);
+                          if (editProductSupplierError) setEditProductSupplierError(false);
+                        }}
+                        error={editProductSupplierError && !editProductSupplier.trim()}
+                        placeholder="Select a supplier"
+                        className="[&_button]:text-sm"
                       />
+                      {editProductSupplierError && !editProductSupplier.trim() && (
+                        <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                      )}
                     </div>
                     <div>
                       <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Category</label>

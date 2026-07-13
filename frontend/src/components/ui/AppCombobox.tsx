@@ -11,12 +11,19 @@ export type AppComboboxOption = {
   value: string;
   label: string;
   description?: string;
+  /** When true, selecting does not become the field value label (e.g. create actions). */
+  action?: boolean;
 };
 
 export type AppComboboxProps = {
   value: string;
   onChange: (value: string) => void;
   options: AppComboboxOption[];
+  /**
+   * Always shown at the bottom of the open menu (not filtered by search).
+   * Use for actions like "+ Create New…".
+   */
+  pinnedOptions?: AppComboboxOption[];
   label?: ReactNode;
   fieldHint?: ReactNode;
   helperText?: ReactNode;
@@ -34,6 +41,7 @@ export function AppCombobox({
   value,
   onChange,
   options,
+  pinnedOptions = [],
   label,
   fieldHint,
   helperText,
@@ -51,9 +59,13 @@ export function AppCombobox({
 
   const sortedOptions = useMemo(() => sortByLabel(options, (o) => o.label), [options]);
 
-  const selected = useMemo(() => sortedOptions.find((o) => o.value === value) ?? null, [sortedOptions, value]);
+  const selected = useMemo(() => {
+    const fromMain = sortedOptions.find((o) => o.value === value);
+    if (fromMain) return fromMain;
+    return pinnedOptions.find((o) => o.value === value) ?? null;
+  }, [sortedOptions, pinnedOptions, value]);
 
-  const displayClosed = selected?.label ?? '';
+  const displayClosed = selected?.label ?? (value || '');
 
   const filtered = useMemo(() => {
     const q = text.trim().toLowerCase();
@@ -76,6 +88,17 @@ export function AppCombobox({
     else if (!value) setText('');
   };
 
+  const selectOption = (option: AppComboboxOption) => {
+    onChange(option.value);
+    if (option.action) {
+      setText(value && displayClosed ? displayClosed : '');
+      setOpen(false);
+      return;
+    }
+    setText(option.label);
+    setOpen(false);
+  };
+
   const dropdown =
     open && menuRect ? (
       <ul
@@ -84,28 +107,45 @@ export function AppCombobox({
         className={uiDropdown.menu}
         style={comboboxMenuStyle(menuRect)}
       >
-        {filtered.length === 0 ? (
+        {filtered.length === 0 && pinnedOptions.length === 0 ? (
           <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
         ) : (
-          filtered.map((option) => (
-            <li key={option.value} role="option" aria-selected={value === option.value}>
-              <button
-                type="button"
-                className={uiCx(uiDropdown.option, value === option.value && uiDropdown.optionSelected)}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  onChange(option.value);
-                  setText(option.label);
-                  setOpen(false);
-                }}
-              >
-                <div className="truncate text-xs text-gray-900">{option.label}</div>
-                {option.description ? (
-                  <div className="mt-0.5 truncate text-xs text-gray-500">{option.description}</div>
-                ) : null}
-              </button>
-            </li>
-          ))
+          <>
+            {filtered.map((option) => (
+              <li key={option.value} role="option" aria-selected={value === option.value}>
+                <button
+                  type="button"
+                  className={uiCx(uiDropdown.option, value === option.value && uiDropdown.optionSelected)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => selectOption(option)}
+                >
+                  <div className="truncate text-xs text-gray-900">{option.label}</div>
+                  {option.description ? (
+                    <div className="mt-0.5 truncate text-xs text-gray-500">{option.description}</div>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+            {pinnedOptions.map((option) => (
+              <li key={option.value} role="option" aria-selected={value === option.value}>
+                <button
+                  type="button"
+                  className={uiCx(
+                    uiDropdown.option,
+                    'border-t border-gray-100 font-medium text-brand-red',
+                    value === option.value && uiDropdown.optionSelected,
+                  )}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => selectOption(option)}
+                >
+                  <div className="truncate text-xs">{option.label}</div>
+                  {option.description ? (
+                    <div className="mt-0.5 truncate text-xs text-gray-500">{option.description}</div>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </>
         )}
       </ul>
     ) : null;

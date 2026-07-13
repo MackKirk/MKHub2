@@ -51,8 +51,15 @@ RM_SUBDIVISIONS = [
     "Roof Repairs and Maintenance",
 ]
 
+COMMERCIAL_SERVICE_ONLY_SUBDIVISIONS = [
+    "Sheet Metal Repairs",
+    "Shingle Roof Repairs",
+    "Spring Roof Maintenance",
+    "Fall Roof Maintenance",
+]
+
 RM_PROJECT_DIVISIONS = {
-    "Commercial Service": ["Leak Investigations", *RM_SUBDIVISIONS],
+    "Commercial Service": ["Leak Investigations", *RM_SUBDIVISIONS, *COMMERCIAL_SERVICE_ONLY_SUBDIVISIONS],
     "Roof Assessments": RM_SUBDIVISIONS,
     "Warranty Repairs": [],
 }

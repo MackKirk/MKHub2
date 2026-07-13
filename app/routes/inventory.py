@@ -271,6 +271,7 @@ def update_supplier(
 ):
     assert_supplier_tab(user, "overview", "write")
     import traceback
+    from sqlalchemy import func
     try:
         print(f"UPDATE SUPPLIER - Attempting to update: {supplier_id}")
         print(f"Body received: {list(body.keys())}")
@@ -278,6 +279,14 @@ def update_supplier(
         row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
         if not row:
             raise HTTPException(status_code=404, detail="Supplier not found")
+
+        old_name = row.name
+        new_name_raw = body.get("name") if "name" in body else None
+        new_name = (
+            str(new_name_raw).strip()
+            if new_name_raw is not None and str(new_name_raw).strip()
+            else None
+        )
         
         # Update only provided fields (allow empty strings to clear fields)
         for k, v in body.items():
@@ -289,8 +298,35 @@ def update_supplier(
                     # Log if this is the image_base64 field
                     if k == 'image_base64':
                         print(f"Setting image_base64 (length: {len(str(v))})")
-                    setattr(row, k, v)
+                    if k == 'name':
+                        setattr(row, k, str(v).strip())
+                    else:
+                        setattr(row, k, v)
         
+        # Keep Material.supplier_name in sync (products link by string name, not FK)
+        if new_name and old_name and new_name.lower() != old_name.lower():
+            # Avoid colliding with another supplier that already owns this name
+            clash = (
+                db.query(Supplier)
+                .filter(Supplier.id != supplier_id)
+                .filter(func.lower(Supplier.name) == new_name.lower())
+                .first()
+            )
+            if clash:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"A supplier named '{clash.name}' already exists",
+                )
+            materials = (
+                db.query(Material)
+                .filter(Material.supplier_name.isnot(None))
+                .filter(func.lower(Material.supplier_name) == old_name.lower())
+                .all()
+            )
+            for material in materials:
+                material.supplier_name = new_name
+            print(f"Cascaded supplier rename '{old_name}' -> '{new_name}' on {len(materials)} product(s)")
+
         row.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(row)
@@ -300,6 +336,9 @@ def update_supplier(
         print(f"Image length in DB: {len(str(row.image_base64)) if hasattr(row, 'image_base64') and row.image_base64 else 0}")
         
         return row
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         error_msg = str(e)

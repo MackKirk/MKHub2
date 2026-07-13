@@ -12,6 +12,7 @@ import ImageEditor from '@/components/ImageEditor';
 import { useConfirm } from '@/components/ConfirmProvider';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { CustomerFilesTabEnhanced } from './CustomerFilesTabEnhanced';
+import { FilePdfPreviewModal } from '@/components/files';
 import { OpportunityListItem, CreateReportModal, OPPORTUNITY_LIST_GRID_CLASS, OPPORTUNITY_LIST_MIN_WIDTH, SHOW_OPPORTUNITY_LIST_SHORTCUTS } from './Opportunities';
 import { ProjectListItem, PROJECT_LIST_GRID_CLASS, PROJECT_LIST_MIN_WIDTH, SHOW_PROJECT_LIST_SHORTCUTS } from './Projects';
 import NewContactModal from '@/components/NewContactModal';
@@ -968,8 +969,6 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [editingImage, setEditingImage] = useState<{ fileObjectId: string; name: string } | null>(null);
 
-  useEffect(()=>{ if (!previewPdf) return; const onKey = (e: KeyboardEvent)=>{ if(e.key==='Escape') setPreviewPdf(null); }; window.addEventListener('keydown', onKey); return ()=> window.removeEventListener('keydown', onKey); }, [previewPdf]);
-
   const fetchDownloadUrl = async (fid:string)=>{ try{ const r:any = await api('GET', withFileAccessToken(`/files/${fid}/download`)); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; } };
 
   const upload = async()=>{ try{ if(!fileObj){ toast.error('Select a file'); return; } if(activeFolderId==='all'){ toast.error('Open a folder first'); return; } const name=fileObj.name; const type=fileObj.type||'application/octet-stream'; const up=await api('POST','/files/upload',{ original_name:name, content_type:type, client_id:id, project_id:null, employee_id:null, category_id:'client-docs' }); await fetch(up.upload_url,{ method:'PUT', headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' }, body:fileObj }); const conf=await api('POST','/files/confirm',{ key:up.key, size_bytes:fileObj.size, checksum_sha256:'na', content_type:type }); await api('POST', `/clients/${encodeURIComponent(id)}/documents`, { folder_id: activeFolderId, title: title||name, file_id: conf.id }); toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); await refetchDocs(); }catch(_e){ toast.error('Upload failed'); } };
@@ -1351,28 +1350,12 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
         />
       </AppFormModal>
 
-      <AppModal
+      <FilePdfPreviewModal
         open={!!previewPdf}
+        url={previewPdf?.url}
+        name={previewPdf?.name}
         onClose={() => setPreviewPdf(null)}
-        title={previewPdf?.name}
-        size="lg"
-        dialogClassName="!max-w-[1000px] !h-[85vh]"
-        bodyClassName="flex min-h-0 flex-1 flex-col p-0"
-        footer={
-          previewPdf ? (
-            <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
-              <AppButton variant="secondary" onClick={() => window.open(previewPdf.url, '_blank')}>
-                Download
-              </AppButton>
-              <AppButton variant="secondary" onClick={() => setPreviewPdf(null)}>
-                Close
-              </AppButton>
-            </div>
-          ) : undefined
-        }
-      >
-        {previewPdf ? <iframe className="min-h-0 flex-1 w-full" src={previewPdf.url} title="PDF Preview" /> : null}
-      </AppModal>
+      />
       
       {editingImage && (
         <ImageEditor

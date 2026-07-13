@@ -2918,6 +2918,8 @@ def create_inspection(
 ):
     """Create a new inspection (body or mechanical)."""
     data = inspection.model_dump()
+    if "photos" in data:
+        data["photos"] = _fleet_asset_json_file_id_list(data.get("photos"))
     new_inspection = FleetInspection(**data, created_by=user.id)
     db.add(new_inspection)
     db.flush()
@@ -3025,6 +3027,9 @@ def update_inspection(
     before = snapshot_fleet_inspection(inspection)
     update_data = inspection_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
+        # JSON column cannot serialize uuid.UUID (same as fleet asset photos/documents)
+        if key == "photos":
+            value = _fleet_asset_json_file_id_list(value)
         setattr(inspection, key, value)
 
     _result_lower = (inspection.result or "").lower()
@@ -4004,6 +4009,29 @@ def list_work_order_files(
             "is_image": True,
             "is_legacy": True,
         })
+    # Legacy: work_order.quote_file_ids → Quotes category
+    for fid in list(wo.quote_file_ids or []):
+        fid_str = str(fid)
+        if fid_str in seen_fids:
+            continue
+        fo = db.query(FileObject).filter(FileObject.id == fid).first()
+        if not fo:
+            continue
+        seen_fids.add(fid_str)
+        ct = getattr(fo, "content_type", None) or ""
+        name = getattr(fo, "key", "") or ""
+        ext = (name.rsplit(".", 1)[-1] if "." in name else "").lower()
+        is_image = (ct or "").startswith("image/") or ext in {"png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif"}
+        out.append({
+            "id": f"legacy-{fid_str}",
+            "file_object_id": fid_str,
+            "category": "orcamentos",
+            "original_name": None,
+            "uploaded_at": fo.created_at.isoformat() if fo.created_at else None,
+            "content_type": ct or None,
+            "is_image": is_image,
+            "is_legacy": True,
+        })
     return out
 
 
@@ -4112,12 +4140,12 @@ def update_work_order_file(
 def delete_work_order_legacy_file(
     work_order_id: uuid.UUID,
     file_object_id: uuid.UUID,
-    category: str = Query(..., description="outros | photos"),
+    category: str = Query(..., description="outros | photos | orcamentos"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
     _=Depends(require_permissions("fleet:access")),
 ):
-    """Remove a file from legacy work_order.documents or work_order.photos."""
+    """Remove a file from legacy work_order.documents, work_order.photos, or work_order.quote_file_ids."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
@@ -4157,6 +4185,22 @@ def delete_work_order_legacy_file(
             context=_fleet_audit_ctx_for_work_order(wo, {"work_order_id": str(work_order_id)}),
         )
         return {"message": "File removed"}
+    if category == "orcamentos" and wo.quote_file_ids:
+        quotes = [str(x) for x in wo.quote_file_ids]
+        if fid_str in quotes:
+            wo.quote_file_ids = [x for x in wo.quote_file_ids if str(x) != fid_str]
+            _log_work_order_activity(db, work_order_id, "file_removed", details={"category": "orcamentos", "file_object_id": fid_str}, created_by=user.id)
+            db.commit()
+            audit_fleet(
+                db,
+                user,
+                entity_type="work_order",
+                entity_id=work_order_id,
+                action="UPDATE",
+                changes_json={"legacy_file_removed": True, "category": "orcamentos", "file_object_id": fid_str},
+                context=_fleet_audit_ctx_for_work_order(wo, {"work_order_id": str(work_order_id)}),
+            )
+            return {"message": "File removed"}
     raise HTTPException(status_code=404, detail="File not found")
 
 

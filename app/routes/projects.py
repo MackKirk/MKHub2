@@ -131,6 +131,12 @@ def _normalize_crew_material_list(raw) -> Optional[list]:
                 "notes": _normalize_optional_text(item.get("notes")),
             }
         )
+        source = item.get("source")
+        if source in ("estimate", "manual"):
+            out[-1]["source"] = source
+        source_ref = _normalize_optional_text(item.get("source_ref"))
+        if source_ref:
+            out[-1]["source_ref"] = source_ref
     return out if out else None
 
 
@@ -202,6 +208,39 @@ def _billing_differs_from_customer(p: Project, client: Optional[Client]) -> bool
 
 def _should_apply_billing_snapshot_on_create(payload: dict) -> bool:
     return not bool(payload.get("is_bidding"))
+
+
+def _resolve_user_display_names(db: Session, user_ids: list) -> dict:
+    """Batch-resolve user ids to display names (preferred_name, full name, or username)."""
+    if not user_ids:
+        return {}
+    unique_ids: list[uuid.UUID] = []
+    for raw in user_ids:
+        if not raw:
+            continue
+        try:
+            unique_ids.append(uuid.UUID(str(raw)))
+        except (ValueError, TypeError):
+            continue
+    if not unique_ids:
+        return {}
+    rows = (
+        db.query(User, EmployeeProfile)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .filter(User.id.in_(unique_ids))
+        .all()
+    )
+    out: dict[str, str] = {}
+    for u, ep in rows:
+        name = (getattr(ep, "preferred_name", None) or "").strip() if ep else ""
+        if not name and ep:
+            first = (getattr(ep, "first_name", None) or "").strip()
+            last = (getattr(ep, "last_name", None) or "").strip()
+            name = " ".join(x for x in (first, last) if x)
+        if not name:
+            name = u.username
+        out[str(u.id)] = name
+    return out
 
 
 def _user_display_sort_subq(user_id_column):
@@ -2859,11 +2898,14 @@ def list_project_reports(project_id: str, db: Session = Depends(get_db), user: U
         raise HTTPException(status_code=404, detail="Not found")
     _assert_project_reports_read(user, p)
     rows = db.query(ProjectReport).filter(ProjectReport.project_id == project_id).order_by(ProjectReport.created_at.desc() if hasattr(ProjectReport, 'created_at') else ProjectReport.id.desc()).all()
+    creator_ids = [getattr(r, "created_by", None) for r in rows if getattr(r, "created_by", None)]
+    names_by_id = _resolve_user_display_names(db, creator_ids)
     out = []
     for r in rows:
         cat_id = getattr(r, "category_id", None)
         if not has_project_reports_category_permission(user, cat_id, action="read", project=p):
             continue
+        created_by = getattr(r, "created_by", None)
         out.append({
             "id": str(r.id),
             "title": getattr(r, 'title', None),
@@ -2873,7 +2915,8 @@ def list_project_reports(project_id: str, db: Session = Depends(get_db), user: U
             "images": getattr(r, 'images', None),
             "status": getattr(r, 'status', None),
             "created_at": getattr(r, 'created_at', None).isoformat() if getattr(r, 'created_at', None) else None,
-            "created_by": str(getattr(r, 'created_by', None)) if getattr(r, 'created_by', None) else None,
+            "created_by": str(created_by) if created_by else None,
+            "created_by_name": names_by_id.get(str(created_by)) if created_by else None,
             "financial_value": getattr(r, 'financial_value', None),
             "financial_type": getattr(r, 'financial_type', None),
             "estimate_data": getattr(r, 'estimate_data', None),
@@ -2943,6 +2986,104 @@ def create_project_report(project_id: str, payload: dict, db: Session = Depends(
     except Exception:
         pass
     
+    return {"id": str(row.id)}
+
+
+@router.patch("/{project_id}/reports/{report_id}")
+def update_project_report(
+    project_id: str,
+    report_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_reports_write(user, p)
+    row = db.query(ProjectReport).filter(
+        ProjectReport.id == report_id,
+        ProjectReport.project_id == project_id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    old_category_id = getattr(row, "category_id", None)
+    if not has_project_reports_category_permission(user, old_category_id, action="write", project=p):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    new_category_id = payload.get("category_id", old_category_id)
+    if new_category_id != old_category_id and not has_project_reports_category_permission(
+        user, new_category_id, action="write", project=p
+    ):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    before = {
+        "title": getattr(row, "title", None),
+        "category_id": old_category_id,
+        "description": getattr(row, "description", None),
+        "financial_value": getattr(row, "financial_value", None),
+    }
+
+    if "title" in payload:
+        row.title = payload.get("title")
+    if "category_id" in payload:
+        row.category_id = payload.get("category_id")
+    if "description" in payload:
+        row.description = payload.get("description")
+    if "division_id" in payload:
+        row.division_id = payload.get("division_id")
+    if "status" in payload:
+        row.status = payload.get("status")
+    if "financial_value" in payload and getattr(row, "financial_type", None) in (
+        "additional-income",
+        "additional-expense",
+    ):
+        row.financial_value = payload.get("financial_value")
+    if "images" in payload:
+        incoming_images = payload.get("images")
+        if isinstance(incoming_images, dict):
+            existing_images = getattr(row, "images", None) or {}
+            if not isinstance(existing_images, dict):
+                existing_images = {}
+            merged = {**existing_images, **incoming_images}
+            if "status_change" not in incoming_images and existing_images.get("status_change"):
+                merged["status_change"] = existing_images["status_change"]
+            row.images = merged
+        else:
+            row.images = incoming_images
+
+    db.commit()
+    db.refresh(row)
+
+    try:
+        from ..services.audit import create_audit_log
+
+        create_audit_log(
+            db=db,
+            entity_type="report",
+            entity_id=str(row.id),
+            action="UPDATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "before": before,
+                "after": {
+                    "title": getattr(row, "title", None),
+                    "category_id": getattr(row, "category_id", None),
+                    "description": getattr(row, "description", None),
+                    "financial_value": getattr(row, "financial_value", None),
+                },
+            },
+            context={
+                "project_id": project_id,
+                "report_title": getattr(row, "title", None),
+            },
+        )
+    except Exception:
+        pass
+
     return {"id": str(row.id)}
 
 

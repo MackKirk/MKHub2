@@ -21,14 +21,30 @@ import {
   uiUserSelect,
 } from '@/components/ui';
 
+import { ReportStatusChangeBadges } from '@/components/ReportStatusChangeBadges';
+import {
+  formatReportListSubtitle,
+  reportHasStatusBadges,
+  type ReportNoteLike,
+} from '@/lib/reportNotes';
+
 type ProjectReport = {
   id: string;
   title?: string;
   category_id?: string;
   description?: string;
-  images?: { attachments?: any[] };
+  images?: {
+    attachments?: any[];
+    status_change?: {
+      from_label?: string;
+      to_label?: string;
+      from_id?: string | null;
+      to_id?: string | null;
+    };
+  };
   created_at?: string;
   created_by?: string;
+  created_by_name?: string;
   financial_value?: number;
   financial_type?: string;
   estimate_data?: any;
@@ -50,7 +66,7 @@ export type ProjectReportsTabDsProps = {
   selectedCategoryFilter: string;
   onCategoryFilterChange: (value: string) => void;
   reportCategories: any[];
-  getAuthorInfo: (createdBy: string | null | undefined) => AuthorInfo;
+  getAuthorInfo: (createdBy: string | null | undefined, createdByName?: string | null) => AuthorInfo;
   getPreviewText: (text: string, maxLength?: number) => string;
   getAttachmentIcon: (contentType: string, originalName: string) => string;
   handleAttachmentClick: (attachment: any) => void;
@@ -62,6 +78,7 @@ export type ProjectReportsTabDsProps = {
     cancelText?: string;
   }) => Promise<string>;
   onNewNote: () => void;
+  onEditNote: () => void;
   previewAttachment: { file_object_id: string; original_name: string; content_type: string } | null;
   onClosePreview: () => void;
 };
@@ -88,12 +105,7 @@ function EstimateChangesBlock({ selectedReport }: { selectedReport: ProjectRepor
     return (item.quantity || 0) * (item.unit_price || 0);
   };
 
-  const calculateItemTotalWithMarkup = (item: any): number => {
-    const itemTotal = calculateItemTotal(item);
-    const itemMarkup =
-      item.markup !== undefined && item.markup !== null ? item.markup : estimateData?.markup || 0;
-    return itemTotal * (1 + itemMarkup / 100);
-  };
+  const calculateItemTotalWithMarkup = (item: any): number => calculateItemTotal(item);
 
   const grandTotal = items.reduce(
     (sum: number, item: any) => sum + calculateItemTotalWithMarkup(item),
@@ -198,14 +210,6 @@ function EstimateChangesBlock({ selectedReport }: { selectedReport: ProjectRepor
                                   <span className="font-medium">Supplier:</span> {item.supplier_name}
                                 </span>
                               )}
-                              {item.markup !== undefined &&
-                                item.markup !== null &&
-                                item.markup > 0 && (
-                                  <span>
-                                    <span className="font-medium">Markup:</span>{' '}
-                                    {item.markup.toFixed(1)}%
-                                  </span>
-                                )}
                               {item.taxable && (
                                 <span className="font-medium text-green-700">Taxable</span>
                               )}
@@ -265,6 +269,7 @@ function ReportDetailPanel({
   onRefresh,
   confirm,
   setSelectedReportId,
+  onEditNote,
 }: Pick<
   ProjectReportsTabDsProps,
   | 'projectId'
@@ -278,10 +283,12 @@ function ReportDetailPanel({
   | 'onRefresh'
   | 'confirm'
   | 'setSelectedReportId'
+  | 'onEditNote'
 > & { selectedReport: ProjectReport }) {
   const reportDate = selectedReport.created_at ? new Date(selectedReport.created_at) : null;
   const attachments = selectedReport.images?.attachments || [];
-  const authorInfo = getAuthorInfo(selectedReport.created_by);
+  const authorInfo = getAuthorInfo(selectedReport.created_by, selectedReport.created_by_name);
+  const hasStatusBadges = reportHasStatusBadges(selectedReport as ReportNoteLike);
   const categoryLabel =
     reportCategories.find((c) => c.value === selectedReport.category_id)?.label ||
     selectedReport.category_id ||
@@ -302,6 +309,11 @@ function ReportDetailPanel({
             <h2 className={uiTypography.sectionTitle}>
               {selectedReport.title || 'Untitled Note'}
             </h2>
+            {hasStatusBadges && (
+              <div className="mt-1">
+                <ReportStatusChangeBadges report={selectedReport as ReportNoteLike} />
+              </div>
+            )}
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <img
@@ -374,11 +386,15 @@ function ReportDetailPanel({
                 </AppBadge>
               )}
             {canWriteReports && isWriteCategoryAllowed(selectedReport.category_id) && (
-              <AppButton
-                type="button"
-                size="sm"
-                variant="danger"
-                onClick={async () => {
+              <>
+                <AppButton type="button" size="sm" variant="secondary" onClick={onEditNote}>
+                  Edit
+                </AppButton>
+                <AppButton
+                  type="button"
+                  size="sm"
+                  variant="danger"
+                  onClick={async () => {
                   const result = await confirm({
                     title: 'Delete Note',
                     message: `Are you sure you want to delete "${selectedReport.title || 'this note'}"? This action cannot be undone.`,
@@ -398,6 +414,7 @@ function ReportDetailPanel({
               >
                 Delete
               </AppButton>
+              </>
             )}
           </div>
         </div>
@@ -569,8 +586,10 @@ export function ProjectReportsTabDs(props: ProjectReportsTabDsProps) {
                     const reportDate = r.created_at ? new Date(r.created_at) : null;
                     const attachments = r.images?.attachments || [];
                     const isSelected = selectedReportId === r.id;
-                    const authorInfo = getAuthorInfo(r.created_by);
+                    const authorInfo = getAuthorInfo(r.created_by, r.created_by_name);
                     const preview = getPreviewText(r.description || '');
+                    const listSubtitle = formatReportListSubtitle(r as ReportNoteLike, authorInfo.name);
+                    const hasStatusBadges = reportHasStatusBadges(r as ReportNoteLike);
                     const categoryLabel = r.category_id
                       ? reportCategories.find((c) => (c.value || c.label) === r.category_id)
                           ?.label || r.category_id
@@ -608,7 +627,21 @@ export function ProjectReportsTabDs(props: ProjectReportsTabDsProps) {
                             >
                               {r.title || 'Untitled Note'}
                             </div>
-                            <div className={uiTypography.helper}>{authorInfo.name}</div>
+                            <div
+                              className={uiCx(
+                                'flex flex-wrap items-center gap-1.5',
+                                uiTypography.helper,
+                              )}
+                            >
+                              {hasStatusBadges && (
+                                <ReportStatusChangeBadges
+                                  report={r as ReportNoteLike}
+                                  compact
+                                />
+                              )}
+                              {hasStatusBadges && <span className="text-gray-400">·</span>}
+                              <span>{listSubtitle}</span>
+                            </div>
                             {preview && (
                               <p className={uiCx('mt-1 line-clamp-2', uiTypography.helper)}>
                                 {preview}
