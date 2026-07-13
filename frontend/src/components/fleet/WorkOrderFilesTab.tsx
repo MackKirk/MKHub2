@@ -6,9 +6,12 @@ import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   FileImagePreviewModal,
+  FileOfficePreviewModal,
   FileListSelectionBar,
   FileMoveLocationModal,
   FileListDropHint,
+  FILE_LIBRARY_ACCEPT,
+  FILE_LIBRARY_UPLOAD_HINT,
   dropTargetClass,
   fileDropTargetProps,
   invalidateQueriesInBackground,
@@ -142,6 +145,7 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
     if (ct.includes('pdf') || ext === 'pdf') return 'PDF';
     if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return 'Excel';
     if (['doc', 'docx'].includes(ext) || ct.includes('word')) return 'Word';
+    if (['ppt', 'pptx'].includes(ext) || ct.includes('powerpoint')) return 'PowerPoint';
     return ext.toUpperCase() || 'File';
   };
 
@@ -295,6 +299,9 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
     if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet'))
       return { label: 'XLS', color: 'bg-green-600' };
     if (['doc', 'docx'].includes(ext) || ct.includes('word')) return { label: 'DOC', color: 'bg-blue-600' };
+    if (['ppt', 'pptx'].includes(ext) || ct.includes('powerpoint')) return { label: 'PPT', color: 'bg-orange-500' };
+    if (['zip', 'rar', '7z'].includes(ext) || ct.includes('zip')) return { label: 'ZIP', color: 'bg-gray-700' };
+    if (is('txt')) return { label: 'TXT', color: 'bg-gray-500' };
     if (f.is_image || ct.startsWith('image/')) return { label: 'IMG', color: 'bg-purple-500' };
     return { label: (ext || 'FILE').toUpperCase().slice(0, 4), color: 'bg-gray-600' };
   };
@@ -852,6 +859,7 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
           )}
           <AppFileUpload
             mode="multiple"
+            accept={FILE_LIBRARY_ACCEPT}
             value={[]}
             onChange={() => {}}
             onFilesSelected={async (added) => {
@@ -860,7 +868,7 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                 await uploadMultiple(added);
               }
             }}
-            fieldHint="Files\n\nMultiple files supported. Drag onto the list or a category to upload without opening this dialog."
+            fieldHint={FILE_LIBRARY_UPLOAD_HINT}
           />
         </div>
       </AppFormModal>
@@ -938,24 +946,12 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
         {previewPdf ? <iframe src={previewPdf.url} className="h-[70vh] w-full border-0" title={previewPdf.name} /> : null}
       </AppModal>
 
-      <AppModal
+      <FileOfficePreviewModal
         open={!!previewExcel}
+        url={previewExcel?.url}
+        name={previewExcel?.name}
         onClose={() => setPreviewExcel(null)}
-        title={previewExcel?.name}
-        size="lg"
-        dialogClassName="!max-w-[95vw] !max-h-[95vh]"
-        bodyClassName="!p-0 min-h-[70vh]"
-        bodyFill={false}
-      >
-        {previewExcel ? (
-          <iframe
-            src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewExcel.url)}`}
-            className="h-[70vh] w-full border-0"
-            title={previewExcel.name}
-            allow="fullscreen"
-          />
-        ) : null}
-      </AppModal>
+      />
     </>
   );
 }

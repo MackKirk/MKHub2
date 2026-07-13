@@ -9,11 +9,11 @@ const DEFAULT_ACCEPT_FILES = 'image/*,.pdf,.doc,.docx';
 const DEFAULT_ACCEPT_IMAGES = 'image/*';
 
 function isValidFile(file: File, accept: string): boolean {
-  const accepts = accept.split(',').map((a) => a.trim().toLowerCase());
+  const accepts = accept.split(',').map((a) => a.trim().toLowerCase()).filter(Boolean);
+  if (!accepts.length || accepts.includes('*') || accepts.includes('*/*')) return true;
   const type = (file.type || '').toLowerCase();
   const name = (file.name || '').toLowerCase();
   for (const a of accepts) {
-    if (a === '*') return true;
     if (a.endsWith('/*')) {
       const prefix = a.slice(0, -1);
       if (type.startsWith(prefix)) return true;
@@ -22,6 +22,13 @@ function isValidFile(file: File, accept: string): boolean {
     if (a.startsWith('.') && name.endsWith(a)) return true;
   }
   return false;
+}
+
+/** HTML accept attr: omit when library accept means any file. */
+function htmlAcceptAttr(accept: string): string | undefined {
+  const normalized = accept.trim().toLowerCase();
+  if (!normalized || normalized === '*' || normalized === '*/*') return undefined;
+  return accept;
 }
 
 function ImagePreviewOverlay({ url, alt, onClose }: { url: string; alt: string; onClose: () => void }) {
@@ -301,7 +308,7 @@ export function AppFileUpload(props: AppFileUploadProps) {
           ref={inputRef}
           type="file"
           className="hidden"
-          accept={accept}
+          accept={htmlAcceptAttr(accept)}
           multiple={isMultiple}
           disabled={disabled}
           onChange={(e) => processFileList(e.target.files)}
