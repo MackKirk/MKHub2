@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, formatApiErrorDetail, getToken } from '@/lib/api';
+import toast from 'react-hot-toast';
 import {
   employeeActivityAuditQuickInfo,
   employeeActivitySignInQuickInfo,
@@ -62,6 +63,13 @@ type UserActivityLogResponse = {
     path: string | null;
     request_id: string | null;
   }>;
+  pages: ActivityPaginated<{
+    id: string;
+    timestamp_utc: string;
+    title: string;
+    path: string | null;
+    module: string | null;
+  }>;
   audit: ActivityPaginated<{
     id: string;
     timestamp_utc: string;
@@ -74,6 +82,7 @@ type UserActivityLogResponse = {
 };
 
 type LoginActivityRow = UserActivityLogResponse['logins']['items'][number];
+type PageActivityRow = UserActivityLogResponse['pages']['items'][number];
 
 type AuditActivityDetail = {
   id: string;
@@ -151,18 +160,21 @@ export type UserActivityTabProps = {
 
 export function UserActivitySection({ userId }: UserActivityTabProps) {
   const [loginsPage, setLoginsPage] = useState(1);
+  const [pagesPage, setPagesPage] = useState(1);
   const [auditPage, setAuditPage] = useState(1);
   const pageSize = 15;
 
   const [loginModal, setLoginModal] = useState<LoginActivityRow | null>(null);
+  const [pageModal, setPageModal] = useState<PageActivityRow | null>(null);
   const [auditModalId, setAuditModalId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['user-activity-log', userId, loginsPage, auditPage, pageSize],
+    queryKey: ['user-activity-log', userId, loginsPage, pagesPage, auditPage, pageSize],
     queryFn: () =>
       api<UserActivityLogResponse>(
         'GET',
-        `/users/${encodeURIComponent(userId)}/activity-log?logins_page=${loginsPage}&logins_page_size=${pageSize}&audit_page=${auditPage}&audit_page_size=${pageSize}`,
+        `/users/${encodeURIComponent(userId)}/activity-log?logins_page=${loginsPage}&logins_page_size=${pageSize}&pages_page=${pagesPage}&pages_page_size=${pageSize}&audit_page=${auditPage}&audit_page_size=${pageSize}`,
       ),
     enabled: !!userId,
   });
@@ -172,10 +184,13 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
     if (data.logins.total_pages > 0 && loginsPage > data.logins.total_pages) {
       setLoginsPage(data.logins.page);
     }
+    if (data.pages.total_pages > 0 && pagesPage > data.pages.total_pages) {
+      setPagesPage(data.pages.page);
+    }
     if (data.audit.total_pages > 0 && auditPage > data.audit.total_pages) {
       setAuditPage(data.audit.page);
     }
-  }, [data, loginsPage, auditPage]);
+  }, [data, loginsPage, pagesPage, auditPage]);
 
   const { data: auditDetail, isLoading: auditDetailLoading } = useQuery({
     queryKey: ['user-activity-audit-detail', userId, auditModalId],
@@ -212,7 +227,52 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
   if (!data) return null;
 
   const lg = data.logins;
+  const pg = data.pages ?? { items: [], total: 0, page: 1, page_size: pageSize, total_pages: 0 };
   const au = data.audit;
+  const hasExportableRows = lg.total > 0 || pg.total > 0 || au.total > 0;
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const token = getToken();
+      const r = await fetch(`/users/${encodeURIComponent(userId)}/activity-log/export`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (r.status === 401) {
+        localStorage.removeItem('user_token');
+        window.location.replace('/login');
+        return;
+      }
+      if (!r.ok) {
+        let message = r.statusText || 'Export failed';
+        try {
+          const err = await r.json();
+          message = formatApiErrorDetail(err.detail) || message;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(message);
+      }
+      const blob = await r.blob();
+      const disposition = r.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match?.[1] || `user-activity-${userId.slice(0, 8)}.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Activity log exported.');
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Export failed';
+      toast.error(message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <>
@@ -220,8 +280,21 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
         <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
           <AppSectionHeader
             title="Activity"
-            description="Sign-in history and audit trail for actions this employee performed in the system."
+            description="Sign-in history, pages visited, and audit trail for actions this employee performed in the system."
             {...appSectionPresetProps('description')}
+            action={
+              hasExportableRows ? (
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={exporting}
+                  onClick={handleExport}
+                >
+                  {exporting ? 'Exporting…' : 'Export CSV'}
+                </AppButton>
+              ) : null
+            }
           />
 
           <AppCard className="mt-4" bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
@@ -307,6 +380,87 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
                     total={lg.total}
                     onPrev={() => setLoginsPage((p) => Math.max(1, p - 1))}
                     onNext={() => setLoginsPage((p) => (lg.total_pages ? Math.min(lg.total_pages, p + 1) : p))}
+                  />
+                </>
+              )}
+            </section>
+
+            <section>
+              <AppSectionHeader
+                title="Pages visited"
+                description="MKHub pages opened by this employee (same page within 10 minutes is counted once)."
+                className="mb-3"
+              />
+              {pg.total === 0 ? (
+                <AppEmptyState
+                  title="No page visits yet"
+                  description="Page visits appear here after this employee navigates the system."
+                  className="border-0 bg-transparent p-0 py-4 shadow-none"
+                />
+              ) : (
+                <>
+                  <div className={uiCx('rounded-xl border bg-gray-50/80', uiSpacing.cardPadding)}>
+                    <div className="flex flex-col gap-2 overflow-x-auto">
+                      <AppSortableEntityList layout="flat">
+                        <AppSortableEntityListHeader preset="employeeActivityLog" variant="flat">
+                          <AppSortableEntityListSortColumn
+                            label="Page"
+                            column="page"
+                            sortBy="page"
+                            sortDir="asc"
+                            onSort={() => {}}
+                            sortable={false}
+                          />
+                          <AppSortableEntityListSortColumn
+                            label="Time"
+                            column="time"
+                            sortBy="time"
+                            sortDir="asc"
+                            onSort={() => {}}
+                            sortable={false}
+                          />
+                        </AppSortableEntityListHeader>
+                        <AppSortableEntityListFlatBody preset="employeeActivityLog">
+                          {pg.items.map((row) => (
+                            <AppSortableEntityListRow
+                              key={row.id}
+                              as="div"
+                              variant="flat"
+                              preset="employeeActivityLog"
+                              className="group"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setPageModal(row)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  setPageModal(row);
+                                }
+                              }}
+                            >
+                              <span
+                                className={uiCx(
+                                  'min-w-0 truncate text-xs font-medium text-gray-900 transition-colors group-hover:text-[#7f1010]',
+                                )}
+                                title={row.title}
+                              >
+                                {row.title}
+                              </span>
+                              <span className={uiCx(uiTypography.helper, 'min-w-0 truncate')}>
+                                {formatUserActivityTime(row.timestamp_utc)}
+                              </span>
+                            </AppSortableEntityListRow>
+                          ))}
+                        </AppSortableEntityListFlatBody>
+                      </AppSortableEntityList>
+                    </div>
+                  </div>
+                  <ActivityPager
+                    page={pg.page}
+                    totalPages={pg.total_pages}
+                    total={pg.total}
+                    onPrev={() => setPagesPage((p) => Math.max(1, p - 1))}
+                    onNext={() => setPagesPage((p) => (pg.total_pages ? Math.min(pg.total_pages, p + 1) : p))}
                   />
                 </>
               )}
@@ -426,6 +580,40 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
                 <ActivityDetailField label="Request ID">
                   <span className="break-all font-mono font-normal text-xs">{loginModal.request_id}</span>
                 </ActivityDetailField>
+              ) : null}
+            </dl>
+          </AppCard>
+        </AppFormModal>
+      ) : null}
+
+      {pageModal ? (
+        <AppFormModal
+          open
+          onClose={() => setPageModal(null)}
+          layout="detail"
+          size="sm"
+          title="Page visit"
+          description={pageModal.title}
+          bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}
+          footer={
+            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+              <AppButton type="button" variant="secondary" size="sm" onClick={() => setPageModal(null)}>
+                Close
+              </AppButton>
+            </div>
+          }
+        >
+          <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
+            <dl className="min-w-0">
+              <ActivityDetailField label="Time (Vancouver)">
+                <span className="font-mono font-normal">{formatUserActivityTime(pageModal.timestamp_utc)}</span>
+              </ActivityDetailField>
+              <ActivityDetailField label="Page">{pageModal.title}</ActivityDetailField>
+              <ActivityDetailField label="Path">
+                <span className="break-all font-mono font-normal text-xs">{pageModal.path || '—'}</span>
+              </ActivityDetailField>
+              {pageModal.module ? (
+                <ActivityDetailField label="Module">{pageModal.module}</ActivityDetailField>
               ) : null}
             </dl>
           </AppCard>

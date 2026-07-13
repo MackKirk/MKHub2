@@ -16,6 +16,7 @@ import InstallPrompt from '@/components/InstallPrompt';
 import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
 import HubChatLauncher from '@/components/HubChatLauncher';
 import { canAccessProjectLineMenu, isAdminRole } from '@/lib/projectLinePermissionKeys';
+import { usePageViewTracker } from '@/lib/usePageViewTracker';
 import { AppUserAvatar, uiCx, uiDropdown } from '@/components/ui';
 
 type MenuItem = {
@@ -262,6 +263,7 @@ const IconQuotations = () => (
 
 export default function AppShell({ children }: PropsWithChildren){
   const location = useLocation();
+  usePageViewTracker();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data:meProfile, isLoading: meProfileLoading } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });

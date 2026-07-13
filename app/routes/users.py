@@ -1,6 +1,9 @@
+import csv
+import io
 import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import update, or_, func as sa_func, func, literal
 from sqlalchemy.exc import IntegrityError
@@ -31,6 +34,11 @@ from ..models.models import (
     EmployeeDocument,
 )
 from ..services.audit_log_entries import audit_rows_to_entry_dicts
+from ..services.user_page_views import (
+    PAGE_VIEW_CATEGORY,
+    page_view_row_to_dict,
+    record_user_page_view,
+)
 from ..auth.security import require_permissions, require_roles, get_current_user, _has_permission
 from ..services.home_dashboard_policy import sanitize_home_dashboard
 from ..services.home_dashboard_templates import (
@@ -97,6 +105,10 @@ class HomeDashboardApplyTemplate(BaseModel):
     template: Literal["estimator"]
 
 
+class PageViewRequest(BaseModel):
+    path: str
+
+
 def _home_dashboard_json_equal(a: list, b: list) -> bool:
     try:
         return json.dumps(a, sort_keys=True, default=str) == json.dumps(b, sort_keys=True, default=str)
@@ -127,6 +139,16 @@ def get_my_home_dashboard(db: Session = Depends(get_db), user: User = Depends(ge
         db.commit()
         db.refresh(row)
     return {"layout": slayout, "widgets": swidgets, "template_key": template_key}
+
+
+@router.post("/me/page-views")
+def post_my_page_view(
+    payload: PageViewRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Record SPA navigation (pathname only; deduped server-side within 10 minutes)."""
+    return record_user_page_view(db, user.id, payload.path)
 
 
 @router.put("/me/home-dashboard")
@@ -588,6 +610,165 @@ def list_users(
     }
 
 
+def _json_cell(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+@router.get("/{user_id}/activity-log/export")
+def export_user_activity_log(
+    user_id: str,
+    db: Session = Depends(get_db),
+    viewer: User = Depends(get_current_user),
+):
+    """Export full sign-in history and audit trail for a user as CSV."""
+    try:
+        uid = uuid.UUID(str(user_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    u = db.query(User).filter(User.id == uid).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not _viewer_can_access_user_activity_log(viewer, uid):
+        raise HTTPException(status_code=403, detail="Not allowed to view this activity log")
+
+    login_rows = (
+        db.query(SystemLog)
+        .filter(
+            SystemLog.user_id == uid,
+            SystemLog.category == "auth",
+            SystemLog.message == "Login successful",
+        )
+        .order_by(SystemLog.timestamp_utc.desc())
+        .all()
+    )
+
+    audit_rows = (
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == uid)
+        .order_by(AuditLog.timestamp_utc.desc())
+        .all()
+    )
+    audit_entries = audit_rows_to_entry_dicts(db, audit_rows)
+
+    page_rows = (
+        db.query(SystemLog)
+        .filter(SystemLog.user_id == uid, SystemLog.category == PAGE_VIEW_CATEGORY)
+        .order_by(SystemLog.timestamp_utc.desc())
+        .all()
+    )
+
+    export_rows: List[Tuple[str, List[str]]] = []
+
+    for row in login_rows:
+        ts = row.timestamp_utc.isoformat() if row.timestamp_utc else ""
+        export_rows.append(
+            (
+                ts,
+                [
+                    "sign_in",
+                    ts,
+                    "Sign-in",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    row.path or "",
+                    row.request_id or "",
+                    "",
+                    "",
+                ],
+            )
+        )
+
+    for row in page_rows:
+        ts = row.timestamp_utc.isoformat() if row.timestamp_utc else ""
+        title = row.message or "Page"
+        export_rows.append(
+            (
+                ts,
+                [
+                    "page_view",
+                    ts,
+                    f"Page · {title}",
+                    "",
+                    "",
+                    "",
+                    title,
+                    "",
+                    row.path or "",
+                    "",
+                    "",
+                    "",
+                ],
+            )
+        )
+
+    for entry in audit_entries:
+        label = entry.get("entity_display") or (entry.get("entity_type") or "").replace("_", " ")
+        summary = f"{entry.get('action')} · {label}"
+        ts = entry.get("timestamp_utc") or ""
+        export_rows.append(
+            (
+                ts,
+                [
+                    "audit",
+                    ts,
+                    summary,
+                    entry.get("action") or "",
+                    entry.get("entity_type") or "",
+                    entry.get("entity_id") or "",
+                    entry.get("entity_display") or "",
+                    entry.get("source") or "",
+                    "",
+                    "",
+                    _json_cell(entry.get("changes_json")),
+                    _json_cell(entry.get("context")),
+                ],
+            )
+        )
+
+    export_rows.sort(key=lambda item: item[0], reverse=True)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "record_type",
+            "timestamp_utc",
+            "summary",
+            "action",
+            "entity_type",
+            "entity_id",
+            "entity_display",
+            "source",
+            "path",
+            "request_id",
+            "changes_json",
+            "context",
+        ]
+    )
+    for _, row in export_rows:
+        writer.writerow(row)
+
+    safe_id = str(uid).replace("-", "")[:8]
+    filename = f"user-activity-{safe_id}.csv"
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/{user_id}/activity-log/audit/{audit_entry_id}")
 def get_user_activity_audit_entry(
     user_id: str,
@@ -626,13 +807,15 @@ def get_user_activity_log(
     user_id: str,
     logins_page: int = Query(1, ge=1),
     logins_page_size: int = Query(15, ge=1, le=50),
+    pages_page: int = Query(1, ge=1),
+    pages_page_size: int = Query(15, ge=1, le=50),
     audit_page: int = Query(1, ge=1),
     audit_page_size: int = Query(15, ge=1, le=50),
     db: Session = Depends(get_db),
     viewer: User = Depends(get_current_user),
 ):
     """
-    Paginated sign-in history (system_logs) and audit summaries (no heavy JSON in list).
+    Paginated sign-in history, page views, and audit summaries (no heavy JSON in list).
     Requires hr:users:view:activity, except system admin. For other users' profiles, also requires
     hr:users:read or users:read (same idea as opening employee details).
     """
@@ -672,6 +855,20 @@ def get_user_activity_log(
         for r in login_rows
     ]
 
+    pages_base = db.query(SystemLog).filter(
+        SystemLog.user_id == uid,
+        SystemLog.category == PAGE_VIEW_CATEGORY,
+    )
+    pages_total = pages_base.count()
+    pp, poff, ppages = _resolve_activity_page(pages_total, pages_page, pages_page_size)
+    page_rows = (
+        pages_base.order_by(SystemLog.timestamp_utc.desc())
+        .offset(poff)
+        .limit(pages_page_size)
+        .all()
+    )
+    page_events = [page_view_row_to_dict(r) for r in page_rows]
+
     audit_base = db.query(AuditLog).filter(AuditLog.actor_id == uid)
     audit_total = audit_base.count()
     ap, aoff, apages = _resolve_activity_page(audit_total, audit_page, audit_page_size)
@@ -693,6 +890,13 @@ def get_user_activity_log(
             "page": lp,
             "page_size": logins_page_size,
             "total_pages": lpages,
+        },
+        "pages": {
+            "items": page_events,
+            "total": pages_total,
+            "page": pp,
+            "page_size": pages_page_size,
+            "total_pages": ppages,
         },
         "audit": {
             "items": audit_entries,
