@@ -1,8 +1,18 @@
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { uiTooltip, uiCx } from './tokens';
 
 const TOOLTIP_GAP_PX = 4;
+const VIEWPORT_PAD_PX = 8;
 
 export type AppTooltipPlacement = 'top' | 'bottom';
 
@@ -21,33 +31,48 @@ export type AppTooltipProps = {
 type TooltipCoords = {
   top: number;
   left: number;
-  transform: string;
-  arrowClass: string;
+  /** Distance from tooltip panel left edge to arrow center (px). */
+  arrowLeft: number;
+  resolvedPlacement: AppTooltipPlacement;
 };
 
-function computeTooltipCoords(anchor: DOMRect, placement: AppTooltipPlacement): TooltipCoords {
-  const centerX = anchor.left + anchor.width / 2;
+function clamp(n: number, min: number, max: number) {
+  return Math.min(Math.max(n, min), max);
+}
 
-  if (placement === 'bottom') {
-    return {
-      top: anchor.bottom + TOOLTIP_GAP_PX,
-      left: centerX,
-      transform: 'translateX(-50%)',
-      arrowClass: uiTooltip.arrowBottom,
-    };
+function computeTooltipCoords(
+  anchor: DOMRect,
+  placement: AppTooltipPlacement,
+  tipWidth: number,
+  tipHeight: number,
+): TooltipCoords {
+  const centerX = anchor.left + anchor.width / 2;
+  const maxLeft = Math.max(VIEWPORT_PAD_PX, window.innerWidth - tipWidth - VIEWPORT_PAD_PX);
+  const left = clamp(centerX - tipWidth / 2, VIEWPORT_PAD_PX, maxLeft);
+  const arrowLeft = clamp(centerX - left, 8, Math.max(8, tipWidth - 8));
+
+  const spaceBelow = window.innerHeight - anchor.bottom - VIEWPORT_PAD_PX;
+  const spaceAbove = anchor.top - VIEWPORT_PAD_PX;
+  let resolvedPlacement = placement;
+
+  if (placement === 'bottom' && tipHeight + TOOLTIP_GAP_PX > spaceBelow && spaceAbove > spaceBelow) {
+    resolvedPlacement = 'top';
+  } else if (placement === 'top' && tipHeight + TOOLTIP_GAP_PX > spaceAbove && spaceBelow > spaceAbove) {
+    resolvedPlacement = 'bottom';
   }
 
-  return {
-    top: anchor.top - TOOLTIP_GAP_PX,
-    left: centerX,
-    transform: 'translate(-50%, -100%)',
-    arrowClass: uiTooltip.arrowTop,
-  };
+  const top =
+    resolvedPlacement === 'bottom'
+      ? anchor.bottom + TOOLTIP_GAP_PX
+      : anchor.top - TOOLTIP_GAP_PX - tipHeight;
+
+  return { top, left, arrowLeft, resolvedPlacement };
 }
 
 /**
  * Dark hover/focus tooltip (Opportunities estimator avatar pattern).
  * Renders in document.body so position:fixed uses viewport coordinates.
+ * Horizontally clamps to the viewport so tips near edges (e.g. after the menu/sidebar change) are not cut off.
  */
 export function AppTooltip({
   content,
@@ -59,13 +84,20 @@ export function AppTooltip({
 }: AppTooltipProps) {
   const tipId = useId();
   const anchorRef = useRef<HTMLSpanElement>(null);
+  const tipRef = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<TooltipCoords | null>(null);
 
   const updateCoords = useCallback(() => {
     const el = anchorRef.current;
     if (!el) return;
-    setCoords(computeTooltipCoords(el.getBoundingClientRect(), placement));
+    const tip = tipRef.current;
+    const tipWidth = tip?.offsetWidth || 0;
+    const tipHeight = tip?.offsetHeight || 0;
+    // First paint may have 0 size — still place roughly; layout effect remeasures.
+    const w = tipWidth || 160;
+    const h = tipHeight || 28;
+    setCoords(computeTooltipCoords(el.getBoundingClientRect(), placement, w, h));
   }, [placement]);
 
   const show = () => {
@@ -75,6 +107,11 @@ export function AppTooltip({
   };
 
   const hide = () => setOpen(false);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updateCoords();
+  }, [open, content, wrap, updateCoords]);
 
   useEffect(() => {
     if (!open) return;
@@ -88,18 +125,30 @@ export function AppTooltip({
   }, [open, updateCoords]);
 
   const shellStyle: CSSProperties | undefined = coords
-    ? { top: coords.top, left: coords.left, transform: coords.transform }
+    ? { top: coords.top, left: coords.left }
     : undefined;
+
+  const arrowStyle: CSSProperties | undefined = coords
+    ? { left: coords.arrowLeft }
+    : undefined;
+
+  const arrowClass =
+    coords?.resolvedPlacement === 'bottom' ? uiTooltip.arrowBottom : uiTooltip.arrowTop;
 
   const tooltip =
     open &&
-    coords &&
     typeof document !== 'undefined' &&
     createPortal(
-      <span id={tipId} role="tooltip" className={uiTooltip.shell} style={shellStyle}>
+      <span
+        ref={tipRef}
+        id={tipId}
+        role="tooltip"
+        className={uiTooltip.shell}
+        style={shellStyle}
+      >
         <span className={wrap ? uiTooltip.panelWrap : uiTooltip.panel}>
           {content}
-          <span className={coords.arrowClass} aria-hidden />
+          <span className={arrowClass} style={arrowStyle} aria-hidden />
         </span>
       </span>,
       document.body,

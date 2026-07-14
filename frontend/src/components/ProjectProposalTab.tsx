@@ -250,6 +250,7 @@ export default function ProjectProposalTab({
     );
 
   if (designSystem) {
+    const showSubTabs = !isBidding && proposalTabs.length > 1;
     return (
       <AppCard className="!rounded-2xl" bodyClassName={uiSpacing.cardPadding}>
         <AppSectionHeader
@@ -257,12 +258,12 @@ export default function ProjectProposalTab({
           description={sectionDescription}
           {...appSectionPresetProps(sectionPreset)}
         />
-        {!isBidding && proposalTabs.length > 0 && (
+        {showSubTabs ? (
           <div className="mt-4">
             <AppTabs tabs={proposalTabs} value={selectedTab} onChange={setSelectedTab} />
           </div>
-        )}
-        <div className={uiCx(!isBidding && proposalTabs.length > 0 ? 'mt-4' : 'mt-4')}>{formContent}</div>
+        ) : null}
+        <div className="mt-4">{formContent}</div>
       </AppCard>
     );
   }
@@ -283,7 +284,7 @@ export default function ProjectProposalTab({
           </div>
           <h2 className="text-sm font-semibold text-gray-900">{sectionTitle}</h2>
         </div>
-        {!isBidding && proposalTabs.length > 0 && (
+        {!isBidding && proposalTabs.length > 1 && (
           <div className="mb-4 border-b border-gray-200">
             <nav className="-mb-px flex space-x-4" aria-label="Tabs">
               {proposalTabs.map((tab) => (

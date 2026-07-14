@@ -230,8 +230,9 @@ export const uiTooltip = {
   /** Multi-line explanations (e.g. disabled action reasons). */
   panelWrap:
     'relative block max-w-[min(16rem,calc(100vw-2rem))] whitespace-normal text-left leading-snug rounded px-2.5 py-1.5 text-xs text-white shadow-lg bg-gray-900',
-  arrowTop: 'absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900',
-  arrowBottom: 'absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900',
+  /** `left` is set inline so the arrow stays over the anchor when the panel is clamped to the viewport. */
+  arrowTop: 'absolute -bottom-1 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900',
+  arrowBottom: 'absolute -top-1 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900',
 } as const;
 
 /** Opportunities-style sortable entity lists (grid header + card/flat rows). */
