@@ -13,8 +13,14 @@ import { WorkOrderActivityTab } from '@/components/fleet/WorkOrderActivityTab';
 import type { CostItem } from '@/components/fleet/WorkOrderCostModal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
+  canEditFleetWorkOrderTab,
+  canViewFleetWorkOrderTab,
+  type FleetWorkOrderTab,
+} from '@/lib/fleetPermissions';
+import {
   AppButton,
   AppCard,
+  AppEmptyState,
   AppTabs,
   AppPageHeader,
   uiCx,
@@ -196,8 +202,14 @@ export default function WorkOrderDetail() {
   const woHeroAssetLinePending =
     (workOrder?.entity_type === 'fleet' && fleetAssetPending) || (workOrder?.entity_type === 'equipment' && equipmentHeroPending);
 
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
+  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const permissionsReady = !!me && !meLoading;
+  const canEditGeneral = canEditFleetWorkOrderTab(isAdmin, permissions, 'general');
+  const canEditCostsPerm = canEditFleetWorkOrderTab(isAdmin, permissions, 'costs');
+  const canEditFiles = canEditFleetWorkOrderTab(isAdmin, permissions, 'files');
+  const canViewTab = (t: FleetWorkOrderTab) => canViewFleetWorkOrderTab(isAdmin, permissions, t);
 
   const updateCostsMutation = useMutation({
     mutationFn: async (newCosts: any) => {
@@ -307,10 +319,11 @@ export default function WorkOrderDetail() {
     return getCostTotal(costs, 'labor') + getCostTotal(costs, 'parts') + getCostTotal(costs, 'other');
   };
 
-  const canEditCosts = ['open', 'in_progress', 'pending_parts'].includes(workOrder?.status ?? '');
-  const canStartService = workOrder?.status === 'open';
-  const canFinishService = ['in_progress', 'pending_parts'].includes(workOrder?.status ?? '');
-  const canReopen = ['cancelled', 'not_approved'].includes(workOrder?.status ?? '') && isAdmin;
+  const canEditCostsByStatus = ['open', 'in_progress', 'pending_parts'].includes(workOrder?.status ?? '');
+  const canEditCosts = canEditCostsByStatus && canEditCostsPerm;
+  const canStartService = workOrder?.status === 'open' && canEditGeneral;
+  const canFinishService = ['in_progress', 'pending_parts'].includes(workOrder?.status ?? '') && canEditGeneral;
+  const canReopen = ['cancelled', 'not_approved'].includes(workOrder?.status ?? '') && isAdmin && canEditGeneral;
   const allowedManualStatusTargets = MANUAL_STATUS_TRANSITIONS[workOrder?.status ?? ''] || [];
   const statusOptionsForCurrent = workOrder ? [workOrder.status, ...allowedManualStatusTargets] : [];
 
@@ -415,6 +428,27 @@ export default function WorkOrderDetail() {
     requestStatusChange(statusEditDraft);
   };
 
+  const woTabItems = useMemo(() => {
+    if (!permissionsReady) return [];
+    return (
+      [
+        { key: 'general' as const, label: 'General', permTab: 'general' as const },
+        { key: 'costs' as const, label: 'Costs', permTab: 'costs' as const },
+        { key: 'files' as const, label: 'Files', permTab: 'files' as const },
+        { key: 'activity' as const, label: 'Activity', permTab: 'activity' as const },
+      ] as const
+    ).filter((t) => canViewFleetWorkOrderTab(isAdmin, permissions, t.permTab));
+  }, [permissionsReady, isAdmin, permissions]);
+
+  useEffect(() => {
+    if (!permissionsReady || !woTabItems.length) return;
+    if (!woTabItems.some((t) => t.key === tab)) {
+      const next = woTabItems[0].key;
+      setTab(next);
+      if (id) nav(`/fleet/work-orders/${id}?tab=${next}`, { replace: true });
+    }
+  }, [permissionsReady, woTabItems, tab, id, nav]);
+
   if (!isValidId) {
     return <div className="p-4">Invalid work order ID</div>;
   }
@@ -457,13 +491,6 @@ export default function WorkOrderDetail() {
   const laborCosts = Array.isArray(costs.labor) ? costs.labor : [];
   const partsCosts = Array.isArray(costs.parts) ? costs.parts : [];
   const otherCosts = Array.isArray(costs.other) ? costs.other : [];
-
-  const woTabItems = [
-    { key: 'general' as const, label: 'General' },
-    { key: 'costs' as const, label: 'Costs' },
-    { key: 'files' as const, label: 'Files' },
-    { key: 'activity' as const, label: 'Activity' },
-  ];
 
   const { primaryTitle: heroPrimaryTitle, subtitleLine: heroSubtitleLine } = buildWorkOrderHeroHeading(workOrder);
 
@@ -521,6 +548,7 @@ export default function WorkOrderDetail() {
             setStatusEditDraft(workOrder.status);
             setShowEditStatusModal(true);
           }}
+          canEditStatus={canEditGeneral}
           canStartService={canStartService}
           canFinishService={canFinishService}
           canReopen={canReopen}
@@ -531,23 +559,38 @@ export default function WorkOrderDetail() {
 
         <div className={!isHeroCollapsed ? '-mt-0.5' : undefined}>
           <AppCard bodyClassName={isHeroCollapsed ? 'p-2.5' : '!py-3'}>
-            <AppTabs
-              tabs={woTabItems}
-              value={tab}
-              onChange={(next) => {
-                setTab(next as typeof tab);
-                nav(`/fleet/work-orders/${id}?tab=${next}`, { replace: true });
-              }}
-            />
+            {!permissionsReady ? (
+              <div className="h-8 animate-pulse rounded bg-gray-100" />
+            ) : woTabItems.length > 0 ? (
+              <AppTabs
+                tabs={woTabItems.map((t) => ({ key: t.key, label: t.label }))}
+                value={tab}
+                onChange={(next) => {
+                  setTab(next as typeof tab);
+                  nav(`/fleet/work-orders/${id}?tab=${next}`, { replace: true });
+                }}
+              />
+            ) : (
+              <p className={uiCx(uiTypography.helper, 'px-1')}>
+                No work order tabs are available for your permissions.
+              </p>
+            )}
           </AppCard>
         </div>
       </div>
 
       <AppCard bodyClassName="min-w-0 overflow-hidden">
-        {tab === 'general' && (
+        {permissionsReady && woTabItems.length === 0 ? (
+          <AppEmptyState
+            title="No tabs available"
+            description="Ask an admin to grant View on General, Costs, Files, or Activity for work orders."
+            className="border-0 bg-transparent py-10 shadow-none"
+          />
+        ) : null}
+        {tab === 'general' && canViewTab('general') && (
           <WorkOrderGeneralTab
             workOrder={workOrder}
-            canEditDescription={canEditCosts}
+            canEditDescription={canEditCostsByStatus && canEditGeneral}
             descriptionEditing={descriptionEditing}
             descriptionDraft={descriptionDraft}
             descriptionSavePending={updateDescriptionMutation.isPending}
@@ -572,7 +615,7 @@ export default function WorkOrderDetail() {
           />
         )}
 
-        {tab === 'costs' && (
+        {tab === 'costs' && canViewTab('costs') && (
           <WorkOrderCostsTab
             workOrderId={id!}
             costs={costs}
@@ -602,29 +645,29 @@ export default function WorkOrderDetail() {
           />
         )}
 
-        {tab === 'files' && (
-          <WorkOrderFilesTab workOrderId={id!} />
+        {tab === 'files' && canViewTab('files') && (
+          <WorkOrderFilesTab workOrderId={id!} canEdit={canEditFiles} />
         )}
 
-        {tab === 'activity' && (
+        {tab === 'activity' && canViewTab('activity') && (
           <WorkOrderActivityTab workOrderId={id!} />
         )}
       </AppCard>
 
       <WorkOrderDetailModals
-        showCheckIn={showCheckInModal}
+        showCheckIn={canEditGeneral && showCheckInModal}
         onCloseCheckIn={() => setShowCheckInModal(false)}
         checkInForm={checkInForm}
         onCheckInFormChange={(patch) => setCheckInForm((p) => ({ ...p, ...patch }))}
         onSubmitCheckIn={submitCheckIn}
         checkInPending={checkInMutation.isPending}
-        showCheckOut={showCheckOutModal}
+        showCheckOut={canEditGeneral && showCheckOutModal}
         onCloseCheckOut={() => setShowCheckOutModal(false)}
         checkOutForm={checkOutForm}
         onCheckOutFormChange={(patch) => setCheckOutForm((p) => ({ ...p, ...patch }))}
         onSubmitCheckOut={submitCheckOut}
         checkOutPending={checkOutMutation.isPending}
-        showEditStatus={showEditStatusModal && !!workOrder}
+        showEditStatus={canEditGeneral && showEditStatusModal && !!workOrder}
         onCloseEditStatus={() => setShowEditStatusModal(false)}
         statusEditDraft={statusEditDraft}
         onStatusEditDraftChange={setStatusEditDraft}
@@ -637,7 +680,7 @@ export default function WorkOrderDetail() {
         onStatusReasonChange={setStatusReason}
         onConfirmStatusReason={() => updateStatusMutation.mutate({ status: statusTarget, reason: statusReason })}
         statusReasonPending={updateStatusMutation.isPending}
-        showReopen={showReopenModal}
+        showReopen={canEditGeneral && showReopenModal}
         onCloseReopen={() => setShowReopenModal(false)}
         reopenReason={reopenReason}
         onReopenReasonChange={setReopenReason}

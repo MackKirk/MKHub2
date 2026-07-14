@@ -16,6 +16,7 @@ import InstallPrompt from '@/components/InstallPrompt';
 import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
 import HubChatLauncher from '@/components/HubChatLauncher';
 import { canAccessProjectLineMenu, isAdminRole } from '@/lib/projectLinePermissionKeys';
+import { usePageViewTracker } from '@/lib/usePageViewTracker';
 import { AppUserAvatar, uiCx, uiDropdown } from '@/components/ui';
 
 type MenuItem = {
@@ -262,6 +263,7 @@ const IconQuotations = () => (
 
 export default function AppShell({ children }: PropsWithChildren){
   const location = useLocation();
+  usePageViewTracker();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data:meProfile, isLoading: meProfileLoading } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });
@@ -405,7 +407,17 @@ export default function AppShell({ children }: PropsWithChildren){
       );
     }
     if (requiredPermission === 'fleet:vehicles:read') {
-      return has || permissionsSet.has('fleet:access') || permissionsSet.has('fleet:read');
+      return has || permissionsSet.has('fleet:read');
+    }
+    if (requiredPermission === 'fleet:work_orders:read') {
+      return has || permissionsSet.has('work_orders:read');
+    }
+    if (requiredPermission === 'fleet:inspections:read') {
+      return (
+        has ||
+        permissionsSet.has('inspections:read') ||
+        permissionsSet.has('fleet:inspections:write')
+      );
     }
     if (requiredPermission === 'equipment:read') {
       return (
@@ -551,8 +563,8 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'fleet-dashboard', label: 'Dashboard', path: '/fleet', icon: <IconTruck />, requiredPermission: 'fleet:access' },
         { id: 'fleet-assets', label: 'Fleet Assets', path: '/fleet/assets', icon: <IconTruck />, requiredPermission: 'fleet:vehicles:read' },
         { id: 'fleet-calendar', label: 'Schedule', path: '/fleet/calendar', icon: <IconCalendar />, requiredPermission: 'fleet:access' },
-        { id: 'work-orders', label: 'Work Orders', path: '/fleet/work-orders', icon: <IconClipboard />, requiredPermission: 'fleet:access' },
-        { id: 'inspections', label: 'Inspections', path: '/fleet/inspections', icon: <IconClipboardCheck />, requiredPermission: 'fleet:access' },
+        { id: 'work-orders', label: 'Work Orders', path: '/fleet/work-orders', icon: <IconClipboard />, requiredPermission: 'fleet:work_orders:read' },
+        { id: 'inspections', label: 'Inspections', path: '/fleet/inspections', icon: <IconClipboardCheck />, requiredPermission: 'fleet:inspections:read' },
       ]
     },
     {

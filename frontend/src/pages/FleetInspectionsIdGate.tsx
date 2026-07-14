@@ -15,7 +15,7 @@ async function getJsonOr404<T>(path: string): Promise<T | null> {
     window.location.replace('/login');
     throw new Error('Unauthorized');
   }
-  if (r.status === 404) return null;
+  if (r.status === 404 || r.status === 403) return null;
   if (!r.ok) {
     let msg = `HTTP ${r.status}: ${r.statusText}`;
     try {

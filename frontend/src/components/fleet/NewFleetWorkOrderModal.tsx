@@ -32,6 +32,7 @@ type Props = {
   assetDisplayName?: string;
   employees: unknown[];
   onSuccess: () => void;
+  canAssign?: boolean;
 };
 
 function buildInitialForm(): FormValues {
@@ -50,6 +51,7 @@ export default function NewFleetWorkOrderModal({
   assetDisplayName,
   employees,
   onSuccess,
+  canAssign = true,
 }: Props) {
   const [form, setForm] = useState<FormValues>(buildInitialForm);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -80,7 +82,7 @@ export default function NewFleetWorkOrderModal({
         category: form.category,
         urgency: form.urgency,
         status: 'open',
-        assigned_to_user_id: form.assigned_to_user_id || null,
+        assigned_to_user_id: canAssign ? form.assigned_to_user_id || null : null,
         photos: photos.length > 0 ? photos : null,
         costs: { labor: [], parts: [], other: [], total: 0 },
         origin_source: 'manual',
@@ -186,16 +188,18 @@ export default function NewFleetWorkOrderModal({
               { value: 'urgent', label: 'Urgent' },
             ]}
           />
-          <AppUserSelect
-            mode="single"
-            label="Assigned to"
-            users={assignUsers}
-            value={form.assigned_to_user_id}
-            onChange={(userId) => updateField('assigned_to_user_id', userId ?? '')}
-            placeholder="Unassigned"
-            disabled={createMutation.isPending || uploading}
-            fieldHint={H.assigned_to}
-          />
+          {canAssign ? (
+            <AppUserSelect
+              mode="single"
+              label="Assigned to"
+              users={assignUsers}
+              value={form.assigned_to_user_id}
+              onChange={(userId) => updateField('assigned_to_user_id', userId ?? '')}
+              placeholder="Unassigned"
+              disabled={createMutation.isPending || uploading}
+              fieldHint={H.assigned_to}
+            />
+          ) : null}
         </div>
 
         <AppTextarea

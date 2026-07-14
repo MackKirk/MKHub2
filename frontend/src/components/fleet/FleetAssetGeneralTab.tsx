@@ -88,6 +88,7 @@ type Props = {
   propaneStatus: { label: string; variant: ReturnType<typeof getFleetDueStatusBadgeVariant> } | null;
   odometerStatus: { label: string; variant: ReturnType<typeof getFleetDueStatusBadgeVariant> } | null;
   hoursStatus: { label: string; variant: ReturnType<typeof getFleetDueStatusBadgeVariant> } | null;
+  canEdit?: boolean;
   onEditSection: (section: FleetAssetGeneralEditSection) => void;
   onViewCompliance: () => void;
 };
@@ -98,6 +99,7 @@ export function FleetAssetGeneralTab({
   employeeName,
   complianceStatusByType,
   propaneStatus,
+  canEdit = true,
   odometerStatus,
   hoursStatus,
   onEditSection,
@@ -115,7 +117,11 @@ export function FleetAssetGeneralTab({
           title="Basic Information"
           description="Identity, identification, and operational status."
           {...appSectionPresetProps('basicInformation')}
-          action={<AppHeroEditButton title="Edit Basic Information" onClick={() => onEditSection('basic')} />}
+          action={
+            canEdit ? (
+              <AppHeroEditButton title="Edit Basic Information" onClick={() => onEditSection('basic')} />
+            ) : undefined
+          }
         />
         <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
           <ReadOnlyField label="Name *" value={asset.name} />
@@ -146,7 +152,11 @@ export function FleetAssetGeneralTab({
           title="Registration & Compliance"
           description="Registration numbers, GVW, and propane sticker summary."
           {...appSectionPresetProps('documents')}
-          action={<AppHeroEditButton title="Edit Registration" onClick={() => onEditSection('registration')} />}
+          action={
+            canEdit ? (
+              <AppHeroEditButton title="Edit Registration" onClick={() => onEditSection('registration')} />
+            ) : undefined
+          }
         />
         {Object.keys(complianceStatusByType).length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-1.5">
@@ -194,7 +204,11 @@ export function FleetAssetGeneralTab({
           title="Assignment & Location"
           description="Current assignment and default sleeps / yard location."
           {...appSectionPresetProps('employment')}
-          action={<AppHeroEditButton title="Edit Assignment & Location" onClick={() => onEditSection('assignment')} />}
+          action={
+            canEdit ? (
+              <AppHeroEditButton title="Edit Assignment & Location" onClick={() => onEditSection('assignment')} />
+            ) : undefined
+          }
         />
         <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
           <div className="space-y-1">
@@ -228,7 +242,11 @@ export function FleetAssetGeneralTab({
             title="Odometer & Maintenance"
             description={isVehicle ? 'Odometer readings and service due thresholds.' : 'Hour meter readings and service due thresholds.'}
             {...appSectionPresetProps('timesheet')}
-            action={<AppHeroEditButton title="Edit Odometer & Maintenance" onClick={() => onEditSection('odometer')} />}
+            action={
+              canEdit ? (
+                <AppHeroEditButton title="Edit Odometer & Maintenance" onClick={() => onEditSection('odometer')} />
+              ) : undefined
+            }
           />
           <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
             {isVehicle && (
@@ -288,7 +306,9 @@ export function FleetAssetGeneralTab({
           title="Notes & Photos"
           description="Internal notes and additional photos for this asset."
           {...appSectionPresetProps('description')}
-          action={<AppHeroEditButton title="Edit Notes" onClick={() => onEditSection('notes')} />}
+          action={
+            canEdit ? <AppHeroEditButton title="Edit Notes" onClick={() => onEditSection('notes')} /> : undefined
+          }
         />
         <div className={uiSpacing.sectionStack}>
           <div className={uiCx(uiTypography.helper, 'mt-4 whitespace-pre-wrap break-words font-medium text-gray-900')}>

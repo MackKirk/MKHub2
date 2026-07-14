@@ -36,6 +36,7 @@ export type WorkOrderListNewModalProps = {
   open: boolean;
   onClose: () => void;
   onCreated: (data: { id: string }) => void;
+  canAssign?: boolean;
 };
 
 function buildInitialForm(): WorkOrderListNewFormValues {
@@ -57,7 +58,12 @@ function buildInitialForm(): WorkOrderListNewFormValues {
   };
 }
 
-export default function WorkOrderListNewModal({ open, onClose, onCreated }: WorkOrderListNewModalProps) {
+export default function WorkOrderListNewModal({
+  open,
+  onClose,
+  onCreated,
+  canAssign = true,
+}: WorkOrderListNewModalProps) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<WorkOrderListNewFormValues>(buildInitialForm);
 
@@ -106,7 +112,7 @@ export default function WorkOrderListNewModal({ open, onClose, onCreated }: Work
         category: form.category,
         urgency: form.urgency,
         status: 'open',
-        assigned_to_user_id: form.assigned_to_user_id || null,
+        assigned_to_user_id: canAssign ? form.assigned_to_user_id || null : null,
         costs: Object.keys(costs).length > 0 ? costs : null,
         origin_source: 'manual',
       };
@@ -184,6 +190,7 @@ export default function WorkOrderListNewModal({ open, onClose, onCreated }: Work
         vehicleError={assetsError}
         onRetryVehicles={() => refetchAssets()}
         disabled={createMutation.isPending}
+        canAssign={canAssign}
         onChange={updateField}
         onSubmit={handleSubmit}
       />

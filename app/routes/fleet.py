@@ -8,7 +8,24 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
 from ..db import get_db
-from ..auth.security import get_current_user, require_permissions, require_roles
+from ..auth.security import (
+    get_current_user,
+    require_permissions,
+    require_roles,
+    assert_fleet_asset_tab,
+    assert_fleet_work_order_tab,
+    assert_fleet_inspection_tab,
+    has_fleet_assets_list_permission,
+    has_fleet_asset_write_permission,
+    has_fleet_work_orders_list_permission,
+    has_fleet_work_order_write_permission,
+    has_fleet_work_order_assign_permission,
+    has_fleet_work_order_tab_permission,
+    has_fleet_inspections_list_permission,
+    has_fleet_inspection_write_permission,
+    has_fleet_inspection_tab_permission,
+    can_create_fleet_inspection_schedule,
+)
 from ..services.permissions import is_admin
 from ..services.asset_assignment_service import (
     create_assignment_for_fleet_asset,
@@ -524,9 +541,11 @@ def list_fleet_assets(
     page: int = 1,
     limit: int = 15,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:access", "fleet:read"))
+    user=Depends(get_current_user),
 ):
     """List fleet assets with filters, sort, and pagination. Sort applies to all pages."""
+    if not has_fleet_assets_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     page = max(1, page)
     limit = max(1, min(100, limit))
     offset = (page - 1) * limit
@@ -655,9 +674,11 @@ def list_fleet_assets(
 def get_fleet_asset(
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:read"))
+    user=Depends(get_current_user),
 ):
     """Get fleet asset detail"""
+    if not has_fleet_assets_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Fleet asset not found")
@@ -678,9 +699,10 @@ def create_fleet_asset(
     asset: FleetAssetCreate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:write"))
 ):
     """Create a new fleet asset. Name is optional; stored as empty string if not provided."""
+    if not has_fleet_asset_write_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     data = asset.model_dump() if hasattr(asset, 'model_dump') else asset.dict()
     if not (data.get('name') or '').strip():
         data['name'] = ''
@@ -710,7 +732,7 @@ def update_fleet_asset(
     asset_update: FleetAssetUpdate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:write")),
+    _=Depends(require_permissions("fleet:vehicles:general:write")),
 ):
     """Update a fleet asset"""
     asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
@@ -747,9 +769,10 @@ def delete_fleet_asset(
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:write")),
 ):
     """Delete a fleet asset (soft delete by setting status to retired)"""
+    if not has_fleet_asset_write_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Fleet asset not found")
@@ -775,9 +798,10 @@ def delete_fleet_asset(
 def get_asset_inspections(
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:read"))
+    user=Depends(get_current_user),
 ):
     """Get inspections for a fleet asset (same response shape as list inspections, including inspector_name)."""
+    assert_fleet_asset_tab(user, "inspections", "read")
     rows = (
         db.query(FleetInspection)
         .filter(FleetInspection.fleet_asset_id == asset_id)
@@ -798,9 +822,10 @@ def get_asset_inspections(
 def get_asset_work_orders(
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:read"))
+    user=Depends(get_current_user),
 ):
     """Get work orders for a fleet asset"""
+    assert_fleet_asset_tab(user, "work_orders", "read")
     return db.query(WorkOrder).filter(
         and_(
             WorkOrder.entity_type == "fleet",
@@ -813,9 +838,10 @@ def get_asset_work_orders(
 def get_asset_logs(
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:read"))
+    user=Depends(get_current_user),
 ):
     """Get logs for a fleet asset"""
+    assert_fleet_asset_tab(user, "history", "read")
     return db.query(FleetLog).filter(
         FleetLog.fleet_asset_id == asset_id
     ).order_by(FleetLog.log_date.desc()).all()
@@ -905,12 +931,13 @@ def get_fleet_asset_history(
     asset_id: uuid.UUID,
     limit: int = Query(300, ge=1, le=500),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:read")),
+    user=Depends(get_current_user),
 ):
     """
     Unified timeline: assignments (when no matching assignment audit), fleet_logs,
     and audit logs for this asset (edits, inspections, schedules, compliance, work orders, files).
     """
+    assert_fleet_asset_tab(user, "history", "read")
     asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Fleet asset not found")
@@ -1094,9 +1121,10 @@ def get_fleet_asset_history(
 def get_asset_compliance(
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:read"))
+    user=Depends(get_current_user),
 ):
     """Get compliance records for a fleet asset"""
+    assert_fleet_asset_tab(user, "compliance", "read")
     asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Fleet asset not found")
@@ -1111,7 +1139,7 @@ def create_asset_compliance(
     payload: FleetComplianceRecordCreate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:write")),
+    _=Depends(require_permissions("fleet:vehicles:compliance:write")),
 ):
     """Create a compliance record for a fleet asset"""
     asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
@@ -1140,7 +1168,7 @@ def update_compliance(
     payload: FleetComplianceRecordUpdate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:write")),
+    _=Depends(require_permissions("fleet:vehicles:compliance:write")),
 ):
     """Update a compliance record"""
     rec = db.query(FleetComplianceRecord).filter(FleetComplianceRecord.id == record_id).first()
@@ -1172,7 +1200,7 @@ def delete_compliance(
     record_id: uuid.UUID,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:write")),
+    _=Depends(require_permissions("fleet:vehicles:compliance:write")),
 ):
     """Delete a compliance record"""
     rec = db.query(FleetComplianceRecord).filter(FleetComplianceRecord.id == record_id).first()
@@ -2264,9 +2292,10 @@ def return_equipment_assignment(
 def get_fleet_asset_assignments(
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:read"))
+    user=Depends(get_current_user),
 ):
     """Get assignment history for fleet asset (from asset_assignments)"""
+    assert_fleet_asset_tab(user, "general", "read")
     assignments = db.query(AssetAssignment).filter(
         AssetAssignment.fleet_asset_id == asset_id
     ).order_by(AssetAssignment.assigned_at.desc()).all()
@@ -2279,7 +2308,7 @@ def assign_fleet_asset(
     payload: AssetAssignmentAssignRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:write"))
+    _=Depends(require_permissions("fleet:vehicles:general:write")),
 ):
     """Assign fleet asset to a user (unified asset_assignments)"""
     if not payload.assigned_to_user_id and not payload.assigned_to_name:
@@ -2312,7 +2341,7 @@ def return_fleet_asset(
     payload: AssetAssignmentReturnRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:write"))
+    _=Depends(require_permissions("fleet:vehicles:general:write")),
 ):
     """Return fleet asset (close open assignment by asset_id)"""
     try:
@@ -2338,7 +2367,7 @@ def return_fleet_asset_assignment(
     return_data: FleetAssetAssignmentReturn,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:write"))
+    _=Depends(require_permissions("fleet:vehicles:general:write")),
 ):
     """Return fleet asset assignment by assignment id (legacy fleet_asset_assignments table)"""
     assignment = db.query(FleetAssetAssignment).filter(FleetAssetAssignment.id == assignment_id).first()
@@ -2388,9 +2417,10 @@ def create_inspection_schedule(
     payload: InspectionScheduleCreate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("inspections:write")),
 ):
     """Create an inspection appointment (agendamento). Creates body and mechanical inspections as pending automatically."""
+    if not can_create_fleet_inspection_schedule(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     schedule = InspectionSchedule(
         fleet_asset_id=payload.fleet_asset_id,
         scheduled_at=payload.scheduled_at,
@@ -2466,9 +2496,11 @@ def list_inspection_schedules(
     sort: Optional[str] = Query("scheduled_at"),
     dir: Optional[str] = Query("desc"),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("inspections:read")),
+    user=Depends(get_current_user),
 ):
     """List inspection schedules with filters."""
+    if not has_fleet_inspections_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     query = db.query(InspectionSchedule).options(
         joinedload(InspectionSchedule.fleet_asset),
         joinedload(InspectionSchedule.inspections),
@@ -2510,9 +2542,14 @@ def get_inspection_schedules_calendar(
     start: str = Query(..., description="Start date (YYYY-MM-DD) or datetime (ISO)"),
     end: str = Query(..., description="End date (YYYY-MM-DD) or datetime (ISO)"),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:access", "fleet:read", "inspections:read")),
+    user=Depends(get_current_user),
 ):
     """List inspection schedules with scheduled_at in [start, end] for calendar view."""
+    if not (
+        has_fleet_inspection_tab_permission(user, "schedules", "read")
+        or has_fleet_inspections_list_permission(user)
+    ):
+        raise HTTPException(status_code=403, detail="Forbidden")
     def _parse(s: str, default_time: str):
         s = (s or "").strip()
         if not s:
@@ -2576,9 +2613,11 @@ def get_inspection_schedules_calendar(
 def get_inspection_schedule(
     schedule_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("inspections:read")),
+    user=Depends(get_current_user),
 ):
     """Get inspection schedule by id."""
+    if not has_fleet_inspections_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     schedule = db.query(InspectionSchedule).options(
         joinedload(InspectionSchedule.fleet_asset),
         joinedload(InspectionSchedule.inspections),
@@ -2603,9 +2642,9 @@ def update_inspection_schedule(
     payload: InspectionScheduleUpdate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("inspections:write")),
 ):
     """Update an inspection schedule (e.g. reschedule, cancel)."""
+    assert_fleet_inspection_tab(user, "schedules", "write")
     schedule = db.query(InspectionSchedule).options(joinedload(InspectionSchedule.fleet_asset)).filter(InspectionSchedule.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Inspection schedule not found")
@@ -2701,9 +2740,9 @@ def start_inspection_schedule(
     schedule_id: uuid.UUID,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("inspections:write")),
 ):
     """Start an inspection schedule: create both inspections (body and mechanical) and mark schedule in_progress."""
+    assert_fleet_inspection_tab(user, "execution", "write")
     schedule = db.query(InspectionSchedule).filter(InspectionSchedule.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Inspection schedule not found")
@@ -2721,9 +2760,9 @@ def start_inspection_schedule_body(
     schedule_id: uuid.UUID,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("inspections:write")),
 ):
     """Start (open) the body/exterior inspection for this schedule. Creates it if not yet created. Redirect to inspection screen."""
+    assert_fleet_inspection_tab(user, "execution", "write")
     schedule = db.query(InspectionSchedule).filter(InspectionSchedule.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Inspection schedule not found")
@@ -2738,9 +2777,9 @@ def start_inspection_schedule_mechanical(
     schedule_id: uuid.UUID,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("inspections:write")),
 ):
     """Start (open) the mechanical inspection for this schedule. Creates it if not yet created. Redirect to inspection screen."""
+    assert_fleet_inspection_tab(user, "execution", "write")
     schedule = db.query(InspectionSchedule).filter(InspectionSchedule.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Inspection schedule not found")
@@ -2859,9 +2898,14 @@ def list_inspections(
     sort: Optional[str] = Query("inspection_date"),
     dir: Optional[str] = Query("desc"),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("inspections:read"))
+    user=Depends(get_current_user),
 ):
     """List inspections with filters and sort. Returns fleet_asset_name and inspector_name for display."""
+    if not (
+        has_fleet_inspections_list_permission(user)
+        or has_fleet_inspection_tab_permission(user, "execution", "read")
+    ):
+        raise HTTPException(status_code=403, detail="Forbidden")
     query = db.query(FleetInspection).options(joinedload(FleetInspection.fleet_asset))
     if fleet_asset_id:
         query = query.filter(FleetInspection.fleet_asset_id == fleet_asset_id)
@@ -2896,9 +2940,10 @@ def list_inspections(
 def get_inspection(
     inspection_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("inspections:read"))
+    user=Depends(get_current_user),
 ):
     """Get inspection detail"""
+    assert_fleet_inspection_tab(user, "execution", "read")
     inspection = db.query(FleetInspection).options(joinedload(FleetInspection.fleet_asset)).filter(FleetInspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
@@ -2914,9 +2959,13 @@ def create_inspection(
     inspection: FleetInspectionCreate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("inspections:write"))
 ):
     """Create a new inspection (body or mechanical)."""
+    if not (
+        has_fleet_inspection_write_permission(user)
+        or has_fleet_inspection_tab_permission(user, "execution", "write")
+    ):
+        raise HTTPException(status_code=403, detail="Forbidden")
     data = inspection.model_dump()
     if "photos" in data:
         data["photos"] = _fleet_asset_json_file_id_list(data.get("photos"))
@@ -3016,9 +3065,9 @@ def update_inspection(
     inspection_update: FleetInspectionUpdate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("inspections:write"))
 ):
     """Update an inspection. If result is set to fail, a work order is created automatically."""
+    assert_fleet_inspection_tab(user, "execution", "write")
     inspection = db.query(FleetInspection).filter(FleetInspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
@@ -3095,9 +3144,9 @@ def get_suggested_work_order_description_from_inspection(
     inspection_id: uuid.UUID,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("inspections:read")),
 ):
     """Suggested WO description text (same builder as auto-generated WOs) for prefilling the New Work Order form."""
+    assert_fleet_inspection_tab(user, "execution", "read")
     inspection = db.query(FleetInspection).filter(FleetInspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
@@ -3109,9 +3158,13 @@ def generate_work_order_from_inspection(
     inspection_id: uuid.UUID,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("work_orders:write"))
 ):
     """Manually create a work order linked to this inspection. Inspection must be finished (pass/fail/conditional)."""
+    if not (
+        has_fleet_inspection_tab_permission(user, "execution", "write")
+        or has_fleet_work_order_write_permission(user)
+    ):
+        raise HTTPException(status_code=403, detail="Forbidden")
     inspection = db.query(FleetInspection).filter(FleetInspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
@@ -3215,9 +3268,11 @@ def list_work_orders(
     page: int = Query(1, ge=1),
     limit: int = Query(15, ge=1, le=100),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:access", "fleet:read", "work_orders:read"))
+    user=Depends(get_current_user),
 ):
     """List work orders with filters, sort, search, and pagination."""
+    if not has_fleet_work_orders_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     offset = (page - 1) * limit
     query = db.query(WorkOrder)
 
@@ -3290,9 +3345,11 @@ def get_work_orders_calendar(
     start: str = Query(..., description="Start date or datetime (ISO)"),
     end: str = Query(..., description="End date or datetime (ISO)"),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:access", "fleet:read", "work_orders:read"))
+    user=Depends(get_current_user),
 ):
     """List fleet work orders with scheduled_start_at in [start, end] for calendar view."""
+    if not has_fleet_work_orders_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     def _parse_calendar_param(s: str, default_time: str):
         s = (s or "").strip()
         if not s:
@@ -3362,9 +3419,11 @@ def get_work_orders_calendar(
 def get_work_order(
     work_order_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("work_orders:read"))
+    user=Depends(get_current_user),
 ):
     """Get work order detail"""
+    if not has_fleet_work_orders_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
@@ -3375,9 +3434,10 @@ def get_work_order(
 def get_work_order_activity(
     work_order_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("work_orders:read"))
+    user=Depends(get_current_user),
 ):
     """Get activity log for a work order (file attach/remove, status changes, cost add/remove)."""
+    assert_fleet_work_order_tab(user, "activity", "read")
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
@@ -3409,15 +3469,26 @@ def create_work_order(
     work_order: WorkOrderCreate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("work_orders:write"))
 ):
     """Create a new work order"""
-    payload = work_order.dict()
+    from ..auth.security import _has_permission
+
+    if not (
+        has_fleet_work_order_write_permission(user)
+        or _has_permission(user, "fleet:vehicles:work_orders:write")
+    ):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    payload = work_order.dict() if hasattr(work_order, "dict") else work_order.model_dump()
+    if payload.get("assigned_to_user_id") and not has_fleet_work_order_assign_permission(user):
+        raise HTTPException(status_code=403, detail="Not allowed to assign work orders")
+
     payload["status"] = WorkOrderStatus.open.value
     wo = WorkOrder(
         work_order_number=generate_work_order_number(db),
-        **payload,
-        assigned_by_user_id=user.id if work_order.assigned_to_user_id else None,
+        **{k: v for k, v in payload.items() if k != "status"},
+        status=WorkOrderStatus.open.value,
+        assigned_by_user_id=user.id if payload.get("assigned_to_user_id") else None,
         created_by=user.id,
     )
     db.add(wo)
@@ -3469,7 +3540,6 @@ def update_work_order(
     work_order_update: WorkOrderUpdate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("work_orders:write"))
 ):
     """Update a work order"""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
@@ -3493,6 +3563,15 @@ def update_work_order(
             status_code=400,
             detail=f"Use dedicated workflow endpoints for {', '.join(blocked_fields)} updates",
         )
+
+    if "assigned_to_user_id" in update_data and not has_fleet_work_order_assign_permission(user):
+        raise HTTPException(status_code=403, detail="Not allowed to assign work orders")
+    if "costs" in update_data:
+        assert_fleet_work_order_tab(user, "costs", "write")
+    general_keys = set(update_data.keys()) - {"costs", "assigned_to_user_id"}
+    if general_keys:
+        assert_fleet_work_order_tab(user, "general", "write")
+
     for key, value in update_data.items():
         setattr(wo, key, value)
 
@@ -3574,7 +3653,7 @@ def update_work_order_status(
     body: WorkOrderStatusUpdateRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("work_orders:write"))
+    _=Depends(require_permissions("fleet:work_orders:general:write")),
 ):
     """Update work order status through the allowed manual transitions."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
@@ -3623,7 +3702,7 @@ def work_order_check_in(
     body: WorkOrderCheckInRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("work_orders:write"))
+    _=Depends(require_permissions("fleet:work_orders:general:write"))
 ):
     """Register vehicle check-in (entrada). Sets check_in_at, optional odometer/hours, and status to in_progress."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
@@ -3696,7 +3775,7 @@ def work_order_check_out(
     body: WorkOrderCheckOutRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("work_orders:write"))
+    _=Depends(require_permissions("fleet:work_orders:general:write"))
 ):
     """Register vehicle check-out (saída). Sets check_out_at, status to closed, and optional odometer/hours."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
@@ -3770,7 +3849,7 @@ def reopen_work_order(
     body: WorkOrderReopenRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("work_orders:write")),
+    _=Depends(require_permissions("fleet:work_orders:general:write")),
 ):
     """Reopen cancelled or not-approved work orders back to pending."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
@@ -3942,7 +4021,7 @@ def list_work_order_files(
     work_order_id: uuid.UUID,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:access")),
+    _=Depends(require_permissions("fleet:work_orders:files:read")),
 ):
     """List files attached to the work order. Includes WorkOrderFile rows plus legacy documents/photos from the work order."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
@@ -4043,7 +4122,7 @@ def attach_work_order_file(
     original_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:access")),
+    _=Depends(require_permissions("fleet:work_orders:files:write")),
 ):
     if category not in WORK_ORDER_FILE_CATEGORIES:
         raise HTTPException(status_code=400, detail=f"category must be one of: {WORK_ORDER_FILE_CATEGORIES}")
@@ -4092,7 +4171,7 @@ def update_work_order_file(
     original_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:access")),
+    _=Depends(require_permissions("fleet:work_orders:files:write")),
 ):
     worf = db.query(WorkOrderFile).filter(WorkOrderFile.id == file_id, WorkOrderFile.work_order_id == work_order_id).first()
     if not worf:
@@ -4143,7 +4222,7 @@ def delete_work_order_legacy_file(
     category: str = Query(..., description="outros | photos | orcamentos"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:access")),
+    _=Depends(require_permissions("fleet:work_orders:files:write")),
 ):
     """Remove a file from legacy work_order.documents, work_order.photos, or work_order.quote_file_ids."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
@@ -4210,7 +4289,7 @@ def delete_work_order_file(
     file_id: uuid.UUID,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("fleet:access")),
+    _=Depends(require_permissions("fleet:work_orders:files:write")),
 ):
     worf = db.query(WorkOrderFile).filter(WorkOrderFile.id == file_id, WorkOrderFile.work_order_id == work_order_id).first()
     if worf:

@@ -10,6 +10,7 @@ import {
   getInspectionScheduleStatusBadgeVariant,
 } from '@/lib/fleetUi';
 import FleetScheduleInspectionModal from '@/components/fleet/FleetScheduleInspectionModal';
+import { canEditFleetInspectionTab } from '@/lib/fleetPermissions';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import {
   AppBadge,
@@ -63,6 +64,11 @@ export default function Inspections() {
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get('search') ?? '';
   const [showNewInspectionModal, setShowNewInspectionModal] = useState(false);
+
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const canScheduleInspection = canEditFleetInspectionTab(isAdmin, permissions, 'schedules');
 
   const validSorts: SortColumn[] = ['scheduled_at', 'asset'];
   const rawSort = searchParams.get('sort');
@@ -179,12 +185,14 @@ export default function Inspections() {
           <div className="flex flex-col">
             {showEmptyList ? (
               <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'min-h-[12rem] pb-10')}>
-                <AppListCreateItem
-                  label="Schedule inspection"
-                  layout="row"
-                  className="w-full"
-                  onClick={() => setShowNewInspectionModal(true)}
-                />
+                {canScheduleInspection ? (
+                  <AppListCreateItem
+                    label="Schedule inspection"
+                    layout="row"
+                    className="w-full"
+                    onClick={() => setShowNewInspectionModal(true)}
+                  />
+                ) : null}
                 <AppEmptyState
                   title="No inspection schedules found"
                   className="border-0 bg-transparent p-0 shadow-none"
@@ -192,14 +200,16 @@ export default function Inspections() {
               </div>
             ) : (
               <>
-                <div className={uiCx(uiSpacing.cardPadding, schedules.length === 0 ? 'pb-10' : 'pb-3')}>
-                  <AppListCreateItem
-                    label="Schedule inspection"
-                    layout="row"
-                    className="w-full"
-                    onClick={() => setShowNewInspectionModal(true)}
-                  />
-                </div>
+                {canScheduleInspection ? (
+                  <div className={uiCx(uiSpacing.cardPadding, schedules.length === 0 ? 'pb-10' : 'pb-3')}>
+                    <AppListCreateItem
+                      label="Schedule inspection"
+                      layout="row"
+                      className="w-full"
+                      onClick={() => setShowNewInspectionModal(true)}
+                    />
+                  </div>
+                ) : null}
                 {schedules.length > 0 ? (
                   <AppSortableEntityList layout="flat" className="border-t border-gray-100">
                     <AppSortableEntityListHeader variant="flat" gridCols={LIST_GRID_COLS} minWidth={LIST_MIN_WIDTH}>
@@ -320,7 +330,7 @@ export default function Inspections() {
       </LoadingOverlay>
 
       <FleetScheduleInspectionModal
-        open={showNewInspectionModal}
+        open={canScheduleInspection && showNewInspectionModal}
         onClose={() => setShowNewInspectionModal(false)}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });

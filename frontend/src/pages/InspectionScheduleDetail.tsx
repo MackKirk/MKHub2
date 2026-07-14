@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -21,6 +21,10 @@ import {
 } from '@/pages/FleetInspectionScheduleInlineEditors';
 import { useConfirm } from '@/components/ConfirmProvider';
 import WorkOrderNewModal from '@/components/fleet/WorkOrderNewModal';
+import {
+  canEditFleetInspectionTab,
+  canViewFleetInspectionTab,
+} from '@/lib/fleetPermissions';
 import {
   AppBadge,
   AppButton,
@@ -187,9 +191,12 @@ export default function InspectionScheduleDetail() {
 
   const { data: me } = useQuery({
     queryKey: ['me'],
-    queryFn: () => api<{ roles?: string[] }>('GET', '/auth/me'),
+    queryFn: () => api<{ roles?: string[]; permissions?: string[] }>('GET', '/auth/me'),
   });
   const isAdmin = (me?.roles ?? []).includes('admin');
+  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const canViewExecution = canViewFleetInspectionTab(isAdmin, permissions, 'execution');
+  const canEditExecution = canEditFleetInspectionTab(isAdmin, permissions, 'execution');
 
   const { data: schedule, isPending } = useQuery({
     queryKey: ['inspection-schedule', id],
@@ -217,25 +224,25 @@ export default function InspectionScheduleDetail() {
   const { data: bodyInspection } = useQuery({
     queryKey: ['inspection', schedule?.body_inspection_id],
     queryFn: () => api<ScheduleInspectionFetched>('GET', `/fleet/inspections/${schedule!.body_inspection_id}`),
-    enabled: !!schedule?.body_inspection_id,
+    enabled: canViewExecution && !!schedule?.body_inspection_id,
   });
 
   const { data: mechanicalInspection } = useQuery({
     queryKey: ['inspection', schedule?.mechanical_inspection_id],
     queryFn: () => api<ScheduleInspectionFetched>('GET', `/fleet/inspections/${schedule!.mechanical_inspection_id}`),
-    enabled: !!schedule?.mechanical_inspection_id,
+    enabled: canViewExecution && !!schedule?.mechanical_inspection_id,
   });
 
   const { data: bodyTemplate } = useQuery({
     queryKey: ['inspectionChecklistTemplate', 'body'],
     queryFn: () => api<ChecklistTemplate>('GET', '/fleet/inspections/checklist-template?type=body'),
-    enabled: !!schedule?.body_inspection_id,
+    enabled: canViewExecution && !!schedule?.body_inspection_id,
   });
 
   const { data: mechanicalTemplate } = useQuery({
     queryKey: ['inspectionChecklistTemplate', 'mechanical'],
     queryFn: () => api<ChecklistTemplate>('GET', '/fleet/inspections/checklist-template?type=mechanical'),
-    enabled: !!schedule?.mechanical_inspection_id,
+    enabled: canViewExecution && !!schedule?.mechanical_inspection_id,
   });
 
   const invalidateAfterScheduleMutation = () => {
@@ -392,12 +399,14 @@ export default function InspectionScheduleDetail() {
     !!r && ['pass', 'fail', 'conditional'].includes(String(r).toLowerCase());
 
   const canEditBodyInspection =
+    canEditExecution &&
     !!bodyInspection &&
     bodyPending &&
     !bodyInspection.auto_generated_work_order_id &&
     !isInspectionResultFinal(bodyInspection.result);
 
   const canEditMechanicalInspection =
+    canEditExecution &&
     !!mechanicalInspection &&
     mechPending &&
     !mechanicalInspection.auto_generated_work_order_id &&
@@ -462,6 +471,14 @@ export default function InspectionScheduleDetail() {
         onViewAsset={() => nav(`/fleet/assets/${schedule.fleet_asset_id}`)}
       />
 
+      {!canViewExecution ? (
+        <AppCard className={uiShadows.card}>
+          <AppEmptyState
+            title="No access to inspection forms"
+            description="You need Execution View to see body and mechanical checklists."
+          />
+        </AppCard>
+      ) : (
       <AppCard className={uiShadows.card} bodyClassName="!p-0">
         <div className={uiCx(uiSpacing.cardPadding, 'border-b border-gray-100')}>
           <AppSectionHeader
@@ -612,6 +629,7 @@ export default function InspectionScheduleDetail() {
                           </div>
                         )}
                         {!bodyPending &&
+                          canEditExecution &&
                           isInspectionResultFinal(bodyInspection.result) &&
                           !bodyInspection.auto_generated_work_order_id && (
                           <AppCard
@@ -812,6 +830,7 @@ export default function InspectionScheduleDetail() {
                           </div>
                         )}
                         {!mechPending &&
+                          canEditExecution &&
                           isInspectionResultFinal(mechanicalInspection.result) &&
                           !mechanicalInspection.auto_generated_work_order_id && (
                           <AppCard
@@ -872,9 +891,10 @@ export default function InspectionScheduleDetail() {
           </div>
         </div>
       </AppCard>
+      )}
 
       <WorkOrderNewModal
-        isOpen={!!woModalInspectionId}
+        isOpen={canEditExecution && !!woModalInspectionId}
         onClose={() => setWoModalInspectionId(null)}
         onCreated={(data) => {
           const inspId = woModalInspectionId;

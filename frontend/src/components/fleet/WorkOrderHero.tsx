@@ -50,6 +50,7 @@ type WorkOrderHeroBodyProps = {
   canStartService: boolean;
   canFinishService: boolean;
   canReopen: boolean;
+  canEditStatus?: boolean;
   onStartService: () => void;
   onEndService: () => void;
   onReopen: () => void;
@@ -69,6 +70,7 @@ function WorkOrderHeroBody({
   canStartService,
   canFinishService,
   canReopen,
+  canEditStatus = true,
   onStartService,
   onEndService,
   onReopen,
@@ -138,7 +140,7 @@ function WorkOrderHeroBody({
               <FleetHeroStat
                 label="Status"
                 labelAction={
-                  statusOptionsCount > 1 ? (
+                  canEditStatus && statusOptionsCount > 1 ? (
                     <AppHeroEditButton
                       title="Edit status"
                       aria-label="Edit status"

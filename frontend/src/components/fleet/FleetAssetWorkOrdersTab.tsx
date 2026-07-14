@@ -53,6 +53,7 @@ type Props = {
   searchInput: string;
   onSearchChange: (value: string) => void;
   onSort: (column: FleetAssetWorkOrderSortCol) => void;
+  canEdit?: boolean;
   onCreateClick: () => void;
   onOpenWorkOrder: (workOrderId: string) => void;
 };
@@ -66,6 +67,7 @@ export function FleetAssetWorkOrdersTab({
   searchInput,
   onSearchChange,
   onSort,
+  canEdit = true,
   onCreateClick,
   onOpenWorkOrder,
 }: Props) {
@@ -83,9 +85,11 @@ export function FleetAssetWorkOrdersTab({
       />
 
       <AppCard className="min-w-0" bodyClassName="!p-0">
-        <div className={uiCx(uiSpacing.cardPadding, 'pb-3')}>
-          <AppListCreateItem label="New Work Order" layout="row" className="w-full" onClick={onCreateClick} />
-        </div>
+        {canEdit ? (
+          <div className={uiCx(uiSpacing.cardPadding, 'pb-3')}>
+            <AppListCreateItem label="New Work Order" layout="row" className="w-full" onClick={onCreateClick} />
+          </div>
+        ) : null}
 
         {hasRecords && (
           <div className="w-full min-w-0 border-t border-gray-200 bg-gray-50/80 px-3 py-2.5">

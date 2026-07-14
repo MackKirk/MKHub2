@@ -85,9 +85,10 @@ type WorkOrderFileItem = {
 
 type Props = {
   workOrderId: string;
+  canEdit?: boolean;
 };
 
-export function WorkOrderFilesTab({ workOrderId }: Props) {
+export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -492,9 +493,11 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
               description="Quotes, photos, invoices, and other attachments for this work order."
               {...appSectionPresetProps('files')}
               action={
-                <AppButton type="button" size="sm" onClick={() => setShowUpload(true)}>
-                  Upload file
-                </AppButton>
+                canEdit ? (
+                  <AppButton type="button" size="sm" onClick={() => setShowUpload(true)}>
+                    Upload file
+                  </AppButton>
+                ) : undefined
               }
             />
           </div>
@@ -628,7 +631,7 @@ export function WorkOrderFilesTab({ workOrderId }: Props) {
                           tileSize={tileSize}
                           selectedIds={fileSelection.selectedIds}
                           canSelect
-                          canWrite
+                          canWrite={canEdit}
                           onPreviewFile={(file) => {
                             const original = workOrderFileById.get(file.id);
                             if (original) void handleFilePreview(original);

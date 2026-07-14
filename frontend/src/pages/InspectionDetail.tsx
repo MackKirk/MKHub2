@@ -8,6 +8,10 @@ import FleetDetailHeader from '@/components/FleetDetailHeader';
 import WorkOrderNewModal from '@/components/fleet/WorkOrderNewModal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
+  canEditFleetInspectionTab,
+  canViewFleetInspectionTab,
+} from '@/lib/fleetPermissions';
+import {
   BODY_CONDITION_OPTIONS,
   buildBodyFormFromInspection,
   buildMechanicalFormFromInspection,
@@ -86,28 +90,31 @@ export default function InspectionDetail() {
 
   const isValidId = id && id !== 'new';
 
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const canViewExecution = canViewFleetInspectionTab(isAdmin, permissions, 'execution');
+  const canEditExecution = canEditFleetInspectionTab(isAdmin, permissions, 'execution');
+
   const { data: inspection, isLoading } = useQuery({
     queryKey: ['inspection', id],
     queryFn: () => api<Inspection>('GET', `/fleet/inspections/${id}`),
-    enabled: isValidId,
+    enabled: !!isValidId && canViewExecution,
   });
-
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
-  const isAdmin = (me?.roles || []).includes('admin');
 
   const inspectionType = inspection?.inspection_type || 'mechanical';
   const { data: checklistTemplate } = useQuery<ChecklistTemplate>({
     queryKey: ['inspectionChecklistTemplate', inspectionType],
     queryFn: () => api<ChecklistTemplate>('GET', `/fleet/inspections/checklist-template?type=${inspectionType}`),
-    enabled: !!inspection,
+    enabled: canViewExecution && !!inspection,
   });
 
   const isBody = inspection?.inspection_type === 'body';
   const isMechanical = inspection?.inspection_type === 'mechanical';
   const hasWorkOrder = !!(inspection as Inspection)?.auto_generated_work_order_id;
   const isResultFinal = inspection?.result && ['pass', 'fail', 'conditional'].includes((inspection.result || '').toLowerCase());
-  const canEditBody = isBody && !hasWorkOrder && !isResultFinal;
-  const canEditMechanical = isMechanical && !hasWorkOrder && !isResultFinal;
+  const canEditBody = canEditExecution && isBody && !hasWorkOrder && !isResultFinal;
+  const canEditMechanical = canEditExecution && isMechanical && !hasWorkOrder && !isResultFinal;
   const [bodyEditMode, setBodyEditMode] = useState(false);
   const [bodyForm, setBodyForm] = useState<BodyFormState | null>(null);
   const [mechanicalEditMode, setMechanicalEditMode] = useState(false);
@@ -402,6 +409,21 @@ export default function InspectionDetail() {
 
   if (!isValidId) {
     return <div className="p-4">Invalid inspection ID</div>;
+  }
+
+  if (!canViewExecution) {
+    return (
+      <div className="p-4 space-y-4">
+        <FleetDetailHeader
+          onBack={goBackFromInspection}
+          title={<span className="text-sm font-semibold text-gray-900">Inspection</span>}
+          subtitle={null}
+        />
+        <div className="rounded-xl border bg-white p-6 text-sm text-gray-600">
+          You need Execution View to open this inspection form.
+        </div>
+      </div>
+    );
   }
 
   if (isLoading) {
@@ -1117,7 +1139,8 @@ export default function InspectionDetail() {
           </div>
         )}
 
-        {isInspectionFinal &&
+        {canEditExecution &&
+          isInspectionFinal &&
           !inspection.auto_generated_work_order_id &&
           !inspection.inspection_schedule_id && (
           <div
@@ -1143,7 +1166,8 @@ export default function InspectionDetail() {
           </div>
         )}
 
-        {isInspectionFinal &&
+        {canEditExecution &&
+          isInspectionFinal &&
           !inspection.auto_generated_work_order_id &&
           !!inspection.inspection_schedule_id && (
           <div className="border rounded-lg p-4 bg-slate-50 border-slate-200">
@@ -1198,7 +1222,7 @@ export default function InspectionDetail() {
         </div>
 
         <WorkOrderNewModal
-          isOpen={workOrderModalOpen}
+          isOpen={canEditExecution && workOrderModalOpen}
           onClose={() => setWorkOrderModalOpen(false)}
           onCreated={(data) => {
             setWorkOrderModalOpen(false);
