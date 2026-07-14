@@ -5,41 +5,40 @@ type MKHubChatWindow = Window & {
 };
 
 /**
- * Mounts the vanilla hub chat widget into #hub-chat-fab-host and syncs sidebar collapsed state for the launcher label.
+ * Initializes the vanilla hub chat widget (floating FAB on document.body).
  */
-export default function HubChatLauncher({ sidebarCollapsed }: { sidebarCollapsed: boolean }) {
+export default function HubChatLauncher() {
   const triedInit = useRef(false);
 
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('mkhub-sidebar-collapsed', { detail: { collapsed: sidebarCollapsed } }));
-  }, [sidebarCollapsed]);
-
-  useEffect(() => {
-    const host = document.getElementById('hub-chat-fab-host');
-    if (!host || triedInit.current) return;
+    let cancelled = false;
 
     const tryInit = () => {
+      if (cancelled || triedInit.current) return !!document.getElementById('mkhub-chat-fab');
       const w = window as MKHubChatWindow;
       if (typeof w.__initMKHubChat !== 'function') return false;
+
+      const host = document.getElementById('hub-chat-fab-host');
       triedInit.current = true;
       w.__initMKHubChat(host);
-      window.dispatchEvent(new CustomEvent('mkhub-sidebar-collapsed', { detail: { collapsed: sidebarCollapsed } }));
-      return true;
+      return !!document.getElementById('mkhub-chat-fab');
     };
 
     if (tryInit()) return;
 
     let attempts = 0;
-    const maxAttempts = 80;
+    const maxAttempts = 120;
     const id = window.setInterval(() => {
       attempts += 1;
-      if (tryInit() || attempts >= maxAttempts) {
+      if (tryInit() || attempts >= maxAttempts || cancelled) {
         clearInterval(id);
       }
     }, 50);
 
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- init once; sidebar updates use separate effect
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
   return null;

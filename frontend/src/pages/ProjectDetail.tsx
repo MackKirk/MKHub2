@@ -69,6 +69,7 @@ import {
   opportunityEditRelatedCustomersQuickInfo,
   opportunityEditSiteQuickInfo,
   opportunityEditStatusQuickInfo,
+  projectEditOnSiteLeadsQuickInfo,
 } from '@/lib/formModalQuickInfo';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
 import {
@@ -3261,19 +3262,16 @@ export default function ProjectDetail(){
 
       {showOnSiteLeadsModal && !isOpportunityStyleTabs && (
         <OnSiteLeadsModal
-          projectId={String(id||'')}
           originalDivisions={Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []}
           divisionLeads={proj?.division_onsite_leads || {}}
-          settings={settings||{}}
           projectDivisions={projectDivisions||[]}
           employees={employees||[]}
           canEdit={hasEditPermission}
           onClose={() => setShowOnSiteLeadsModal(false)}
-          onUpdate={async (updatedLeads, updatedDivisions) => {
+          onUpdate={async (updatedLeads) => {
             try {
-              await api('PATCH', `/projects/${encodeURIComponent(String(id||''))}`, { 
-                division_onsite_leads: updatedLeads
-                // Note: updatedDivisions is not used anymore since divisions come from project_division_ids
+              await api('PATCH', `/projects/${encodeURIComponent(String(id||''))}`, {
+                division_onsite_leads: updatedLeads,
               });
               await queryClient.invalidateQueries({ queryKey: ['project', id] });
               invalidateRecentActivity();
@@ -7184,44 +7182,71 @@ function TimesheetAuditSection({ projectId }: { projectId: string }) {
   return <GenericAuditSection projectId={projectId} section="timesheet" title="Timesheet Activity Log" />;
 }
 
-function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, settings, projectDivisions, employees, canEdit, onClose, onUpdate }: {
-  projectId: string,
-  originalDivisions: string[],
-  divisionLeads: Record<string, string>,
-  settings: any,
-  projectDivisions: any[],
-  employees: any[],
-  canEdit: boolean,
-  onClose: () => void,
-  onUpdate: (updatedLeads: Record<string, string>, updatedDivisions: string[]) => Promise<void>
-}){
-  const [localDivisions, setLocalDivisions] = useState<string[]>(originalDivisions);
+function OnSiteLeadsModal({
+  originalDivisions,
+  divisionLeads,
+  projectDivisions,
+  employees,
+  canEdit,
+  onClose,
+  onUpdate,
+}: {
+  originalDivisions: string[];
+  divisionLeads: Record<string, string>;
+  projectDivisions: any[];
+  employees: any[];
+  canEdit: boolean;
+  onClose: () => void;
+  onUpdate: (updatedLeads: Record<string, string>) => Promise<void>;
+}) {
   const [localLeads, setLocalLeads] = useState<Record<string, string>>(divisionLeads);
   const [isSaving, setIsSaving] = useState(false);
-  const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
-  const [openDivisionId, setOpenDivisionId] = useState<string | null>(null);
-  const [dropdownPosition, setDropdownPosition] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null);
-  const triggerRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
-    setLocalDivisions(originalDivisions);
     setLocalLeads(divisionLeads);
-  }, [originalDivisions, divisionLeads]);
+  }, [divisionLeads]);
+
+  const employeeUserOptions = useMemo(
+    () => (employees || []).map((e: any) => mapEmployeeToAppUserSelect(e)),
+    [employees],
+  );
+
+  const getDivisionLabel = useCallback(
+    (divId: string) => {
+      for (const div of projectDivisions || []) {
+        if (String(div.id) === String(divId)) return div.label || divId;
+        for (const sub of div.subdivisions || []) {
+          if (String(sub.id) === String(divId)) return `${div.label} - ${sub.label}`;
+        }
+      }
+      return divId;
+    },
+    [projectDivisions],
+  );
+
+  const getDivisionMainLabel = useCallback(
+    (divId: string) => {
+      for (const div of projectDivisions || []) {
+        if (String(div.id) === String(divId)) return div.label || '';
+        for (const sub of div.subdivisions || []) {
+          if (String(sub.id) === String(divId)) return div.label || '';
+        }
+      }
+      return '';
+    },
+    [projectDivisions],
+  );
 
   const handleLeadChange = (divId: string, leadId: string) => {
     if (!canEdit) return;
-    const updated = { ...localLeads, [divId]: leadId };
-    setLocalLeads(updated);
-    // Close dropdown after selection
-    setOpenDivisionId(null);
+    setLocalLeads((prev) => ({ ...prev, [divId]: leadId }));
   };
 
   const handleSave = async () => {
     if (!canEdit) return;
     setIsSaving(true);
     try {
-      // Pass the same divisions (they come from project_division_ids and cannot be changed here)
-      await onUpdate(localLeads, localDivisions);
+      await onUpdate(localLeads);
       onClose();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Failed to update on-site leads');
@@ -7230,364 +7255,60 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
     }
   };
 
-  const updateSearchQuery = (divId: string, query: string) => {
-    setSearchQueries(prev => ({ ...prev, [divId]: query }));
-  };
-
-  const getFilteredEmployees = (divId: string) => {
-    const query = searchQueries[divId] || '';
-    if (!query.trim()) return employees;
-    const searchLower = query.toLowerCase();
-    return employees.filter((emp: any) => {
-      const name = getUserDisplayName(emp).toLowerCase();
-      const email = (emp.email || '').toLowerCase();
-      const username = (emp.username || '').toLowerCase();
-      return name.includes(searchLower) || email.includes(searchLower) || username.includes(searchLower);
-    });
-  };
-
-  const computeDropdownPosition = (divId: string) => {
-    const el = triggerRefs.current[divId];
-    if (!el) return;
-
-    const rect = el.getBoundingClientRect();
-    const PADDING = 8;
-    const DESIRED_MAX = 320;
-    const MIN_HEIGHT = 160;
-
-    const spaceBelow = window.innerHeight - rect.bottom - PADDING;
-    const spaceAbove = rect.top - PADDING;
-    const openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
-
-    const available = openUp ? spaceAbove : spaceBelow;
-    const maxHeight = Math.min(DESIRED_MAX, Math.max(MIN_HEIGHT, available));
-
-    // Keep dropdown within viewport horizontally
-    const width = rect.width;
-    const maxLeft = window.innerWidth - width - PADDING;
-    const left = Math.max(PADDING, Math.min(rect.left, maxLeft));
-
-    if (openUp) {
-      // Position dropdown so its bottom aligns just above the trigger
-      const bottom = window.innerHeight - rect.top + PADDING;
-      setDropdownPosition({ bottom, left, width, maxHeight });
-    } else {
-      const top = rect.bottom + PADDING;
-      setDropdownPosition({ top, left, width, maxHeight });
-    }
-  };
-
-  const toggleDivisionDropdown = (divId: string) => {
-    if (!canEdit) return;
-    if (openDivisionId === divId) {
-      setOpenDivisionId(null);
-      return;
-    }
-    setOpenDivisionId(divId);
-    // Compute immediately (and again via effect below)
-    computeDropdownPosition(divId);
-  };
-
-  useEffect(() => {
-    if (!openDivisionId) {
-      setDropdownPosition(null);
-      return;
-    }
-    const update = () => computeDropdownPosition(openDivisionId);
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [openDivisionId]);
-
-  // Divisions come from project_division_ids and cannot be modified in this modal
-  // No add/remove functionality - only edit leads
-  if (localDivisions.length === 0) {
+  if (originalDivisions.length === 0) {
     return null;
   }
 
   return (
-    <OverlayPortal>
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="max-w-2xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">On-site Leads by Division</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Assign a lead for each project division</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 min-h-0">
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm text-gray-600">
-              {localDivisions.length} division{localDivisions.length !== 1 ? 's' : ''} from Project Divisions
-            </div>
-            <div className="flex items-center gap-2">
-              {isSaving && <span className="text-xs text-gray-500">Saving...</span>}
-            </div>
-          </div>
-          <div className="space-y-3">
-            {localDivisions.map((divId: string) => {
-          // Find division in projectDivisions (check main divisions and subdivisions)
-          // Format: "Division" for main division, "Division - Subdivision" for subdivisions
-          let divLabel = '';
-          let divIcon = '';
-          let mainDivisionLabel = ''; // For getting the icon from main division
-          
-          for (const div of (projectDivisions || [])) {
-            if (String(div.id) === String(divId)) {
-              // Main division
-              divLabel = div.label || divId;
-              mainDivisionLabel = div.label || '';
-              divIcon = getDivisionIcon(div.label || '');
-              break;
-            }
-            // Check subdivisions - format as "Division - Subdivision"
-            for (const sub of (div.subdivisions || [])) {
-              if (String(sub.id) === String(divId)) {
-                divLabel = `${div.label} - ${sub.label}`;
-                mainDivisionLabel = div.label || '';
-                divIcon = getDivisionIcon(div.label || '');
-                break;
-              }
-            }
-            if (divLabel) break;
-          }
-          
-          // Fallback if not found
-          if (!divLabel) {
-            divLabel = divId;
-            divIcon = '';
-          }
-          
-          const leadId = localLeads[divId] || '';
-          const lead = leadId ? employees.find((e:any) => String(e.id) === String(leadId)) : null;
-          const filteredEmployeesForDiv = getFilteredEmployees(divId);
-          const isExpanded = openDivisionId === divId;
-          
-          return (
-            <div key={divId} className="space-y-2">
-              <div className="flex items-center gap-2">
-                {divIcon && <span className="text-lg">{divIcon}</span>}
-                <span className="text-sm font-medium text-gray-900">{divLabel}</span>
-              </div>
-              <div className="relative">
-                {/* Dropdown trigger */}
-                <div
-                  ref={(el) => { triggerRefs.current[divId] = el; }}
-                  onClick={() => toggleDivisionDropdown(divId)}
-                  className={`flex items-center gap-2 border rounded px-3 py-1.5 text-sm cursor-pointer ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : 'bg-white hover:bg-gray-50'}`}
-                >
-                  {lead ? (
-                    <>
-                      <UserAvatar user={lead} size="w-6 h-6" showTooltip={false} />
-                      <span className="flex-1 text-left">{getUserDisplayName(lead)}</span>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-medium">
-                        —
-                      </div>
-                      <span className="flex-1 text-left text-gray-500">Select lead...</span>
-                    </>
-                  )}
-                  <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-
-                {/* Dropdown content - Using fixed positioning to appear above footer */}
-                {isExpanded && canEdit && dropdownPosition && (
-                  <>
-                    {/* Backdrop to close dropdown */}
-                    <OverlayPortal>
-                      <div 
-                        className="fixed inset-0 z-[60]" 
-                        onClick={() => setOpenDivisionId(null)}
-                      />
-                    </OverlayPortal>
-                    {/* Dropdown */}
-                    <div 
-                      className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
-                      style={{
-                        ...(dropdownPosition.top !== undefined ? { top: `${dropdownPosition.top}px` } : {}),
-                        ...(dropdownPosition.bottom !== undefined ? { bottom: `${dropdownPosition.bottom}px` } : {}),
-                        left: `${dropdownPosition.left}px`,
-                        width: `${dropdownPosition.width}px`,
-                        maxHeight: `${dropdownPosition.maxHeight}px`,
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {dropdownPosition.bottom !== undefined ? (
-                        <>
-                          {/* Employee list (top) */}
-                          <div className="overflow-y-auto flex-1">
-                            {/* Option to clear selection */}
-                            <div
-                              onClick={() => handleLeadChange(divId, '')}
-                              className={`flex items-center gap-3 p-2 cursor-pointer transition-colors ${
-                                !leadId ? 'bg-indigo-50 border-l-2 border-indigo-500' : 'hover:bg-gray-50'
-                              }`}
-                            >
-                              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-medium">
-                                —
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900">No Lead</div>
-                                <div className="text-xs text-gray-600">Clear selection</div>
-                              </div>
-                            </div>
-                            {filteredEmployeesForDiv.length === 0 ? (
-                              <div className="text-xs text-gray-500 text-center py-4">No employees found matching your search.</div>
-                            ) : (
-                              filteredEmployeesForDiv.map((emp: any) => {
-                                const isSelected = String(emp.id) === String(leadId);
-                                return (
-                                  <div
-                                    key={emp.id}
-                                    onClick={() => handleLeadChange(divId, String(emp.id))}
-                                    className={`flex items-center gap-3 p-2 cursor-pointer transition-colors ${
-                                      isSelected ? 'bg-indigo-50 border-l-2 border-indigo-500' : 'hover:bg-gray-50'
-                                    }`}
-                                  >
-                                    <UserAvatar user={emp} size="w-8 h-8" showTooltip={false} />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-gray-900">{getUserDisplayName(emp)}</div>
-                                      {emp.email && (
-                                        <div className="text-xs text-gray-600 truncate">{emp.email}</div>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            )}
-                          </div>
-
-                          {/* Search input (bottom) */}
-                          <div className="p-2 border-t bg-white">
-                            <input
-                              type="text"
-                              value={searchQueries[divId] || ''}
-                              onChange={(e) => updateSearchQuery(divId, e.target.value)}
-                              placeholder="Search by name, email, or username..."
-                              className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                              onClick={(e) => e.stopPropagation()}
-                              autoFocus
-                            />
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          {/* Search input (top) */}
-                          <div className="p-2 border-b">
-                            <input
-                              type="text"
-                              value={searchQueries[divId] || ''}
-                              onChange={(e) => updateSearchQuery(divId, e.target.value)}
-                              placeholder="Search by name, email, or username..."
-                              className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                              onClick={(e) => e.stopPropagation()}
-                              autoFocus
-                            />
-                          </div>
-
-                          {/* Employee list (bottom) */}
-                          <div className="overflow-y-auto flex-1">
-                            {/* Option to clear selection */}
-                            <div
-                              onClick={() => handleLeadChange(divId, '')}
-                              className={`flex items-center gap-3 p-2 cursor-pointer transition-colors ${
-                                !leadId ? 'bg-indigo-50 border-l-2 border-indigo-500' : 'hover:bg-gray-50'
-                              }`}
-                            >
-                              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-medium">
-                                —
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900">No Lead</div>
-                                <div className="text-xs text-gray-600">Clear selection</div>
-                              </div>
-                            </div>
-                            {filteredEmployeesForDiv.length === 0 ? (
-                              <div className="text-xs text-gray-500 text-center py-4">No employees found matching your search.</div>
-                            ) : (
-                              filteredEmployeesForDiv.map((emp: any) => {
-                                const isSelected = String(emp.id) === String(leadId);
-                                return (
-                                  <div
-                                    key={emp.id}
-                                    onClick={() => handleLeadChange(divId, String(emp.id))}
-                                    className={`flex items-center gap-3 p-2 cursor-pointer transition-colors ${
-                                      isSelected ? 'bg-indigo-50 border-l-2 border-indigo-500' : 'hover:bg-gray-50'
-                                    }`}
-                                  >
-                                    <UserAvatar user={emp} size="w-8 h-8" showTooltip={false} />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-gray-900">{getUserDisplayName(emp)}</div>
-                                      {emp.email && (
-                                        <div className="text-xs text-gray-600 truncate">{emp.email}</div>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
-          </div>
-          </div>
-        </div>
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl relative z-0">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
-          >
+    <AppFormModal
+      open
+      onClose={onClose}
+      title="On-site Leads by Division"
+      description="Assign a lead for each project division"
+      formWidth="comfortable"
+      quickInfo={projectEditOnSiteLeadsQuickInfo}
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={isSaving}>
             Cancel
-          </button>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSaving ? 'Saving...' : 'Save'}
-            </button>
-          )}
+          </AppButton>
+          {canEdit ? (
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={isSaving} loading={isSaving}>
+              {isSaving ? 'Saving…' : 'Save'}
+            </AppButton>
+          ) : null}
+        </div>
+      }
+    >
+      <div className={uiSpacing.sectionStack}>
+        <p className={uiTypography.helper}>
+          {originalDivisions.length} division{originalDivisions.length !== 1 ? 's' : ''} from Project Divisions
+        </p>
+        <div className={uiSpacing.sectionStack}>
+          {originalDivisions.map((divId: string) => (
+            <div key={divId} className="space-y-1.5">
+              <div
+                className="flex min-w-0 items-center gap-1.5"
+                title={getDivisionLabel(divId)}
+              >
+                <DivisionIcon label={getDivisionMainLabel(divId)} size={18} />
+                <span className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>
+                  {getDivisionLabel(divId)}
+                </span>
+              </div>
+              <AppUserSelect
+                mode="single"
+                users={employeeUserOptions}
+                value={localLeads[divId] || ''}
+                onChange={(userId) => handleLeadChange(divId, userId)}
+                placeholder="Search user…"
+                disabled={!canEdit}
+              />
+            </div>
+          ))}
         </div>
       </div>
-    </div>
-    </OverlayPortal>
+    </AppFormModal>
   );
 }
 

@@ -24,6 +24,7 @@ import {
   AppBadge,
   AppButton,
   AppCard,
+  AppCheckbox,
   AppControlLabelRow,
   AppEmptyState,
   AppFieldHint,
@@ -1338,48 +1339,39 @@ export default function InventoryProducts(){
                   <AppFieldHint hint="Unit Type\n\nUnitary = single item; Multiple = sold in packages; Coverage = area-based (SQS, ft², m²)." />
                 }
               />
-              <div className="mt-1 flex items-center gap-6">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="unit-type-products"
-                    checked={unitType === 'unitary'}
-                    onChange={() => {
-                      setUnitType('unitary');
-                      setUnitsPerPackage('');
-                      setCovSqs('');
-                      setCovFt2('');
-                      setCovM2('');
-                    }}
-                  />
-                  Unitary
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="unit-type-products"
-                    checked={unitType === 'multiple'}
-                    onChange={() => {
-                      setUnitType('multiple');
-                      setCovSqs('');
-                      setCovFt2('');
-                      setCovM2('');
-                    }}
-                  />
-                  Multiple
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="unit-type-products"
-                    checked={unitType === 'coverage'}
-                    onChange={() => {
-                      setUnitType('coverage');
-                      setUnitsPerPackage('');
-                    }}
-                  />
-                  Coverage
-                </label>
+              <div className="mt-1 flex flex-wrap items-center gap-6">
+                <AppCheckbox
+                  label="Unitary"
+                  checked={unitType === 'unitary'}
+                  onChange={(checked) => {
+                    if (!checked) return;
+                    setUnitType('unitary');
+                    setUnitsPerPackage('');
+                    setCovSqs('');
+                    setCovFt2('');
+                    setCovM2('');
+                  }}
+                />
+                <AppCheckbox
+                  label="Multiple"
+                  checked={unitType === 'multiple'}
+                  onChange={(checked) => {
+                    if (!checked) return;
+                    setUnitType('multiple');
+                    setCovSqs('');
+                    setCovFt2('');
+                    setCovM2('');
+                  }}
+                />
+                <AppCheckbox
+                  label="Coverage"
+                  checked={unitType === 'coverage'}
+                  onChange={(checked) => {
+                    if (!checked) return;
+                    setUnitType('coverage');
+                    setUnitsPerPackage('');
+                  }}
+                />
               </div>
             </div>
             {unitType === 'multiple' && (

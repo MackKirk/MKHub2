@@ -155,7 +155,7 @@ export const uiUserSelect = {
 /** Portaled calendar panel — same shell as dropdown menu. */
 export const uiDatePicker = {
   panel: uiCx(
-    'fixed z-[100050] overflow-hidden bg-white py-2',
+    'fixed z-[100050] overflow-y-auto overscroll-contain bg-white py-2',
     uiRadius.dropdownMenu,
     uiBorders.subtle,
     uiShadows.elevated,

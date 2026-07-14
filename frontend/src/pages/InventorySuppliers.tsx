@@ -20,6 +20,7 @@ import {
 } from '@/components/SupplierFormFields';
 import {
   inventoryNewProductQuickInfo,
+  inventoryEditProductQuickInfo,
   productDetailQuickInfo,
   supplierDetailQuickInfo,
   supplierFormQuickInfo,
@@ -39,6 +40,7 @@ import {
 import {
   AppButton,
   AppCard,
+  AppCheckbox,
   AppControlLabelRow,
   AppFieldHint,
   AppEmptyState,
@@ -1693,48 +1695,39 @@ export default function InventorySuppliers() {
                         <AppFieldHint hint="Unit Type\n\nUnitary = single item; Multiple = sold in packages; Coverage = area-based (SQS, ft², m²)." />
                       }
                     />
-                    <div className="flex items-center gap-6 mt-1">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input 
-                          type="radio" 
-                          name="unit-type-supplier" 
-                          checked={productUnitType==='unitary'} 
-                          onChange={()=>{ 
-                            setProductUnitType('unitary'); 
-                            setProductUnitsPerPackage(''); 
-                            setProductCovSqs(''); 
-                            setProductCovFt2(''); 
-                            setProductCovM2(''); 
-                          }} 
-                        /> 
-                        Unitary
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input 
-                          type="radio" 
-                          name="unit-type-supplier" 
-                          checked={productUnitType==='multiple'} 
-                          onChange={()=>{ 
-                            setProductUnitType('multiple'); 
-                            setProductCovSqs(''); 
-                            setProductCovFt2(''); 
-                            setProductCovM2(''); 
-                          }} 
-                        /> 
-                        Multiple
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input 
-                          type="radio" 
-                          name="unit-type-supplier" 
-                          checked={productUnitType==='coverage'} 
-                          onChange={()=>{ 
-                            setProductUnitType('coverage'); 
-                            setProductUnitsPerPackage(''); 
-                          }} 
-                        /> 
-                        Coverage
-                      </label>
+                    <div className="mt-1 flex flex-wrap items-center gap-6">
+                      <AppCheckbox
+                        label="Unitary"
+                        checked={productUnitType === 'unitary'}
+                        onChange={(checked) => {
+                          if (!checked) return;
+                          setProductUnitType('unitary');
+                          setProductUnitsPerPackage('');
+                          setProductCovSqs('');
+                          setProductCovFt2('');
+                          setProductCovM2('');
+                        }}
+                      />
+                      <AppCheckbox
+                        label="Multiple"
+                        checked={productUnitType === 'multiple'}
+                        onChange={(checked) => {
+                          if (!checked) return;
+                          setProductUnitType('multiple');
+                          setProductCovSqs('');
+                          setProductCovFt2('');
+                          setProductCovM2('');
+                        }}
+                      />
+                      <AppCheckbox
+                        label="Coverage"
+                        checked={productUnitType === 'coverage'}
+                        onChange={(checked) => {
+                          if (!checked) return;
+                          setProductUnitType('coverage');
+                          setProductUnitsPerPackage('');
+                        }}
+                      />
                     </div>
                   </div>
             {productUnitType === 'multiple' && (
@@ -1854,7 +1847,11 @@ export default function InventorySuppliers() {
               : undefined
         }
         quickInfo={
-          viewingProduct && !editingProduct ? productDetailQuickInfo(canEditProductDetails) : undefined
+          viewingProduct && !editingProduct
+            ? productDetailQuickInfo(canEditProductDetails)
+            : editingProduct
+              ? inventoryEditProductQuickInfo
+              : undefined
         }
         bodyClassName={viewingProduct && !editingProduct ? uiCx(uiSpacing.cardPadding, 'min-w-0') : undefined}
         footer={
@@ -2243,223 +2240,226 @@ export default function InventorySuppliers() {
           </div>
         ) : editingProduct ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="col-span-2">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                        Name <span className="text-red-600">*</span>
-                      </label>
-                      <input 
-                        className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${editProductNameError && !editProductName.trim() ? 'border-red-500' : ''}`}
-                        value={editProductName} 
-                        onChange={e=>{
-                          setEditProductName(e.target.value);
-                          if (editProductNameError) setEditProductNameError(false);
-                        }} 
-                      />
-                      {editProductNameError && !editProductName.trim() && (
-                        <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                        Supplier <span className="text-red-600">*</span>
-                      </label>
-                      <SupplierSelect
-                        value={editProductSupplier}
-                        onChange={(value) => {
-                          setEditProductSupplier(value);
-                          if (editProductSupplierError) setEditProductSupplierError(false);
-                        }}
-                        error={editProductSupplierError && !editProductSupplier.trim()}
-                        placeholder="Select a supplier"
-                        className="[&_button]:text-sm"
-                      />
-                      {editProductSupplierError && !editProductSupplier.trim() && (
-                        <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Category</label>
-                      <input 
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                        value={editProductCategory} 
-                        onChange={e=>setEditProductCategory(e.target.value)} 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Sell Unit</label>
-                      <input 
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                        placeholder="e.g., Roll, Pail (20L), Box" 
-                        value={editProductUnit} 
-                        onChange={e=>setEditProductUnit(e.target.value)} 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                        Price ($) <span className="text-red-600">*</span>
-                      </label>
-                      <input 
-                        type="text" 
-                        className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${editProductPriceError && (!editProductPrice || !editProductPrice.trim() || Number(parseCurrency(editProductPrice)) <= 0) ? 'border-red-500' : ''}`}
-                        placeholder="$0.00"
-                        value={editProductPriceFocused ? editProductPriceDisplay : (editProductPrice ? formatCurrency(editProductPrice) : '')}
-                        onFocus={() => {
-                          setEditProductPriceFocused(true);
-                          setEditProductPriceDisplay(editProductPrice || '');
-                        }}
-                        onBlur={() => {
-                          setEditProductPriceFocused(false);
-                          const parsed = parseCurrency(editProductPriceDisplay);
-                          setEditProductPrice(parsed);
-                          setEditProductPriceDisplay(parsed);
-                          if (editProductPriceError && parsed && Number(parsed) > 0) setEditProductPriceError(false);
-                        }}
-                        onChange={e => {
-                          const raw = e.target.value;
-                          setEditProductPriceDisplay(raw);
-                        }}
-                      />
-                      {editProductPriceError && (!editProductPrice || !editProductPrice.trim() || Number(parseCurrency(editProductPrice)) <= 0) && (
-                        <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                      )}
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit Type</label>
-                      <div className="flex items-center gap-6 mt-1">
-                        <label className="flex items-center gap-2 text-sm">
-                          <input 
-                            type="radio" 
-                            name="unit-type-edit" 
-                            checked={editProductUnitType==='unitary'} 
-                            onChange={()=>{ 
-                              setEditProductUnitType('unitary'); 
-                              setEditProductUnitsPerPackage(''); 
-                              setEditProductCovSqs(''); 
-                              setEditProductCovFt2(''); 
-                              setEditProductCovM2(''); 
-                            }} 
-                          /> 
-                          Unitary
-                        </label>
-                        <label className="flex items-center gap-2 text-sm">
-                          <input 
-                            type="radio" 
-                            name="unit-type-edit" 
-                            checked={editProductUnitType==='multiple'} 
-                            onChange={()=>{ 
-                              setEditProductUnitType('multiple'); 
-                              setEditProductCovSqs(''); 
-                              setEditProductCovFt2(''); 
-                              setEditProductCovM2(''); 
-                            }} 
-                          /> 
-                          Multiple
-                        </label>
-                        <label className="flex items-center gap-2 text-sm">
-                          <input 
-                            type="radio" 
-                            name="unit-type-edit" 
-                            checked={editProductUnitType==='coverage'} 
-                            onChange={()=>{ 
-                              setEditProductUnitType('coverage'); 
-                              setEditProductUnitsPerPackage(''); 
-                            }} 
-                          /> 
-                          Coverage
-                        </label>
-                      </div>
-                    </div>
-                    {editProductUnitType==='multiple' && (
-                      <div className="col-span-2">
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Units per Package</label>
-                        <input 
-                          type="number" 
-                          step="0.01" 
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                          value={editProductUnitsPerPackage} 
-                          onChange={e=>setEditProductUnitsPerPackage(e.target.value)} 
-                        />
-                      </div>
-                    )}
-                    {editProductUnitType==='coverage' && (
-                      <div className="col-span-2">
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Coverage Area</label>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="flex-1 flex items-center gap-1">
-                            <input 
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                              placeholder="0" 
-                              value={editProductCovSqs} 
-                              onChange={e=> onEditProductCoverageChange('sqs', e.target.value)} 
-                            />
-                            <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
-                          </div>
-                          <span className="text-gray-400">=</span>
-                          <div className="flex-1 flex items-center gap-1">
-                            <input 
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                              placeholder="0" 
-                              value={editProductCovFt2} 
-                              onChange={e=> onEditProductCoverageChange('ft2', e.target.value)} 
-                            />
-                            <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
-                          </div>
-                          <span className="text-gray-400">=</span>
-                          <div className="flex-1 flex items-center gap-1">
-                            <input 
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                              placeholder="0" 
-                              value={editProductCovM2} 
-                              onChange={e=> onEditProductCoverageChange('m2', e.target.value)} 
-                            />
-                            <span className="text-sm text-gray-600 whitespace-nowrap">m²</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    <div className="col-span-2">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description / Notes</label>
-                      <textarea 
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                        rows={3} 
-                        value={editProductDesc} 
-                        onChange={e=>setEditProductDesc(e.target.value)} 
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Technical Manual URL</label>
-                      <input 
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
-                        type="url"
-                        placeholder="https://supplier.com/manual/product"
-                        value={editProductTechnicalManualUrl} 
-                        onChange={e=>setEditProductTechnicalManualUrl(e.target.value)} 
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Product Image</label>
-                      <div className="mt-1 space-y-2">
-                        <button
-                          type="button"
-                          onClick={() => setEditProductImagePickerOpen(true)}
-                          className="px-3 py-2 rounded-lg text-sm bg-gray-100 hover:bg-gray-200"
-                        >
-                          {editProductImageDataUrl ? 'Change Image' : 'Select Image'}
-                        </button>
-                        {editProductImageDataUrl && (
-                          <div className="mt-2">
-                            <img src={editProductImageDataUrl} className="w-32 h-32 object-contain border rounded" alt="Preview" />
-                            <button
-                              type="button"
-                              onClick={() => setEditProductImageDataUrl('')}
-                              className="mt-2 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200"
-                            >
-                              Remove Image
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+            <AppInput
+              className="sm:col-span-2"
+              label={
+                <>
+                  Name <span className="text-red-600">*</span>
+                </>
+              }
+              value={editProductName}
+              onChange={(e) => {
+                setEditProductName(e.target.value);
+                if (editProductNameError) setEditProductNameError(false);
+              }}
+              error={editProductNameError && !editProductName.trim() ? 'This field is required' : undefined}
+              fieldHint="Name\n\nProduct name as shown in estimates and the catalog."
+            />
+            <div className="space-y-1.5">
+              <AppControlLabelRow
+                label={
+                  <>
+                    Supplier <span className="text-red-600">*</span>
+                  </>
+                }
+                fieldHint={
+                  <AppFieldHint hint="Supplier *\n\nVendor that supplies this product." />
+                }
+              />
+              <SupplierSelect
+                value={editProductSupplier}
+                onChange={(value) => {
+                  setEditProductSupplier(value);
+                  if (editProductSupplierError) setEditProductSupplierError(false);
+                }}
+                error={editProductSupplierError && !editProductSupplier.trim()}
+                placeholder="Search or select supplier…"
+              />
+              {editProductSupplierError && !editProductSupplier.trim() && (
+                <p className="text-[11px] text-red-600">This field is required</p>
+              )}
+            </div>
+            <AppInput
+              label="Category"
+              value={editProductCategory}
+              onChange={(e) => setEditProductCategory(e.target.value)}
+              fieldHint="Category\n\nOptional grouping (e.g. lumber, fasteners)."
+            />
+            <AppInput
+              label="Sell Unit"
+              placeholder="e.g., Roll, Pail (20L), Box"
+              value={editProductUnit}
+              onChange={(e) => setEditProductUnit(e.target.value)}
+              fieldHint="Sell Unit\n\nHow this item is sold (roll, box, each, etc.)."
+            />
+            <AppInput
+              label={
+                <>
+                  Price ($) <span className="text-red-600">*</span>
+                </>
+              }
+              placeholder="$0.00"
+              value={
+                editProductPriceFocused
+                  ? editProductPriceDisplay
+                  : editProductPrice
+                    ? formatCurrency(editProductPrice)
+                    : ''
+              }
+              onFocus={() => {
+                setEditProductPriceFocused(true);
+                setEditProductPriceDisplay(editProductPrice || '');
+              }}
+              onBlur={() => {
+                setEditProductPriceFocused(false);
+                const parsed = parseCurrency(editProductPriceDisplay);
+                setEditProductPrice(parsed);
+                setEditProductPriceDisplay(parsed);
+                if (editProductPriceError && parsed && Number(parsed) > 0) setEditProductPriceError(false);
+              }}
+              onChange={(e) => setEditProductPriceDisplay(e.target.value)}
+              error={
+                editProductPriceError &&
+                (!editProductPrice || !editProductPrice.trim() || Number(parseCurrency(editProductPrice)) <= 0)
+                  ? 'This field is required'
+                  : undefined
+              }
+              fieldHint="Price ($)\n\nUnit price in CAD used on estimates."
+            />
+            <div className="sm:col-span-2 space-y-1.5">
+              <AppControlLabelRow
+                label="Unit Type"
+                fieldHint={
+                  <AppFieldHint hint="Unit Type\n\nUnitary = single item; Multiple = sold in packages; Coverage = area-based (SQS, ft², m²)." />
+                }
+              />
+              <div className="mt-1 flex flex-wrap items-center gap-6">
+                <AppCheckbox
+                  label="Unitary"
+                  checked={editProductUnitType === 'unitary'}
+                  onChange={(checked) => {
+                    if (!checked) return;
+                    setEditProductUnitType('unitary');
+                    setEditProductUnitsPerPackage('');
+                    setEditProductCovSqs('');
+                    setEditProductCovFt2('');
+                    setEditProductCovM2('');
+                  }}
+                />
+                <AppCheckbox
+                  label="Multiple"
+                  checked={editProductUnitType === 'multiple'}
+                  onChange={(checked) => {
+                    if (!checked) return;
+                    setEditProductUnitType('multiple');
+                    setEditProductCovSqs('');
+                    setEditProductCovFt2('');
+                    setEditProductCovM2('');
+                  }}
+                />
+                <AppCheckbox
+                  label="Coverage"
+                  checked={editProductUnitType === 'coverage'}
+                  onChange={(checked) => {
+                    if (!checked) return;
+                    setEditProductUnitType('coverage');
+                    setEditProductUnitsPerPackage('');
+                  }}
+                />
+              </div>
+            </div>
+            {editProductUnitType === 'multiple' && (
+              <AppInput
+                className="sm:col-span-2"
+                label="Units per Package"
+                type="number"
+                step="0.01"
+                value={editProductUnitsPerPackage}
+                onChange={(e) => setEditProductUnitsPerPackage(e.target.value)}
+                fieldHint="Units per Package\n\nHow many units are included in one package."
+              />
+            )}
+            {editProductUnitType === 'coverage' && (
+              <div className="sm:col-span-2 space-y-1.5">
+                <AppControlLabelRow
+                  label="Coverage Area"
+                  fieldHint={
+                    <AppFieldHint hint="Coverage Area\n\nEnter one value; the others convert automatically (SQS, ft², m²)." />
+                  }
+                />
+                <div className={uiCx(uiLayout.actionsRow, 'items-center gap-2')}>
+                  <AppInput
+                    placeholder="0"
+                    value={editProductCovSqs}
+                    onChange={(e) => onEditProductCoverageChange('sqs', e.target.value)}
+                  />
+                  <span className={uiTypography.body}>SQS</span>
+                  <span className="text-gray-400">=</span>
+                  <AppInput
+                    placeholder="0"
+                    value={editProductCovFt2}
+                    onChange={(e) => onEditProductCoverageChange('ft2', e.target.value)}
+                  />
+                  <span className={uiTypography.body}>ft²</span>
+                  <span className="text-gray-400">=</span>
+                  <AppInput
+                    placeholder="0"
+                    value={editProductCovM2}
+                    onChange={(e) => onEditProductCoverageChange('m2', e.target.value)}
+                  />
+                  <span className={uiTypography.body}>m²</span>
+                </div>
+              </div>
+            )}
+            <AppTextarea
+              className="sm:col-span-2"
+              label="Description / Notes"
+              rows={3}
+              value={editProductDesc}
+              onChange={(e) => setEditProductDesc(e.target.value)}
+              fieldHint="Description / Notes\n\nOptional product details for estimators."
+            />
+            <AppInput
+              className="sm:col-span-2"
+              label="Technical Manual URL"
+              type="url"
+              placeholder="https://supplier.com/manual/product"
+              value={editProductTechnicalManualUrl}
+              onChange={(e) => setEditProductTechnicalManualUrl(e.target.value)}
+              fieldHint="Technical Manual URL\n\nLink to the product manual or spec sheet."
+            />
+            <div className="sm:col-span-2 space-y-2">
+              <AppControlLabelRow
+                label="Product Image"
+                fieldHint={<AppFieldHint hint="Product Image\n\nOptional photo for the catalog tile." />}
+              />
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setEditProductImagePickerOpen(true)}
+              >
+                {editProductImageDataUrl ? 'Change Image' : 'Select Image'}
+              </AppButton>
+              {editProductImageDataUrl && (
+                <div>
+                  <img
+                    src={editProductImageDataUrl}
+                    className={uiCx('h-32 w-32 object-contain border', uiRadius.control)}
+                    alt="Preview"
+                  />
+                  <AppButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 text-red-700"
+                    onClick={() => setEditProductImageDataUrl('')}
+                  >
+                    Remove Image
+                  </AppButton>
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
       </AppFormModal>

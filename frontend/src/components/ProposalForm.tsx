@@ -323,6 +323,7 @@ export default function ProposalForm({
   isBidding,
   projectStatusLabel,
   designSystem = false,
+  isAdmin = false,
 }: {
   mode: 'new' | 'edit';
   clientId?: string;
@@ -339,6 +340,8 @@ export default function ProposalForm({
   isBidding?: boolean;
   projectStatusLabel?: string;
   designSystem?: boolean;
+  /** When true, admins can re-approve pricing items marked as not approved. */
+  isAdmin?: boolean;
 }) {
   const nav = useNavigate();
   const queryClient = useQueryClient();
@@ -1271,9 +1274,12 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
 
   const handleSave = useCallback(async()=>{
-    if (disabled || isSaving) {
+    const allowAdminApprovalSave = isAdmin && saveTriggeredByApprovalChangeRef.current;
+    if ((disabled && !allowAdminApprovalSave) || isSaving) {
       return;
     }
+    // Clear after gate so approval-triggered saves work when form is otherwise disabled
+    saveTriggeredByApprovalChangeRef.current = false;
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
       autoSaveTimeoutRef.current = null;
@@ -1381,15 +1387,21 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       lastAutoSaveRef.current = Date.now();
     }catch(e){ toast.error('Save failed'); }
     finally{ setIsSaving(false); }
-  }, [disabled, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
+  }, [disabled, isAdmin, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
 
-  // When marking item as not approved, trigger immediate save so project_division_ids and overview update
+  // When approval flags change (not approved / re-approve), save immediately so project_division_ids and overview update
   useEffect(() => {
-    if (saveTriggeredByApprovalChangeRef.current && projectId && mode === 'edit' && !disabled && !isSaving) {
-      saveTriggeredByApprovalChangeRef.current = false;
+    if (
+      saveTriggeredByApprovalChangeRef.current &&
+      projectId &&
+      mode === 'edit' &&
+      (!disabled || isAdmin) &&
+      !isSaving
+    ) {
+      // Do not clear the ref here — handleSave reads it to allow admin approve while form is disabled
       handleSaveRef.current?.();
     }
-  }, [pricingItems, projectId, mode, disabled, isSaving]);
+  }, [pricingItems, projectId, mode, disabled, isAdmin, isSaving]);
 
   // Update ref when handleSave changes (for internal and parent save triggers)
   useEffect(() => {
@@ -2745,7 +2757,37 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     )}
                   >
                   {isNotApproved && (
-                    <span className="inline-flex items-center text-[10px] font-semibold px-2 py-1 rounded-md bg-amber-200 text-amber-900 border border-amber-300 flex-shrink-0 w-fit" title="This item was not approved during conversion and is read-only.">Not approved</span>
+                    <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5">
+                      <span
+                        className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-[10px] font-semibold text-amber-900"
+                        title="This item was not approved during conversion and is read-only."
+                      >
+                        Not approved
+                      </span>
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
+                          onClick={async () => {
+                            const result = await confirm({
+                              title: 'Approve pricing item',
+                              message:
+                                'Approve this item? It will become editable again and count toward project totals.',
+                              confirmText: 'Approve',
+                              cancelText: 'Cancel',
+                            });
+                            if (result === 'confirm') {
+                              saveTriggeredByApprovalChangeRef.current = true;
+                              setPricingItems((arr) =>
+                                arr.map((x, j) => (j === i ? { ...x, approved: true } : x)),
+                              );
+                            }
+                          }}
+                        >
+                          Approve
+                        </button>
+                      ) : null}
+                    </div>
                   )}
                   {/* Division Icon */}
                   {divisionInfo &&

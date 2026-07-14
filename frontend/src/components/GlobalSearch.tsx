@@ -24,12 +24,26 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   useEffect(() => {
     const t = window.setTimeout(() => setDebounced(value), delayMs);
     return () => window.clearTimeout(t);
-  }, [value, delayMs]);
+  }, [delayMs, value]);
   return debounced;
 }
 
 function includesInsensitive(hay: string, needle: string) {
   return hay.toLowerCase().includes(needle.toLowerCase());
+}
+
+function useMinWidthLg() {
+  const [isLg, setIsLg] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : true,
+  );
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => setIsLg(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return isLg;
 }
 
 export default function GlobalSearch({
@@ -41,6 +55,8 @@ export default function GlobalSearch({
   maxRecents = 8,
   isItemAllowed,
   widthClassName = 'w-80',
+  /** Below lg: icon button that expands into the search field (Ctrl+K always opens). */
+  compactToggle = false,
 }: {
   placeholder?: string;
   limit?: number;
@@ -50,12 +66,15 @@ export default function GlobalSearch({
   maxRecents?: number;
   isItemAllowed?: (item: GlobalSearchItem) => boolean;
   widthClassName?: string;
+  compactToggle?: boolean;
 }) {
   const nav = useNavigate();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const isLg = useMinWidthLg();
 
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [q, setQ] = useState('');
   const debouncedQ = useDebouncedValue(q, 250);
   const [recents, setRecents] = useState<GlobalSearchItem[]>(() => {
@@ -79,6 +98,21 @@ export default function GlobalSearch({
       return [];
     }
   });
+
+  const showField = !compactToggle || isLg || expanded || open;
+
+  const collapseCompact = () => {
+    setOpen(false);
+    setQ('');
+    if (compactToggle && !isLg) setExpanded(false);
+  };
+
+  const openSearch = () => {
+    if (compactToggle && !isLg) setExpanded(true);
+    setOpen(true);
+    window.dispatchEvent(new CustomEvent('mkhub-global-search-open'));
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  };
 
   // If key/max changes (unlikely), re-read.
   useEffect(() => {
@@ -117,13 +151,17 @@ export default function GlobalSearch({
       const isK = (e.key || '').toLowerCase() === 'k';
       if ((e.ctrlKey || e.metaKey) && isK) {
         e.preventDefault();
-        setOpen(true);
-        window.setTimeout(() => inputRef.current?.focus(), 0);
+        openSearch();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compactToggle, isLg]);
+
+  useEffect(() => {
+    if (isLg) setExpanded(false);
+  }, [isLg]);
 
   const shouldSearchRemote = open && debouncedQ.trim().length >= 2;
   const { data, isFetching } = useQuery({
@@ -219,8 +257,7 @@ export default function GlobalSearch({
   }, [open, activeIndex]);
 
   const doNavigate = (item: GlobalSearchItem) => {
-    setOpen(false);
-    setQ('');
+    collapseCompact();
     try {
       const next = [
         { type: item.type, id: item.id, title: item.title, subtitle: item.subtitle || null, href: item.href, ts: Date.now() },
@@ -252,7 +289,7 @@ export default function GlobalSearch({
     const count = flatItems.length;
     if (e.key === 'Escape') {
       e.preventDefault();
-      setOpen(false);
+      collapseCompact();
       return;
     }
     if (e.key === 'ArrowDown') {
@@ -285,13 +322,31 @@ export default function GlobalSearch({
     return globalIndex;
   };
 
+  if (!showField) {
+    return (
+      <div className={`relative ${widthClassName}`}>
+        <button
+          type="button"
+          onClick={openSearch}
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-gray-900/45 text-gray-300 shadow-inner transition-colors hover:bg-gray-900/60 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
+          aria-label="Open search"
+          title="Search (Ctrl+K)"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={`relative ${widthClassName}`}>
       {open && (
         <button
           className="fixed inset-0 z-40 cursor-default"
           aria-label="Close search"
-          onClick={() => setOpen(false)}
+          onClick={collapseCompact}
         />
       )}
 
@@ -308,10 +363,13 @@ export default function GlobalSearch({
           setQ(e.target.value);
           if (!open) setOpen(true);
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          window.dispatchEvent(new CustomEvent('mkhub-global-search-open'));
+        }}
         onKeyDown={onInputKeyDown}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-white/10 bg-gray-900/45 py-2.5 pl-10 pr-3 text-sm text-gray-100 placeholder-gray-400 shadow-inner transition-all duration-200 focus:border-brand-red/50 focus:bg-gray-900/60 focus:outline-none focus:ring-2 focus:ring-brand-red/40"
+        className="h-10 w-full rounded-lg border border-white/10 bg-gray-900/45 py-0 pl-10 pr-3 text-sm text-gray-100 placeholder-gray-400 shadow-inner transition-all duration-200 focus:border-brand-red/50 focus:bg-gray-900/60 focus:outline-none focus:ring-2 focus:ring-brand-red/40"
       />
 
       {open && (
@@ -382,4 +440,3 @@ export default function GlobalSearch({
     </div>
   );
 }
-

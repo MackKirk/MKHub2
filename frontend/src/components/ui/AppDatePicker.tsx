@@ -27,6 +27,8 @@ import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 const DATE_PICKER_PANEL_WIDTH = 280;
+/** Full calendar (header + 6 week rows + footer) needs more than the default combobox max-h-56 (224). */
+const DATE_PICKER_PANEL_MAX_HEIGHT = 360;
 
 type PanelView = 'days' | 'monthYear';
 
@@ -96,6 +98,7 @@ export function AppDatePicker({
   const { anchorRef, portalListId, menuRect, closeDropdown } = useComboboxDropdown(open, setOpen, {
     menuWidth: DATE_PICKER_PANEL_WIDTH,
     menuAlign: isCardTrigger ? 'end' : 'start',
+    preferredMaxHeight: DATE_PICKER_PANEL_MAX_HEIGHT,
   });
 
   const yearListRef = useRef<HTMLDivElement>(null);

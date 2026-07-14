@@ -8,10 +8,16 @@
   window.__initMKHubChat = function initMKHubChat(hostEl) {
     const token = localStorage.getItem('user_token');
     if (!token) return;
-    if (!hostEl) return;
+
+    // Already mounted — avoid wiping a working FAB on re-init (e.g. React Strict Mode)
+    const existingFab = document.getElementById('mkhub-chat-fab');
+    if (existingFab && existingFab.isConnected && document.getElementById('mkhub-chat-panel')) {
+      return;
+    }
+
     const existingPanel = document.getElementById('mkhub-chat-panel');
     if (existingPanel) existingPanel.remove();
-    document.querySelectorAll('.mkchat-fab').forEach((node) => node.remove());
+    document.querySelectorAll('.mkchat-fab, #mkhub-chat-fab').forEach((node) => node.remove());
 
     const api = async (method, path, body) => {
       const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
@@ -125,20 +131,26 @@
 
     const fab = document.createElement('button');
     fab.type = 'button';
-    fab.className = 'mkchat-fab mkchat-fab--dock';
+    fab.id = 'mkhub-chat-fab';
+    // Always floating corner icon — never stretch as a footer dock bar
+    fab.className = 'mkchat-fab';
     fab.setAttribute('aria-label', 'Open MK Chat');
+    fab.style.setProperty('position', 'fixed', 'important');
+    fab.style.setProperty('right', '18px', 'important');
+    fab.style.setProperty('bottom', '18px', 'important');
+    fab.style.setProperty('width', '56px', 'important');
+    fab.style.setProperty('height', '56px', 'important');
+    fab.style.setProperty('min-width', '56px', 'important');
+    fab.style.setProperty('max-width', '56px', 'important');
+    fab.style.setProperty('z-index', '2147483000', 'important');
+    fab.style.setProperty('display', 'flex', 'important');
+    fab.style.setProperty('pointer-events', 'auto', 'important');
     fab.innerHTML =
-      '<span class="mkchat-fab-inner">' +
-      '<span class="mkchat-fab-icon-wrap" aria-hidden="true">' +
-      '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>' +
-      '</span>' +
-      '<span class="mkchat-fab-text">' +
-      '<span class="mkchat-fab-brand">MK Chat</span>' +
-      '<span class="mkchat-fab-sub">Team messages</span>' +
-      '</span></span>' +
+      '<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>' +
       '<span class="badge" id="mkchatBadge">0</span>';
 
-    hostEl.appendChild(fab);
+    // Always mount on body so a zero-size host (or dock CSS) cannot hide the icon
+    document.body.appendChild(fab);
 
     const panel = document.createElement('div');
     panel.id = 'mkhub-chat-panel';
@@ -199,18 +211,15 @@
 
     function updatePanelPosition() {
       try {
-        const r = fab.getBoundingClientRect();
-        const pad = 8;
         const vw = window.innerWidth;
         const maxW = Math.min(720, vw - 24);
-        let left = r.right + pad;
-        if (left + maxW > vw - 12) left = vw - 12 - maxW;
-        left = Math.max(12, left);
-        panel.style.left = Math.round(left) + 'px';
-        panel.style.bottom = '12px';
+        // Anchor panel bottom-right near the floating FAB
+        panel.style.left = Math.round(Math.max(12, vw - 12 - maxW)) + 'px';
+        panel.style.right = 'auto';
+        panel.style.bottom = '84px';
       } catch (_) {
         panel.style.left = '12px';
-        panel.style.bottom = '12px';
+        panel.style.bottom = '84px';
       }
     }
     window.addEventListener('resize', updatePanelPosition);
@@ -900,20 +909,6 @@
         selWrap.appendChild(tag);
       });
     };
-
-    function setFabLabelCollapsed(collapsed) {
-      fab.classList.toggle('mkchat-fab--collapsed', !!collapsed);
-      const textCol = fab.querySelector('.mkchat-fab-text');
-      if (textCol) textCol.classList.toggle('is-hidden', !!collapsed);
-    }
-
-    function onSidebarCollapsed(ev) {
-      try {
-        const d = ev && ev.detail;
-        if (d && typeof d.collapsed === 'boolean') setFabLabelCollapsed(d.collapsed);
-      } catch (_) {}
-    }
-    window.addEventListener('mkhub-sidebar-collapsed', onSidebarCollapsed);
 
     fab.addEventListener('click', () => {
       const isOpen = panel.classList.contains('open');

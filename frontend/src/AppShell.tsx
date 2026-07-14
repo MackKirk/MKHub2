@@ -1,4 +1,4 @@
-import { PropsWithChildren, useState, useMemo, useEffect, useRef } from 'react';
+import { PropsWithChildren, useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -344,7 +344,12 @@ export default function AppShell({ children }: PropsWithChildren){
   );
   const [open, setOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+  const [activeNavCategoryId, setActiveNavCategoryId] = useState<string | null>(null);
+  const [navFit, setNavFit] = useState({ scale: 1, width: 0, height: 0 });
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const navRootRef = useRef<HTMLDivElement>(null);
+  const navPanelInnerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -363,7 +368,31 @@ export default function AppShell({ children }: PropsWithChildren){
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
-  
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNavOpen(false);
+    };
+    const onDoc = (e: MouseEvent) => {
+      if (navRootRef.current && !navRootRef.current.contains(e.target as Node)) {
+        setNavOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDoc);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDoc);
+    };
+  }, [navOpen]);
+
+  useEffect(() => {
+    const onSearchOpen = () => setNavOpen(false);
+    window.addEventListener('mkhub-global-search-open', onSearchOpen);
+    return () => window.removeEventListener('mkhub-global-search-open', onSearchOpen);
+  }, []);
+
   const { hasUnsavedChanges } = useUnsavedChanges();
   const confirm = useConfirm();
 
@@ -853,6 +882,123 @@ export default function AppShell({ children }: PropsWithChildren){
     return menuCategories.find(cat => isCategoryActive(cat));
   }, [location.pathname, location.search, menuCategories, currentProject, isViewingOpportunity, onConstructionOpp, onRmOpp]);
 
+  // When opening the menu, select the category for the current route (if it has a sub-panel)
+  useEffect(() => {
+    if (!navOpen) return;
+    const cat = activeCategory;
+    if (cat) {
+      const visibleCount = cat.items.filter(canSeeMenuItem).length;
+      const hasSubPanel = visibleCount > 1 || cat.id === 'sales';
+      setActiveNavCategoryId(hasSubPanel ? cat.id : null);
+    } else {
+      setActiveNavCategoryId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync only on open
+  }, [navOpen]);
+
+  const closeNav = () => setNavOpen(false);
+
+  const categoryHasSubPanel = (category: MenuCategory) => {
+    const visibleCount = category.items.filter(canSeeMenuItem).length;
+    return visibleCount > 1 || category.id === 'sales';
+  };
+
+  const visibleMenuCategories = useMemo(() => {
+    return menuCategories.filter((category) => {
+      if (category.id === 'services') {
+        if (!canAccessProjectLineMenu(permissionsSet, 'construction', isAdmin)) return false;
+      }
+      if (category.id === 'repairs_maintenance') {
+        if (!canAccessProjectLineMenu(permissionsSet, 'repairs', isAdmin)) return false;
+      }
+      if (category.id === 'business') {
+        const hasBusinessAccess =
+          hasPermission('business:customers:read') ||
+          hasPermission('inventory:suppliers:read') ||
+          hasPermission('inventory:products:read');
+        if (!hasBusinessAccess) return false;
+      }
+      if (category.id === 'sales') {
+        if (!hasPermission('sales:quotations:read')) return false;
+      }
+      const visibleItems = category.items.filter(canSeeMenuItem);
+      return visibleItems.length > 0;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuCategories, permissionsSet, isAdmin]);
+
+  const selectedNavCategory = useMemo(
+    () => visibleMenuCategories.find((c) => c.id === activeNavCategoryId) ?? null,
+    [visibleMenuCategories, activeNavCategoryId],
+  );
+
+  // Fit flyout into viewport without scrollbars (scales under high zoom / short windows)
+  useLayoutEffect(() => {
+    if (!navOpen) {
+      setNavFit({ scale: 1, width: 0, height: 0 });
+      return;
+    }
+
+    const measure = () => {
+      const inner = navPanelInnerRef.current;
+      if (!inner) return;
+
+      const prevTransform = inner.style.transform;
+      inner.style.transform = 'none';
+      const width = Math.ceil(inner.offsetWidth);
+      const height = Math.ceil(inner.offsetHeight);
+      inner.style.transform = prevTransform;
+
+      const buttonBottom = menuButtonRef.current?.getBoundingClientRect().bottom ?? 56;
+      const buttonLeft = menuButtonRef.current?.getBoundingClientRect().left ?? 12;
+      const vv = window.visualViewport;
+      const viewH = vv?.height ?? window.innerHeight;
+      const viewW = vv?.width ?? window.innerWidth;
+      const availH = Math.max(120, viewH - buttonBottom - 10);
+      const availW = Math.max(160, viewW - buttonLeft - 12);
+      const nextScale = Math.min(1, availH / Math.max(height, 1), availW / Math.max(width, 1));
+      setNavFit((prev) => {
+        const scale = Math.max(0.42, Number(nextScale.toFixed(4)));
+        if (prev.scale === scale && prev.width === width && prev.height === height) return prev;
+        return { scale, width, height };
+      });
+    };
+
+    // Defer one frame so the panel has painted at natural size
+    const raf = window.requestAnimationFrame(measure);
+    const ro = new ResizeObserver(() => measure());
+    if (navPanelInnerRef.current) ro.observe(navPanelInnerRef.current);
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('scroll', measure);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('scroll', measure);
+    };
+  }, [navOpen, activeNavCategoryId, visibleMenuCategories, isAdmin]);
+
+  const getCategoryDefaultPath = (category: MenuCategory) => {
+    if (category.id === 'services') return '/business';
+    if (category.id === 'repairs_maintenance') return '/rm-business';
+    if (category.id === 'business') {
+      if (hasPermission('business:customers:read')) return '/customers';
+      if (hasPermission('inventory:suppliers:read')) return '/inventory/suppliers';
+      if (hasPermission('inventory:products:read')) return '/inventory/products';
+      return category.items[0]?.path || '#';
+    }
+    if (category.id === 'sales') return '/quotes';
+    if (category.id === 'company-assets') {
+      if (hasPermission('equipment:read')) return '/company-assets/equipment';
+      if (hasPermission('company_cards:read')) return '/company-assets/credit-cards';
+      const first = category.items.find((it) => hasPermission(it.requiredPermission));
+      return first?.path || '/company-assets/equipment';
+    }
+    return category.items[0]?.path || '#';
+  };
+
   const showHubLoadingGate =
     meLoading ||
     meProfileLoading ||
@@ -898,246 +1044,226 @@ export default function AppShell({ children }: PropsWithChildren){
   }
 
   return (
-    <div className="h-screen flex overflow-hidden">
-      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} text-white bg-gradient-to-b from-gray-800/95 via-gray-800 to-gray-900 transition-all duration-300 flex flex-col fixed left-0 top-0 h-screen z-40`}>
-        {/* Subtle abstract pattern overlay */}
-        <div 
-          className="absolute inset-0 pointer-events-none opacity-[0.03] z-0"
-          style={{
-            backgroundImage: `
-              repeating-linear-gradient(
-                0deg,
-                transparent,
-                transparent 2px,
-                rgba(255, 255, 255, 0.03) 2px,
-                rgba(255, 255, 255, 0.03) 4px
-              ),
-              repeating-linear-gradient(
-                90deg,
-                transparent,
-                transparent 2px,
-                rgba(255, 255, 255, 0.02) 2px,
-                rgba(255, 255, 255, 0.02) 4px
-              ),
-              radial-gradient(
-                circle at 20% 30%,
-                rgba(255, 255, 255, 0.015) 0%,
-                transparent 50%
-              ),
-              radial-gradient(
-                circle at 80% 70%,
-                rgba(255, 255, 255, 0.015) 0%,
-                transparent 50%
-              ),
-              radial-gradient(
-                circle at 50% 50%,
-                rgba(255, 255, 255, 0.01) 0%,
-                transparent 50%
-              )
-            `,
-            backgroundSize: '100% 100%, 100% 100%, 200% 200%, 200% 200%, 300% 300%',
-            backgroundPosition: '0 0, 0 0, 0 0, 0 0, 0 0',
-            mixBlendMode: 'overlay'
-          }}
-        />
-        {/* Subtle brand globe watermark */}
-        <div 
-          className="absolute inset-0 pointer-events-none z-[1]"
-          style={{
-            backgroundImage: 'url(/assets/brand/globe.svg)',
-            backgroundSize: '460px 460px',
-            backgroundPosition: 'left bottom',
-            backgroundRepeat: 'no-repeat',
-            opacity: 0.04,
-            filter: 'blur(0.2px)'
-          }}
-        />
-        <div className={`py-3 px-4 ${sidebarCollapsed ? 'flex items-center justify-center' : 'flex items-center justify-between'} border-b border-gray-700/50 relative z-10`}>
-          {!sidebarCollapsed ? (
+    <div className="h-screen flex flex-col overflow-hidden">
+      <header className="relative z-[60] flex h-14 shrink-0 items-center gap-2 border-b border-gray-700/40 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800 px-3 text-white shadow-sm sm:gap-3 sm:px-5">
+        <div className="relative shrink-0" ref={navRootRef}>
+          <button
+            ref={menuButtonRef}
+            type="button"
+            aria-expanded={navOpen}
+            aria-controls="hub-nav-panel"
+            aria-haspopup="true"
+            onClick={() => {
+              setOpen(false);
+              setNavOpen((v) => !v);
+            }}
+            className={uiCx(
+              'flex h-10 shrink-0 items-center gap-2 rounded-lg border border-white/10 bg-black/15 px-3',
+              'text-sm font-medium text-white transition-colors hover:bg-black/25 hover:border-white/18',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40',
+              navOpen && 'bg-black/30 border-white/20',
+            )}
+          >
+            <IconLogs />
+            <span>Menu</span>
+          </button>
+
+          {navOpen ? (
             <>
-              <div className="flex-1 flex items-center justify-center">
-                <img src="/ui/assets/login/logo-light.svg" className="h-14 w-full max-w-[180px] object-contain"/>
-              </div>
               <button
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-700/50 transition-all duration-200 flex-shrink-0"
-                title="Collapse sidebar"
                 type="button"
-                aria-expanded="true"
+                className="fixed inset-0 z-[55] cursor-default bg-black/25"
+                aria-label="Close menu"
+                onClick={closeNav}
+              />
+              <div
+                id="hub-nav-panel"
+                role="navigation"
+                aria-label="Main menu"
+                className="absolute left-0 top-full z-[56] mt-1.5 overflow-hidden rounded-xl border border-gray-700/50 text-white shadow-2xl shadow-black/40"
+                style={{
+                  width: navFit.width > 0 ? navFit.width * navFit.scale : undefined,
+                  height: navFit.height > 0 ? navFit.height * navFit.scale : undefined,
+                }}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <rect x="3" y="4" width="14" height="14" rx="1.5" strokeWidth={2} />
-                  <rect x="9" y="8" width="12" height="12" rx="1.5" strokeWidth={2} />
-                </svg>
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-700/50 transition-all duration-200 w-full flex items-center justify-center"
-              title="Expand sidebar"
-              type="button"
-              aria-expanded="false"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <rect x="3" y="4" width="14" height="14" rx="1.5" strokeWidth={2} />
-                <rect x="9" y="8" width="12" height="12" rx="1.5" strokeWidth={2} />
-              </svg>
-            </button>
-          )}
-        </div>
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1 relative z-10">
-          {menuCategories
-            .filter(category => {
-              // Sales (construction): requires construction projects access
-              if (category.id === 'services') {
-                if (!canAccessProjectLineMenu(permissionsSet, 'construction', isAdmin)) return false;
-              }
-              if (category.id === 'repairs_maintenance') {
-                if (!canAccessProjectLineMenu(permissionsSet, 'repairs', isAdmin)) return false;
-              }
-              // Special handling for Business category: requires customers or inventory access
-              if (category.id === 'business') {
-                const hasBusinessAccess =
-                  hasPermission('business:customers:read') ||
-                  hasPermission('inventory:suppliers:read') ||
-                  hasPermission('inventory:products:read');
-                if (!hasBusinessAccess) return false;
-              }
-              // Special handling for Sales category: requires sales quotations access
-              if (category.id === 'sales') {
-                if (!hasPermission('sales:quotations:read')) return false;
-              }
-              // Filter categories that have no visible items
-              const visibleItems = category.items.filter(canSeeMenuItem);
-              return visibleItems.length > 0;
-            })
-            .map(category => {
-            const isActive = isCategoryActive(category);
-            const showSubItems = !sidebarCollapsed && isActive;
-            
-            // Determine the default path for Services category based on permissions
-            const getServicesDefaultPath = () => {
-              if (category.id !== 'services') return category.items[0]?.path || '#';
-              return '/business';
-            };
-
-            const getRepairsMaintenanceDefaultPath = () => {
-              if (category.id !== 'repairs_maintenance') return category.items[0]?.path || '#';
-              return '/rm-business';
-            };
-
-            // Determine the default path for Business category based on permissions
-            const getBusinessDefaultPath = () => {
-              if (category.id !== 'business') return category.items[0]?.path || '#';
-              if (hasPermission('business:customers:read')) return '/customers';
-              if (hasPermission('inventory:suppliers:read')) return '/inventory/suppliers';
-              if (hasPermission('inventory:products:read')) return '/inventory/products';
-              return category.items[0]?.path || '#';
-            };
-
-            // Determine the default path for Sales category based on permissions
-            const getSalesDefaultPath = () => {
-              if (category.id !== 'sales') return category.items[0]?.path || '#';
-              return '/quotes';
-            };
-
-            const getCompanyAssetsDefaultPath = () => {
-              if (category.id !== 'company-assets') return category.items[0]?.path || '#';
-              if (hasPermission('equipment:read')) return '/company-assets/equipment';
-              if (hasPermission('company_cards:read')) return '/company-assets/credit-cards';
-              const first = category.items.find((it) => hasPermission(it.requiredPermission));
-              return first?.path || '/company-assets/equipment';
-            };
-
-            // Get the default path based on category
-            const getDefaultPath = () => {
-              if (category.id === 'services') return getServicesDefaultPath();
-              if (category.id === 'repairs_maintenance') return getRepairsMaintenanceDefaultPath();
-              if (category.id === 'business') return getBusinessDefaultPath();
-              if (category.id === 'sales') return getSalesDefaultPath();
-              if (category.id === 'company-assets') return getCompanyAssetsDefaultPath();
-              return category.items[0]?.path || '#';
-            };
-
-            if (sidebarCollapsed) {
-              // When collapsed, show only category icons
-              return (
-                <div key={category.id} className="mb-1">
-                  <NavLink
-                    to={getDefaultPath()}
-                    className={() => 
-                      `relative flex items-center justify-center px-3 py-2.5 rounded-lg transition-all duration-200 ${
-                        isActive 
-                          ? 'bg-brand-red text-white shadow-lg shadow-brand-red/20' 
-                          : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                      }`
-                    }
-                    title={category.label}
-                    end={category.id === 'settings'}
-                  >
-                    {isActive && (
-                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-white rounded-r-full" />
-                    )}
-                    <span className="flex-shrink-0">{category.icon}</span>
-                  </NavLink>
-                </div>
-              );
-            }
-            
-            return (
-              <div key={category.id} className="mb-1">
-                <NavLink
-                  to={getDefaultPath()}
-                  className={() => 
-                    `relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
-                      isActive 
-                        ? 'bg-brand-red text-white font-bold shadow-lg shadow-brand-red/20' 
-                        : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                    }`
-                  }
-                  end={category.id === 'settings'}
-                >
-                  {isActive && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
+                <div
+                  ref={navPanelInnerRef}
+                  className={uiCx(
+                    'relative flex origin-top-left bg-gradient-to-b from-gray-800/95 via-gray-800 to-gray-900',
+                    selectedNavCategory && categoryHasSubPanel(selectedNavCategory)
+                      ? 'w-[min(36rem,calc(100vw-1.5rem))]'
+                      : 'w-[min(17.5rem,calc(100vw-1.5rem))]',
                   )}
-                  <span className={`flex-shrink-0 ${isActive ? 'opacity-100' : 'opacity-70'}`}>{category.icon}</span>
-                  <span className="text-sm font-semibold flex-1">{category.label}</span>
-                </NavLink>
-                {showSubItems && (category.items.length > 1 || category.id === 'sales') && (
-                  <div className="mt-1.5 ml-4 space-y-0.5">
-                    {category.items
-                      .filter(canSeeMenuItem)
-                      .map(item => {
-                        // Special handling: if we're viewing an opportunity, 
-                        // don't highlight any individual items, only the category
+                  style={{
+                    transform: `scale(${navFit.scale})`,
+                    transformOrigin: 'top left',
+                  }}
+                >
+                {/* Subtle abstract pattern overlay (from former sidebar) */}
+                <div
+                  className="pointer-events-none absolute inset-0 z-0 opacity-[0.03]"
+                  style={{
+                    backgroundImage: `
+                      repeating-linear-gradient(
+                        0deg,
+                        transparent,
+                        transparent 2px,
+                        rgba(255, 255, 255, 0.03) 2px,
+                        rgba(255, 255, 255, 0.03) 4px
+                      ),
+                      repeating-linear-gradient(
+                        90deg,
+                        transparent,
+                        transparent 2px,
+                        rgba(255, 255, 255, 0.02) 2px,
+                        rgba(255, 255, 255, 0.02) 4px
+                      ),
+                      radial-gradient(
+                        circle at 20% 30%,
+                        rgba(255, 255, 255, 0.015) 0%,
+                        transparent 50%
+                      ),
+                      radial-gradient(
+                        circle at 80% 70%,
+                        rgba(255, 255, 255, 0.015) 0%,
+                        transparent 50%
+                      ),
+                      radial-gradient(
+                        circle at 50% 50%,
+                        rgba(255, 255, 255, 0.01) 0%,
+                        transparent 50%
+                      )
+                    `,
+                    backgroundSize: '100% 100%, 100% 100%, 200% 200%, 200% 200%, 300% 300%',
+                    backgroundPosition: '0 0, 0 0, 0 0, 0 0, 0 0',
+                    mixBlendMode: 'overlay',
+                  }}
+                />
+
+                {/* Left: categories */}
+                <div
+                  className={uiCx(
+                    'relative z-10 flex w-[17.5rem] shrink-0 flex-col py-1.5',
+                    selectedNavCategory && categoryHasSubPanel(selectedNavCategory) && 'border-r border-white/10',
+                  )}
+                >
+                  <div className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    Navigate
+                  </div>
+                  {visibleMenuCategories.map((category) => {
+                    const isRouteActive = isCategoryActive(category);
+                    const isSelected = activeNavCategoryId === category.id;
+                    const hasSub = categoryHasSubPanel(category);
+                    const defaultPath = getCategoryDefaultPath(category);
+
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => {
+                          if (!hasSub) {
+                            closeNav();
+                            navigate(defaultPath);
+                            return;
+                          }
+                          setActiveNavCategoryId(category.id);
+                        }}
+                        className={uiCx(
+                          'mx-1.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
+                          isSelected
+                            ? 'bg-brand-red text-white'
+                            : isRouteActive
+                              ? 'bg-white/10 text-white'
+                              : 'text-gray-300 hover:bg-white/5 hover:text-white',
+                        )}
+                      >
+                        <span className={uiCx('flex-shrink-0', isSelected || isRouteActive ? 'opacity-100' : 'opacity-70')}>
+                          {category.icon}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{category.label}</span>
+                        {hasSub ? (
+                          <svg className="h-3.5 w-3.5 shrink-0 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+
+                  {isAdmin ? (
+                    <>
+                      <div className="my-1.5 border-t border-white/10" aria-hidden />
+                      <NavLink
+                        to="/logs"
+                        end
+                        onClick={closeNav}
+                        className={() =>
+                          uiCx(
+                            'mx-1.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors',
+                            location.pathname === '/logs'
+                              ? 'bg-brand-red text-white'
+                              : 'text-gray-300 hover:bg-white/5 hover:text-white',
+                          )
+                        }
+                      >
+                        <span className="flex-shrink-0 opacity-80">
+                          <IconLogs />
+                        </span>
+                        <span className="text-sm font-medium">Audit log</span>
+                      </NavLink>
+                    </>
+                  ) : null}
+                </div>
+
+                {/* Right: sub-items for selected category */}
+                {selectedNavCategory && categoryHasSubPanel(selectedNavCategory) ? (
+                  <div className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden bg-black/15">
+                    {/* Brand globe — large & cropped like the old sidebar */}
+                    <div
+                      className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+                      aria-hidden
+                    >
+                      <div
+                        className="absolute"
+                        style={{
+                          backgroundImage: 'url(/assets/brand/globe.svg)',
+                          backgroundSize: '400px 400px',
+                          backgroundRepeat: 'no-repeat',
+                          backgroundPosition: 'left bottom',
+                          width: '400px',
+                          height: '400px',
+                          left: '60px',
+                          bottom: '0px',
+                          opacity: 0.06,
+                          filter: 'blur(0.2px)',
+                        }}
+                      />
+                    </div>
+                    <div className="relative z-[1] flex flex-col py-1.5">
+                    <div className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                      {selectedNavCategory.label}
+                    </div>
+                    <div className="space-y-0.5 px-1.5 pb-1">
+                      {selectedNavCategory.items.filter(canSeeMenuItem).map((item) => {
                         let isItemActive = false;
                         if (isViewingOpportunity) {
-                          // When viewing an opportunity, don't highlight individual items
                           isItemActive = false;
+                        } else if (item.id === 'fleet-dashboard' && item.path === '/fleet') {
+                          isItemActive = location.pathname === '/fleet';
+                        } else if (item.id === 'business-dashboard' && item.path === '/business') {
+                          isItemActive = location.pathname === '/business';
+                        } else if (item.id === 'rm-business-dashboard' && item.path === '/rm-business') {
+                          isItemActive = location.pathname === '/rm-business';
+                        } else if (item.id === 'fleet-assets') {
+                          isItemActive = ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(
+                            (p) => location.pathname === p || location.pathname.startsWith(p + '/'),
+                          );
+                        } else if (item.id === 'my-training' && item.path === '/training') {
+                          isItemActive = pathnameIsLearnerTraining(location.pathname);
+                        } else if (item.id === 'employee-review-cycles') {
+                          isItemActive = menuChildMatchesLocation(item, location.pathname, location.search);
                         } else {
-                          // Normal logic when not viewing an opportunity
-                          // Special handling for Fleet Dashboard: only match exactly /fleet, not sub-paths
-                          if (item.id === 'fleet-dashboard' && item.path === '/fleet') {
-                            isItemActive = location.pathname === '/fleet';
-                          }
-                          // Special handling for Business Dashboard: only match exactly /business, not sub-paths
-                          else if (item.id === 'business-dashboard' && item.path === '/business') {
-                            isItemActive = location.pathname === '/business';
-                          }
-                          // Fleet Assets: also active on /fleet/vehicles, /fleet/heavy-machinery, /fleet/other-assets
-                          else if (item.id === 'fleet-assets') {
-                            isItemActive = ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'));
-                          }
-                          else if (item.id === 'my-training' && item.path === '/training') {
-                            isItemActive = pathnameIsLearnerTraining(location.pathname);
-                          }
-                          else if (item.id === 'employee-review-cycles') {
-                            isItemActive = menuChildMatchesLocation(item, location.pathname, location.search);
-                          }
-                          else {
-                            isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
-                          }
+                          isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
                         }
 
                         const visibleChildren = (item.children || []).filter(canSeeMenuItem);
@@ -1146,78 +1272,62 @@ export default function AppShell({ children }: PropsWithChildren){
                           ? visibleChildren.some((child) => menuChildMatchesLocation(child, location.pathname, location.search))
                           : false;
                         const isItemOrChildActive = isItemActive || isAnyChildActive;
-                        // Only show children after user navigates to Suppliers (or a child like Products)
-                        const isGroupExpanded = isItemActive || isAnyChildActive;
-
                         const selfNavigable = hasPermission(item.requiredPermission);
 
                         if (hasChildren) {
                           return (
-                            <div key={item.id}>
+                            <div key={item.id} className="space-y-0.5">
                               {selfNavigable ? (
                                 <NavLink
                                   to={item.path}
-                                  // Dashboards should only be active on the exact route (/fleet, /business),
-                                  // otherwise they stay highlighted on sub-routes like /fleet/assets.
                                   end={item.id === 'fleet-dashboard' || item.id === 'business-dashboard' || item.id === 'rm-business-dashboard'}
-                                  className={({ isActive: navActive }) =>
-                                    `relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
-                                      (isItemOrChildActive || navActive)
-                                        ? 'bg-brand-red/80 text-white font-medium shadow-md shadow-brand-red/10'
-                                        : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                                    }`
+                                  onClick={closeNav}
+                                  className={() =>
+                                    uiCx(
+                                      'flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors',
+                                      isItemOrChildActive
+                                        ? 'bg-brand-red/90 text-white'
+                                        : 'text-gray-300 hover:bg-white/5 hover:text-white',
+                                    )
                                   }
                                 >
-                                  {isItemOrChildActive && (
-                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
-                                  )}
-                                  <span className={`flex-shrink-0 ${isItemOrChildActive ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
-                                  <span className="text-xs font-semibold flex-1">{item.label}</span>
+                                  <span className="flex-shrink-0 opacity-80">{item.icon}</span>
+                                  <span className="text-sm font-medium">{item.label}</span>
                                 </NavLink>
                               ) : (
                                 <div
-                                  className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
-                                    isItemOrChildActive
-                                      ? 'bg-brand-red/80 text-white font-medium shadow-md shadow-brand-red/10'
-                                      : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                                  }`}
-                                >
-                                  {isItemOrChildActive && (
-                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
+                                  className={uiCx(
+                                    'flex items-center gap-2.5 rounded-lg px-2.5 py-2',
+                                    isItemOrChildActive ? 'bg-brand-red/90 text-white' : 'text-gray-400',
                                   )}
-                                  <span className={`flex-shrink-0 ${isItemOrChildActive ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
-                                  <span className="text-xs font-semibold flex-1 text-left">{item.label}</span>
+                                >
+                                  <span className="flex-shrink-0 opacity-80">{item.icon}</span>
+                                  <span className="text-sm font-medium">{item.label}</span>
                                 </div>
                               )}
-
-                              {isGroupExpanded && (
-                                <div className="mt-0.5 ml-6 space-y-0.5">
-                                  {visibleChildren.map(child => {
-                                    const childActive =
-                                      !isViewingOpportunity &&
-                                      menuChildMatchesLocation(child, location.pathname, location.search);
-                                    return (
-                                      <NavLink
-                                        key={child.id}
-                                        to={child.path}
-                                        className={() =>
-                                          `relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
-                                            childActive
-                                              ? 'bg-brand-red/70 text-white font-medium shadow-md shadow-brand-red/10'
-                                              : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                                          }`
-                                        }
-                                      >
-                                        {childActive && (
-                                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
-                                        )}
-                                        <span className={`flex-shrink-0 ${childActive ? 'opacity-100' : 'opacity-60'}`}>{child.icon}</span>
-                                        <span className="text-xs font-medium">{child.label}</span>
-                                      </NavLink>
-                                    );
-                                  })}
-                                </div>
-                              )}
+                              {visibleChildren.map((child) => {
+                                const childActive =
+                                  !isViewingOpportunity &&
+                                  menuChildMatchesLocation(child, location.pathname, location.search);
+                                return (
+                                  <NavLink
+                                    key={child.id}
+                                    to={child.path}
+                                    onClick={closeNav}
+                                    className={() =>
+                                      uiCx(
+                                        'ml-4 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 transition-colors',
+                                        childActive
+                                          ? 'bg-brand-red/80 text-white'
+                                          : 'text-gray-400 hover:bg-white/5 hover:text-white',
+                                      )
+                                    }
+                                  >
+                                    <span className="flex-shrink-0 opacity-70">{child.icon}</span>
+                                    <span className="text-xs font-medium">{child.label}</span>
+                                  </NavLink>
+                                );
+                              })}
                             </div>
                           );
                         }
@@ -1231,168 +1341,147 @@ export default function AppShell({ children }: PropsWithChildren){
                           <NavLink
                             key={item.id}
                             to={item.path}
-                            // Dashboards should only be active on the exact route (/fleet, /business),
-                            // otherwise they stay highlighted on sub-routes like /fleet/assets.
                             end={item.id === 'fleet-dashboard' || item.id === 'business-dashboard' || item.id === 'rm-business-dashboard'}
+                            onClick={closeNav}
                             className={({ isActive: navActive }) => {
                               const on = leafLinkActive(navActive);
-                              return `relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
-                                on
-                                  ? 'bg-brand-red/80 text-white font-medium shadow-md shadow-brand-red/10'
-                                  : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                              }`;
+                              return uiCx(
+                                'flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors',
+                                on ? 'bg-brand-red/90 text-white' : 'text-gray-300 hover:bg-white/5 hover:text-white',
+                              );
                             }}
                           >
                             {({ isActive: navActive }) => {
                               const on = leafLinkActive(navActive);
                               return (
                                 <>
-                                  {on && (
-                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
-                                  )}
-                                  <span className={`flex-shrink-0 ${on ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
-                                  <span className="text-xs font-semibold">{item.label}</span>
+                                  <span className={uiCx('flex-shrink-0', on ? 'opacity-100' : 'opacity-70')}>{item.icon}</span>
+                                  <span className="text-sm font-medium">{item.label}</span>
                                 </>
                               );
                             }}
                           </NavLink>
                         );
                       })}
+                    </div>
+                    </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-        <div className="relative z-10 shrink-0 border-t border-gray-700/60 bg-gray-900/40 backdrop-blur-[2px] p-2 space-y-1">
-          <div id="hub-chat-fab-host" className="w-full min-h-0" />
-          <HubChatLauncher sidebarCollapsed={sidebarCollapsed} />
-          {isAdmin && (
-            <NavLink
-              to="/logs"
-              end
-              title="Audit log"
-              className={() =>
-                `relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 ${
-                  location.pathname === '/logs'
-                    ? 'bg-brand-red text-white font-semibold shadow-md shadow-brand-red/20'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700/60'
-                }`
-              }
-            >
-              {location.pathname === '/logs' && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
-              )}
-              <span className={`flex-shrink-0 ${location.pathname === '/logs' ? 'opacity-100' : 'opacity-70'}`}>
-                <IconLogs />
-              </span>
-              {!sidebarCollapsed && <span className="text-sm font-semibold flex-1">Audit log</span>}
-            </NavLink>
-          )}
-        </div>
-      </aside>
-      <main className={`flex-1 min-w-0 flex flex-col min-h-0 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`} style={{ height: '100vh' }}>
-        <div className="h-14 shrink-0 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between gap-3 px-4 sm:px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
-          <GlobalSearch
-            widthClassName="w-[760px] max-w-[min(760px,calc(100vw-20rem))] flex-1 min-w-0"
-            maxRecents={4}
-            isItemAllowed={canSeeGlobalSearchItem}
-            getLocalSections={() => globalSearchLocalSections}
-          />
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <div
-              role="toolbar"
-              aria-label="Hub shortcuts"
-              className="flex items-center gap-0.5 rounded-xl border border-white/10 bg-gradient-to-b from-gray-800/85 to-gray-900/90 p-1 shadow-inner"
-            >
-              <ChangelogNewsPanel />
-              <span className="w-px h-8 shrink-0 self-center rounded-full bg-white/12" aria-hidden />
-              <NotificationBell />
-              <span className="w-px h-8 shrink-0 self-center rounded-full bg-white/12" aria-hidden />
-              <FixedBugReportButton />
-            </div>
-            <div className="relative" ref={userMenuRef}>
-              <button
-                type="button"
-                aria-expanded={open}
-                aria-haspopup="menu"
-                onClick={() => setOpen((v) => !v)}
-                className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-black/15 hover:bg-black/25 hover:border-white/18 px-2 py-1.5 sm:pr-3 transition-all max-w-[min(240px,42vw)] sm:max-w-[280px]"
-              >
-                <AppUserAvatar user={userMenuUser} size="md" className="border-2 border-gray-500/55 shadow-md flex-shrink-0" />
-                <span className="min-w-0 truncate text-sm font-semibold text-white">{displayName}</span>
-              </button>
-              {open ? (
-                <div
-                  role="menu"
-                  className={uiCx(
-                    uiDropdown.menu,
-                    '!absolute right-0 top-full z-[100050] mt-1 flex w-max min-w-0 max-w-[min(100vw-2rem,16rem)] flex-col !max-h-none py-1',
-                  )}
-                >
-                  <Link
-                    to="/profile"
-                    role="menuitem"
-                    onClick={() => setOpen(false)}
-                    className={uiCx(uiDropdown.option, 'block w-full whitespace-nowrap !text-right')}
-                  >
-                    My Information
-                  </Link>
-                  <Link
-                    to="/reviews/my"
-                    role="menuitem"
-                    onClick={() => setOpen(false)}
-                    className={uiCx(uiDropdown.option, 'block w-full whitespace-nowrap !text-right')}
-                  >
-                    My reviews
-                  </Link>
-                  <div className="my-1 border-t border-gray-100" aria-hidden />
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setOpen(false);
-                      void handleLogout();
-                    }}
-                    className={uiCx(uiDropdown.option, 'block w-full whitespace-nowrap !text-right text-red-600 hover:bg-red-50')}
-                  >
-                    Logout
-                  </button>
+                ) : null}
                 </div>
-              ) : null}
-            </div>
-          </div>
+              </div>
+            </>
+          ) : null}
         </div>
-        <div className="flex-1 min-h-0 overflow-auto">
-        <div className="p-5 min-h-full min-w-0">
-          {onboardingStatus?.has_pending &&
-            !onboardingStatus?.past_deadline &&
-            location.pathname !== '/onboarding/documents' && (
-              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">
-                <span>
-                  You have {onboardingStatus.pending_count} required onboarding document
-                  {onboardingStatus.pending_count !== 1 ? 's' : ''} to sign
-                  {onboardingStatus.earliest_deadline
-                    ? ` (deadline ${new Date(onboardingStatus.earliest_deadline).toLocaleDateString()})`
-                    : ''}
-                  .
-                </span>
+
+        <GlobalSearch
+          widthClassName="min-w-0 flex-1"
+          maxRecents={4}
+          compactToggle
+          isItemAllowed={canSeeGlobalSearchItem}
+          getLocalSections={() => globalSearchLocalSections}
+        />
+
+        <div className="ml-auto flex h-10 shrink-0 items-center gap-2 sm:gap-2.5">
+          <div
+            role="toolbar"
+            aria-label="Hub shortcuts"
+            className="flex h-10 items-center gap-0.5 rounded-lg border border-white/10 bg-gradient-to-b from-gray-800/85 to-gray-900/90 p-0 shadow-inner"
+          >
+            <ChangelogNewsPanel />
+            <span className="h-5 w-px shrink-0 self-center rounded-full bg-white/12" aria-hidden />
+            <NotificationBell />
+            <span className="h-5 w-px shrink-0 self-center rounded-full bg-white/12" aria-hidden />
+            <FixedBugReportButton />
+          </div>
+          <div className="relative shrink-0" ref={userMenuRef}>
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-haspopup="menu"
+              onClick={() => {
+                setNavOpen(false);
+                setOpen((v) => !v);
+              }}
+              className="flex h-10 max-w-[min(14rem,40vw)] items-center gap-2 rounded-lg border border-white/10 bg-black/15 px-2 transition-all hover:border-white/18 hover:bg-black/25 sm:max-w-[15rem] sm:pr-3"
+            >
+              <AppUserAvatar user={userMenuUser} size="sm" className="flex-shrink-0 border-2 border-gray-500/55 shadow-md" />
+              <span className="min-w-0 truncate text-sm font-semibold text-white">{displayName}</span>
+            </button>
+            {open ? (
+              <div
+                role="menu"
+                className={uiCx(
+                  uiDropdown.menu,
+                  '!absolute right-0 top-full z-[100050] mt-1 flex w-max min-w-0 max-w-[min(100vw-2rem,16rem)] flex-col !max-h-none py-1',
+                )}
+              >
+                <Link
+                  to="/profile"
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                  className={uiCx(uiDropdown.option, 'block w-full whitespace-nowrap !text-right')}
+                >
+                  My Information
+                </Link>
+                <Link
+                  to="/reviews/my"
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                  className={uiCx(uiDropdown.option, 'block w-full whitespace-nowrap !text-right')}
+                >
+                  My reviews
+                </Link>
+                <div className="my-1 border-t border-gray-100" aria-hidden />
                 <button
                   type="button"
-                  onClick={() => navigate('/onboarding/documents')}
-                  className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-700 text-white text-sm font-medium hover:bg-amber-800"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    void handleLogout();
+                  }}
+                  className={uiCx(uiDropdown.option, 'block w-full whitespace-nowrap !text-right text-red-600 hover:bg-red-50')}
                 >
-                  Complete Documents
+                  Logout
                 </button>
               </div>
-            )}
-          {children}
+            ) : null}
+          </div>
         </div>
+      </header>
+
+      <main className="flex-1 min-w-0 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-auto">
+          <div className="p-5 min-h-full min-w-0">
+            {onboardingStatus?.has_pending &&
+              !onboardingStatus?.past_deadline &&
+              location.pathname !== '/onboarding/documents' && (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    You have {onboardingStatus.pending_count} required onboarding document
+                    {onboardingStatus.pending_count !== 1 ? 's' : ''} to sign
+                    {onboardingStatus.earliest_deadline
+                      ? ` (deadline ${new Date(onboardingStatus.earliest_deadline).toLocaleDateString()})`
+                      : ''}
+                    .
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/onboarding/documents')}
+                    className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-700 text-white text-sm font-medium hover:bg-amber-800"
+                  >
+                    Complete Documents
+                  </button>
+                </div>
+              )}
+            {children}
+          </div>
         </div>
       </main>
+
+      {/* Init marker only — FAB is mounted on document.body by chat-widget.js */}
+      <div id="hub-chat-fab-host" className="hidden" aria-hidden />
+      <HubChatLauncher />
       <InstallPrompt />
     </div>
   );
 }
-
-

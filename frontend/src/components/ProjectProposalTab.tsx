@@ -208,6 +208,7 @@ export default function ProjectProposalTab({
         projectId={projectId}
         initial={proposalData || null}
         disabled={!canEdit}
+        isAdmin={isAdmin}
         showOnlyPricing={showOnlyPricing}
         saveRef={proposalFormSaveRef}
         showRestrictionWarning={!canEdit && !!restrictionMessage}

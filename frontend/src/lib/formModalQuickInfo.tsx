@@ -852,6 +852,22 @@ export const inventoryNewProductQuickInfo = formModalQuickInfo({
   ),
 });
 
+/** Inventory — edit product on a supplier. */
+export const inventoryEditProductQuickInfo = formModalQuickInfo({
+  purpose: <>Update this product’s catalog details used on estimates and inventory.</>,
+  howToUse: (
+    <>
+      Change {uiLabel('Name')}, {uiLabel('Supplier')}, {uiLabel('Price ($)')}, unit type, and optional category,
+      coverage, image, or technical manual URL.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} returns to product details without saving. {uiLabel('Save')} updates the product.
+    </>
+  ),
+});
+
 /** Estimate — add a catalog product line. */
 export const estimateAddProductQuickInfo = formModalQuickInfo({
   purpose: <>Pick a product from your catalog and add it as a line on this estimate.</>,
@@ -1161,6 +1177,27 @@ export const editProjectDivisionsQuickInfo = formModalQuickInfo({
     <>
       {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} updates the division list on this project or
       opportunity.
+    </>
+  ),
+});
+
+/** Project detail — edit on-site leads per division. */
+export const projectEditOnSiteLeadsQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Assign who leads each division on site — for example, one lead for {uiLabel('Roofing')} and another for{' '}
+      {uiLabel('Mechanical')}. Leads help with field coordination and timesheet oversight.
+    </>
+  ),
+  howToUse: (
+    <>
+      For each project division, search and pick a team member. Leave a division blank if it has no dedicated lead.
+      Divisions themselves come from {uiLabel('Project Divisions')} and cannot be changed here.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} stores the lead for each division on this project.
     </>
   ),
 });
