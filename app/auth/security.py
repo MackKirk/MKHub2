@@ -328,7 +328,24 @@ def _perm_matches_map(perm_map: dict, perm: str) -> bool:
             or is_granted_perm_value(perm_map.get("fleet:dashboard:read"))
         )
     if perm == "fleet:write":
+        # Legacy write key — do NOT treat as “edit everything”; map only to create/delete assets.
         return bool(is_granted_perm_value(perm_map.get("fleet:vehicles:write")))
+    if perm == "fleet:vehicles:general:write":
+        return bool(is_granted_perm_value(perm_map.get("fleet:vehicles:general:write")))
+    if perm == "fleet:vehicles:compliance:write":
+        return bool(is_granted_perm_value(perm_map.get("fleet:vehicles:compliance:write")))
+    if perm == "fleet:vehicles:inspections:write":
+        return bool(
+            is_granted_perm_value(perm_map.get("fleet:vehicles:inspections:write"))
+            or is_granted_perm_value(perm_map.get("fleet:inspections:write"))
+            or is_granted_perm_value(perm_map.get("inspections:write"))
+        )
+    if perm == "fleet:vehicles:work_orders:write":
+        return bool(
+            is_granted_perm_value(perm_map.get("fleet:vehicles:work_orders:write"))
+            or is_granted_perm_value(perm_map.get("fleet:work_orders:write"))
+            or is_granted_perm_value(perm_map.get("work_orders:write"))
+        )
     if perm == "company_assets:access":
         return _company_assets_area_unlocked(perm_map)
     if perm == "equipment:read":
@@ -341,42 +358,59 @@ def _perm_matches_map(perm_map: dict, perm: str) -> bool:
             is_granted_perm_value(perm_map.get("fleet:equipment:write"))
             and _company_assets_area_unlocked(perm_map)
         )
-    # Work orders & inspections — new tab keys with legacy aliases
+    # Work orders & inspections — granular keys with limited legacy aliases
     if perm == "work_orders:read":
         return bool(
             is_granted_perm_value(perm_map.get("fleet:work_orders:read"))
             or is_granted_perm_value(perm_map.get("work_orders:read"))
-            or _fleet_area_unlocked(perm_map)
         )
     if perm == "work_orders:write":
         return bool(
             is_granted_perm_value(perm_map.get("fleet:work_orders:write"))
             or is_granted_perm_value(perm_map.get("work_orders:write"))
-            or is_granted_perm_value(perm_map.get("fleet:write"))
-            or is_granted_perm_value(perm_map.get("fleet:vehicles:write"))
         )
     if perm == "work_orders:assign":
         return bool(
             is_granted_perm_value(perm_map.get("fleet:work_orders:assign"))
             or is_granted_perm_value(perm_map.get("work_orders:assign"))
-            or is_granted_perm_value(perm_map.get("work_orders:write"))
-            or is_granted_perm_value(perm_map.get("fleet:work_orders:write"))
-            or is_granted_perm_value(perm_map.get("fleet:write"))
-            or is_granted_perm_value(perm_map.get("fleet:vehicles:write"))
         )
+    if perm == "fleet:work_orders:general:write":
+        return bool(is_granted_perm_value(perm_map.get("fleet:work_orders:general:write")))
+    if perm == "fleet:work_orders:costs:write":
+        return bool(is_granted_perm_value(perm_map.get("fleet:work_orders:costs:write")))
+    if perm == "fleet:work_orders:files:write":
+        return bool(is_granted_perm_value(perm_map.get("fleet:work_orders:files:write")))
+    if perm == "fleet:work_orders:files:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("fleet:work_orders:files:read"))
+            or is_granted_perm_value(perm_map.get("fleet:work_orders:files:write"))
+        )
+    if perm == "fleet:work_orders:activity:read":
+        return bool(is_granted_perm_value(perm_map.get("fleet:work_orders:activity:read")))
     if perm == "inspections:read":
         return bool(
             is_granted_perm_value(perm_map.get("fleet:inspections:read"))
             or is_granted_perm_value(perm_map.get("inspections:read"))
-            or _fleet_area_unlocked(perm_map)
         )
     if perm == "inspections:write":
         return bool(
             is_granted_perm_value(perm_map.get("fleet:inspections:write"))
             or is_granted_perm_value(perm_map.get("inspections:write"))
-            or is_granted_perm_value(perm_map.get("fleet:write"))
-            or is_granted_perm_value(perm_map.get("fleet:vehicles:write"))
         )
+    if perm == "fleet:inspections:schedules:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("fleet:inspections:schedules:read"))
+            or is_granted_perm_value(perm_map.get("fleet:inspections:schedules:write"))
+        )
+    if perm == "fleet:inspections:schedules:write":
+        return bool(is_granted_perm_value(perm_map.get("fleet:inspections:schedules:write")))
+    if perm == "fleet:inspections:execution:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("fleet:inspections:execution:read"))
+            or is_granted_perm_value(perm_map.get("fleet:inspections:execution:write"))
+        )
+    if perm == "fleet:inspections:execution:write":
+        return bool(is_granted_perm_value(perm_map.get("fleet:inspections:execution:write")))
     if perm == "company_cards:read":
         return bool(perm_map.get("company_cards:read"))
     if perm == "company_cards:write":
@@ -582,6 +616,165 @@ def assert_customer_tab(
 ) -> None:
     if not has_customer_tab_permission(user, tab, action):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+FLEET_ASSET_TAB_KEYS: tuple[str, ...] = (
+    "general",
+    "inspections",
+    "work_orders",
+    "compliance",
+    "history",
+)
+
+
+def has_fleet_assets_list_permission(user: User) -> bool:
+    """Access fleet assets list / open records."""
+    return _has_permission(user, "fleet:vehicles:read") or _has_permission(
+        user, "fleet:vehicles:write"
+    )
+
+
+def has_fleet_asset_write_permission(user: User) -> bool:
+    """Create/delete fleet assets."""
+    return _has_permission(user, "fleet:vehicles:write")
+
+
+def has_fleet_asset_tab_permission(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> bool:
+    """
+    Tab-level access on a fleet asset.
+
+    Read and write are strict tab keys (no main vehicles:read fallback).
+    Write is never granted for history (read-only tab).
+    """
+    if action not in ("read", "write"):
+        return False
+    t = (tab or "").strip().lower()
+    if t not in FLEET_ASSET_TAB_KEYS:
+        return False
+
+    read_key = f"fleet:vehicles:{t}:read"
+    write_key = f"fleet:vehicles:{t}:write"
+
+    if action == "write":
+        if t == "history":
+            return False
+        return _has_permission(user, write_key)
+
+    return _has_permission(user, read_key) or _has_permission(user, write_key)
+
+
+def assert_fleet_asset_tab(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> None:
+    if not has_fleet_asset_tab_permission(user, tab, action):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+FLEET_WO_TAB_KEYS: tuple[str, ...] = ("general", "costs", "files", "activity")
+
+
+def has_fleet_work_orders_list_permission(user: User) -> bool:
+    return _has_permission(user, "fleet:work_orders:read") or _has_permission(
+        user, "fleet:work_orders:write"
+    )
+
+
+def has_fleet_work_order_write_permission(user: User) -> bool:
+    """Create work orders (main Edit)."""
+    return _has_permission(user, "fleet:work_orders:write")
+
+
+def has_fleet_work_order_assign_permission(user: User) -> bool:
+    return _has_permission(user, "fleet:work_orders:assign")
+
+
+def has_fleet_work_order_tab_permission(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> bool:
+    """Strict tab keys for work order detail (no main read fallback)."""
+    if action not in ("read", "write"):
+        return False
+    t = (tab or "").strip().lower()
+    if t not in FLEET_WO_TAB_KEYS:
+        return False
+
+    read_key = f"fleet:work_orders:{t}:read"
+    write_key = f"fleet:work_orders:{t}:write"
+
+    if action == "write":
+        if t == "activity":
+            return False
+        return _has_permission(user, write_key)
+
+    return _has_permission(user, read_key) or _has_permission(user, write_key)
+
+
+def assert_fleet_work_order_tab(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> None:
+    if not has_fleet_work_order_tab_permission(user, tab, action):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+FLEET_INSPECTION_TAB_KEYS: tuple[str, ...] = ("schedules", "execution")
+
+
+def has_fleet_inspections_list_permission(user: User) -> bool:
+    return _has_permission(user, "fleet:inspections:read") or _has_permission(
+        user, "fleet:inspections:write"
+    )
+
+
+def has_fleet_inspection_write_permission(user: User) -> bool:
+    """Main Inspections Edit — create/manage inspection records."""
+    return _has_permission(user, "fleet:inspections:write")
+
+
+def has_fleet_inspection_tab_permission(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> bool:
+    """Strict tab keys for inspections (schedules / execution)."""
+    if action not in ("read", "write"):
+        return False
+    t = (tab or "").strip().lower()
+    if t not in FLEET_INSPECTION_TAB_KEYS:
+        return False
+
+    read_key = f"fleet:inspections:{t}:read"
+    write_key = f"fleet:inspections:{t}:write"
+
+    if action == "write":
+        return _has_permission(user, write_key)
+
+    return _has_permission(user, read_key) or _has_permission(user, write_key)
+
+
+def assert_fleet_inspection_tab(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> None:
+    if not has_fleet_inspection_tab_permission(user, tab, action):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def can_create_fleet_inspection_schedule(user: User) -> bool:
+    """Schedule create from Inspections/Schedule UI or asset Inspections tab."""
+    return has_fleet_inspection_tab_permission(
+        user, "schedules", "write"
+    ) or _has_permission(user, "fleet:vehicles:inspections:write")
 
 
 SUPPLIER_TAB_KEYS: tuple[str, ...] = ("overview", "contacts", "products")

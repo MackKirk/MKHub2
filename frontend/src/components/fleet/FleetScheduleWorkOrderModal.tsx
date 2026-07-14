@@ -37,6 +37,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onSuccess: (data: { id: string }) => void;
+  canAssign?: boolean;
 };
 
 function buildInitialForm(): FleetScheduleWorkOrderFormValues {
@@ -54,7 +55,12 @@ function buildInitialForm(): FleetScheduleWorkOrderFormValues {
   };
 }
 
-export default function FleetScheduleWorkOrderModal({ open, onClose, onSuccess }: Props) {
+export default function FleetScheduleWorkOrderModal({
+  open,
+  onClose,
+  onSuccess,
+  canAssign = true,
+}: Props) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FleetScheduleWorkOrderFormValues>(buildInitialForm);
 
@@ -95,7 +101,7 @@ export default function FleetScheduleWorkOrderModal({ open, onClose, onSuccess }
         category: form.category,
         urgency: form.urgency,
         status: 'open',
-        assigned_to_user_id: form.assigned_to_user_id || null,
+        assigned_to_user_id: canAssign ? form.assigned_to_user_id || null : null,
         origin_source: 'manual',
         body_repair_required: form.body_repair_required,
         new_stickers_applied: form.new_stickers_applied,
@@ -168,6 +174,7 @@ export default function FleetScheduleWorkOrderModal({ open, onClose, onSuccess }
         vehicleError={assetsError}
         onRetryVehicles={() => refetchAssets()}
         disabled={createMutation.isPending}
+        canAssign={canAssign}
         onChange={updateField}
         onSubmit={handleSubmit}
       />

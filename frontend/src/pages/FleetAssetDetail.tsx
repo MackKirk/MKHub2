@@ -38,6 +38,12 @@ import FleetComplianceModal, {
   type FleetComplianceRecord,
 } from '@/components/fleet/FleetComplianceModal';
 import { FleetAssetLogsTab, type FleetAssetHistoryItem } from '@/components/fleet/FleetAssetLogsTab';
+import {
+  canEditFleetAssetTab,
+  canViewFleetAssetTab,
+  canAssignFleetWorkOrder,
+  type FleetAssetTab,
+} from '@/lib/fleetPermissions';
 import FleetHistoryAuditChangeModal, {
   type FleetHistoryAuditDetailPayload,
 } from '@/components/fleet/FleetHistoryAuditChangeModal';
@@ -411,6 +417,17 @@ export default function FleetAssetDetail() {
     null,
   );
   const [generalEditSection, setGeneralEditSection] = useState<FleetAssetGeneralEditSection | null>(null);
+
+  const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const permissionsReady = !!me && !meLoading;
+  const canEditGeneral = canEditFleetAssetTab(isAdmin, permissions, 'general');
+  const canEditInspections = canEditFleetAssetTab(isAdmin, permissions, 'inspections');
+  const canEditWorkOrders = canEditFleetAssetTab(isAdmin, permissions, 'work_orders');
+  const canEditCompliance = canEditFleetAssetTab(isAdmin, permissions, 'compliance');
+  const canAssignWorkOrder = canAssignFleetWorkOrder(isAdmin, permissions);
+  const canViewTab = (t: FleetAssetTab) => canViewFleetAssetTab(isAdmin, permissions, t);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -791,13 +808,30 @@ export default function FleetAssetDetail() {
     return { label: 'Valid', variant: getFleetDueStatusBadgeVariant('Valid') };
   }, [asset?.propane_sticker_date]);
 
-  const fleetTabItems = [
-    { key: 'general', label: 'General' },
-    { key: 'inspections', label: 'Inspections' },
-    { key: 'work-orders', label: 'Work Orders' },
-    { key: 'compliance', label: 'Compliance' },
-    { key: 'logs', label: 'History' },
-  ] as const;
+  const fleetTabItems = useMemo(
+    () => {
+      if (!permissionsReady) return [];
+      return (
+        [
+          { key: 'general', label: 'General', permTab: 'general' as const },
+          { key: 'inspections', label: 'Inspections', permTab: 'inspections' as const },
+          { key: 'work-orders', label: 'Work Orders', permTab: 'work_orders' as const },
+          { key: 'compliance', label: 'Compliance', permTab: 'compliance' as const },
+          { key: 'logs', label: 'History', permTab: 'history' as const },
+        ] as const
+      ).filter((t) => canViewFleetAssetTab(isAdmin, permissions, t.permTab));
+    },
+    [permissionsReady, isAdmin, permissions],
+  );
+
+  useEffect(() => {
+    if (!permissionsReady || !fleetTabItems.length) return;
+    if (!fleetTabItems.some((t) => t.key === tab)) {
+      const next = fleetTabItems[0].key;
+      setTab(next);
+      if (id) nav(`/fleet/assets/${id}?tab=${next}`, { replace: true });
+    }
+  }, [permissionsReady, fleetTabItems, tab, id, nav]);
 
   const pageHeaderToday = (
     <div className="text-right">
@@ -862,6 +896,7 @@ export default function FleetAssetDetail() {
           photoUrl={heroPhotoThumbUrl}
           photoBusy={heroPhotoBusy}
           photoInputRef={assetHeroPhotoInputRef}
+          canEdit={canEditGeneral}
           isCollapsed={isHeroCollapsed}
           onToggleCollapsed={() => setIsHeroCollapsed((v) => !v)}
           onPhotoClick={() => setShowHeroPhotoViewModal(true)}
@@ -872,20 +907,35 @@ export default function FleetAssetDetail() {
 
         <div className={!isHeroCollapsed ? '-mt-0.5' : undefined}>
           <AppCard bodyClassName={isHeroCollapsed ? 'p-2.5' : '!py-3'}>
-            <AppTabs
-              tabs={fleetTabItems.map((t) => ({ key: t.key, label: t.label }))}
-              value={tab}
-              onChange={(next) => {
-                setTab(next as typeof tab);
-                nav(`/fleet/assets/${id}?tab=${next}`, { replace: true });
-              }}
-            />
+            {!permissionsReady ? (
+              <div className="h-8 animate-pulse rounded bg-gray-100" />
+            ) : fleetTabItems.length > 0 ? (
+              <AppTabs
+                tabs={fleetTabItems.map((t) => ({ key: t.key, label: t.label }))}
+                value={tab}
+                onChange={(next) => {
+                  setTab(next as typeof tab);
+                  nav(`/fleet/assets/${id}?tab=${next}`, { replace: true });
+                }}
+              />
+            ) : (
+              <p className={uiCx(uiTypography.helper, 'px-1')}>
+                No asset tabs are available for your permissions.
+              </p>
+            )}
           </AppCard>
         </div>
       </div>
 
       <AppCard bodyClassName="min-w-0 overflow-hidden">
-        {tab === 'general' && (
+        {permissionsReady && fleetTabItems.length === 0 ? (
+          <AppEmptyState
+            title="No tabs available"
+            description="Ask an admin to grant View on General, Inspections, Work Orders, Compliance, or History for fleet assets."
+            className="border-0 bg-transparent py-10 shadow-none"
+          />
+        ) : null}
+        {tab === 'general' && canViewTab('general') && (
           <FleetAssetGeneralTab
             asset={asset}
             openAssignment={openAssignment}
@@ -898,6 +948,7 @@ export default function FleetAssetDetail() {
             propaneStatus={propaneStatus}
             odometerStatus={odometerStatus}
             hoursStatus={hoursStatus}
+            canEdit={canEditGeneral}
             onEditSection={setGeneralEditSection}
             onViewCompliance={() => {
               setTab('compliance');
@@ -906,7 +957,7 @@ export default function FleetAssetDetail() {
           />
         )}
 
-        {tab === 'inspections' && (
+        {tab === 'inspections' && canViewTab('inspections') && (
           <FleetAssetInspectionsTab
             isLoading={inspectionsLoading}
             inspections={inspections}
@@ -916,6 +967,7 @@ export default function FleetAssetDetail() {
             searchInput={inspListParams.qInput}
             onSearchChange={setInspectionSearchQuery}
             onSort={setInspectionTableSort}
+            canEdit={canEditInspections}
             onScheduleClick={() => setShowScheduleInspectionModal(true)}
             onOpenInspection={(inspection: FleetAssetInspectionRow) => {
               const sched = inspection.inspection_schedule_id;
@@ -930,7 +982,7 @@ export default function FleetAssetDetail() {
           />
         )}
 
-        {tab === 'work-orders' && (
+        {tab === 'work-orders' && canViewTab('work_orders') && (
           <FleetAssetWorkOrdersTab
             isLoading={workOrdersLoading}
             workOrders={workOrders as FleetAssetWorkOrderRow[] | undefined}
@@ -940,12 +992,13 @@ export default function FleetAssetDetail() {
             searchInput={woListParams.qInput}
             onSearchChange={setWorkOrderSearchQuery}
             onSort={setWorkOrderTableSort}
+            canEdit={canEditWorkOrders}
             onCreateClick={() => setShowWorkOrderForm(true)}
             onOpenWorkOrder={(workOrderId) => nav(`/fleet/work-orders/${workOrderId}`)}
           />
         )}
 
-        {tab === 'logs' && (
+        {tab === 'logs' && canViewTab('history') && (
           <FleetAssetLogsTab
             historyItems={historyItems}
             assignments={assignments}
@@ -958,7 +1011,7 @@ export default function FleetAssetDetail() {
           />
         )}
 
-        {tab === 'compliance' && (
+        {tab === 'compliance' && canViewTab('compliance') && (
           <FleetAssetComplianceTab
             isLoading={complianceLoading}
             complianceRecords={complianceRecords as FleetComplianceRecord[] | undefined}
@@ -968,6 +1021,7 @@ export default function FleetAssetDetail() {
             searchInput={compListParams.qInput}
             onSearchChange={setComplianceSearchQuery}
             onSort={setComplianceTableSort}
+            canEdit={canEditCompliance}
             onCreateClick={() => {
               setEditingComplianceId(null);
               setShowComplianceModal(true);
@@ -982,7 +1036,7 @@ export default function FleetAssetDetail() {
       </AppCard>
 
       <ScheduleFleetInspectionModal
-        open={showScheduleInspectionModal && !!id}
+        open={canEditInspections && showScheduleInspectionModal && !!id}
         assetId={id ?? ''}
         lockedVehicleDisplayName={lockedScheduleVehicleLabel}
         onClose={() => setShowScheduleInspectionModal(false)}
@@ -991,10 +1045,11 @@ export default function FleetAssetDetail() {
         }}
       />
       <NewFleetWorkOrderModal
-        open={showWorkOrderForm && !!id}
+        open={canEditWorkOrders && showWorkOrderForm && !!id}
         assetId={id ?? ''}
         assetDisplayName={lockedScheduleVehicleLabel}
         employees={employees}
+        canAssign={canAssignWorkOrder}
         onClose={() => setShowWorkOrderForm(false)}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['fleetAssetWorkOrders', id] });
@@ -1010,16 +1065,22 @@ export default function FleetAssetDetail() {
           bodyClassName="flex items-center justify-center bg-gray-50 p-4"
           footer={
             <div className={uiCx(uiLayout.actionsRow, 'w-full justify-between')}>
-              <AppButton variant="danger" onClick={() => void removeHeroPhoto()} disabled={heroPhotoBusy}>
-                Remove
-              </AppButton>
+              {canEditGeneral ? (
+                <AppButton variant="danger" onClick={() => void removeHeroPhoto()} disabled={heroPhotoBusy}>
+                  Remove
+                </AppButton>
+              ) : (
+                <span />
+              )}
               <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
                 <AppButton variant="secondary" onClick={() => setShowHeroPhotoViewModal(false)}>
                   Close
                 </AppButton>
-                <AppButton onClick={() => assetHeroPhotoInputRef.current?.click()} disabled={heroPhotoBusy}>
-                  Replace image
-                </AppButton>
+                {canEditGeneral ? (
+                  <AppButton onClick={() => assetHeroPhotoInputRef.current?.click()} disabled={heroPhotoBusy}>
+                    Replace image
+                  </AppButton>
+                ) : null}
               </div>
             </div>
           }
@@ -1033,7 +1094,7 @@ export default function FleetAssetDetail() {
       )}
       {/* Assign Modal */}
       <FleetAssignModal
-        open={showAssignModal}
+        open={canEditGeneral && showAssignModal}
         asset={asset}
         assetDisplayName={lockedScheduleVehicleLabel}
         employees={employees}
@@ -1043,7 +1104,7 @@ export default function FleetAssetDetail() {
       />
       {openAssignment ? (
         <FleetReturnModal
-          open={showReturnModal}
+          open={canEditGeneral && showReturnModal}
           openAssignment={openAssignment}
           asset={asset}
           assetDisplayName={lockedScheduleVehicleLabel}
@@ -1074,7 +1135,7 @@ export default function FleetAssetDetail() {
         />
       )}
       <EditFleetAssetGeneralModal
-        open={generalEditSection !== null}
+        open={canEditGeneral && generalEditSection !== null}
         section={generalEditSection}
         onClose={() => setGeneralEditSection(null)}
         asset={asset ?? undefined}
@@ -1084,7 +1145,7 @@ export default function FleetAssetDetail() {
         }}
       />
       <FleetComplianceModal
-        open={showComplianceModal && !!id}
+        open={canEditCompliance && showComplianceModal && !!id}
         assetId={id ?? ''}
         recordId={editingComplianceId}
         initialRecord={

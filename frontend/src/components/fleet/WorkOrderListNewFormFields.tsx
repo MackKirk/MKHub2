@@ -57,6 +57,7 @@ type Props = {
   formId: string;
   values: WorkOrderListNewFormValues;
   disabled?: boolean;
+  canAssign?: boolean;
   employees: unknown[];
   vehicleOptions: AppComboboxOption[];
   vehicleLoading?: boolean;
@@ -70,6 +71,7 @@ export function WorkOrderListNewFormFields({
   formId,
   values,
   disabled,
+  canAssign = true,
   employees,
   vehicleOptions,
   vehicleLoading = false,
@@ -158,16 +160,18 @@ export function WorkOrderListNewFormFields({
           disabled={disabled}
           fieldHint={H.urgency}
         />
-        <AppUserSelect
-          mode="single"
-          label="Assigned to"
-          users={assignUsers}
-          value={values.assigned_to_user_id}
-          onChange={(userId) => onChange('assigned_to_user_id', userId ?? '')}
-          placeholder="Unassigned"
-          disabled={disabled}
-          fieldHint={H.assigned_to}
-        />
+        {canAssign ? (
+          <AppUserSelect
+            mode="single"
+            label="Assigned to"
+            users={assignUsers}
+            value={values.assigned_to_user_id}
+            onChange={(userId) => onChange('assigned_to_user_id', userId ?? '')}
+            placeholder="Unassigned"
+            disabled={disabled}
+            fieldHint={H.assigned_to}
+          />
+        ) : null}
       </div>
 
       <AppTextarea

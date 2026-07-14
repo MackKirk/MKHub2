@@ -24,6 +24,7 @@ import {
   uiTypography,
 } from '@/components/ui';
 import { Search, SlidersHorizontal, Truck } from 'lucide-react';
+import { canEditFleetAssetRecord } from '@/lib/fleetPermissions';
 
 type FleetAsset = {
   id: string;
@@ -392,6 +393,10 @@ export default function FleetAssets() {
   const search = searchParams.get('search') ?? '';
   const [showNewAssetModal, setShowNewAssetModal] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const canCreateAsset = canEditFleetAssetRecord(isAdmin, permissions);
   
   // Get initial type from URL or path
   const getInitialType = () => {
@@ -784,9 +789,11 @@ export default function FleetAssets() {
           ) : undefined
         }
       >
-        <div className={uiSpacing.cardPadding}>
-          <AppListCreateItem label="New Asset" layout="row" className="w-full" onClick={() => setShowNewAssetModal(true)} />
-        </div>
+        {canCreateAsset ? (
+          <div className={uiSpacing.cardPadding}>
+            <AppListCreateItem label="New Asset" layout="row" className="w-full" onClick={() => setShowNewAssetModal(true)} />
+          </div>
+        ) : null}
         {isLoading ? (
           <div className={uiCx(uiSpacing.cardPadding, 'text-center')}>
             <p className={uiTypography.helper}>Loading assets...</p>
@@ -940,7 +947,7 @@ export default function FleetAssets() {
       />
 
       <NewFleetAssetModal
-        open={showNewAssetModal}
+        open={canCreateAsset && showNewAssetModal}
         onClose={() => setShowNewAssetModal(false)}
         initialAssetType={typeFilter === 'all' ? 'vehicle' : typeFilter}
         onSuccess={(data) => {

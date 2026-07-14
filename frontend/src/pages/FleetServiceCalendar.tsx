@@ -108,6 +108,7 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 type FleetServiceCalendarProps = {
   embedView?: boolean;
   canSchedule?: boolean;
+  canLoadInspectionSchedules?: boolean;
   onScheduleNew?: () => void;
   onNewWorkOrder?: () => void;
 };
@@ -115,6 +116,7 @@ type FleetServiceCalendarProps = {
 export default function FleetServiceCalendar({
   embedView,
   canSchedule = true,
+  canLoadInspectionSchedules = true,
   onScheduleNew,
   onNewWorkOrder,
 }: FleetServiceCalendarProps) {
@@ -143,9 +145,10 @@ export default function FleetServiceCalendar({
   const { data: scheduleEvents = [], isLoading: schedulesLoading } = useQuery({
     queryKey: ['fleet-inspection-schedules-calendar', startStr, endStr],
     queryFn: () => api<any[]>('GET', `/fleet/inspection-schedules/calendar?start=${startStr}&end=${endStr}`),
+    enabled: canLoadInspectionSchedules,
   });
 
-  const isLoading = woLoading || schedulesLoading;
+  const isLoading = woLoading || (canLoadInspectionSchedules && schedulesLoading);
 
   const eventsByDay = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};

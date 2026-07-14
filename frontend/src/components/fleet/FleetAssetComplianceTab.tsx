@@ -60,6 +60,7 @@ type Props = {
   searchInput: string;
   onSearchChange: (value: string) => void;
   onSort: (column: FleetAssetComplianceSortCol) => void;
+  canEdit?: boolean;
   onCreateClick: () => void;
   onEditRecord: (recordId: string) => void;
   onDeleteRecord: (record: FleetAssetComplianceRow) => void;
@@ -74,6 +75,7 @@ export function FleetAssetComplianceTab({
   searchInput,
   onSearchChange,
   onSort,
+  canEdit = true,
   onCreateClick,
   onEditRecord,
   onDeleteRecord,
@@ -92,14 +94,16 @@ export function FleetAssetComplianceTab({
       />
 
       <AppCard className="min-w-0" bodyClassName="!p-0">
-        <div className={uiCx(uiSpacing.cardPadding, 'pb-3')}>
-          <AppListCreateItem
-            label="Add compliance record"
-            layout="row"
-            className="w-full"
-            onClick={onCreateClick}
-          />
-        </div>
+        {canEdit ? (
+          <div className={uiCx(uiSpacing.cardPadding, 'pb-3')}>
+            <AppListCreateItem
+              label="Add compliance record"
+              layout="row"
+              className="w-full"
+              onClick={onCreateClick}
+            />
+          </div>
+        ) : null}
 
         {hasRecords && (
           <div className="w-full min-w-0 border-t border-gray-200 bg-gray-50/80 px-3 py-2.5">
@@ -200,18 +204,22 @@ export function FleetAssetComplianceTab({
                       key={rec.id}
                       variant="flat"
                       as="div"
-                      role="button"
-                      tabIndex={0}
+                      role={canEdit ? 'button' : undefined}
+                      tabIndex={canEdit ? 0 : undefined}
                       gridCols={LIST_GRID_COLS}
                       minWidth={LIST_MIN_WIDTH}
-                      className="cursor-pointer"
-                      onClick={() => onEditRecord(rec.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          onEditRecord(rec.id);
-                        }
-                      }}
+                      className={canEdit ? 'cursor-pointer' : undefined}
+                      onClick={canEdit ? () => onEditRecord(rec.id) : undefined}
+                      onKeyDown={
+                        canEdit
+                          ? (e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                onEditRecord(rec.id);
+                              }
+                            }
+                          : undefined
+                      }
                     >
                       <span className={uiCx(uiTypography.body, 'whitespace-nowrap font-medium text-gray-900')}>
                         {rec.record_type}
@@ -242,15 +250,17 @@ export function FleetAssetComplianceTab({
                         {notesDisplay}
                       </span>
                       <div className="flex items-center justify-end">
-                        <AppListRowIconButton
-                          preset="delete"
-                          label={`Delete ${rec.record_type}${rec.facility?.trim() ? ` · ${rec.facility.trim()}` : ''}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            onDeleteRecord(rec);
-                          }}
-                        />
+                        {canEdit ? (
+                          <AppListRowIconButton
+                            preset="delete"
+                            label={`Delete ${rec.record_type}${rec.facility?.trim() ? ` · ${rec.facility.trim()}` : ''}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onDeleteRecord(rec);
+                            }}
+                          />
+                        ) : null}
                       </div>
                     </AppSortableEntityListRow>
                   );

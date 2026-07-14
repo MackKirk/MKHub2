@@ -11,6 +11,7 @@ import {
 } from '@/lib/fleetBadges';
 import { getUrgencyBadgeVariant, getWorkOrderStatusBadgeVariant } from '@/lib/fleetUi';
 import WorkOrderListNewModal from '@/components/fleet/WorkOrderListNewModal';
+import { canAssignFleetWorkOrder, canEditFleetWorkOrderRecord } from '@/lib/fleetPermissions';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
@@ -208,6 +209,11 @@ export default function WorkOrders() {
   const search = searchParams.get('search') ?? '';
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [showNewWorkOrderModal, setShowNewWorkOrderModal] = useState(false);
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const canCreateWorkOrder = canEditFleetWorkOrderRecord(isAdmin, permissions);
+  const canAssign = canAssignFleetWorkOrder(isAdmin, permissions);
 
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const [page, setPage] = useState(pageParam);
@@ -447,12 +453,14 @@ export default function WorkOrders() {
           <div className="flex flex-col">
             {showEmptyList ? (
               <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'min-h-[12rem] pb-10')}>
-                <AppListCreateItem
-                  label="New Work Order"
-                  layout="row"
-                  className="w-full"
-                  onClick={() => setShowNewWorkOrderModal(true)}
-                />
+                {canCreateWorkOrder ? (
+                  <AppListCreateItem
+                    label="New Work Order"
+                    layout="row"
+                    className="w-full"
+                    onClick={() => setShowNewWorkOrderModal(true)}
+                  />
+                ) : null}
                 <AppEmptyState
                   title="No work orders found"
                   className="border-0 bg-transparent p-0 shadow-none"
@@ -460,14 +468,16 @@ export default function WorkOrders() {
               </div>
             ) : (
               <>
-                <div className={uiCx(uiSpacing.cardPadding, workOrders.length === 0 ? 'pb-10' : 'pb-3')}>
-                  <AppListCreateItem
-                    label="New Work Order"
-                    layout="row"
-                    className="w-full"
-                    onClick={() => setShowNewWorkOrderModal(true)}
-                  />
-                </div>
+                {canCreateWorkOrder ? (
+                  <div className={uiCx(uiSpacing.cardPadding, workOrders.length === 0 ? 'pb-10' : 'pb-3')}>
+                    <AppListCreateItem
+                      label="New Work Order"
+                      layout="row"
+                      className="w-full"
+                      onClick={() => setShowNewWorkOrderModal(true)}
+                    />
+                  </div>
+                ) : null}
                 {workOrders.length > 0 ? (
                   <AppSortableEntityList layout="flat" className="border-t border-gray-100">
                     <AppSortableEntityListHeader variant="flat" gridCols={LIST_GRID_COLS} minWidth={LIST_MIN_WIDTH}>
@@ -604,7 +614,8 @@ export default function WorkOrders() {
       />
 
       <WorkOrderListNewModal
-        open={showNewWorkOrderModal}
+        open={canCreateWorkOrder && showNewWorkOrderModal}
+        canAssign={canAssign}
         onClose={() => setShowNewWorkOrderModal(false)}
         onCreated={(data) => {
           setShowNewWorkOrderModal(false);

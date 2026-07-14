@@ -48,6 +48,7 @@ type Props = {
   searchInput: string;
   onSearchChange: (value: string) => void;
   onSort: (column: FleetAssetInspectionSortCol) => void;
+  canEdit?: boolean;
   onScheduleClick: () => void;
   onOpenInspection: (inspection: FleetAssetInspectionRow) => void;
 };
@@ -61,6 +62,7 @@ export function FleetAssetInspectionsTab({
   searchInput,
   onSearchChange,
   onSort,
+  canEdit = true,
   onScheduleClick,
   onOpenInspection,
 }: Props) {
@@ -78,9 +80,11 @@ export function FleetAssetInspectionsTab({
       />
 
       <AppCard className="min-w-0" bodyClassName="!p-0">
-        <div className={uiCx(uiSpacing.cardPadding, 'pb-3')}>
-          <AppListCreateItem label="Schedule inspection" layout="row" className="w-full" onClick={onScheduleClick} />
-        </div>
+        {canEdit ? (
+          <div className={uiCx(uiSpacing.cardPadding, 'pb-3')}>
+            <AppListCreateItem label="Schedule inspection" layout="row" className="w-full" onClick={onScheduleClick} />
+          </div>
+        ) : null}
 
         {hasRecords && (
           <div className="w-full min-w-0 border-t border-gray-200 bg-gray-50/80 px-3 py-2.5">
