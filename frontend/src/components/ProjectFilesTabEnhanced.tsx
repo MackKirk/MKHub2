@@ -1916,7 +1916,7 @@ export default function ProjectFilesTabEnhanced({
                             )}
                           >
                             {canSelectInCurrentView ? (
-                              <td className="px-2 py-2" onClick={e => e.stopPropagation()}>
+                              <td className="px-2 py-2 align-middle" onClick={e => e.stopPropagation()}>
                                 <AppCheckboxControl
                                   checked={fileSelection.isSelected(f.id)}
                                   aria-label={`Select ${name}`}
@@ -1928,7 +1928,7 @@ export default function ProjectFilesTabEnhanced({
                                 />
                               </td>
                             ) : null}
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 align-middle">
                               {isImg ? (
                                 <div 
                                   className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 cursor-pointer flex-shrink-0"
@@ -1950,7 +1950,7 @@ export default function ProjectFilesTabEnhanced({
                               )}
                             </td>
                             <td 
-                              className="px-3 py-2"
+                              className="px-3 py-2 align-middle"
                               onClick={(e) => { if (editingFileNameId !== f.id) { e.stopPropagation(); handleFilePreview(f); } }}
                             >
                               {editingFileNameId === f.id ? (
@@ -2006,7 +2006,7 @@ export default function ProjectFilesTabEnhanced({
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-1 whitespace-nowrap">
-                                  <div className="max-w-[28rem] truncate text-xs font-semibold cursor-pointer" title={name}>{name}</div>
+                                  <div className="max-w-[28rem] truncate text-xs font-semibold leading-5 cursor-pointer" title={name}>{name}</div>
                                   {canWriteFiles && (
                                     <AppHeroEditButton
                                       title="Rename"
@@ -2018,7 +2018,7 @@ export default function ProjectFilesTabEnhanced({
                               )}
                             </td>
                             <td
-                              className="w-full min-w-0 px-3 py-2 align-top"
+                              className="w-full min-w-0 px-3 py-2 align-middle"
                               onClick={(e) => e.stopPropagation()}
                             >
                               {editingNotesFileId === f.id ? (
@@ -2068,10 +2068,10 @@ export default function ProjectFilesTabEnhanced({
                                   </AppButton>
                                 </div>
                               ) : (
-                                <div className="inline-flex max-w-full items-start gap-1">
+                                <div className="inline-flex max-w-full items-center gap-1">
                                   <div
                                     className={uiCx(
-                                      'min-w-0 break-words whitespace-pre-wrap text-xs',
+                                      'min-w-0 break-words whitespace-pre-wrap text-xs leading-5',
                                       (f.notes || '').trim() ? 'text-gray-600' : 'italic text-gray-400',
                                     )}
                                     title={(f.notes || '').trim() || undefined}
@@ -2090,20 +2090,20 @@ export default function ProjectFilesTabEnhanced({
                               )}
                             </td>
                             <td 
-                              className="px-3 py-2 cursor-pointer"
+                              className="px-3 py-2 align-middle cursor-pointer"
                               onClick={() => handleFilePreview(f)}
                             >
-                              <div className="text-xs text-gray-600">{getFileTypeLabel(f)}</div>
+                              <div className="text-xs leading-5 text-gray-600">{getFileTypeLabel(f)}</div>
                             </td>
                             <td 
-                              className="px-3 py-2 cursor-pointer"
+                              className="px-3 py-2 align-middle cursor-pointer"
                               onClick={() => handleFilePreview(f)}
                             >
-                              <div className="text-xs text-gray-600 whitespace-nowrap">
+                              <div className="text-xs leading-5 text-gray-600 whitespace-nowrap">
                                 {f.uploaded_at ? formatDateTimeVancouver(f.uploaded_at) : '-'}
                               </div>
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 align-middle text-right">
                               <div className="flex items-center justify-end gap-0.5">
                                 <AppListRowIconButton
                                   preset="download"
