@@ -66,41 +66,18 @@ export function applyDateRange<T extends { created_at?: string; status_changed_a
   });
 }
 
+/** Base pricing Value: approved additional_costs (value × qty), without PST/GST. */
 export function calculateProposalTotalFromAdditionalCosts(proposalData: unknown): number {
   if (!proposalData || typeof proposalData !== 'object') return 0;
   const root = proposalData as Record<string, unknown>;
   const data = (root.data as Record<string, unknown>) || root;
   const raw = Array.isArray(data.additional_costs) ? data.additional_costs : [];
   const additionalCosts = raw.filter((item: unknown) => item && typeof item === 'object' && (item as { approved?: boolean }).approved !== false);
-  if (additionalCosts.length === 0) return 0;
 
-  const pstRate = Number(data.pst_rate) || 7.0;
-  const gstRate = Number(data.gst_rate) || 5.0;
-
-  const totalDirectCosts = additionalCosts.reduce((sum: number, item: unknown) => {
+  return additionalCosts.reduce((sum: number, item: unknown) => {
     const row = item as { value?: number; quantity?: number };
     return sum + Number(row?.value || 0) * Number(row?.quantity || 1);
   }, 0);
-
-  const totalForPst = additionalCosts
-    .filter((item: unknown) => (item as { pst?: boolean }).pst === true)
-    .reduce((sum: number, item: unknown) => {
-      const row = item as { value?: number; quantity?: number };
-      return sum + Number(row?.value || 0) * Number(row?.quantity || 1);
-    }, 0);
-
-  const pst = totalForPst * (pstRate / 100);
-  const subtotal = totalDirectCosts + pst;
-
-  const totalForGst = additionalCosts
-    .filter((item: unknown) => (item as { gst?: boolean }).gst === true)
-    .reduce((sum: number, item: unknown) => {
-      const row = item as { value?: number; quantity?: number };
-      return sum + Number(row?.value || 0) * Number(row?.quantity || 1);
-    }, 0);
-
-  const gst = totalForGst * (gstRate / 100);
-  return subtotal + gst;
 }
 
 export function daysSince(dateStr: string | undefined): number {

@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -68,7 +68,6 @@ import {
   AppSectionHeader,
   AppSelect,
   AppTabs,
-  AppTextarea,
   appSectionPresetProps,
   uiBorders,
   uiColors,
@@ -134,10 +133,10 @@ export default function ProjectFilesTabEnhanced({
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
   const [editingFileNameValue, setEditingFileNameValue] = useState('');
   const [moveLocationFileId, setMoveLocationFileId] = useState<string | null>(null);
-  const [notesModalFileId, setNotesModalFileId] = useState<string | null>(null);
-  const [notesModalValue, setNotesModalValue] = useState('');
-  const [notesModalEditing, setNotesModalEditing] = useState(false);
+  const [editingNotesFileId, setEditingNotesFileId] = useState<string | null>(null);
+  const [editingNotesValue, setEditingNotesValue] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const editingNotesInputRef = useRef<HTMLInputElement | null>(null);
   /** Admin-only: library vs soft-deleted files pending purge */
   const [filesSection, setFilesSection] = useState<'active' | 'deleted'>('active');
   
@@ -1032,6 +1031,8 @@ export default function ProjectFilesTabEnhanced({
   };
 
   const startEditingFileName = (f: ProjectFile) => {
+    setEditingNotesFileId(null);
+    setEditingNotesValue('');
     setEditingFileNameId(f.id);
     setEditingFileNameValue(f.original_name || f.file_object_id || '');
   };
@@ -1041,134 +1042,62 @@ export default function ProjectFilesTabEnhanced({
     return canWriteFiles && isWriteCategoryAllowed(cat);
   };
 
-  const openNotesModal = (f: ProjectFile) => {
-    setNotesModalFileId(f.id);
-    setNotesModalValue(f.notes ?? '');
-    setNotesModalEditing(false);
+  const startEditingNotes = (f: ProjectFile) => {
+    if (!canEditFileInCategory(f)) return;
+    setEditingFileNameId(null);
+    setEditingFileNameValue('');
+    setEditingNotesFileId(f.id);
+    setEditingNotesValue(f.notes ?? '');
   };
 
-  const closeNotesModal = () => {
-    setNotesModalFileId(null);
-    setNotesModalValue('');
-    setNotesModalEditing(false);
+  const cancelEditingNotes = () => {
+    setEditingNotesFileId(null);
+    setEditingNotesValue('');
   };
 
-  const startNotesEditing = () => {
-    setNotesModalValue(notesModalFile?.notes ?? '');
-    setNotesModalEditing(true);
-  };
-
-  const cancelNotesEditing = () => {
-    setNotesModalValue(notesModalFile?.notes ?? '');
-    setNotesModalEditing(false);
-  };
+  useEffect(() => {
+    if (!editingNotesFileId) return;
+    const id = window.requestAnimationFrame(() => {
+      const el = editingNotesInputRef.current;
+      if (!el) return;
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [editingNotesFileId]);
 
   const handleSaveNotes = async () => {
-    if (!notesModalFileId || savingNotes) return;
-    const file = files.find(f => f.id === notesModalFileId);
+    if (!editingNotesFileId || savingNotes) return;
+    const file = files.find(f => f.id === editingNotesFileId);
     if (!file) return;
     if (!canEditFileInCategory(file)) {
       toast.error('You do not have permission to edit notes in this category');
       return;
     }
-    const trimmed = notesModalValue.trim();
+    const trimmed = editingNotesValue.trim();
     if (trimmed.length > 1000) {
       toast.error('Notes must be 1000 characters or fewer');
       return;
     }
     setSavingNotes(true);
     try {
-      await api('PUT', `/projects/${projectId}/files/${notesModalFileId}`, {
+      await api('PUT', `/projects/${projectId}/files/${editingNotesFileId}`, {
         notes: trimmed || null,
       });
       queryClient.setQueryData<ProjectFile[]>(['projectFiles', projectId], (old) =>
         (old ?? []).map(f =>
-          f.id === notesModalFileId ? { ...f, notes: trimmed || null } : f,
+          f.id === editingNotesFileId ? { ...f, notes: trimmed || null } : f,
         ),
       );
-      setNotesModalEditing(false);
+      setEditingNotesFileId(null);
+      setEditingNotesValue('');
       toast.success('Notes saved');
     } catch (_e) {
       toast.error('Failed to save notes');
     } finally {
       setSavingNotes(false);
     }
-  };
-
-  const notesModalFile = useMemo(
-    () => (notesModalFileId ? files.find(f => f.id === notesModalFileId) : undefined),
-    [files, notesModalFileId],
-  );
-  const notesModalCanEdit = notesModalFile ? canEditFileInCategory(notesModalFile) : false;
-  const notesModalSavedText = (notesModalFile?.notes ?? '').trim();
-
-  const renderNotesModalBody = () => {
-    if (notesModalEditing) {
-      if (designSystem) {
-        return (
-          <AppTextarea
-            label="Notes"
-            value={notesModalValue}
-            onChange={(e) => setNotesModalValue(e.target.value)}
-            rows={6}
-            maxLength={1000}
-            autoFocus
-            fieldHint="Notes\n\nOptional note about this file (max 1000 characters)."
-          />
-        );
-      }
-      return (
-        <textarea
-          value={notesModalValue}
-          onChange={(e) => setNotesModalValue(e.target.value)}
-          maxLength={1000}
-          rows={6}
-          autoFocus
-          className="w-full text-xs border rounded px-2 py-1.5 resize-y"
-          placeholder="Optional note about this file..."
-        />
-      );
-    }
-
-    if (!notesModalSavedText) {
-      return (
-        <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
-          <p className="text-xs text-gray-500">No notes yet for this file.</p>
-          {notesModalCanEdit && (
-            <AppHeroEditButton title="Add note" onClick={startNotesEditing} />
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex items-start gap-2">
-        <p className="flex-1 whitespace-pre-wrap text-xs text-gray-800">{notesModalFile?.notes}</p>
-        {notesModalCanEdit && (
-          <AppHeroEditButton title="Edit note" onClick={startNotesEditing} className="shrink-0" />
-        )}
-      </div>
-    );
-  };
-
-  const renderNotesModalFooter = () => {
-    if (notesModalEditing) {
-      return (
-        <>
-          <AppButton variant="secondary" size="sm" type="button" onClick={cancelNotesEditing} disabled={savingNotes}>
-            Cancel
-          </AppButton>
-          <AppButton size="sm" type="button" onClick={handleSaveNotes} loading={savingNotes}>
-            Save
-          </AppButton>
-        </>
-      );
-    }
-    return (
-      <AppButton variant="secondary" size="sm" type="button" onClick={closeNotesModal}>
-        Close
-      </AppButton>
-    );
   };
 
   const openMoveLocationModal = (fileId: string) => {
@@ -1833,7 +1762,7 @@ export default function ProjectFilesTabEnhanced({
                         ) : null}
                         <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12"></th>
                         <th 
-                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none w-full"
+                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
                           onClick={() => handleSort('name')}
                         >
                           <div className="flex items-center gap-1">
@@ -1842,6 +1771,9 @@ export default function ProjectFilesTabEnhanced({
                               <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
                             )}
                           </div>
+                        </th>
+                        <th className="w-full min-w-[8rem] px-3 py-2 text-left text-[10px] font-semibold text-gray-700 whitespace-nowrap">
+                          Notes
                         </th>
                         <th 
                           className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
@@ -1884,6 +1816,7 @@ export default function ProjectFilesTabEnhanced({
                           <td className="px-3 py-2">
                             <div className="text-xs font-semibold text-gray-600">..</div>
                           </td>
+                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
                           <td className="px-3 py-2 text-xs text-gray-500">—</td>
                           <td className="px-3 py-2 text-xs text-gray-500">—</td>
                           <td className="px-3 py-2"></td>
@@ -1937,6 +1870,7 @@ export default function ProjectFilesTabEnhanced({
                               </span>
                             </div>
                           </td>
+                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
                           <td className="px-3 py-2 text-xs text-gray-600">Folder</td>
                           <td className="px-3 py-2 text-xs text-gray-500">—</td>
                           <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
@@ -1972,12 +1906,12 @@ export default function ProjectFilesTabEnhanced({
                         return (
                           <tr
                             key={f.id}
-                            draggable={canWriteFiles}
+                            draggable={canWriteFiles && editingFileNameId !== f.id && editingNotesFileId !== f.id}
                             onDragStart={(e) => startFileDrag(e, f.id)}
                             onDragEnd={endFileDrag}
                             className={uiCx(
                               'hover:bg-gray-50',
-                              canWriteFiles ? 'cursor-move' : '',
+                              canWriteFiles && editingFileNameId !== f.id && editingNotesFileId !== f.id ? 'cursor-move' : '',
                               fileSelection.isSelected(f.id) ? 'bg-brand-red/5' : '',
                             )}
                           >
@@ -2071,40 +2005,87 @@ export default function ProjectFilesTabEnhanced({
                                   )}
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-1">
-                                  <div className="text-xs font-semibold truncate max-w-xs cursor-pointer">{name}</div>
+                                <div className="flex items-center gap-1 whitespace-nowrap">
+                                  <div className="max-w-[28rem] truncate text-xs font-semibold cursor-pointer" title={name}>{name}</div>
                                   {canWriteFiles && (
-                                    designSystem ? (
-                                      <AppListRowIconButton
-                                        preset="edit"
-                                        label="Rename"
-                                        onClick={(e) => { e.stopPropagation(); startEditingFileName(f); }}
-                                      />
-                                    ) : (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); startEditingFileName(f); }}
+                                    <AppHeroEditButton
                                       title="Rename"
-                                      className="p-1 rounded hover:bg-gray-100 text-xs flex-shrink-0"
-                                    >
-                                      Edit
-                                    </button>
-                                    )
-                                  )}
-                                  {designSystem ? (
-                                    <AppListRowIconButton
-                                      icon="🗒️"
-                                      label="Notes"
-                                      onClick={(e) => { e.stopPropagation(); openNotesModal(f); }}
+                                      onClick={(e) => { e.stopPropagation(); startEditingFileName(f); }}
+                                      className="shrink-0"
                                     />
-                                  ) : (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); openNotesModal(f); }}
-                                      title="Notes"
-                                      className="p-1 rounded hover:bg-gray-100 text-xs flex-shrink-0"
-                                    >
-                                      Notes
-                                    </button>
                                   )}
+                                </div>
+                              )}
+                            </td>
+                            <td
+                              className="w-full min-w-0 px-3 py-2 align-top"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {editingNotesFileId === f.id ? (
+                                <div
+                                  className="flex min-w-[16rem] max-w-full items-center gap-1"
+                                  onClick={(e) => e.stopPropagation()}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    ref={editingNotesInputRef}
+                                    type="text"
+                                    value={editingNotesValue}
+                                    onChange={(e) => setEditingNotesValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') void handleSaveNotes();
+                                      if (e.key === 'Escape') cancelEditingNotes();
+                                    }}
+                                    maxLength={1000}
+                                    placeholder="Add a note…"
+                                    className={uiCx(
+                                      'min-w-0 flex-1 bg-white text-xs text-gray-900 outline-none transition-colors',
+                                      'placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35',
+                                      uiSpacing.controlX,
+                                      uiSpacing.controlY,
+                                      uiRadius.control,
+                                      uiBorders.input,
+                                    )}
+                                  />
+                                  <AppButton
+                                    variant="ghost"
+                                    size="sm"
+                                    type="button"
+                                    onClick={() => void handleSaveNotes()}
+                                    disabled={savingNotes}
+                                    loading={savingNotes}
+                                  >
+                                    Save
+                                  </AppButton>
+                                  <AppButton
+                                    variant="ghost"
+                                    size="sm"
+                                    type="button"
+                                    onClick={cancelEditingNotes}
+                                    disabled={savingNotes}
+                                  >
+                                    Cancel
+                                  </AppButton>
+                                </div>
+                              ) : (
+                                <div className="inline-flex max-w-full items-start gap-1">
+                                  <div
+                                    className={uiCx(
+                                      'min-w-0 break-words whitespace-pre-wrap text-xs',
+                                      (f.notes || '').trim() ? 'text-gray-600' : 'italic text-gray-400',
+                                    )}
+                                    title={(f.notes || '').trim() || undefined}
+                                  >
+                                    {(f.notes || '').trim() || '—'}
+                                  </div>
+                                  {canEditFileInCategory(f) ? (
+                                    <AppHeroEditButton
+                                      title={(f.notes || '').trim() ? 'Edit note' : 'Add note'}
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={(e) => { e.stopPropagation(); startEditingNotes(f); }}
+                                      className="shrink-0"
+                                    />
+                                  ) : null}
                                 </div>
                               )}
                             </td>
@@ -2321,79 +2302,6 @@ export default function ProjectFilesTabEnhanced({
           }}
         />
       ) : null}
-      {notesModalFileId && designSystem && (
-        <AppFormModal
-          open
-          onClose={closeNotesModal}
-          title="File notes"
-          description={notesModalFile?.original_name || notesModalFile?.file_object_id || undefined}
-          footer={
-            <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-              {renderNotesModalFooter()}
-            </div>
-          }
-        >
-          {renderNotesModalBody()}
-        </AppFormModal>
-      )}
-      {notesModalFileId && !designSystem && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-            onClick={(e) => e.target === e.currentTarget && closeNotesModal()}
-            role="presentation"
-          >
-            <div
-              className="w-[480px] max-w-[95vw] bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-              role="dialog"
-              aria-labelledby="project-file-notes-title"
-            >
-              <div className="px-4 py-3 border-b">
-                <h3 id="project-file-notes-title" className="text-sm font-semibold">File notes</h3>
-                {notesModalFile && (
-                  <p className="text-xs text-gray-500 mt-0.5 truncate">
-                    {notesModalFile.original_name || notesModalFile.file_object_id}
-                  </p>
-                )}
-              </div>
-              <div className="p-4">
-                {renderNotesModalBody()}
-              </div>
-              <div className="px-4 py-3 border-t flex justify-end gap-2">
-                {notesModalEditing ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={cancelNotesEditing}
-                      disabled={savingNotes}
-                      className="px-3 py-1.5 rounded border text-xs disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveNotes}
-                      disabled={savingNotes}
-                      className="px-3 py-1.5 rounded bg-brand-red text-white text-xs disabled:opacity-50"
-                    >
-                      {savingNotes ? 'Saving…' : 'Save'}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={closeNotesModal}
-                    className="px-3 py-1.5 rounded border text-xs"
-                  >
-                    Close
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </OverlayPortal>
-      )}
 
       {/* Upload Progress */}
       {uploadQueue.length > 0 && (designSystem ? (

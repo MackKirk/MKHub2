@@ -667,6 +667,12 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   const proposalIdRef = useRef<string | undefined>(mode === 'edit' ? initial?.id : undefined);
   const handleSaveRef = useRef<() => Promise<void>>();
   const saveTriggeredByApprovalChangeRef = useRef(false);
+  const pricingItemsRef = useRef(pricingItems);
+  pricingItemsRef.current = pricingItems;
+  const optionalServicesRef = useRef(optionalServices);
+  optionalServicesRef.current = optionalServices;
+  const saveInFlightRef = useRef<Promise<void> | null>(null);
+  const isSavingRef = useRef(false);
 
   // --- Helpers declared early so effects can safely reference them
   const sanitizeSections = (arr:any[])=> (arr||[]).map((sec:any)=>{
@@ -846,8 +852,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         otherNotes,
         projectDescription,
         additionalNotes,
-        pricingItems,
-        optionalServices,
+        // Prefer refs so in-flight / stale save callbacks fingerprint the latest pricing state
+        pricingItems: pricingItemsRef.current,
+        optionalServices: optionalServicesRef.current,
         showTotalInPdf,
         showPstInPdf,
         showGstInPdf,
@@ -1275,43 +1282,61 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
 
   const handleSave = useCallback(async()=>{
     const allowAdminApprovalSave = isAdmin && saveTriggeredByApprovalChangeRef.current;
-    if ((disabled && !allowAdminApprovalSave) || isSaving) {
+    if (disabled && !allowAdminApprovalSave) {
+      saveTriggeredByApprovalChangeRef.current = false;
       return;
     }
-    // Clear after gate so approval-triggered saves work when form is otherwise disabled
-    saveTriggeredByApprovalChangeRef.current = false;
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-      autoSaveTimeoutRef.current = null;
-    }
-    try{
+
+    // Serialize concurrent saves (approval auto-save + "Save and Continue") so we never no-op mid-flight
+    // and always persist the latest pricingItems (including approved flags).
+    const prevInFlight = saveInFlightRef.current;
+    let resolveCurrent!: () => void;
+    const currentGate = new Promise<void>((resolve) => {
+      resolveCurrent = resolve;
+    });
+    saveInFlightRef.current = currentGate;
+
+    try {
+      if (prevInFlight) {
+        try {
+          await prevInFlight;
+        } catch {
+          /* previous save error already toasted */
+        }
+      }
+
+      // Re-check after waiting: another save may have finished with the latest state
+      saveTriggeredByApprovalChangeRef.current = false;
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
+
+      isSavingRef.current = true;
       setIsSaving(true);
-      
-      // When in project context, ALWAYS check if proposal already exists for this project
-      // This ensures we update the existing proposal instead of creating duplicates
-      let proposalId = mode==='edit'? initial?.id : undefined;
-      
-      // Always check for existing proposal when we have a projectId (even if mode is 'edit', 
-      // we want to ensure we're using the correct proposal for this project)
-      if (projectId && projectId.trim() !== '') {
+
+      // Prefer the proposal we are editing (or previously saved). Never pick "newest by created_at"
+      // — that can be a Change Order and leave the original proposal's approved flags unchanged.
+      let proposalId =
+        proposalIdRef.current ||
+        (mode === 'edit' ? initial?.id : undefined);
+
+      if ((!proposalId || String(proposalId).trim() === '') && projectId && projectId.trim() !== '') {
         try {
           const existingProposals = await api<any[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId))}`);
           if (Array.isArray(existingProposals) && existingProposals.length > 0) {
-            // Use the first (and only) proposal for this project
-            proposalId = existingProposals[0]?.id;
-            console.log('Found existing proposal for project:', projectId, 'proposal ID:', proposalId);
-          } else {
-            console.log('No existing proposal found for project:', projectId, 'will create new');
+            const original = existingProposals.find((p) => !p.is_change_order);
+            proposalId = original?.id || existingProposals[existingProposals.length - 1]?.id;
           }
         } catch (e) {
-          // If check fails, continue without ID (will create new)
           console.warn('Failed to check for existing proposal:', e);
         }
       }
-      
-      // Ensure project_id is properly set when we have a projectId
+
       const finalProjectId = (projectId && projectId.trim() !== '') ? projectId : null;
-      
+      const itemsToSave = pricingItemsRef.current;
+      const servicesToSave = optionalServicesRef.current;
+
       const payload:any = {
         id: proposalId,
         project_id: finalProjectId,
@@ -1335,14 +1360,14 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         show_total_in_pdf: showTotalInPdf,
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
-        additional_costs: pricingItems.map(c=> {
+        additional_costs: itemsToSave.map(c=> {
           const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null, approved: c.approved !== false };
           if (c.area_value != null && c.area_value > 0 && c.area_unit) {
             return { ...base, area_value: c.area_value, area_unit: c.area_unit };
           }
           return base;
         }),
-        optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
+        optional_services: servicesToSave.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         pst_rate: pstRate,
         gst_rate: gstRate,
         area_display_unit: areaDisplayUnit,
@@ -1351,18 +1376,16 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         page2_file_object_id: page2FoId||null,
         _source: showOnlyPricing ? 'pricing' : 'proposal',
       };
-      console.log('Saving proposal with payload:', { id: proposalId, project_id: projectId, client_id: clientId });
       const r:any = await api('POST','/proposals', payload);
-      console.log('Proposal saved, response:', r);
       toast.success('Saved');
       // Stay on page after save; update saved fingerprint so warnings clear
       setLastSavedHash(computeFingerprint());
-      
+
       // Update proposal ID ref for auto-save
       if (r?.id) {
         proposalIdRef.current = r.id;
       }
-      
+
       // Invalidate queries to refresh data - especially important for project proposals
       queryClient.invalidateQueries({ queryKey: ['proposals'] });
       queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
@@ -1371,12 +1394,12 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       if (projectId) {
         queryClient.invalidateQueries({ queryKey: ['project', projectId] });
       }
-      
+
       // Call onSave callback if provided (for inline editing in project context)
       if (onSave) {
         onSave();
       }
-      
+
       // If this was a new proposal and now has id, navigate to edit page (only if not in project context)
       // Check if we're in a project context by checking if projectId is set and we're not in a standalone proposal page
       const isInProjectContext = projectId && !window.location.pathname.includes('/proposals/');
@@ -1385,25 +1408,18 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         nav(`/proposals/${encodeURIComponent(r.id)}/edit`);
       }
       lastAutoSaveRef.current = Date.now();
-    }catch(e){ toast.error('Save failed'); }
-    finally{ setIsSaving(false); }
-  }, [disabled, isAdmin, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
+    }catch(e){ toast.error('Save failed'); throw e; }
+    finally{
+      isSavingRef.current = false;
+      setIsSaving(false);
+      resolveCurrent();
+      if (saveInFlightRef.current === currentGate) {
+        saveInFlightRef.current = null;
+      }
+    }
+  }, [disabled, isAdmin, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting, grandTotal, project?.code, showOnlyPricing]);
 
   // When approval flags change (not approved / re-approve), save immediately so project_division_ids and overview update
-  useEffect(() => {
-    if (
-      saveTriggeredByApprovalChangeRef.current &&
-      projectId &&
-      mode === 'edit' &&
-      (!disabled || isAdmin) &&
-      !isSaving
-    ) {
-      // Do not clear the ref here — handleSave reads it to allow admin approve while form is disabled
-      handleSaveRef.current?.();
-    }
-  }, [pricingItems, projectId, mode, disabled, isAdmin, isSaving]);
-
-  // Update ref when handleSave changes (for internal and parent save triggers)
   useEffect(() => {
     handleSaveRef.current = handleSave;
     if (saveRef) saveRef.current = handleSave;
@@ -1411,6 +1427,19 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       if (saveRef) saveRef.current = undefined;
     };
   }, [handleSave, saveRef]);
+
+  useEffect(() => {
+    if (
+      saveTriggeredByApprovalChangeRef.current &&
+      projectId &&
+      mode === 'edit' &&
+      (!disabled || isAdmin)
+    ) {
+      // Do not clear the ref here — handleSave reads it to allow admin approve while form is disabled.
+      // Always call latest handleSave (ref updated above); it serializes with in-flight saves.
+      void handleSaveRef.current?.();
+    }
+  }, [pricingItems, projectId, mode, disabled, isAdmin]);
 
   // Clear global unsaved state when ProposalForm unmounts (e.g. user switched tab)
   useEffect(() => {
@@ -1469,7 +1498,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   // Auto-save function (silent save without toast)
   const autoSave = useCallback(async () => {
     // Don't auto-save if already saving or if no clientId
-    if (isAutoSavingRef.current || !clientId) return;
+    if (isAutoSavingRef.current || isSavingRef.current || saveInFlightRef.current || !clientId) return;
     
     // Don't auto-save if nothing changed
     const fp = computeFingerprint();
@@ -1505,14 +1534,14 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         show_total_in_pdf: showTotalInPdf,
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
-        additional_costs: pricingItems.map(c=> {
+        additional_costs: pricingItemsRef.current.map(c=> {
           const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null, approved: c.approved !== false };
           if (c.area_value != null && c.area_value > 0 && c.area_unit) {
             return { ...base, area_value: c.area_value, area_unit: c.area_unit };
           }
           return base;
         }),
-        optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
+        optional_services: optionalServicesRef.current.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         pst_rate: pstRate,
         gst_rate: gstRate,
         area_display_unit: areaDisplayUnit,

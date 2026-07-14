@@ -129,52 +129,20 @@ export const PROJECT_LIST_GRID_CLASS = SHOW_PROJECT_LIST_SHORTCUTS
 export const PROJECT_LIST_MIN_WIDTH = 'min-w-[960px]';
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
-// Helper function to calculate Final Total (with GST) from proposal data
+// Base pricing Value: sum of approved items (value × qty), without PST/GST
 function calculateProposalTotal(proposalData: any): number {
   if (!proposalData) return 0;
   
   const data = proposalData?.data || proposalData || {};
-  const additionalCosts = data.additional_costs || [];
+  const additionalCosts = (data.additional_costs || []).filter(
+    (item: any) => item && item.approved !== false,
+  );
   
-  if (additionalCosts.length === 0) return 0;
-  
-  const pstRate = Number(data.pst_rate) || 7.0;
-  const gstRate = Number(data.gst_rate) || 5.0;
-  
-  // Calculate Total Direct Costs
-  const totalDirectCosts = additionalCosts.reduce((sum: number, item: any) => {
+  return additionalCosts.reduce((sum: number, item: any) => {
     const value = Number(item.value || 0);
     const quantity = Number(item.quantity || 1);
     return sum + (value * quantity);
   }, 0);
-  
-  // Calculate PST (only on items with pst=true)
-  const totalForPst = additionalCosts
-    .filter((item: any) => item.pst === true)
-    .reduce((sum: number, item: any) => {
-      const value = Number(item.value || 0);
-      const quantity = Number(item.quantity || 1);
-      return sum + (value * quantity);
-    }, 0);
-  
-  const pst = totalForPst * (pstRate / 100);
-  
-  // Calculate Subtotal (Total Direct Costs + PST)
-  const subtotal = totalDirectCosts + pst;
-  
-  // Calculate GST (only on items with gst=true)
-  const totalForGst = additionalCosts
-    .filter((item: any) => item.gst === true)
-    .reduce((sum: number, item: any) => {
-      const value = Number(item.value || 0);
-      const quantity = Number(item.quantity || 1);
-      return sum + (value * quantity);
-    }, 0);
-  
-  const gst = totalForGst * (gstRate / 100);
-  
-  // Calculate Grand Total (Final Total with GST) = Subtotal + GST
-  return subtotal + gst;
 }
 
 // Helper function to calculate total from all proposals (original + change orders)

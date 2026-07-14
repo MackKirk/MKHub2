@@ -923,13 +923,8 @@ def _dashboard_business_line_clause(user: User, business_line: Optional[str]):
 
 def calculate_proposal_grand_total(proposal_data: dict) -> float:
     """
-    Calculate Final Total (with GST) from proposal's additional_costs.
-    Matches the calculation logic from ProposalForm.tsx:
-    - Total Direct Costs = sum of (value * quantity) for all items
-    - PST = sum of (value * quantity * pst_rate / 100) for items with pst=true
-    - Subtotal = Total Direct Costs + PST
-    - GST = sum of (value * quantity * gst_rate / 100) for items with gst=true (on direct costs, independent of PST)
-    - Final Total (with GST) = Subtotal + GST = Total Direct Costs + PST + GST
+    Project/list Value from proposal pricing: sum of (value * quantity) for approved
+    additional_costs only — base amount, without PST or GST.
     """
     if not proposal_data:
         return 0.0
@@ -938,12 +933,7 @@ def calculate_proposal_grand_total(proposal_data: dict) -> float:
     if not isinstance(additional_costs, list):
         return 0.0
     
-    pst_rate = float(proposal_data.get('pst_rate', 7.0))
-    gst_rate = float(proposal_data.get('gst_rate', 5.0))
-    
     total_direct_costs = 0.0
-    pst_total = 0.0
-    gst_base_total = 0.0  # GST is calculated on direct costs (items with gst=true)
     
     for item in additional_costs:
         if not isinstance(item, dict):
@@ -954,44 +944,18 @@ def calculate_proposal_grand_total(proposal_data: dict) -> float:
 
         value = float(item.get('value', 0) or 0)
         quantity = float(item.get('quantity', 1) or 1)
-        line_total = value * quantity
-
-        total_direct_costs += line_total
-
-        # PST applies to items with pst=true
-        if item.get('pst', False):
-            pst_total += line_total * (pst_rate / 100)
-
-        # GST applies to items with gst=true (on direct costs, independent of PST)
-        if item.get('gst', False):
-            gst_base_total += line_total
-
-    # Calculate subtotal and GST
-    subtotal = total_direct_costs + pst_total
-    gst = gst_base_total * (gst_rate / 100)
+        total_direct_costs += value * quantity
     
-    # Final Total (with GST) = Subtotal + GST
-    grand_total = subtotal + gst
-    
-    return grand_total
+    return total_direct_costs
 
 
 def calculate_proposal_values_for_division(proposal_data: dict, division_id: Optional[str] = None) -> tuple[float, float]:
     """
-    Calculate Final Total (with GST) from proposal's additional_costs.
-    If division_id is provided, calculates division-specific value by summing only items with matching division_id.
+    Base pricing value from proposal additional_costs (no PST/GST).
+    If division_id is provided, division_value sums only items with that division_id.
     If division_id is None, returns (total_value, total_value).
     
-    Matches the calculation logic from ProposalForm.tsx:
-    - Total Direct Costs = sum of (value * quantity) for all items (or filtered by division_id)
-    - PST = sum of (value * quantity * pst_rate / 100) for items with pst=true
-    - Subtotal = Total Direct Costs + PST
-    - GST = sum of (value * quantity * gst_rate / 100) for items with gst=true (on direct costs, independent of PST)
-    - Final Total (with GST) = Subtotal + GST
-    
-    Returns: (final_total_with_gst, division_value) where:
-        - final_total_with_gst: total value for all items (or all if division_id is None)
-        - division_value: value specific to division_id (or same as total if division_id is None)
+    Returns: (total_base, division_base) for approved items only.
     """
     if not proposal_data:
         return (0.0, 0.0)
@@ -1000,27 +964,8 @@ def calculate_proposal_values_for_division(proposal_data: dict, division_id: Opt
     if not isinstance(additional_costs, list):
         return (0.0, 0.0)
     
-    pst_rate = float(proposal_data.get('pst_rate', 7.0))
-    gst_rate = float(proposal_data.get('gst_rate', 5.0))
-    
-    # Filter items by division_id if provided
-    if division_id:
-        division_items = [
-            item for item in additional_costs 
-            if isinstance(item, dict) and str(item.get('division_id', '')) == str(division_id)
-        ]
-    else:
-        division_items = additional_costs
-    
-    # Calculate totals for all items
     total_direct_costs = 0.0
-    pst_total = 0.0
-    gst_base_total = 0.0
-    
-    # Calculate totals for division-specific items
     division_direct_costs = 0.0
-    division_pst_total = 0.0
-    division_gst_base_total = 0.0
     
     for item in additional_costs:
         if not isinstance(item, dict):
@@ -1033,35 +978,12 @@ def calculate_proposal_values_for_division(proposal_data: dict, division_id: Opt
         quantity = float(item.get('quantity', 1) or 1)
         line_total = value * quantity
 
-        # Add to total (all items)
         total_direct_costs += line_total
 
-        if item.get('pst', False):
-            pst_total += line_total * (pst_rate / 100)
-
-        if item.get('gst', False):
-            gst_base_total += line_total
-
-        # Add to division total if this item matches division_id
         if not division_id or str(item.get('division_id', '')) == str(division_id):
             division_direct_costs += line_total
-
-            if item.get('pst', False):
-                division_pst_total += line_total * (pst_rate / 100)
-
-            if item.get('gst', False):
-                division_gst_base_total += line_total
     
-    # Calculate subtotals and GST
-    subtotal = total_direct_costs + pst_total
-    gst = gst_base_total * (gst_rate / 100)
-    grand_total = subtotal + gst
-    
-    division_subtotal = division_direct_costs + division_pst_total
-    division_gst = division_gst_base_total * (gst_rate / 100)
-    division_value = division_subtotal + division_gst
-    
-    return (grand_total, division_value)
+    return (total_direct_costs, division_direct_costs)
 
 
 @router.post("")
