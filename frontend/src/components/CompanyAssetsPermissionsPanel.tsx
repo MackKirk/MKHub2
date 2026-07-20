@@ -1,5 +1,4 @@
 import { EntityPermissionsGrid } from '@/components/EntityPermissionsGrid';
-import { PermissionToggleLabel } from '@/components/PermissionToggleRow';
 import {
   buildCorporateCardsPermissionRows,
   buildEquipmentPermissionRows,
@@ -14,8 +13,6 @@ export function CompanyAssetsPermissionsPanel({
   permissions,
   canEdit,
   onAccessLevelChange,
-  accessPerm,
-  onAccessToggle,
 }: {
   areaPerms: Perm[];
   permissions: Record<string, boolean>;
@@ -25,24 +22,12 @@ export function CompanyAssetsPermissionsPanel({
     writeKey: string | undefined,
     level: CompanyAssetsAccessLevel,
   ) => void;
-  accessPerm?: Perm;
-  onAccessToggle?: () => void;
 }) {
   const equipmentPerms = areaPerms.filter((p) => p.key.startsWith('fleet:equipment:'));
   const cardsPerms = areaPerms.filter((p) => p.key.startsWith('company_cards:'));
 
   return (
     <div className="space-y-4">
-      {accessPerm && onAccessToggle ? (
-        <PermissionToggleLabel
-          label={accessPerm.label}
-          description={accessPerm.description}
-          checked={!!permissions[accessPerm.key]}
-          disabled={!canEdit}
-          onToggle={onAccessToggle}
-        />
-      ) : null}
-
       <EntityPermissionsGrid
         title="Equipment"
         rows={buildEquipmentPermissionRows(equipmentPerms)}

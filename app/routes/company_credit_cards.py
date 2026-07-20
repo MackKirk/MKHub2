@@ -6,7 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session
 
-from ..auth.security import get_current_user, require_permissions
+from ..auth.security import (
+    get_current_user,
+    has_company_cards_list_permission,
+    has_company_cards_write_permission,
+)
 from ..db import get_db
 from ..models.models import AuditLog, CompanyCreditCard, CompanyCreditCardAssignment
 from ..schemas.company_credit_cards import (
@@ -50,8 +54,10 @@ def list_company_credit_cards(
     page: int = Query(1, ge=1),
     limit: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("company_cards:read")),
+    user=Depends(get_current_user),
 ):
+    if not has_company_cards_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     offset = (page - 1) * limit
     q = db.query(CompanyCreditCard)
 
@@ -120,9 +126,10 @@ def list_company_credit_cards(
 def create_company_credit_card(
     payload: CompanyCreditCardCreate,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-    _=Depends(require_permissions("company_cards:write")),
+    user=Depends(get_current_user)
 ):
+    if not has_company_cards_write_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     data = payload.model_dump()
     card = CompanyCreditCard(**data, created_by=user.id)
     db.add(card)
@@ -144,8 +151,10 @@ def create_company_credit_card(
 def get_company_credit_card(
     card_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("company_cards:read")),
+    user=Depends(get_current_user),
 ):
+    if not has_company_cards_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     card = db.query(CompanyCreditCard).filter(CompanyCreditCard.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Credit card record not found")
@@ -157,9 +166,10 @@ def update_company_credit_card(
     card_id: uuid.UUID,
     payload: CompanyCreditCardUpdate,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-    _=Depends(require_permissions("company_cards:write")),
+    user=Depends(get_current_user)
 ):
+    if not has_company_cards_write_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     card = db.query(CompanyCreditCard).filter(CompanyCreditCard.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Credit card record not found")
@@ -191,9 +201,10 @@ def update_company_credit_card(
 def delete_company_credit_card(
     card_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-    _=Depends(require_permissions("company_cards:write")),
+    user=Depends(get_current_user)
 ):
+    if not has_company_cards_write_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     """Permanently remove the card record (admin only). Custody rows cascade. Use PATCH status=cancelled to cancel without deleting."""
     if not is_admin(user, db):
         raise HTTPException(status_code=403, detail="Only administrators can delete a corporate card record")
@@ -221,8 +232,10 @@ def delete_company_credit_card(
 def list_card_assignments(
     card_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("company_cards:read")),
+    user=Depends(get_current_user),
 ):
+    if not has_company_cards_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     card = db.query(CompanyCreditCard).filter(CompanyCreditCard.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Credit card record not found")
@@ -258,8 +271,10 @@ def get_company_credit_card_history(
     card_id: uuid.UUID,
     limit: int = Query(300, ge=1, le=500),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("company_cards:read")),
+    user=Depends(get_current_user),
 ):
+    if not has_company_cards_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     """
     Unified timeline: custody assignments (when no matching assignment audit) and audit entries
     for this card (edits, assign/return, create/delete).
@@ -394,9 +409,10 @@ def assign_company_credit_card(
     card_id: uuid.UUID,
     payload: CompanyCreditCardAssignmentCreate,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-    _=Depends(require_permissions("company_cards:write")),
+    user=Depends(get_current_user)
 ):
+    if not has_company_cards_write_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     card = db.query(CompanyCreditCard).filter(CompanyCreditCard.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Credit card record not found")
@@ -465,9 +481,10 @@ def return_company_credit_card(
     card_id: uuid.UUID,
     payload: CompanyCreditCardAssignmentReturn,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-    _=Depends(require_permissions("company_cards:write")),
+    user=Depends(get_current_user)
 ):
+    if not has_company_cards_write_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     card = db.query(CompanyCreditCard).filter(CompanyCreditCard.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Credit card record not found")

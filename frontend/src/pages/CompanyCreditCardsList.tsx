@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import CompanyCreditCardListNewModal from '@/components/companyAssets/CompanyCreditCardListNewModal';
+import { canEditCorporateCards } from '@/lib/companyAssetsPermissions';
 import { CreditCard, Search } from 'lucide-react';
 import { api } from '@/lib/api';
 import { expiryLabel, getExpiryBadgeVariant } from '@/lib/companyCreditCardExpiry';
@@ -100,6 +101,11 @@ export default function CompanyCreditCardsList() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showNewCardModal, setShowNewCardModal] = useState(false);
+
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const canCreateCard = canEditCorporateCards(isAdmin, permissions);
 
   const search = searchParams.get('search') ?? '';
   const statusParam = searchParams.get('status') ?? '';
@@ -236,24 +242,28 @@ export default function CompanyCreditCardsList() {
           <div className="flex flex-col">
             {showEmptyList ? (
               <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'min-h-[12rem] pb-10')}>
-                <AppListCreateItem
-                  label="New corporate card"
-                  layout="row"
-                  className="w-full"
-                  onClick={openNewCardModal}
-                />
-                <AppEmptyState title={emptyTitle} className="border-0 bg-transparent p-0 shadow-none" />
-              </div>
-            ) : (
-              <>
-                <div className={uiCx(uiSpacing.cardPadding, items.length === 0 ? 'pb-10' : 'pb-3')}>
+                {canCreateCard ? (
                   <AppListCreateItem
                     label="New corporate card"
                     layout="row"
                     className="w-full"
                     onClick={openNewCardModal}
                   />
-                </div>
+                ) : null}
+                <AppEmptyState title={emptyTitle} className="border-0 bg-transparent p-0 shadow-none" />
+              </div>
+            ) : (
+              <>
+                {canCreateCard ? (
+                  <div className={uiCx(uiSpacing.cardPadding, items.length === 0 ? 'pb-10' : 'pb-3')}>
+                    <AppListCreateItem
+                      label="New corporate card"
+                      layout="row"
+                      className="w-full"
+                      onClick={openNewCardModal}
+                    />
+                  </div>
+                ) : null}
                 {items.length > 0 ? (
                   <div className="min-w-0 overflow-x-auto border-t border-gray-100">
                     <table className="w-full min-w-0 border-collapse">
@@ -391,7 +401,7 @@ export default function CompanyCreditCardsList() {
       </LoadingOverlay>
 
       <CompanyCreditCardListNewModal
-        open={showNewCardModal}
+        open={canCreateCard && showNewCardModal}
         onClose={() => setShowNewCardModal(false)}
         onCreated={(data) => {
           setShowNewCardModal(false);

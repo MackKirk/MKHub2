@@ -37,6 +37,12 @@ import {
 } from '@/components/files';
 import { isAdminRole } from '@/lib/projectLinePermissionKeys';
 import {
+  canAddDocuments,
+  canDeleteDocuments,
+  canMoveEditDocuments,
+  canViewDocuments,
+} from '@/lib/documentsPermissions';
+import {
   companyFilesNewFolderQuickInfo,
   companyFilesPermissionsQuickInfo,
   companyFilesUploadQuickInfo,
@@ -102,25 +108,21 @@ export default function CompanyFilesTabEnhanced() {
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<Record<string, unknown>>('GET', '/auth/me') });
   const isAdmin = isAdminRole(me?.roles as string[] | undefined);
+  const permSet = useMemo(
+    () => new Set((me?.permissions as string[] | undefined) ?? []),
+    [me?.permissions],
+  );
   const canRead =
-    isAdmin ||
-    (me?.permissions as string[] | undefined)?.includes('documents:read') ||
-    (me?.permissions as string[] | undefined)?.includes('documents:access') ||
+    canViewDocuments(isAdmin, permSet) ||
     (me?.permissions as string[] | undefined)?.includes('clients:read');
   const canWrite =
-    isAdmin ||
-    (me?.permissions as string[] | undefined)?.includes('documents:write') ||
-    (me?.permissions as string[] | undefined)?.includes('documents:access') ||
+    canAddDocuments(isAdmin, permSet) ||
     (me?.permissions as string[] | undefined)?.includes('clients:write');
   const canDelete =
-    isAdmin ||
-    (me?.permissions as string[] | undefined)?.includes('documents:delete') ||
-    (me?.permissions as string[] | undefined)?.includes('documents:access') ||
+    canDeleteDocuments(isAdmin, permSet) ||
     (me?.permissions as string[] | undefined)?.includes('clients:write');
   const canMove =
-    isAdmin ||
-    (me?.permissions as string[] | undefined)?.includes('documents:move') ||
-    (me?.permissions as string[] | undefined)?.includes('documents:access') ||
+    canMoveEditDocuments(isAdmin, permSet) ||
     (me?.permissions as string[] | undefined)?.includes('clients:write');
 
   const [selectedDept, setSelectedDept] = useState('');
@@ -155,9 +157,38 @@ export default function CompanyFilesTabEnhanced() {
   const [userSearch, setUserSearch] = useState('');
 
   const { data: departments } = useQuery({
-    queryKey: ['departments'],
-    queryFn: () => api<Department[]>('GET', '/settings/departments'),
+    queryKey: ['company-files-departments'],
+    queryFn: () => api<Department[]>('GET', '/company/files/departments'),
+    enabled: canRead,
   });
+
+  const { data: departmentPerms } = useQuery({
+    queryKey: ['company-files-department-perms'],
+    queryFn: () =>
+      api<{ read_categories: string[] | null; write_categories: string[] | null }>(
+        'GET',
+        '/auth/me/company-files-department-permissions',
+      ),
+    enabled: canRead,
+  });
+
+  const writeAllowList: string[] | null = Array.isArray(departmentPerms?.write_categories)
+    ? departmentPerms.write_categories
+    : null;
+
+  const isWriteDepartmentAllowed = useCallback(
+    (departmentId: string) => {
+      if (isAdmin) return true;
+      if (!canWrite) return false;
+      return writeAllowList === null ? true : writeAllowList.includes(departmentId);
+    },
+    [writeAllowList, canWrite, isAdmin],
+  );
+
+  const canWriteSelectedDept = !selectedDept || isWriteDepartmentAllowed(selectedDept);
+  const canEditInDept = canWrite && canWriteSelectedDept;
+  const canDeleteInDept = canDelete && canWriteSelectedDept;
+  const canMoveInDept = canMove && canWriteSelectedDept;
 
   const deptCountQueries = useQueries({
     queries: (departments || []).map((d) => ({
@@ -346,7 +377,7 @@ export default function CompanyFilesTabEnhanced() {
 
   const visibleFileIds = useMemo(() => currentFiles.map(d => d.id), [currentFiles]);
   const { allSelected: allVisibleSelected } = fileSelection.getSelectionState(visibleFileIds);
-  const canSelectInCurrentView = canMove && filesSection === 'active';
+  const canSelectInCurrentView = canMoveInDept && filesSection === 'active';
 
   const isImageDoc = (d: CompanyDocument) => isFileGridImage(d);
   const { imageFiles: gridImageFiles, nonImageFiles: gridNonImageDocs } = useMemo(
@@ -374,7 +405,7 @@ export default function CompanyFilesTabEnhanced() {
   }, [selectedDept, selectedFolderId, filesSection]);
 
   const startFileDrag = (e: DragEvent, docId: string) => {
-    if (!canMove) return;
+    if (!canMoveInDept) return;
     setDraggedFileIds(e.dataTransfer, fileSelection.resolveDragIds(docId));
     setIsDragging(true);
   };
@@ -386,7 +417,7 @@ export default function CompanyFilesTabEnhanced() {
 
   const moveDocsToLocation = async (docIds: string[], folderId: string | null, label?: string) => {
     const unique = [...new Set(docIds.filter(Boolean))];
-    if (unique.length === 0 || !canMove) return;
+    if (unique.length === 0 || !canMoveInDept) return;
     const targetFolder = folderId;
     if (!targetFolder) {
       toast.error('Select a destination folder');
@@ -534,7 +565,7 @@ export default function CompanyFilesTabEnhanced() {
       cancelText: 'Cancel',
     });
     if (result !== 'confirm') return;
-    if (!canDelete) {
+    if (!canDeleteInDept) {
       toast.error('You do not have permission to delete documents');
       return;
     }
@@ -608,7 +639,7 @@ export default function CompanyFilesTabEnhanced() {
   };
 
   const uploadMultiple = async (files: FileList | File[], folderId?: string) => {
-    if (!canWrite) {
+    if (!canEditInDept) {
       toast.error('You do not have permission to upload files');
       return;
     }
@@ -651,7 +682,7 @@ export default function CompanyFilesTabEnhanced() {
       toast.error('Folder name required');
       return;
     }
-    if (!canWrite) {
+    if (!canEditInDept) {
       toast.error('You do not have permission to create folders');
       return;
     }
@@ -675,7 +706,7 @@ export default function CompanyFilesTabEnhanced() {
   const handleDeleteFolder = async (folderId: string, folderName: string) => {
     const result = await confirm({ message: `Delete folder "${folderName}"?` });
     if (result !== 'confirm') return;
-    if (!canDelete) {
+    if (!canDeleteInDept) {
       toast.error('You do not have permission to delete folders');
       return;
     }
@@ -692,7 +723,7 @@ export default function CompanyFilesTabEnhanced() {
   const handleDeleteFile = async (docId: string) => {
     const result = await confirm({ message: 'Delete this document?' });
     if (result !== 'confirm') return;
-    if (!canDelete) {
+    if (!canDeleteInDept) {
       toast.error('You do not have permission to delete documents');
       return;
     }
@@ -711,7 +742,7 @@ export default function CompanyFilesTabEnhanced() {
       toast.error('Title required');
       return;
     }
-    if (!canMove) {
+    if (!canMoveInDept) {
       toast.error('You do not have permission to rename documents');
       return;
     }
@@ -758,8 +789,11 @@ export default function CompanyFilesTabEnhanced() {
   );
 
   const departmentCategoryOptions = useMemo(
-    () => (departments || []).map((dept) => ({ value: dept.id, label: dept.label })),
-    [departments],
+    () =>
+      (departments || [])
+        .filter((dept) => isWriteDepartmentAllowed(dept.id))
+        .map((dept) => ({ value: dept.id, label: dept.label })),
+    [departments, isWriteDepartmentAllowed],
   );
 
   const moveModalFileLocationFolders = useMemo(
@@ -1036,7 +1070,7 @@ export default function CompanyFilesTabEnhanced() {
                 dropTargetClass(isDropActive('root', selectedDept || ''), 'root'),
               )}
               onDragOver={
-                canWrite && selectedDept
+                canEditInDept && selectedDept
                   ? (e) => {
                       e.preventDefault();
                       if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {
@@ -1049,7 +1083,7 @@ export default function CompanyFilesTabEnhanced() {
                   : undefined
               }
               onDragLeave={
-                canWrite
+                canEditInDept
                   ? (e) => {
                       leaveContainerDragLeave(e, () => {
                         setIsDragging(false);
@@ -1059,7 +1093,7 @@ export default function CompanyFilesTabEnhanced() {
                   : undefined
               }
               onDrop={
-                canWrite && selectedDept
+                canEditInDept && selectedDept
                   ? async (e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -1106,7 +1140,7 @@ export default function CompanyFilesTabEnhanced() {
                         onViewModeChange={setViewMode}
                         onTileSizeChange={setTileSize}
                       />
-                    {canWrite ? (
+                    {canEditInDept ? (
                       <div className="flex flex-shrink-0 items-center gap-2">
                         <AppButton
                           type="button"
@@ -1169,7 +1203,7 @@ export default function CompanyFilesTabEnhanced() {
                           tileSize={tileSize}
                           selectedIds={fileSelection.selectedIds}
                           canSelect={canSelectInCurrentView}
-                          canWrite={canMove}
+                          canWrite={canMoveInDept}
                           showParentTile={currentParentFolderId !== null}
                           onParentNavigate={() => setSelectedFolderId(currentParentFolderId)}
                           onOpenFolder={(folderId) => setSelectedFolderId(folderId)}
@@ -1184,7 +1218,7 @@ export default function CompanyFilesTabEnhanced() {
                           onFileDragStart={(e, docId) => startFileDrag(e, docId)}
                           onFileDragEnd={endFileDrag}
                           makeFolderDropHandlers={(folderId, folderName) => {
-                            const handlers = canWrite
+                            const handlers = canEditInDept
                               ? makeDropHandlers('folder', folderId, folderName, async (e) => {
                                   if (isInternalFileDrag(e.dataTransfer)) {
                                     await handleDropDocIds(e, (ids) =>
@@ -1204,21 +1238,21 @@ export default function CompanyFilesTabEnhanced() {
                           }}
                           renderFolderActions={(folder) => (
                             <div className="flex items-center gap-0.5">
-                              {canMove ? (
+                              {canMoveInDept ? (
                                 <AppListRowIconButton
                                   label="Permissions"
                                   icon="🔒"
                                   onClick={() => setPermissionsFolder({ id: folder.id, name: folder.name })}
                                 />
                               ) : null}
-                              {canMove ? (
+                              {canMoveInDept ? (
                                 <AppListRowIconButton
                                   preset="edit"
                                   label="Rename"
                                   onClick={() => setRenameFolder({ id: folder.id, name: folder.name })}
                                 />
                               ) : null}
-                              {canDelete ? (
+                              {canDeleteInDept ? (
                                 <AppListRowIconButton
                                   preset="delete"
                                   label="Delete folder"
@@ -1229,7 +1263,7 @@ export default function CompanyFilesTabEnhanced() {
                           )}
                           renderFileActions={(file: FileGridFileItem) => (
                             <div className="flex items-center gap-0.5">
-                              {canDelete ? (
+                              {canDeleteInDept ? (
                                 <AppListRowIconButton
                                   preset="delete"
                                   label="Delete"
@@ -1363,7 +1397,7 @@ export default function CompanyFilesTabEnhanced() {
                                   dropTargetClass(isDropActive('folder', folder.id), 'folder'),
                                 )}
                                 onClick={() => setSelectedFolderId(folder.id)}
-                                {...(canWrite
+                                {...(canEditInDept
                                   ? makeDropHandlers('folder', folder.id, folder.name, async (e) => {
                                       if (isInternalFileDrag(e.dataTransfer)) {
                                         await handleDropDocIds(e, ids =>
@@ -1402,21 +1436,21 @@ export default function CompanyFilesTabEnhanced() {
                                 <td className="px-3 py-2 text-xs text-gray-500">—</td>
                                 <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center justify-end gap-0.5">
-                                    {canMove ? (
+                                    {canMoveInDept ? (
                                       <AppListRowIconButton
                                         label="Permissions"
                                         icon="🔒"
                                         onClick={() => setPermissionsFolder({ id: folder.id, name: folder.name })}
                                       />
                                     ) : null}
-                                    {canMove ? (
+                                    {canMoveInDept ? (
                                       <AppListRowIconButton
                                         preset="edit"
                                         label="Rename"
                                         onClick={() => setRenameFolder({ id: folder.id, name: folder.name })}
                                       />
                                     ) : null}
-                                    {canDelete ? (
+                                    {canDeleteInDept ? (
                                       <AppListRowIconButton
                                         preset="delete"
                                         label="Delete folder"
@@ -1435,12 +1469,12 @@ export default function CompanyFilesTabEnhanced() {
                               return (
                                 <tr
                                   key={d.id}
-                                  draggable={canMove}
+                                  draggable={canMoveInDept}
                                   onDragStart={(e) => startFileDrag(e, d.id)}
                                   onDragEnd={endFileDrag}
                                   className={uiCx(
                                     'hover:bg-gray-50',
-                                    canMove ? 'cursor-move' : '',
+                                    canMoveInDept ? 'cursor-move' : '',
                                     fileSelection.isSelected(d.id) ? 'bg-brand-red/5' : '',
                                   )}
                                 >
@@ -1525,7 +1559,7 @@ export default function CompanyFilesTabEnhanced() {
                                     ) : (
                                       <div className="flex items-center gap-1">
                                         <div className="max-w-xs cursor-pointer truncate text-xs font-semibold">{name}</div>
-                                        {canMove ? (
+                                        {canMoveInDept ? (
                                           <AppListRowIconButton
                                             preset="edit"
                                             label="Rename"
@@ -1559,7 +1593,7 @@ export default function CompanyFilesTabEnhanced() {
                                           }}
                                         />
                                       ) : null}
-                                      {canMove ? (
+                                      {canMoveInDept ? (
                                         <AppListRowIconButton
                                           preset="move"
                                           label="Move to…"
@@ -1569,7 +1603,7 @@ export default function CompanyFilesTabEnhanced() {
                                           }}
                                         />
                                       ) : null}
-                                      {canDelete ? (
+                                      {canDeleteInDept ? (
                                         <AppListRowIconButton
                                           preset="delete"
                                           label="Delete"
@@ -1592,7 +1626,7 @@ export default function CompanyFilesTabEnhanced() {
                       <AppEmptyState
                         className="border-0 py-6 shadow-none"
                         title="No files in this category"
-                        description={canWrite ? 'Drag and drop files here or click Upload File.' : undefined}
+                        description={canEditInDept ? 'Drag and drop files here or click Upload File.' : undefined}
                       />
                     )}
                   </div>
@@ -1607,6 +1641,14 @@ export default function CompanyFilesTabEnhanced() {
 
   return (
     <>
+      {!canRead ? (
+        <AppCard className="!rounded-2xl" bodyClassName={uiSpacing.cardPadding}>
+          <AppEmptyState
+            title="No access"
+            description="You do not have permission to view Company Files."
+          />
+        </AppCard>
+      ) : (
       <AppCard className="!rounded-2xl" bodyClassName="p-0">
         <div className={uiSpacing.cardPadding}>
           <AppSectionHeader
@@ -1618,6 +1660,7 @@ export default function CompanyFilesTabEnhanced() {
         </div>
         <div className="border-t border-gray-100">{filesBrowserBody}</div>
       </AppCard>
+      )}
 
       {showUpload ? (
         <AppFormModal

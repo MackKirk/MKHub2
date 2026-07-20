@@ -5,6 +5,38 @@ export const FLEET_ACCESS = 'fleet:access';
 export const FLEET_DASHBOARD_READ = 'fleet:dashboard:read';
 export const FLEET_WO_ASSIGN = 'fleet:work_orders:assign';
 
+/** Fleet area children (excludes area gate and company-assets equipment keys). */
+export function isFleetAreaChildKey(key: string): boolean {
+  return key.startsWith('fleet:') && key !== FLEET_ACCESS && !key.startsWith('fleet:equipment:');
+}
+
+/** True when any Fleet capability (outside company assets) is granted. */
+export function hasAnyFleetChildPermission(
+  permissions: Record<string, boolean> | Set<string>,
+): boolean {
+  if (permissions instanceof Set) {
+    for (const k of permissions) {
+      if (isFleetAreaChildKey(k)) return true;
+    }
+    return false;
+  }
+  return Object.keys(permissions).some((k) => isFleetAreaChildKey(k) && !!permissions[k]);
+}
+
+/** Keep `fleet:access` in sync with child Fleet grants (implicit area gate). */
+export function syncFleetAccess(permissions: Record<string, boolean>): Record<string, boolean> {
+  const next = { ...permissions };
+  next[FLEET_ACCESS] = hasAnyFleetChildPermission(next);
+  return next;
+}
+
+export function syncFleetAccessInKeySet(selectedKeys: Set<string>): Set<string> {
+  const out = new Set(selectedKeys);
+  if (hasAnyFleetChildPermission(out)) out.add(FLEET_ACCESS);
+  else out.delete(FLEET_ACCESS);
+  return out;
+}
+
 export const FLEET_ASSETS_MAIN_READ = 'fleet:vehicles:read';
 export const FLEET_ASSETS_MAIN_WRITE = 'fleet:vehicles:write';
 
@@ -200,7 +232,11 @@ export function applyFleetWorkOrderAssignLevel(
   permissions: Record<string, boolean>,
   level: PermissionAccessLevel,
 ): Record<string, boolean> {
-  return { ...permissions, [FLEET_WO_ASSIGN]: level === 'edit' };
+  const next = { ...permissions, [FLEET_WO_ASSIGN]: level === 'edit' };
+  if (level === 'edit') {
+    next[FLEET_WO_MAIN_READ] = true;
+  }
+  return syncFleetAccess(next);
 }
 
 export function applyFleetAccessLevel(
@@ -209,19 +245,17 @@ export function applyFleetAccessLevel(
   writeKey: string | undefined,
   level: PermissionAccessLevel,
 ): Record<string, boolean> {
+  let next = permissions;
   if (readKey.startsWith('fleet:vehicles:')) {
-    return applyFleetAssetsAccessLevel(permissions, readKey, writeKey, level);
+    next = applyFleetAssetsAccessLevel(permissions, readKey, writeKey, level);
+  } else if (readKey.startsWith('fleet:work_orders:') && readKey !== FLEET_WO_ASSIGN) {
+    next = applyFleetWorkOrdersAccessLevel(permissions, readKey, writeKey, level);
+  } else if (readKey.startsWith('fleet:inspections:')) {
+    next = applyFleetInspectionsAccessLevel(permissions, readKey, writeKey, level);
+  } else if (readKey.startsWith('fleet:dashboard:')) {
+    next = applyFleetDashboardAccessLevel(permissions, readKey, writeKey, level);
   }
-  if (readKey.startsWith('fleet:work_orders:') && readKey !== FLEET_WO_ASSIGN) {
-    return applyFleetWorkOrdersAccessLevel(permissions, readKey, writeKey, level);
-  }
-  if (readKey.startsWith('fleet:inspections:')) {
-    return applyFleetInspectionsAccessLevel(permissions, readKey, writeKey, level);
-  }
-  if (readKey.startsWith('fleet:dashboard:')) {
-    return applyFleetDashboardAccessLevel(permissions, readKey, writeKey, level);
-  }
-  return permissions;
+  return syncFleetAccess(next);
 }
 
 export function getFleetAccessLevel(
@@ -261,34 +295,33 @@ export function applyFleetAccessLevelToKeySet(
     if (next[k]) out.add(k);
     else out.delete(k);
   });
-  if (level !== 'blocked' && readKey.startsWith('fleet:')) {
-    out.add(FLEET_ACCESS);
-  }
-  return out;
+  if (next[FLEET_ACCESS]) out.add(FLEET_ACCESS);
+  else out.delete(FLEET_ACCESS);
+  return syncFleetAccessInKeySet(out);
 }
 
 export function applyFleetAssignToKeySet(
   selectedKeys: Set<string>,
   level: PermissionAccessLevel,
 ): Set<string> {
+  const perms: Record<string, boolean> = Object.fromEntries([...selectedKeys].map((k) => [k, true]));
+  const next = applyFleetWorkOrderAssignLevel(perms, level);
   const out = new Set(selectedKeys);
-  if (level === 'edit') {
-    out.add(FLEET_WO_ASSIGN);
-    out.add(FLEET_ACCESS);
-    out.add('fleet:work_orders:read');
-  } else {
-    out.delete(FLEET_WO_ASSIGN);
-  }
-  return out;
+  if (next[FLEET_WO_ASSIGN]) out.add(FLEET_WO_ASSIGN);
+  else out.delete(FLEET_WO_ASSIGN);
+  if (next[FLEET_WO_MAIN_READ]) out.add(FLEET_WO_MAIN_READ);
+  if (next[FLEET_ACCESS]) out.add(FLEET_ACCESS);
+  else out.delete(FLEET_ACCESS);
+  return syncFleetAccessInKeySet(out);
 }
 
 export function filterFleetAreaPermissions(areaPerms: { key: string }[]): { key: string }[] {
   return areaPerms.filter(
     (p) =>
-      p.key === FLEET_ACCESS ||
-      p.key === FLEET_DASHBOARD_READ ||
-      p.key.startsWith('fleet:vehicles:') ||
-      p.key.startsWith('fleet:work_orders:') ||
-      p.key.startsWith('fleet:inspections:'),
+      p.key !== FLEET_ACCESS &&
+      (p.key === FLEET_DASHBOARD_READ ||
+        p.key.startsWith('fleet:vehicles:') ||
+        p.key.startsWith('fleet:work_orders:') ||
+        p.key.startsWith('fleet:inspections:')),
   );
 }

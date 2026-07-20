@@ -23,6 +23,7 @@ import FleetHistoryAuditChangeModal, {
 } from '@/components/fleet/FleetHistoryAuditChangeModal';
 import { FleetAssetLogsTab, type FleetAssetHistoryItem } from '@/components/fleet/FleetAssetLogsTab';
 import type { FleetAssignmentLogRecord } from '@/components/fleet/FleetAssignmentLogDetailModal';
+import { canEditCorporateCards } from '@/lib/companyAssetsPermissions';
 import {
   AppButton,
   AppCard,
@@ -136,6 +137,8 @@ export default function CompanyCreditCardDetail() {
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdministrator = !!(me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const canEdit = canEditCorporateCards(isAdministrator, permissions);
 
   const activeAssignment = useMemo(() => assignments.find((a) => a.is_active), [assignments]);
 
@@ -266,7 +269,7 @@ export default function CompanyCreditCardDetail() {
 
   const { primaryTitle, subtitleLine } = buildCompanyCreditCardHeroHeading(card);
   const isInCustody = !!activeAssignment;
-  const canAssign = card.status === 'active';
+  const canAssign = canEdit && (isInCustody || card.status === 'active');
 
   return (
     <div className={pageShellClass}>
@@ -308,7 +311,7 @@ export default function CompanyCreditCardDetail() {
 
       <AppCard bodyClassName="min-w-0 overflow-hidden">
         {tab === 'details' && (
-          <CompanyCreditCardGeneralTab card={card} onEditSection={setEditSection} />
+          <CompanyCreditCardGeneralTab card={card} canEdit={canEdit} onEditSection={setEditSection} />
         )}
         {tab === 'custody' && (
           <CompanyCreditCardCustodyTab activeAssignment={activeAssignment} assignments={assignments} />
@@ -332,7 +335,7 @@ export default function CompanyCreditCardDetail() {
       </AppCard>
 
       <CompanyCreditCardAssignCustodyModal
-        open={showAssign}
+        open={canEdit && showAssign}
         cardLabel={card.label}
         onClose={() => setShowAssign(false)}
         onAssign={(data) => assignMutation.mutate(data)}
@@ -340,7 +343,7 @@ export default function CompanyCreditCardDetail() {
       />
 
       <CompanyCreditCardReturnCustodyModal
-        open={showReturn}
+        open={canEdit && showReturn}
         cardLabel={card.label}
         onClose={() => setShowReturn(false)}
         onConfirm={(notes) => returnMutation.mutate(notes)}
@@ -348,7 +351,7 @@ export default function CompanyCreditCardDetail() {
       />
 
       <EditCompanyCreditCardModal
-        open={editSection !== null}
+        open={canEdit && editSection !== null}
         section={editSection}
         onClose={() => setEditSection(null)}
         card={card}

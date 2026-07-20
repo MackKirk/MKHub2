@@ -60,6 +60,7 @@ type EquipmentHeroBodyProps = {
   photoUrl: string | null;
   photoBusy: boolean;
   photoInputRef?: MutableRefObject<HTMLInputElement | null>;
+  canEdit?: boolean;
   onPhotoClick: () => void;
   onPhotoFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onAssign: () => void;
@@ -75,6 +76,7 @@ function EquipmentHeroBody({
   photoUrl,
   photoBusy,
   photoInputRef,
+  canEdit = true,
   onPhotoClick,
   onPhotoFileChange,
   onAssign,
@@ -136,18 +138,22 @@ function EquipmentHeroBody({
             )}
             <button
               type="button"
-              disabled={photoBusy}
+              disabled={photoBusy || (!photoUrl && !canEdit)}
               onClick={() => {
                 if (photoBusy) return;
                 if (!photoUrl) {
+                  if (!canEdit) return;
                   (photoInputRef?.current ?? localFileInputRef.current)?.click();
                   return;
                 }
                 onPhotoClick();
               }}
-              className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed"
+              className={uiCx(
+                'absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed',
+                !photoUrl && !canEdit && 'pointer-events-none',
+              )}
             >
-              {photoUrl ? 'Change' : 'Add photo'}
+              {photoUrl ? (canEdit ? 'Change' : 'View') : canEdit ? 'Add photo' : ''}
             </button>
           </div>
         </div>
@@ -194,15 +200,17 @@ function EquipmentHeroBody({
           </div>
 
           <div className="mt-4 flex flex-col items-center gap-1.5 lg:mt-0 lg:shrink-0 lg:self-center">
-            {isAssigned ? (
-              <button type="button" onClick={onReturn} className={fleetHeroReturnButtonClass}>
-                <span>Return</span>
-              </button>
-            ) : (
-              <button type="button" onClick={onAssign} className={fleetHeroAssignButtonClass}>
-                <span>Assign</span>
-              </button>
-            )}
+            {canEdit ? (
+              isAssigned ? (
+                <button type="button" onClick={onReturn} className={fleetHeroReturnButtonClass}>
+                  <span>Return</span>
+                </button>
+              ) : (
+                <button type="button" onClick={onAssign} className={fleetHeroAssignButtonClass}>
+                  <span>Assign</span>
+                </button>
+              )
+            ) : null}
             {collapseToggle ? <div className="flex w-full justify-end">{collapseToggle}</div> : null}
           </div>
         </div>

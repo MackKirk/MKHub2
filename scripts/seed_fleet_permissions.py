@@ -1,5 +1,6 @@
 """
 Fleet permissions — dashboard, fleet assets, work orders, inspections (no equipment; see seed_company_assets_permissions.py).
+fleet:access is the implicit area gate (auto-synced when any Fleet child is granted).
 """
 import sys
 import os

@@ -1184,6 +1184,28 @@ def my_project_reports_category_permissions(
     }
 
 
+@router.get("/me/company-files-department-permissions")
+def my_company_files_department_permissions(
+    user: User = Depends(get_current_user),
+):
+    """
+    Per-department allow-lists for Company Files categories.
+
+    Semantics:
+    - Missing list => all departments allowed (default).
+    - Present list => allow-list of department SettingItem IDs.
+    """
+    from ..auth.security import _get_user_permission_map
+
+    perm_map = _get_user_permission_map(user)
+    read_val = perm_map.get("documents:categories:read")
+    write_val = perm_map.get("documents:categories:write")
+    return {
+        "read_categories": read_val if isinstance(read_val, list) else None,
+        "write_categories": write_val if isinstance(write_val, list) else None,
+    }
+
+
 @router.post("/link-corporate")
 def link_corporate(email_corporate: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     user.email_corporate = email_corporate
@@ -1550,8 +1572,15 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
                 can_read = bool(
                     perm_map.get('users:read') or  # Legacy permission allows full access
                     perm_map.get('hr:users:view:general') or
+                    perm_map.get('hr:users:view:job') or
+                    perm_map.get('hr:users:view:docs') or
                     perm_map.get('hr:users:view:timesheet') or
-                    perm_map.get('hr:users:view:permissions')
+                    perm_map.get('hr:users:view:loans') or
+                    perm_map.get('hr:users:view:training') or
+                    perm_map.get('hr:users:view:assets') or
+                    perm_map.get('hr:users:view:reports') or
+                    perm_map.get('hr:users:view:permissions') or
+                    perm_map.get('hr:users:view:activity')
                 )
     except Exception:
         can_read = False
@@ -1636,7 +1665,7 @@ def update_user_profile(
     user_id: str,
     payload: EmployeeProfileInput,
     db: Session = Depends(get_db),
-    me: User = Depends(require_permissions("users:write", "hr:users:edit:general")),
+    me: User = Depends(require_permissions("users:write", "hr:users:edit:general", "hr:users:edit:job")),
 ):
     from ..models.models import EmployeeProfile
     u = db.query(User).filter(User.id == user_id).first()
@@ -1968,7 +1997,7 @@ def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = 
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid user id")
     if user.id != uid:
-        if not (_has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(user, "hr:users:view:general")):
+        if not (_has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(user, "hr:users:view:docs") or _has_permission(user, "hr:users:view:general")):
             raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeDocument
     q = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == uid)
@@ -2005,7 +2034,7 @@ def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = 
 def create_document(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     # Allow self to edit or require permissions
     if str(user.id) != str(user_id):
-        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:docs") or _has_permission(user, "hr:users:edit:general")):
             raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeDocument
     from datetime import datetime, timezone
@@ -2039,7 +2068,7 @@ def create_document(user_id: str, payload: dict = Body(...), db: Session = Depen
 def delete_document(user_id: str, doc_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     # Allow self to edit or require permissions
     if str(user.id) != str(user_id):
-        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:docs") or _has_permission(user, "hr:users:edit:general")):
             raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeDocument
     db.query(EmployeeDocument).filter(and_(EmployeeDocument.user_id == user_id, EmployeeDocument.id == doc_id)).delete()
@@ -2052,7 +2081,7 @@ def delete_document(user_id: str, doc_id: str, db: Session = Depends(get_db), us
 def list_folders(user_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     # Allow self to view or require permissions
     if str(user.id) != str(user_id):
-        if not (_has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(user, "hr:users:view:general")):
+        if not (_has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(user, "hr:users:view:docs") or _has_permission(user, "hr:users:view:general")):
             raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeFolder
     rows = db.query(EmployeeFolder).filter(EmployeeFolder.user_id == user_id).order_by(EmployeeFolder.sort_index.asc(), EmployeeFolder.name.asc()).all()
@@ -2068,7 +2097,7 @@ def list_folders(user_id: str, db: Session = Depends(get_db), user: User = Depen
 def create_folder(user_id: str, name: str = Body(...), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     # Allow self to edit or require permissions
     if str(user.id) != str(user_id):
-        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:docs") or _has_permission(user, "hr:users:edit:general")):
             raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeFolder
     fid = None
@@ -2088,7 +2117,7 @@ def create_folder(user_id: str, name: str = Body(...), parent_id: Optional[str] 
 def delete_folder(user_id: str, folder_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     # Allow self to edit or require permissions
     if str(user.id) != str(user_id):
-        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:docs") or _has_permission(user, "hr:users:edit:general")):
             raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeFolder, EmployeeDocument
     try:
@@ -2109,7 +2138,7 @@ def delete_folder(user_id: str, folder_id: str, db: Session = Depends(get_db), u
 def update_folder(user_id: str, folder_id: str, name: str = Body(None), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     # Allow self to edit or require permissions
     if str(user.id) != str(user_id):
-        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:docs") or _has_permission(user, "hr:users:edit:general")):
             raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeFolder
     try:
@@ -2136,7 +2165,7 @@ def update_folder(user_id: str, folder_id: str, name: str = Body(None), parent_i
 def update_document(user_id: str, doc_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     # Allow self to edit or require permissions
     if str(user.id) != str(user_id):
-        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:docs") or _has_permission(user, "hr:users:edit:general")):
             raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeDocument
     d = db.query(EmployeeDocument).filter(and_(EmployeeDocument.user_id == user_id, EmployeeDocument.id == doc_id)).first()
@@ -2761,15 +2790,22 @@ def delete_custom_cloth_size(size: str, db: Session = Depends(get_db), _=Depends
 def _training_can_view(user: User, user_id: str) -> bool:
     if str(user.id) == str(user_id):
         return True
-    return _has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(
-        user, "hr:users:view:general"
+    return (
+        _has_permission(user, "users:read")
+        or _has_permission(user, "hr:users:read")
+        or _has_permission(user, "hr:users:view:training")
+        or _has_permission(user, "hr:users:view:general")
     )
 
 
 def _training_can_edit(user: User, user_id: str) -> bool:
     if str(user.id) == str(user_id):
         return True
-    return _has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")
+    return (
+        _has_permission(user, "users:write")
+        or _has_permission(user, "hr:users:edit:training")
+        or _has_permission(user, "hr:users:edit:general")
+    )
 
 
 def _training_row(r):
@@ -2876,10 +2912,16 @@ def _pick_explicit_matrix_record(records: List, matrix_id: str) -> Optional[obje
 
 def _training_hr_aggregate_can_view(user: User) -> bool:
     return (
-        _has_permission(user, "users:read")
+        _has_permission(user, "training:dashboard:read")
+        or _has_permission(user, "training:admin:read")
+        or _has_permission(user, "training:admin:write")
+        or _has_permission(user, "training:manage")
+        or _has_permission(user, "users:read")
         or _has_permission(user, "hr:users:read")
+        or _has_permission(user, "hr:users:view:training")
         or _has_permission(user, "hr:users:view:general")
         or _has_permission(user, "users:write")
+        or _has_permission(user, "hr:users:edit:training")
         or _has_permission(user, "hr:users:edit:general")
     )
 

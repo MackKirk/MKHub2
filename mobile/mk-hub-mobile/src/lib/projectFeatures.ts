@@ -11,7 +11,9 @@ export function hasProjectFeatureRead(
       return (
         permissions.has("business:projects:documents:read") ||
         permissions.has("documents:read") ||
-        permissions.has("documents:access")
+        permissions.has("documents:write") ||
+        permissions.has("documents:delete") ||
+        permissions.has("documents:move")
       );
     case "proposal":
     case "pricing":

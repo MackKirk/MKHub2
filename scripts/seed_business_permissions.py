@@ -290,6 +290,18 @@ def seed_business_permissions():
                 "sort_index": 17,
             },
             {
+                "key": "business:projects:costs:read",
+                "label": "View Costs",
+                "description": "Allows viewing the Costs tab in project and opportunity details",
+                "sort_index": 18,
+            },
+            {
+                "key": "business:projects:costs:write",
+                "label": "Edit Costs",
+                "description": "Allows editing project costs and budgets",
+                "sort_index": 19,
+            },
+            {
                 "key": "business:projects:safety:read",
                 "label": "View Safety",
                 "description": "Allows viewing the Safety tab in project details (awarded projects only)",
@@ -311,6 +323,7 @@ def seed_business_permissions():
             ("files", "Files", "Files tab in project details"),
             ("documents", "Documents", "Documents tab in project and opportunity details"),
             ("proposal", "Proposal", "Proposal tab in project details"),
+            ("costs", "Costs", "Costs tab in project and opportunity details"),
             ("safety", "Safety", "Safety tab in project details (awarded projects only)"),
         ]
         line_defs = [

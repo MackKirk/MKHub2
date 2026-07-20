@@ -10,6 +10,7 @@ import {
   getEquipmentStatusBadgeVariant,
 } from '@/lib/equipmentUi';
 import EquipmentListNewModal from '@/components/fleet/EquipmentListNewModal';
+import { canEditEquipmentRecord } from '@/lib/companyAssetsPermissions';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
@@ -256,6 +257,11 @@ export default function EquipmentList() {
   const search = searchParams.get('search') ?? '';
   const [showNewEquipmentModal, setShowNewEquipmentModal] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const canCreateEquipment = canEditEquipmentRecord(isAdmin, permissions);
 
   const categoryFilter = searchParams.get('category') || 'all';
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
@@ -546,12 +552,14 @@ export default function EquipmentList() {
           <div className="flex flex-col">
             {showEmptyList ? (
               <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'min-h-[12rem] pb-10')}>
-                <AppListCreateItem
-                  label="New Equipment"
-                  layout="row"
-                  className="w-full"
-                  onClick={() => setShowNewEquipmentModal(true)}
-                />
+                {canCreateEquipment ? (
+                  <AppListCreateItem
+                    label="New Equipment"
+                    layout="row"
+                    className="w-full"
+                    onClick={() => setShowNewEquipmentModal(true)}
+                  />
+                ) : null}
                 <AppEmptyState
                   title={`No ${categoryFilter === 'all' ? 'equipment' : categoryLabels[categoryFilter]?.toLowerCase()} found`}
                   className="border-0 bg-transparent p-0 shadow-none"
@@ -559,14 +567,16 @@ export default function EquipmentList() {
               </div>
             ) : (
               <>
-                <div className={uiCx(uiSpacing.cardPadding, equipment.length === 0 ? 'pb-10' : 'pb-3')}>
-                  <AppListCreateItem
-                    label="New Equipment"
-                    layout="row"
-                    className="w-full"
-                    onClick={() => setShowNewEquipmentModal(true)}
-                  />
-                </div>
+                {canCreateEquipment ? (
+                  <div className={uiCx(uiSpacing.cardPadding, equipment.length === 0 ? 'pb-10' : 'pb-3')}>
+                    <AppListCreateItem
+                      label="New Equipment"
+                      layout="row"
+                      className="w-full"
+                      onClick={() => setShowNewEquipmentModal(true)}
+                    />
+                  </div>
+                ) : null}
                 {equipment.length > 0 ? (
                   <div className="min-w-0 overflow-x-auto border-t border-gray-100">
                     <table className="w-full min-w-0 border-collapse">
@@ -710,7 +720,7 @@ export default function EquipmentList() {
       />
 
       <EquipmentListNewModal
-        open={showNewEquipmentModal}
+        open={canCreateEquipment && showNewEquipmentModal}
         onClose={() => setShowNewEquipmentModal(false)}
         initialCategory={categoryFilter === 'all' ? 'generator' : categoryFilter}
         onCreated={(data) => {

@@ -1,7 +1,7 @@
 """
-Script para adicionar permissões de Documents com estrutura hierárquica.
-A primeira permissão sempre é a liberação da área (documents:access).
-Se bloquear documents:access, automaticamente bloqueia todas as sub-permissões.
+Script para adicionar permissões de Company Files (Documents) com estrutura hierárquica.
+documents:access é o gate implícito da área (sincronizado automaticamente).
+UI expõe apenas View / Edit; delete e move ficam embutidos no Edit.
 """
 import sys
 import os
@@ -35,68 +35,63 @@ except ImportError as e:
 
 
 def seed_documents_permissions():
-    """Seed Documents permissions with hierarchical structure"""
+    """Seed Company Files permissions with hierarchical structure"""
     db = SessionLocal()
-    
+
     try:
-        # Create or get Documents category
         category = db.query(PermissionCategory).filter(PermissionCategory.name == "documents").first()
         if category:
-            print(f"Category 'documents' already exists, updating...")
-            category.label = "Documents"
-            category.description = "Permissions for Documents area. Blocking access blocks all sub-permissions."
+            print("Category 'documents' already exists, updating...")
+            category.label = "Company Files"
+            category.description = "Permissions for Company Files. Blocking access blocks all sub-permissions."
             category.is_active = True
         else:
             category = PermissionCategory(
                 name="documents",
-                label="Documents",
-                description="Permissions for Documents area. Blocking access blocks all sub-permissions.",
-                sort_index=4,  # After Fleet & Equipment
+                label="Company Files",
+                description="Permissions for Company Files. Blocking access blocks all sub-permissions.",
+                sort_index=4,
             )
             db.add(category)
-        
-        db.flush()  # To get the category ID
-        
-        # Define Documents permissions with hierarchical structure
-        # First permission is always the area access
+
+        db.flush()
+
         documents_permissions = [
             {
                 "key": "documents:access",
-                "label": "Access Documents",
-                "description": "Grants access to the Documents area. Required for all Documents functions. If disabled, all Documents permissions are blocked.",
+                "label": "Access Company Files",
+                "description": "Implicit area gate. Auto-granted when any Company Files permission is enabled.",
                 "sort_index": 1,
             },
             {
                 "key": "documents:read",
-                "label": "View Documents",
-                "description": "Allows viewing and downloading documents",
+                "label": "Company Files",
+                "description": "View and download company files",
                 "sort_index": 2,
             },
             {
                 "key": "documents:write",
-                "label": "Add Documents",
-                "description": "Allows uploading and creating new documents",
+                "label": "Company Files",
+                "description": "Upload, create, move, rename, and delete company files",
                 "sort_index": 3,
             },
             {
                 "key": "documents:delete",
-                "label": "Delete Documents",
-                "description": "Allows deleting documents",
+                "label": "Delete Company Files",
+                "description": "Granted with Edit Company Files (hidden in UI)",
                 "sort_index": 4,
             },
             {
                 "key": "documents:move",
-                "label": "Move/Edit Documents",
-                "description": "Allows moving documents between folders and editing document metadata",
+                "label": "Move/Edit Company Files",
+                "description": "Granted with Edit Company Files (hidden in UI)",
                 "sort_index": 5,
             },
         ]
-        
+
         for perm_data in documents_permissions:
-            # Find or create permission
             permission = db.query(PermissionDefinition).filter(PermissionDefinition.key == perm_data["key"]).first()
             if permission:
-                # Update existing permission
                 permission.category_id = category.id
                 permission.label = perm_data["label"]
                 permission.description = perm_data.get("description")
@@ -104,7 +99,6 @@ def seed_documents_permissions():
                 permission.is_active = True
                 print(f"Updated permission: {perm_data['key']}")
             else:
-                # Create new permission
                 permission = PermissionDefinition(
                     category_id=category.id,
                     key=perm_data["key"],
@@ -114,11 +108,11 @@ def seed_documents_permissions():
                 )
                 db.add(permission)
                 print(f"Created permission: {perm_data['key']}")
-        
+
         db.commit()
-        print(f"\nSuccessfully seeded Documents permissions!")
+        print(f"\nSuccessfully seeded Company Files permissions!")
         print(f"Total permissions: {len(documents_permissions)}")
-        
+
     except Exception as e:
         db.rollback()
         print(f"Error seeding Documents permissions: {e}")
@@ -129,4 +123,3 @@ def seed_documents_permissions():
 
 if __name__ == "__main__":
     seed_documents_permissions()
-

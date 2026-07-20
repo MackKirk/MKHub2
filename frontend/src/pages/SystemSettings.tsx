@@ -12,11 +12,8 @@ import {
   AppButton,
   AppInput,
   AppTextarea,
-  AppSelect,
-  AppCheckbox,
   AppEmptyState,
   AppSectionHeader,
-  AppUserSelect,
   uiCx,
   uiSpacing,
   uiTypography,
@@ -24,12 +21,11 @@ import {
   uiBorders,
   uiColors,
   uiRadius,
-  uiListCreateItem,
 } from '@/components/ui';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { effectiveShowInProject, effectiveShowInOpportunity } from '@/lib/projectStatusVisibility';
 import DocumentTemplatesTab from '@/components/DocumentTemplatesTab';
 import DocumentTypesTab from '@/components/DocumentTypesTab';
+import SettingsLookupListsPanel from '@/components/settings/SettingsLookupListsPanel';
 import {
   IMPLEMENTED_PERMISSIONS,
   isHiddenPermissionKey,
@@ -45,7 +41,9 @@ import { SupplierPermissionsGrid } from '@/components/SupplierPermissionsGrid';
 import { ProductPermissionsGrid } from '@/components/ProductPermissionsGrid';
 import { FleetPermissionsPanel } from '@/components/FleetPermissionsPanel';
 import { CompanyAssetsPermissionsPanel } from '@/components/CompanyAssetsPermissionsPanel';
+import { DocumentsPermissionsPanel } from '@/components/DocumentsPermissionsPanel';
 import { HrPermissionsPanel } from '@/components/HrPermissionsPanel';
+import { TrainingPermissionsPanel } from '@/components/TrainingPermissionsPanel';
 import { ProjectLinePermissionsGrid } from '@/components/ProjectLinePermissionsGrid';
 import {
   applyCustomerAccessLevelToKeySet,
@@ -63,19 +61,33 @@ import {
   applyFleetAccessLevelToKeySet,
   applyFleetAssignToKeySet,
   filterFleetAreaPermissions,
-  FLEET_ACCESS,
+  syncFleetAccessInKeySet,
   type FleetAccessLevel,
 } from '@/lib/fleetPermissions';
 import {
   applyCompanyAssetsAccessLevelToKeySet,
   filterCompanyAssetsAreaPermissions,
+  syncCompanyAssetsAccessInKeySet,
   type CompanyAssetsAccessLevel,
 } from '@/lib/companyAssetsPermissions';
 import {
+  applyDocumentsAccessLevelToKeySet,
+  filterDocumentsAreaPermissions,
+  syncDocumentsAccessInKeySet,
+  type DocumentsAccessLevel,
+} from '@/lib/documentsPermissions';
+import {
   applyHrAccessLevelToKeySet,
   applyHrWriteOnlyToKeySet,
+  syncHrAccessInKeySet,
   type HrAccessLevel,
 } from '@/lib/hrPermissions';
+import {
+  applyTrainingAccessLevelToKeySet,
+  filterTrainingAreaPermissions,
+  syncTrainingAccessInKeySet,
+  type TrainingAccessLevel,
+} from '@/lib/trainingPermissions';
 import {
   applyProjectLineAccessLevelToKeySet,
   type ProjectLinePermissionRow,
@@ -86,79 +98,8 @@ type Item = { id:string, label:string, value?:string, sort_index?:number, meta?:
 
 type SettingsSection = 'files' | 'templates' | 'lists';
 
-const MATRIX_CELL_KIND_OPTIONS = [
-  { value: 'expiry', label: 'Expiry date' },
-  { value: 'date_taken', label: 'Date taken' },
-  { value: 'text', label: 'Text / notes' },
-];
-
-/** Human-readable label for setting list keys (sidebar + headers). */
-function formatSettingsListTitle(name: string): string {
-  if (name === 'terms-templates') return 'Terms Templates';
-  if (name === 'training_matrix_slots') return 'Training matrix slots';
-  return name
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 export default function SystemSettings(){
-  const confirm = useConfirm();
-  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data, refetch, isLoading } = useQuery({ queryKey:['settings-bundle'], queryFn: ()=>api<Record<string, Item[]>>('GET','/settings') });
-  // Filter out non-list settings (like google_places_api_key) and lists with dedicated sections (like terms-templates)
-  const lists = Object.entries(data||{})
-    .filter(([name]) => !['google_places_api_key', 'terms-templates', 'branding', 'standard_file_categories', 'organization_logos', 'certificate_backgrounds'].includes(name))
-    .sort(([a],[b])=> a.localeCompare(b));
-  const [sel, setSel] = useState<string>('client_statuses');
-  const items = (data||{})[sel]||[];
-  const [label, setLabel] = useState('');
-  const [value, setValue] = useState('');
-  const [description, setDescription] = useState('');
-  const [newShowInProject, setNewShowInProject] = useState(true);
-  const [newShowInOpportunity, setNewShowInOpportunity] = useState(true);
-  
-  // Reset form fields when selection changes
-  useEffect(() => {
-    setLabel('');
-    setValue('');
-    setDescription('');
-    setNewShowInProject(true);
-    setNewShowInOpportunity(true);
-    setNewMatrixCellKind('expiry');
-    setEdits({});
-  }, [sel]);
-  const [edits, setEdits] = useState<Record<string, Item>>({});
-  const [newMatrixCellKind, setNewMatrixCellKind] = useState<'expiry' | 'date_taken' | 'text'>('expiry');
-  const isColorList = useMemo(()=> sel.toLowerCase().includes('status'), [sel]);
-  const isDivisionList = useMemo(()=> sel.toLowerCase().includes('division'), [sel]);
-  const isMatrixSlotsList = useMemo(()=> sel === 'training_matrix_slots', [sel]);
-  const isTimesheetConfig = useMemo(()=> sel === 'timesheet', [sel]);
-  const isTermsTemplates = useMemo(()=> sel === 'terms-templates', [sel]);
-  const getEdit = (it: Item): Item => edits[it.id] || it;
-  
-  // Timesheet configuration values
-  const timesheetItems = (data?.timesheet||[]) as Item[];
-  const breakMinItem = timesheetItems.find(i=> i.label === 'default_break_minutes');
-  const breakEmployeesItem = timesheetItems.find(i=> i.label === 'break_eligible_employees');
-  const geofenceRadiusItem = timesheetItems.find(i=> i.label === 'default_geofence_radius_meters');
-  const [breakMin, setBreakMin] = useState<string>(breakMinItem?.value || '30');
-  const [geofenceRadius, setGeofenceRadius] = useState<string>(geofenceRadiusItem?.value || '150');
-  const [selectedBreakEmployees, setSelectedBreakEmployees] = useState<string[]>([]);
-  
-  // Update local state when items change
-  useEffect(()=>{
-    if(breakMinItem?.value) setBreakMin(breakMinItem.value);
-    if(geofenceRadiusItem?.value) setGeofenceRadius(geofenceRadiusItem.value);
-    if(breakEmployeesItem?.value) {
-      try {
-        const employeeIds = JSON.parse(breakEmployeesItem.value);
-        setSelectedBreakEmployees(Array.isArray(employeeIds) ? employeeIds : []);
-      } catch {
-        setSelectedBreakEmployees([]);
-      }
-    }
-  }, [breakMinItem?.value, geofenceRadiusItem?.value, breakEmployeesItem?.value]);
 
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
@@ -175,12 +116,21 @@ export default function SystemSettings(){
     const raw = (searchParams.get('section') || '').toLowerCase();
     if (raw === 'templates' || raw === 'files' || raw === 'lists') {
       setSection(raw as SettingsSection);
+    } else if (!raw) {
+      setSection('lists');
     }
   }, [searchParams]);
 
   const handleSectionTab = (id: SettingsSection) => {
     setSection(id);
-    setSearchParams(id === 'lists' ? {} : { section: id }, { replace: true });
+    const next = new URLSearchParams(searchParams);
+    if (id === 'lists') {
+      next.delete('section');
+    } else {
+      next.set('section', id);
+      next.delete('list');
+    }
+    setSearchParams(next, { replace: true });
   };
 
   const sectionTabs: { id: SettingsSection; label: string }[] = [
@@ -193,7 +143,7 @@ export default function SystemSettings(){
     <div className={uiCx(uiSpacing.pageStack, 'bg-gray-50')}>
       <AppPageHeader
         title="System settings"
-        subtitle="Lists, file organization, templates, and document creator backgrounds/types used across the app."
+        subtitle="Administration for lookup lists, file categories, and templates used across MKHub."
         icon={<Settings className="h-4 w-4" />}
         actions={
           <div className="text-right shrink-0">
@@ -211,247 +161,7 @@ export default function SystemSettings(){
         />
       </AppCard>
 
-      {/* ——— Lookup lists ——— */}
-      {section === 'lists' && (
-      <AppCard bodyClassName="!p-0">
-      <div className="grid lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] lg:items-stretch min-h-[min(520px,70vh)]">
-        <div className={uiCx('border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/50 flex flex-col lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-8rem)]')}>
-          <div className={uiCx('border-b border-gray-100 px-4 py-3 bg-white/80')}>
-            <h2 className={uiTypography.sectionTitle}>Lists</h2>
-            <p className={uiTypography.sectionSubtitle}>Pick a dataset to edit.</p>
-          </div>
-          <div className="overflow-y-auto flex-1 min-h-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className={uiCx('border-b border-gray-100 bg-white text-left', uiTypography.overline)}>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2 w-16 text-right">#</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {lists.map(([name]) => {
-                  const count = ((data || {})[name] || []).length;
-                  return (
-                    <tr
-                      key={name}
-                      className={uiCx(
-                        'cursor-pointer transition-colors',
-                        sel === name ? 'bg-red-50/90' : 'hover:bg-gray-50',
-                      )}
-                      onClick={() => setSel(name)}
-                    >
-                      <td className={uiCx('px-3 py-2.5 font-medium', sel === name ? 'text-brand-red' : uiColors.textStrong)}>
-                        {formatSettingsListTitle(name)}
-                      </td>
-                      <td className={uiCx('px-3 py-2.5 text-right tabular-nums', uiTypography.helper)}>{count}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="flex min-h-[min(520px,70vh)] flex-col bg-white">
-          <div className={uiCx('flex flex-wrap items-end justify-between gap-2 border-b border-gray-100 px-5 py-4')}>
-            <div>
-              <div className={uiTypography.overline}>Editing</div>
-              <h2 className={uiTypography.sectionTitle}>{formatSettingsListTitle(sel)}</h2>
-            </div>
-            <div className={uiTypography.helper}>
-              <span className={uiCx('tabular-nums font-semibold', uiColors.textStrong)}>{items.length}</span> items
-            </div>
-          </div>
-          <div className="flex-1 min-h-0 overflow-y-auto p-5">
-          {isTimesheetConfig ? (
-            <AppCard
-              title="Timesheet defaults"
-              subtitle="Used when creating shifts and calculating attendance."
-              bodyClassName={uiSpacing.sectionStack}
-            >
-              <div className={uiLayout.sectionGrid2}>
-                <AppInput
-                  type="number"
-                  label="Default break for shifts of 5+ hours (minutes)"
-                  value={breakMin}
-                  onChange={(e) => setBreakMin(e.target.value)}
-                  min="0"
-                  placeholder="30"
-                  helperText="Break duration deducted from attendance for eligible employees on long shifts."
-                />
-
-                <AppInput
-                  type="number"
-                  label="Default geofence radius (meters)"
-                  value={geofenceRadius}
-                  onChange={(e) => setGeofenceRadius(e.target.value)}
-                  min="0"
-                  placeholder="150"
-                  helperText="Default radius for new shifts."
-                />
-
-                <div className="sm:col-span-2">
-                  <AppUserSelect
-                    mode="multiple"
-                    label={`Employees eligible for break deduction${selectedBreakEmployees.length > 0 ? ` (${selectedBreakEmployees.length} selected)` : ''}`}
-                    value={selectedBreakEmployees}
-                    onChange={setSelectedBreakEmployees}
-                    placeholder="Select employees..."
-                    helperText="Select employees who are eligible for break deduction when their attendance is 5 hours or more."
-                  />
-                </div>
-
-                <div className={uiCx('sm:col-span-2 flex justify-end pt-1', uiLayout.actionsRow)}>
-                  <AppButton
-                    onClick={async () => {
-                      try {
-                        // Save or update default_break_minutes
-                        if (breakMinItem) {
-                          await api('PUT', `/settings/timesheet/${encodeURIComponent(breakMinItem.id)}?label=default_break_minutes&value=${encodeURIComponent(breakMin)}`);
-                        } else {
-                          await api('POST', `/settings/timesheet?label=default_break_minutes&value=${encodeURIComponent(breakMin)}`);
-                        }
-                        
-                        // Save or update break_eligible_employees (as JSON array)
-                        const employeesJson = JSON.stringify(selectedBreakEmployees);
-                        if (breakEmployeesItem) {
-                          await api('PUT', `/settings/timesheet/${encodeURIComponent(breakEmployeesItem.id)}?label=break_eligible_employees&value=${encodeURIComponent(employeesJson)}`);
-                        } else {
-                          await api('POST', `/settings/timesheet?label=break_eligible_employees&value=${encodeURIComponent(employeesJson)}`);
-                        }
-                        
-                        // Save or update default_geofence_radius_meters
-                        if (geofenceRadiusItem) {
-                          await api('PUT', `/settings/timesheet/${encodeURIComponent(geofenceRadiusItem.id)}?label=default_geofence_radius_meters&value=${encodeURIComponent(geofenceRadius)}`);
-                        } else {
-                          await api('POST', `/settings/timesheet?label=default_geofence_radius_meters&value=${encodeURIComponent(geofenceRadius)}`);
-                        }
-                        
-                        await refetch();
-                        // Invalidate settings-bundle query to sync with UserInfo TimesheetBlock
-                        queryClient.invalidateQueries({ queryKey: ['settings-bundle'] });
-                        toast.success('Timesheet settings saved');
-                      } catch (_e) {
-                        toast.error('Failed to save');
-                      }
-                    }}
-                  >
-                    Save Settings
-                  </AppButton>
-                </div>
-              </div>
-            </AppCard>
-          ) : (
-            <>
-              {isTermsTemplates ? (
-                <div className={uiCx('space-y-3 mb-4', uiSpacing.sectionStack)}>
-                  <h4 className={uiTypography.sectionTitle}>Terms Templates</h4>
-                  <div className={uiSpacing.sectionStack}>
-                    <AppInput className="w-full" placeholder="Template Name" value={label} onChange={e=>setLabel(e.target.value)} />
-                    <AppTextarea
-                      className="w-full"
-                      placeholder="Terms Description (full text)"
-                      value={description}
-                      onChange={e=>setDescription(e.target.value)}
-                      rows={8}
-                    />
-                    <AppButton onClick={async()=>{ if(!label){ toast.error('Template name required'); return; } try{ const url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}&description=${encodeURIComponent(description||'')}`; await api('POST', url); setLabel(''); setDescription(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }}>Add</AppButton>
-                  </div>
-                </div>
-              ) : (
-                <div className={uiCx(uiBorders.createDashed, uiRadius.control, uiColors.surfaceSubtle, 'mb-4 p-4')}>
-                  <div className={uiCx(uiListCreateItem.label, 'mb-3 block text-left uppercase tracking-wide')}>Add entry</div>
-                  <div className={uiCx('flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end', uiLayout.actionsRow)}>
-                    <AppInput className="sm:min-w-[12rem]" placeholder={isMatrixSlotsList ? 'Column title' : 'Label'} value={label} onChange={e=>setLabel(e.target.value)} />
-                    {isDivisionList ? (
-                      <>
-                        <AppInput className="w-28" placeholder="Abbr" value={(value||'').split('|')[0]||''} onChange={e=>{ const parts = (value||'').split('|'); parts[0] = e.target.value; setValue(parts.join('|')); }} />
-                        <input type="color" title="Color" className={uiCx(uiBorders.input, uiRadius.control, 'h-8 w-10 p-0')} value={((value||'').split('|')[1]||'#cccccc')} onChange={e=>{ const parts = (value||'').split('|'); parts[1] = e.target.value; setValue(parts.join('|')); }} />
-                      </>
-                    ) : isMatrixSlotsList ? (
-                      <>
-                        <AppInput className="w-44" inputClassName="font-mono" placeholder="Slug (stable id)" value={value} onChange={e=>setValue(e.target.value)} />
-                        <AppSelect className="w-48" options={MATRIX_CELL_KIND_OPTIONS} value={newMatrixCellKind} onChange={(e)=> setNewMatrixCellKind(e.target.value as 'expiry' | 'date_taken' | 'text')} />
-                      </>
-                    ) : isColorList ? (
-                      <input type="color" title="Color" className={uiCx(uiBorders.input, uiRadius.control, 'h-8 w-10 p-0')} value={value||'#cccccc'} onChange={e=>setValue(e.target.value)} />
-                    ) : (
-                      <AppInput placeholder="Value" value={value} onChange={e=>setValue(e.target.value)} />
-                    )}
-                    {sel === 'project_statuses' && (
-                      <span className={uiCx('flex items-center gap-3', uiTypography.body)}>
-                        <AppCheckbox label="Project" checked={newShowInProject} onChange={setNewShowInProject} className="whitespace-nowrap" />
-                        <AppCheckbox label="Opportunity" checked={newShowInOpportunity} onChange={setNewShowInOpportunity} className="whitespace-nowrap" />
-                      </span>
-                    )}
-                    <AppButton onClick={async()=>{ if(!label){ toast.error('Label required'); return; } if(isMatrixSlotsList && !(value||'').trim()){ toast.error('Slug is required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isMatrixSlotsList){ url += `&value=${encodeURIComponent((value||'').trim())}&cell_kind=${encodeURIComponent(newMatrixCellKind)}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; if (sel === 'project_statuses'){ url += `&show_in_project=${newShowInProject ? 'true' : 'false'}&show_in_opportunity=${newShowInOpportunity ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); setNewMatrixCellKind('expiry'); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }}>Add</AppButton>
-                  </div>
-                </div>
-              )}
-              <div className={uiCx('overflow-hidden', uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle)}>
-                {isLoading? <div className="p-3"><div className="h-6 bg-gray-100 animate-pulse rounded"/></div> : items.length? items.map(it=> {
-                  const e = getEdit(it);
-                  return (
-                    <div key={it.id} className={uiCx('border-b border-gray-100 px-3 py-2.5 text-sm last:border-b-0 odd:bg-gray-50/50', isTermsTemplates ? 'flex flex-col gap-2' : 'flex items-center justify-between gap-3')}>
-                      <div className={isTermsTemplates ? uiSpacing.sectionStack : uiCx('flex items-center gap-2 flex-1 min-w-0', uiLayout.actionsRow)}>
-                        <AppInput className="w-48" value={e.label} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), label: ev.target.value } }))} />
-                        {isTermsTemplates ? (
-                          <AppTextarea
-                            className="w-full"
-                            placeholder="Terms Description"
-                            value={e.meta?.description||''}
-                            onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), description: ev.target.value } } }))}
-                            rows={8}
-                          />
-                        ) : isDivisionList ? (
-                          <>
-                            <AppInput className="w-24" placeholder="Abbr" value={e.meta?.abbr||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), abbr: ev.target.value } } }))} />
-                            <input type="color" title="Color" className={uiCx(uiBorders.input, uiRadius.control, 'h-8 w-10 p-0')} value={e.meta?.color||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), color: ev.target.value } } }))} />
-                          </>
-                        ) : isMatrixSlotsList ? (
-                          <>
-                            <AppInput className="w-36" inputClassName="font-mono" placeholder="Slug" value={e.value||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
-                            <AppSelect
-                              className="w-44"
-                              options={MATRIX_CELL_KIND_OPTIONS}
-                              value={(e.meta?.cell_kind as string) || 'text'}
-                              onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), cell_kind: ev.target.value } } }))}
-                            />
-                          </>
-                        ) : isColorList ? (
-                          <>
-                            <input type="color" title="Color" className={uiCx(uiBorders.input, uiRadius.control, 'h-8 w-10 p-0')} value={e.value||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
-                            <span className={uiTypography.helper}>{e.value}</span>
-                            {sel === 'project_statuses' && (
-                              <div className={uiCx('flex flex-wrap items-center gap-x-3 gap-y-2 ml-2', uiLayout.actionsRow)}>
-                                <AppCheckbox label="Show in projects" checked={typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it)} onChange={(checked)=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), show_in_project: checked } } }))} className="whitespace-nowrap" />
-                                <AppCheckbox label="Show in opportunities" checked={typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it)} onChange={(checked)=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), show_in_opportunity: checked } } }))} className="whitespace-nowrap" />
-                                <AppCheckbox label="Allow edit proposal/estimate" checked={!!e.meta?.allow_edit_proposal} onChange={(checked)=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), allow_edit_proposal: checked } } }))} />
-                                <AppCheckbox label="Sets start date" checked={!!e.meta?.sets_start_date} onChange={(checked)=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), sets_start_date: checked } } }))} />
-                                <AppCheckbox label="Sets end date" checked={!!e.meta?.sets_end_date} onChange={(checked)=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), sets_end_date: checked } } }))} />
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <AppInput className="w-40" placeholder="Value" value={e.value||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
-                        )}
-                        {/* sort index is now auto-assigned and not user-editable */}
-                      </div>
-                      <div className={uiLayout.actionsRow}>
-                        <AppButton onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isTermsTemplates){ url += `&description=${encodeURIComponent(e.meta?.description||'')}`; } else if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isMatrixSlotsList){ url += `&value=${encodeURIComponent((e.value||'').trim())}&cell_kind=${encodeURIComponent(String(e.meta?.cell_kind || 'text'))}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; const sip = typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it); const sio = typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it); url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; url += `&show_in_project=${sip ? 'true' : 'false'}&show_in_opportunity=${sio ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }}>Save</AppButton>
-                        <AppButton variant="danger" onClick={async()=>{ if(!(await confirm({ title: 'Delete item?', description: 'This action cannot be undone.' }))) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }}>Delete</AppButton>
-                      </div>
-                    </div>
-                  );
-                }) : <AppEmptyState title="No items" className="border-0 bg-transparent shadow-none" />}
-              </div>
-            </>
-          )}
-          </div>
-        </div>
-      </div>
-      </AppCard>
-      )}
+      {section === 'lists' && <SettingsLookupListsPanel />}
 
       {section === 'files' && (
         <AppCard
@@ -1012,6 +722,22 @@ function PermissionTemplatesSection() {
           description: 'Equipment and corporate cards.',
           permissions: filterCompanyAssetsAreaPermissions(cat.permissions || []),
         });
+      } else if (cat.name === 'documents') {
+        processed.push({
+          ...cat,
+          id: 'documents',
+          name: 'documents',
+          label: 'Company Files',
+          description: 'Company files library — view, upload, move, and delete.',
+          permissions: filterDocumentsAreaPermissions(cat.permissions || []),
+        });
+      } else if (cat.name === 'training') {
+        processed.push({
+          ...cat,
+          label: 'Training & Learning',
+          description: 'Organization training dashboard and LMS administration.',
+          permissions: filterTrainingAreaPermissions(cat.permissions || []),
+        });
       } else if (cat.name === 'work_orders' || cat.name === 'inspections') {
         // Legacy categories — superseded by fleet:* keys in UI
       } else {
@@ -1114,7 +840,16 @@ function PermissionTemplatesSection() {
   const getEdit = (t: PermTemplate) => {
     const e = edits[t.id];
     if (e) return e;
-    return { name: t.name, selectedKeys: new Set(t.permission_keys || []) };
+    return {
+      name: t.name,
+      selectedKeys: syncTrainingAccessInKeySet(syncHrAccessInKeySet(
+        syncDocumentsAccessInKeySet(
+          syncFleetAccessInKeySet(
+            syncCompanyAssetsAccessInKeySet(new Set(t.permission_keys || [])),
+          ),
+        ),
+      )),
+    };
   };
 
   // Same layout as UserInfo permissions: expandable sections with chevron, VIEW/EDIT columns, same classes
@@ -1134,6 +869,11 @@ function PermissionTemplatesSection() {
     const handlePermToggle = (key: string) => {
       let next = toggleKey(key, selectedKeys);
       if (!next.has(key)) next = applyCascadeUncheck(key, next);
+      next = syncCompanyAssetsAccessInKeySet(next);
+      next = syncDocumentsAccessInKeySet(next);
+      next = syncFleetAccessInKeySet(next);
+      next = syncHrAccessInKeySet(next);
+      next = syncTrainingAccessInKeySet(next);
       onChange(next);
     };
     const permRow = (perm: PermDefItem, indent = false) => {
@@ -1391,12 +1131,27 @@ function PermissionTemplatesSection() {
                           onWriteOnlyChange={(key, level: HrAccessLevel) => {
                             onChange(applyHrWriteOnlyToKeySet(selectedKeys, key, level));
                           }}
-                          accessPerm={areaAccessPerm}
-                          onAccessToggle={
-                            !disabled && areaAccessPerm
-                              ? () => handlePermToggle(areaAccessPerm.key)
-                              : undefined
-                          }
+                        />
+                      );
+                    })()
+                  ) : cat.name === 'training' ? (
+                    (() => {
+                      const permRecord = Object.fromEntries([...selectedKeys].map((k) => [k, true]));
+                      return (
+                        <TrainingPermissionsPanel
+                          areaPerms={subPermissions}
+                          permissions={permRecord}
+                          canEdit={!disabled}
+                          onAccessLevelChange={(readKey, writeKey, level: TrainingAccessLevel) => {
+                            onChange(
+                              applyTrainingAccessLevelToKeySet(
+                                selectedKeys,
+                                readKey,
+                                writeKey,
+                                level,
+                              ),
+                            );
+                          }}
                         />
                       );
                     })()
@@ -1423,15 +1178,6 @@ function PermissionTemplatesSection() {
                           onAssignChange={(level: FleetAccessLevel) => {
                             onChange(applyFleetAssignToKeySet(selectedKeys, level));
                           }}
-                          showAccessToggle={!!areaAccessPerm}
-                          accessChecked={selectedKeys.has(FLEET_ACCESS)}
-                          onAccessToggle={
-                            !disabled && areaAccessPerm
-                              ? () => handlePermToggle(areaAccessPerm.key)
-                              : undefined
-                          }
-                          accessLabel={areaAccessPerm?.label}
-                          accessDescription={areaAccessPerm?.description}
                         />
                       );
                     })()
@@ -1455,12 +1201,29 @@ function PermissionTemplatesSection() {
                               )
                             );
                           }}
-                          accessPerm={areaAccessPerm}
-                          onAccessToggle={
-                            !disabled && areaAccessPerm
-                              ? () => handlePermToggle(areaAccessPerm.key)
-                              : undefined
-                          }
+                        />
+                      );
+                    })()
+                  ) : cat.name === 'documents' ? (
+                    (() => {
+                      const allKeys = (cat.permissions || []).map((p) => p.key);
+                      const permRecord = Object.fromEntries([...selectedKeys].map((k) => [k, true]));
+                      return (
+                        <DocumentsPermissionsPanel
+                          areaPerms={subPermissions}
+                          permissions={permRecord}
+                          canEdit={!disabled}
+                          onAccessLevelChange={(readKey, writeKey, level: DocumentsAccessLevel) => {
+                            onChange(
+                              applyDocumentsAccessLevelToKeySet(
+                                selectedKeys,
+                                allKeys,
+                                readKey,
+                                writeKey,
+                                level
+                              )
+                            );
+                          }}
                         />
                       );
                     })()

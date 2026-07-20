@@ -92,7 +92,7 @@ export function ProjectLinePermissionsGrid({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="ml-auto h-7 w-7 shrink-0 p-0 text-gray-500 hover:text-gray-800"
+                      className="ml-auto h-10 w-10 shrink-0 p-0 text-gray-600 hover:text-gray-900"
                       title={
                         row.kind === 'pair' && row.configKind?.includes('files')
                           ? 'Configure file category access (view / edit per category)'
@@ -100,7 +100,7 @@ export function ProjectLinePermissionsGrid({
                       }
                       onClick={() => onGearClick(row)}
                     >
-                      <Settings className="h-3.5 w-3.5" aria-hidden />
+                      <Settings className="h-6 w-6" aria-hidden strokeWidth={2.25} />
                     </AppButton>
                   ) : null}
                 </div>

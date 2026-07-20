@@ -50,10 +50,28 @@ from ..services.task_service import get_user_display
 from ..utils.pdf_hash import sha256_bytes
 
 
-def _admin(user: User) -> bool:
-    if any(r.name == "admin" for r in user.roles):
+def _can_read_onboarding_admin(user: User) -> bool:
+    if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
         return True
-    return _has_permission(user, "hr:users:read") or _has_permission(user, "users:read") or _has_permission(user, "users:write")
+    return (
+        _has_permission(user, "hr:onboarding:read")
+        or _has_permission(user, "hr:onboarding:write")
+        # Legacy fallback until roles are re-granted after seed
+        or _has_permission(user, "hr:users:read")
+        or _has_permission(user, "users:read")
+        or _has_permission(user, "users:write")
+    )
+
+
+def _can_write_onboarding_admin(user: User) -> bool:
+    if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
+        return True
+    return (
+        _has_permission(user, "hr:onboarding:write")
+        # Legacy fallback until roles are re-granted after seed
+        or _has_permission(user, "hr:users:write")
+        or _has_permission(user, "users:write")
+    )
 
 
 def _client_ip(request: Request) -> str:
@@ -202,7 +220,7 @@ def _apply_base_document_preferences(bd: OnboardingBaseDocument, payload: dict) 
 
 @router.get("/settings")
 def get_onboarding_settings(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_read_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     pkg = get_or_create_system_package(db)
     return {"document_delivery_enabled": bool(getattr(pkg, "document_delivery_enabled", True))}
@@ -210,7 +228,7 @@ def get_onboarding_settings(db: Session = Depends(get_db), user: User = Depends(
 
 @router.patch("/settings")
 def patch_onboarding_settings(payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     if "document_delivery_enabled" not in payload:
         raise HTTPException(400, "document_delivery_enabled required")
@@ -222,7 +240,7 @@ def patch_onboarding_settings(payload: dict, db: Session = Depends(get_db), user
 
 @router.get("/base-documents")
 def list_base_documents(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_read_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     rows = (
         db.query(OnboardingBaseDocument)
@@ -240,7 +258,7 @@ def thumbnail_base_document(
     user: User = Depends(get_current_user),
 ):
     """PNG thumbnail of first PDF page (admin)."""
-    if not _admin(user):
+    if not _can_read_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     bd = db.query(OnboardingBaseDocument).filter(OnboardingBaseDocument.id == doc_id).first()
     if not bd:
@@ -277,7 +295,7 @@ def thumbnail_base_document(
 @router.get("/base-documents/{doc_id}/preview")
 def preview_base_document(doc_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Return base PDF for admin preview (inline in browser)."""
-    if not _admin(user):
+    if not _can_read_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     bd = db.query(OnboardingBaseDocument).filter(OnboardingBaseDocument.id == doc_id).first()
     if not bd:
@@ -302,7 +320,7 @@ def create_base_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     name = (payload.get("name") or "").strip()
     if not name:
@@ -339,7 +357,7 @@ def update_base_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     bd = db.query(OnboardingBaseDocument).filter(OnboardingBaseDocument.id == doc_id).first()
     if not bd:
@@ -396,7 +414,7 @@ def update_base_document(
 
 @router.delete("/base-documents/{doc_id}")
 def delete_base_document(doc_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     bd = db.query(OnboardingBaseDocument).filter(OnboardingBaseDocument.id == doc_id).first()
     if not bd:
@@ -418,7 +436,7 @@ def delete_base_document(doc_id: UUID, db: Session = Depends(get_db), user: User
 
 @router.get("/packages")
 def list_packages(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_read_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     rows = db.query(OnboardingPackage).order_by(OnboardingPackage.name.asc()).all()
     return [
@@ -434,7 +452,7 @@ def list_packages(db: Session = Depends(get_db), user: User = Depends(get_curren
 
 @router.post("/packages")
 def create_package(payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     p = OnboardingPackage(
         name=(payload.get("name") or "Package").strip(),
@@ -449,7 +467,7 @@ def create_package(payload: dict, db: Session = Depends(get_db), user: User = De
 
 @router.put("/packages/{pkg_id}")
 def update_package(pkg_id: UUID, payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     p = db.query(OnboardingPackage).filter(OnboardingPackage.id == pkg_id).first()
     if not p:
@@ -466,7 +484,7 @@ def update_package(pkg_id: UUID, payload: dict, db: Session = Depends(get_db), u
 
 @router.delete("/packages/{pkg_id}")
 def delete_package(pkg_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     p = db.query(OnboardingPackage).filter(OnboardingPackage.id == pkg_id).first()
     if not p:
@@ -483,7 +501,7 @@ def delete_package(pkg_id: UUID, db: Session = Depends(get_db), user: User = Dep
 
 @router.get("/packages/{pkg_id}/items")
 def list_package_items(pkg_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_read_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     rows = (
         db.query(OnboardingPackageItem)
@@ -591,7 +609,7 @@ def _apply_package_item_fields(it: OnboardingPackageItem, payload: dict, partial
 
 @router.post("/packages/{pkg_id}/items")
 def add_package_item(pkg_id: UUID, payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     if not db.query(OnboardingPackage).filter(OnboardingPackage.id == pkg_id).first():
         raise HTTPException(404, "Package not found")
@@ -619,7 +637,7 @@ def add_package_item(pkg_id: UUID, payload: dict, db: Session = Depends(get_db),
 
 @router.put("/package-items/{item_id}")
 def update_package_item(item_id: UUID, payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     it = db.query(OnboardingPackageItem).filter(OnboardingPackageItem.id == item_id).first()
     if not it:
@@ -631,7 +649,7 @@ def update_package_item(item_id: UUID, payload: dict, db: Session = Depends(get_
 
 @router.delete("/package-items/{item_id}")
 def delete_package_item(item_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     it = db.query(OnboardingPackageItem).filter(OnboardingPackageItem.id == item_id).first()
     if not it:
@@ -643,7 +661,7 @@ def delete_package_item(item_id: UUID, db: Session = Depends(get_db), user: User
 
 @router.post("/base-documents/{doc_id}/resend")
 def resend_document(doc_id: UUID, payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     uids = [UUID(str(x)) for x in (payload.get("user_ids") or [])]
     if not uids:
@@ -660,7 +678,7 @@ def list_assignments(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not _admin(user):
+    if not _can_read_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     q = db.query(OnboardingAssignment)
     if user_id:
@@ -697,7 +715,7 @@ def cancel_assignment_pending(
     user: User = Depends(get_current_user),
 ):
     """Remove all pending/scheduled onboarding items for this assignment (admin monitoring)."""
-    if not _admin(user):
+    if not _can_write_onboarding_admin(user):
         raise HTTPException(403, "Forbidden")
     a = db.query(OnboardingAssignment).filter(OnboardingAssignment.id == assignment_id).first()
     if not a:

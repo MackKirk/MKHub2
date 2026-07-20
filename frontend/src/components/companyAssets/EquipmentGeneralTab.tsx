@@ -57,10 +57,17 @@ type Props = {
   equipment: Equipment;
   openAssignment: OpenAssignment | undefined;
   employeeName?: string;
+  canEdit?: boolean;
   onEditSection: (section: EquipmentGeneralEditSection) => void;
 };
 
-export function EquipmentGeneralTab({ equipment, openAssignment, employeeName, onEditSection }: Props) {
+export function EquipmentGeneralTab({
+  equipment,
+  openAssignment,
+  employeeName,
+  canEdit = true,
+  onEditSection,
+}: Props) {
   const categoryLabel = equipment.category?.replace(/_/g, ' ') || EM_DASH;
 
   return (
@@ -70,7 +77,11 @@ export function EquipmentGeneralTab({ equipment, openAssignment, employeeName, o
           title="Basic Information"
           description="Identity, identification, and operational status."
           {...appSectionPresetProps('basicInformation')}
-          action={<AppHeroEditButton title="Edit Basic Information" onClick={() => onEditSection('basic')} />}
+          action={
+            canEdit ? (
+              <AppHeroEditButton title="Edit Basic Information" onClick={() => onEditSection('basic')} />
+            ) : undefined
+          }
         />
         <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
           <ReadOnlyField label="Name" value={equipment.name} />
@@ -97,7 +108,11 @@ export function EquipmentGeneralTab({ equipment, openAssignment, employeeName, o
           title="Assignment & Dates"
           description="Current assignment, warranty, and purchase information."
           {...appSectionPresetProps('employment')}
-          action={<AppHeroEditButton title="Edit Assignment & Dates" onClick={() => onEditSection('dates')} />}
+          action={
+            canEdit ? (
+              <AppHeroEditButton title="Edit Assignment & Dates" onClick={() => onEditSection('dates')} />
+            ) : undefined
+          }
         />
         <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
           <div className="space-y-1">
@@ -134,7 +149,9 @@ export function EquipmentGeneralTab({ equipment, openAssignment, employeeName, o
           title="Notes & Photos"
           description="Internal notes and additional photos for this equipment."
           {...appSectionPresetProps('description')}
-          action={<AppHeroEditButton title="Edit Notes" onClick={() => onEditSection('notes')} />}
+          action={
+            canEdit ? <AppHeroEditButton title="Edit Notes" onClick={() => onEditSection('notes')} /> : undefined
+          }
         />
         <div className={uiSpacing.sectionStack}>
           <div className={uiCx(uiTypography.helper, 'mt-4 whitespace-pre-wrap break-words font-medium text-gray-900')}>

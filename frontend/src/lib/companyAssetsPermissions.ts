@@ -7,6 +7,59 @@ export const EQUIPMENT_MAIN_WRITE = 'fleet:equipment:write';
 export const CORPORATE_CARDS_READ = 'company_cards:read';
 export const CORPORATE_CARDS_WRITE = 'company_cards:write';
 
+export const EQUIPMENT_TABS = ['general', 'work_orders', 'history'] as const;
+export type EquipmentTab = (typeof EQUIPMENT_TABS)[number];
+
+function hasPerm(permissions: Set<string>, key: string): boolean {
+  return permissions.has(key);
+}
+
+/** List equipment and open equipment records. */
+export function canAccessEquipmentList(isAdmin: boolean, permissions: Set<string>): boolean {
+  if (isAdmin) return true;
+  return hasPerm(permissions, EQUIPMENT_MAIN_READ) || hasPerm(permissions, EQUIPMENT_MAIN_WRITE);
+}
+
+/** Create/delete equipment (`Edit` on Equipment). */
+export function canEditEquipmentRecord(isAdmin: boolean, permissions: Set<string>): boolean {
+  if (isAdmin) return true;
+  return hasPerm(permissions, EQUIPMENT_MAIN_WRITE);
+}
+
+/** Tab visibility — strict tab view/write only. */
+export function canViewEquipmentTab(
+  isAdmin: boolean,
+  permissions: Set<string>,
+  tab: EquipmentTab,
+): boolean {
+  if (isAdmin) return true;
+  const readKey = `fleet:equipment:${tab}:read`;
+  const writeKey = `fleet:equipment:${tab}:write`;
+  return hasPerm(permissions, readKey) || hasPerm(permissions, writeKey);
+}
+
+/** Tab edit — strict write key (history has no write). */
+export function canEditEquipmentTab(
+  isAdmin: boolean,
+  permissions: Set<string>,
+  tab: Exclude<EquipmentTab, 'history'>,
+): boolean {
+  if (isAdmin) return true;
+  return hasPerm(permissions, `fleet:equipment:${tab}:write`);
+}
+
+/** List corporate cards and open card records. */
+export function canAccessCorporateCardsList(isAdmin: boolean, permissions: Set<string>): boolean {
+  if (isAdmin) return true;
+  return hasPerm(permissions, CORPORATE_CARDS_READ) || hasPerm(permissions, CORPORATE_CARDS_WRITE);
+}
+
+/** Create/edit/assign corporate cards (`Edit` on Corporate Cards). */
+export function canEditCorporateCards(isAdmin: boolean, permissions: Set<string>): boolean {
+  if (isAdmin) return true;
+  return hasPerm(permissions, CORPORATE_CARDS_WRITE);
+}
+
 const equipmentScoped = createScopedEntityPermissions('fleet:equipment', {
   mainRead: EQUIPMENT_MAIN_READ,
   mainWrite: EQUIPMENT_MAIN_WRITE,
@@ -78,17 +131,44 @@ export function applyCompanyAssetsAccessLevelToKeySet(
     if (next[k]) out.add(k);
     else out.delete(k);
   });
-  if (level !== 'blocked') {
-    out.add(COMPANY_ASSETS_ACCESS);
+  return syncCompanyAssetsAccessInKeySet(out);
+}
+
+/** True when any Equipment or Corporate Cards permission is granted. */
+export function hasAnyCompanyAssetsChildPermission(
+  permissions: Record<string, boolean> | Set<string>,
+): boolean {
+  const has = (key: string) =>
+    permissions instanceof Set ? permissions.has(key) : !!permissions[key];
+  if (permissions instanceof Set) {
+    for (const k of permissions) {
+      if (k.startsWith('fleet:equipment:') || k.startsWith('company_cards:')) return true;
+    }
+    return false;
   }
+  return Object.keys(permissions).some(
+    (k) => (k.startsWith('fleet:equipment:') || k.startsWith('company_cards:')) && has(k),
+  );
+}
+
+/** Keep `company_assets:access` in sync with child Equipment/Cards grants (implicit area gate). */
+export function syncCompanyAssetsAccess(
+  permissions: Record<string, boolean>,
+): Record<string, boolean> {
+  const next = { ...permissions };
+  next[COMPANY_ASSETS_ACCESS] = hasAnyCompanyAssetsChildPermission(next);
+  return next;
+}
+
+export function syncCompanyAssetsAccessInKeySet(selectedKeys: Set<string>): Set<string> {
+  const out = new Set(selectedKeys);
+  if (hasAnyCompanyAssetsChildPermission(out)) out.add(COMPANY_ASSETS_ACCESS);
+  else out.delete(COMPANY_ASSETS_ACCESS);
   return out;
 }
 
 export function filterCompanyAssetsAreaPermissions(areaPerms: { key: string }[]): { key: string }[] {
   return areaPerms.filter(
-    (p) =>
-      p.key === COMPANY_ASSETS_ACCESS ||
-      p.key.startsWith('fleet:equipment:') ||
-      p.key.startsWith('company_cards:'),
+    (p) => p.key.startsWith('fleet:equipment:') || p.key.startsWith('company_cards:'),
   );
 }

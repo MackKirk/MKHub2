@@ -12,12 +12,28 @@ export const HR_USERS_READ = 'hr:users:read';
 export const HR_USERS_WRITE = 'hr:users:write';
 export const HR_USERS_VIEW_GENERAL = 'hr:users:view:general';
 export const HR_USERS_EDIT_GENERAL = 'hr:users:edit:general';
+export const HR_USERS_VIEW_JOB = 'hr:users:view:job';
+export const HR_USERS_EDIT_JOB = 'hr:users:edit:job';
 export const HR_USERS_VIEW_JOB_COMP = 'hr:users:view:job:compensation';
+export const HR_USERS_VIEW_DOCS = 'hr:users:view:docs';
+export const HR_USERS_EDIT_DOCS = 'hr:users:edit:docs';
 export const HR_USERS_VIEW_TIMESHEET = 'hr:users:view:timesheet';
 export const HR_USERS_EDIT_TIMESHEET = 'hr:users:edit:timesheet';
+export const HR_USERS_VIEW_LOANS = 'hr:users:view:loans';
+export const HR_USERS_EDIT_LOANS = 'hr:users:edit:loans';
+export const HR_USERS_VIEW_TRAINING = 'hr:users:view:training';
+export const HR_USERS_EDIT_TRAINING = 'hr:users:edit:training';
+export const HR_USERS_VIEW_ASSETS = 'hr:users:view:assets';
+export const HR_USERS_EDIT_ASSETS = 'hr:users:edit:assets';
+export const HR_USERS_VIEW_REPORTS = 'hr:users:view:reports';
+export const HR_USERS_EDIT_REPORTS = 'hr:users:edit:reports';
 export const HR_USERS_VIEW_PERMISSIONS = 'hr:users:view:permissions';
 export const HR_USERS_EDIT_PERMISSIONS = 'hr:users:edit:permissions';
 export const HR_USERS_VIEW_ACTIVITY = 'hr:users:view:activity';
+
+export const HR_PENDING_READ = 'hr:pending:read';
+export const HR_ONBOARDING_READ = 'hr:onboarding:read';
+export const HR_ONBOARDING_WRITE = 'hr:onboarding:write';
 
 export const HR_OFFBOARDING_READ = 'hr:offboarding:read';
 export const HR_OFFBOARDING_WRITE = 'hr:offboarding:write';
@@ -66,11 +82,29 @@ export function buildHrUsersPermissionRows(areaPerms: PermDef[]): ScopedPermissi
   const general = readWriteRow(areaPerms, HR_USERS_VIEW_GENERAL, HR_USERS_EDIT_GENERAL);
   if (general) rows.push(general);
 
+  const job = readWriteRow(areaPerms, HR_USERS_VIEW_JOB, HR_USERS_EDIT_JOB);
+  if (job) rows.push(job);
+
   const jobComp = readWriteRow(areaPerms, HR_USERS_VIEW_JOB_COMP, undefined, { indent: true });
   if (jobComp) rows.push(jobComp);
 
+  const docs = readWriteRow(areaPerms, HR_USERS_VIEW_DOCS, HR_USERS_EDIT_DOCS);
+  if (docs) rows.push(docs);
+
   const timesheet = readWriteRow(areaPerms, HR_USERS_VIEW_TIMESHEET, HR_USERS_EDIT_TIMESHEET);
   if (timesheet) rows.push(timesheet);
+
+  const loans = readWriteRow(areaPerms, HR_USERS_VIEW_LOANS, HR_USERS_EDIT_LOANS);
+  if (loans) rows.push(loans);
+
+  const training = readWriteRow(areaPerms, HR_USERS_VIEW_TRAINING, HR_USERS_EDIT_TRAINING);
+  if (training) rows.push(training);
+
+  const assets = readWriteRow(areaPerms, HR_USERS_VIEW_ASSETS, HR_USERS_EDIT_ASSETS);
+  if (assets) rows.push(assets);
+
+  const reports = readWriteRow(areaPerms, HR_USERS_VIEW_REPORTS, HR_USERS_EDIT_REPORTS);
+  if (reports) rows.push(reports);
 
   const permissions = readWriteRow(areaPerms, HR_USERS_VIEW_PERMISSIONS, HR_USERS_EDIT_PERMISSIONS);
   if (permissions) rows.push(permissions);
@@ -79,6 +113,16 @@ export function buildHrUsersPermissionRows(areaPerms: PermDef[]): ScopedPermissi
   if (activity) rows.push(activity);
 
   return rows;
+}
+
+export function buildHrPendingPermissionRows(areaPerms: PermDef[]): ScopedPermissionRow[] {
+  const row = readWriteRow(areaPerms, HR_PENDING_READ, undefined);
+  return row ? [row] : [];
+}
+
+export function buildHrOnboardingPermissionRows(areaPerms: PermDef[]): ScopedPermissionRow[] {
+  const row = readWriteRow(areaPerms, HR_ONBOARDING_READ, HR_ONBOARDING_WRITE);
+  return row ? [row] : [];
 }
 
 export function buildHrOffboardingPermissionRows(areaPerms: PermDef[]): ScopedPermissionRow[] {
@@ -116,11 +160,32 @@ export function getHrWriteOnlyLevel(
   return permissions[key] ? 'edit' : 'blocked';
 }
 
-function ensureHrAccess(next: Record<string, boolean>): Record<string, boolean> {
-  if (Object.keys(next).some((k) => k.startsWith('hr:') && k !== HR_ACCESS && next[k])) {
-    next[HR_ACCESS] = true;
+function hasAnyHrChildPermission(permissions: Record<string, boolean> | Set<string>): boolean {
+  if (permissions instanceof Set) {
+    for (const k of permissions) {
+      if (k.startsWith('hr:') && k !== HR_ACCESS) return true;
+    }
+    return false;
   }
+  return Object.keys(permissions).some((k) => k.startsWith('hr:') && k !== HR_ACCESS && !!permissions[k]);
+}
+
+/** Keep `hr:access` in sync with child HR grants (implicit area gate). */
+export function syncHrAccess(permissions: Record<string, boolean>): Record<string, boolean> {
+  const next = { ...permissions };
+  next[HR_ACCESS] = hasAnyHrChildPermission(next);
   return next;
+}
+
+export function syncHrAccessInKeySet(selectedKeys: Set<string>): Set<string> {
+  const out = new Set(selectedKeys);
+  if (hasAnyHrChildPermission(out)) out.add(HR_ACCESS);
+  else out.delete(HR_ACCESS);
+  return out;
+}
+
+function ensureHrAccess(next: Record<string, boolean>): Record<string, boolean> {
+  return syncHrAccess(next);
 }
 
 function ensureUsersListForTab(next: Record<string, boolean>, readKey: string): Record<string, boolean> {
@@ -130,9 +195,9 @@ function ensureUsersListForTab(next: Record<string, boolean>, readKey: string): 
   return next;
 }
 
-function ensureGeneralForJobComp(next: Record<string, boolean>, readKey: string, level: HrAccessLevel): Record<string, boolean> {
+function ensureJobForJobComp(next: Record<string, boolean>, readKey: string, level: HrAccessLevel): Record<string, boolean> {
   if (readKey === HR_USERS_VIEW_JOB_COMP && level !== 'blocked') {
-    next[HR_USERS_VIEW_GENERAL] = true;
+    next[HR_USERS_VIEW_JOB] = true;
     next[HR_USERS_READ] = true;
   }
   return next;
@@ -150,16 +215,16 @@ export function applyHrAccessLevel(
     next[readKey] = false;
     if (writeKey) next[writeKey] = false;
     if (readKey === HR_USERS_READ) {
-      return applyPermissionUncheckCascade(HR_USERS_READ, next);
+      return syncHrAccess(applyPermissionUncheckCascade(HR_USERS_READ, next));
     }
     if (readKey.endsWith(':read') || readKey.includes(':view:')) {
-      return applyPermissionUncheckCascade(readKey, next);
+      return syncHrAccess(applyPermissionUncheckCascade(readKey, next));
     }
-    return next;
+    return syncHrAccess(next);
   }
 
   ensureUsersListForTab(next, readKey);
-  ensureGeneralForJobComp(next, readKey, level);
+  ensureJobForJobComp(next, readKey, level);
 
   if (level === 'view') {
     next[readKey] = true;
@@ -202,8 +267,9 @@ export function applyHrAccessLevelToKeySet(
     else out.delete(k);
   });
   if (next[HR_ACCESS]) out.add(HR_ACCESS);
+  else out.delete(HR_ACCESS);
   if (next[HR_USERS_READ]) out.add(HR_USERS_READ);
-  return out;
+  return syncHrAccessInKeySet(out);
 }
 
 export function applyHrWriteOnlyToKeySet(
@@ -220,10 +286,11 @@ export function applyHrWriteOnlyToKeySet(
   if (next[key]) out.add(key);
   else out.delete(key);
   if (next[HR_ACCESS]) out.add(HR_ACCESS);
+  else out.delete(HR_ACCESS);
   if (next[HR_TIMESHEET_READ]) out.add(HR_TIMESHEET_READ);
-  return out;
+  return syncHrAccessInKeySet(out);
 }
 
 export function filterHrAreaPermissions(areaPerms: { key: string }[]): { key: string }[] {
-  return areaPerms.filter((p) => p.key === HR_ACCESS || p.key.startsWith('hr:'));
+  return areaPerms.filter((p) => p.key.startsWith('hr:') && p.key !== HR_ACCESS);
 }

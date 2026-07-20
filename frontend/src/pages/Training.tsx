@@ -41,6 +41,7 @@ function canViewTrainingDashboard(me: { roles?: string[]; permissions?: string[]
   const perms = me.permissions || [];
   return (
     roles.includes('admin') ||
+    perms.includes('training:dashboard:read') ||
     perms.includes('training:manage') ||
     perms.includes('users:write') ||
     perms.includes('users:read') ||

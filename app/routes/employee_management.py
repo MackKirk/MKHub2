@@ -30,7 +30,7 @@ router = APIRouter(prefix="/employees", tags=["employee-management"])
 def get_user_divisions(
     user_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:job", "hr:users:view:general"))
 ):
     """Get all divisions for a user"""
     from sqlalchemy.orm import joinedload
@@ -47,7 +47,7 @@ def update_user_divisions(
     user_id: str,
     division_ids: List[str],
     db: Session = Depends(get_db),
-    actor: User = Depends(require_permissions("users:write")),
+    actor: User = Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general")),
 ):
     """Update user divisions (replace existing)"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -80,7 +80,7 @@ def update_user_project_divisions(
     user_id: str,
     project_division_ids: List[str] = Body(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general"))
 ):
     """Update user project divisions (replace existing)"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -115,7 +115,7 @@ def update_user_project_divisions(
 def get_salary_history(
     user_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:job", "hr:users:view:job:compensation", "hr:users:view:general"))
 ):
     """Get salary history for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -161,7 +161,7 @@ def create_salary_history(
     user_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general"))
 ):
     """Create a new salary history entry"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -216,7 +216,7 @@ def create_salary_history(
 def get_loans_summary(
     user_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:loans", "hr:users:view:general"))
 ):
     """Get loans summary for a user (total loaned, total paid, total outstanding)"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -241,7 +241,7 @@ def get_user_loans(
     user_id: str,
     status: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:loans", "hr:users:view:general"))
 ):
     """Get all loans for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -294,7 +294,7 @@ def get_loan_details(
     user_id: str,
     loan_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:loans", "hr:users:view:general"))
 ):
     """Get loan details with payments"""
     loan = db.query(EmployeeLoan).filter(
@@ -363,7 +363,7 @@ def create_loan(
     user_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write", "hr:users:edit:loans", "hr:users:edit:general"))
 ):
     """Create a new loan for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -413,7 +413,7 @@ def create_loan_payment(
     loan_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write", "hr:users:edit:loans", "hr:users:edit:general"))
 ):
     """Create a payment for a loan"""
     loan = db.query(EmployeeLoan).filter(
@@ -477,7 +477,7 @@ def close_loan(
     user_id: str,
     loan_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write", "hr:users:edit:loans", "hr:users:edit:general"))
 ):
     """Close a loan (mark as closed)"""
     loan = db.query(EmployeeLoan).filter(
@@ -505,7 +505,7 @@ def update_loan(
     loan_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write", "hr:users:edit:loans", "hr:users:edit:general"))
 ):
     """Update a loan (e.g., status, notes, etc.)"""
     loan = db.query(EmployeeLoan).filter(
@@ -549,7 +549,7 @@ def get_user_notices(
     user_id: str,
     notice_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:reports", "hr:users:view:general"))
 ):
     """Get all notices for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -663,7 +663,7 @@ def get_user_fines_tickets(
     status: Optional[str] = Query(None),
     type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:reports", "hr:users:view:general"))
 ):
     """Get all fines and tickets for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -1301,7 +1301,7 @@ def get_time_off_balance(
     year: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:job", "hr:users:view:general"))
 ):
     """Get time off balance for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -1337,7 +1337,7 @@ def sync_time_off_balance(
     user_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general"))
 ):
     """Sync time off balance from BambooHR"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -1498,7 +1498,7 @@ def adjust_time_off_balance(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general"))
 ):
     """Manually adjust time off balance for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -1616,7 +1616,7 @@ def get_time_off_requests(
     status: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:job", "hr:users:view:general"))
 ):
     """Get time off requests for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -1654,7 +1654,7 @@ def create_time_off_request(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:write", "hr:users:write"))
+    _=Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general", "users:write"))
 ):
     """Create a new time off request"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -1745,7 +1745,7 @@ def update_time_off_request(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general"))
 ):
     """Update time off request (approve/reject/cancel)"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -1803,7 +1803,7 @@ def get_time_off_history(
     year: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:job", "hr:users:view:general"))
 ):
     """Get time off history/transactions for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -2147,7 +2147,7 @@ def sync_time_off_history(
     policy_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general"))
 ):
     """Sync time off history from BambooHR"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -2735,7 +2735,7 @@ def get_user_reports(
     end_date: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:reports", "hr:users:view:general"))
 ):
     """Get all reports for a user with optional filters"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -2816,7 +2816,7 @@ def get_report_details(
     user_id: str,
     report_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:reports", "hr:users:view:general"))
 ):
     """Get detailed information about a specific report"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -2909,7 +2909,7 @@ def create_report(
     user_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write", "hr:users:edit:reports", "hr:users:edit:general"))
 ):
     """Create a new report for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -2979,7 +2979,7 @@ def update_report(
     report_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write", "hr:users:edit:reports", "hr:users:edit:general"))
 ):
     """Update a report"""
     report = db.query(EmployeeReport).filter(
@@ -3104,7 +3104,7 @@ def delete_report(
     user_id: str,
     report_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write", "hr:users:write")),
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write", "hr:users:edit:reports", "hr:users:edit:general")),
 ):
     """Delete a report and its attachments/comments (cascade)."""
     report = db.query(EmployeeReport).filter(
@@ -3124,7 +3124,7 @@ def add_report_comment(
     report_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write", "hr:users:edit:reports", "hr:users:edit:general"))
 ):
     """Add a comment to a report timeline"""
     report = db.query(EmployeeReport).filter(
@@ -3172,7 +3172,7 @@ def add_report_attachment(
     report_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write", "hr:users:edit:reports", "hr:users:edit:general"))
 ):
     """Add an attachment to a report"""
     report = db.query(EmployeeReport).filter(
@@ -3220,7 +3220,7 @@ def delete_report_attachment(
     report_id: str,
     attachment_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write", "hr:users:edit:reports", "hr:users:edit:general"))
 ):
     """Delete an attachment from a report"""
     attachment = db.query(ReportAttachment).filter(

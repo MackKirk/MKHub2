@@ -87,6 +87,26 @@ export function hasProjectFeaturePermission(
   );
 }
 
+function hasLegacyProjectFeaturePermission(
+  permissions: Set<string> | Record<string, boolean>,
+  feature: string,
+  action: 'read' | 'write',
+): boolean {
+  if (feature === 'costs') {
+    const keys =
+      action === 'read'
+        ? [
+            'business:projects:costs:read',
+            'business:projects:costs:write',
+            'business:projects:estimate:read',
+            'business:projects:estimate:write',
+          ]
+        : ['business:projects:costs:write', 'business:projects:estimate:write'];
+    return keys.some((k) => hasPerm(permissions, k));
+  }
+  return hasPerm(permissions, `business:projects:${feature}:${action}`);
+}
+
 export function hasProjectFeatureReadPermission(
   permissions: Set<string> | Record<string, boolean>,
   businessLine: string | undefined | null,
@@ -96,7 +116,9 @@ export function hasProjectFeatureReadPermission(
 ): boolean {
   if (isAdmin) return true;
   const line = resolveProjectBusinessLine(businessLine, pathname);
-  return hasPerm(permissions, projectFeaturePermKey(line, feature, 'read'));
+  if (hasPerm(permissions, projectFeaturePermKey(line, feature, 'read'))) return true;
+  if (hasPerm(permissions, projectFeaturePermKey(line, feature, 'write'))) return true;
+  return hasLegacyProjectFeaturePermission(permissions, feature, 'read');
 }
 
 /** Manage Project Members (write-only, line-scoped). */
@@ -121,7 +143,8 @@ export function hasProjectFeatureWritePermission(
 ): boolean {
   if (isAdmin) return true;
   const line = resolveProjectBusinessLine(businessLine, pathname);
-  return hasPerm(permissions, projectFeaturePermKey(line, feature, 'write'));
+  if (hasPerm(permissions, projectFeaturePermKey(line, feature, 'write'))) return true;
+  return hasLegacyProjectFeaturePermission(permissions, feature, 'write');
 }
 
 /** Legacy shared project permissions (hidden in UI; backend fallback). */
@@ -195,6 +218,7 @@ const LEGACY_PROJECT_SUB_FEATURES = [
   'documents',
   'proposal',
   'estimate',
+  'costs',
   'orders',
   'safety',
 ] as const;
@@ -230,6 +254,7 @@ export function isLegacySharedProjectPermissionKey(key: string): boolean {
     rest.startsWith('documents:') ||
     rest.startsWith('proposal:') ||
     rest.startsWith('estimate:') ||
+    rest.startsWith('costs:') ||
     rest.startsWith('orders:') ||
     rest.startsWith('safety:') ||
     rest === 'members:write'

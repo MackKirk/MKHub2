@@ -103,22 +103,93 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
     app.add_middleware(SlowAPIMiddleware)
 
+    def _extract_user_id_from_request(request: Request) -> "str | None":
+        """Best-effort user id from the request's JWT (Authorization header or ?access_token=).
+
+        Used so permission errors (403) record *who* was denied, even though the
+        failing dependency raised before the endpoint stored the user.
+        """
+        if request is None:
+            return None
+        try:
+            token = None
+            auth = request.headers.get("Authorization") or request.headers.get("authorization")
+            if auth and auth.lower().startswith("bearer "):
+                token = auth.split(" ", 1)[1].strip()
+            if not token:
+                token = (request.query_params.get("access_token") or "").strip() or None
+            if not token:
+                return None
+            import jwt as _jwt
+
+            payload = _jwt.decode(
+                token,
+                settings.jwt_secret,
+                algorithms=[settings.jwt_algorithm],
+                options={"verify_exp": False},
+            )
+            sub = payload.get("sub")
+            if not sub:
+                return None
+            import uuid as _uuid
+
+            return str(_uuid.UUID(str(sub)))
+        except Exception:
+            return None
+
+    def _format_request_error_message(
+        request: Request | None, status_code: int, detail: str
+    ) -> str:
+        """Build a useful log message: reason + METHOD path (never just bare 'Forbidden')."""
+        base = (detail if isinstance(detail, str) else str(detail or "")).strip()
+        if not base:
+            base = f"HTTP {status_code}"
+        method = request.method if request else None
+        path = request.url.path if request else None
+        req_label = " ".join(p for p in (method, path) if p).strip() or None
+        if not req_label:
+            return base
+        # Avoid duplicating path if the exception detail already includes it.
+        if path and path in base:
+            return base
+        if base.lower() in ("forbidden", "error", "unauthorized"):
+            return f"{base} · {req_label}"
+        return f"{base} · {req_label}"
+
     def _log_request_error(request: Request, status_code: int, detail: str, level: str = "warning"):
         try:
             db = SessionLocal()
             try:
                 from .services.system_log import write_system_log
                 request_id = getattr(request.state, "request_id", None) if request else None
+                user_id = _extract_user_id_from_request(request)
+                message = _format_request_error_message(request, status_code, detail)
+                extra = None
+                if request is not None:
+                    qs = str(request.url.query or "")
+                    client_host = getattr(getattr(request, "client", None), "host", None)
+                    extra = {
+                        k: v
+                        for k, v in (
+                            ("query", qs or None),
+                            ("client_ip", client_host),
+                            ("user_agent", request.headers.get("user-agent")),
+                            ("referer", request.headers.get("referer")),
+                        )
+                        if v
+                    } or None
                 write_system_log(
                     db,
                     level=level,
                     category="request_error",
-                    message=detail or f"HTTP {status_code}",
+                    message=message[:500],
                     request_id=request_id,
                     path=request.url.path if request else None,
                     method=request.method if request else None,
+                    user_id=user_id,
                     status_code=status_code,
-                    detail=detail[:500] if detail else None,
+                    detail=(detail[:500] if detail else None),
+                    extra=extra,
                 )
             finally:
                 db.close()

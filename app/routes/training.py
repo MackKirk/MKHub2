@@ -5,12 +5,16 @@ from types import SimpleNamespace
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 
-from fastapi import APIRouter, Depends, HTTPException, Body, Query
+from fastapi import APIRouter, Depends, HTTPException, Body, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from io import BytesIO
 
 from ..db import get_db
-from ..auth.security import get_current_user, require_permissions
+from ..auth.security import (
+    _has_permission,
+    get_current_user,
+    require_permissions as base_require_permissions,
+)
 from ..models.models import (
     TrainingCourse,
     TrainingModule,
@@ -76,6 +80,27 @@ from ..storage.provider import StorageProvider
 from ..storage.local_provider import LocalStorageProvider
 from ..storage.blob_provider import BlobStorageProvider
 from ..config import settings
+def _training_admin_access(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    required = (
+        ("training:admin:read", "training:admin:write", "training:manage", "users:write")
+        if request.method == "GET"
+        else ("training:admin:write", "training:manage", "users:write")
+    )
+    if not any(_has_permission(user, key) for key in required):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return user
+
+
+def require_permissions(*required_permissions: str):
+    """Keep legacy route declarations while splitting Training Admin View/Edit."""
+    if required_permissions == ("training:manage", "users:write"):
+        return _training_admin_access
+    return base_require_permissions(*required_permissions)
+
+
 router = APIRouter(prefix="/training", tags=["training"])
 
 

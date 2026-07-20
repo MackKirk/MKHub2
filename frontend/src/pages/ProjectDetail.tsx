@@ -1104,7 +1104,13 @@ export default function ProjectDetail(){
   );
   const isLeakInvestigation = projectHasLeakInvestigationDivision(proj, projectDivisionsForPicker);
   const hasEditPermission = isAdmin || permissions.has('business:projects:write');
-  const canEditEstimate = isAdmin || permissions.has('business:projects:estimate:write');
+  const canEditEstimate = hasProjectFeatureWritePermission(
+    permissions,
+    projectBusinessLine,
+    'costs',
+    isAdmin,
+    location.pathname
+  );
   const hasAdministratorAccess = isAdmin || permissions.has('users:write');
   const canManageMembers = hasProjectMembersWritePermission(
     permissions,
@@ -1125,7 +1131,7 @@ export default function ProjectDetail(){
       documents: 'documents',
       proposal: 'proposal',
       pricing: 'proposal',
-      estimate: 'estimate',
+      estimate: 'costs',
       orders: 'orders',
       safety: 'safety',
     };

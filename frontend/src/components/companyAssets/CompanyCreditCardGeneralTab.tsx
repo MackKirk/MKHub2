@@ -51,10 +51,11 @@ function ReadOnlyField({ label, value }: { label: ReactNode; value?: ReactNode }
 
 type Props = {
   card: CardRecord;
+  canEdit?: boolean;
   onEditSection: (section: CompanyCreditCardEditSection) => void;
 };
 
-export function CompanyCreditCardGeneralTab({ card, onEditSection }: Props) {
+export function CompanyCreditCardGeneralTab({ card, canEdit = true, onEditSection }: Props) {
   const networkKey = (card.network || 'other').toLowerCase();
 
   return (
@@ -64,7 +65,11 @@ export function CompanyCreditCardGeneralTab({ card, onEditSection }: Props) {
           title="Card record"
           description="Last four digits and expiry only — never store full PAN or CVV."
           {...appSectionPresetProps('basicInformation')}
-          action={<AppHeroEditButton title="Edit card record" onClick={() => onEditSection('card')} />}
+          action={
+            canEdit ? (
+              <AppHeroEditButton title="Edit card record" onClick={() => onEditSection('card')} />
+            ) : undefined
+          }
         />
         <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
           <ReadOnlyField label="Internal label" value={card.label} />
@@ -88,7 +93,11 @@ export function CompanyCreditCardGeneralTab({ card, onEditSection }: Props) {
           title="Notes"
           description="Internal notes for this corporate card."
           {...appSectionPresetProps('description')}
-          action={<AppHeroEditButton title="Edit notes" onClick={() => onEditSection('notes')} />}
+          action={
+            canEdit ? (
+              <AppHeroEditButton title="Edit notes" onClick={() => onEditSection('notes')} />
+            ) : undefined
+          }
         />
         <div className={uiCx(uiTypography.helper, 'mt-4 whitespace-pre-wrap break-words font-medium text-gray-900')}>
           {card.notes?.trim() ? card.notes : EM_DASH}

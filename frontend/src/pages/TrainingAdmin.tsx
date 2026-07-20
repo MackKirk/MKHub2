@@ -47,6 +47,15 @@ function courseStatusVariant(status: string): 'success' | 'neutral' {
 export default function TrainingAdmin() {
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const { data: me } = useQuery<{ roles?: string[]; permissions?: string[] }>({
+    queryKey: ['me'],
+    queryFn: () => api<{ roles?: string[]; permissions?: string[] }>('GET', '/auth/me'),
+  });
+  const canEditAdmin =
+    (me?.roles || []).includes('admin') ||
+    (me?.permissions || []).includes('training:admin:write') ||
+    (me?.permissions || []).includes('training:manage') ||
+    (me?.permissions || []).includes('users:write');
   const { data: courses, isLoading } = useQuery<Course[]>({
     queryKey: ['training-admin-courses', statusFilter],
     queryFn: () =>
@@ -159,12 +168,14 @@ export default function TrainingAdmin() {
         </div>
       ) : courses && courses.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <AppListCreateItem
-            label="Create course"
-            layout="card"
-            className="min-h-[200px]"
-            onClick={() => navigate('/training/admin/new')}
-          />
+          {canEditAdmin ? (
+            <AppListCreateItem
+              label="Create course"
+              layout="card"
+              className="min-h-[200px]"
+              onClick={() => navigate('/training/admin/new')}
+            />
+          ) : null}
           {courses.map((course) => (
             <AppCard
               key={course.id}
@@ -173,7 +184,7 @@ export default function TrainingAdmin() {
                 'group flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md',
               )}
               bodyClassName="!p-0 flex flex-1 flex-col"
-              footer={
+              footer={canEditAdmin ? (
                 <AppButton
                   type="button"
                   className="w-full"
@@ -181,7 +192,7 @@ export default function TrainingAdmin() {
                 >
                   Edit course
                 </AppButton>
-              }
+              ) : undefined}
             >
               {course.thumbnail_file_id ? (
                 <img
@@ -230,9 +241,9 @@ export default function TrainingAdmin() {
         <AppEmptyState
           title="No courses yet"
           description="Create a course to add modules, lessons, quizzes, and publish to your team."
-          action={
+          action={canEditAdmin ? (
             <AppButton onClick={() => navigate('/training/admin/new')}>Create your first course</AppButton>
-          }
+          ) : undefined}
         />
       )}
     </div>

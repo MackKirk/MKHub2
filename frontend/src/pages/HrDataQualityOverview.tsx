@@ -129,11 +129,11 @@ export default function HrDataQualityOverview() {
       <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
         <AppPageHeader
           icon={<Users className="h-4 w-4" />}
-          title="HR overview"
+          title="Pending Items"
           subtitle="Active employees with incomplete HR records — filter by gap type and open a profile to fix."
         />
         <AppEmptyState
-          title="Could not load HR overview."
+          title="Could not load Pending Items."
           description="You may not have permission."
           className="border-red-200 bg-red-50 text-red-800"
         />
@@ -145,7 +145,7 @@ export default function HrDataQualityOverview() {
     <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <AppPageHeader
         icon={<Users className="h-4 w-4" />}
-        title="HR overview"
+        title="Pending Items"
         subtitle={
           <>
             Active employees with incomplete HR records — filter by gap type and open a profile to fix.

@@ -22,6 +22,7 @@ const SUB_READ_MARKERS = [
   ':files:',
   ':documents:',
   ':proposal:',
+  ':costs:',
   ':safety:',
 ] as const;
 

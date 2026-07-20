@@ -42,20 +42,36 @@ export function canEnablePermission(
 
   if (
     permKey === 'hr:users:view:general' ||
+    permKey === 'hr:users:view:job' ||
+    permKey === 'hr:users:view:docs' ||
     permKey === 'hr:users:view:timesheet' ||
+    permKey === 'hr:users:view:loans' ||
+    permKey === 'hr:users:view:training' ||
+    permKey === 'hr:users:view:assets' ||
+    permKey === 'hr:users:view:reports' ||
     permKey === 'hr:users:view:permissions' ||
     permKey === 'hr:users:view:activity'
   ) {
     return has('hr:users:read');
   }
   if (permKey === 'hr:users:view:job:compensation') {
-    return has('hr:users:read') && has('hr:users:view:general');
+    return has('hr:users:read') && has('hr:users:view:job');
   }
   if (permKey === 'hr:users:write') {
     return has('hr:users:read');
   }
+  if (permKey === 'training:admin:write') {
+    return has('training:admin:read');
+  }
   if (permKey === 'hr:offboarding:read') {
-    return has('hr:access');
+    // hr:access is an implicit area gate (auto-synced); no prerequisite checkbox.
+    return true;
+  }
+  if (permKey === 'hr:onboarding:write') {
+    return has('hr:onboarding:read');
+  }
+  if (permKey === 'hr:pending:read') {
+    return true;
   }
   if (permKey === 'hr:offboarding:write') {
     return has('hr:offboarding:read');
@@ -129,11 +145,36 @@ export function canEnablePermission(
   if (permKey === 'sales:quotations:write') {
     return has('sales:quotations:read');
   }
+  if (
+    permKey === 'documents:write' ||
+    permKey === 'documents:delete' ||
+    permKey === 'documents:move'
+  ) {
+    return has('documents:read');
+  }
   if (permKey === 'hr:users:edit:general') {
     return has('hr:users:read') && has('hr:users:view:general');
   }
+  if (permKey === 'hr:users:edit:job') {
+    return has('hr:users:read') && has('hr:users:view:job');
+  }
+  if (permKey === 'hr:users:edit:docs') {
+    return has('hr:users:read') && has('hr:users:view:docs');
+  }
   if (permKey === 'hr:users:edit:timesheet') {
     return has('hr:users:read') && has('hr:users:view:timesheet');
+  }
+  if (permKey === 'hr:users:edit:loans') {
+    return has('hr:users:read') && has('hr:users:view:loans');
+  }
+  if (permKey === 'hr:users:edit:training') {
+    return has('hr:users:read') && has('hr:users:view:training');
+  }
+  if (permKey === 'hr:users:edit:assets') {
+    return has('hr:users:read') && has('hr:users:view:assets');
+  }
+  if (permKey === 'hr:users:edit:reports') {
+    return has('hr:users:read') && has('hr:users:view:reports');
   }
   if (permKey === 'hr:users:edit:permissions') {
     return has('hr:users:read') && has('hr:users:view:permissions');
@@ -335,11 +376,26 @@ export function applyPermissionUncheckCascade(
       }
     });
   } else if (uncheckedKey === 'company_assets:access') {
+    // Access is implicit — clearing it only clears children when toggled programmatically.
     Object.keys(newPerms).forEach((k) => {
       if (k.startsWith('fleet:equipment:') || k.startsWith('company_cards:')) {
         newPerms[k] = false;
       }
     });
+    newPerms['company_assets:access'] = false;
+  } else if (uncheckedKey === 'documents:access') {
+    newPerms['documents:read'] = false;
+    newPerms['documents:write'] = false;
+    newPerms['documents:delete'] = false;
+    newPerms['documents:move'] = false;
+    newPerms['documents:access'] = false;
+  } else if (uncheckedKey === 'documents:read') {
+    newPerms['documents:write'] = false;
+    newPerms['documents:delete'] = false;
+    newPerms['documents:move'] = false;
+  } else if (uncheckedKey === 'documents:write') {
+    newPerms['documents:delete'] = false;
+    newPerms['documents:move'] = false;
   } else if (uncheckedKey === 'fleet:vehicles:read') {
     Object.keys(newPerms).forEach((k) => {
       if (k.startsWith('fleet:vehicles:') && k !== 'fleet:vehicles:read') {
@@ -399,6 +455,7 @@ export function applyPermissionUncheckCascade(
         newPerms[k] = false;
       }
     });
+    newPerms['hr:access'] = false;
   } else if (uncheckedKey === 'hr:attendance:read') {
     newPerms['hr:attendance:write'] = false;
   } else if (uncheckedKey === 'hr:community:read') {
@@ -408,22 +465,48 @@ export function applyPermissionUncheckCascade(
     newPerms['hr:timesheet:approve'] = false;
   } else if (uncheckedKey === 'hr:offboarding:read') {
     newPerms['hr:offboarding:write'] = false;
+  } else if (uncheckedKey === 'hr:onboarding:read') {
+    newPerms['hr:onboarding:write'] = false;
   } else if (uncheckedKey === 'hr:users:view:general') {
     newPerms['hr:users:edit:general'] = false;
+  } else if (uncheckedKey === 'hr:users:view:job') {
+    newPerms['hr:users:edit:job'] = false;
     newPerms['hr:users:view:job:compensation'] = false;
+  } else if (uncheckedKey === 'hr:users:view:docs') {
+    newPerms['hr:users:edit:docs'] = false;
   } else if (uncheckedKey === 'hr:users:view:timesheet') {
     newPerms['hr:users:edit:timesheet'] = false;
+  } else if (uncheckedKey === 'hr:users:view:loans') {
+    newPerms['hr:users:edit:loans'] = false;
+  } else if (uncheckedKey === 'hr:users:view:training') {
+    newPerms['hr:users:edit:training'] = false;
+  } else if (uncheckedKey === 'hr:users:view:assets') {
+    newPerms['hr:users:edit:assets'] = false;
+  } else if (uncheckedKey === 'hr:users:view:reports') {
+    newPerms['hr:users:edit:reports'] = false;
   } else if (uncheckedKey === 'hr:users:view:permissions') {
     newPerms['hr:users:edit:permissions'] = false;
   } else if (uncheckedKey === 'hr:users:read') {
     newPerms['hr:users:write'] = false;
     newPerms['hr:users:view:general'] = false;
+    newPerms['hr:users:view:job'] = false;
     newPerms['hr:users:view:job:compensation'] = false;
+    newPerms['hr:users:view:docs'] = false;
     newPerms['hr:users:view:timesheet'] = false;
+    newPerms['hr:users:view:loans'] = false;
+    newPerms['hr:users:view:training'] = false;
+    newPerms['hr:users:view:assets'] = false;
+    newPerms['hr:users:view:reports'] = false;
     newPerms['hr:users:view:permissions'] = false;
     newPerms['hr:users:view:activity'] = false;
     newPerms['hr:users:edit:general'] = false;
+    newPerms['hr:users:edit:job'] = false;
+    newPerms['hr:users:edit:docs'] = false;
     newPerms['hr:users:edit:timesheet'] = false;
+    newPerms['hr:users:edit:loans'] = false;
+    newPerms['hr:users:edit:training'] = false;
+    newPerms['hr:users:edit:assets'] = false;
+    newPerms['hr:users:edit:reports'] = false;
     newPerms['hr:users:edit:permissions'] = false;
   } else if (uncheckedKey === 'business:customers:read') {
     newPerms['business:customers:write'] = false;
@@ -466,6 +549,8 @@ export function applyPermissionUncheckCascade(
     newPerms[uncheckedKey.replace(':read', ':write')] = false;
   } else if (uncheckedKey === 'sales:quotations:read') {
     newPerms['sales:quotations:write'] = false;
+  } else if (uncheckedKey === 'training:admin:read') {
+    newPerms['training:admin:write'] = false;
   } else if (uncheckedKey === 'business:construction:projects:read') {
     newPerms['business:construction:projects:write'] = false;
     newPerms['business:construction:projects:read:all'] = false;
@@ -493,6 +578,7 @@ export function applyPermissionUncheckCascade(
     newPerms['business:projects:documents:read'] = false;
     newPerms['business:projects:documents:write'] = false;
     newPerms['business:projects:proposal:read'] = false;
+    newPerms['business:projects:costs:read'] = false;
     newPerms['business:projects:estimate:read'] = false;
     newPerms['business:projects:orders:read'] = false;
     newPerms['business:projects:safety:read'] = false;
@@ -504,6 +590,7 @@ export function applyPermissionUncheckCascade(
     newPerms['business:projects:files:write'] = false;
     newPerms['business:projects:documents:write'] = false;
     newPerms['business:projects:proposal:write'] = false;
+    newPerms['business:projects:costs:write'] = false;
     newPerms['business:projects:estimate:write'] = false;
     newPerms['business:projects:orders:write'] = false;
     newPerms['business:projects:safety:write'] = false;
@@ -520,6 +607,69 @@ export function applyPermissionUncheckCascade(
     !uncheckedKey.endsWith(':read:all')
   ) {
     newPerms[uncheckedKey.replace(':read', ':write')] = false;
+  }
+
+  // Implicit area gate: keep company_assets:access only while Equipment/Cards children remain.
+  if (
+    uncheckedKey === 'company_assets:access' ||
+    uncheckedKey.startsWith('fleet:equipment:') ||
+    uncheckedKey.startsWith('company_cards:')
+  ) {
+    const hasChild = Object.keys(newPerms).some(
+      (k) =>
+        (k.startsWith('fleet:equipment:') || k.startsWith('company_cards:')) && !!newPerms[k],
+    );
+    newPerms['company_assets:access'] = hasChild;
+  }
+
+  // Implicit area gate: keep documents:access only while View/Add/Delete/Move remain.
+  if (
+    uncheckedKey === 'documents:access' ||
+    uncheckedKey === 'documents:read' ||
+    uncheckedKey === 'documents:write' ||
+    uncheckedKey === 'documents:delete' ||
+    uncheckedKey === 'documents:move'
+  ) {
+    const hasChild = !!(
+      newPerms['documents:read'] ||
+      newPerms['documents:write'] ||
+      newPerms['documents:delete'] ||
+      newPerms['documents:move']
+    );
+    newPerms['documents:access'] = hasChild;
+  }
+
+  // Implicit area gate: keep fleet:access only while any Fleet child remains.
+  if (
+    uncheckedKey === 'fleet:access' ||
+    (uncheckedKey.startsWith('fleet:') && !uncheckedKey.startsWith('fleet:equipment:'))
+  ) {
+    const hasChild = Object.keys(newPerms).some(
+      (k) =>
+        k.startsWith('fleet:') &&
+        k !== 'fleet:access' &&
+        !k.startsWith('fleet:equipment:') &&
+        !!newPerms[k],
+    );
+    newPerms['fleet:access'] = hasChild;
+  }
+
+  // Implicit area gate: keep hr:access only while any HR child remains.
+  if (uncheckedKey === 'hr:access' || uncheckedKey.startsWith('hr:')) {
+    const hasChild = Object.keys(newPerms).some(
+      (k) => k.startsWith('hr:') && k !== 'hr:access' && !!newPerms[k],
+    );
+    newPerms['hr:access'] = hasChild;
+  }
+
+  // Implicit area gate: keep training:access only while a Training child remains.
+  if (uncheckedKey === 'training:access' || uncheckedKey.startsWith('training:')) {
+    const hasChild = !!(
+      newPerms['training:dashboard:read'] ||
+      newPerms['training:admin:read'] ||
+      newPerms['training:admin:write']
+    );
+    newPerms['training:access'] = hasChild;
   }
 
   return newPerms;
