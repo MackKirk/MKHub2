@@ -1,6 +1,5 @@
 import { EntityPermissionsGrid } from '@/components/EntityPermissionsGrid';
 import { PermissionAccessLevelSelect } from '@/components/PermissionAccessLevelSelect';
-import { PermissionToggleLabel } from '@/components/PermissionToggleRow';
 import { permissionUi } from '@/components/permissionUi';
 import { IMPLEMENTED_PERMISSIONS } from '@/lib/implementedPermissions';
 import { PERMISSION_ACCESS_LEVEL_LABELS } from '@/lib/permissionAccessLevel';
@@ -8,6 +7,8 @@ import {
   buildHrAttendancePermissionRows,
   buildHrCommunityPermissionRows,
   buildHrOffboardingPermissionRows,
+  buildHrOnboardingPermissionRows,
+  buildHrPendingPermissionRows,
   buildHrTimesheetPermissionRows,
   buildHrUsersPermissionRows,
   getHrAccessLevel,
@@ -70,8 +71,6 @@ export function HrPermissionsPanel({
   canEdit,
   onAccessLevelChange,
   onWriteOnlyChange,
-  accessPerm,
-  onAccessToggle,
 }: {
   areaPerms: Perm[];
   permissions: Record<string, boolean>;
@@ -82,10 +81,10 @@ export function HrPermissionsPanel({
     level: HrAccessLevel,
   ) => void;
   onWriteOnlyChange: (key: string, level: HrAccessLevel) => void;
-  accessPerm?: Perm;
-  onAccessToggle?: () => void;
 }) {
   const usersPerms = areaPerms.filter((p) => p.key.startsWith('hr:users:'));
+  const pendingPerms = areaPerms.filter((p) => p.key.startsWith('hr:pending:'));
+  const onboardingPerms = areaPerms.filter((p) => p.key.startsWith('hr:onboarding:'));
   const offboardingPerms = areaPerms.filter((p) => p.key.startsWith('hr:offboarding:'));
   const attendancePerms = areaPerms.filter((p) => p.key.startsWith('hr:attendance:'));
   const communityPerms = areaPerms.filter((p) => p.key.startsWith('hr:community:'));
@@ -97,19 +96,27 @@ export function HrPermissionsPanel({
 
   return (
     <div className="space-y-4">
-      {accessPerm && onAccessToggle ? (
-        <PermissionToggleLabel
-          label={accessPerm.label}
-          description={accessPerm.description}
-          checked={!!permissions[accessPerm.key]}
-          disabled={!canEdit}
-          onToggle={onAccessToggle}
-        />
-      ) : null}
-
       <EntityPermissionsGrid
         title="Users & profiles"
         rows={buildHrUsersPermissionRows(usersPerms)}
+        permissions={permissions}
+        canEdit={canEdit}
+        getAccessLevel={getHrAccessLevel}
+        onAccessLevelChange={onAccessLevelChange}
+      />
+
+      <EntityPermissionsGrid
+        title="Pending Items"
+        rows={buildHrPendingPermissionRows(pendingPerms)}
+        permissions={permissions}
+        canEdit={canEdit}
+        getAccessLevel={getHrAccessLevel}
+        onAccessLevelChange={onAccessLevelChange}
+      />
+
+      <EntityPermissionsGrid
+        title="Onboarding"
+        rows={buildHrOnboardingPermissionRows(onboardingPerms)}
         permissions={permissions}
         canEdit={canEdit}
         getAccessLevel={getHrAccessLevel}

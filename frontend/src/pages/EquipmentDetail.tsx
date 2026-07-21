@@ -27,8 +27,14 @@ import EquipmentReturnModal from '@/components/companyAssets/EquipmentReturnModa
 import NewEquipmentWorkOrderModal from '@/components/companyAssets/NewEquipmentWorkOrderModal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
+  canEditEquipmentTab,
+  canViewEquipmentTab,
+  type EquipmentTab,
+} from '@/lib/companyAssetsPermissions';
+import {
   AppButton,
   AppCard,
+  AppEmptyState,
   AppModal,
   AppPageHeader,
   AppTabs,
@@ -187,10 +193,20 @@ export default function EquipmentDetail() {
     enabled: isValidId,
   });
 
+  const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdministrator = !!(me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
+  const permissionsReady = !!me && !meLoading;
+  const canEditGeneral = canEditEquipmentTab(isAdministrator, permissions, 'general');
+  const canEditWorkOrders = canEditEquipmentTab(isAdministrator, permissions, 'work_orders');
+  const canViewGeneral = canViewEquipmentTab(isAdministrator, permissions, 'general');
+  const canViewWorkOrders = canViewEquipmentTab(isAdministrator, permissions, 'work_orders');
+  const canViewHistory = canViewEquipmentTab(isAdministrator, permissions, 'history');
+
   const { data: workOrders, isLoading: workOrdersLoading } = useQuery({
     queryKey: ['equipmentWorkOrders', id],
     queryFn: () => api<WorkOrder[]>('GET', `/fleet/equipment/${id}/work-orders`),
-    enabled: isValidId,
+    enabled: !!isValidId && canViewWorkOrders,
   });
 
   const woListParams = useMemo(() => parseEquipmentWorkOrderListSort(location.search), [location.search]);
@@ -240,23 +256,20 @@ export default function EquipmentDetail() {
   const { data: historyResponse } = useQuery({
     queryKey: ['equipmentHistory', id],
     queryFn: () => api<{ items: FleetAssetHistoryItem[] }>('GET', `/fleet/equipment/${id}/history`),
-    enabled: isValidId,
+    enabled: !!isValidId && canViewHistory,
   });
   const historyItems = historyResponse?.items ?? [];
 
   const { data: assignments = [] } = useQuery({
     queryKey: ['equipmentAssignments', id],
     queryFn: () => api<AssetAssignment[]>('GET', `/fleet/equipment/${id}/assignments`),
-    enabled: isValidId,
+    enabled: !!isValidId && (canViewGeneral || canViewHistory),
   });
 
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
     queryFn: () => api<any[]>('GET', '/employees'),
   });
-
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
-  const isAdministrator = !!(me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
 
   const openAssignment = useMemo(() => assignments.find((a) => !a.returned_at), [assignments]);
 
@@ -342,11 +355,25 @@ export default function EquipmentDetail() {
     }
   };
 
-  const equipmentTabItems = [
-    { key: 'general', label: 'General' },
-    { key: 'work-orders', label: 'Work Orders' },
-    { key: 'logs', label: 'History' },
-  ] as const;
+  const equipmentTabItems = useMemo(() => {
+    if (!permissionsReady) return [];
+    return (
+      [
+        { key: 'general' as const, label: 'General', permTab: 'general' as EquipmentTab },
+        { key: 'work-orders' as const, label: 'Work Orders', permTab: 'work_orders' as EquipmentTab },
+        { key: 'logs' as const, label: 'History', permTab: 'history' as EquipmentTab },
+      ] as const
+    ).filter((t) => canViewEquipmentTab(isAdministrator, permissions, t.permTab));
+  }, [permissionsReady, isAdministrator, permissions]);
+
+  useEffect(() => {
+    if (!permissionsReady || !equipmentTabItems.length) return;
+    if (!equipmentTabItems.some((t) => t.key === tab)) {
+      const next = equipmentTabItems[0].key;
+      setTab(next);
+      if (id) nav(`/company-assets/equipment/${id}?tab=${next}`, { replace: true });
+    }
+  }, [permissionsReady, equipmentTabItems, tab, id, nav]);
 
 
 
@@ -441,6 +468,7 @@ export default function EquipmentDetail() {
           photoUrl={heroPhotoThumbUrl}
           photoBusy={heroPhotoBusy}
           photoInputRef={equipmentHeroPhotoInputRef}
+          canEdit={canEditGeneral}
           isCollapsed={isHeroCollapsed}
           onToggleCollapsed={() => setIsHeroCollapsed((v) => !v)}
           onPhotoClick={() => setShowHeroPhotoViewModal(true)}
@@ -463,17 +491,26 @@ export default function EquipmentDetail() {
         </div>
       </div>
 
+      {!permissionsReady ? null : equipmentTabItems.length === 0 ? (
+        <AppCard>
+          <AppEmptyState
+            title="No tab access"
+            description="You can open this equipment record, but no tabs are enabled for your role."
+          />
+        </AppCard>
+      ) : (
       <AppCard bodyClassName="min-w-0 overflow-hidden">
-        {tab === 'general' && (
+        {tab === 'general' && canViewGeneral && (
           <EquipmentGeneralTab
             equipment={equipment}
             openAssignment={openAssignment}
             employeeName={employeeName}
+            canEdit={canEditGeneral}
             onEditSection={setGeneralEditSection}
           />
         )}
 
-        {tab === 'work-orders' && (
+        {tab === 'work-orders' && canViewWorkOrders && (
           <FleetAssetWorkOrdersTab
             isLoading={workOrdersLoading}
             workOrders={workOrders as FleetAssetWorkOrderRow[] | undefined}
@@ -483,12 +520,13 @@ export default function EquipmentDetail() {
             searchInput={woListParams.qInput}
             onSearchChange={setWorkOrderSearchQuery}
             onSort={setWorkOrderTableSort}
+            canEdit={canEditWorkOrders}
             onCreateClick={() => setShowWorkOrderForm(true)}
             onOpenWorkOrder={(workOrderId) => nav(`/fleet/work-orders/${workOrderId}`)}
           />
         )}
 
-        {tab === 'logs' && (
+        {tab === 'logs' && canViewHistory && (
           <FleetAssetLogsTab
             historyItems={historyItems}
             assignments={assignments}
@@ -501,6 +539,7 @@ export default function EquipmentDetail() {
           />
         )}
       </AppCard>
+      )}
 
       {showHeroPhotoViewModal && heroPhotoLargeUrl && (
         <AppModal
@@ -511,16 +550,22 @@ export default function EquipmentDetail() {
           bodyClassName="flex items-center justify-center bg-gray-50 p-4"
           footer={
             <div className={uiCx(uiLayout.actionsRow, 'w-full justify-between')}>
-              <AppButton variant="danger" onClick={() => void removeHeroPhoto()} disabled={heroPhotoBusy}>
-                Remove
-              </AppButton>
+              {canEditGeneral ? (
+                <AppButton variant="danger" onClick={() => void removeHeroPhoto()} disabled={heroPhotoBusy}>
+                  Remove
+                </AppButton>
+              ) : (
+                <span />
+              )}
               <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
                 <AppButton variant="secondary" onClick={() => setShowHeroPhotoViewModal(false)}>
                   Close
                 </AppButton>
-                <AppButton onClick={() => equipmentHeroPhotoInputRef.current?.click()} disabled={heroPhotoBusy}>
-                  Replace image
-                </AppButton>
+                {canEditGeneral ? (
+                  <AppButton onClick={() => equipmentHeroPhotoInputRef.current?.click()} disabled={heroPhotoBusy}>
+                    Replace image
+                  </AppButton>
+                ) : null}
               </div>
             </div>
           }
@@ -534,7 +579,7 @@ export default function EquipmentDetail() {
       )}
 
       <EquipmentAssignModal
-        open={showAssignModal}
+        open={canEditGeneral && showAssignModal}
         equipmentDisplayName={lockedEquipmentDisplayName}
         employees={employees}
         onClose={() => setShowAssignModal(false)}
@@ -543,7 +588,7 @@ export default function EquipmentDetail() {
       />
       {openAssignment ? (
         <EquipmentReturnModal
-          open={showReturnModal}
+          open={canEditGeneral && showReturnModal}
           equipmentDisplayName={lockedEquipmentDisplayName}
           onClose={() => setShowReturnModal(false)}
           onSubmit={(data) => returnMutation.mutate(data)}
@@ -571,7 +616,7 @@ export default function EquipmentDetail() {
         />
       )}
       <NewEquipmentWorkOrderModal
-        open={showWorkOrderForm && !!id}
+        open={canEditWorkOrders && showWorkOrderForm && !!id}
         equipmentId={id ?? ''}
         equipmentDisplayName={lockedEquipmentDisplayName}
         employees={employees}
@@ -582,7 +627,7 @@ export default function EquipmentDetail() {
         }}
       />
       <EditEquipmentGeneralModal
-        open={generalEditSection !== null}
+        open={canEditGeneral && generalEditSection !== null}
         section={generalEditSection}
         onClose={() => setGeneralEditSection(null)}
         equipment={equipment}

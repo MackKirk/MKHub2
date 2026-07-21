@@ -137,11 +137,20 @@ def get_current_user_bearer_or_query_token(
     return user
 
 
+def _forbidden(reason: str) -> HTTPException:
+    """403 with a descriptive detail for system logs (path is appended by the global handler)."""
+    text = (reason or "").strip() or "access denied"
+    if not text.lower().startswith("forbidden"):
+        text = f"Forbidden: {text}"
+    return HTTPException(status_code=403, detail=text)
+
+
 def require_roles(*required_roles: str):
     def _dep(user: User = Depends(get_current_user)):
         role_names = {r.name for r in user.roles}
         if not set(required_roles).issubset(role_names):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            needed = ", ".join(required_roles) if required_roles else "required role"
+            raise _forbidden(f"requires role ({needed})")
         return user
 
     return _dep
@@ -152,11 +161,31 @@ def expand_project_permission_aliases(perm: str) -> List[str]:
     if not perm.startswith("business:projects:"):
         return [perm]
     suffix = perm[len("business:projects:") :]
-    return [
+    keys = [
         f"business:construction:projects:{suffix}",
         f"business:rm:projects:{suffix}",
         perm,
     ]
+    # Costs tab replaced legacy estimate permissions.
+    if suffix.startswith("estimate:"):
+        cost_suffix = "costs:" + suffix[len("estimate:") :]
+        keys.extend(
+            [
+                f"business:construction:projects:{cost_suffix}",
+                f"business:rm:projects:{cost_suffix}",
+                f"business:projects:{cost_suffix}",
+            ]
+        )
+    elif suffix.startswith("costs:"):
+        est_suffix = "estimate:" + suffix[len("costs:") :]
+        keys.extend(
+            [
+                f"business:construction:projects:{est_suffix}",
+                f"business:rm:projects:{est_suffix}",
+                f"business:projects:{est_suffix}",
+            ]
+        )
+    return list(dict.fromkeys(keys))
 
 
 def _project_line_perm_prefix(line: Optional[str]) -> str:
@@ -183,7 +212,13 @@ def require_permissions(*required_permissions: str):
         # Check if user has at least one of the required permissions
         has_any = any(_has_permission(user, perm) for perm in expanded)
         if not has_any:
-            raise HTTPException(status_code=403, detail="Forbidden")
+            # Prefer the originally requested keys (before alias expansion) for readability.
+            shown = list(required_permissions) or expanded
+            unique = list(dict.fromkeys(shown))
+            label = ", ".join(unique[:4])
+            if len(unique) > 4:
+                label += ", …"
+            raise _forbidden(f"missing permission ({label})")
         return user
 
     return _dep
@@ -316,6 +351,29 @@ def _company_assets_area_unlocked(perm_map: dict) -> bool:
     )
 
 
+def _documents_area_unlocked(perm_map: dict) -> bool:
+    """True if user may use Documents scoped permissions (access or any child)."""
+    if is_granted_perm_value(perm_map.get("documents:access")):
+        return True
+    return bool(
+        is_granted_perm_value(perm_map.get("documents:read"))
+        or is_granted_perm_value(perm_map.get("documents:write"))
+        or is_granted_perm_value(perm_map.get("documents:delete"))
+        or is_granted_perm_value(perm_map.get("documents:move"))
+    )
+
+
+def _hr_area_unlocked(perm_map: dict) -> bool:
+    """True if user may use HR scoped permissions (access or any hr:* child)."""
+    if is_granted_perm_value(perm_map.get("hr:access")):
+        return True
+    return any(
+        is_granted_perm_value(v)
+        for k, v in perm_map.items()
+        if isinstance(k, str) and k.startswith("hr:") and k != "hr:access"
+    )
+
+
 def _perm_matches_map(perm_map: dict, perm: str) -> bool:
     """Whether perm_map grants `perm`, including granular Fleet & Equipment aliases."""
     if is_granted_perm_value(perm_map.get(perm)):
@@ -348,6 +406,29 @@ def _perm_matches_map(perm_map: dict, perm: str) -> bool:
         )
     if perm == "company_assets:access":
         return _company_assets_area_unlocked(perm_map)
+    if perm == "documents:access":
+        return _documents_area_unlocked(perm_map)
+    if perm == "hr:access":
+        return _hr_area_unlocked(perm_map)
+    if perm == "documents:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("documents:read"))
+            or is_granted_perm_value(perm_map.get("documents:write"))
+            or is_granted_perm_value(perm_map.get("documents:delete"))
+            or is_granted_perm_value(perm_map.get("documents:move"))
+        )
+    if perm == "documents:write":
+        return bool(is_granted_perm_value(perm_map.get("documents:write")))
+    if perm == "documents:delete":
+        return bool(
+            is_granted_perm_value(perm_map.get("documents:delete"))
+            or is_granted_perm_value(perm_map.get("documents:write"))
+        )
+    if perm == "documents:move":
+        return bool(
+            is_granted_perm_value(perm_map.get("documents:move"))
+            or is_granted_perm_value(perm_map.get("documents:write"))
+        )
     if perm == "equipment:read":
         return bool(
             is_granted_perm_value(perm_map.get("fleet:equipment:read"))
@@ -358,6 +439,24 @@ def _perm_matches_map(perm_map: dict, perm: str) -> bool:
             is_granted_perm_value(perm_map.get("fleet:equipment:write"))
             and _company_assets_area_unlocked(perm_map)
         )
+    if perm == "fleet:equipment:general:write":
+        return bool(is_granted_perm_value(perm_map.get("fleet:equipment:general:write")))
+    if perm == "fleet:equipment:work_orders:write":
+        return bool(is_granted_perm_value(perm_map.get("fleet:equipment:work_orders:write")))
+    if perm == "fleet:equipment:work_orders:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("fleet:equipment:work_orders:read"))
+            or is_granted_perm_value(perm_map.get("fleet:equipment:work_orders:write"))
+        )
+    if perm == "fleet:equipment:history:read":
+        return bool(is_granted_perm_value(perm_map.get("fleet:equipment:history:read")))
+    if perm == "company_cards:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("company_cards:read"))
+            or is_granted_perm_value(perm_map.get("company_cards:write"))
+        )
+    if perm == "company_cards:write":
+        return bool(is_granted_perm_value(perm_map.get("company_cards:write")))
     # Work orders & inspections — granular keys with limited legacy aliases
     if perm == "work_orders:read":
         return bool(
@@ -411,10 +510,6 @@ def _perm_matches_map(perm_map: dict, perm: str) -> bool:
         )
     if perm == "fleet:inspections:execution:write":
         return bool(is_granted_perm_value(perm_map.get("fleet:inspections:execution:write")))
-    if perm == "company_cards:read":
-        return bool(perm_map.get("company_cards:read"))
-    if perm == "company_cards:write":
-        return bool(perm_map.get("company_cards:write"))
     if perm == "training:manage":
         return bool(perm_map.get("training:manage") or perm_map.get("users:write"))
     return False
@@ -466,6 +561,16 @@ def _has_permission(user: User, perm: str) -> bool:
                     if area_access_key in perm_map and not perm_map.get(area_access_key):
                         return False
                     if not _company_assets_area_unlocked(perm_map):
+                        return False
+                elif area == 'documents' and perm != 'documents:access':
+                    if area_access_key in perm_map and not perm_map.get(area_access_key):
+                        return False
+                    if not _documents_area_unlocked(perm_map):
+                        return False
+                elif area == 'hr' and perm != 'hr:access':
+                    if area_access_key in perm_map and not perm_map.get(area_access_key):
+                        return False
+                    if not _hr_area_unlocked(perm_map):
                         return False
                 # Equipment API uses equipment:read/write; those are granted via fleet:equipment:* + company assets
                 elif area == 'equipment' and perm in ('equipment:read', 'equipment:write'):
@@ -615,7 +720,7 @@ def assert_customer_tab(
     action: Literal["read", "write"] = "read",
 ) -> None:
     if not has_customer_tab_permission(user, tab, action):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden(f"missing business:customers:{tab}:{action}")
 
 
 FLEET_ASSET_TAB_KEYS: tuple[str, ...] = (
@@ -673,7 +778,7 @@ def assert_fleet_asset_tab(
     action: Literal["read", "write"] = "read",
 ) -> None:
     if not has_fleet_asset_tab_permission(user, tab, action):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden(f"missing fleet:vehicles:{tab}:{action}")
 
 
 FLEET_WO_TAB_KEYS: tuple[str, ...] = ("general", "costs", "files", "activity")
@@ -723,7 +828,7 @@ def assert_fleet_work_order_tab(
     action: Literal["read", "write"] = "read",
 ) -> None:
     if not has_fleet_work_order_tab_permission(user, tab, action):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden(f"missing fleet:work_orders:{tab}:{action}")
 
 
 FLEET_INSPECTION_TAB_KEYS: tuple[str, ...] = ("schedules", "execution")
@@ -767,7 +872,7 @@ def assert_fleet_inspection_tab(
     action: Literal["read", "write"] = "read",
 ) -> None:
     if not has_fleet_inspection_tab_permission(user, tab, action):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden(f"missing fleet:inspections:{tab}:{action}")
 
 
 def can_create_fleet_inspection_schedule(user: User) -> bool:
@@ -775,6 +880,62 @@ def can_create_fleet_inspection_schedule(user: User) -> bool:
     return has_fleet_inspection_tab_permission(
         user, "schedules", "write"
     ) or _has_permission(user, "fleet:vehicles:inspections:write")
+
+
+EQUIPMENT_TAB_KEYS: tuple[str, ...] = ("general", "work_orders", "history")
+
+
+def has_equipment_list_permission(user: User) -> bool:
+    return _has_permission(user, "fleet:equipment:read") or _has_permission(
+        user, "fleet:equipment:write"
+    )
+
+
+def has_equipment_write_permission(user: User) -> bool:
+    """Create/delete equipment records."""
+    return _has_permission(user, "fleet:equipment:write")
+
+
+def has_equipment_tab_permission(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> bool:
+    """Strict tab keys for equipment detail (no main read fallback)."""
+    if action not in ("read", "write"):
+        return False
+    t = (tab or "").strip().lower()
+    if t not in EQUIPMENT_TAB_KEYS:
+        return False
+
+    read_key = f"fleet:equipment:{t}:read"
+    write_key = f"fleet:equipment:{t}:write"
+
+    if action == "write":
+        if t == "history":
+            return False
+        return _has_permission(user, write_key)
+
+    return _has_permission(user, read_key) or _has_permission(user, write_key)
+
+
+def assert_equipment_tab(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> None:
+    if not has_equipment_tab_permission(user, tab, action):
+        raise _forbidden(f"missing fleet:equipment:{tab}:{action}")
+
+
+def has_company_cards_list_permission(user: User) -> bool:
+    return _has_permission(user, "company_cards:read") or _has_permission(
+        user, "company_cards:write"
+    )
+
+
+def has_company_cards_write_permission(user: User) -> bool:
+    return _has_permission(user, "company_cards:write")
 
 
 SUPPLIER_TAB_KEYS: tuple[str, ...] = ("overview", "contacts", "products")
@@ -841,7 +1002,7 @@ def assert_supplier_tab(
     action: Literal["read", "write"] = "read",
 ) -> None:
     if not has_supplier_tab_permission(user, tab, action):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden(f"missing inventory:suppliers:{tab}:{action}")
 
 
 def has_product_list_permission(user: User) -> bool:
@@ -898,7 +1059,7 @@ def assert_product_tab(
     action: Literal["read", "write"] = "read",
 ) -> None:
     if not has_product_tab_permission(user, tab, action):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden(f"missing inventory:products:{tab}:{action}")
 
 
 def assert_project_workload_permission(
@@ -912,12 +1073,13 @@ def assert_project_workload_permission(
         from ..services.project_visibility import is_project_visible_to_user
 
         if not is_project_visible_to_user(db, user, project):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise _forbidden("project not visible to user")
     line = getattr(project, "business_line", None)
     if not can_access_business_line(user, line):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden(f"no access to business line ({line or 'unknown'})")
     if not _has_project_feature_permission(user, line, "workload", action):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        prefix = _project_line_perm_prefix(line)
+        raise _forbidden(f"missing {prefix}:workload:{action}")
 
 
 def _has_project_feature_permission(
@@ -1057,6 +1219,64 @@ def has_project_reports_category_permission(
 
     cat = (category_id or "uncategorized").strip() or "uncategorized"
     return cat in [str(x) for x in allow_list if isinstance(x, str)]
+
+
+def has_company_files_department_permission(
+    user: User,
+    department_id: Optional[str],
+    action: Literal["read", "write"] = "read",
+) -> bool:
+    """
+    Department/category-level access for Company Files.
+
+    Rules:
+    - Requires documents:read (or any edit capability) for read; documents:write (or edit) for write.
+    - If allow-list config exists in permissions_override, department must be included.
+    - Missing allow-list => all departments allowed (default / compatibility).
+    """
+    if _user_is_admin(user):
+        return True
+    if action not in ("read", "write"):
+        return False
+
+    if action == "write":
+        if not (
+            _has_permission(user, "documents:write")
+            or _has_permission(user, "documents:delete")
+            or _has_permission(user, "documents:move")
+        ):
+            return False
+    else:
+        if not (
+            _has_permission(user, "documents:read")
+            or _has_permission(user, "documents:write")
+            or _has_permission(user, "documents:delete")
+            or _has_permission(user, "documents:move")
+            or _has_permission(user, "clients:read")
+        ):
+            return False
+
+    perm_map = _get_user_permission_map(user)
+    cfg_key = f"documents:categories:{action}"
+    allow_list = perm_map.get(cfg_key, None)
+    if not isinstance(allow_list, list):
+        return True
+
+    dept = (department_id or "").strip()
+    if not dept:
+        return False
+    allowed = [str(x) for x in allow_list if isinstance(x, str)]
+    return dept in allowed
+
+
+def assert_company_files_department_permission(
+    user: User,
+    department_id: Optional[str],
+    action: Literal["read", "write"] = "read",
+) -> None:
+    if not has_company_files_department_permission(user, department_id, action):
+        dept = (department_id or "unknown").strip() or "unknown"
+        raise _forbidden(f"missing documents:{action} for department ({dept})")
 
 
 def can_approve_timesheet(approver: User, target_user_id: str, db: Session) -> bool:

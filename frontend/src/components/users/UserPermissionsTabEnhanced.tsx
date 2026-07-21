@@ -11,6 +11,7 @@ import { ProductPermissionsGrid } from '@/components/ProductPermissionsGrid';
 import { FleetPermissionsPanel } from '@/components/FleetPermissionsPanel';
 import { CompanyAssetsPermissionsPanel } from '@/components/CompanyAssetsPermissionsPanel';
 import { HrPermissionsPanel } from '@/components/HrPermissionsPanel';
+import { TrainingPermissionsPanel } from '@/components/TrainingPermissionsPanel';
 import { ProjectLinePermissionsGrid } from '@/components/ProjectLinePermissionsGrid';
 import {
   applyCustomerAccessLevel,
@@ -29,20 +30,44 @@ import {
   applyFleetWorkOrderAssignLevel,
   filterFleetAreaPermissions,
   FLEET_ACCESS,
+  syncFleetAccess,
   type FleetAccessLevel,
 } from '@/lib/fleetPermissions';
 import {
   applyCompanyAssetsAccessLevel,
   filterCompanyAssetsAreaPermissions,
   COMPANY_ASSETS_ACCESS,
+  syncCompanyAssetsAccess,
   type CompanyAssetsAccessLevel,
 } from '@/lib/companyAssetsPermissions';
+import { DocumentsPermissionsPanel } from '@/components/DocumentsPermissionsPanel';
+import CompanyFilesCategoriesModal from '@/components/CompanyFilesCategoriesModal';
+import {
+  applyDocumentsAccessLevel,
+  applyCompanyFilesCategoryConfigToPayload,
+  cloneCompanyFilesCategoryConfig,
+  companyFilesCategoryConfigsEqual,
+  EMPTY_COMPANY_FILES_CATEGORY_CONFIG,
+  filterDocumentsAreaPermissions,
+  resolveCompanyFilesCategoryConfigFromApi,
+  syncCompanyFilesCategoryConfigAfterMacroChange,
+  syncDocumentsAccess,
+  type CompanyFilesCategoryConfigState,
+  type DocumentsAccessLevel,
+} from '@/lib/documentsPermissions';
 import {
   applyHrAccessLevel,
   applyHrWriteOnlyLevel,
   HR_ACCESS,
+  syncHrAccess,
   type HrAccessLevel,
 } from '@/lib/hrPermissions';
+import {
+  applyTrainingAccessLevel,
+  filterTrainingAreaPermissions,
+  syncTrainingAccess,
+  type TrainingAccessLevel,
+} from '@/lib/trainingPermissions';
 import {
   applyProjectLineAccessLevel,
   type ProjectLine,
@@ -168,6 +193,11 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     construction: { ...EMPTY_LINE_CATEGORY_CONFIG },
     repairs: { ...EMPTY_LINE_CATEGORY_CONFIG },
   });
+  const [companyFilesCategoryConfig, setCompanyFilesCategoryConfig] =
+    useState<CompanyFilesCategoryConfigState>({ ...EMPTY_COMPANY_FILES_CATEGORY_CONFIG });
+  const [initialCompanyFilesCategoryConfig, setInitialCompanyFilesCategoryConfig] =
+    useState<CompanyFilesCategoryConfigState>({ ...EMPTY_COMPANY_FILES_CATEGORY_CONFIG });
+  const [showCompanyFilesCategoriesModal, setShowCompanyFilesCategoriesModal] = useState(false);
   const [categoryModal, setCategoryModal] = useState<{
     line: ProjectLine;
     feature: 'files' | 'reports';
@@ -191,8 +221,8 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
         perms[perm.key] = perm.is_granted;
       });
     });
-    setPermissions(perms);
-    setInitialPermissions({ ...perms });
+    setPermissions(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(perms))))));
+    setInitialPermissions(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess({ ...perms }))))));
 
     const cfg = permissionsData?.configs || {};
     const nextConfigs: LineCategoryConfigs = {
@@ -201,6 +231,13 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     };
     setLineCategoryConfigs(nextConfigs);
     setInitialLineCategoryConfigs(cloneLineCategoryConfigs(nextConfigs));
+
+    const companyFilesCfg = resolveCompanyFilesCategoryConfigFromApi(
+      (permissionsData?.configs || {}) as Record<string, unknown>,
+    );
+    setCompanyFilesCategoryConfig(companyFilesCfg);
+    setInitialCompanyFilesCategoryConfig(cloneCompanyFilesCategoryConfig(companyFilesCfg));
+
     permissionsHydratedForUser.current = userId;
   }, [permissionsData, userId]);
 
@@ -238,6 +275,14 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     if (!configsEqual(lineCategoryConfigs.repairs, initialLineCategoryConfigs.repairs)) {
       return true;
     }
+    if (
+      !companyFilesCategoryConfigsEqual(
+        companyFilesCategoryConfig,
+        initialCompanyFilesCategoryConfig,
+      )
+    ) {
+      return true;
+    }
 
     return false;
   }, [
@@ -247,6 +292,8 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     initialIsAdmin,
     lineCategoryConfigs,
     initialLineCategoryConfigs,
+    companyFilesCategoryConfig,
+    initialCompanyFilesCategoryConfig,
   ]);
 
   const openProjectFilesCategoriesModal = (line: ProjectLine) => {
@@ -273,7 +320,18 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       }
       
       // Check dependencies for view permissions
-      if (key === 'hr:users:view:general' || key === 'hr:users:view:timesheet' || key === 'hr:users:view:permissions' || key === 'hr:users:view:activity') {
+      if (
+        key === 'hr:users:view:general' ||
+        key === 'hr:users:view:job' ||
+        key === 'hr:users:view:docs' ||
+        key === 'hr:users:view:timesheet' ||
+        key === 'hr:users:view:loans' ||
+        key === 'hr:users:view:training' ||
+        key === 'hr:users:view:assets' ||
+        key === 'hr:users:view:reports' ||
+        key === 'hr:users:view:permissions' ||
+        key === 'hr:users:view:activity'
+      ) {
         // Requires hr:users:read
         if (newValue && !prev['hr:users:read']) {
           toast.error('This permission requires "View Users List" to be enabled first');
@@ -282,9 +340,9 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       }
       // Check dependencies for job compensation view permission
       else if (key === 'hr:users:view:job:compensation') {
-        // Requires hr:users:read and hr:users:view:general
-        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:general'])) {
-          toast.error('This permission requires "View Users List" and "View General Tab" to be enabled first');
+        // Requires hr:users:read and hr:users:view:job
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:job'])) {
+          toast.error('This permission requires "View Users List" and "Job" view to be enabled first');
           return prev;
         }
       }
@@ -322,21 +380,48 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       }
       // Check dependencies for edit permissions
       else if (key === 'hr:users:edit:general') {
-        // Requires hr:users:read and hr:users:view:general
         if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:general'])) {
-          toast.error('This permission requires "View Users List" and "View General Tab" to be enabled first');
+          toast.error('This permission requires "View Users List" and "Personal" view to be enabled first');
+          return prev;
+        }
+      } else if (key === 'hr:users:edit:job') {
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:job'])) {
+          toast.error('This permission requires "View Users List" and "Job" view to be enabled first');
+          return prev;
+        }
+      } else if (key === 'hr:users:edit:docs') {
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:docs'])) {
+          toast.error('This permission requires "View Users List" and "Docs" view to be enabled first');
           return prev;
         }
       } else if (key === 'hr:users:edit:timesheet') {
-        // Requires hr:users:read and hr:users:view:timesheet
         if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:timesheet'])) {
-          toast.error('This permission requires "View Users List" and "View Timesheet Tab" to be enabled first');
+          toast.error('This permission requires "View Users List" and "Timesheet" view to be enabled first');
+          return prev;
+        }
+      } else if (key === 'hr:users:edit:loans') {
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:loans'])) {
+          toast.error('This permission requires "View Users List" and "Loans" view to be enabled first');
+          return prev;
+        }
+      } else if (key === 'hr:users:edit:training') {
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:training'])) {
+          toast.error('This permission requires "View Users List" and "Training" view to be enabled first');
+          return prev;
+        }
+      } else if (key === 'hr:users:edit:assets') {
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:assets'])) {
+          toast.error('This permission requires "View Users List" and "Assets" view to be enabled first');
+          return prev;
+        }
+      } else if (key === 'hr:users:edit:reports') {
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:reports'])) {
+          toast.error('This permission requires "View Users List" and "Reports" view to be enabled first');
           return prev;
         }
       } else if (key === 'hr:users:edit:permissions') {
-        // Requires hr:users:read and hr:users:view:permissions
         if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:permissions'])) {
-          toast.error('This permission requires "View Users List" and "View Permissions Tab" to be enabled first');
+          toast.error('This permission requires "View Users List" and "Permissions" view to be enabled first');
           return prev;
         }
       }
@@ -376,7 +461,8 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                            viewKey.includes(':files:') ? 'View Files' :
                            viewKey.includes(':documents:') ? 'View Documents' :
                            viewKey.includes(':proposal:') ? 'View Proposal' :
-                           viewKey.includes(':estimate:') ? 'View Estimate' :
+                           viewKey.includes(':costs:') ? 'View Costs' :
+                           viewKey.includes(':estimate:') ? 'View Costs' :
                            viewKey.includes(':orders:') ? 'View Orders' :
                            viewKey.includes(':safety:') ? 'View Safety' : 'corresponding View permission';
           toast.error(`This permission requires "${viewLabel}" to be enabled first`);
@@ -431,23 +517,45 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
           newPerms['fleet:equipment:write'] = false;
         } else if (key === 'hr:users:view:general') {
           newPerms['hr:users:edit:general'] = false;
+        } else if (key === 'hr:users:view:job') {
+          newPerms['hr:users:edit:job'] = false;
+          newPerms['hr:users:view:job:compensation'] = false;
+        } else if (key === 'hr:users:view:docs') {
+          newPerms['hr:users:edit:docs'] = false;
         } else if (key === 'hr:users:view:timesheet') {
           newPerms['hr:users:edit:timesheet'] = false;
+        } else if (key === 'hr:users:view:loans') {
+          newPerms['hr:users:edit:loans'] = false;
+        } else if (key === 'hr:users:view:training') {
+          newPerms['hr:users:edit:training'] = false;
+        } else if (key === 'hr:users:view:assets') {
+          newPerms['hr:users:edit:assets'] = false;
+        } else if (key === 'hr:users:view:reports') {
+          newPerms['hr:users:edit:reports'] = false;
         } else if (key === 'hr:users:view:permissions') {
           newPerms['hr:users:edit:permissions'] = false;
-        } else if (key === 'hr:users:view:general') {
-          // If disabling View General Tab, also disable job compensation view
-          newPerms['hr:users:view:job:compensation'] = false;
         } else if (key === 'hr:users:read') {
           // If disabling View Users List, disable all view, edit permissions and invite user
           newPerms['hr:users:write'] = false;
           newPerms['hr:users:view:general'] = false;
+          newPerms['hr:users:view:job'] = false;
           newPerms['hr:users:view:job:compensation'] = false;
+          newPerms['hr:users:view:docs'] = false;
           newPerms['hr:users:view:timesheet'] = false;
+          newPerms['hr:users:view:loans'] = false;
+          newPerms['hr:users:view:training'] = false;
+          newPerms['hr:users:view:assets'] = false;
+          newPerms['hr:users:view:reports'] = false;
           newPerms['hr:users:view:permissions'] = false;
           newPerms['hr:users:view:activity'] = false;
           newPerms['hr:users:edit:general'] = false;
+          newPerms['hr:users:edit:job'] = false;
+          newPerms['hr:users:edit:docs'] = false;
           newPerms['hr:users:edit:timesheet'] = false;
+          newPerms['hr:users:edit:loans'] = false;
+          newPerms['hr:users:edit:training'] = false;
+          newPerms['hr:users:edit:assets'] = false;
+          newPerms['hr:users:edit:reports'] = false;
           newPerms['hr:users:edit:permissions'] = false;
         }
         // If disabling View Customers, disable Edit Customers
@@ -468,6 +576,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
           newPerms['business:projects:documents:read'] = false;
           newPerms['business:projects:documents:write'] = false;
           newPerms['business:projects:proposal:read'] = false;
+          newPerms['business:projects:costs:read'] = false;
           newPerms['business:projects:estimate:read'] = false;
           newPerms['business:projects:orders:read'] = false;
           newPerms['business:projects:safety:read'] = false;
@@ -480,6 +589,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
           newPerms['business:projects:files:write'] = false;
           newPerms['business:projects:documents:write'] = false;
           newPerms['business:projects:proposal:write'] = false;
+          newPerms['business:projects:costs:write'] = false;
           newPerms['business:projects:estimate:write'] = false;
           newPerms['business:projects:orders:write'] = false;
           newPerms['business:projects:safety:write'] = false;
@@ -489,10 +599,10 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
           const editKey = key.replace(':read', ':write');
           newPerms[editKey] = false;
         }
-        return applyPermissionUncheckCascade(key, newPerms);
+        return syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(applyPermissionUncheckCascade(key, newPerms))))));
       }
       
-      return newPerms;
+      return syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(newPerms)))));
     });
   };
   
@@ -522,51 +632,52 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
 
   const handleFleetAccessLevel = useCallback(
     (readKey: string, writeKey: string | undefined, level: FleetAccessLevel) => {
-      setPermissions((prev) => {
-        const next = applyFleetAccessLevel(prev, readKey, writeKey, level);
-        if (level !== 'blocked' && readKey.startsWith('fleet:')) {
-          next[FLEET_ACCESS] = true;
-        }
-        return next;
-      });
+      setPermissions((prev) => applyFleetAccessLevel(prev, readKey, writeKey, level));
     },
     []
   );
 
   const handleFleetAssignLevel = useCallback((level: FleetAccessLevel) => {
-    setPermissions((prev) => {
-      const next = applyFleetWorkOrderAssignLevel(prev, level);
-      if (level === 'edit') {
-        next[FLEET_ACCESS] = true;
-        if (!next['fleet:work_orders:read']) next['fleet:work_orders:read'] = true;
-      }
-      return next;
-    });
+    setPermissions((prev) => applyFleetWorkOrderAssignLevel(prev, level));
   }, []);
 
   const handleCompanyAssetsAccessLevel = useCallback(
     (readKey: string, writeKey: string | undefined, level: CompanyAssetsAccessLevel) => {
       setPermissions((prev) => {
         const next = applyCompanyAssetsAccessLevel(prev, readKey, writeKey, level);
-        if (level !== 'blocked') {
-          next[COMPANY_ASSETS_ACCESS] = true;
-        }
-        return next;
+        return syncCompanyAssetsAccess(next);
       });
+    },
+    []
+  );
+
+  const handleDocumentsAccessLevel = useCallback(
+    (readKey: string, writeKey: string | undefined, level: DocumentsAccessLevel) => {
+      setPermissions((prev) => applyDocumentsAccessLevel(prev, readKey, writeKey, level));
+      setCompanyFilesCategoryConfig((prev) =>
+        syncCompanyFilesCategoryConfigAfterMacroChange(prev, level),
+      );
     },
     []
   );
 
   const handleHrAccessLevel = useCallback(
     (readKey: string, writeKey: string | undefined, level: HrAccessLevel) => {
-      setPermissions((prev) => applyHrAccessLevel(prev, readKey, writeKey, level));
+      setPermissions((prev) => syncHrAccess(applyHrAccessLevel(prev, readKey, writeKey, level)));
     },
     []
   );
 
   const handleHrWriteOnlyLevel = useCallback((key: string, level: HrAccessLevel) => {
-    setPermissions((prev) => applyHrWriteOnlyLevel(prev, key, level));
+    setPermissions((prev) => syncHrAccess(applyHrWriteOnlyLevel(prev, key, level)));
   }, []);
+
+  const handleTrainingAccessLevel = useCallback(
+    (readKey: string, writeKey: string | undefined, level: TrainingAccessLevel) => {
+      setPermissions((prev) => applyTrainingAccessLevel(prev, readKey, writeKey, level));
+    },
+    [],
+  );
 
   const handleProjectLineAccessLevel = useCallback(
     (
@@ -599,10 +710,18 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       toast.error('Template has no permissions');
       return;
     }
-    setPermissions((prev) => ({
-      ...prev,
-      ...Object.fromEntries((template.permission_keys || []).map((k) => [k, true])),
-    }));
+    setPermissions((prev) =>
+      syncTrainingAccess(syncHrAccess(
+        syncDocumentsAccess(
+          syncFleetAccess(
+            syncCompanyAssetsAccess({
+              ...prev,
+              ...Object.fromEntries((template.permission_keys || []).map((k) => [k, true])),
+            }),
+          ),
+        ),
+      )),
+    );
     toast.success(`Applied template "${template.name}" (merge)`);
     setShowApplyTemplateModal(false);
   }, [selectedTemplateId, permissionTemplates]);
@@ -627,8 +746,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
         if (allKeys.includes(areaAccessKey)) next[areaAccessKey] = true;
       }
     });
-    setPermissions(next);
-    toast.success(`Applied template "${template.name}" (replace)`);
+    setPermissions(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(next))))));
     setShowApplyTemplateModal(false);
   }, [selectedTemplateId, permissionTemplates, permissionsData]);
 
@@ -664,8 +782,15 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       });
       applyLineCategoryConfigToPayload(payload, 'construction', lineCategoryConfigs.construction);
       applyLineCategoryConfigToPayload(payload, 'repairs', lineCategoryConfigs.repairs);
+      applyCompanyFilesCategoryConfigToPayload(payload, companyFilesCategoryConfig);
       clearLegacyProjectSubPermissions(payload);
       clearLegacyCategoryConfigKeys(payload);
+      // clearLegacy may set retired keys (estimate/orders); only send active defs + config keys
+      for (const key of Object.keys(payload)) {
+        if (typeof payload[key] === 'boolean' && !validPermKeys.has(key)) {
+          delete payload[key];
+        }
+      }
       await api('PUT', `/permissions/users/${userId}`, payload);
       toast.success('Permissions saved');
       await refetch();
@@ -674,12 +799,17 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       setInitialPermissions({ ...permissions });
       setInitialIsAdmin(isAdminLocal);
       setInitialLineCategoryConfigs(cloneLineCategoryConfigs(lineCategoryConfigs));
+      setInitialCompanyFilesCategoryConfig(
+        cloneCompanyFilesCategoryConfig(companyFilesCategoryConfig),
+      );
       
       // If editing own permissions, invalidate /auth/me cache to refresh permissions
       if (currentUser && currentUser.id === userId) {
         await queryClient.invalidateQueries({ queryKey: ['me'] });
         await queryClient.invalidateQueries({ queryKey: ['project-files-category-perms'] });
         await queryClient.invalidateQueries({ queryKey: ['project-reports-category-perms'] });
+        await queryClient.invalidateQueries({ queryKey: ['company-files-department-perms'] });
+        await queryClient.invalidateQueries({ queryKey: ['company-files-departments'] });
       }
     } catch (e: any) {
       toast.error(e?.detail || 'Failed to save permissions');
@@ -693,6 +823,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     userId,
     permissions,
     lineCategoryConfigs,
+    companyFilesCategoryConfig,
     currentUser,
     queryClient,
     refetchUser,
@@ -723,6 +854,22 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
 
   return (
     <div className="space-y-6 pb-24">
+      {showCompanyFilesCategoriesModal ? (
+        <CompanyFilesCategoriesModal
+          open
+          readCategories={companyFilesCategoryConfig.read}
+          writeCategories={companyFilesCategoryConfig.write}
+          macroCanEdit={!!permissions['documents:write']}
+          onClose={() => setShowCompanyFilesCategoriesModal(false)}
+          onSave={({ read, write }) => {
+            setCompanyFilesCategoryConfig({
+              read: read ? [...read] : null,
+              write: write ? [...write] : null,
+            });
+            setShowCompanyFilesCategoriesModal(false);
+          }}
+        />
+      ) : null}
       {categoryModal?.feature === 'files' && (
         <ProjectFilesCategoriesModal
           open
@@ -943,6 +1090,28 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                   },
                   permissions: filterCompanyAssetsAreaPermissions(cat.permissions),
                 });
+              } else if (cat.category.name === 'documents') {
+                processedCategories.push({
+                  ...cat,
+                  category: {
+                    ...cat.category,
+                    name: 'documents',
+                    label: 'Company Files',
+                    id: 'documents',
+                    description: 'Company files library — view, upload, move, and delete.',
+                  },
+                  permissions: filterDocumentsAreaPermissions(cat.permissions),
+                });
+              } else if (cat.category.name === 'training') {
+                processedCategories.push({
+                  ...cat,
+                  category: {
+                    ...cat.category,
+                    label: 'Training & Learning',
+                    description: 'Organization training dashboard and LMS administration.',
+                  },
+                  permissions: filterTrainingAreaPermissions(cat.permissions),
+                });
               } else if (cat.category.name === 'work_orders' || cat.category.name === 'inspections') {
                 // Legacy categories — superseded by fleet:* keys in UI
               } else {
@@ -1050,12 +1219,13 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                         canEdit={canEdit}
                         onAccessLevelChange={handleHrAccessLevel}
                         onWriteOnlyChange={handleHrWriteOnlyLevel}
-                        accessPerm={areaAccessPerm}
-                        onAccessToggle={
-                          canEdit && areaAccessPerm
-                            ? () => handleToggle(areaAccessPerm.key)
-                            : undefined
-                        }
+                      />
+                    ) : cat.category.name === 'training' ? (
+                      <TrainingPermissionsPanel
+                        areaPerms={subPermissions}
+                        permissions={permissions}
+                        canEdit={canEdit}
+                        onAccessLevelChange={handleTrainingAccessLevel}
                       />
                     ) : cat.category.name === 'repairs_maintenance' ? (
                       <div className="space-y-4">
@@ -1143,13 +1313,6 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                         canEdit={canEdit}
                         onAccessLevelChange={handleFleetAccessLevel}
                         onAssignChange={handleFleetAssignLevel}
-                        showAccessToggle={!!areaAccessPerm}
-                        accessChecked={!!permissions[FLEET_ACCESS]}
-                        onAccessToggle={
-                          canEdit ? () => handleToggle(FLEET_ACCESS) : undefined
-                        }
-                        accessLabel={areaAccessPerm?.label}
-                        accessDescription={areaAccessPerm?.description}
                       />
                     ) : cat.category.name === 'company_assets' ? (
                       <CompanyAssetsPermissionsPanel
@@ -1157,11 +1320,15 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                         permissions={permissions}
                         canEdit={canEdit}
                         onAccessLevelChange={handleCompanyAssetsAccessLevel}
-                        accessPerm={areaAccessPerm}
-                        onAccessToggle={
-                          canEdit && areaAccessPerm
-                            ? () => handleToggle(areaAccessPerm.key)
-                            : undefined
+                      />
+                    ) : cat.category.name === 'documents' ? (
+                      <DocumentsPermissionsPanel
+                        areaPerms={subPermissions}
+                        permissions={permissions}
+                        canEdit={canEdit}
+                        onAccessLevelChange={handleDocumentsAccessLevel}
+                        onConfigureCategories={
+                          canEdit ? () => setShowCompanyFilesCategoriesModal(true) : undefined
                         }
                       />
                     ) : cat.category.name === 'construction' ? (

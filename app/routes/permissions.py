@@ -32,7 +32,14 @@ REPORT_CATEGORY_CONFIG_KEYS = {
     "business:rm:projects:reports:categories:write",
 }
 
-PERMISSION_CONFIG_KEYS = FILE_CATEGORY_CONFIG_KEYS | REPORT_CATEGORY_CONFIG_KEYS
+COMPANY_FILES_CATEGORY_CONFIG_KEYS = {
+    "documents:categories:read",
+    "documents:categories:write",
+}
+
+PERMISSION_CONFIG_KEYS = (
+    FILE_CATEGORY_CONFIG_KEYS | REPORT_CATEGORY_CONFIG_KEYS | COMPANY_FILES_CATEGORY_CONFIG_KEYS
+)
 
 
 # =====================
@@ -231,21 +238,27 @@ def update_user_permissions(
         else:
             raise HTTPException(status_code=400, detail=f"Invalid permission key or value type: {k}")
     
-    # Validate boolean permission keys exist (configs are not PermissionDefinitions)
+    # Validate boolean permission keys exist (configs are not PermissionDefinitions).
+    # Inactive definitions may be sent as False to clear leftover overrides, but cannot be granted.
     permission_keys = set(bool_updates.keys())
     if permission_keys:
         existing_perms = db.query(PermissionDefinition).filter(
             PermissionDefinition.key.in_(permission_keys),
-            PermissionDefinition.is_active == True
         ).all()
-        
-        existing_keys = {p.key for p in existing_perms}
-        invalid_keys = permission_keys - existing_keys
-        
+
+        existing_by_key = {p.key: p for p in existing_perms}
+        invalid_keys = set()
+        for key in permission_keys:
+            perm = existing_by_key.get(key)
+            if not perm:
+                invalid_keys.add(key)
+            elif not perm.is_active and bool_updates.get(key):
+                invalid_keys.add(key)
+
         if invalid_keys:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid permission keys: {', '.join(invalid_keys)}"
+                detail=f"Invalid permission keys: {', '.join(sorted(invalid_keys))}"
             )
     
     # Update user permissions_override

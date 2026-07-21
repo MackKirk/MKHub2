@@ -36,6 +36,16 @@ def _merge_line_perms(perm_map: dict) -> None:
     if perm_map.get("business:projects:write"):
         perm_map["business:construction:projects:write"] = True
         perm_map["business:rm:projects:write"] = True
+    for prefix in (
+        "business:projects",
+        "business:construction:projects",
+        "business:rm:projects",
+    ):
+        for action in ("read", "write"):
+            est_key = f"{prefix}:estimate:{action}"
+            cost_key = f"{prefix}:costs:{action}"
+            if perm_map.get(est_key):
+                perm_map[cost_key] = True
 
 
 def run():

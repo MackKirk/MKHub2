@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..auth.security import (
     User,
+    _forbidden,
     _has_permission,
     _has_project_feature_permission,
     has_project_files_category_permission,
@@ -185,18 +186,18 @@ def assert_can_initiate_upload(
         if not proj:
             raise HTTPException(status_code=404, detail="Project not found")
         if not can_write_business_line(user, getattr(proj, "business_line", None)):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise _forbidden("cannot write files for this project business line")
         cat_norm = (category_id or "").strip().lower()
         if cat_norm in ("document-creator", "document-creator-template"):
             if not _has_project_feature_permission(
                 user, getattr(proj, "business_line", None), "documents", "write"
             ):
-                raise HTTPException(status_code=403, detail="Forbidden")
+                raise _forbidden("missing project documents:write")
             return
         if not has_project_files_category_permission(
             user, category_id, action="write", project=proj
         ):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise _forbidden(f"missing project files:write for category ({category_id or 'uncategorized'})")
         return
 
     if cid:
@@ -204,7 +205,7 @@ def assert_can_initiate_upload(
         if not cl:
             raise HTTPException(status_code=404, detail="Client not found")
         if not has_customer_tab_permission(user, "files", "write"):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise _forbidden("missing business:customers:files:write")
         return
 
     if eid:
@@ -217,7 +218,7 @@ def assert_can_initiate_upload(
             _has_permission(user, "hr:users:write")
             or _has_permission(user, "users:write")
         ):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise _forbidden("missing hr:users:write / users:write")
         return
 
     # "misc" uploads (no project/client/employee)
@@ -227,11 +228,11 @@ def assert_can_initiate_upload(
         or _has_permission(user, "users:write")
         or _has_permission(user, "hr:users:write")
         or _has_permission(user, "documents:write")
-        or _has_permission(user, "documents:access")
+        or _has_permission(user, "training:admin:write")
         or _has_permission(user, "training:manage")
         or _has_permission(user, "settings:access")
     ):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden("missing upload permission for misc scope")
 
 
 def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> None:
@@ -251,7 +252,7 @@ def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> No
         try:
             puid = uuid.UUID(str(p))
         except ValueError:
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise _forbidden("invalid project id in storage key")
         proj = db.query(Project).filter(Project.id == puid, Project.deleted_at.is_(None)).first()
         if not proj:
             raise HTTPException(status_code=404, detail="Project not found")
@@ -261,17 +262,17 @@ def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> No
             return
         if user_has_any_sign_request_on_project(db, user, str(proj.id)):
             return
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden("cannot read project file from storage key")
     if c:
         if not has_customer_tab_permission(user, "files", "read"):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise _forbidden("missing business:customers:files:read")
         return
     if e:
         if not (
             _has_permission(user, "hr:users:read")
             or _has_permission(user, "users:read")
         ):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise _forbidden("missing hr:users:read / users:read")
         return
     if not (
         _has_permission(user, "business:projects:files:read")
@@ -280,9 +281,8 @@ def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> No
         or _has_permission(user, "users:read")
         or _has_permission(user, "hr:users:read")
         or _has_permission(user, "documents:read")
-        or _has_permission(user, "documents:access")
     ):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden("missing file read permission for inferred scope")
 
 
 def _resolve_file_scope_from_references(
@@ -544,8 +544,7 @@ def _user_has_document_creator_api_read_permission(user: User) -> bool:
     (e.g. list templates, list documents) — see app/routes/document_creator.py.
     """
     return bool(
-        _has_permission(user, "documents:access")
-        or _has_permission(user, "documents:read")
+        _has_permission(user, "documents:read")
         or _has_permission(user, "documents:write")
         or user_has_any_project_documents_permission(user, "read")
     )
@@ -608,21 +607,25 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
 
     if _is_organization_logo_library_blob(fo):
         if (
-            _has_permission(user, "training:manage")
+            _has_permission(user, "training:admin:read")
+            or _has_permission(user, "training:admin:write")
+            or _has_permission(user, "training:manage")
             or _has_permission(user, "users:write")
             or _has_permission(user, "settings:access")
         ):
             return
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden("missing permission to read organization logo library")
 
     if _is_certificate_background_library_blob(fo):
         if (
-            _has_permission(user, "training:manage")
+            _has_permission(user, "training:admin:read")
+            or _has_permission(user, "training:admin:write")
+            or _has_permission(user, "training:manage")
             or _has_permission(user, "users:write")
             or _has_permission(user, "settings:access")
         ):
             return
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden("missing permission to read certificate background library")
 
     pid, cid, eid = _resolve_file_scope_from_references(db, fo)
 
@@ -641,7 +644,7 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
             raise HTTPException(status_code=404, detail="Project not found")
         if not can_access_project_for_proposal_assets(user, proj):
             if not user_has_any_sign_request_on_project(db, user, str(proj.id)):
-                raise HTTPException(status_code=403, detail="Forbidden")
+                raise _forbidden("no access to project for file read")
         cat = _client_file_category_for_file_object(db, fo, project_id=pid)
         if has_project_files_category_permission(
             user, cat, action="read", project=proj
@@ -653,7 +656,7 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
             return
         if _can_read_via_document_creator_for_project(user, db, proj, fo):
             return
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden(f"missing project files:read for category ({cat or 'uncategorized'})")
 
     if cid:
         cl = db.query(Client).filter(Client.id == cid).first()
@@ -663,7 +666,7 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
             return
         if _can_read_client_scoped_file_via_proposal(user, db, fo, cid):
             return
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden("missing business:customers:files:read")
 
     if eid:
         ep = db.query(EmployeeProfile).filter(EmployeeProfile.id == eid).first()
@@ -675,14 +678,14 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
             _has_permission(user, "hr:users:read")
             or _has_permission(user, "users:read")
         ):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise _forbidden("missing hr:users:read / users:read")
         return
 
     wof = db.query(WorkOrderFile).filter(WorkOrderFile.file_object_id == fo.id).first()
     if wof:
         if _has_permission(user, "fleet:access"):
             return
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden("missing fleet:access for work order file")
 
     proj_img = (
         db.query(Project)
@@ -694,25 +697,24 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
     )
     if proj_img:
         if not can_access_project_for_proposal_assets(user, proj_img):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise _forbidden("no access to project image")
         if not (
             _has_permission(user, "business:projects:read")
             or _has_permission(user, "business:projects:files:read")
             or _has_permission(user, "business:projects:files:write")
             or _has_permission(user, "business:projects:proposal:read")
         ):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            raise _forbidden("missing permission to read project image")
         return
 
     cdoc = db.query(ClientDocument).filter(ClientDocument.file_id == fo.id).first()
     if cdoc:
         if (
             _has_permission(user, "documents:read")
-            or _has_permission(user, "documents:access")
             or _has_permission(user, "clients:read")
         ):
             return
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise _forbidden("missing documents:read / clients:read")
 
     # Misc document-creator uploads (no project_id on FileObject) used by the editor.
     if _is_document_creator_blob(fo) and _user_has_document_creator_api_read_permission(user):
@@ -725,7 +727,6 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
             or _has_permission(user, "business:projects:files:read")
             or _has_permission(user, "business:projects:files:write")
             or _has_permission(user, "documents:read")
-            or _has_permission(user, "documents:access")
         ):
             return
     if _can_read_file_object_via_inferred_storage_scope(user, db, fo):
@@ -735,7 +736,7 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
         return
     if is_admin(user, db):
         return
-    raise HTTPException(status_code=403, detail="Forbidden")
+    raise _forbidden("no file read permission for this object")
 
 
 def file_object_row_fields(

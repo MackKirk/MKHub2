@@ -254,10 +254,10 @@ def _hr_profile_display_name(
 @router.get("/hr-data-quality")
 def hr_data_quality(
     db: Session = Depends(get_db),
-    viewer: User = Depends(require_permissions("hr:users:read", "users:read")),
+    viewer: User = Depends(require_permissions("hr:pending:read", "hr:users:read", "users:read")),
 ):
     """
-    HR overview: active employees with incomplete org/profile, time-off, or file-library data.
+    HR Pending Items: active employees with incomplete org/profile, time-off, or file-library data.
     Summary counts include all eligible users with at least one gap; rows are capped at 500 (alphabetical by username).
     Pay rate/type are never returned in rows (sensitive); compensation gaps appear only in summary counts and issue tags for viewers with hr:users:view:job:compensation.
     """

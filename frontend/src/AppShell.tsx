@@ -453,8 +453,29 @@ export default function AppShell({ children }: PropsWithChildren){
       return (
         has ||
         permissionsSet.has('fleet:equipment:read') ||
-        permissionsSet.has('fleet:access') ||
-        permissionsSet.has('fleet:read')
+        permissionsSet.has('fleet:equipment:write')
+      );
+    }
+    if (requiredPermission === 'fleet:equipment:read') {
+      return (
+        has ||
+        permissionsSet.has('fleet:equipment:write') ||
+        permissionsSet.has('equipment:read') ||
+        permissionsSet.has('equipment:write')
+      );
+    }
+    if (requiredPermission === 'hr:onboarding:read') {
+      return has || permissionsSet.has('hr:onboarding:write');
+    }
+    if (requiredPermission === 'company_cards:read') {
+      return has || permissionsSet.has('company_cards:write');
+    }
+    if (requiredPermission === 'documents:read') {
+      return (
+        has ||
+        permissionsSet.has('documents:write') ||
+        permissionsSet.has('documents:delete') ||
+        permissionsSet.has('documents:move')
       );
     }
     if (requiredPermission === 'business:projects:safety:read') {
@@ -602,7 +623,7 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Company Assets',
       icon: <IconBox />,
       items: [
-        { id: 'equipment', label: 'Equipment', path: '/company-assets/equipment', icon: <IconWrench />, requiredPermission: 'equipment:read' },
+        { id: 'equipment', label: 'Equipment', path: '/company-assets/equipment', icon: <IconWrench />, requiredPermission: 'fleet:equipment:read' },
         { id: 'corporate-cards', label: 'Corporate Cards', path: '/company-assets/credit-cards', icon: <IconCreditCard />, requiredPermission: 'company_cards:read' },
       ]
     },
@@ -611,7 +632,7 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Company File Library',
       icon: <IconDocument />,
       items: [
-        { id: 'company-files', label: 'Company Files', path: '/company-files', icon: <IconFolder />, requiredPermission: 'documents:access' },
+        { id: 'company-files', label: 'Company Files', path: '/company-files', icon: <IconFolder />, requiredPermission: 'documents:read' },
       ]
     },
     {
@@ -619,10 +640,10 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Training & Learning',
       icon: <IconAcademic />,
       items: [
-        ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('training:manage') || (me?.permissions||[]).includes('users:write') || (me?.permissions||[]).includes('users:read') || (me?.permissions||[]).includes('hr:users:read') || (me?.permissions||[]).includes('hr:users:view:general')) ? [
+        ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('training:dashboard:read') || (me?.permissions||[]).includes('training:manage') || (me?.permissions||[]).includes('users:write') || (me?.permissions||[]).includes('users:read') || (me?.permissions||[]).includes('hr:users:read') || (me?.permissions||[]).includes('hr:users:view:general')) ? [
           { id: 'training-dashboard', label: 'Dashboard', path: '/training/dashboard', icon: <IconOverview /> },
         ] : []),
-        ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('training:manage') || (me?.permissions||[]).includes('users:write')) ? [
+        ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('training:admin:read') || (me?.permissions||[]).includes('training:admin:write') || (me?.permissions||[]).includes('training:manage') || (me?.permissions||[]).includes('users:write')) ? [
           { id: 'training-admin', label: 'Training Admin', path: '/training/admin', icon: <IconSettings /> }
         ] : []),
       ]
@@ -664,16 +685,13 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Human Resources',
       icon: <IconHumanResources />,
       items: [
-        // Check hr:access permission first - if not granted, hide entire category
-        ...((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('hr:access') || (me?.permissions||[]).includes('users:read')) ? [
-          { id: 'hr-overview', label: 'Overview', path: '/human-resources/overview', icon: <IconOverview />, requiredPermission: 'hr:users:read' },
-          { id: 'users', label: 'Users', path: '/users', icon: <IconUsersGroup />, requiredPermission: 'hr:users:read' },
-          { id: 'onboarding-admin', label: 'Onboarding', path: '/onboarding/admin', icon: <IconDocument />, requiredPermission: 'hr:users:read' },
-          { id: 'offboarding', label: 'Offboarding', path: '/human-resources/offboarding', icon: <IconDocument />, requiredPermission: 'hr:offboarding:read' },
-          { id: 'attendance', label: 'Attendance', path: '/settings/attendance', icon: <IconCalendar />, requiredPermission: 'hr:attendance:read' },
-          { id: 'community', label: 'Community', path: '/community', icon: <IconUsersGroup />, requiredPermission: 'hr:community:read' },
-        ] : [],
-      ]
+        { id: 'users', label: 'Users', path: '/users', icon: <IconUsersGroup />, requiredPermission: 'hr:users:read' },
+        { id: 'hr-pending', label: 'Pending Items', path: '/human-resources/overview', icon: <IconOverview />, requiredPermission: 'hr:pending:read' },
+        { id: 'onboarding-admin', label: 'Onboarding', path: '/onboarding/admin', icon: <IconDocument />, requiredPermission: 'hr:onboarding:read' },
+        { id: 'offboarding', label: 'Offboarding', path: '/human-resources/offboarding', icon: <IconDocument />, requiredPermission: 'hr:offboarding:read' },
+        { id: 'attendance', label: 'Attendance', path: '/settings/attendance', icon: <IconCalendar />, requiredPermission: 'hr:attendance:read' },
+        { id: 'community', label: 'Community', path: '/community', icon: <IconUsersGroup />, requiredPermission: 'hr:community:read' },
+      ],
     },
     {
       id: 'settings',
@@ -992,10 +1010,15 @@ export default function AppShell({ children }: PropsWithChildren){
     }
     if (category.id === 'sales') return '/quotes';
     if (category.id === 'company-assets') {
-      if (hasPermission('equipment:read')) return '/company-assets/equipment';
+      if (hasPermission('fleet:equipment:read')) return '/company-assets/equipment';
       if (hasPermission('company_cards:read')) return '/company-assets/credit-cards';
       const first = category.items.find((it) => hasPermission(it.requiredPermission));
       return first?.path || '/company-assets/equipment';
+    }
+    if (category.id === 'human-resources') {
+      if (hasPermission('hr:users:read')) return '/users';
+      const first = category.items.find((it) => hasPermission(it.requiredPermission));
+      return first?.path || '/users';
     }
     return category.items[0]?.path || '#';
   };

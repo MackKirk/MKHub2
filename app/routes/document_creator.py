@@ -158,7 +158,7 @@ def _project_token_values(project_id: uuid.UUID, db: Session) -> Optional[dict]:
 def list_document_types(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
 ):
     """List document type presets (e.g. cover + back cover + content page)."""
     types = db.query(DocumentType).order_by(DocumentType.category or "", DocumentType.name).all()
@@ -194,7 +194,7 @@ def create_document_type(
     body: DocumentTypeCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
     """Create a document type preset (ordered list of page templates)."""
     doc_type = DocumentType(
@@ -222,7 +222,7 @@ def update_document_type(
     body: DocumentTypeUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
     """Update a document type preset."""
     try:
@@ -257,7 +257,7 @@ def delete_document_type(
     document_type_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
     """Delete a document type preset."""
     try:
@@ -277,7 +277,7 @@ def duplicate_document_type(
     document_type_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
     """Duplicate a document type preset. Creates a new one with name + ' (copy)' and same category, description, page_templates."""
     try:
@@ -316,7 +316,7 @@ def expand_document_type_pages(
     project_id: Optional[str] = Query(None, description="When set, substitute project tokens in text elements."),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
 ):
     """Expand a document type into a list of pages (template_id, margins, elements) with cloned element ids.
     Use when adding pages from a template to an existing document. Uses template default_elements when entry has no elements.
@@ -383,7 +383,7 @@ def expand_document_type_pages(
 def list_templates(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
 ):
     """List all document templates (name, id, thumbnail via background_file_id)."""
     templates = db.query(DocumentTemplate).order_by(DocumentTemplate.name).all()
@@ -395,7 +395,7 @@ def get_template(
     template_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
 ):
     """Get template by id including areas_definition."""
     try:
@@ -429,7 +429,7 @@ def create_template(
     body: TemplateCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
     """Create a new document template (background)."""
     bg_id = None
@@ -460,7 +460,7 @@ def update_template(
     body: TemplateUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
     """Update template name, description or background."""
     try:
@@ -496,7 +496,7 @@ def delete_template(
     template_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
     """Delete a template."""
     try:
@@ -518,7 +518,7 @@ def list_documents(
     project_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
 ):
     """List documents. Optionally filter by project_id. With project docs permission, list all docs for that project."""
     from ..auth.security import _has_project_feature_permission
@@ -555,7 +555,7 @@ def create_document(
     body: DocumentCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
     """Create a new user document. If document_type_id is set, pages are built from that preset."""
     pages = body.pages if body.pages is not None else []
@@ -644,7 +644,7 @@ def get_document(
     document_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
 ):
     """Get document by id. Owner or user with project documents permission can access."""
     try:
@@ -665,7 +665,7 @@ def update_document(
     body: DocumentUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
     """Update document. Owner or user with project documents write permission can update."""
     try:
@@ -695,7 +695,7 @@ def delete_document(
     document_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
     """Delete a document. Owner or user with project documents write permission can delete."""
     try:
@@ -718,7 +718,7 @@ def export_document_pdf(
     body: Optional[ExportPdfOptions] = Body(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
 ):
     """Generate PDF for the document and return file."""
     try:

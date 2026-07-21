@@ -10,6 +10,7 @@ const LINE_PROJECT_SUB_FEATURES = [
   'files',
   'documents',
   'proposal',
+  'costs',
   'safety',
 ] as const;
 
@@ -37,17 +38,37 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'inventory:write',
   'reviews:read',
   'reviews:admin',
+  'training:access',
+  'training:dashboard:read',
+  'training:admin:read',
+  'training:admin:write',
+  'training:manage',
   'hr:access',
   'hr:users:read',
   'hr:users:write',
   'hr:users:view:general',
-  'hr:users:view:job:compensation',
   'hr:users:edit:general',
+  'hr:users:view:job',
+  'hr:users:edit:job',
+  'hr:users:view:job:compensation',
+  'hr:users:view:docs',
+  'hr:users:edit:docs',
   'hr:users:view:timesheet',
   'hr:users:edit:timesheet',
+  'hr:users:view:loans',
+  'hr:users:edit:loans',
+  'hr:users:view:training',
+  'hr:users:edit:training',
+  'hr:users:view:assets',
+  'hr:users:edit:assets',
+  'hr:users:view:reports',
+  'hr:users:edit:reports',
   'hr:users:view:permissions',
   'hr:users:view:activity',
   'hr:users:edit:permissions',
+  'hr:pending:read',
+  'hr:onboarding:read',
+  'hr:onboarding:write',
   'hr:attendance:read',
   'hr:attendance:write',
   'hr:community:read',
@@ -155,6 +176,8 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'business:projects:documents:write',
   'business:projects:proposal:read',
   'business:projects:proposal:write',
+  'business:projects:costs:read',
+  'business:projects:costs:write',
   'business:projects:safety:read',
   'business:projects:safety:write',
   'sales:access',
@@ -166,6 +189,12 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
 /** Permissions hidden from permission UIs (retired tabs, unused area gates). */
 export function isHiddenPermissionKey(key: string): boolean {
   if (key === 'inventory:access') return true;
+  if (key === 'company_assets:access') return true;
+  if (key === 'documents:access') return true;
+  if (key === 'hr:access') return true;
+  if (key === 'fleet:access') return true;
+  if (key === 'training:access' || key === 'training:manage') return true;
+  if (key === 'documents:delete' || key === 'documents:move') return true;
   if (isHiddenProjectLinePermissionKey(key)) return true;
   if (key === 'fleet:read' || key === 'fleet:write' || key === 'fleet:manage') return true;
   if (key === 'equipment:read' || key === 'equipment:write' || key === 'equipment:manage') return true;

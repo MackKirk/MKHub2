@@ -15,6 +15,7 @@ from ..auth.security import (
     assert_fleet_asset_tab,
     assert_fleet_work_order_tab,
     assert_fleet_inspection_tab,
+    assert_equipment_tab,
     has_fleet_assets_list_permission,
     has_fleet_asset_write_permission,
     has_fleet_work_orders_list_permission,
@@ -25,6 +26,9 @@ from ..auth.security import (
     has_fleet_inspection_write_permission,
     has_fleet_inspection_tab_permission,
     can_create_fleet_inspection_schedule,
+    has_equipment_list_permission,
+    has_equipment_write_permission,
+    has_equipment_tab_permission,
 )
 from ..services.permissions import is_admin
 from ..services.asset_assignment_service import (
@@ -1280,9 +1284,11 @@ def list_equipment(
     page: int = Query(1, ge=1),
     limit: int = Query(15, ge=1, le=100),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:access", "fleet:read", "equipment:read"))
+    user=Depends(get_current_user),
 ):
     """List equipment with filters, sort, and pagination."""
+    if not has_equipment_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     offset = (page - 1) * limit
     query = db.query(Equipment)
 
@@ -1397,9 +1403,11 @@ def list_equipment(
 def get_equipment(
     equipment_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("equipment:read"))
+    user=Depends(get_current_user),
 ):
     """Get equipment detail"""
+    if not has_equipment_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")
@@ -1411,9 +1419,10 @@ def create_equipment(
     equipment: EquipmentCreate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("equipment:write"))
 ):
     """Create new equipment"""
+    if not has_equipment_write_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     new_equipment = Equipment(**equipment.dict(), created_by=user.id)
     db.add(new_equipment)
     db.commit()
@@ -1436,9 +1445,9 @@ def update_equipment(
     equipment_update: EquipmentUpdate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("equipment:write")),
 ):
     """Update equipment"""
+    assert_equipment_tab(user, "general", "write")
     equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")
@@ -1471,9 +1480,10 @@ def delete_equipment(
     equipment_id: uuid.UUID,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("equipment:write")),
 ):
     """Retire equipment (soft delete: status set to retired)."""
+    if not has_equipment_write_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")
@@ -1538,9 +1548,9 @@ def checkout_equipment(
     checkout: EquipmentCheckoutCreate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("equipment:write"))
 ):
     """Check out equipment to a user"""
+    assert_equipment_tab(user, "general", "write")
     equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")
@@ -1603,9 +1613,9 @@ def checkin_equipment(
     checkin: EquipmentCheckinUpdate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("equipment:write"))
 ):
     """Check in equipment"""
+    assert_equipment_tab(user, "general", "write")
     equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")
@@ -1661,9 +1671,10 @@ def checkin_equipment(
 def get_equipment_work_orders(
     equipment_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("equipment:read"))
+    user=Depends(get_current_user),
 ):
     """Get work orders for equipment"""
+    assert_equipment_tab(user, "work_orders", "read")
     return db.query(WorkOrder).filter(
         and_(
             WorkOrder.entity_type == "equipment",
@@ -1676,9 +1687,10 @@ def get_equipment_work_orders(
 def get_equipment_logs(
     equipment_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("equipment:read"))
+    user=Depends(get_current_user),
 ):
     """Get logs for equipment"""
+    assert_equipment_tab(user, "history", "read")
     return db.query(EquipmentLog).filter(
         EquipmentLog.equipment_id == equipment_id
     ).order_by(EquipmentLog.log_date.desc()).all()
@@ -1689,12 +1701,13 @@ def get_equipment_history(
     equipment_id: uuid.UUID,
     limit: int = Query(300, ge=1, le=500),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("equipment:read")),
+    user=Depends(get_current_user),
 ):
     """
     Unified timeline: assignments (when no matching assignment audit), equipment logs,
     and audit entries for this equipment (edits, work orders, assignments).
     """
+    assert_equipment_tab(user, "history", "read")
     equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")
@@ -1872,9 +1885,14 @@ def get_equipment_history(
 def get_equipment_checkouts(
     equipment_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("equipment:read"))
+    user=Depends(get_current_user),
 ):
     """Get checkout history for equipment"""
+    if not (
+        has_equipment_tab_permission(user, "general", "read")
+        or has_equipment_tab_permission(user, "history", "read")
+    ):
+        raise HTTPException(status_code=403, detail="Forbidden")
     return db.query(EquipmentCheckout).filter(
         EquipmentCheckout.equipment_id == equipment_id
     ).order_by(EquipmentCheckout.checked_out_at.desc()).all()
@@ -1883,9 +1901,11 @@ def get_equipment_checkouts(
 @router.get("/equipment/overdue", response_model=List[EquipmentCheckoutResponse])
 def get_overdue_equipment(
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("equipment:read"))
+    user=Depends(get_current_user),
 ):
     """Get overdue equipment checkouts"""
+    if not has_equipment_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     today = datetime.now(timezone.utc)
     overdue = db.query(EquipmentCheckout).filter(
         and_(
@@ -1907,7 +1927,7 @@ def get_overdue_equipment(
 def get_user_assets(
     user_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:access", "fleet:read", "equipment:read")),
+    _=Depends(require_permissions("fleet:access", "fleet:read", "equipment:read", "hr:users:view:assets", "hr:users:view:general")),
 ):
     """Get assets currently with this user and full checkout/assignment history."""
     try:
@@ -2174,9 +2194,14 @@ def delete_asset_assignment(
 def get_equipment_assignments(
     equipment_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("equipment:read"))
+    user=Depends(get_current_user),
 ):
     """Get assignment history for equipment (from asset_assignments)"""
+    if not (
+        has_equipment_tab_permission(user, "general", "read")
+        or has_equipment_tab_permission(user, "history", "read")
+    ):
+        raise HTTPException(status_code=403, detail="Forbidden")
     assignments = db.query(AssetAssignment).filter(
         AssetAssignment.equipment_id == equipment_id
     ).order_by(AssetAssignment.assigned_at.desc()).all()
@@ -2189,9 +2214,9 @@ def assign_equipment(
     payload: AssetAssignmentAssignRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("equipment:write"))
 ):
     """Assign equipment to a user (unified asset_assignments)"""
+    assert_equipment_tab(user, "general", "write")
     if not payload.assigned_to_user_id and not payload.assigned_to_name:
         raise HTTPException(status_code=400, detail="Provide assigned_to_user_id or assigned_to_name")
     try:
@@ -2222,9 +2247,9 @@ def return_equipment(
     payload: AssetAssignmentReturnRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("equipment:write"))
 ):
     """Return equipment (close open assignment by equipment_id)"""
+    assert_equipment_tab(user, "general", "write")
     try:
         result = return_assignment_for_equipment_item(equipment_id, payload, user.id, db)
         db.commit()
@@ -2248,9 +2273,9 @@ def return_equipment_assignment(
     return_data: EquipmentAssignmentReturn,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("equipment:write"))
 ):
     """Return equipment assignment by id (legacy equipment_assignments table)"""
+    assert_equipment_tab(user, "general", "write")
     assignment = db.query(EquipmentAssignment).filter(EquipmentAssignment.id == assignment_id).first()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
@@ -3476,6 +3501,10 @@ def create_work_order(
     if not (
         has_fleet_work_order_write_permission(user)
         or _has_permission(user, "fleet:vehicles:work_orders:write")
+        or (
+            (getattr(work_order, "entity_type", None) or "").lower() == "equipment"
+            and has_equipment_tab_permission(user, "work_orders", "write")
+        )
     ):
         raise HTTPException(status_code=403, detail="Forbidden")
 

@@ -13,7 +13,13 @@ import uuid
 
 from ..db import get_db
 from ..models.models import ClientFolder, ClientDocument, FileObject, SettingItem, SettingList, User, EmployeeProfile
-from ..auth.security import require_permissions, get_current_user, require_roles
+from ..auth.security import (
+    require_permissions,
+    get_current_user,
+    require_roles,
+    has_company_files_department_permission,
+    assert_company_files_department_permission,
+)
 
 router = APIRouter(prefix="/company/files", tags=["company-files"])
 
@@ -157,6 +163,69 @@ def get_or_create_department_root_folder(db: Session, company_id: uuid.UUID, dep
     return dept_root
 
 
+def list_department_setting_items(db: Session) -> List[SettingItem]:
+    dept_list = db.query(SettingList).filter(SettingList.name == "departments").first()
+    if not dept_list:
+        return []
+    return (
+        db.query(SettingItem)
+        .filter(SettingItem.list_id == dept_list.id)
+        .order_by(SettingItem.sort_index.asc(), SettingItem.label.asc())
+        .all()
+    )
+
+
+def resolve_department_id_for_folder(
+    db: Session,
+    company_id: uuid.UUID,
+    folder: Optional[ClientFolder],
+) -> Optional[str]:
+    """Walk up to the department root folder and map its name to a departments SettingItem id."""
+    if not folder:
+        return None
+    current = folder
+    seen: Set[uuid.UUID] = set()
+    while current and getattr(current, "parent_id", None):
+        if current.id in seen:
+            break
+        seen.add(current.id)
+        current = (
+            db.query(ClientFolder)
+            .filter(ClientFolder.client_id == company_id, ClientFolder.id == current.parent_id)
+            .first()
+        )
+    if not current:
+        return None
+    root_name = (current.name or "").strip()
+    if not root_name:
+        return None
+    for dept in list_department_setting_items(db):
+        if (dept.label or "").strip() == root_name:
+            return str(dept.id)
+    return None
+
+
+def assert_write_for_folder_id(
+    db: Session,
+    user: User,
+    company_id: uuid.UUID,
+    folder_id: Optional[str],
+) -> None:
+    if not folder_id:
+        assert_company_files_department_permission(user, None, "write")
+        return
+    try:
+        fid = uuid.UUID(str(folder_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid folder")
+    folder = db.query(ClientFolder).filter(
+        ClientFolder.client_id == company_id,
+        ClientFolder.id == fid,
+    ).first()
+    dept_id = resolve_department_id_for_folder(db, company_id, folder)
+    assert_company_files_department_permission(user, dept_id, "write")
+
+
 def collect_descendant_folder_ids(db: Session, company_id: uuid.UUID, root_id: uuid.UUID) -> Set[uuid.UUID]:
     """Collect root folder id and all descendant folder ids."""
     all_folders = db.query(ClientFolder).filter(ClientFolder.client_id == company_id).all()
@@ -206,15 +275,66 @@ def serialize_company_document(db: Session, d: ClientDocument, include_deleted: 
     }
 
 
+@router.get("/departments")
+def list_company_file_departments(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:read", "clients:read")),
+):
+    """
+    File categories (departments) for Company Files.
+    Gated by documents permissions — does not require settings:access.
+    Filtered by documents:categories:read allow-list when configured.
+    """
+    out = []
+    for dept in list_department_setting_items(db):
+        dept_id = str(dept.id)
+        if not has_company_files_department_permission(user, dept_id, "read"):
+            continue
+        out.append({
+            "id": dept_id,
+            "label": dept.label,
+            "value": getattr(dept, "value", None),
+            "sort_index": dept.sort_index,
+        })
+    return out
+
+
+@router.get("/departments/all")
+def list_all_company_file_departments_for_config(
+    db: Session = Depends(get_db),
+    _=Depends(
+        require_permissions(
+            "hr:users:write",
+            "hr:users:edit:permissions",
+            "users:write",
+            "settings:access",
+        )
+    ),
+):
+    """Unfiltered department list for permission configuration UI."""
+    return [
+        {
+            "id": str(dept.id),
+            "label": dept.label,
+            "value": getattr(dept, "value", None),
+            "sort_index": dept.sort_index,
+        }
+        for dept in list_department_setting_items(db)
+    ]
+
+
 @router.get("/folders")
 def list_company_folders(
     department_id: Optional[str] = None,
     parent_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
+    _=Depends(require_permissions("documents:read", "clients:read"))
 ):
     """List folders for company files, optionally filtered by department and parent. Filters by user permissions."""
+    if department_id:
+        assert_company_files_department_permission(user, department_id, "read")
     company_id = get_company_client_id(db)
     
     dept_root_folder_id = None
@@ -275,9 +395,10 @@ def list_company_folder_tree(
     department_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
+    _=Depends(require_permissions("documents:read", "clients:read"))
 ):
     """Return all folders in a department subtree plus the department root folder id."""
+    assert_company_files_department_permission(user, department_id, "read")
     company_id = get_company_client_id(db)
     dept_root = get_or_create_department_root_folder(db, company_id, department_id)
     if not dept_root:
@@ -313,21 +434,31 @@ def create_company_folder(
     parent_id: Optional[str] = Body(None),
     department_id: Optional[str] = Body(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("documents:write", "documents:access", "clients:write"))
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:write", "clients:write"))
 ):
     """Create a folder for company files."""
     company_id = get_company_client_id(db)
     
     pid = None
+    resolved_dept = department_id
     if parent_id:
         try:
             pid = uuid.UUID(str(parent_id))
         except Exception:
             pass
+        if pid and not resolved_dept:
+            parent = db.query(ClientFolder).filter(
+                ClientFolder.client_id == company_id,
+                ClientFolder.id == pid,
+            ).first()
+            resolved_dept = resolve_department_id_for_folder(db, company_id, parent)
     elif department_id:
         dept_root = get_or_create_department_root_folder(db, company_id, department_id)
         if dept_root:
             pid = dept_root.id
+
+    assert_company_files_department_permission(user, resolved_dept, "write")
     
     folder = ClientFolder(
         client_id=company_id,
@@ -349,10 +480,12 @@ def update_company_folder(
     name: Optional[str] = Body(None),
     parent_id: Optional[str] = Body(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("documents:move", "documents:access", "clients:write"))
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:move", "clients:write"))
 ):
     """Update a company folder."""
     company_id = get_company_client_id(db)
+    assert_write_for_folder_id(db, user, company_id, folder_id)
     
     try:
         fid = uuid.UUID(str(folder_id))
@@ -386,10 +519,12 @@ def update_company_folder(
 def delete_company_folder(
     folder_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("documents:delete", "documents:access", "clients:write"))
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:delete", "clients:write"))
 ):
     """Delete a company folder."""
     company_id = get_company_client_id(db)
+    assert_write_for_folder_id(db, user, company_id, folder_id)
     
     try:
         fid = uuid.UUID(str(folder_id))
@@ -419,10 +554,24 @@ def list_company_documents(
     department_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
+    _=Depends(require_permissions("documents:read", "clients:read"))
 ):
     """List documents in company files. Only shows documents in folders the user has access to."""
     company_id = get_company_client_id(db)
+
+    resolved_dept = department_id
+    if folder_id and not resolved_dept:
+        try:
+            fid = uuid.UUID(str(folder_id))
+            folder = db.query(ClientFolder).filter(
+                ClientFolder.client_id == company_id,
+                ClientFolder.id == fid,
+            ).first()
+            resolved_dept = resolve_department_id_for_folder(db, company_id, folder)
+        except Exception:
+            resolved_dept = None
+    if resolved_dept:
+        assert_company_files_department_permission(user, resolved_dept, "read")
     
     query = db.query(ClientDocument).filter(
         ClientDocument.client_id == company_id,
@@ -485,12 +634,14 @@ def list_company_documents(
 def create_company_document(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("documents:write", "documents:access", "clients:write"))
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:write", "clients:write"))
 ):
     """Create a document in company files."""
     company_id = get_company_client_id(db)
     
     folder_id = payload.get("folder_id")
+    assert_write_for_folder_id(db, user, company_id, folder_id)
     doc = ClientDocument(
         client_id=company_id,
         doc_type=(f"folder:{folder_id}" if folder_id else (payload.get("doc_type") or "other")),
@@ -508,7 +659,8 @@ def update_company_document(
     doc_id: str,
     payload: dict = Body(...),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("documents:move", "documents:access", "clients:write"))
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:move", "clients:write"))
 ):
     """Update a company document."""
     company_id = get_company_client_id(db)
@@ -520,6 +672,13 @@ def update_company_document(
     
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
+
+    current_folder_id = None
+    if (doc.doc_type or "").startswith("folder:"):
+        current_folder_id = doc.doc_type.split(":", 1)[1]
+    assert_write_for_folder_id(db, user, company_id, current_folder_id)
+    if "folder_id" in payload:
+        assert_write_for_folder_id(db, user, company_id, payload.get("folder_id"))
     
     if "folder_id" in payload:
         fid = payload.get("folder_id")
@@ -540,7 +699,7 @@ def delete_company_document(
     doc_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:delete", "documents:access", "clients:write"))
+    _=Depends(require_permissions("documents:delete", "clients:write"))
 ):
     """Soft-delete a company document (admin can restore or purge from Deleted files tab)."""
     company_id = get_company_client_id(db)
@@ -553,6 +712,10 @@ def delete_company_document(
         return {"status": "ok"}
     if getattr(doc, "deleted_at", None) is not None:
         return {"status": "ok"}
+    current_folder_id = None
+    if (doc.doc_type or "").startswith("folder:"):
+        current_folder_id = doc.doc_type.split(":", 1)[1]
+    assert_write_for_folder_id(db, user, company_id, current_folder_id)
     doc.deleted_at = datetime.now(timezone.utc)
     doc.deleted_by = user.id
     db.commit()
@@ -639,7 +802,7 @@ def permanently_delete_company_document(
 def get_folder_permissions(
     folder_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
+    _=Depends(require_permissions("documents:read", "clients:read"))
 ):
     """Get access permissions for a folder."""
     company_id = get_company_client_id(db)
@@ -688,7 +851,7 @@ def update_folder_permissions(
     folder_id: str,
     payload: dict = Body(...),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("documents:move", "documents:access", "clients:write"))
+    _=Depends(require_permissions("documents:move", "clients:write"))
 ):
     """Update access permissions for a folder."""
     company_id = get_company_client_id(db)
@@ -747,7 +910,7 @@ def get_users_options(
     q: Optional[str] = None,
     limit: int = 100,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
+    _=Depends(require_permissions("documents:read", "clients:read"))
 ):
     """Get list of users for permission configuration."""
     query = db.query(User).filter(User.is_active == True)
@@ -774,7 +937,7 @@ def get_users_options(
 @router.get("/divisions-options")
 def get_divisions_options(
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
+    _=Depends(require_permissions("documents:read", "clients:read"))
 ):
     """Get list of divisions for permission configuration."""
     divisions_list = db.query(SettingList).filter(SettingList.name == "divisions").first()

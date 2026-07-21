@@ -56,11 +56,6 @@ export function FleetPermissionsPanel({
   canEdit,
   onAccessLevelChange,
   onAssignChange,
-  showAccessToggle,
-  accessChecked,
-  onAccessToggle,
-  accessLabel,
-  accessDescription,
 }: {
   areaPerms: Perm[];
   permissions: Record<string, boolean>;
@@ -71,11 +66,6 @@ export function FleetPermissionsPanel({
     level: FleetAccessLevel,
   ) => void;
   onAssignChange: (level: FleetAccessLevel) => void;
-  showAccessToggle?: boolean;
-  accessChecked?: boolean;
-  onAccessToggle?: () => void;
-  accessLabel?: string;
-  accessDescription?: string;
 }) {
   const vehiclePerms = areaPerms.filter((p) => p.key.startsWith('fleet:vehicles:'));
   const woPerms = areaPerms.filter((p) => p.key.startsWith('fleet:work_orders:'));
@@ -85,24 +75,6 @@ export function FleetPermissionsPanel({
 
   return (
     <div className="space-y-4">
-      {showAccessToggle && onAccessToggle ? (
-        <label className="flex cursor-pointer items-start gap-2.5 py-1.5">
-          <input
-            type="checkbox"
-            className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-            checked={!!accessChecked}
-            disabled={!canEdit}
-            onChange={onAccessToggle}
-          />
-          <span className="min-w-0 flex-1">
-            <span className={permissionUi.rowTitle}>{accessLabel ?? 'Access Fleet'}</span>
-            {accessDescription ? (
-              <p className={uiCx(permissionUi.rowDescription, 'mt-0.5')}>{accessDescription}</p>
-            ) : null}
-          </span>
-        </label>
-      ) : null}
-
       <EntityPermissionsGrid
         title="Dashboard"
         rows={buildFleetDashboardPermissionRows(dashboardPerms)}
