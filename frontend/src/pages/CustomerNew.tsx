@@ -261,14 +261,6 @@ export default function CustomerNew(){
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [contactModalOpen]);
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
 
   return (
     <div className="max-w-4xl">
@@ -276,10 +268,6 @@ export default function CustomerNew(){
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">New Customer</div>
           <div className="text-sm text-gray-500 font-medium">Create a customer with required details</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
         </div>
       </div>
       <div className="rounded-xl border bg-white p-4">

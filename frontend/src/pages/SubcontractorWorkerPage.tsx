@@ -804,14 +804,7 @@ export default function SubcontractorWorkerPage() {
     return withFileAccessTokenIfNeeded(`/files/${data.worker.photo_file_id}/thumbnail?w=320`) || null;
   }, [data?.worker?.photo_file_id]);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const tabStrip: { key: WorkerSubTab; label: string }[] = useMemo(
     () =>
@@ -856,13 +849,7 @@ export default function SubcontractorWorkerPage() {
         subtitle="Personal details, employer, documents, and site attendance"
         icon={<UserRound className="h-4 w-4" />}
         onBack={() => nav(backHref)}
-        backLabel={data?.worker?.company_id ? 'Back to company' : 'Back to subcontractors'}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        backLabel={data?.worker?.company_id ? 'Back to company' : 'Back to subcontractors'}
       />
 
       <LoadingOverlay isLoading={isLoading || !data} text="Loading worker…">

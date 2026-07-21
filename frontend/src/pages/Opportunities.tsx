@@ -185,14 +185,6 @@ export default function Opportunities() {
   }, [viewMode, searchParams, setSearchParams]);
   
   // Get current date formatted (same as Dashboard)
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
   
   // Convert current URL params to rules for modal
   const currentRules = useMemo(() => {
@@ -559,12 +551,6 @@ export default function Opportunities() {
           onBack={() => navigate(businessDashboardPath)}
           backLabel="Back to Business"
           icon={<LayoutDashboard className="h-4 w-4" />}
-          actions={
-            <div className="text-right">
-              <div className={uiTypography.overline}>Today</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-            </div>
-          }
         />
 
         <AppCard bodyClassName={uiSpacing.cardPadding}>

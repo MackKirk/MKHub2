@@ -85,16 +85,6 @@ export default function Community() {
 
   const myPosts: any[] = Array.isArray(myPostsData) ? myPostsData : [];
 
-  const todayLabel = useMemo(
-    () =>
-      new Date().toLocaleDateString('en-CA', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
-    [],
-  );
 
   const tabItems = useMemo(
     () => [
@@ -110,12 +100,6 @@ export default function Community() {
         title="Community"
         subtitle="Create announcements, manage groups, and review engagement."
         icon={<Megaphone className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
       />
 
       <AppCard bodyClassName="p-0 overflow-hidden">

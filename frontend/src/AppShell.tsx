@@ -12,6 +12,7 @@ import NotificationBell from '@/components/NotificationBell';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import { useConfirm } from '@/components/ConfirmProvider';
 import FixedBugReportButton from '@/components/FixedBugReportButton';
+import HubTodayCalendar from '@/components/HubTodayCalendar';
 import InstallPrompt from '@/components/InstallPrompt';
 import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
 import HubChatLauncher from '@/components/HubChatLauncher';
@@ -1446,6 +1447,7 @@ export default function AppShell({ children }: PropsWithChildren){
               </div>
             ) : null}
           </div>
+          <HubTodayCalendar />
         </div>
       </header>
 

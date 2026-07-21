@@ -647,14 +647,7 @@ export default function FleetAssets() {
     return typeLabels[type] || type;
   };
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const emptyListTitle =
     typeFilter === 'all' ? 'No assets found' : `No ${getTypeLabel(typeFilter).toLowerCase()} found`;
@@ -664,13 +657,7 @@ export default function FleetAssets() {
       <AppPageHeader
         title="Fleet Assets"
         subtitle="Manage fleet assets"
-        icon={<Truck className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<Truck className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>

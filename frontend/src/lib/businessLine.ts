@@ -15,7 +15,7 @@ const LEGACY_RM_LABEL = 'Repairs & Maintenance';
 const RM_LABELS = new Set<string>([LEGACY_RM_LABEL, ...RM_PROJECT_DIVISION_LABELS]);
 
 /** Bump when project_divisions seed structure changes (invalidates React Query cache). */
-export const PROJECT_DIVISIONS_QUERY_KEY = ['project-divisions', 'rm-tree-v4'] as const;
+export const PROJECT_DIVISIONS_QUERY_KEY = ['project-divisions', 'rm-tree-v5'] as const;
 
 /** Filter project_divisions tree for list/detail pickers */
 export function filterProjectDivisionsForBusinessLine<T extends { label?: string; subdivisions?: T[] }>(

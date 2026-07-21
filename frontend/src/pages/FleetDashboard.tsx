@@ -634,14 +634,7 @@ export default function FleetDashboard() {
       ),
   });
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const stats = data ?? DEFAULT_STATS;
 
@@ -689,13 +682,7 @@ export default function FleetDashboard() {
       <AppPageHeader
         title="Fleet & Equipment"
         subtitle="Executive overview"
-        icon={<Truck className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<Truck className="h-4 w-4" />}
       />
 
       <section>

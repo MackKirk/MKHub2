@@ -344,14 +344,7 @@ export default function WorkOrderDetail() {
     if (ok) removeCostItem(category, index);
   };
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const goBackFromWorkOrder = () => {
     if (window.history.length > 1) {
@@ -453,12 +446,6 @@ export default function WorkOrderDetail() {
     return <div className="p-4">Invalid work order ID</div>;
   }
 
-  const pageHeaderToday = (
-    <div className="text-right">
-      <div className={uiTypography.overline}>Today</div>
-      <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-    </div>
-  );
 
   if (isLoading) {
     return (
@@ -469,7 +456,6 @@ export default function WorkOrderDetail() {
           icon={<ClipboardList className="h-4 w-4" />}
           onBack={goBackFromWorkOrder}
           backLabel="Back"
-          actions={pageHeaderToday}
         />
         <WorkOrderHeroSkeleton />
         <AppCard bodyClassName="!py-3">
@@ -526,7 +512,6 @@ export default function WorkOrderDetail() {
                 Delete
               </AppButton>
             ) : null}
-            {pageHeaderToday}
           </div>
         }
       />

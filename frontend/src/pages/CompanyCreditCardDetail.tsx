@@ -180,21 +180,8 @@ export default function CompanyCreditCardDetail() {
 
   const pageShellClass = uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50');
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
 
-  const pageHeaderToday = (
-    <div className="text-right">
-      <div className={uiTypography.overline}>Today</div>
-      <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-    </div>
-  );
+
 
   const headerAdminActions = isAdministrator ? (
     <AppButton
@@ -224,12 +211,9 @@ export default function CompanyCreditCardDetail() {
     </AppButton>
   ) : null;
 
-  const pageHeaderActions = (
-    <div className="flex items-center gap-3">
-      {headerAdminActions}
-      {pageHeaderToday}
-    </div>
-  );
+  const pageHeaderActions = headerAdminActions ? (
+    <div className="flex items-center gap-3">{headerAdminActions}</div>
+  ) : undefined;
 
   if (!isValidId) {
     return (
@@ -257,7 +241,6 @@ export default function CompanyCreditCardDetail() {
           onBack={() => nav('/company-assets/credit-cards')}
           backLabel="Corporate cards"
           icon={<CreditCard className="h-4 w-4" />}
-          actions={pageHeaderToday}
         />
         <CompanyCreditCardHeroSkeleton />
       </div>

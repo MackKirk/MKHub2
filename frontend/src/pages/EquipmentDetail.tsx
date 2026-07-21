@@ -348,21 +348,8 @@ export default function EquipmentDetail() {
     { key: 'logs', label: 'History' },
   ] as const;
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
 
-  const pageHeaderToday = (
-    <div className="text-right">
-      <div className={uiTypography.overline}>Today</div>
-      <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-    </div>
-  );
+
 
   const headerAdminActions = isAdministrator ? (
     <AppButton
@@ -392,12 +379,9 @@ export default function EquipmentDetail() {
     </AppButton>
   ) : null;
 
-  const pageHeaderActions = (
-    <div className="flex items-center gap-3">
-      {headerAdminActions}
-      {pageHeaderToday}
-    </div>
-  );
+  const pageHeaderActions = headerAdminActions ? (
+    <div className="flex items-center gap-3">{headerAdminActions}</div>
+  ) : undefined;
 
   if (!isValidId) {
     return <div className="p-4">Invalid equipment ID</div>;
@@ -412,7 +396,6 @@ export default function EquipmentDetail() {
           icon={<Wrench className="h-4 w-4" />}
           onBack={() => nav('/company-assets/equipment')}
           backLabel="Equipment"
-          actions={pageHeaderToday}
         />
         <EquipmentHeroSkeleton />
       </div>

@@ -121,7 +121,6 @@ const HERO_EXPAND_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const CUSTOMER_HERO_EXPANDED_MAX_PX = 320;
 const HERO_EXPAND_BASE_MS = 1400;
 const HERO_COLLAPSE_MS = 650;
-const OPPORTUNITY_HERO_COLLAPSED_PX = 72;
 const HERO_FIELD_STACK = uiSpacing.sectionStack;
 
 function salesListPaths(project: { business_line?: string; is_bidding?: boolean } | undefined | null) {
@@ -1085,6 +1084,8 @@ export default function ProjectDetail(){
   const [pickerOpen, setPickerOpen] = useState(false);
   const [showOnSiteLeadsModal, setShowOnSiteLeadsModal] = useState(false);
   const [isHeroCollapsed, setIsHeroCollapsed] = useState(() => signOnlySafetySession);
+  /** After collapse animation finishes, drop the empty AppCard chrome so no white strip remains above tabs. */
+  const [heroChromeHidden, setHeroChromeHidden] = useState(() => signOnlySafetySession);
   const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
   const proposalFormSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const safetyTabSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
@@ -1182,11 +1183,23 @@ export default function ProjectDetail(){
       return;
     }
     if (tab === null || tab === 'overview') {
+      setHeroChromeHidden(false);
       setIsHeroCollapsed(false);
     } else {
       setIsHeroCollapsed(true);
     }
   }, [tab, signOnlySafetySession]);
+
+  // Keep AppCard mounted while the hero collapses, then hide chrome so no empty white card sits above tabs
+  useEffect(() => {
+    if (!useDesignSystem) return;
+    if (!isHeroCollapsed) {
+      setHeroChromeHidden(false);
+      return;
+    }
+    const t = window.setTimeout(() => setHeroChromeHidden(true), HERO_COLLAPSE_MS);
+    return () => window.clearTimeout(t);
+  }, [useDesignSystem, isHeroCollapsed]);
 
   const showBillingSection = !tab && !proj?.is_bidding;
   
@@ -1449,14 +1462,7 @@ export default function ProjectDetail(){
   const statusLabel = String((proj as any)?.status_label||'').trim();
   const statusColor = ((settings||{}).project_statuses||[]).find((s:any)=>s.label===statusLabel)?.value || '#e5e7eb';
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   // Helper function to get page title based on active tab
   const getPageTitle = (proj: any, activeTab: typeof tab): string => {
@@ -1478,6 +1484,12 @@ export default function ProjectDetail(){
     };
     const tabTitle = tabTitles[activeTab] || activeTab;
     return `${baseTitle} • ${tabTitle}`;
+  };
+
+  const getCollapsedPageTitle = (proj: any): string => {
+    const baseTitle = proj?.is_bidding ? 'Opportunity Information' : 'Project Information';
+    const name = String(proj?.name || '').trim() || '—';
+    return `${baseTitle} • ${name}`;
   };
 
   // Helper function to get page description based on active tab
@@ -1529,15 +1541,18 @@ export default function ProjectDetail(){
   const [opportunityHeroExpandedHeight, setOpportunityHeroExpandedHeight] = useState(320);
 
   useLayoutEffect(() => {
-    if (!useDesignSystem) return;
+    if (!useDesignSystem || isHeroCollapsed) return;
     const el = opportunityHeroMeasureRef.current;
     if (!el) return;
-    const measure = () => setOpportunityHeroExpandedHeight(el.scrollHeight);
+    const measure = () => {
+      const next = el.scrollHeight;
+      if (next > 0) setOpportunityHeroExpandedHeight(next);
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [useDesignSystem, proj, cover, livePricingItems, projectDivisions]);
+  }, [useDesignSystem, isHeroCollapsed, proj, cover, livePricingItems, projectDivisions]);
 
   const opportunityHeroExpandMs = useMemo(
     () =>
@@ -1551,21 +1566,11 @@ export default function ProjectDetail(){
       transitionProperty: 'max-height, opacity',
       transitionDuration: isHeroCollapsed ? `${HERO_COLLAPSE_MS}ms` : `${opportunityHeroExpandMs}ms`,
       transitionTimingFunction: HERO_EXPAND_EASING,
-      maxHeight: isHeroCollapsed ? 0 : opportunityHeroExpandedHeight,
+      // Slight buffer so collapse control / padding never clip measured content
+      maxHeight: isHeroCollapsed ? 0 : Math.max(opportunityHeroExpandedHeight + 24, 200),
       opacity: isHeroCollapsed ? 0 : 1,
     };
   }, [useDesignSystem, isHeroCollapsed, opportunityHeroExpandedHeight, opportunityHeroExpandMs]);
-
-  const opportunityHeroCollapsedStyle = useMemo((): CSSProperties | undefined => {
-    if (!useDesignSystem) return undefined;
-    return {
-      transitionProperty: 'max-height, opacity',
-      transitionDuration: isHeroCollapsed ? `${HERO_EXPAND_BASE_MS}ms` : `${HERO_COLLAPSE_MS}ms`,
-      transitionTimingFunction: HERO_EXPAND_EASING,
-      maxHeight: isHeroCollapsed ? OPPORTUNITY_HERO_COLLAPSED_PX : 0,
-      opacity: isHeroCollapsed ? 1 : 0,
-    };
-  }, [useDesignSystem, isHeroCollapsed]);
 
   const opportunityConvertHeaderAction = useMemo(() => {
     if (!isOpportunityDetailRoute || !proj?.is_bidding || !hasEditPermission) return null;
@@ -1640,7 +1645,7 @@ export default function ProjectDetail(){
     >
       {useDesignSystem ? (
         <AppPageHeader
-          title={getPageTitle(proj, tab)}
+          title={isHeroCollapsed ? getCollapsedPageTitle(proj) : getPageTitle(proj, tab)}
           subtitle={getPageDescription(proj, tab)}
           icon={
             isProjectDetailRoute && isLeakInvestigation ? (
@@ -1654,38 +1659,83 @@ export default function ProjectDetail(){
           onBack={handlePageBack}
           backLabel={pageBackLabel}
           actions={
-            <div className="text-right">
-              <div className={uiTypography.overline}>Today</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-            </div>
+            isHeroCollapsed ? (
+              <div className={uiCx(uiLayout.actionsRow, 'items-center')}>
+                {(() => {
+                  if (isOpportunityStyleTabs) {
+                    const estimatorIds = proj?.estimator_ids || (proj?.estimator_id ? [proj.estimator_id] : []);
+                    const estimators = estimatorIds
+                      .map((id: string) => employees?.find((e: any) => String(e.id) === String(id)))
+                      .filter(Boolean);
+                    if (estimators.length === 0) return <div className="text-xs text-gray-400">—</div>;
+                    if (estimators.length === 1) {
+                      const est = estimators[0];
+                      return (
+                        <div className="flex items-center gap-2">
+                          <UserAvatar user={est} size="w-6 h-6" showTooltip={true} />
+                          <div className="text-xs font-semibold text-gray-700">{getUserDisplayName(est)}</div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="flex items-center gap-1.5">
+                        {estimators.map((est: any) => (
+                          <UserAvatar key={est.id} user={est} size="w-6 h-6" showTooltip={true} />
+                        ))}
+                      </div>
+                    );
+                  }
+                  const adminId = proj?.project_admin_id;
+                  if (!adminId) return <div className="text-xs text-gray-400">—</div>;
+                  const projectAdmin = employees?.find((e: any) => String(e.id) === String(adminId));
+                  if (!projectAdmin) return <div className="text-xs text-gray-400">—</div>;
+                  return (
+                    <div className="flex items-center gap-2">
+                      <UserAvatar user={projectAdmin} size="w-6 h-6" showTooltip={true} />
+                      <div className="text-xs font-semibold text-gray-700">{getUserDisplayName(projectAdmin)}</div>
+                    </div>
+                  );
+                })()}
+                {!signOnlySafetySession && (
+                  <AppButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="p-1"
+                    onClick={() => {
+                      setHeroChromeHidden(false);
+                      setIsHeroCollapsed(false);
+                    }}
+                    title="Expand"
+                    aria-label="Expand project details"
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </AppButton>
+                )}
+              </div>
+            ) : undefined
           }
         />
       ) : (
         <div className="rounded-xl border bg-white p-4 mb-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1">
-              <button
-                onClick={handlePageBack}
-                className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                title={pageBackLabel}
-              >
-                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-              </button>
-              <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-gray-900">{getPageTitle(proj, tab)}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{getPageDescription(proj, tab)}</div>
-              </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handlePageBack}
+              className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+              title={pageBackLabel}
+            >
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
             </div>
-            <div className="text-right">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            <div>
+              <div className="text-sm font-semibold text-gray-900">{getPageTitle(proj, tab)}</div>
+              <div className="text-xs text-gray-500 mt-0.5">{getPageDescription(proj, tab)}</div>
             </div>
           </div>
         </div>
@@ -1721,7 +1771,7 @@ export default function ProjectDetail(){
         >
           <div
             ref={useDesignSystem ? opportunityHeroMeasureRef : undefined}
-            className={uiCx(useDesignSystem ? 'p-2.5' : 'p-3', 'overflow-visible')}
+            className={uiCx(useDesignSystem ? 'relative p-2.5' : 'p-3', 'overflow-visible')}
           >
             <div className={uiCx('flex items-start', useDesignSystem ? 'gap-5' : 'gap-4')}>
               {/* Left Section - Image and Project Divisions */}
@@ -2396,12 +2446,11 @@ export default function ProjectDetail(){
           )}
         </div>
         
-        {/* Collapsed View - Single Line */}
+        {/* Collapsed View - Single Line (legacy only; design system fuses into header) */}
+        {!useDesignSystem ? (
         <div
           className={
-            useDesignSystem
-              ? HERO_PANEL_TRANSITION_BASE
-              : heroCardShell(
+            heroCardShell(
                   `overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out absolute top-0 left-0 right-0 ${
                     isHeroCollapsed
                       ? 'opacity-100 min-h-[60px] max-h-[200px] pointer-events-auto z-10'
@@ -2409,16 +2458,11 @@ export default function ProjectDetail(){
                   }`,
                 )
           }
-          style={
-            useDesignSystem
-              ? opportunityHeroCollapsedStyle
-              : {
+          style={{
                   transitionProperty: 'max-height, opacity',
                   transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
                   transitionTimingFunction: 'ease-in-out, ease-in-out',
-                }
-          }
-          aria-hidden={useDesignSystem ? !isHeroCollapsed : undefined}
+                }}
         >
           <div className="p-3">
             <div className="flex items-center justify-between gap-4">
@@ -2491,20 +2535,7 @@ export default function ProjectDetail(){
           </div>
           
           {/* Expand button - bottom right corner */}
-          {useDesignSystem ? (
-            <AppButton
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="absolute bottom-2 right-2 z-20 p-1"
-              onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-              title="Expand"
-              aria-label="Expand"
-            >
-              <ChevronDown className="h-3 w-3" />
-            </AppButton>
-          ) : (
-            <button
+          <button
               onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
               className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
               title="Expand"
@@ -2518,8 +2549,8 @@ export default function ProjectDetail(){
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-          )}
         </div>
+        ) : null}
           </>
         );
 
@@ -2542,13 +2573,13 @@ export default function ProjectDetail(){
 
         if (useDesignSystem) {
           return (
-            <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-1.5' : 'gap-2')}>
-              <AppCard
-                className={uiCx('transition-[margin]', HERO_PANEL_EASE)}
-                bodyClassName="relative overflow-hidden p-0"
+            <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-0' : 'gap-2')}>
+              <div
+                className={uiCx(heroChromeHidden && 'h-0 overflow-hidden opacity-0')}
+                aria-hidden={heroChromeHidden}
               >
-                {heroPanels}
-              </AppCard>
+                <AppCard bodyClassName="!p-0 relative overflow-hidden">{heroPanels}</AppCard>
+              </div>
               {!signOnlySafetySession ? (
                 <div className={!isHeroCollapsed ? '-mt-0.5' : undefined}>{tabCards}</div>
               ) : null}
@@ -2575,8 +2606,8 @@ export default function ProjectDetail(){
           </>
         );
       })()}
-      {/* Same offset as tab strip: collapsed hero is position:absolute; without this, Safety content sits under it */}
-      {signOnlySafetySession && isHeroCollapsed && (
+      {/* Same offset as tab strip: legacy collapsed hero is position:absolute */}
+      {signOnlySafetySession && isHeroCollapsed && !useDesignSystem && (
         <div className="mt-16 mb-4 shrink-0" aria-hidden />
       )}
 

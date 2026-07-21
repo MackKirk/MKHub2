@@ -65,14 +65,7 @@ export default function Overview() {
     'User';
   const jobTitle = profile.job_title || '';
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const greetingTitle = `${getTimeBasedGreeting()}, ${displayName}`;
   const [communityUnread, setCommunityUnread] = useState(0);
@@ -82,13 +75,7 @@ export default function Overview() {
       <AppPageHeader
         title={greetingTitle}
         subtitle={jobTitle || undefined}
-        icon={<LayoutGrid className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<LayoutGrid className="h-4 w-4" />}
       />
 
       <div className={uiLayout.pageOverview}>

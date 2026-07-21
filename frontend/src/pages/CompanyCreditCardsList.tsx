@@ -170,14 +170,7 @@ export default function CompanyCreditCardsList() {
 
   const openNewCardModal = () => setShowNewCardModal(true);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const showEmptyList = !isLoading && !error && items.length === 0;
 
@@ -192,13 +185,7 @@ export default function CompanyCreditCardsList() {
       <AppPageHeader
         title="Corporate cards"
         subtitle="Last four digits & expiry only — assign custody like equipment"
-        icon={<CreditCard className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<CreditCard className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

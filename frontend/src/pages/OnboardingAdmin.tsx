@@ -482,23 +482,8 @@ export default function OnboardingAdmin() {
     [baseDocs],
   );
 
-  const todayLabel = useMemo(
-    () =>
-      new Date().toLocaleDateString('en-CA', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
-    [],
-  );
 
-  const pageHeaderToday = (
-    <div className="text-right">
-      <div className={uiTypography.overline}>Today</div>
-      <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-    </div>
-  );
+
 
   const docMenuDoc = docMenuOpenId ? baseDocs.find((x) => x.id === docMenuOpenId) : null;
 
@@ -649,8 +634,7 @@ export default function OnboardingAdmin() {
       <AppPageHeader
         title="HR Onboarding"
         subtitle="Onboarding documents and registration assignments"
-        icon={<ClipboardList className="h-4 w-4" />}
-        actions={pageHeaderToday}
+        icon={<ClipboardList className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

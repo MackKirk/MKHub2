@@ -160,14 +160,7 @@ export default function SystemSettings(){
     }
   }, [breakMinItem?.value, geofenceRadiusItem?.value, breakEmployeesItem?.value]);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const [section, setSection] = useState<SettingsSection>('lists');
 
@@ -195,12 +188,6 @@ export default function SystemSettings(){
         title="System settings"
         subtitle="Lists, file organization, templates, and document creator backgrounds/types used across the app."
         icon={<Settings className="h-4 w-4" />}
-        actions={
-          <div className="text-right shrink-0">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx('text-xs font-semibold', uiColors.textBody)}>{todayLabel}</div>
-          </div>
-        }
       />
 
       <AppCard bodyClassName={uiSpacing.compactCardPadding}>

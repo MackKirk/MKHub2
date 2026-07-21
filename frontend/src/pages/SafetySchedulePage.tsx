@@ -101,12 +101,7 @@ export default function SafetySchedulePage() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   });
 
-  const todayLabel = new Date().toLocaleDateString('en-CA', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(projectSearch.trim()), 300);
@@ -202,13 +197,7 @@ export default function SafetySchedulePage() {
       <AppPageHeader
         title="Safety schedule"
         subtitle="Scheduled site safety inspections on the calendar. Open the project Safety tab to complete forms."
-        icon={<CalendarDays className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<CalendarDays className="h-4 w-4" />}
       />
 
       <SafetyServiceCalendar

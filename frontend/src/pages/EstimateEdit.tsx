@@ -2,21 +2,11 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import EstimateBuilder from '@/components/EstimateBuilder';
-import { useMemo } from 'react';
 
 export default function EstimateEdit(){
   const { id } = useParams();
   const estimateId = id ? parseInt(id, 10) : undefined;
-  
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
-  
+
   const { data: estimateData, isLoading } = useQuery({
     queryKey: ['estimate', estimateId],
     queryFn: () => estimateId ? api<any>('GET', `/estimate/estimates/${estimateId}`) : Promise.resolve(null),
@@ -35,10 +25,6 @@ export default function EstimateEdit(){
             <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Edit Estimate</div>
             <div className="text-sm text-gray-500 font-medium">Loading...</div>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-            <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-          </div>
         </div>
       </div>
     );
@@ -52,10 +38,6 @@ export default function EstimateEdit(){
             <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Edit Estimate</div>
             <div className="text-sm text-gray-500 font-medium">Estimate not found</div>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-            <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-          </div>
         </div>
       </div>
     );
@@ -67,10 +49,6 @@ export default function EstimateEdit(){
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Edit Estimate</div>
           <div className="text-sm text-gray-500 font-medium">Continue editing your estimate.</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
         </div>
       </div>
       <div className="rounded-xl border bg-white p-4">

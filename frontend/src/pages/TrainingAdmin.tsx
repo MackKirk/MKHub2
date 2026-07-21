@@ -58,14 +58,7 @@ export default function TrainingAdmin() {
     queryFn: () => api<StatusData>('GET', '/training/admin/status'),
   });
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const quickFilterSegments = useMemo(
     () => [
@@ -109,13 +102,7 @@ export default function TrainingAdmin() {
       <AppPageHeader
         title="Training administration"
         subtitle="Manage courses, modules, and content for your team."
-        icon={<Settings className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<Settings className="h-4 w-4" />}
       />
 
       {status ? (

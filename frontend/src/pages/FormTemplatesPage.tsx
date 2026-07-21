@@ -164,16 +164,7 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
     return `${d} by ${who}`;
   };
 
-  const todayLabel = useMemo(
-    () =>
-      new Date().toLocaleDateString('en-CA', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
-    []
-  );
+
 
   const pageTitle = isHr ? 'Employee review form templates' : 'Form Templates';
   const pageSubtitle = isHr
@@ -344,13 +335,7 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
       <AppPageHeader
         title={pageTitle}
         subtitle={pageSubtitle}
-        icon={<FileStack className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<FileStack className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

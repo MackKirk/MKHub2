@@ -260,14 +260,7 @@ export default function Quotes() {
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const currentRules = useMemo(() => convertParamsToRules(searchParams), [searchParams]);
 
@@ -511,13 +504,7 @@ export default function Quotes() {
       <AppPageHeader
         title="Quotations"
         subtitle="List, search and manage quotations"
-        icon={<FileText className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<FileText className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

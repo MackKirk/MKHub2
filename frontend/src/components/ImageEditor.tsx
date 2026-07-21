@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { api, withFileAccessToken } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
 import { uiCx, uiModalLayer } from '@/components/ui/tokens';
+import { AppCheckbox } from '@/components/ui';
 import DocumentEditorFontColorPicker from '@/components/document-editor/DocumentEditorFontColorPicker';
 import {
   editorCaptionClass,
@@ -10,6 +11,76 @@ import {
   editorTransitionInteractive,
   selectionToolButtonGhostClass,
 } from '@/components/document-editor/documentEditorRibbonPrimitives';
+import {
+  applyShapeFill,
+  circleGeometryFromItem,
+  hexToRgba,
+  SHAPE_FILL_PATTERNS,
+  type ShapeFillPattern,
+} from '@/components/imageEditorShapeFill';
+
+function ShapeFillPatternIcon({
+  pattern,
+  color = '#64748b',
+  className = 'h-5 w-5',
+}: {
+  pattern: ShapeFillPattern;
+  color?: string;
+  className?: string;
+}) {
+  const stroke = color || '#64748b';
+  return (
+    <svg viewBox="0 0 20 20" className={className} aria-hidden>
+      <defs>
+        <clipPath id={`shape-fill-clip-${pattern}`}>
+          <rect x="3" y="3" width="14" height="14" rx="1" />
+        </clipPath>
+      </defs>
+      <rect x="1.5" y="1.5" width="17" height="17" rx="2" fill="none" stroke="#cbd5e1" strokeWidth="1" />
+      <g clipPath={`url(#shape-fill-clip-${pattern})`}>
+        {pattern === 'solid' && (
+          <rect x="3" y="3" width="14" height="14" rx="1" fill={stroke} opacity={0.55} />
+        )}
+        {pattern === 'hatch-horiz' &&
+          [4, 8, 12, 16].map((y) => (
+            <rect key={y} x="3" y={y} width="14" height="2" fill={stroke} opacity={0.65} />
+          ))}
+        {pattern === 'hatch-vert' &&
+          [4, 8, 12, 16].map((x) => (
+            <rect key={x} x={x} y="3" width="2" height="14" fill={stroke} opacity={0.65} />
+          ))}
+        {pattern === 'hatch-cross' && (
+          <>
+            {[4, 8, 12, 16].map((y) => (
+              <rect key={`h${y}`} x="3" y={y} width="14" height="2" fill={stroke} opacity={0.55} />
+            ))}
+            {[4, 8, 12, 16].map((x) => (
+              <rect key={`v${x}`} x={x} y="3" width="2" height="14" fill={stroke} opacity={0.55} />
+            ))}
+          </>
+        )}
+        {pattern === 'hatch-diag' &&
+          [-2, 2, 6, 10, 14, 18].map((i) => (
+            <polygon
+              key={i}
+              points={`${3 + i},3 ${17 + i},17 ${16 + i},17 ${2 + i},3`}
+              fill={stroke}
+              opacity={0.65}
+            />
+          ))}
+        {pattern === 'hatch-diag-rev' &&
+          [2, 6, 10, 14, 18, 22].map((i) => (
+            <polygon
+              key={i}
+              points={`${i},3 ${i - 14},17 ${i - 15},17 ${i - 1},3`}
+              fill={stroke}
+              opacity={0.65}
+            />
+          ))}
+      </g>
+    </svg>
+  );
+}
 
 const toolBtnBase = `${editorTransitionInteractive} flex items-center justify-center rounded-lg border px-2 py-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35`;
 const toolBtnIdle = `${toolBtnBase} border-transparent bg-slate-100/95 text-slate-800 hover:bg-slate-200/90 active:scale-[0.98]`;
@@ -120,7 +191,50 @@ type AnnotationItem = {
   textBackgroundEnabled?: boolean;
   textBackgroundColor?: string;
   textBackgroundOpacity?: number;
+  /** Fill for rect/circle (independent of stroke color). */
+  fillEnabled?: boolean;
+  fillColor?: string;
+  fillOpacity?: number;
+  fillPattern?: ShapeFillPattern;
 };
+
+/** Arrow shaft stops at the head base so the stroke does not protrude past the tip. */
+function drawArrow(
+  ctx: CanvasRenderingContext2D,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  strokeWidth: number,
+) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const head = 10 + strokeWidth * 2;
+  const baseX = x2 - ux * head;
+  const baseY = y2 - uy * head;
+
+  const prevCap = ctx.lineCap;
+  ctx.lineCap = 'butt';
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  if (len > head) {
+    ctx.lineTo(baseX, baseY);
+  } else {
+    ctx.lineTo(x2, y2);
+  }
+  ctx.stroke();
+  ctx.lineCap = prevCap;
+
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(baseX - uy * head * 0.5, baseY + ux * head * 0.5);
+  ctx.lineTo(baseX + uy * head * 0.5, baseY - ux * head * 0.5);
+  ctx.closePath();
+  ctx.fill();
+}
 
 type ImageEditorProps = {
   isOpen: boolean;
@@ -165,13 +279,18 @@ export default function ImageEditor({
   }, [offsetX, offsetY, scale]);
   const [items, setItems] = useState<AnnotationItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [color, setColor] = useState('#000000');
+  const [textColor, setTextColor] = useState('#000000');
+  const [strokeColor, setStrokeColor] = useState('#000000');
   const [stroke, setStroke] = useState(3);
   const [fontSize, setFontSize] = useState(16);
   const [text, setText] = useState('');
   const [textBackgroundEnabled, setTextBackgroundEnabled] = useState(true);
-  const [textBackgroundColor, setTextBackgroundColor] = useState('#ffffff');
+  const [textBackgroundColor, setTextBackgroundColor] = useState('#000000');
   const [textBackgroundOpacity, setTextBackgroundOpacity] = useState(0.8);
+  const [fillEnabled, setFillEnabled] = useState(false);
+  const [fillColor, setFillColor] = useState('#000000');
+  const [fillOpacity, setFillOpacity] = useState(0.4);
+  const [fillPattern, setFillPattern] = useState<ShapeFillPattern>('solid');
   const [cursorVisible, setCursorVisible] = useState(true);
   const [canvasDimensions, setCanvasDimensions] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const cursorBlinkRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -237,26 +356,89 @@ export default function ImageEditor({
     }
   }, [textBackgroundEnabled, textBackgroundColor, textBackgroundOpacity, selectedIds]);
 
-  // Track previous color/stroke to only update when they actually change
-  const prevColorRef = useRef<string>(color);
-  const prevStrokeRef = useRef<number>(stroke);
-
-  // Update color of selected items when color changes (not when selection changes)
+  // Update shape fill settings of selected rect/circle items when settings change
   useEffect(() => {
-    // Only update if color actually changed (not just selection)
-    if (selectedIds.length > 0 && mode === 'select' && prevColorRef.current !== color) {
+    if (selectedIds.length > 0) {
+      setItems((prev) =>
+        prev
+          .map((it) => {
+            if (!it || !it.id) return it;
+            if (selectedIds.includes(it.id) && (it.type === 'rect' || it.type === 'circle')) {
+              return {
+                ...it,
+                fillEnabled,
+                fillColor,
+                fillOpacity,
+                fillPattern,
+              };
+            }
+            return it;
+          })
+          .filter((it) => it && it.id),
+      );
+    }
+  }, [fillEnabled, fillColor, fillOpacity, fillPattern, selectedIds]);
+
+  const showShapeFillPanel =
+    mode === 'rect' ||
+    mode === 'circle' ||
+    selectedIds.some((id) => {
+      const it = items.find((x) => x?.id === id);
+      return it?.type === 'rect' || it?.type === 'circle';
+    });
+
+  // Track previous colors/stroke to only update when they actually change
+  const prevTextColorRef = useRef<string>(textColor);
+  const prevStrokeColorRef = useRef<string>(strokeColor);
+  const prevStrokeRef = useRef<number>(stroke);
+  const prevSelectionForColorSyncRef = useRef<string | null>(null);
+
+  // Reflect selected item stroke/text color in tool pickers
+  useEffect(() => {
+    const id = selectedIds.length === 1 ? selectedIds[0] : null;
+    if (id === prevSelectionForColorSyncRef.current) return;
+    prevSelectionForColorSyncRef.current = id;
+    if (!id) return;
+    const it = items.find((x) => x?.id === id);
+    if (!it) return;
+    if (it.type === 'text') {
+      prevTextColorRef.current = it.color;
+      setTextColor(it.color);
+    } else {
+      prevStrokeColorRef.current = it.color;
+      setStrokeColor(it.color);
+    }
+  }, [selectedIds, items]);
+
+  // Update text color of selected text items when textColor changes (not when selection changes)
+  useEffect(() => {
+    if (selectedIds.length > 0 && mode === 'select' && prevTextColorRef.current !== textColor) {
       setItems(prev => prev.map(it => {
         if (!it || !it.id) return it;
-        if (selectedIds.includes(it.id)) {
-          return { ...it, color };
+        if (selectedIds.includes(it.id) && it.type === 'text') {
+          return { ...it, color: textColor };
         }
         return it;
       }).filter(it => it && it.id));
     }
-    prevColorRef.current = color;
-  }, [color, selectedIds, mode]);
+    prevTextColorRef.current = textColor;
+  }, [textColor, selectedIds, mode]);
 
-  // Update stroke of selected items when stroke changes (not when selection changes)
+  // Update stroke color of selected non-text items when strokeColor changes
+  useEffect(() => {
+    if (selectedIds.length > 0 && mode === 'select' && prevStrokeColorRef.current !== strokeColor) {
+      setItems(prev => prev.map(it => {
+        if (!it || !it.id) return it;
+        if (selectedIds.includes(it.id) && it.type !== 'text') {
+          return { ...it, color: strokeColor };
+        }
+        return it;
+      }).filter(it => it && it.id));
+    }
+    prevStrokeColorRef.current = strokeColor;
+  }, [strokeColor, selectedIds, mode]);
+
+  // Update stroke width of selected items when stroke changes (not when selection changes)
   useEffect(() => {
     // Only update if stroke actually changed (not just selection)
     if (selectedIds.length > 0 && mode === 'select' && prevStrokeRef.current !== stroke) {
@@ -454,7 +636,7 @@ export default function ImageEditor({
     } else {
       // Calculate maximum size that fits in viewport while maintaining aspect ratio
       // Account for sidebar (224px) + gap (16px) + padding (32px) + modal padding (32px) + margin
-      const sidebarWithGap = 240; // w-56 (224px) + gap-4 (16px)
+      const sidebarWithGap = 496; // dual tool columns (~30rem) + gap
       const totalPadding = 64; // p-4 on modal content (16px * 2) + modal padding (16px * 2)
       const maxWidth = Math.min(imgWidth, window.innerWidth - sidebarWithGap - totalPadding - 40);
       const maxHeight = Math.min(imgHeight, window.innerHeight - 200);
@@ -737,24 +919,22 @@ export default function ImageEditor({
       ctx.lineWidth = it.stroke;
       
       if (it.type === 'rect') {
+        const enabled = it.fillEnabled !== undefined ? it.fillEnabled : fillEnabled;
+        applyShapeFill(
+          ctx,
+          { kind: 'rect', x: it.x, y: it.y, w: it.w || 0, h: it.h || 0 },
+          {
+            enabled,
+            color: it.fillColor || fillColor,
+            opacity: it.fillOpacity !== undefined ? it.fillOpacity : fillOpacity,
+            pattern: it.fillPattern || fillPattern,
+          },
+        );
+        ctx.strokeStyle = it.color;
+        ctx.lineWidth = it.stroke;
         ctx.strokeRect(it.x, it.y, it.w || 0, it.h || 0);
       } else if (it.type === 'arrow') {
-        const dx = (it.x2 || it.x) - it.x;
-        const dy = (it.y2 || it.y) - it.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
-        const head = 10 + it.stroke * 2;
-        ctx.beginPath();
-        ctx.moveTo(it.x, it.y);
-        ctx.lineTo(it.x2 || it.x, it.y2 || it.y);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(it.x2 || it.x, it.y2 || it.y);
-        ctx.lineTo((it.x2 || it.x) - ux * head - uy * head * 0.5, (it.y2 || it.y) - uy * head + ux * head * 0.5);
-        ctx.lineTo((it.x2 || it.x) - ux * head + uy * head * 0.5, (it.y2 || it.y) - uy * head - ux * head * 0.5);
-        ctx.closePath();
-        ctx.fill();
+        drawArrow(ctx, it.x, it.y, it.x2 || it.x, it.y2 || it.y, it.stroke);
       } else if (it.type === 'text') {
         const itemFontSize = it.fontSize || fontSize;
         ctx.font = `${itemFontSize}px Montserrat`;
@@ -776,14 +956,7 @@ export default function ImageEditor({
         if (bgEnabled && it.w && it.h) {
           const bgColor = it.textBackgroundColor || textBackgroundColor;
           const bgOpacity = it.textBackgroundOpacity !== undefined ? it.textBackgroundOpacity : textBackgroundOpacity;
-          
-          // Convert hex color to rgba
-          const hex = bgColor.replace('#', '');
-          const r = parseInt(hex.substring(0, 2), 16);
-          const g = parseInt(hex.substring(2, 4), 16);
-          const b = parseInt(hex.substring(4, 6), 16);
-          
-          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${bgOpacity})`;
+          ctx.fillStyle = hexToRgba(bgColor, bgOpacity);
           ctx.fillRect(it.x, it.y, it.w, it.h);
         }
         
@@ -971,36 +1144,24 @@ export default function ImageEditor({
         
         ctx.restore();
       } else if (it.type === 'circle') {
+        const geometry = circleGeometryFromItem(it);
+        const enabled = it.fillEnabled !== undefined ? it.fillEnabled : fillEnabled;
+        applyShapeFill(ctx, geometry, {
+          enabled,
+          color: it.fillColor || fillColor,
+          opacity: it.fillOpacity !== undefined ? it.fillOpacity : fillOpacity,
+          pattern: it.fillPattern || fillPattern,
+        });
+        ctx.strokeStyle = it.color;
+        ctx.lineWidth = it.stroke;
         ctx.beginPath();
-        // Calculate center and radii from bounding box (x, y, w, h)
-        // Support both old format (rx, ry or r) and new format (w, h)
-        let centerX: number, centerY: number, rx: number, ry: number;
-        
-        if (it.w !== undefined && it.h !== undefined) {
-          // New format: x, y is top-left corner, w, h is size
-          centerX = it.x + it.w / 2;
-          centerY = it.y + it.h / 2;
-          rx = Math.abs(it.w) / 2;
-          ry = Math.abs(it.h) / 2;
-        } else if (it.rx !== undefined && it.ry !== undefined) {
-          // Old format: x, y is center, rx, ry are radii
-          centerX = it.x;
-          centerY = it.y;
-          rx = Math.max(1, it.rx);
-          ry = Math.max(1, it.ry);
-        } else {
-          // Old format: x, y is center, r is radius
-          const r = Math.max(1, it.r || 1);
-          centerX = it.x;
-          centerY = it.y;
-          rx = r;
-          ry = r;
-        }
-        
-        if (rx === ry) {
-          ctx.arc(centerX, centerY, Math.max(1, rx), 0, Math.PI * 2);
-        } else {
-          ctx.ellipse(centerX, centerY, Math.max(1, rx), Math.max(1, ry), 0, 0, Math.PI * 2);
+        if (geometry.kind === 'ellipse') {
+          const { cx: centerX, cy: centerY, rx, ry } = geometry;
+          if (rx === ry) {
+            ctx.arc(centerX, centerY, Math.max(1, rx), 0, Math.PI * 2);
+          } else {
+            ctx.ellipse(centerX, centerY, Math.max(1, rx), Math.max(1, ry), 0, 0, Math.PI * 2);
+          }
         }
         ctx.stroke();
       } else if (it.type === 'path') {
@@ -1062,7 +1223,7 @@ export default function ImageEditor({
       ctx.strokeRect(x, y, w, h);
       ctx.restore();
     }
-  }, [items, selectedIds, fontSize, getItemBounds, mode, cursorVisible]);
+  }, [items, selectedIds, fontSize, getItemBounds, mode, cursorVisible, textBackgroundEnabled, textBackgroundColor, textBackgroundOpacity, fillEnabled, fillColor, fillOpacity, fillPattern]);
 
   // Initial draw when opening / image loaded
   useEffect(() => {
@@ -1513,8 +1674,12 @@ export default function ImageEditor({
           y,
           w: 1,
           h: 1,
-          color,
+          color: strokeColor,
           stroke,
+          fillEnabled,
+          fillColor,
+          fillOpacity,
+          fillPattern,
         };
         setItems(prev => [...prev.filter(it => it && it.id), newItem]);
         setSelectedIds([newItem.id]);
@@ -1527,7 +1692,7 @@ export default function ImageEditor({
           y,
           x2: x + 1,
           y2: y + 1,
-          color,
+          color: strokeColor,
           stroke,
         };
         setItems(prev => [...prev.filter(it => it && it.id), newItem]);
@@ -1541,8 +1706,12 @@ export default function ImageEditor({
           y,
           w: 1, // Width of bounding box
           h: 1, // Height of bounding box
-          color,
+          color: strokeColor,
           stroke,
+          fillEnabled,
+          fillColor,
+          fillOpacity,
+          fillPattern,
         };
         setItems(prev => [...prev.filter(it => it && it.id), newItem]);
         setSelectedIds([newItem.id]);
@@ -1554,7 +1723,7 @@ export default function ImageEditor({
           x,
           y,
           points: [{ x, y }],
-          color,
+          color: strokeColor,
           stroke,
         };
         setItems(prev => [...prev.filter(it => it && it.id), newItem]);
@@ -1571,7 +1740,7 @@ export default function ImageEditor({
           h: 1,
           text: '', // Start with empty text
           fontSize,
-          color,
+          color: textColor,
           stroke,
           _editing: false,
           textBackgroundEnabled,
@@ -2459,26 +2628,26 @@ export default function ImageEditor({
         const p = dispToImg(it.x, it.y);
         const w = (it.w || 0) * lenScale;
         const h = (it.h || 0) * lenScale;
+        const enabled = it.fillEnabled !== undefined ? it.fillEnabled : fillEnabled;
+        applyShapeFill(
+          ctx,
+          { kind: 'rect', x: p.xi, y: p.yi, w, h },
+          {
+            enabled,
+            color: it.fillColor || fillColor,
+            opacity: it.fillOpacity !== undefined ? it.fillOpacity : fillOpacity,
+            pattern: it.fillPattern || fillPattern,
+            scale: lenScale,
+          },
+        );
+        ctx.strokeStyle = it.color;
+        ctx.lineWidth = Math.max(0.5, (it.stroke || 1) * lenScale);
         ctx.strokeRect(p.xi, p.yi, w, h);
       } else if (it.type === 'arrow') {
         const p1 = dispToImg(it.x, it.y);
         const p2 = dispToImg(it.x2 ?? it.x, it.y2 ?? it.y);
-        const dx = p2.xi - p1.xi;
-        const dy = p2.yi - p1.yi;
-        const len = Math.hypot(dx, dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
-        const head = (10 + (it.stroke || 1) * 2) * lenScale;
-        ctx.beginPath();
-        ctx.moveTo(p1.xi, p1.yi);
-        ctx.lineTo(p2.xi, p2.yi);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(p2.xi, p2.yi);
-        ctx.lineTo(p2.xi - ux * head - uy * head * 0.5, p2.yi - uy * head + ux * head * 0.5);
-        ctx.lineTo(p2.xi - ux * head + uy * head * 0.5, p2.yi - uy * head - ux * head * 0.5);
-        ctx.closePath();
-        ctx.fill();
+        const strokeW = Math.max(0.5, (it.stroke || 1) * lenScale);
+        drawArrow(ctx, p1.xi, p1.yi, p2.xi, p2.yi, strokeW);
       } else if (it.type === 'text') {
         const itemFontSize = Math.max(8, (it.fontSize || fontSize) * lenScale);
         ctx.font = `${itemFontSize}px Montserrat`;
@@ -2539,11 +2708,7 @@ export default function ImageEditor({
         if (bgEnabled && it.w && it.h) {
           const bgColor = it.textBackgroundColor || textBackgroundColor;
           const bgOpacity = it.textBackgroundOpacity !== undefined ? it.textBackgroundOpacity : textBackgroundOpacity;
-          const hex = bgColor.replace('#', '');
-          const r = parseInt(hex.substring(0, 2), 16);
-          const g = parseInt(hex.substring(2, 4), 16);
-          const b = parseInt(hex.substring(4, 6), 16);
-          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${bgOpacity})`;
+          ctx.fillStyle = hexToRgba(bgColor, bgOpacity);
           ctx.fillRect(p.xi, p.yi, boxW, boxH);
         }
         ctx.save();
@@ -2561,36 +2726,46 @@ export default function ImageEditor({
         ctx.restore();
       } else if (it.type === 'circle') {
         // Must match drawOverlay: new circles use top-left (x,y) + w,h; old ones use center + r or rx/ry.
-        // beginPath() is required — otherwise the canvas connects this arc to the previous subpath (line between circles).
-        ctx.beginPath();
-        let cxi: number;
-        let cyi: number;
-        let rxI: number;
-        let ryI: number;
+        let geometry;
         if (it.w !== undefined && it.h !== undefined) {
           const c = dispToImg(it.x + (it.w || 0) / 2, it.y + (it.h || 0) / 2);
-          cxi = c.xi;
-          cyi = c.yi;
-          rxI = (Math.abs(it.w || 0) / 2) * lenScale;
-          ryI = (Math.abs(it.h || 0) / 2) * lenScale;
+          geometry = {
+            kind: 'ellipse' as const,
+            cx: c.xi,
+            cy: c.yi,
+            rx: (Math.abs(it.w || 0) / 2) * lenScale,
+            ry: (Math.abs(it.h || 0) / 2) * lenScale,
+          };
         } else if (it.rx !== undefined && it.ry !== undefined) {
           const c = dispToImg(it.x, it.y);
-          cxi = c.xi;
-          cyi = c.yi;
-          rxI = Math.max(1, (it.rx || 1) * lenScale);
-          ryI = Math.max(1, (it.ry || 1) * lenScale);
+          geometry = {
+            kind: 'ellipse' as const,
+            cx: c.xi,
+            cy: c.yi,
+            rx: Math.max(1, (it.rx || 1) * lenScale),
+            ry: Math.max(1, (it.ry || 1) * lenScale),
+          };
         } else {
           const c = dispToImg(it.x, it.y);
-          cxi = c.xi;
-          cyi = c.yi;
           const r = Math.max(1, (it.r || 1) * lenScale);
-          rxI = r;
-          ryI = r;
+          geometry = { kind: 'ellipse' as const, cx: c.xi, cy: c.yi, rx: r, ry: r };
         }
-        if (Math.abs(rxI - ryI) < 1e-6) {
-          ctx.arc(cxi, cyi, Math.max(1, rxI), 0, Math.PI * 2);
+        const enabled = it.fillEnabled !== undefined ? it.fillEnabled : fillEnabled;
+        applyShapeFill(ctx, geometry, {
+          enabled,
+          color: it.fillColor || fillColor,
+          opacity: it.fillOpacity !== undefined ? it.fillOpacity : fillOpacity,
+          pattern: it.fillPattern || fillPattern,
+          scale: lenScale,
+        });
+        ctx.strokeStyle = it.color;
+        ctx.lineWidth = Math.max(0.5, (it.stroke || 1) * lenScale);
+        // beginPath() is required — otherwise the canvas connects this arc to the previous subpath.
+        ctx.beginPath();
+        if (Math.abs(geometry.rx - geometry.ry) < 1e-6) {
+          ctx.arc(geometry.cx, geometry.cy, Math.max(1, geometry.rx), 0, Math.PI * 2);
         } else {
-          ctx.ellipse(cxi, cyi, Math.max(1, rxI), Math.max(1, ryI), 0, 0, Math.PI * 2);
+          ctx.ellipse(geometry.cx, geometry.cy, Math.max(1, geometry.rx), Math.max(1, geometry.ry), 0, 0, Math.PI * 2);
         }
         ctx.stroke();
       } else if (it.type === 'path') {
@@ -2639,7 +2814,7 @@ export default function ImageEditor({
   // Calculate modal size based on canvas dimensions
   const canvasWidth = canvasDimensions.width || canvasRef.current?.width || 0;
   const canvasHeight = canvasDimensions.height || canvasRef.current?.height || 0;
-  const sidebarWidth = 240; // w-56 = 224px + gap-4 = 16px
+  const sidebarWidth = 496; // dual-column tools panel (~30rem) + gap
   const padding = 32; // p-4 = 16px * 2
   const headerHeight = 60; // approximate header height
   const modalWidth = isLoading ? 800 : (canvasWidth > 0 ? canvasWidth + sidebarWidth + padding : 1200);
@@ -2848,9 +3023,11 @@ export default function ImageEditor({
               </div>
 
               <aside
-                className={`relative z-[1] box-border flex h-full min-h-0 w-56 min-w-[14rem] shrink-0 flex-col gap-3 overflow-x-hidden overflow-y-auto border-l border-slate-200/90 bg-white/95 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.95)] ring-1 ring-slate-900/[0.04] [scrollbar-gutter:stable]`}
+                className={`relative z-[1] box-border flex h-full min-h-0 w-[30rem] min-w-[30rem] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-l border-slate-200/90 bg-white/95 px-3 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.95)] ring-1 ring-slate-900/[0.04] [scrollbar-gutter:stable]`}
               >
-                <span className={`${editorGroupLabelClass} mb-2 block`}>Image controls</span>
+                <div className="grid min-h-0 flex-1 grid-cols-2 gap-x-3 gap-y-3 content-start">
+                  <div className="flex min-w-0 flex-col gap-3">
+                <span className={`${editorGroupLabelClass} block`}>Image controls</span>
                 <div>
                   <label className="mb-1 block text-[11px] font-medium text-slate-600">Rotation</label>
                   <div className="flex gap-1.5">
@@ -2977,83 +3154,20 @@ export default function ImageEditor({
                   </button>
                 </div>
               </div>
-              
+
               <div className="border-t border-slate-200/80 pt-3">
-                <label className="mb-2 flex cursor-pointer items-center gap-2">
-                  <span className="text-[11px] font-semibold text-slate-700">Text background</span>
-                  <input
-                    type="checkbox"
-                    checked={textBackgroundEnabled}
-                    onChange={(e) => setTextBackgroundEnabled(e.target.checked)}
-                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-red focus:ring-brand-red/35"
-                  />
-                  <span className="text-[11px] text-slate-600">Enable</span>
-                </label>
-                {textBackgroundEnabled && (
-                  <div className="flex items-start gap-2">
-                    <div className="flex shrink-0 flex-col gap-1">
-                      <label className="block text-[11px] font-medium text-slate-600">Color</label>
-                      <DocumentEditorFontColorPicker
-                        value={textBackgroundColor}
-                        onChange={(c) => setTextBackgroundColor(c ?? '#ffffff')}
-                        buttonTitle="Text background color"
-                        panelAriaLabel="Text background colors"
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <label className="mb-1 block text-[11px] font-medium text-slate-600">Opacity</label>
-                      <div className="custom-slider-container mb-1">
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.01"
-                          value={textBackgroundOpacity}
-                          onChange={e => setTextBackgroundOpacity(parseFloat(e.target.value))}
-                          className="custom-slider"
-                          style={{
-                            background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${textBackgroundOpacity * 100}%, #e5e7eb ${textBackgroundOpacity * 100}%, #e5e7eb 100%)`
-                          }}
-                        />
-                        <div className="custom-slider-value">{Math.round(textBackgroundOpacity * 100)}%</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <div className="border-t border-slate-200/80 pt-3">
-                <span className={`${editorGroupLabelClass} mb-2 block`}>Text & line</span>
+                <span className={`${editorGroupLabelClass} mb-2 block`}>Text</span>
                 <div className="mb-1 flex min-w-0 items-center gap-2">
-                  <span className="w-12 shrink-0 text-xs font-medium text-slate-700">Color</span>
+                  <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Color</span>
                   <DocumentEditorFontColorPicker
-                    value={color}
-                    onChange={(c) => setColor(c ?? '#000000')}
-                    buttonTitle="Text & line color"
-                    panelAriaLabel="Text and line colors"
+                    value={textColor}
+                    onChange={(c) => setTextColor(c ?? '#000000')}
+                    buttonTitle="Font color"
+                    panelAriaLabel="Font colors"
                   />
                 </div>
-              </div>
-              <div>
-                <div className="custom-slider-container mb-1">
-                  <span className="w-12 shrink-0 text-xs font-medium text-slate-700">Stroke</span>
-                  <input
-                    type="range"
-                    min="1"
-                    max="20"
-                    value={stroke}
-                    onChange={e => setStroke(parseInt(e.target.value))}
-                    className="custom-slider"
-                    style={{
-                      background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((stroke - 1) / (20 - 1)) * 100}%, #e5e7eb ${((stroke - 1) / (20 - 1)) * 100}%, #e5e7eb 100%)`
-                    }}
-                  />
-                  <div className="custom-slider-value">{stroke}</div>
-                </div>
-              </div>
-              <div>
-                <div className="custom-slider-container mb-1">
-                  <span className="w-12 shrink-0 text-xs font-medium text-slate-700">Font</span>
+                <div className="custom-slider-container mb-2">
+                  <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Size</span>
                   <input
                     type="range"
                     min="8"
@@ -3067,27 +3181,158 @@ export default function ImageEditor({
                   />
                   <div className="custom-slider-value">{fontSize}</div>
                 </div>
+                <AppCheckbox
+                  className="mb-2 items-center"
+                  label={<span className="text-[11px] font-semibold text-slate-700">Text background</span>}
+                  checked={textBackgroundEnabled}
+                  onChange={setTextBackgroundEnabled}
+                />
+                {textBackgroundEnabled && (
+                  <>
+                    <div className="mb-1 flex min-w-0 items-center gap-2">
+                      <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Color</span>
+                      <DocumentEditorFontColorPicker
+                        value={textBackgroundColor}
+                        onChange={(c) => setTextBackgroundColor(c ?? '#000000')}
+                        buttonTitle="Text background color"
+                        panelAriaLabel="Text background colors"
+                      />
+                    </div>
+                    <div className="custom-slider-container mb-1">
+                      <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Opacity</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={textBackgroundOpacity}
+                        onChange={e => setTextBackgroundOpacity(parseFloat(e.target.value))}
+                        className="custom-slider"
+                        style={{
+                          background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${textBackgroundOpacity * 100}%, #e5e7eb ${textBackgroundOpacity * 100}%, #e5e7eb 100%)`
+                        }}
+                      />
+                      <div className="custom-slider-value">{Math.round(textBackgroundOpacity * 100)}%</div>
+                    </div>
+                  </>
+                )}
               </div>
-              
-              <div className="border-t border-slate-200/80 pt-3">
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleReset}
-                    className={`${selectionToolButtonGhostClass} h-9 flex-1 justify-center text-xs font-semibold`}
-                  >
-                    Reset
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className={`${editorTransitionInteractive} flex h-9 flex-1 items-center justify-center rounded-md bg-brand-red px-3 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
-                  >
-                    {isSaving ? 'Saving…' : 'Save'}
-                  </button>
+                  </div>
+
+                  <div className="flex min-w-0 flex-col gap-3 border-l border-slate-200/80 pl-3">
+                    <div>
+                      <span className={`${editorGroupLabelClass} mb-2 block`}>Shape fill</span>
+                      <div className="mb-1 flex min-w-0 items-center gap-2">
+                        <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Color</span>
+                        <DocumentEditorFontColorPicker
+                          value={strokeColor}
+                          onChange={(c) => setStrokeColor(c ?? '#000000')}
+                          buttonTitle="Shape stroke color"
+                          panelAriaLabel="Shape stroke colors"
+                        />
+                      </div>
+                      <div className="custom-slider-container mb-2">
+                        <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Stroke</span>
+                        <input
+                          type="range"
+                          min="1"
+                          max="20"
+                          value={stroke}
+                          onChange={(e) => setStroke(parseInt(e.target.value))}
+                          className="custom-slider"
+                          style={{
+                            background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((stroke - 1) / (20 - 1)) * 100}%, #e5e7eb ${((stroke - 1) / (20 - 1)) * 100}%, #e5e7eb 100%)`,
+                          }}
+                        />
+                        <div className="custom-slider-value">{stroke}</div>
+                      </div>
+                      {showShapeFillPanel && (
+                        <>
+                          <AppCheckbox
+                            className="mb-2 items-center"
+                            label={<span className="text-[11px] font-semibold text-slate-700">Fill</span>}
+                            checked={fillEnabled}
+                            onChange={setFillEnabled}
+                          />
+                          {fillEnabled && (
+                            <div className="space-y-2">
+                              <div className="mb-1 flex min-w-0 items-center gap-2">
+                                <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Color</span>
+                                <DocumentEditorFontColorPicker
+                                  value={fillColor}
+                                  onChange={(c) => setFillColor(c ?? '#000000')}
+                                  buttonTitle="Shape fill color"
+                                  panelAriaLabel="Shape fill colors"
+                                />
+                              </div>
+                              <div className="custom-slider-container mb-1">
+                                <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Opacity</span>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="1"
+                                  step="0.01"
+                                  value={fillOpacity}
+                                  onChange={(e) => setFillOpacity(parseFloat(e.target.value))}
+                                  className="custom-slider"
+                                  style={{
+                                    background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${fillOpacity * 100}%, #e5e7eb ${fillOpacity * 100}%, #e5e7eb 100%)`,
+                                  }}
+                                />
+                                <div className="custom-slider-value">{Math.round(fillOpacity * 100)}%</div>
+                              </div>
+                              <div>
+                                <label className="mb-1.5 block text-[11px] font-medium text-slate-600">Pattern</label>
+                                <div className="grid grid-cols-3 gap-1">
+                                  {SHAPE_FILL_PATTERNS.map((p) => {
+                                    const active = fillPattern === p.id;
+                                    return (
+                                      <button
+                                        key={p.id}
+                                        type="button"
+                                        title={p.label}
+                                        aria-label={p.label}
+                                        aria-pressed={active}
+                                        onClick={() => setFillPattern(p.id)}
+                                        className={`flex h-8 w-full items-center justify-center rounded-md border transition-colors ${
+                                          active
+                                            ? 'border-brand-red/40 bg-brand-red/10 ring-1 ring-brand-red/30'
+                                            : 'border-slate-200 bg-white hover:bg-slate-50'
+                                        }`}
+                                      >
+                                        <ShapeFillPatternIcon pattern={p.id} color={fillColor} />
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="col-span-2 border-t border-slate-200/80 pt-3">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleReset}
+                        className={`${selectionToolButtonGhostClass} h-9 flex-1 justify-center text-xs font-semibold`}
+                      >
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className={`${editorTransitionInteractive} flex h-9 flex-1 items-center justify-center rounded-md bg-brand-red px-3 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
+                      >
+                        {isSaving ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
             </aside>
             </div>
           </div>

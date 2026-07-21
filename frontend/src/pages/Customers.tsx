@@ -144,14 +144,6 @@ export default function Customers(){
   const hasLoadedDataRef = useRef(false);
   
   // Get current date formatted (same as Dashboard)
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
   
   // Convert current URL params to rules for modal
   const currentRules = useMemo(() => {
@@ -362,12 +354,6 @@ export default function Customers(){
           title="Customers"
           subtitle="Manage your customer list and sites"
           icon={<Users className="h-4 w-4" />}
-          actions={
-            <div className="text-right">
-              <div className={uiTypography.overline}>Today</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-            </div>
-          }
         />
 
         <AppCard bodyClassName={uiSpacing.cardPadding}>

@@ -2,14 +2,12 @@ import type { ReactNode } from 'react';
 
 /** Standard Fleet area page header (matches Fleet dashboard). */
 export function FleetEquipmentPageHeader({
-  todayLabel,
   onBack,
   headerExtra,
 }: {
-  todayLabel: string;
   /** When set (e.g. asset detail), back control sits in the header left, before the title. */
   onBack?: () => void;
-  /** Right cluster before Today (e.g. admin actions on work order detail). */
+  /** Right cluster (e.g. admin actions on work order detail). */
   headerExtra?: ReactNode;
 }) {
   return (
@@ -33,13 +31,7 @@ export function FleetEquipmentPageHeader({
             <div className="text-xs text-gray-500 mt-0.5">Executive overview</div>
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          {headerExtra}
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-          </div>
-        </div>
+        {headerExtra ? <div className="flex items-center gap-3 shrink-0">{headerExtra}</div> : null}
       </div>
     </div>
   );

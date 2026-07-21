@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useMemo } from 'react';
 
 type Estimate = { 
   id:number, 
@@ -17,15 +16,6 @@ type Estimate = {
 export default function Estimates(){
   const { data, isLoading } = useQuery({ queryKey:['estimates-all'], queryFn: ()=> api<Estimate[]>('GET','/estimate/estimates') });
   const rows = data||[];
-  
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
 
   return (
     <div>
@@ -33,10 +23,6 @@ export default function Estimates(){
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Estimates</div>
           <div className="text-sm text-gray-500 font-medium">Project estimates and pricing summaries.</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
         </div>
       </div>
       <div className="rounded-xl border bg-white overflow-hidden">

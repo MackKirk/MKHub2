@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { logoutSession } from '@/lib/logoutSession';
@@ -152,17 +152,6 @@ export default function OnboardingDocuments() {
   const blockedByDeadline = Boolean(status?.past_deadline && pendingRequired.length > 0);
   const canLeaveToHome = !blockedByDeadline;
 
-  const todayLabel = useMemo(
-    () =>
-      new Date().toLocaleDateString('en-CA', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
-    []
-  );
-
   if (isLoading) {
     return (
       <PageShell>
@@ -181,15 +170,9 @@ export default function OnboardingDocuments() {
       <PageShell>
         <div className="space-y-4">
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 sm:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Onboarding documents</h2>
-                <p className="text-sm text-gray-500 mt-1">No assignments at the moment.</p>
-              </div>
-              <div className="text-right">
-                <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Today</div>
-                <div className="text-sm font-medium text-gray-800 mt-0.5">{todayLabel}</div>
-              </div>
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Onboarding documents</h2>
+              <p className="text-sm text-gray-500 mt-1">No assignments at the moment.</p>
             </div>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-8 sm:p-10 text-center">
@@ -213,18 +196,12 @@ export default function OnboardingDocuments() {
     <PageShell>
       <div className="space-y-5">
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 max-w-xl">
-              <h2 className="text-base sm:text-lg font-semibold text-gray-900">Sign onboarding documents</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Review each PDF and sign where indicated. Completed files are saved under{' '}
-                <span className="text-gray-700 font-medium">Profile → Docs → HR Documents</span>.
-              </p>
-            </div>
-            <div className="text-right shrink-0">
-              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Today</div>
-              <div className="text-sm font-medium text-gray-800 mt-0.5">{todayLabel}</div>
-            </div>
+          <div className="min-w-0 max-w-xl">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Sign onboarding documents</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Review each PDF and sign where indicated. Completed files are saved under{' '}
+              <span className="text-gray-700 font-medium">Profile → Docs → HR Documents</span>.
+            </p>
           </div>
           {status?.past_deadline && pendingRequired.length > 0 && (
             <div className="mt-4 p-4 rounded-lg bg-red-50 border border-red-200 text-red-900 text-sm">

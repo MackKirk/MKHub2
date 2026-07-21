@@ -1015,21 +1015,8 @@ export default function UserInfo(){
     if (ok) setAccountStatusModalOpen(false);
   };
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
 
-  const pageHeaderToday = (
-    <div className="text-right">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Today</div>
-      <div className="mt-0.5 text-xs font-semibold text-gray-700">{todayLabel}</div>
-    </div>
-  );
+
 
   const heroPrimaryTitle = useMemo(() => {
     const name = `${p.first_name || u?.username || ''} ${p.last_name || ''}`.trim();
@@ -1119,8 +1106,7 @@ export default function UserInfo(){
         subtitle="Personal details, employment, and documents."
         icon={<UserIcon className="h-4 w-4" />}
         onBack={() => navigate('/users')}
-        backLabel="Back to Users"
-        actions={pageHeaderToday}
+        backLabel="Back to Users"
       />
 
       <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-1.5' : 'gap-2')}>

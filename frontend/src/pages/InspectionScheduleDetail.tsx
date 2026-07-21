@@ -346,12 +346,7 @@ export default function InspectionScheduleDetail() {
 
   const pageShellClass = uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50');
 
-  const todayLabel = new Date().toLocaleDateString('en-CA', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+
 
   if (!id) {
     return (
@@ -376,13 +371,7 @@ export default function InspectionScheduleDetail() {
           title="Inspection"
           onBack={goBackFromSchedule}
           backLabel="Inspections"
-          icon={<ClipboardCheck className="h-4 w-4" />}
-          actions={
-            <div className="text-right">
-              <div className={uiTypography.overline}>Today</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-            </div>
-          }
+          icon={<ClipboardCheck className="h-4 w-4" />}
         />
         <InspectionScheduleHeroSkeleton />
         <AppCard>
@@ -455,11 +444,7 @@ export default function InspectionScheduleDetail() {
               >
                 Delete
               </AppButton>
-            ) : null}
-            <div className="text-right">
-              <div className={uiTypography.overline}>Today</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-            </div>
+            ) : null}
           </div>
         }
       />

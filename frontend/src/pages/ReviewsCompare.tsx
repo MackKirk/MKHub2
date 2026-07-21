@@ -232,14 +232,7 @@ export default function ReviewsCompare() {
     }
   }, [cycleId, paramReviewee, meetingNotes]);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const setCycleInUrl = (id: string) => {
     setCycleId(id);
@@ -360,13 +353,7 @@ export default function ReviewsCompare() {
         backLabel={paramReviewee ? 'All employees in cycle' : cycleId ? 'Back to cycle' : 'Back to cycles'}
         icon={<GitCompare className="h-4 w-4" />}
         title={pageTitle}
-        subtitle={pageSubtitle}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        subtitle={pageSubtitle}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

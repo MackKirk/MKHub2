@@ -80,13 +80,6 @@ export default function SafetyInspectionsPage() {
   const sortBy: SafetyListSort = searchParams.get('sort') === 'project' ? 'project' : 'inspection_date';
   const sortDir: AppListSortDirection = searchParams.get('dir') === 'asc' ? 'asc' : 'desc';
 
-  const todayLabel = new Date().toLocaleDateString('en-CA', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-
   const setListSort = (column: SafetyListSort, direction?: AppListSortDirection) => {
     const params = new URLSearchParams(searchParams);
     const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
@@ -139,12 +132,6 @@ export default function SafetyInspectionsPage() {
         title="Site safety inspections"
         subtitle="All awarded projects you can access. Open a row to edit in the project Safety tab."
         icon={<ClipboardCheck className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

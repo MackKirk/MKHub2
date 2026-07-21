@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -97,6 +97,9 @@ export type ProjectFilesTabEnhancedProps = {
   onRefresh: () => any;
   designSystem?: boolean;
 };
+
+/** Row: category column sets height; file list scrolls inside the same height. */
+const FILES_BROWSER_ROW_CLASS = 'flex w-full items-start';
 
 export default function ProjectFilesTabEnhanced({
   projectId,
@@ -1193,6 +1196,19 @@ export default function ProjectFilesTabEnhanced({
     [visibleCategories],
   );
 
+  const categoryColumnRef = useRef<HTMLDivElement>(null);
+  const [categoryColumnHeight, setCategoryColumnHeight] = useState<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const el = categoryColumnRef.current;
+    if (!el) return;
+    const update = () => setCategoryColumnHeight(el.getBoundingClientRect().height);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [visibleCategories.length, filesSection, filesByCategory['uncategorized']?.length]);
+
   const filesBrowserBody = (
         <>
         {isAdmin && filesSection === 'deleted' ? (
@@ -1200,7 +1216,7 @@ export default function ProjectFilesTabEnhanced({
             <p className="text-xs text-amber-900 px-3 py-2 border-b border-amber-100/80">
               Same previews and downloads as the library. Restore returns the file to the project, or delete permanently to remove it from storage.
             </p>
-            <div className="flex h-[calc(100vh-400px)] bg-white">
+            <div className={`${FILES_BROWSER_ROW_CLASS} min-h-[360px] bg-white`}>
               <div className="flex-1 overflow-y-auto p-4">
                 {Array.isArray(deletedFiles) && deletedFiles.length > 0 ? (
                   <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -1316,20 +1332,27 @@ export default function ProjectFilesTabEnhanced({
         <div
           className={
             designSystem
-              ? 'overflow-hidden bg-white'
-              : 'overflow-hidden rounded-xl border bg-white'
+              ? 'bg-white'
+              : 'rounded-xl border bg-white'
           }
         >
-          <div className="flex h-[calc(100vh-400px)]">
-            {/* Left Sidebar - Categories */}
-            <div className="w-64 border-r bg-gray-50 flex flex-col">
-              <div className="p-3 border-b">
+          <div className={FILES_BROWSER_ROW_CLASS}>
+            {/* Left Sidebar - Categories (height drives the card) */}
+            <div
+              ref={categoryColumnRef}
+              className="flex w-64 shrink-0 flex-col self-start overflow-hidden rounded-bl-2xl border-r bg-gray-50"
+            >
+              <div className="shrink-0 border-b p-3">
                 <div className="text-xs font-semibold text-gray-700">File Categories</div>
               </div>
-            <div className="flex-1 overflow-y-auto">
+            <nav
+              className="max-h-[calc(100vh-280px)] overflow-y-auto overscroll-contain"
+              aria-label="File categories"
+            >
+              <div className="divide-y divide-gray-200">
               <button
                 onClick={() => setSelectedCategory('all')}
-                className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
+                className={`w-full text-left px-3 py-1.5 hover:bg-white transition-colors ${
                   selectedCategory === 'all' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
                 }`}
               >
@@ -1368,7 +1391,7 @@ export default function ProjectFilesTabEnhanced({
                       e.preventDefault();
                       setIsDragging(true);
                     } : undefined}
-                    className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
+                    className={`w-full text-left px-3 py-1.5 hover:bg-white transition-colors ${
                       selectedCategory === cat.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
                     } ${dropTargetClass(isDropActive('category', cat.id), 'category')} ${!canEditCategory ? 'opacity-70' : ''}`}
                   >
@@ -1403,7 +1426,7 @@ export default function ProjectFilesTabEnhanced({
                       await uploadFromDrop(dtUnc, 'uncategorized', undefined);
                     }
                   } : undefined}
-                  className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
+                  className={`w-full text-left px-3 py-1.5 hover:bg-white transition-colors ${
                     selectedCategory === 'uncategorized' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
                   } ${dropTargetClass(isDropActive('category', 'uncategorized'), 'category')}`}
                 >
@@ -1414,15 +1437,21 @@ export default function ProjectFilesTabEnhanced({
                   </div>
                 </button>
               )}
-            </div>
+              </div>
+            </nav>
           </div>
 
-          {/* Right Content Area */}
+          {/* Right Content Area — same height as category column */}
           <div 
-            className={`flex-1 overflow-y-auto p-4 ${dropTargetClass(
+            className={`flex-1 min-h-0 min-w-0 overflow-y-auto p-4 ${dropTargetClass(
               selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && isDropActive('root', selectedCategory),
               'root',
             )}`}
+            style={
+              categoryColumnHeight != null
+                ? { height: categoryColumnHeight, maxHeight: categoryColumnHeight }
+                : undefined
+            }
             onDragOver={canWriteFiles ? (e) => {
               e.preventDefault();
               if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {

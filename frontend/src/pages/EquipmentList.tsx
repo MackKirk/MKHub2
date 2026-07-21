@@ -458,14 +458,7 @@ export default function EquipmentList() {
     setSearchParams(params, { replace: true });
   };
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const showEmptyList = !isLoading && equipment.length === 0;
   return (
@@ -473,13 +466,7 @@ export default function EquipmentList() {
       <AppPageHeader
         title="Equipment"
         subtitle="Manage tools and equipment"
-        icon={<Wrench className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<Wrench className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>

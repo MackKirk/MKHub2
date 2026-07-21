@@ -824,15 +824,6 @@ export default function Projects(){
     return field?.label || fieldId;
   };
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
-
   return (
     <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
         <AppPageHeader
@@ -841,12 +832,6 @@ export default function Projects(){
           onBack={() => navigate(businessDashboardPath)}
           backLabel="Back to Business"
           icon={<FolderKanban className="h-4 w-4" />}
-          actions={
-            <div className="text-right">
-              <div className={uiTypography.overline}>Today</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-            </div>
-          }
         />
 
         <AppCard bodyClassName={uiSpacing.cardPadding}>
