@@ -277,14 +277,7 @@ export default function Users(){
     }
   };
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const subtitle = `Manage employees, roles, and access${total > 0 ? ` (${total} total)` : ''}`;
 
@@ -293,13 +286,7 @@ export default function Users(){
       <AppPageHeader
         title="Users"
         subtitle={subtitle}
-        icon={<UsersIcon className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<UsersIcon className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

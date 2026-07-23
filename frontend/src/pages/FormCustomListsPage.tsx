@@ -392,17 +392,6 @@ export default function FormCustomListsPage() {
     void qc.invalidateQueries({ queryKey: ['formCustomList', selectedId] });
   }, [qc, selectedId]);
 
-  const todayLabel = useMemo(
-    () =>
-      new Date().toLocaleDateString('en-CA', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
-    []
-  );
-
   return (
     <div
       className={uiCx(
@@ -424,12 +413,6 @@ export default function FormCustomListsPage() {
           </>
         }
         icon={<ListTree className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
       />
 
       <div className="flex-1 min-h-0 grid grid-cols-1 gap-4 overflow-hidden grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-1 lg:grid-cols-4 lg:items-stretch lg:gap-6">

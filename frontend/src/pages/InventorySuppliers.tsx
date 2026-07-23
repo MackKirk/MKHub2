@@ -247,14 +247,7 @@ export default function InventorySuppliers() {
   const hasLoadedDataRef = useRef(false);
 
   // Get current date formatted (same as Dashboard)
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   // Redirect if user doesn't have permission
   useEffect(() => {
@@ -1028,13 +1021,7 @@ export default function InventorySuppliers() {
       <AppPageHeader
         title="Suppliers"
         subtitle="Manage vendors and contact information"
-        icon={<Truck className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<Truck className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

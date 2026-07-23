@@ -145,14 +145,7 @@ export default function SubcontractorCompanyPage() {
   const [generalEditSection, setGeneralEditSection] = useState<SubcontractorGeneralEditSection | null>(null);
   const [addWorkerOpen, setAddWorkerOpen] = useState(false);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   useEffect(() => {
     if (tab === null) setIsHeroCollapsed(false);
@@ -313,13 +306,7 @@ export default function SubcontractorCompanyPage() {
           subtitle={getPageDescription(tab)}
           icon={<Briefcase className="h-4 w-4" />}
           onBack={handlePageBack}
-          backLabel={tab !== null ? 'Back to overview' : 'Back to list'}
-          actions={
-            <div className="text-right">
-              <div className={uiTypography.overline}>Today</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-            </div>
-          }
+          backLabel={tab !== null ? 'Back to overview' : 'Back to list'}
                 />
 
                 <AppCard className={uiCx('transition-[margin]', HERO_PANEL_EASE)} bodyClassName="relative overflow-hidden p-0">

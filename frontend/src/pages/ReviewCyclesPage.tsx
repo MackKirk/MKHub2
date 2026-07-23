@@ -99,14 +99,7 @@ export default function ReviewCyclesPage() {
 
   const hasActiveFilters = statusFilter !== 'all';
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const totalCount = sortedCycles.length;
   const visibleCount = filteredCycles.length;
@@ -121,13 +114,7 @@ export default function ReviewCyclesPage() {
       <AppPageHeader
         title="Review cycles"
         subtitle={pageSubtitle}
-        icon={<Calendar className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<Calendar className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>

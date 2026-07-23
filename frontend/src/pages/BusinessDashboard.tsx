@@ -759,15 +759,6 @@ export default function BusinessDashboard() {
     return Math.max(...(values as number[]), 1);
   }, [projStatusStats?.projects_by_status, projStatusDisplayMode]);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
-
   const chartCardAnimClass = animationComplete
     ? uiShadows.card
     : uiCx(
@@ -795,12 +786,6 @@ export default function BusinessDashboard() {
           }
           subtitle="Opportunities and projects grouped by division"
           icon={<LayoutDashboard className="h-4 w-4" />}
-          actions={
-            <div className="text-right">
-              <div className={uiTypography.overline}>Today</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-            </div>
-          }
         />
 
         <AppCard bodyClassName={uiSpacing.cardPadding}>

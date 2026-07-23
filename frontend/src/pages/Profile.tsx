@@ -154,7 +154,7 @@ export default function Profile(){
     if (!from) return '';
     try { const s = new Date(from); const now = new Date(); let months = (now.getFullYear() - s.getFullYear()) * 12 + (now.getMonth() - s.getMonth()); if (now.getDate() < s.getDate()) months--; const y = Math.floor(months / 12); const m = months % 12; return y > 0 ? `${y}y ${m}m` : `${m}m`; } catch { return ''; }
   }
-  const todayLabel = useMemo(() => new Date().toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' }), []);
+
   
   // Check if user has any loans to show the Loans tab
   const { data: userLoans } = useQuery({
@@ -310,13 +310,7 @@ export default function Profile(){
     emergency_contact:'At least one emergency contact'
   };
   const displayName = [p.first_name || u?.first_name, p.last_name || u?.last_name].filter(Boolean).join(' ') || u?.username || 'My Information';
-
-  const pageHeaderToday = (
-    <div className="text-right">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Today</div>
-      <div className="mt-0.5 text-xs font-semibold text-gray-700">{todayLabel}</div>
-    </div>
-  );
+
 
   const profileSubtitle =
     `Personal details, employment, and documents.${
@@ -407,8 +401,7 @@ export default function Profile(){
         subtitle={profileSubtitle}
         icon={<UserIcon className="h-4 w-4" />}
         onBack={fromHome ? () => navigate('/overview') : undefined}
-        backLabel="Back to Overview"
-        actions={pageHeaderToday}
+        backLabel="Back to Overview"
       />
 
       <div className={uiCx('flex flex-col', isEmployeeCardMinimized ? 'gap-1.5' : 'gap-2')}>

@@ -316,14 +316,7 @@ export default function WorkOrders() {
     setSearchParams(params, { replace: true });
   };
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const showEmptyList = !isLoading && workOrders.length === 0;
 
@@ -332,13 +325,7 @@ export default function WorkOrders() {
       <AppPageHeader
         title="Work Orders"
         subtitle="Unified work order management"
-        icon={<ClipboardList className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<ClipboardList className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

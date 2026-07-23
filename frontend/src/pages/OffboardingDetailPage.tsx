@@ -70,16 +70,7 @@ export default function OffboardingDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const todayLabel = useMemo(
-    () =>
-      new Date().toLocaleDateString('en-CA', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
-    [],
-  );
+
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const canWrite = useMemo(() => {
@@ -218,13 +209,7 @@ export default function OffboardingDetailPage() {
               }
               icon={<UserMinus className="h-4 w-4" />}
               onBack={() => navigate('/human-resources/offboarding')}
-              backLabel="Back to Offboarding"
-              actions={
-                <div className="text-right">
-                  <div className={uiTypography.overline}>Today</div>
-                  <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-                </div>
-              }
+              backLabel="Back to Offboarding"
             />
 
             <AppCard bodyClassName={uiSpacing.cardPadding}>

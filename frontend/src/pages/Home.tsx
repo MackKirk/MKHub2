@@ -65,17 +65,6 @@ function migrateLayoutTo8Col(items: LayoutItem[]): LayoutItem[] {
 export default function Home() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
-  const todayLabel = useMemo(
-    () =>
-      new Date().toLocaleDateString('en-CA', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
-    []
-  );
-
   const activeBusinessLine = useBusinessLine();
   const { data: me } = useQuery({
     queryKey: ['me'],
@@ -276,12 +265,6 @@ export default function Home() {
       <AppPageHeader
         title="My Dashboard"
         icon={<LayoutDashboard className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
       />
 
       <div className={uiLayout.actionsRow}>

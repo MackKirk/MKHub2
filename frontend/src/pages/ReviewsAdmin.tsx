@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import toast from 'react-hot-toast';
 
 export default function ReviewsAdmin() {
@@ -19,14 +19,7 @@ export default function ReviewsAdmin() {
   const [templateId, setTemplateId] = useState('');
   const [templateByDepartment, setTemplateByDepartment] = useState<{ department: string; template_id: string }[]>([]);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const addTemplateByDepartmentRow = () => {
     setTemplateByDepartment((prev) => [...prev, { department: '', template_id: '' }]);
@@ -62,10 +55,6 @@ export default function ReviewsAdmin() {
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Reviews Admin</div>
           <div className="text-sm text-gray-500 font-medium">Templates, cycles and assignments.</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
         </div>
       </div>
       <div className="grid md:grid-cols-2 gap-6">

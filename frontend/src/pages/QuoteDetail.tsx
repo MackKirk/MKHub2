@@ -343,14 +343,7 @@ export default function QuoteDetail() {
 
   const documentTitle = quote ? getQuoteDocumentType(quote) : '—';
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const handlePageBack = () => {
     const state = location.state as { fromCustomer?: boolean } | undefined;
@@ -390,13 +383,7 @@ export default function QuoteDetail() {
         subtitle="Quote details and proposal builder."
         icon={<FileText className="h-4 w-4" />}
         onBack={handlePageBack}
-        backLabel={pageBackLabel}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        backLabel={pageBackLabel}
       />
 
       <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-1.5' : 'gap-2')}>

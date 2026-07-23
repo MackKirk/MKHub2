@@ -740,14 +740,7 @@ export default function FleetAssetDetail() {
     onError: (error: any) => toast.error(error?.message || 'Failed to return'),
   });
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   // Compliance expiry status per record type (latest record only)
   const complianceStatusByType = useMemo(() => {
@@ -832,13 +825,7 @@ export default function FleetAssetDetail() {
       if (id) nav(`/fleet/assets/${id}?tab=${next}`, { replace: true });
     }
   }, [permissionsReady, fleetTabItems, tab, id, nav]);
-
-  const pageHeaderToday = (
-    <div className="text-right">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Today</div>
-      <div className="mt-0.5 text-xs font-semibold text-gray-700">{todayLabel}</div>
-    </div>
-  );
+
 
   if (!isValidId) {
     return <div className="p-4">Invalid asset ID</div>;
@@ -852,8 +839,7 @@ export default function FleetAssetDetail() {
           subtitle="Executive overview"
           icon={<Truck className="h-4 w-4" />}
           onBack={() => nav(-1)}
-          backLabel="Back"
-          actions={pageHeaderToday}
+          backLabel="Back"
         />
         <FleetAssetHeroSkeleton />
       </div>
@@ -883,8 +869,7 @@ export default function FleetAssetDetail() {
         subtitle="Executive overview"
         icon={<Truck className="h-4 w-4" />}
         onBack={() => nav(-1)}
-        backLabel="Back"
-        actions={pageHeaderToday}
+        backLabel="Back"
       />
 
       <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-1.5' : 'gap-2')}>

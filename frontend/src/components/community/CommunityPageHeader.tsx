@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 /** Matches the standard list-page header used on Fleet Assets (`FleetAssets.tsx`). */
 export function CommunityPageHeader({
@@ -15,17 +15,6 @@ export function CommunityPageHeader({
   /** Optional row of links/buttons (e.g. secondary navigation). */
   actions?: ReactNode;
 }) {
-  const todayLabel = useMemo(
-    () =>
-      new Date().toLocaleDateString('en-CA', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
-    []
-  );
-
   return (
     <div className="rounded-xl border bg-white p-4 sm:p-5 mb-4">
       <div className="flex items-center justify-between gap-3">
@@ -47,13 +36,7 @@ export function CommunityPageHeader({
             <div className="text-sm text-gray-500 mt-0.5">{subtitle}</div>
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          {actions ? <div className="hidden sm:flex items-center gap-2 flex-wrap justify-end">{actions}</div> : null}
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-          </div>
-        </div>
+        {actions ? <div className="hidden sm:flex items-center gap-2 flex-wrap justify-end shrink-0">{actions}</div> : null}
       </div>
       {actions ? <div className="mt-3 flex sm:hidden flex-wrap gap-2">{actions}</div> : null}
     </div>

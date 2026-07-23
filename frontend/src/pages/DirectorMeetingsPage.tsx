@@ -972,14 +972,7 @@ export default function DirectorMeetingsPage() {
 
   const showScheduleFooterBar = canConfigure && pageTab === 'build' && !!canonicalCycleId && scheduleBaselineReady;
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const pageTabItems = useMemo(
     () =>
@@ -1020,13 +1013,7 @@ export default function DirectorMeetingsPage() {
       <AppPageHeader
         icon={<Calendar className="h-4 w-4" />}
         title="Director meeting schedule"
-        subtitle="Publish availability and book director closing 1:1s for the performance review cycle."
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        subtitle="Publish availability and book director closing 1:1s for the performance review cycle."
       />
 
       {!canonicalCycleId ? (

@@ -177,16 +177,7 @@ export default function OffboardingListPage() {
   const [hubDraft, setHubDraft] = useState(hubAccessFilter);
   const [assetsDraft, setAssetsDraft] = useState(assetsPendingFilter);
 
-  const todayLabel = useMemo(
-    () =>
-      new Date().toLocaleDateString('en-CA', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
-    [],
-  );
+
 
   useEffect(() => {
     if (!filterOpen) return;
@@ -341,13 +332,7 @@ export default function OffboardingListPage() {
       <AppPageHeader
         title="Offboarding"
         subtitle="Manage employee departure cases, access revocation, and asset returns"
-        icon={<UserMinus className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<UserMinus className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>

@@ -67,15 +67,6 @@ export default function TrainingAdmin() {
     queryFn: () => api<StatusData>('GET', '/training/admin/status'),
   });
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
-
   const quickFilterSegments = useMemo(
     () => [
       {
@@ -119,12 +110,6 @@ export default function TrainingAdmin() {
         title="Training administration"
         subtitle="Manage courses, modules, and content for your team."
         icon={<Settings className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
       />
 
       {status ? (
@@ -184,15 +169,17 @@ export default function TrainingAdmin() {
                 'group flex flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md',
               )}
               bodyClassName="!p-0 flex flex-1 flex-col"
-              footer={canEditAdmin ? (
-                <AppButton
-                  type="button"
-                  className="w-full"
-                  onClick={() => navigate(`/training/admin/${course.id}`)}
-                >
-                  Edit course
-                </AppButton>
-              ) : undefined}
+              footer={
+                canEditAdmin ? (
+                  <AppButton
+                    type="button"
+                    className="w-full"
+                    onClick={() => navigate(`/training/admin/${course.id}`)}
+                  >
+                    Edit course
+                  </AppButton>
+                ) : undefined
+              }
             >
               {course.thumbnail_file_id ? (
                 <img
@@ -241,9 +228,11 @@ export default function TrainingAdmin() {
         <AppEmptyState
           title="No courses yet"
           description="Create a course to add modules, lessons, quizzes, and publish to your team."
-          action={canEditAdmin ? (
-            <AppButton onClick={() => navigate('/training/admin/new')}>Create your first course</AppButton>
-          ) : undefined}
+          action={
+            canEditAdmin ? (
+              <AppButton onClick={() => navigate('/training/admin/new')}>Create your first course</AppButton>
+            ) : undefined
+          }
         />
       )}
     </div>

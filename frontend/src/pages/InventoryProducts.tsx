@@ -214,14 +214,7 @@ export default function InventoryProducts(){
   const hasLoadedDataRef = useRef(false);
 
   // Get current date formatted (same as Dashboard)
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   // Redirect if user doesn't have permission
   useEffect(() => {
@@ -788,13 +781,7 @@ export default function InventoryProducts(){
       <AppPageHeader
         title="Products"
         subtitle="Catalog of materials and pricing"
-        icon={<Package className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<Package className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

@@ -902,14 +902,7 @@ export default function ClockInOut() {
       : `${diffMinutes}m`;
   }, [hasOpenClockIn, openClockIn, currentTime]);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const hourSelectOptions = useMemo(
     () => Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
@@ -963,13 +956,7 @@ export default function ClockInOut() {
       <AppPageHeader
         title="Clock In / Out"
         subtitle="Track your work hours and manage your attendance"
-        icon={<Clock className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<Clock className="h-4 w-4" />}
       />
 
       <div className="grid grid-cols-[1.5fr_1fr] items-stretch gap-2">

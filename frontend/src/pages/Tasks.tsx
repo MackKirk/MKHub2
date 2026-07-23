@@ -192,15 +192,6 @@ export default function TasksPage() {
 
   const isInitialLoading = isLoading && !data;
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
-
   const inProgressCount = useCountUp(tasksInProgress.length, 550, !isInitialLoading);
   const todoCount = useCountUp(tasksTodo.length, 550, !isInitialLoading);
   const doneCount = useCountUp(tasksDone.length, 550, !isInitialLoading);
@@ -212,12 +203,6 @@ export default function TasksPage() {
           title="Tasks"
           subtitle="A simple checklist of what to do next."
           icon={<ClipboardList className="h-4 w-4" />}
-          actions={
-            <div className="text-right">
-              <div className={uiTypography.overline}>Today</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-            </div>
-          }
         />
 
         {isError && (

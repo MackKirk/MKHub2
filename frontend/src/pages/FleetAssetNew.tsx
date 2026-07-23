@@ -90,12 +90,6 @@ export default function FleetAssetNew() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
   const assetType = searchParams.get('type') || 'vehicle';
-  const todayLabel = new Date().toLocaleDateString('en-CA', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
 
   return (
     <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
@@ -105,12 +99,6 @@ export default function FleetAssetNew() {
         icon={<Truck className="h-4 w-4" />}
         onBack={() => nav(-1)}
         backLabel="Back"
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
       />
       <AppCard bodyClassName={uiSpacing.cardPadding}>
         <FleetAssetNewForm

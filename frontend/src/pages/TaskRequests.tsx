@@ -279,27 +279,14 @@ export default function TaskRequestsPage() {
     }
   };
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   return (
     <div className={uiCx(uiSpacing.pageStack, 'min-w-0 overflow-x-hidden')}>
       <AppPageHeader
         title="Requests"
         subtitle="Conversations that may become tasks"
-        icon={<FileText className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<FileText className="h-4 w-4" />}
       />
 
       <div className="grid min-h-[calc(100vh-220px)] min-w-0 grid-cols-[4fr_6fr] items-stretch gap-2">

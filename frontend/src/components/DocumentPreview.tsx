@@ -15,6 +15,7 @@ import {
   marginBandRingClass,
 } from '@/components/document-editor/documentProtectedVisuals';
 import { PinIcon } from '@/components/document-editor/documentEditorIcons';
+import { notifyTextEditBlocking } from '@/components/document-editor/notifyTextEditBlocking';
 
 export type TemplateMargins = {
   left_pct?: number;
@@ -1870,10 +1871,21 @@ export default function DocumentPreview({
     };
   }, []);
 
+  const commitInlineEdit = useCallback(() => {
+    setEditingElementId(null);
+  }, [setEditingElementId]);
+
+  const notifyBlockedByTextEdit = useCallback(() => {
+    notifyTextEditBlocking(commitInlineEdit);
+  }, [commitInlineEdit]);
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement) => {
       e.stopPropagation();
-      if (isOtherElementWhileEditing(el.id)) return;
+      if (isOtherElementWhileEditing(el.id)) {
+        notifyBlockedByTextEdit();
+        return;
+      }
       onPageInteraction?.();
       if (e.button !== 0) return;
       if (el.type === 'block' && lockBlockElements) return;
@@ -1907,13 +1919,16 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [lockBlockElements, selectedElementIds, elements, onPageInteraction, isOtherElementWhileEditing, editingElementId]
+    [lockBlockElements, selectedElementIds, elements, onPageInteraction, isOtherElementWhileEditing, editingElementId, notifyBlockedByTextEdit]
   );
 
   const handleResizePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement, handle: ResizeHandle) => {
       e.stopPropagation();
-      if (isOtherElementWhileEditing(el.id)) return;
+      if (isOtherElementWhileEditing(el.id)) {
+        notifyBlockedByTextEdit();
+        return;
+      }
       onPageInteraction?.();
       if (e.button !== 0) return;
       if (el.locked) return;
@@ -1932,7 +1947,7 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [lockBlockElements, onPageInteraction, isOtherElementWhileEditing],
+    [lockBlockElements, onPageInteraction, isOtherElementWhileEditing, notifyBlockedByTextEdit],
   );
 
   const handlePointerMove = useCallback(
@@ -2097,10 +2112,6 @@ export default function DocumentPreview({
     [startTextEdit],
   ); // lockPosition does not block double-click to edit
 
-  const commitInlineEdit = useCallback(() => {
-    setEditingElementId(null);
-  }, [setEditingElementId]);
-
   const selectedElement = selectedElementIds.length === 1 ? elements.find((e) => e.id === selectedElementIds[0]) : null;
 
   const getPanScrollEl = useCallback((): HTMLElement | null => {
@@ -2148,7 +2159,11 @@ export default function DocumentPreview({
         onClick={(e) => {
           if (e.target === e.currentTarget) {
             if (embedded) onPageInteraction?.();
-            if (!editingElementId) onCanvasClick?.();
+            if (editingElementId) {
+              notifyBlockedByTextEdit();
+              return;
+            }
+            onCanvasClick?.();
           }
         }}
         onPointerDown={(e) => {
@@ -2192,7 +2207,11 @@ export default function DocumentPreview({
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               if (embedded) onPageInteraction?.();
-              if (!editingElementId) onCanvasClick?.();
+              if (editingElementId) {
+                notifyBlockedByTextEdit();
+                return;
+              }
+              onCanvasClick?.();
             }
           }}
         >

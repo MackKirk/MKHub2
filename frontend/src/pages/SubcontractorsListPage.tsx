@@ -141,14 +141,7 @@ export default function SubcontractorsListPage() {
   const [animationComplete, setAnimationComplete] = useState(false);
   const hasLoadedDataRef = useRef(false);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   useEffect(() => {
     const urlQ = searchParams.get('q') || '';
@@ -315,13 +308,7 @@ export default function SubcontractorsListPage() {
         <AppPageHeader
           title="Subcontractors"
           subtitle="Manage third-party companies and their workers"
-          icon={<Briefcase className="h-4 w-4" />}
-          actions={
-            <div className="text-right">
-              <div className={uiTypography.overline}>Today</div>
-              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-            </div>
-          }
+          icon={<Briefcase className="h-4 w-4" />}
         />
 
         <AppCard bodyClassName={uiSpacing.cardPadding}>

@@ -121,14 +121,7 @@ export default function Inspections() {
     );
   }, [schedulesRaw, search]);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const showEmptyList = !isLoading && schedules.length === 0;
 
@@ -137,13 +130,7 @@ export default function Inspections() {
       <AppPageHeader
         title="Fleet Inspections"
         subtitle="Manage inspection schedules. Open a schedule to start Body or Mechanical inspection."
-        icon={<ClipboardCheck className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<ClipboardCheck className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

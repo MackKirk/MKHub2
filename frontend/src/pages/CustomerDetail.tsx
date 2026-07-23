@@ -266,14 +266,7 @@ export default function CustomerDetail(){
   }, [files]);
   const c = client || {} as Client;
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const getPageTitle = (client: Client | typeof c, activeTab: CustomerTab): string => {
     if (!activeTab) return 'Customer Information';
@@ -354,13 +347,7 @@ export default function CustomerDetail(){
         subtitle={getPageDescription(c, tab)}
         icon={<Users className="h-4 w-4" />}
         onBack={handlePageBack}
-        backLabel={tab !== null && hasOverviewView ? 'Back to Overview' : 'Back to Customers'}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        backLabel={tab !== null && hasOverviewView ? 'Back to Overview' : 'Back to Customers'}
       />
 
       <AppCard

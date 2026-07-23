@@ -486,16 +486,7 @@ type MainTab = 'reviews' | 'director';
 
 export default function MyReviews() {
   const [mainTab, setMainTab] = useState<MainTab>('reviews');
-  const todayLabel = useMemo(
-    () =>
-      new Date().toLocaleDateString(undefined, {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
-    []
-  );
+
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const { data: reviewsAvailable, isLoading: availLoading } = useQuery({
@@ -573,13 +564,7 @@ export default function MyReviews() {
     <AppPageHeader
       title="My reviews"
       subtitle={subtitle}
-      icon={<ClipboardCheck className="h-4 w-4" />}
-      actions={
-        <div className="text-right">
-          <div className={uiTypography.overline}>Today</div>
-          <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-        </div>
-      }
+      icon={<ClipboardCheck className="h-4 w-4" />}
     />
   );
 

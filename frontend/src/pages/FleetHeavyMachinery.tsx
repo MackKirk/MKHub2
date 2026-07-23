@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { api } from '@/lib/api';
 
 type FleetAsset = {
@@ -38,14 +38,7 @@ export default function FleetHeavyMachinery() {
     retired: 'bg-red-100 text-red-800',
   };
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   return (
     <div className="space-y-4">
@@ -53,11 +46,7 @@ export default function FleetHeavyMachinery() {
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Heavy Machinery</div>
           <div className="text-sm text-gray-500 font-medium">Manage heavy machinery fleet</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-        </div>
+        </div>
       </div>
 
       {/* Filters */}

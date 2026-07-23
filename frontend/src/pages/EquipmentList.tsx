@@ -10,7 +10,6 @@ import {
   getEquipmentStatusBadgeVariant,
 } from '@/lib/equipmentUi';
 import EquipmentListNewModal from '@/components/fleet/EquipmentListNewModal';
-import { canEditEquipmentRecord } from '@/lib/companyAssetsPermissions';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
@@ -258,11 +257,6 @@ export default function EquipmentList() {
   const [showNewEquipmentModal, setShowNewEquipmentModal] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
-  const isAdmin = (me?.roles || []).includes('admin');
-  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
-  const canCreateEquipment = canEditEquipmentRecord(isAdmin, permissions);
-
   const categoryFilter = searchParams.get('category') || 'all';
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const [page, setPage] = useState(pageParam);
@@ -464,14 +458,7 @@ export default function EquipmentList() {
     setSearchParams(params, { replace: true });
   };
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const showEmptyList = !isLoading && equipment.length === 0;
   return (
@@ -479,13 +466,7 @@ export default function EquipmentList() {
       <AppPageHeader
         title="Equipment"
         subtitle="Manage tools and equipment"
-        icon={<Wrench className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<Wrench className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>
@@ -552,14 +533,12 @@ export default function EquipmentList() {
           <div className="flex flex-col">
             {showEmptyList ? (
               <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'min-h-[12rem] pb-10')}>
-                {canCreateEquipment ? (
-                  <AppListCreateItem
-                    label="New Equipment"
-                    layout="row"
-                    className="w-full"
-                    onClick={() => setShowNewEquipmentModal(true)}
-                  />
-                ) : null}
+                <AppListCreateItem
+                  label="New Equipment"
+                  layout="row"
+                  className="w-full"
+                  onClick={() => setShowNewEquipmentModal(true)}
+                />
                 <AppEmptyState
                   title={`No ${categoryFilter === 'all' ? 'equipment' : categoryLabels[categoryFilter]?.toLowerCase()} found`}
                   className="border-0 bg-transparent p-0 shadow-none"
@@ -567,16 +546,14 @@ export default function EquipmentList() {
               </div>
             ) : (
               <>
-                {canCreateEquipment ? (
-                  <div className={uiCx(uiSpacing.cardPadding, equipment.length === 0 ? 'pb-10' : 'pb-3')}>
-                    <AppListCreateItem
-                      label="New Equipment"
-                      layout="row"
-                      className="w-full"
-                      onClick={() => setShowNewEquipmentModal(true)}
-                    />
-                  </div>
-                ) : null}
+                <div className={uiCx(uiSpacing.cardPadding, equipment.length === 0 ? 'pb-10' : 'pb-3')}>
+                  <AppListCreateItem
+                    label="New Equipment"
+                    layout="row"
+                    className="w-full"
+                    onClick={() => setShowNewEquipmentModal(true)}
+                  />
+                </div>
                 {equipment.length > 0 ? (
                   <div className="min-w-0 overflow-x-auto border-t border-gray-100">
                     <table className="w-full min-w-0 border-collapse">
@@ -720,7 +697,7 @@ export default function EquipmentList() {
       />
 
       <EquipmentListNewModal
-        open={canCreateEquipment && showNewEquipmentModal}
+        open={showNewEquipmentModal}
         onClose={() => setShowNewEquipmentModal(false)}
         initialCategory={categoryFilter === 'all' ? 'generator' : categoryFilter}
         onCreated={(data) => {

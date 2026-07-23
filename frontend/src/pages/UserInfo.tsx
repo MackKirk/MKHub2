@@ -381,7 +381,7 @@ export default function UserInfo(){
   const isAdmin = !!(me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
   const canSelfEdit = me && userId && String(me.id) === String(userId);
   
-  // Check edit permissions for Personal tab
+  // Check edit permissions for general tab (Personal, Job, Docs)
   const canEditGeneral = useMemo(() => {
     if (!me) return false;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
@@ -396,38 +396,6 @@ export default function UserInfo(){
     if ((me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin')) return true;
     const perms = me?.permissions || [];
     return perms.includes('hr:users:write') || perms.includes('users:write');
-  }, [me]);
-
-  const canEditJob = useMemo(() => {
-    if (!me) return false;
-    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
-    if (isAdmin) return true;
-    const perms = me?.permissions || [];
-    return perms.includes('hr:users:edit:job');
-  }, [me]);
-
-  const canEditDocs = useMemo(() => {
-    if (!me) return false;
-    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
-    if (isAdmin) return true;
-    const perms = me?.permissions || [];
-    return perms.includes('hr:users:edit:docs');
-  }, [me]);
-
-  const canEditLoans = useMemo(() => {
-    if (!me) return false;
-    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
-    if (isAdmin) return true;
-    const perms = me?.permissions || [];
-    return perms.includes('hr:users:edit:loans');
-  }, [me]);
-
-  const canEditReports = useMemo(() => {
-    if (!me) return false;
-    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
-    if (isAdmin) return true;
-    const perms = me?.permissions || [];
-    return perms.includes('hr:users:edit:reports');
   }, [me]);
   
   // Check view permission for job compensation fields (Employment Type, Pay Type, Pay Rate)
@@ -466,29 +434,13 @@ export default function UserInfo(){
     const perms = me?.permissions || [];
     return perms.includes('hr:users:view:general') || perms.includes('users:read'); // Legacy
   }, [me]);
-
-  const canViewJob = useMemo(() => {
-    if (!me) return false;
-    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
-    if (isAdmin) return true;
-    const perms = me?.permissions || [];
-    return perms.includes('hr:users:view:job');
-  }, [me]);
-
-  const canViewDocs = useMemo(() => {
-    if (!me) return false;
-    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
-    if (isAdmin) return true;
-    const perms = me?.permissions || [];
-    return perms.includes('hr:users:view:docs');
-  }, [me]);
   
   const canViewLoans = useMemo(() => {
     if (!me) return false;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return perms.includes('hr:users:view:loans');
+    return perms.includes('hr:users:view:general') || perms.includes('users:read'); // Legacy
   }, [me]);
 
   const canViewTraining = useMemo(() => {
@@ -497,7 +449,7 @@ export default function UserInfo(){
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return perms.includes('hr:users:view:training');
+    return perms.includes('hr:users:view:general') || perms.includes('users:read');
   }, [me, userId]);
 
   const canEditTraining = useMemo(() => {
@@ -506,7 +458,7 @@ export default function UserInfo(){
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return perms.includes('hr:users:edit:training');
+    return perms.includes('hr:users:edit:general') || perms.includes('users:write');
   }, [me, canSelfEdit]);
   
   const canViewReports = useMemo(() => {
@@ -514,7 +466,7 @@ export default function UserInfo(){
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return perms.includes('hr:users:view:reports');
+    return perms.includes('hr:users:view:general') || perms.includes('users:read'); // Using general view for now
   }, [me]);
   
   const canViewTimesheet = useMemo(() => {
@@ -537,7 +489,13 @@ export default function UserInfo(){
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return perms.includes('hr:users:view:assets');
+    return (
+      perms.includes('fleet:access') ||
+      perms.includes('fleet:read') ||
+      perms.includes('fleet:vehicles:read') ||
+      perms.includes('fleet:equipment:read') ||
+      perms.includes('equipment:read')
+    );
   }, [me]);
 
   /** Activity tab: explicit HR permission or system admin (matches backend). */
@@ -579,8 +537,8 @@ export default function UserInfo(){
     if (!tabParam) return;
     const ok: Record<string, boolean> = {
       personal: !!(canViewGeneral || canSelfEdit),
-      job: !!canViewJob,
-      docs: !!canViewDocs,
+      job: !!canViewGeneral,
+      docs: !!canViewGeneral,
       timesheet: !!canViewTimesheet,
       loans: !!canViewLoans,
       training: !!canViewTraining,
@@ -595,8 +553,6 @@ export default function UserInfo(){
     userId,
     tabParam,
     canViewGeneral,
-    canViewJob,
-    canViewDocs,
     canSelfEdit,
     canViewTimesheet,
     canViewLoans,
@@ -613,11 +569,7 @@ export default function UserInfo(){
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return (
-      perms.includes('hr:users:edit:assets') ||
-      perms.includes('equipment:write') ||
-      perms.includes('fleet:equipment:write')
-    );
+    return perms.includes('equipment:write') || perms.includes('fleet:equipment:write');
   }, [me]);
   const canEditFleetAssets = useMemo(() => {
     if (!me) return false;
@@ -733,6 +685,7 @@ export default function UserInfo(){
 
   const handleTabChange = async (newTab: typeof tabParam | 'personal') => {
     // Check if user has permission to view this tab
+    const isGeneralTab = ['personal', 'job', 'docs'].includes(newTab);
     const isTimesheetTab = newTab === 'timesheet';
     const isLoansTab = newTab === 'loans';
     const isTrainingTab = newTab === 'training';
@@ -750,15 +703,7 @@ export default function UserInfo(){
       return;
     }
 
-    if (newTab === 'personal' && !(canViewGeneral || canSelfEdit)) {
-      toast.error('You do not have permission to view this tab');
-      return;
-    }
-    if (newTab === 'job' && !canViewJob) {
-      toast.error('You do not have permission to view this tab');
-      return;
-    }
-    if (newTab === 'docs' && !canViewDocs) {
+    if (isGeneralTab && !canViewGeneral) {
       toast.error('You do not have permission to view this tab');
       return;
     }
@@ -889,7 +834,7 @@ export default function UserInfo(){
     try {
       setSectionModalSaving(true);
       if (hasProfileChanges) {
-        if (canEdit || canEditJob) {
+        if (canEdit || canEditGeneral) {
           await api('PUT', `/auth/users/${encodeURIComponent(String(userId || ''))}/profile`, sectionModalPending);
         } else if (canSelfEdit) {
           await api('PUT', `/auth/me/profile`, sectionModalPending);
@@ -897,10 +842,10 @@ export default function UserInfo(){
           throw new Error('Not allowed');
         }
       }
-      if (orgModalDivisionsDirty && (canEdit || canEditJob)) {
+      if (orgModalDivisionsDirty && (canEdit || canEditGeneral)) {
         await api('PUT', `/employees/${encodeURIComponent(String(userId || ''))}/divisions`, orgModalDivisions);
       }
-      if (orgModalProjectDivisionsDirty && (canEdit || canEditJob)) {
+      if (orgModalProjectDivisionsDirty && (canEdit || canEditGeneral)) {
         await api('PUT', `/employees/${encodeURIComponent(String(userId || ''))}/project-divisions`, orgModalProjectDivisions);
       }
       toast.success('Saved');
@@ -979,7 +924,7 @@ export default function UserInfo(){
       }
       
       // Save divisions if any changes
-      if (divisionsDirty && (canEdit || canEditJob)) {
+      if (divisionsDirty && (canEdit || canEditGeneral)) {
         await api('PUT', `/employees/${encodeURIComponent(String(userId||''))}/divisions`, selectedDivisions);
         setDivisionsDirty(false);
         // Invalidate and refetch user profile to get updated divisions
@@ -991,7 +936,7 @@ export default function UserInfo(){
       }
       
       // Save project divisions if any changes
-      if (projectDivisionsDirty && (canEdit || canEditJob)) {
+      if (projectDivisionsDirty && (canEdit || canEditGeneral)) {
         await api('PUT', `/employees/${encodeURIComponent(String(userId||''))}/project-divisions`, selectedProjectDivisions);
         setProjectDivisionsDirty(false);
         // Invalidate and refetch user profile to get updated project divisions
@@ -1070,21 +1015,8 @@ export default function UserInfo(){
     if (ok) setAccountStatusModalOpen(false);
   };
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
 
-  const pageHeaderToday = (
-    <div className="text-right">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Today</div>
-      <div className="mt-0.5 text-xs font-semibold text-gray-700">{todayLabel}</div>
-    </div>
-  );
+
 
   const heroPrimaryTitle = useMemo(() => {
     const name = `${p.first_name || u?.username || ''} ${p.last_name || ''}`.trim();
@@ -1134,9 +1066,7 @@ export default function UserInfo(){
   const userTabItems = useMemo(
     () =>
       ([
-        ...(canViewGeneral || canSelfEdit ? (['personal'] as const) : []),
-        ...(canViewJob ? (['job'] as const) : []),
-        ...(canViewDocs ? (['docs'] as const) : []),
+        ...(canViewGeneral || canSelfEdit ? (['personal', 'job', 'docs'] as const) : []),
         ...(canViewTimesheet || canSelfEdit ? (['timesheet'] as const) : []),
         ...(canViewLoans ? (['loans'] as const) : []),
         ...(canViewTraining ? (['training'] as const) : []),
@@ -1148,8 +1078,6 @@ export default function UserInfo(){
       ] as const).map((k) => ({ key: k, label: USER_TAB_LABELS[k] || k })),
     [
       canViewGeneral,
-      canViewJob,
-      canViewDocs,
       canSelfEdit,
       canViewTimesheet,
       canViewLoans,
@@ -1178,8 +1106,7 @@ export default function UserInfo(){
         subtitle="Personal details, employment, and documents."
         icon={<UserIcon className="h-4 w-4" />}
         onBack={() => navigate('/users')}
-        backLabel="Back to Users"
-        actions={pageHeaderToday}
+        backLabel="Back to Users"
       />
 
       <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-1.5' : 'gap-2')}>
@@ -1277,7 +1204,7 @@ export default function UserInfo(){
                   />
                 </div>
               )}
-              {tab==='job' && canViewJob && (
+              {tab==='job' && canViewGeneral && (
                 <div className="space-y-6">
                   <OrganizationSection 
                     p={p} 
@@ -1289,7 +1216,7 @@ export default function UserInfo(){
                     userDivisions={u?.divisions || []}
                     selectedDivisions={selectedDivisions}
                     selectedProjectDivisions={selectedProjectDivisions}
-                    onEditClick={(canEditJob || !!canSelfEdit) ? () => openJobEditModal('organization') : undefined}
+                    onEditClick={(canEditGeneral || !!canSelfEdit) ? () => openJobEditModal('organization') : undefined}
                   />
                   {canViewJobCompensation && (
                     <SalarySection
@@ -1297,15 +1224,15 @@ export default function UserInfo(){
                       editable={false}
                       userId={String(userId)}
                       settings={settings}
-                      canEdit={canEditJob}
+                      canEdit={canEditGeneral}
                     />
                   )}
-                  <TimeOffSection userId={String(userId)} canEdit={canEditJob} />
+                  <TimeOffSection userId={String(userId)} canEdit={canEditGeneral} />
                 </div>
               )}
-              {tab==='docs' && canViewDocs && <UserDocumentsTabEnhanced userId={String(userId)} canEdit={canEditDocs} />}
+              {tab==='docs' && canViewGeneral && <UserDocumentsTabEnhanced userId={String(userId)} canEdit={canEditGeneral} />}
               {tab==='timesheet' && canViewTimesheet && <TimesheetBlock userId={String(userId)} canEdit={canEditTimesheet} />}
-              {tab==='loans' && canViewLoans && <UserLoans userId={String(userId)} canEdit={canEditLoans} />}
+              {tab==='loans' && canViewLoans && <UserLoans userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab==='training' && canViewTraining && (
                 <div className="space-y-6 pb-24">
                   <EmployeeTrainingSection variant="user" userId={String(userId)} canEdit={canEditTraining} />
@@ -1318,7 +1245,7 @@ export default function UserInfo(){
                   canEditFleet={canEditFleetAssets}
                 />
               )}
-              {tab==='reports' && canViewReports && <UserReportsSection userId={String(userId)} canEdit={canEditReports} />}
+              {tab==='reports' && canViewReports && <UserReportsSection userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab === 'reviews' && canViewReviews && userId && (
                 <UserEmployeeReviewsSection
                   userId={String(userId)}
@@ -6874,4 +6801,3 @@ function VisaInformationSection({
     </div>
   );
 }
-

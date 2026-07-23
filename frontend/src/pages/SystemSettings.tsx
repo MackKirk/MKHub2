@@ -100,14 +100,7 @@ type SettingsSection = 'files' | 'templates' | 'lists';
 export default function SystemSettings(){
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const [section, setSection] = useState<SettingsSection>('lists');
 
@@ -145,12 +138,6 @@ export default function SystemSettings(){
         title="System settings"
         subtitle="Administration for lookup lists, files & assets, and templates used across MKHub."
         icon={<Settings className="h-4 w-4" />}
-        actions={
-          <div className="text-right shrink-0">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx('text-xs font-semibold', uiColors.textBody)}>{todayLabel}</div>
-          </div>
-        }
       />
 
       <AppCard bodyClassName={uiSpacing.compactCardPadding}>

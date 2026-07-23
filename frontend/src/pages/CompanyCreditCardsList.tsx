@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import CompanyCreditCardListNewModal from '@/components/companyAssets/CompanyCreditCardListNewModal';
-import { canEditCorporateCards } from '@/lib/companyAssetsPermissions';
 import { CreditCard, Search } from 'lucide-react';
 import { api } from '@/lib/api';
 import { expiryLabel, getExpiryBadgeVariant } from '@/lib/companyCreditCardExpiry';
@@ -102,11 +101,6 @@ export default function CompanyCreditCardsList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [showNewCardModal, setShowNewCardModal] = useState(false);
 
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
-  const isAdmin = (me?.roles || []).includes('admin');
-  const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
-  const canCreateCard = canEditCorporateCards(isAdmin, permissions);
-
   const search = searchParams.get('search') ?? '';
   const statusParam = searchParams.get('status') ?? '';
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
@@ -176,14 +170,7 @@ export default function CompanyCreditCardsList() {
 
   const openNewCardModal = () => setShowNewCardModal(true);
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const showEmptyList = !isLoading && !error && items.length === 0;
 
@@ -198,13 +185,7 @@ export default function CompanyCreditCardsList() {
       <AppPageHeader
         title="Corporate cards"
         subtitle="Last four digits & expiry only — assign custody like equipment"
-        icon={<CreditCard className="h-4 w-4" />}
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        icon={<CreditCard className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -242,28 +223,24 @@ export default function CompanyCreditCardsList() {
           <div className="flex flex-col">
             {showEmptyList ? (
               <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'min-h-[12rem] pb-10')}>
-                {canCreateCard ? (
+                <AppListCreateItem
+                  label="New corporate card"
+                  layout="row"
+                  className="w-full"
+                  onClick={openNewCardModal}
+                />
+                <AppEmptyState title={emptyTitle} className="border-0 bg-transparent p-0 shadow-none" />
+              </div>
+            ) : (
+              <>
+                <div className={uiCx(uiSpacing.cardPadding, items.length === 0 ? 'pb-10' : 'pb-3')}>
                   <AppListCreateItem
                     label="New corporate card"
                     layout="row"
                     className="w-full"
                     onClick={openNewCardModal}
                   />
-                ) : null}
-                <AppEmptyState title={emptyTitle} className="border-0 bg-transparent p-0 shadow-none" />
-              </div>
-            ) : (
-              <>
-                {canCreateCard ? (
-                  <div className={uiCx(uiSpacing.cardPadding, items.length === 0 ? 'pb-10' : 'pb-3')}>
-                    <AppListCreateItem
-                      label="New corporate card"
-                      layout="row"
-                      className="w-full"
-                      onClick={openNewCardModal}
-                    />
-                  </div>
-                ) : null}
+                </div>
                 {items.length > 0 ? (
                   <div className="min-w-0 overflow-x-auto border-t border-gray-100">
                     <table className="w-full min-w-0 border-collapse">
@@ -401,7 +378,7 @@ export default function CompanyCreditCardsList() {
       </LoadingOverlay>
 
       <CompanyCreditCardListNewModal
-        open={canCreateCard && showNewCardModal}
+        open={showNewCardModal}
         onClose={() => setShowNewCardModal(false)}
         onCreated={(data) => {
           setShowNewCardModal(false);

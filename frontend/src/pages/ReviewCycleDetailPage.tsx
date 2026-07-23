@@ -946,25 +946,7 @@ export default function ReviewCycleDetailPage() {
 
 
 
-  const todayLabel = useMemo(
 
-    () =>
-
-      new Date().toLocaleDateString(undefined, {
-
-        weekday: 'long',
-
-        year: 'numeric',
-
-        month: 'short',
-
-        day: 'numeric',
-
-      }),
-
-    [],
-
-  );
 
 
 
@@ -1048,19 +1030,7 @@ export default function ReviewCycleDetailPage() {
 
         title={cycle.name}
 
-        subtitle="Review cycle"
-
-        actions={
-
-          <div className="text-right">
-
-            <div className={uiTypography.overline}>Today</div>
-
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-
-          </div>
-
-        }
+        subtitle="Review cycle"
 
       />
 

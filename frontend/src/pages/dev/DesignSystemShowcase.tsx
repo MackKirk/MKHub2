@@ -283,25 +283,12 @@ export default function DesignSystemShowcase() {
                 onBack={() => undefined}
                 backLabel="Back to Business"
                 icon={<LayoutGrid className="h-4 w-4" />}
-                actions={
-                  <div className="text-right">
-                    <div className={uiTypography.overline}>Today</div>
-                    <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>
-                      {new Date().toLocaleDateString('en-CA', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </div>
-                  </div>
-                }
               />
               <p className={uiCx(uiTypography.helper, 'mt-2')}>
                 Props: <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">onBack</code>,{' '}
                 <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">backLabel</code>,{' '}
-                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">icon</code> (Lucide inside blue tile),{' '}
-                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">actions</code> (e.g. Today).
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">icon</code> (Lucide inside blue tile).
+                Date lives in the global AppShell header.
               </p>
             </div>
             <div>
@@ -310,19 +297,6 @@ export default function DesignSystemShowcase() {
                 title="Customers"
                 subtitle="Manage your customer list and sites"
                 icon={<LayoutGrid className="h-4 w-4" />}
-                actions={
-                  <div className="text-right">
-                    <div className={uiTypography.overline}>Today</div>
-                    <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>
-                      {new Date().toLocaleDateString('en-CA', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </div>
-                  </div>
-                }
               />
             </div>
             <div>

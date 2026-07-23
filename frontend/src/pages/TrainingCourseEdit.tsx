@@ -625,14 +625,7 @@ export default function TrainingCourseEdit() {
   const selectedUserIds = formData.required_user_ids || [];
   const publicationStatus = (formData.status || 'draft') as 'draft' | 'published';
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   const previewCompletionDate = useMemo(
     () =>
@@ -764,13 +757,7 @@ export default function TrainingCourseEdit() {
         subtitle={isNew ? 'Set up your training course' : 'Manage course content and settings'}
         icon={<Settings className="h-4 w-4" />}
         onBack={() => navigate('/training/admin')}
-        backLabel="Back to list"
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        backLabel="Back to list"
       />
 
       <AppCard className={uiShadows.card} bodyClassName={uiSpacing.cardPadding}>

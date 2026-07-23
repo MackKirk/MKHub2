@@ -36,6 +36,7 @@ import {
 } from '@/components/document-editor/documentEditorRibbonPrimitives';
 import DocumentSelectionRibbon from '@/components/document-editor/DocumentSelectionRibbon';
 import DocumentSelectionInspector from '@/components/document-editor/DocumentSelectionInspector';
+import { notifyTextEditBlocking, dismissTextEditBlockingToast } from '@/components/document-editor/notifyTextEditBlocking';
 import type { AlignKind } from '@/components/document-editor/DocumentSelectionRibbon';
 import {
   BlockIcon,
@@ -197,6 +198,18 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     },
     [textEditingElementId],
   );
+
+  const finishTextEditing = useCallback(() => {
+    setTextEditingElementId(null);
+  }, []);
+
+  const notifyBlockedByTextEdit = useCallback(() => {
+    notifyTextEditBlocking(finishTextEditing);
+  }, [finishTextEditing]);
+
+  useEffect(() => {
+    if (!textEditingElementId) dismissTextEditBlockingToast();
+  }, [textEditingElementId]);
 
   const scrollCanvasToTop = useCallback(() => {
     const root = canvasScrollRef.current;
@@ -407,7 +420,10 @@ export default function DocumentEditor(props: DocumentEditorProps) {
       const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || (t?.isContentEditable ?? false);
       if (e.key === 'Escape') {
         if (isTyping) return;
-        if (textEditingElementId) return;
+        if (textEditingElementId) {
+          notifyBlockedByTextEdit();
+          return;
+        }
         if (selectedElementIds.length > 0) {
           e.preventDefault();
           setSelectedElementIds([]);
@@ -547,7 +563,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo, redo, newElementId, pushHistory, selectedElementIds, textEditingElementId]);
+  }, [undo, redo, newElementId, pushHistory, selectedElementIds, textEditingElementId, notifyBlockedByTextEdit]);
 
   const currentPage = pages[currentPageIndex];
   const currentTemplateId = currentPage?.template_id ?? null;
@@ -741,7 +757,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     pushHistory();
     setCurrentPageElements((prev) => [...prev, el]);
     setSelectedElementIds([el.id]);
-  }, [setCurrentPageElements, pushHistory]);
+    if (textEditingElementId) notifyBlockedByTextEdit();
+  }, [setCurrentPageElements, pushHistory, textEditingElementId, notifyBlockedByTextEdit]);
 
   const handleUpdateElement = useCallback((elementId: string, updater: (e: DocElement) => DocElement) => {
     setCurrentPageElements((prev) =>
@@ -1309,7 +1326,10 @@ export default function DocumentEditor(props: DocumentEditorProps) {
               onUpdate={handleUpdateElementWithHistory}
               onRemove={handleRemoveElement}
               onDeselect={() => {
-                if (textEditingElementId) return;
+                if (textEditingElementId) {
+                  notifyBlockedByTextEdit();
+                  return;
+                }
                 setSelectedElementIds([]);
               }}
               onReplaceImage={handleReplaceImage}
@@ -1443,7 +1463,10 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                     onEditingElementIdChange={setTextEditingElementId}
                     onElementClick={(elementId, e) => handlePreviewElementClick(pageIndex, elementId, e)}
                     onCanvasClick={() => {
-                      if (textEditingElementId) return;
+                      if (textEditingElementId) {
+                        notifyBlockedByTextEdit();
+                        return;
+                      }
                       setSelectedElementIds([]);
                     }}
                     selectedElementIds={selectedElementIds}
@@ -1477,7 +1500,10 @@ export default function DocumentEditor(props: DocumentEditorProps) {
             onEditingElementIdChange={setTextEditingElementId}
             onElementClick={(elementId, e) => handlePreviewElementClick(undefined, elementId, e)}
             onCanvasClick={() => {
-              if (textEditingElementId) return;
+              if (textEditingElementId) {
+                notifyBlockedByTextEdit();
+                return;
+              }
               setSelectedElementIds([]);
             }}
             selectedElementIds={selectedElementIds}
@@ -1602,7 +1628,10 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                     <button
                       type="button"
                       onClick={(e) => {
-                        if (textEditingElementId) return;
+                        if (textEditingElementId) {
+                          notifyBlockedByTextEdit();
+                          return;
+                        }
                         if (e.ctrlKey || e.metaKey) {
                           setSelectedElementIds((prev) =>
                             prev.includes(el.id) ? prev.filter((id) => id !== el.id) : [...prev, el.id]

@@ -128,14 +128,7 @@ export default function EquipmentNew() {
   const [searchParams] = useSearchParams();
   const categoryFromUrl = searchParams.get('category') || 'generator';
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   return (
     <div className={uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
@@ -144,13 +137,7 @@ export default function EquipmentNew() {
         subtitle="Create a new equipment item"
         icon={<Wrench className="h-4 w-4" />}
         onBack={() => nav(-1)}
-        backLabel="Equipment"
-        actions={
-          <div className="text-right">
-            <div className={uiTypography.overline}>Today</div>
-            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
-          </div>
-        }
+        backLabel="Equipment"
       />
       <EquipmentNewForm
         initialCategory={categoryFromUrl}

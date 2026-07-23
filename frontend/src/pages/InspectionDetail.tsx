@@ -398,14 +398,7 @@ export default function InspectionDetail() {
   const resultColors = INSPECTION_RESULT_COLORS;
   const resultLabels = INSPECTION_RESULT_LABELS;
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+
 
   if (!isValidId) {
     return <div className="p-4">Invalid inspection ID</div>;
@@ -462,12 +455,6 @@ export default function InspectionDetail() {
             {deleteInspectionMutation.isPending ? 'Deleting…' : 'Delete'}
           </button>
         ) : undefined}
-        right={
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-          </div>
-        }
       />
 
       {/* Hero section - same layout as Work Order: asset photo + key info */}
