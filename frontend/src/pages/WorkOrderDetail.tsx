@@ -12,6 +12,7 @@ import { WorkOrderFilesTab } from '@/components/fleet/WorkOrderFilesTab';
 import { WorkOrderActivityTab } from '@/components/fleet/WorkOrderActivityTab';
 import type { CostItem } from '@/components/fleet/WorkOrderCostModal';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import {
   canEditFleetWorkOrderTab,
   canViewFleetWorkOrderTab,
@@ -346,13 +347,7 @@ export default function WorkOrderDetail() {
 
 
 
-  const goBackFromWorkOrder = () => {
-    if (window.history.length > 1) {
-      nav(-1);
-    } else {
-      nav('/fleet/work-orders');
-    }
-  };
+  const goBackFromWorkOrder = useNavigateBack('/fleet/work-orders');
 
   const toIsoStringOrUndefined = (value: string): string | undefined => {
     const trimmed = value.trim();

@@ -26,6 +26,7 @@ import EquipmentAssignModal from '@/components/companyAssets/EquipmentAssignModa
 import EquipmentReturnModal from '@/components/companyAssets/EquipmentReturnModal';
 import NewEquipmentWorkOrderModal from '@/components/companyAssets/NewEquipmentWorkOrderModal';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import {
   canEditEquipmentTab,
   canViewEquipmentTab,
@@ -154,6 +155,7 @@ function compareEquipmentWorkOrders(
 export default function EquipmentDetail() {
   const { id } = useParams();
   const nav = useNavigate();
+  const navigateBackToEquipmentList = useNavigateBack('/company-assets/equipment');
   const location = useLocation();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -421,7 +423,7 @@ export default function EquipmentDetail() {
           title="Company Assets"
           subtitle="Tools and equipment"
           icon={<Wrench className="h-4 w-4" />}
-          onBack={() => nav('/company-assets/equipment')}
+          onBack={navigateBackToEquipmentList}
           backLabel="Equipment"
         />
         <EquipmentHeroSkeleton />
@@ -454,7 +456,7 @@ export default function EquipmentDetail() {
         title="Company Assets"
         subtitle="Tools and equipment"
         icon={<Wrench className="h-4 w-4" />}
-        onBack={() => nav('/company-assets/equipment')}
+        onBack={navigateBackToEquipmentList}
         backLabel="Equipment"
         actions={pageHeaderActions}
       />

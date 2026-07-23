@@ -7,6 +7,7 @@ import { INSPECTION_RESULT_LABELS, INSPECTION_RESULT_COLORS } from '@/lib/fleetB
 import FleetDetailHeader from '@/components/FleetDetailHeader';
 import WorkOrderNewModal from '@/components/fleet/WorkOrderNewModal';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import {
   canEditFleetInspectionTab,
   canViewFleetInspectionTab,
@@ -80,13 +81,8 @@ export default function InspectionDetail() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
 
-  const goBackFromInspection = () => {
-    if (window.history.length > 1) {
-      nav(-1);
-    } else {
-      nav('/fleet/inspections');
-    }
-  };
+  const goBackFromInspection = useNavigateBack('/fleet/inspections');
+  const goBackToSchedule = useNavigateBack('/fleet/calendar');
 
   const isValidId = id && id !== 'new';
 
@@ -730,7 +726,7 @@ export default function InspectionDetail() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => nav('/fleet/calendar')}
+                      onClick={goBackToSchedule}
                       className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
                     >
                       Back to schedule
@@ -1018,7 +1014,7 @@ export default function InspectionDetail() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => nav('/fleet/calendar')}
+                      onClick={goBackToSchedule}
                       className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
                     >
                       Back to schedule

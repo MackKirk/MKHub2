@@ -5,6 +5,7 @@ import { CreditCard } from 'lucide-react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import CompanyCreditCardAssignCustodyModal from '@/components/companyAssets/CompanyCreditCardAssignCustodyModal';
 import CompanyCreditCardReturnCustodyModal from '@/components/companyAssets/CompanyCreditCardReturnCustodyModal';
 import CompanyCreditCardCustodyLogDetailModal from '@/components/companyAssets/CompanyCreditCardCustodyLogDetailModal';
@@ -70,6 +71,7 @@ type DetailTab = 'details' | 'custody' | 'history';
 export default function CompanyCreditCardDetail() {
   const { id } = useParams();
   const nav = useNavigate();
+  const navigateBackToCreditCards = useNavigateBack('/company-assets/credit-cards');
   const location = useLocation();
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -224,7 +226,7 @@ export default function CompanyCreditCardDetail() {
         <AppPageHeader
           title="Company Assets"
           subtitle="Corporate cards"
-          onBack={() => nav('/company-assets/credit-cards')}
+          onBack={navigateBackToCreditCards}
           backLabel="Corporate cards"
           icon={<CreditCard className="h-4 w-4" />}
         />
@@ -241,7 +243,7 @@ export default function CompanyCreditCardDetail() {
         <AppPageHeader
           title="Company Assets"
           subtitle="Corporate cards"
-          onBack={() => nav('/company-assets/credit-cards')}
+          onBack={navigateBackToCreditCards}
           backLabel="Corporate cards"
           icon={<CreditCard className="h-4 w-4" />}
         />
@@ -259,7 +261,7 @@ export default function CompanyCreditCardDetail() {
       <AppPageHeader
         title="Company Assets"
         subtitle="Corporate cards"
-        onBack={() => nav('/company-assets/credit-cards')}
+        onBack={navigateBackToCreditCards}
         backLabel="Corporate cards"
         icon={<CreditCard className="h-4 w-4" />}
         actions={pageHeaderActions}

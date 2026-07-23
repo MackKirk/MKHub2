@@ -17,6 +17,7 @@ import {
   uiTypography,
 } from '@/components/ui';
 import { Wrench } from 'lucide-react';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 
 function buildInitialForm(initialCategory: string): EquipmentNewFormValues {
   return {
@@ -125,6 +126,7 @@ export function EquipmentNewForm({
 
 export default function EquipmentNew() {
   const nav = useNavigate();
+  const navigateBack = useNavigateBack('/company-assets/equipment');
   const [searchParams] = useSearchParams();
   const categoryFromUrl = searchParams.get('category') || 'generator';
 
@@ -136,13 +138,13 @@ export default function EquipmentNew() {
         title="New Equipment"
         subtitle="Create a new equipment item"
         icon={<Wrench className="h-4 w-4" />}
-        onBack={() => nav(-1)}
-        backLabel="Equipment"
+        onBack={navigateBack}
+        backLabel="Back"
       />
       <EquipmentNewForm
         initialCategory={categoryFromUrl}
         onSuccess={(data) => nav(`/company-assets/equipment/${data.id}`)}
-        onCancel={() => nav(-1)}
+        onCancel={navigateBack}
       />
     </div>
   );

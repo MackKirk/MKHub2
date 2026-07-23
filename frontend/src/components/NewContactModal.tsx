@@ -28,6 +28,8 @@ type Props = {
   onCreated?: (contact: { id: string; name?: string }) => void;
   /** Higher z-index when opened on top of another full-screen flow (e.g. new opportunity). */
   stackOnTop?: boolean;
+  /** Prefill contact name from dropdown search. */
+  initialName?: string;
 };
 
 export default function NewContactModal({
@@ -37,6 +39,7 @@ export default function NewContactModal({
   clientDisplayName,
   onCreated,
   stackOnTop = false,
+  initialName = '',
 }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -56,7 +59,7 @@ export default function NewContactModal({
 
   useEffect(() => {
     if (!open) return;
-    setName('');
+    setName(String(initialName || '').trim());
     setEmail('');
     setPhone('');
     setPrimary('false');
@@ -65,7 +68,7 @@ export default function NewContactModal({
     setPhotoBlob(null);
     setPhotoPreview('');
     setPickerOpen(false);
-  }, [open, clientId]);
+  }, [open, clientId, initialName]);
 
   const title = clientDisplayName?.trim()
     ? `New contact — ${clientDisplayName.trim()}`

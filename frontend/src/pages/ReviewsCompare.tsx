@@ -24,6 +24,7 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 
 /** Answers may be strings/scalars or composite objects (e.g. yes_no_na `{ status, comments }`). */
 function formatAnswerForCompare(value: unknown): string {
@@ -141,6 +142,15 @@ export default function ReviewsCompare() {
     queryFn: () => api<any[]>('GET', '/reviews/cycles'),
   });
   const [cycleId, setCycleId] = useState<string>(paramCycle);
+
+  const compareBackFallback = useMemo(
+    () =>
+      cycleId
+        ? `/reviews/cycles/${encodeURIComponent(cycleId)}`
+        : '/reviews/cycles',
+    [cycleId],
+  );
+  const navigateBackFromCompare = useNavigateBack(compareBackFallback);
 
   useEffect(() => {
     const c = searchParams.get('cycle') || '';
@@ -264,11 +274,7 @@ export default function ReviewsCompare() {
       clearReviewee();
       return;
     }
-    if (cycleId) {
-      navigate(`/reviews/cycles/${encodeURIComponent(cycleId)}`);
-      return;
-    }
-    navigate('/reviews/cycles');
+    navigateBackFromCompare();
   };
 
   const comparison: CompareCell[] = focusRow?.comparison || [];
@@ -350,10 +356,10 @@ export default function ReviewsCompare() {
     <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <AppPageHeader
         onBack={handlePageBack}
-        backLabel={paramReviewee ? 'All employees in cycle' : cycleId ? 'Back to cycle' : 'Back to cycles'}
+        backLabel={paramReviewee ? 'All employees in cycle' : 'Back'}
         icon={<GitCompare className="h-4 w-4" />}
         title={pageTitle}
-        subtitle={pageSubtitle}
+        subtitle={pageSubtitle}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

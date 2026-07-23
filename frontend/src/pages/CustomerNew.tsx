@@ -25,10 +25,10 @@ export default function CustomerNew(){
     payment_terms_id:'', po_required:false, tax_number:'', lead_source:'', estimator_id:'', description:''
   });
   useEffect(()=>{ setForm((s:any)=> ({ ...s, name: s.display_name })); }, [form.display_name]);
-  // Validate both required fields: display_name and legal_name
+  // Display name required; legal name optional (defaults to display name on save)
   const canSubmit = useMemo(()=> {
-    return String(form.display_name||'').trim().length>1 && String(form.legal_name||'').trim().length>0;
-  }, [form.display_name, form.legal_name]);
+    return String(form.display_name||'').trim().length>1;
+  }, [form.display_name]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [cName, setCName] = useState('');
@@ -46,10 +46,6 @@ export default function CustomerNew(){
     // Validate required fields before allowing to proceed
     if (!String(form.display_name||'').trim()) {
       toast.error('Display name is required');
-      return;
-    }
-    if (!String(form.legal_name||'').trim()) {
-      toast.error('Legal name is required');
       return;
     }
     setStep(s=> Math.min(2, s+1));
@@ -283,7 +279,7 @@ export default function CustomerNew(){
               <div className="text-xs text-gray-500 mt-0.5 mb-2">Core company identity details.</div>
               <div className="grid md:grid-cols-2 gap-3">
                 <div className="md:col-span-2"><label className="text-xs text-gray-600">Display name <span className="text-red-600">*</span></label><input className="w-full border rounded px-3 py-2" value={form.display_name} onChange={e=>setForm((s:any)=>({...s, display_name: e.target.value}))} /></div>
-                <div><label className="text-xs text-gray-600">Legal name <span className="text-red-600">*</span></label><input className="w-full border rounded px-3 py-2" value={form.legal_name} onChange={e=>setForm((s:any)=>({...s, legal_name: e.target.value}))} /></div>
+                <div><label className="text-xs text-gray-600">Legal name</label><input className="w-full border rounded px-3 py-2" value={form.legal_name} onChange={e=>setForm((s:any)=>({...s, legal_name: e.target.value}))} placeholder="Same as display name if empty" /></div>
                 <div>
                   <label className="text-xs text-gray-600">Status</label>
                   <select className="w-full border rounded px-3 py-2" value={form.client_status} onChange={e=>setForm((s:any)=>({...s, client_status: e.target.value}))}>
@@ -517,10 +513,12 @@ export default function CustomerNew(){
                     setIsCreating(false);
                     return;
                   }
+                  const legalValue = String(form.legal_name || '').trim() || nameValue;
                   const payload:any = { 
                     ...form, 
                     name: nameValue, 
                     display_name: form.display_name || nameValue,
+                    legal_name: legalValue,
                     client_type: form.client_type || 'Customer' 
                   };
                   // Remove fields that aren't in the Client schema

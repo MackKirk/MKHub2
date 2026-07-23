@@ -20,6 +20,7 @@ import {
   fleetAssetFormToPayload,
   type FleetAssetFormValues,
 } from '@/components/fleet/FleetAssetFormFields';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 
 export type FleetAssetNewFormProps = {
   initialAssetType: string;
@@ -88,6 +89,7 @@ export function FleetAssetNewForm({
 
 export default function FleetAssetNew() {
   const nav = useNavigate();
+  const navigateBack = useNavigateBack('/fleet/assets');
   const [searchParams] = useSearchParams();
   const assetType = searchParams.get('type') || 'vehicle';
 
@@ -97,14 +99,14 @@ export default function FleetAssetNew() {
         title={`New ${assetType.replace('_', ' ')}`}
         subtitle="Create a new fleet asset"
         icon={<Truck className="h-4 w-4" />}
-        onBack={() => nav(-1)}
+        onBack={navigateBack}
         backLabel="Back"
       />
       <AppCard bodyClassName={uiSpacing.cardPadding}>
         <FleetAssetNewForm
           initialAssetType={assetType}
           onSuccess={(data) => nav(`/fleet/assets/${data.id}`)}
-          onCancel={() => nav(-1)}
+          onCancel={navigateBack}
         />
       </AppCard>
     </div>

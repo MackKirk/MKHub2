@@ -16,6 +16,7 @@ import { formatDateLocal } from '@/lib/dateUtils';
 import { isLikelyImageFile } from '@/utils/imageUploadHelpers';
 import { getFleetDueStatusBadgeVariant } from '@/lib/fleetUi';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import ScheduleFleetInspectionModal from '@/components/fleet/ScheduleFleetInspectionModal';
 import EditFleetAssetGeneralModal, {
   type FleetAssetGeneralEditSection,
@@ -391,6 +392,7 @@ function compareFleetComplianceRecords(
 export default function FleetAssetDetail() {
   const { id } = useParams();
   const nav = useNavigate();
+  const navigateBackFromFleetAsset = useNavigateBack('/fleet/assets');
   const location = useLocation();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -825,7 +827,7 @@ export default function FleetAssetDetail() {
       if (id) nav(`/fleet/assets/${id}?tab=${next}`, { replace: true });
     }
   }, [permissionsReady, fleetTabItems, tab, id, nav]);
-
+
 
   if (!isValidId) {
     return <div className="p-4">Invalid asset ID</div>;
@@ -838,8 +840,8 @@ export default function FleetAssetDetail() {
           title="Fleet & Equipment"
           subtitle="Executive overview"
           icon={<Truck className="h-4 w-4" />}
-          onBack={() => nav(-1)}
-          backLabel="Back"
+          onBack={navigateBackFromFleetAsset}
+          backLabel="Back"
         />
         <FleetAssetHeroSkeleton />
       </div>
@@ -868,8 +870,8 @@ export default function FleetAssetDetail() {
         title="Fleet & Equipment"
         subtitle="Executive overview"
         icon={<Truck className="h-4 w-4" />}
-        onBack={() => nav(-1)}
-        backLabel="Back"
+        onBack={navigateBackFromFleetAsset}
+        backLabel="Back"
       />
 
       <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-1.5' : 'gap-2')}>

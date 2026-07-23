@@ -15,6 +15,7 @@ import { sortByLabel } from '@/lib/sortOptions';
 import { countEmployeesMatchingCycleScope, employeesMatchingCycleScope, employeeDivisionKeys, type ReviewParticipantEmp } from '@/lib/reviewParticipantScope';
 
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 
 import {
 
@@ -270,6 +271,7 @@ export default function ReviewCycleDetailPage() {
   const { cycleId } = useParams<{ cycleId: string }>();
 
   const navigate = useNavigate();
+  const navigateBackToReviewCycles = useNavigateBack('/reviews/cycles');
 
   const queryClient = useQueryClient();
 
@@ -1000,7 +1002,7 @@ export default function ReviewCycleDetailPage() {
 
           <p className="text-sm text-red-700">Could not load this review cycle.</p>
 
-          <AppButton type="button" variant="ghost" onClick={() => navigate('/reviews/cycles')}>
+          <AppButton type="button" variant="ghost" onClick={navigateBackToReviewCycles}>
 
             Back to cycles
 
@@ -1022,15 +1024,15 @@ export default function ReviewCycleDetailPage() {
 
       <AppPageHeader
 
-        onBack={() => navigate('/reviews/cycles')}
+        onBack={navigateBackToReviewCycles}
 
-        backLabel="Back to review cycles"
+        backLabel="Back"
 
         icon={<Calendar className="h-4 w-4" />}
 
         title={cycle.name}
 
-        subtitle="Review cycle"
+        subtitle="Review cycle"
 
       />
 

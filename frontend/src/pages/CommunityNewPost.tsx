@@ -17,6 +17,7 @@ import {
 } from '@/lib/communityPostHtml';
 import { extractMentionsFromEditor } from '@/lib/communityPostEditorUtils';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import {
   AppButton,
   AppCard,
@@ -225,6 +226,7 @@ function priorityPillClass(value: string, active: boolean) {
 
 export default function CommunityNewPost() {
   const navigate = useNavigate();
+  const navigateBackToCommunity = useNavigateBack('/community');
   const { postId } = useParams<{ postId?: string }>();
   const isEdit = Boolean(postId);
   const queryClient = useQueryClient();
@@ -1292,8 +1294,8 @@ export default function CommunityNewPost() {
       <AppPageHeader
         title={isEdit ? 'Edit announcement' : 'New announcement'}
         subtitle="Compose once, control audience and timing, then publish to the community feed."
-        onBack={() => navigate('/community')}
-        backLabel="Back to Community"
+        onBack={navigateBackToCommunity}
+        backLabel="Back"
         icon={<Megaphone className="h-4 w-4" />}
       />
 
@@ -1357,7 +1359,7 @@ export default function CommunityNewPost() {
 
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200/80 bg-white/95 backdrop-blur-md supports-[backdrop-filter]:bg-white/85">
         <div className={uiCx('mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-2 px-4 py-3', uiLayout.actionsRow)}>
-          <AppButton type="button" variant="secondary" size="sm" onClick={() => navigate('/community')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={navigateBackToCommunity}>
             Cancel
           </AppButton>
           <AppButton type="button" variant="secondary" size="sm" onClick={() => setPreviewOpen(true)}>

@@ -1,12 +1,13 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
-import AddressAutocomplete from '@/components/AddressAutocomplete';
 import NewContactModal from '@/components/NewContactModal';
+import NewCustomerModal from '@/components/NewCustomerModal';
+import SiteFormModal from '@/components/SiteFormModal';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import {
   AppButton,
@@ -21,10 +22,9 @@ import {
   AppSelect,
   AppTextarea,
   AppUserSelect,
-  uiBorders,
   uiCx,
   uiLayout,
-  uiRadius,
+  uiModalLayer,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
@@ -33,8 +33,29 @@ import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLin
 import { findCommercialServiceDivisionId, findLeakInvestigationDivisionId } from '@/lib/leakInvestigation';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { filterStatusesForProject } from '@/lib/projectStatusVisibility';
+import { canEditCustomerRecord } from '@/lib/customerPermissions';
+import {
+  hasUsableCustomerAddress,
+  resolveSiteIdForCustomerAddress,
+  SITE_USE_CUSTOMER_ADDRESS,
+  SITE_USE_CUSTOMER_ADDRESS_LABEL,
+} from '@/lib/clientSiteFromCustomer';
 
-type Client = { id:string, display_name?:string, name?:string, city?:string, province?:string, address_line1?:string };
+type SiteMode = 'existing' | 'customer_address';
+
+type Client = {
+  id: string;
+  display_name?: string;
+  name?: string;
+  city?: string;
+  province?: string;
+  address_line1?: string;
+  address_line2?: string;
+  postal_code?: string;
+  country?: string;
+  lat?: number | null;
+  lng?: number | null;
+};
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, site_address_line2?:string, site_lat?:number, site_lng?:number, site_notes?:string };
 
 export default function ProjectNew(){
@@ -52,9 +73,8 @@ export default function ProjectNew(){
   const [name, setName] = useState<string>('');
   const [desc, setDesc] = useState<string>('');
   const [siteId, setSiteId] = useState<string>(initialSiteIdFromUrl);
-  const [createSite, setCreateSite] = useState<boolean>(false);
-  const [siteForm, setSiteForm] = useState<any>({ site_name:'', site_address_line1:'', site_address_line2:'', site_city:'', site_province:'', site_country:'', site_postal_code:'', site_lat:null, site_lng:null, site_notes:'' });
-  const setSiteField = (k:string, v:any)=> setSiteForm((s:any)=> ({ ...s, [k]: v }));
+  const [siteMode, setSiteMode] = useState<SiteMode>(initialSiteIdFromUrl ? 'existing' : 'existing');
+  const [newSiteModalOpen, setNewSiteModalOpen] = useState(false);
   const [step, setStep] = useState<number>(1);
   const [statusLabel, setStatusLabel] = useState<string>('');
   const [divisionIds, setDivisionIds] = useState<string[]>([]); // Legacy support
@@ -68,11 +88,50 @@ export default function ProjectNew(){
   const [relatedClientIds, setRelatedClientIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newContactModalOpen, setNewContactModalOpen] = useState(false);
+  const [newCustomerModalOpen, setNewCustomerModalOpen] = useState(false);
+  const [newCustomerInitialName, setNewCustomerInitialName] = useState('');
+  const [newCustomerTarget, setNewCustomerTarget] = useState<'owner' | 'related'>('owner');
   /** Step 2 division picker: expand parents that have subdivisions (same UX as Edit Project Divisions). */
   const [newOppExpandedDivisions, setNewOppExpandedDivisions] = useState<Set<string>>(new Set());
   const { data:sites } = useQuery({ queryKey:['clientSites', clientId], queryFn: ()=> clientId? api<Site[]>('GET', `/clients/${encodeURIComponent(clientId)}/sites`) : Promise.resolve([]), enabled: !!clientId });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=> api<any>('GET','/settings') });
   const { data:projectDivisions, isLoading: divisionsLoading } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const canCreateCustomer = useMemo(() => {
+    const isAdmin = (me?.roles || []).includes('admin');
+    const permissions = new Set<string>(me?.permissions || []);
+    return canEditCustomerRecord(isAdmin, permissions);
+  }, [me]);
+
+  const openCreateCustomerFromSearch = useCallback((target: 'owner' | 'related', q: string) => {
+    setNewCustomerTarget(target);
+    setNewCustomerInitialName(q);
+    setNewCustomerModalOpen(true);
+  }, []);
+
+  const closeNewCustomerModal = useCallback(() => {
+    setNewCustomerModalOpen(false);
+    setNewCustomerInitialName('');
+  }, []);
+
+  const openCreateContact = useCallback(() => {
+    setNewContactModalOpen(true);
+  }, []);
+
+  const openCreateNewSite = useCallback(() => {
+    setNewSiteModalOpen(true);
+  }, []);
+
+  const handleSiteSelectChange = useCallback((e: { target: { value: string } }) => {
+    const value = e.target.value;
+    if (value === SITE_USE_CUSTOMER_ADDRESS) {
+      setSiteMode('customer_address');
+      setSiteId(SITE_USE_CUSTOMER_ADDRESS);
+      return;
+    }
+    setSiteMode('existing');
+    setSiteId(value);
+  }, []);
   const divisionsForPicker = useMemo(
     () => filterProjectDivisionsForBusinessLine(projectDivisions, businessLine),
     [projectDivisions, businessLine]
@@ -148,8 +207,6 @@ export default function ProjectNew(){
     return null;
   }, [clientId, clientById]);
 
-  const controlInputClass = uiCx('w-full text-sm', uiRadius.control, uiBorders.input, uiSpacing.controlX, 'py-2');
-
   const contactSelectOptions = useMemo(
     () =>
       sortByLabel(contacts || [], (c: any) => (c.name || c.email || c.phone || c.id || '').toString()).map((c: any) => ({
@@ -171,6 +228,28 @@ export default function ProjectNew(){
       }),
     [sites],
   );
+
+  const siteOptionGroups = useMemo(() => {
+    const groups: { label: string; options: { value: string; label: string }[] }[] = [];
+    if (hasUsableCustomerAddress(selectedClient)) {
+      groups.push({
+        label: '',
+        options: [{ value: SITE_USE_CUSTOMER_ADDRESS, label: SITE_USE_CUSTOMER_ADDRESS_LABEL }],
+      });
+    }
+    groups.push({
+      label: 'Existing sites',
+      options: siteSelectOptions,
+    });
+    return groups;
+  }, [selectedClient, siteSelectOptions]);
+
+  const siteSelectValue =
+    siteMode === 'customer_address'
+      ? SITE_USE_CUSTOMER_ADDRESS
+      : siteMode === 'existing'
+        ? siteId
+        : '';
 
   const statusSelectOptions = useMemo(
     () =>
@@ -195,7 +274,13 @@ export default function ProjectNew(){
     setRelatedClientIds((prev) => prev.filter((id) => id !== clientId));
   }, [clientId]);
 
-  useEffect(()=>{ if(!clientId){ setSiteId(''); setCreateSite(false); } }, [clientId]);
+  useEffect(() => {
+    if (!clientId) {
+      setSiteId('');
+      setSiteMode('existing');
+      setNewSiteModalOpen(false);
+    }
+  }, [clientId]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -206,13 +291,15 @@ export default function ProjectNew(){
   }, []);
 
   // Step 1 → Step 2: only basic details (name, client, site). Divisions are on step 2.
-  const canGoToStep2 = useMemo(()=>{
-    if(!String(name||'').trim()) return false;
-    if(!String(clientId||'').trim()) return false;
-    if(createSite){ return !!String(siteForm.site_name||siteForm.site_address_line1||'').trim(); }
-    if(!String(siteId||'').trim()) return false;
+  const canGoToStep2 = useMemo(() => {
+    if (!String(name || '').trim()) return false;
+    if (!String(clientId || '').trim()) return false;
+    if (siteMode === 'customer_address') {
+      return hasUsableCustomerAddress(selectedClient);
+    }
+    if (!String(siteId || '').trim() || siteId === SITE_USE_CUSTOMER_ADDRESS) return false;
     return true;
-  }, [name, clientId, siteId, createSite, siteForm]);
+  }, [name, clientId, siteId, siteMode, selectedClient]);
 
   // Final submit: for opportunities also require at least one division (chosen on step 2).
   const canSubmit = useMemo(()=>{
@@ -227,12 +314,29 @@ export default function ProjectNew(){
       toast.error('Select at least one division for this opportunity');
       return;
     }
-    try{
+    try {
       setIsSubmitting(true);
       let newSiteId = siteId;
-      if(createSite){
-        const created:any = await api('POST', `/clients/${encodeURIComponent(clientId)}/sites`, siteForm);
-        newSiteId = String(created?.id||'');
+      let shouldInvalidateSites = false;
+
+      if (siteMode === 'customer_address') {
+        const client = selectedClient;
+        if (!client || !hasUsableCustomerAddress(client)) {
+          toast.error('Customer address is required to use this site option');
+          setIsSubmitting(false);
+          return;
+        }
+        const { siteId: resolvedId, created } = await resolveSiteIdForCustomerAddress(
+          client,
+          sites || [],
+          (payload) => api<{ id: string }>('POST', `/clients/${encodeURIComponent(clientId)}/sites`, payload),
+        );
+        newSiteId = resolvedId;
+        shouldInvalidateSites = created;
+      }
+
+      if (shouldInvalidateSites) {
+        queryClient.invalidateQueries({ queryKey: ['clientSites', clientId] });
       }
       // For opportunities, status will be automatically set to "Prospecting" by the backend
       const payload:any = { 
@@ -390,6 +494,9 @@ export default function ProjectNew(){
                 placeholder="Search or select customer…"
                 emptyMessage="No customers found."
                 fieldHint="Project Owner / Source\n\nPrimary customer for this record."
+                onCreateNew={
+                  canCreateCustomer ? (q) => openCreateCustomerFromSearch('owner', q) : undefined
+                }
                 />
               </div>
               <div className="md:col-span-2">
@@ -402,31 +509,24 @@ export default function ProjectNew(){
                   placeholder="Search or add related customers…"
                   emptyMessage="No customers found."
                   fieldHint="Related Customers\n\nOptional additional customers linked to this record."
+                  onCreateNew={
+                    canCreateCustomer ? (q) => openCreateCustomerFromSearch('related', q) : undefined
+                  }
                 />
               </div>
               {!!clientId && (
                 <div className="md:col-span-2">
-                  <div className="flex items-end gap-2">
-                    <div className="min-w-0 flex-1">
-                      <AppSelect
-                        label="Customer contact"
-                        value={contactId}
-                        onChange={(e) => setContactId(e.target.value)}
-                        options={contactSelectOptions}
-                        placeholder="Select contact…"
-                        fieldHint="Customer contact\n\nPrimary contact at the customer for this record."
-                      />
-                    </div>
-                    <AppButton
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="shrink-0 whitespace-nowrap"
-                      onClick={() => setNewContactModalOpen(true)}
-                    >
-                      Add contact
-                    </AppButton>
-                  </div>
+                  <AppSelect
+                    label="Customer contact"
+                    value={contactId}
+                    onChange={(e) => setContactId(e.target.value)}
+                    options={contactSelectOptions}
+                    placeholder="Select contact…"
+                    emptyMessage="No contacts found."
+                    fieldHint="Customer contact\n\nPrimary contact at the customer for this record."
+                    createNewPlacement="footer"
+                    onCreateNew={() => openCreateContact()}
+                  />
                 </div>
               )}
               <AppTextarea
@@ -440,115 +540,25 @@ export default function ProjectNew(){
             </div>
             {!!clientId && (
               <div className={uiSpacing.sectionStack}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <AppSectionHeader
-                    title="Site"
-                    description="Pick an existing site or create a new one for this customer."
-                    className="min-w-0 flex-1"
-                  />
-                  <label className={uiCx(uiTypography.helper, 'flex shrink-0 cursor-pointer items-center gap-2')}>
-                    <input
-                      type="checkbox"
-                      checked={createSite}
-                      onChange={(e) => setCreateSite(e.target.checked)}
-                      className="rounded border-gray-300"
-                    />
-                    Create new site
-                  </label>
-                </div>
-                {!createSite ? (
-                  <AppSelect
-                    id="project-new-site"
-                    label="Site *"
-                    value={siteId}
-                    onChange={(e) => setSiteId(e.target.value)}
-                    options={siteSelectOptions}
-                    placeholder="Select site…"
-                    fieldHint="Site\n\nJob location for this record."
-                  />
-                ) : (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <AppInput
-                      className="md:col-span-2"
-                      label="Site name"
-                      value={siteForm.site_name || ''}
-                      onChange={(e) => setSiteField('site_name', e.target.value)}
-                      fieldHint="Site name\n\nDisplay name for the new site."
-                    />
-                    <div className="space-y-1.5">
-                      <AppControlLabelRow
-                        label="Address line 1"
-                        fieldHint={<AppFieldHint hint="Address line 1\n\nStreet address. Suggestions appear as you type." />}
-                      />
-                      <AddressAutocomplete
-                        value={siteForm.site_address_line1 || ''}
-                        onChange={(value) => setSiteField('site_address_line1', value)}
-                        onAddressSelect={(address) => {
-                          setSiteForm((prev: any) => ({
-                            ...prev,
-                            site_address_line1: address.address_line1 || prev.site_address_line1,
-                            site_address_line2: address.address_line2 !== undefined ? address.address_line2 : prev.site_address_line2,
-                            site_city: address.city !== undefined ? address.city : prev.site_city,
-                            site_province: address.province !== undefined ? address.province : prev.site_province,
-                            site_country: address.country !== undefined ? address.country : prev.site_country,
-                            site_postal_code: address.postal_code !== undefined ? address.postal_code : prev.site_postal_code,
-                            site_lat: address.lat !== undefined ? address.lat : prev.site_lat,
-                            site_lng: address.lng !== undefined ? address.lng : prev.site_lng,
-                          }));
-                        }}
-                        placeholder="Start typing an address…"
-                        className={controlInputClass}
-                      />
-                    </div>
-                    <AppInput
-                      label="Address line 2"
-                      value={siteForm.site_address_line2 || ''}
-                      onChange={(e) => setSiteField('site_address_line2', e.target.value)}
-                      placeholder="Suite, unit, etc. (optional)"
-                      fieldHint="Address line 2\n\nSuite, unit, or building (optional)."
-                    />
-                    <AppInput
-                      label="Country"
-                      value={siteForm.site_country || ''}
-                      readOnly
-                      disabled
-                      placeholder="Auto-filled from address"
-                      fieldHint="Country\n\nFilled automatically from address search."
-                    />
-                    <AppInput
-                      label="Province/State"
-                      value={siteForm.site_province || ''}
-                      readOnly
-                      disabled
-                      placeholder="Auto-filled from address"
-                      fieldHint="Province/State\n\nFilled automatically from address search."
-                    />
-                    <AppInput
-                      label="City"
-                      value={siteForm.site_city || ''}
-                      readOnly
-                      disabled
-                      placeholder="Auto-filled from address"
-                      fieldHint="City\n\nFilled automatically from address search."
-                    />
-                    <AppInput
-                      label="Postal code"
-                      value={siteForm.site_postal_code || ''}
-                      readOnly
-                      disabled
-                      placeholder="Auto-filled from address"
-                      fieldHint="Postal code\n\nFilled automatically from address search."
-                    />
-                    <AppTextarea
-                      className="md:col-span-2"
-                      label="Site notes"
-                      rows={3}
-                      value={siteForm.site_notes || ''}
-                      onChange={(e) => setSiteField('site_notes', e.target.value)}
-                      fieldHint="Site notes\n\nOptional notes for this site."
-                    />
-                  </div>
-                )}
+                <AppSectionHeader
+                  title="Site"
+                  description="Pick an existing site, use the customer's address, or create a new site."
+                />
+                <AppSelect
+                  id="project-new-site"
+                  label="Site *"
+                  value={siteSelectValue}
+                  onChange={handleSiteSelectChange}
+                  optionGroups={siteOptionGroups}
+                  sortOptions={false}
+                  placeholder="Select site…"
+                  emptyMessage="No sites found."
+                  fieldHint={
+                    'Site\n\nJob location for this record. Using the customer address reuses an existing matching site or creates one named "Main address".'
+                  }
+                  createNewPlacement="footer"
+                  onCreateNew={openCreateNewSite}
+                />
               </div>
             )}
           </div>
@@ -792,6 +802,46 @@ export default function ProjectNew(){
         setContactId(c.id);
       }}
     />
+    <SiteFormModal
+      open={newSiteModalOpen}
+      onClose={() => setNewSiteModalOpen(false)}
+      clientId={clientId}
+      clientDisplayName={selectedClient?.display_name || selectedClient?.name || ''}
+      overlayClassName={uiModalLayer.stacked}
+      onCreated={(site) => {
+        queryClient.invalidateQueries({ queryKey: ['clientSites', clientId] });
+        setSiteMode('existing');
+        setSiteId(site.id);
+        setNewSiteModalOpen(false);
+      }}
+    />
+    {newCustomerModalOpen ? (
+      <NewCustomerModal
+        stackOnTop
+        initialDisplayName={newCustomerInitialName}
+        onClose={closeNewCustomerModal}
+        onSuccess={(customerId) => {
+          const id = String(customerId || '').trim();
+          if (!id) {
+            closeNewCustomerModal();
+            return;
+          }
+          queryClient.invalidateQueries({ queryKey: ['app-client-select-catalog'] });
+          queryClient.invalidateQueries({ queryKey: ['clients'] });
+          if (newCustomerTarget === 'owner') {
+            setClientId(id);
+            setContactId('');
+            queryClient.invalidateQueries({ queryKey: ['client-detail-project-new', id] });
+          } else {
+            setRelatedClientIds((prev) => {
+              if (prev.some((x) => String(x).trim() === id)) return prev;
+              return [...prev, id];
+            });
+          }
+          closeNewCustomerModal();
+        }}
+      />
+    ) : null}
     </>
   );
 }

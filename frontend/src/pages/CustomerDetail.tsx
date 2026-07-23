@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import ImageEditor from '@/components/ImageEditor';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { CustomerFilesTabEnhanced } from './CustomerFilesTabEnhanced';
 import { FilePdfPreviewModal } from '@/components/files';
@@ -102,6 +103,7 @@ export default function CustomerDetail(){
   const [newProjectName, setNewProjectName] = useState('');
   const [customerReportModalOpen, setCustomerReportModalOpen] = useState<{ open: boolean; projectId?: string } | null>(null);
   const confirm = useConfirm();
+  const navigateBackToCustomers = useNavigateBack('/customers');
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const isAdmin = (me?.roles||[]).includes('admin');
@@ -327,7 +329,7 @@ export default function CustomerDetail(){
       setTab(null);
       navigate(location.pathname, { replace: true });
     } else {
-      navigate('/customers');
+      navigateBackToCustomers();
     }
   };
 
@@ -347,7 +349,7 @@ export default function CustomerDetail(){
         subtitle={getPageDescription(c, tab)}
         icon={<Users className="h-4 w-4" />}
         onBack={handlePageBack}
-        backLabel={tab !== null && hasOverviewView ? 'Back to Overview' : 'Back to Customers'}
+        backLabel={tab !== null && hasOverviewView ? 'Back to Overview' : 'Back'}
       />
 
       <AppCard

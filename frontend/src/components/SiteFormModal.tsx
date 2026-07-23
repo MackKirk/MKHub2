@@ -19,6 +19,7 @@ import {
   uiCx,
   uiLayout,
   uiModalLayer,
+  uiDropdown,
   uiRadius,
   uiSpacing,
   uiTypography,
@@ -78,6 +79,8 @@ type Props = {
   coverUrl?: string;
   readOnly?: boolean;
   onSaved?: () => void;
+  /** Fired after a successful create (not edit), with the new site id. */
+  onCreated?: (site: { id: string }) => void;
   onDeleted?: () => void;
   /** Raised z-index when opened from another modal (e.g. Edit Project Site). */
   overlayClassName?: string;
@@ -92,6 +95,7 @@ export default function SiteFormModal({
   coverUrl = '',
   readOnly = false,
   onSaved,
+  onCreated,
   onDeleted,
   overlayClassName,
 }: Props) {
@@ -110,7 +114,7 @@ export default function SiteFormModal({
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  const controlInputClass = uiCx('w-full text-sm', uiRadius.control, uiBorders.input, uiSpacing.controlX, 'py-2');
+  const addressInputClass = uiDropdown.trigger;
 
   useEffect(() => {
     if (!open) return;
@@ -178,6 +182,7 @@ export default function SiteFormModal({
           }
         }
         toast.success('Site created');
+        onCreated?.({ id: String(created.id) });
       }
       onSaved?.();
       handleClose();
@@ -290,7 +295,7 @@ export default function SiteFormModal({
                   }));
                 }}
                 placeholder="Enter address"
-                className={controlInputClass}
+                className={addressInputClass}
               />
             </div>
             <AppInput
@@ -333,7 +338,7 @@ export default function SiteFormModal({
                       }));
                     }}
                     placeholder="Enter address"
-                    className={controlInputClass}
+                    className={addressInputClass}
                   />
                 </div>
                 <div className="flex items-end gap-2 md:col-span-2">
@@ -405,7 +410,7 @@ export default function SiteFormModal({
                       }));
                     }}
                     placeholder="Enter address"
-                    className={controlInputClass}
+                    className={addressInputClass}
                   />
                 </div>
                 <div className="flex items-end gap-2 md:col-span-2">

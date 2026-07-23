@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 
 export default function SubcontractorScanPage() {
   const [params] = useSearchParams();
   const nav = useNavigate();
+  const navigateBackToSubcontractors = useNavigateBack('/business/subcontractors');
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,7 +35,7 @@ export default function SubcontractorScanPage() {
     return (
       <div className="p-8 max-w-md mx-auto">
         <p className="text-red-700 text-sm">{err}</p>
-        <button type="button" className="mt-4 text-sm text-[#7f1010] underline" onClick={() => nav('/business/subcontractors')}>
+        <button type="button" className="mt-4 text-sm text-[#7f1010] underline" onClick={navigateBackToSubcontractors}>
           Back to Subcontractors
         </button>
       </div>

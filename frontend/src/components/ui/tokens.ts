@@ -212,6 +212,8 @@ export const uiModalLayer = {
   nestedPicker: 'z-[210]',
   nestedPickerBusy: 'z-[220]',
   nestedEditor: 'z-[215]',
+  /** Global confirm prompts — above stacked form modals and nested pickers. */
+  confirm: 'z-[230]',
 } as const;
 
 /** Field-label “?” help tooltips (AppFieldHint). Above modal overlays and dropdown menus. */

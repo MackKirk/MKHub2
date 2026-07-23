@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { ExternalLink, UserMinus } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import StartOffboardingModal from '@/components/offboarding/StartOffboardingModal';
 import OffboardingOverviewTab from '@/components/offboarding/OffboardingOverviewTab';
 import OffboardingAssetsTab from '@/components/offboarding/OffboardingAssetsTab';
@@ -59,6 +60,7 @@ function MetaField({ label, children }: { label: string; children: React.ReactNo
 export default function OffboardingDetailPage() {
   const { caseId = '' } = useParams();
   const navigate = useNavigate();
+  const navigateBackToOffboardingList = useNavigateBack('/human-resources/offboarding');
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -208,8 +210,8 @@ export default function OffboardingDetailPage() {
                 'Employee offboarding case'
               }
               icon={<UserMinus className="h-4 w-4" />}
-              onBack={() => navigate('/human-resources/offboarding')}
-              backLabel="Back to Offboarding"
+              onBack={navigateBackToOffboardingList}
+              backLabel="Back"
             />
 
             <AppCard bodyClassName={uiSpacing.cardPadding}>

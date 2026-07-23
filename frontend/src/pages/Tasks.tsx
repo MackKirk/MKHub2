@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { Archive, ArrowLeft, ClipboardList } from 'lucide-react';
 import TaskCard from '@/components/tasks/TaskCard';
 import TaskModal from '@/components/tasks/TaskModal';
@@ -122,6 +123,7 @@ export default function TasksPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const fromHome = location.state?.fromHome === true;
+  const navigateBackToOverview = useNavigateBack('/overview');
   const queryClient = useQueryClient();
   const lastTasksSyncRef = useMemo(() => ({ current: null as string | null }), []);
 
@@ -250,10 +252,10 @@ export default function TasksPage() {
               size="sm"
               type="button"
               leftIcon={<ArrowLeft className="h-4 w-4" />}
-              onClick={() => navigate('/overview')}
-              title="Back to Overview"
+              onClick={navigateBackToOverview}
+              title="Back"
             >
-              Back to Overview
+              Back
             </AppButton>
           </div>
         )}

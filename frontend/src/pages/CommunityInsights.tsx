@@ -14,6 +14,7 @@ import { InsightsReadHealth } from '@/components/community/insights/InsightsRead
 import { InsightsWorkforceReach } from '@/components/community/insights/InsightsWorkforceReach';
 import { computeDelta, type InsightsPayload } from '@/components/community/insights/insightsTypes';
 import { AppCard, AppPageHeader, uiCx, uiSpacing, uiTypography } from '@/components/ui';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 
 const DEFAULT_PRESET: DatePresetId = '14d';
 
@@ -119,6 +120,7 @@ function SectionSkeleton({ height = 240 }: { height?: number }) {
 
 export default function CommunityInsights() {
   const navigate = useNavigate();
+  const navigateBackToCommunity = useNavigateBack('/community');
   const [searchParams, setSearchParams] = useSearchParams();
 
   const initialFrom = searchParams.get('from');
@@ -192,8 +194,8 @@ export default function CommunityInsights() {
       <AppPageHeader
         title="Insights"
         subtitle="Analytics and engagement metrics for the selected window."
-        onBack={() => navigate('/community')}
-        backLabel="Back to Community"
+        onBack={navigateBackToCommunity}
+        backLabel="Back"
         icon={<BarChart3 className="h-4 w-4" />}
       />
 

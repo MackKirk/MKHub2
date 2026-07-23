@@ -26,6 +26,7 @@ import EstimateBuilder, { type EstimateBuilderRef } from '@/components/EstimateB
 import ProposalForm, { toSqft, fromSqft, formatAreaLabel, type AreaUnit } from '@/components/ProposalForm';
 import ProjectProposalTab from '@/components/ProjectProposalTab';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import CalendarMock from '@/components/CalendarMock';
 import { ProjectConvertToProjectModalDsForm } from '@/components/ProjectConvertToProjectModalDsForm';
@@ -1520,23 +1521,24 @@ export default function ProjectDetail(){
     return tabDescriptions[activeTab] || '';
   };
 
+  const projectBackFallback = useMemo(() => {
+    const sp = salesListPaths(proj);
+    return proj?.is_bidding ? sp.opportunities : sp.projects;
+  }, [proj]);
+  const navigateBackFromProject = useNavigateBack(projectBackFallback);
+
   const handlePageBack = () => {
     if (tab && tab !== 'overview') {
       handleTabClick(null);
       return;
     }
-    const sp = salesListPaths(proj);
-    if (proj?.is_bidding) nav(sp.opportunities);
-    else if (isLeakInvestigation) nav(sp.projects);
-    else nav(sp.projects);
+    navigateBackFromProject();
   };
 
   const pageBackLabel =
     tab && tab !== 'overview'
       ? 'Back to Overview'
-      : proj?.is_bidding
-        ? 'Back to Opportunities'
-        : 'Back to Projects';
+      : 'Back';
 
   const heroCardShell = (extra: string) =>
     useDesignSystem

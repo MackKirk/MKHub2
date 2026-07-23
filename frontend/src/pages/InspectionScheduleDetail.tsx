@@ -20,6 +20,7 @@ import {
   type InlineInspectionRow,
 } from '@/pages/FleetInspectionScheduleInlineEditors';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import WorkOrderNewModal from '@/components/fleet/WorkOrderNewModal';
 import {
   canEditFleetInspectionTab,
@@ -181,13 +182,7 @@ export default function InspectionScheduleDetail() {
   const appliedFocusFromUrlRef = useRef<string | null>(null);
   const focusParam = searchParams.get('focus');
 
-  const goBackFromSchedule = () => {
-    if (window.history.length > 1) {
-      nav(-1);
-    } else {
-      nav('/fleet/inspections');
-    }
-  };
+  const goBackFromSchedule = useNavigateBack('/fleet/inspections');
 
   const { data: me } = useQuery({
     queryKey: ['me'],
@@ -371,7 +366,7 @@ export default function InspectionScheduleDetail() {
           title="Inspection"
           onBack={goBackFromSchedule}
           backLabel="Inspections"
-          icon={<ClipboardCheck className="h-4 w-4" />}
+          icon={<ClipboardCheck className="h-4 w-4" />}
         />
         <InspectionScheduleHeroSkeleton />
         <AppCard>
@@ -444,7 +439,7 @@ export default function InspectionScheduleDetail() {
               >
                 Delete
               </AppButton>
-            ) : null}
+            ) : null}
           </div>
         }
       />

@@ -24,6 +24,7 @@ import {
   uiRadius,
   uiSpacing,
 } from '@/components/ui';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 
 const VIEW_STORAGE_KEY = 'community-groups-view';
 
@@ -44,6 +45,7 @@ function parseCreatedAt(iso?: string | null): number {
 
 export default function CommunityGroups() {
   const navigate = useNavigate();
+  const navigateBackToCommunity = useNavigateBack('/community');
 
   const [viewMode, setViewModeState] = useState<ViewMode>('cards');
   useEffect(() => {
@@ -128,8 +130,8 @@ export default function CommunityGroups() {
       <AppPageHeader
         title="Groups"
         subtitle="Create and manage audience groups for community announcements."
-        onBack={() => navigate('/community')}
-        backLabel="Back to Community"
+        onBack={navigateBackToCommunity}
+        backLabel="Back"
         icon={<UsersRound className="h-4 w-4" />}
       />
 

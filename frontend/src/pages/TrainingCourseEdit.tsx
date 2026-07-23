@@ -6,6 +6,7 @@ import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import toast from 'react-hot-toast';
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import CourseBuilderPanel from '@/pages/training/CourseBuilderPanel';
 import { Plus, Settings } from 'lucide-react';
 import {
@@ -311,6 +312,7 @@ export default function TrainingCourseEdit() {
   const queryClient = useQueryClient();
   const courseId = courseIdParam?.trim() || undefined;
   const isNew = !courseId || courseId === 'new';
+  const navigateBackToTrainingAdmin = useNavigateBack('/training/admin');
 
   const { data: course, isLoading } = useQuery<Course>({
     queryKey: ['training-admin-course', courseId],
@@ -756,8 +758,8 @@ export default function TrainingCourseEdit() {
         title={isNew ? 'Create new course' : `Edit: ${course?.title || 'Course'}`}
         subtitle={isNew ? 'Set up your training course' : 'Manage course content and settings'}
         icon={<Settings className="h-4 w-4" />}
-        onBack={() => navigate('/training/admin')}
-        backLabel="Back to list"
+        onBack={navigateBackToTrainingAdmin}
+        backLabel="Back"
       />
 
       <AppCard className={uiShadows.card} bodyClassName={uiSpacing.cardPadding}>
@@ -1426,7 +1428,7 @@ export default function TrainingCourseEdit() {
         className={uiShadows.card}
         bodyClassName={uiCx(uiSpacing.cardPadding, uiLayout.actionsRow, 'flex-col flex-wrap sm:flex-row sm:items-center sm:justify-between')}
       >
-        <AppButton type="button" variant="secondary" onClick={() => navigate('/training/admin')} className="w-full sm:w-auto">
+        <AppButton type="button" variant="secondary" onClick={navigateBackToTrainingAdmin} className="w-full sm:w-auto">
           Cancel
         </AppButton>
         <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-stretch sm:w-auto sm:justify-end')}>
