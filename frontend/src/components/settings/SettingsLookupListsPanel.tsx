@@ -38,6 +38,7 @@ const EXCLUDED_LISTS = new Set([
   'google_places_api_key',
   'terms-templates',
   'branding',
+  'departments',
   'standard_file_categories',
   'organization_logos',
   'certificate_backgrounds',
