@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 import { sortByLabel } from '@/lib/sortOptions';
 import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
@@ -39,6 +39,14 @@ export type AppSelectProps = {
   optionGroups?: AppSelectOptionGroup[];
   placeholder?: string;
   emptyMessage?: string;
+  /** When set, shows a create action — placement controlled by `createNewPlacement`. */
+  onCreateNew?: (searchQuery: string) => void;
+  createNewLabel?: string;
+  /**
+   * `empty` — create action only when the filtered list is empty (e.g. searchable selects).
+   * `footer` — create action always last in the menu (normal dropdown).
+   */
+  createNewPlacement?: 'empty' | 'footer';
   /** Filter options by label/value while the menu is open. */
   searchable?: boolean;
   /** When false with `optionGroups`, keeps caller-defined order inside each group. Default: true for flat `options` only. */
@@ -127,6 +135,9 @@ export function AppSelect({
   optionGroups,
   placeholder,
   emptyMessage = 'No options found.',
+  onCreateNew,
+  createNewLabel = 'Create new',
+  createNewPlacement = 'empty',
   searchable = false,
   sortOptions: sortOptionsProp,
   menuWidth,
@@ -195,6 +206,46 @@ export function AppSelect({
 
   const menuPosition = comboboxMenuStyle(menuRect);
 
+  const baseOptionCount = useMemo(() => {
+    if (isGrouped && preparedGroups) return flattenOptionGroups(preparedGroups).length;
+    return sortedOptions.length;
+  }, [isGrouped, preparedGroups, sortedOptions]);
+
+  const noVisibleOptions = allOptions.length === 0;
+  const showCreateNewInEmpty =
+    createNewPlacement === 'empty' &&
+    !!onCreateNew &&
+    noVisibleOptions &&
+    (!searchable || search.trim().length > 0 || baseOptionCount === 0);
+  const showCreateNewFooter = createNewPlacement === 'footer' && !!onCreateNew;
+
+  const handleCreateNew = () => {
+    onCreateNew?.(search.trim());
+    closeDropdown();
+    setSearch('');
+  };
+
+  const renderCreateNewRow = () => (
+    <li role="option">
+      <button
+        type="button"
+        className={uiCx(uiDropdown.option, 'flex w-full cursor-pointer items-center gap-2 text-gray-900')}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={handleCreateNew}
+      >
+        <Plus className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+        <span className="truncate text-xs font-medium">{createNewLabel}</span>
+      </button>
+    </li>
+  );
+
+  const renderEmptyOptions = () => (
+    <>
+      <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
+      {showCreateNewInEmpty ? renderCreateNewRow() : null}
+    </>
+  );
+
   const renderOptionButton = (option: AppSelectOption) => (
     <li key={option.value} role="option" aria-selected={currentValue === option.value}>
       <button
@@ -217,7 +268,7 @@ export function AppSelect({
 
   const renderGroupedOptions = () => {
     if (!filteredGroups?.length) {
-      return <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>;
+      return renderEmptyOptions();
     }
     return filteredGroups.map((group, groupIndex) => (
       <Fragment key={`${group.label || 'ungrouped'}-${groupIndex}`}>
@@ -252,15 +303,16 @@ export function AppSelect({
       ) : null}
       {isGrouped ? (
         allOptions.length === 0 ? (
-          <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
+          renderEmptyOptions()
         ) : (
           renderGroupedOptions()
         )
       ) : filteredOptions.length === 0 ? (
-        <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
+        renderEmptyOptions()
       ) : (
         filteredOptions.map((option) => renderOptionButton(option))
       )}
+      {showCreateNewFooter ? renderCreateNewRow() : null}
     </>
   );
 

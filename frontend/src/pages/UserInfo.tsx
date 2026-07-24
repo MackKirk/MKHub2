@@ -13,6 +13,7 @@ import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import ClothSizeSelect from '@/components/ClothSizeSelect';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import UserLoans from '@/components/UserLoans';
 import { UserReportsSection } from '@/components/users/UserReportsTabEnhanced';
 import { DivisionIcon } from '@/components/DivisionIcon';
@@ -964,6 +965,7 @@ export default function UserInfo(){
   useUnsavedChangesGuard(hasUnsaved, saveAll);
   
   const navigate = useNavigate();
+  const navigateBackFromUserInfo = useNavigateBack('/users');
 
   const handleAccountStatusChange = async (
     nextActive: boolean,
@@ -1016,7 +1018,7 @@ export default function UserInfo(){
   };
 
 
-
+
 
   const heroPrimaryTitle = useMemo(() => {
     const name = `${p.first_name || u?.username || ''} ${p.last_name || ''}`.trim();
@@ -1105,8 +1107,8 @@ export default function UserInfo(){
         title="User Information"
         subtitle="Personal details, employment, and documents."
         icon={<UserIcon className="h-4 w-4" />}
-        onBack={() => navigate('/users')}
-        backLabel="Back to Users"
+        onBack={navigateBackFromUserInfo}
+        backLabel="Back"
       />
 
       <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-1.5' : 'gap-2')}>

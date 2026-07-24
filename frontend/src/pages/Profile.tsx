@@ -9,6 +9,7 @@ import AddressAutocomplete from '@/components/AddressAutocomplete';
 import UserLoans from '@/components/UserLoans';
 import UserReports from '@/components/UserReports';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import OverlayPortal from '@/components/OverlayPortal';
 import { UserInfoHero, UserInfoHeroSkeleton } from '@/components/users/UserInfoHero';
 import UserDocumentsTabEnhanced from '@/components/users/UserDocumentsTabEnhanced';
@@ -103,6 +104,7 @@ export default function Profile(){
   const navigate = useNavigate();
   const location = useLocation();
   const fromHome = location.state?.fromHome === true;
+  const navigateBackToOverview = useNavigateBack('/overview');
   const { data, isLoading } = useQuery({ queryKey:['meProfile'], queryFn: ()=>api<ProfileResp>('GET','/auth/me/profile') });
   const p = data?.profile || {};
   const u = (data?.user ?? {}) as ProfileResp['user'];
@@ -310,7 +312,7 @@ export default function Profile(){
     emergency_contact:'At least one emergency contact'
   };
   const displayName = [p.first_name || u?.first_name, p.last_name || u?.last_name].filter(Boolean).join(' ') || u?.username || 'My Information';
-
+
 
   const profileSubtitle =
     `Personal details, employment, and documents.${
@@ -400,8 +402,8 @@ export default function Profile(){
         title="My Information"
         subtitle={profileSubtitle}
         icon={<UserIcon className="h-4 w-4" />}
-        onBack={fromHome ? () => navigate('/overview') : undefined}
-        backLabel="Back to Overview"
+        onBack={fromHome ? navigateBackToOverview : undefined}
+        backLabel="Back"
       />
 
       <div className={uiCx('flex flex-col', isEmployeeCardMinimized ? 'gap-1.5' : 'gap-2')}>

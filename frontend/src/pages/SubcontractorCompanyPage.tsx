@@ -13,6 +13,7 @@ import SubcontractorWorkersCard from '@/components/SubcontractorWorkersCard';
 import EditSubcontractorCompanyGeneralModal, {
   type SubcontractorGeneralEditSection,
 } from '@/components/EditSubcontractorCompanyGeneralModal';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { SubcontractorCompanyFilesTabEnhanced } from '@/pages/SubcontractorCompanyFilesTabEnhanced';
 import { SubcontractorCompanyOverviewTab } from '@/components/subcontractor/overview/SubcontractorCompanyOverviewTab';
 import type { ClientFileForFiles } from '@/pages/CustomerFilesTabEnhanced';
@@ -94,6 +95,7 @@ function tabFromSearchParams(sp: URLSearchParams): SubcontractorCompanyTab {
 export default function SubcontractorCompanyPage() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
+  const navigateBackToSubcontractors = useNavigateBack('/business/subcontractors');
   const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
   const tab = useMemo(() => tabFromSearchParams(searchParams), [searchParams]);
@@ -286,7 +288,7 @@ export default function SubcontractorCompanyPage() {
 
   const handlePageBack = () => {
     if (tab !== null) goTab(null);
-    else nav('/business/subcontractors');
+    else navigateBackToSubcontractors();
   };
 
   const companyStatusBadge = (active: boolean) => (
@@ -306,7 +308,7 @@ export default function SubcontractorCompanyPage() {
           subtitle={getPageDescription(tab)}
           icon={<Briefcase className="h-4 w-4" />}
           onBack={handlePageBack}
-          backLabel={tab !== null ? 'Back to overview' : 'Back to list'}
+          backLabel={tab !== null ? 'Back to overview' : 'Back'}
                 />
 
                 <AppCard className={uiCx('transition-[margin]', HERO_PANEL_EASE)} bodyClassName="relative overflow-hidden p-0">

@@ -29,6 +29,7 @@ import {
   listPageSizeSelectOptions,
   parseListPageLimit,
 } from '@/lib/listPagination';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
 import {
   getProjectListHeroAddress,
@@ -151,6 +152,7 @@ export default function Opportunities() {
   const businessLine = useBusinessLine();
   const opportunityBasePath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities';
   const businessDashboardPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-business' : '/business';
+  const navigateBackFromOpportunities = useNavigateBack(businessDashboardPath);
   const newOpportunityPath = `${businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects'}/new?is_bidding=true`;
   
   const [q, setQ] = useState(queryParam);
@@ -548,8 +550,8 @@ export default function Opportunities() {
         <AppPageHeader
           title="Opportunities"
           subtitle="Create, edit and track bids and quotes"
-          onBack={() => navigate(businessDashboardPath)}
-          backLabel="Back to Business"
+          onBack={navigateBackFromOpportunities}
+          backLabel="Back"
           icon={<LayoutDashboard className="h-4 w-4" />}
         />
 

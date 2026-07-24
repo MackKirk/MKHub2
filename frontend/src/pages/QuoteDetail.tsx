@@ -1,4 +1,4 @@
-import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import {
@@ -34,6 +34,7 @@ import {
   getQuoteDocumentType,
   getQuoteValue,
 } from '@/pages/quotesListUtils';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 
 /** Hero expand/collapse — same timing as ProjectDetail / CustomerDetail. */
 const HERO_PANEL_EASE = 'ease-[cubic-bezier(0.22,1,0.36,1)]';
@@ -293,7 +294,6 @@ function QuoteDetailHero({
 
 export default function QuoteDetail() {
   const nav = useNavigate();
-  const location = useLocation();
   const { id } = useParams();
   const { data: quote, isLoading } = useQuery({
     queryKey: ['quote', id],
@@ -343,22 +343,12 @@ export default function QuoteDetail() {
 
   const documentTitle = quote ? getQuoteDocumentType(quote) : '—';
 
-
-
+  const navigateBackFromQuote = useNavigateBack('/quotes');
   const handlePageBack = () => {
-    const state = location.state as { fromCustomer?: boolean } | undefined;
-    const cameFromCustomer = state?.fromCustomer || false;
-
-    if (cameFromCustomer && quote?.client_id) {
-      nav(`/customers/${encodeURIComponent(String(quote.client_id))}?tab=quotes`);
-    } else {
-      nav('/quotes');
-    }
+    navigateBackFromQuote();
   };
 
-  const pageBackLabel = (location.state as { fromCustomer?: boolean } | undefined)?.fromCustomer
-    ? 'Back to Customer'
-    : 'Back to Quotations';
+  const pageBackLabel = 'Back';
 
   if (isLoading) {
     return (
@@ -383,7 +373,7 @@ export default function QuoteDetail() {
         subtitle="Quote details and proposal builder."
         icon={<FileText className="h-4 w-4" />}
         onBack={handlePageBack}
-        backLabel={pageBackLabel}
+        backLabel={pageBackLabel}
       />
 
       <div className={uiCx('flex flex-col', isHeroCollapsed ? 'gap-1.5' : 'gap-2')}>

@@ -20,6 +20,7 @@ import { fileStartsWithPdfMagic, isPdfFileCandidate } from '@/lib/pdfGuards';
 import { uploadFormTemplateReferencePdf } from '@/lib/formTemplateReferencePdfUpload';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { FileStack } from 'lucide-react';
 import { SafetyFormPdfPreviewShell } from '@/components/safety/SafetyModalChrome';
 import SafetyFieldTypeIcon from '@/components/SafetyFieldTypeIcon';
@@ -266,6 +267,7 @@ export default function FormTemplateEditorPage() {
   const location = useLocation();
   const isEmployeeReviewEditor = location.pathname.startsWith('/reviews/form-templates');
   const listPath = isEmployeeReviewEditor ? '/reviews/form-templates' : '/safety/form-templates';
+  const navigateBackToTemplateList = useNavigateBack(listPath);
   const qc = useQueryClient();
   const confirm = useConfirm();
   const [localName, setLocalName] = useState('');
@@ -897,7 +899,7 @@ export default function FormTemplateEditorPage() {
         <>
           <AppPageHeader
             icon={<FileStack className="h-4 w-4" />}
-            onBack={() => navigate(listPath)}
+            onBack={navigateBackToTemplateList}
             backLabel={isEmployeeReviewEditor ? 'Employee review templates' : 'Form templates'}
             title={isEmployeeReviewEditor ? 'Employee review templates' : 'Form Templates'}
             subtitle={

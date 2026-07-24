@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import OverlayPortal from '@/components/OverlayPortal';
+import { uiCx, uiModalLayer } from '@/components/ui/tokens';
 
 type Props = {
   open: boolean;
@@ -23,7 +24,7 @@ export default function ConfirmDialog({ open, title='Confirm', message, confirmT
   if (!open) return null;
   return (
     <OverlayPortal>
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className={uiCx('fixed inset-0 flex items-center justify-center bg-black/40', uiModalLayer.confirm)}>
       <div className="w-[480px] max-w-[95vw] bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900">{title}</div>
         <div className="p-4 text-xs text-gray-700 whitespace-pre-wrap">{message}</div>

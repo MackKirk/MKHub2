@@ -1,6 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken, withFileAccessToken } from '@/lib/api';
 import { getOverlayRoot } from '@/lib/overlayRoot';
@@ -143,6 +144,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   const stickyToolbar = !isTemplate && !!(props as DocumentEditorDocumentProps).stickyToolbar;
 
   const navigate = useNavigate();
+  const navigateBackToDocumentCreate = useNavigateBack('/documents/create');
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bgBackgroundTriggerRef = useRef<HTMLButtonElement>(null);
@@ -1277,7 +1279,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
         }
       >
       <DocumentEditorRibbon
-        onCloseOrBack={onClose ?? (() => navigate('/documents/create'))}
+        onCloseOrBack={onClose ?? navigateBackToDocumentCreate}
         useCloseIcon={!!onClose}
         modeHeading={
           isTemplate && templateProps

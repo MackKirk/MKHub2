@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, X } from 'lucide-react';
+import { Plus, Search, X } from 'lucide-react';
 import { sortByLabel } from '@/lib/sortOptions';
 import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
@@ -28,6 +28,9 @@ type AppClientSelectCommonProps = {
   emptyMessage?: string;
   pageSize?: number;
   triggerClassName?: string;
+  /** When search has no matches, show a create action (requires non-empty search query). */
+  onCreateNew?: (searchQuery: string) => void;
+  createNewLabel?: string;
 };
 
 export type AppClientSelectSingleProps = AppClientSelectCommonProps & {
@@ -110,6 +113,8 @@ function AppClientSelectSingle({
   emptyMessage = 'No customers found.',
   pageSize,
   triggerClassName,
+  onCreateNew,
+  createNewLabel = 'Create new',
 }: AppClientSelectSingleProps) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
@@ -182,6 +187,15 @@ function AppClientSelectSingle({
     isMultiple: false,
     selectedIds: value ? [value] : [],
     emptyMessage,
+    searchQuery: debouncedSearch,
+    createNewLabel,
+    onCreateNew: onCreateNew
+      ? (q) => {
+          onCreateNew(q);
+          setText('');
+          closeDropdown();
+        }
+      : undefined,
     useRemoteCatalog,
     isLoading: catalog.isLoading,
     isFetching: catalog.isFetching,
@@ -272,6 +286,8 @@ function AppClientSelectMultiple({
   showSelectedChips = true,
   excludeClientId = '',
   triggerClassName,
+  onCreateNew,
+  createNewLabel = 'Create new',
 }: AppClientSelectMultipleProps) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
@@ -353,6 +369,15 @@ function AppClientSelectMultiple({
     isMultiple: true,
     selectedIds: value,
     emptyMessage,
+    searchQuery: debouncedSearch,
+    createNewLabel,
+    onCreateNew: onCreateNew
+      ? (q) => {
+          onCreateNew(q);
+          setText('');
+          closeDropdown();
+        }
+      : undefined,
     useRemoteCatalog,
     isLoading: catalog.isLoading,
     isFetching: catalog.isFetching,
@@ -446,6 +471,9 @@ type ClientListboxParams = {
   isMultiple: boolean;
   selectedIds: string[];
   emptyMessage: string;
+  searchQuery: string;
+  createNewLabel: string;
+  onCreateNew?: (searchQuery: string) => void;
   useRemoteCatalog: boolean;
   isLoading: boolean;
   isFetching: boolean;
@@ -463,6 +491,9 @@ function renderClientListbox({
   isMultiple,
   selectedIds,
   emptyMessage,
+  searchQuery,
+  createNewLabel,
+  onCreateNew,
   useRemoteCatalog,
   isLoading,
   isFetching,
@@ -475,6 +506,7 @@ function renderClientListbox({
   const selectedSet = new Set(selectedIds.map(normalizeClientId));
   const showLoading = useRemoteCatalog && listClients.length === 0 && (isLoading || isFetching);
   const showEmpty = !showLoading && listClients.length === 0;
+  const showCreateNew = showEmpty && !!onCreateNew && searchQuery.trim().length > 0;
 
   return (
     <ul
@@ -488,7 +520,22 @@ function renderClientListbox({
       {showLoading ? (
         <li className={uiDropdown.optionMuted}>Loading customers…</li>
       ) : showEmpty ? (
-        <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
+        <>
+          <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
+          {showCreateNew ? (
+            <li role="option">
+              <button
+                type="button"
+                className={uiCx(uiDropdown.option, 'flex w-full cursor-pointer items-center gap-2 text-gray-900')}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => onCreateNew?.(searchQuery.trim())}
+              >
+                <Plus className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+                <span className="truncate text-xs font-medium">{createNewLabel}</span>
+              </button>
+            </li>
+          ) : null}
+        </>
       ) : (
         <>
           {listClients.map((client) => {

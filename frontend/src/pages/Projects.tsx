@@ -17,6 +17,7 @@ import { isRangeOperator } from '@/components/FilterBuilder/utils';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import { effectiveShowInProject } from '@/lib/projectStatusVisibility';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { buildOpportunityListSearchParams, resolveProjectQuickStatusFilters } from '@/lib/opportunityFilters';
 import {
   effectiveListPageLimit,
@@ -448,6 +449,7 @@ export default function Projects(){
   const businessLine = useBusinessLine();
   const projectBasePath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects';
   const businessDashboardPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-business' : '/business';
+  const navigateBackFromProjects = useNavigateBack(businessDashboardPath);
   
   const [q, setQ] = useState(queryParam);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -829,8 +831,8 @@ export default function Projects(){
         <AppPageHeader
           title="Projects"
           subtitle="List, search and manage projects"
-          onBack={() => navigate(businessDashboardPath)}
-          backLabel="Back to Business"
+          onBack={navigateBackFromProjects}
+          backLabel="Back"
           icon={<FolderKanban className="h-4 w-4" />}
         />
 

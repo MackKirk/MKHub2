@@ -7,6 +7,7 @@ import { sanitizeTrainingRichTextHtml } from '@/lib/trainingRichTextSanitize';
 import { toYoutubeEmbedUrl } from '@/lib/youtubeEmbed';
 import toast from 'react-hot-toast';
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { CheckCircle2, Circle, GraduationCap, ClipboardList } from 'lucide-react';
 import {
   AppBadge,
@@ -106,6 +107,7 @@ type Course = {
 export default function TrainingCourse() {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
+  const navigateBackToTraining = useNavigateBack('/training');
   const queryClient = useQueryClient();
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
@@ -255,14 +257,14 @@ export default function TrainingCourse() {
           icon={<GraduationCap className="h-4 w-4" />}
           title="Course not found"
           subtitle="This course may be unpublished or no longer available."
-          onBack={() => navigate('/training')}
+          onBack={navigateBackToTraining}
           backLabel="My Training"
         />
         <AppEmptyState
           title="Course not found"
           description="Return to My Training to browse available courses."
           action={
-            <AppButton type="button" onClick={() => navigate('/training')}>
+            <AppButton type="button" onClick={navigateBackToTraining}>
               Back to My Training
             </AppButton>
           }
@@ -324,7 +326,7 @@ export default function TrainingCourse() {
         icon={<GraduationCap className="h-4 w-4" />}
         title={course.title}
         subtitle={course.description || 'Complete each lesson to finish the course.'}
-        onBack={() => navigate('/training')}
+        onBack={navigateBackToTraining}
         backLabel="My Training"
         actions={
           course.progress ? (

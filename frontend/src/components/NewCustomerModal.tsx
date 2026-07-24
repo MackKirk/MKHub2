@@ -39,6 +39,12 @@ function tokenizeNameText(s: string): string[] {
   );
 }
 
+function resolveLegalName(displayName: string, legalName: string): string {
+  const display = String(displayName || '').trim();
+  const legal = String(legalName || '').trim();
+  return legal || display;
+}
+
 /** Fetch clients via search and keep those sharing at least one significant word with display/legal names. */
 async function findSimilarExistingClients(displayName: string, legalName: string): Promise<
   { id: string; display_name?: string; name?: string; legal_name?: string; city?: string; client_status?: string }[]
@@ -84,24 +90,45 @@ async function findSimilarExistingClients(displayName: string, legalName: string
 type NewCustomerModalProps = {
   onClose: () => void;
   onSuccess: (customerId: string) => void;
+  /** Higher z-index when opened on top of another full-screen flow (e.g. new opportunity). */
+  stackOnTop?: boolean;
+  /** Prefill display name from customer search (e.g. typed query with no matches). */
+  initialDisplayName?: string;
 };
 
-export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModalProps) {
+export default function NewCustomerModal({
+  onClose,
+  onSuccess,
+  stackOnTop = false,
+  initialDisplayName = '',
+}: NewCustomerModalProps) {
   const confirm = useConfirm();
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => api<any>('GET', '/settings') });
   const types = (settings?.client_types || []) as any[];
   const { data: employees } = useQuery({ queryKey: ['employees'], queryFn: () => api<any[]>('GET', '/employees') });
   const leadSources = (settings?.lead_sources || []) as any[];
-  const [form, setForm] = useState<any>({
-    display_name: '', legal_name: '', name: '', client_status: 'Active', client_type: 'Customer',
-    phone: '', address_line1: '', address_line2: '', city: '', province: 'British Columbia', country: 'Canada', postal_code: '',
-    lead_source: '', estimator_id: '', description: ''
-  });
+  const initialName = String(initialDisplayName || '').trim();
+  const [form, setForm] = useState<any>(() => ({
+    display_name: initialName,
+    legal_name: '',
+    name: initialName,
+    client_status: 'Active',
+    client_type: 'Customer',
+    phone: '',
+    address_line1: '',
+    address_line2: '',
+    city: '',
+    province: 'British Columbia',
+    country: 'Canada',
+    postal_code: '',
+    lead_source: '',
+    estimator_id: '',
+    description: '',
+  }));
   useEffect(() => { setForm((s: any) => ({ ...s, name: s.display_name })); }, [form.display_name]);
-  // Validate both required fields: display_name and legal_name
   const canSubmit = useMemo(() => {
-    return String(form.display_name || '').trim().length > 1 && String(form.legal_name || '').trim().length > 0;
-  }, [form.display_name, form.legal_name]);
+    return String(form.display_name || '').trim().length > 1;
+  }, [form.display_name]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [cName, setCName] = useState('');
@@ -125,14 +152,13 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
       toast.error('Display name is required');
       return;
     }
-    if (!String(form.legal_name || '').trim()) {
-      toast.error('Legal name is required');
-      return;
-    }
     setDuplicateMatches(null);
     setCheckingDuplicates(true);
     try {
-      const matches = await findSimilarExistingClients(form.display_name, form.legal_name);
+      const matches = await findSimilarExistingClients(
+        form.display_name,
+        resolveLegalName(form.display_name, form.legal_name),
+      );
       if (matches.length > 0) {
         setDuplicateMatches(matches);
         return;
@@ -387,8 +413,8 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
           variant="secondary"
           size="sm"
           onClick={async () => {
-            const ok = await confirm({ title: 'Cancel', message: 'Discard this customer draft and close?' });
-            if (!ok) return;
+            const choice = await confirm({ title: 'Cancel', message: 'Discard this customer draft and close?' });
+            if (choice !== 'confirm') return;
             resetForm();
             onClose();
           }}
@@ -428,11 +454,11 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                 return;
               }
               if (!contacts.length) {
-                const ok = await confirm({
+                const choice = await confirm({
                   title: 'No contacts added',
                   message: 'It is recommended to add at least one contact. Continue without contacts?',
                 });
-                if (!ok) return;
+                if (choice !== 'confirm') return;
               }
               try {
                 setIsCreating(true);
@@ -442,10 +468,12 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                   setIsCreating(false);
                   return;
                 }
+                const legalValue = resolveLegalName(form.display_name, form.legal_name);
                 const payload: any = {
                   ...form,
                   name: nameValue,
                   display_name: form.display_name || nameValue,
+                  legal_name: legalValue,
                   client_type: form.client_type || 'Customer',
                   client_status: 'Active',
                 };
@@ -567,6 +595,7 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
         open
         onClose={onClose}
         formWidth="wide"
+        overlayClassName={stackOnTop ? uiModalLayer.stacked : undefined}
         dialogClassName={FORM_MODAL_WIDE_DIALOG_COLLAPSED}
         dialogClassNameExpanded={FORM_MODAL_WIDE_DIALOG_EXPANDED}
         title="New Customer"
@@ -585,7 +614,7 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
             <div className={uiSpacing.sectionStack}>
               <AppSectionHeader
                 title="Company name"
-                description="Display name and legal name. We check for similar customers before the next step."
+                description="Display name is required; legal name is optional and defaults to the display name if left blank."
               />
               <div className="grid gap-3 md:grid-cols-2">
                 <AppInput
@@ -598,10 +627,10 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                 />
                 <AppInput
                   className="md:col-span-2"
-                  label="Legal name *"
+                  label="Legal name"
                   value={form.legal_name}
                   onChange={(e) => setForm((s: any) => ({ ...s, legal_name: e.target.value }))}
-                  fieldHint="Legal name\n\nRegistered company name used on contracts and invoices."
+                  fieldHint="Legal name\n\nOptional. Registered company name; if empty, we use the display name."
                 />
               </div>
               {duplicateMatches && duplicateMatches.length > 0 && (

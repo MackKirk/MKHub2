@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { subcontractorCompanyWorkersUrl } from '@/components/SubcontractorWorkersCard';
+import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toPng } from 'html-to-image';
 import QRCode from 'qrcode';
@@ -838,6 +839,8 @@ export default function SubcontractorWorkerPage() {
     return subcontractorCompanyWorkersUrl(companyId);
   }, [data?.worker?.company_id, location.state]);
 
+  const navigateBackFromWorker = useNavigateBack(backHref);
+
   if (!id) return null;
 
   const pageTitle = data ? workerDisplayHeroName(data.worker) : 'Subcontractor worker';
@@ -848,8 +851,8 @@ export default function SubcontractorWorkerPage() {
         title={pageTitle}
         subtitle="Personal details, employer, documents, and site attendance"
         icon={<UserRound className="h-4 w-4" />}
-        onBack={() => nav(backHref)}
-        backLabel={data?.worker?.company_id ? 'Back to company' : 'Back to subcontractors'}
+        onBack={navigateBackFromWorker}
+        backLabel="Back"
       />
 
       <LoadingOverlay isLoading={isLoading || !data} text="Loading worker…">
