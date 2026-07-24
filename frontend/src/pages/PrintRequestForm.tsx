@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ChevronDown, FileText, Plus, Printer, Trash2, X } from 'lucide-react';
+import { ChevronDown, Copy, FileText, Plus, Printer, Trash2, X } from 'lucide-react';
 import { formatApiErrorDetail, getToken } from '@/lib/api';
 import {
   AppButton,
@@ -92,6 +92,24 @@ function newLineItem(productType = 'sign'): LineItem {
   };
 }
 
+function cloneLineItem(source: LineItem): LineItem {
+  return {
+    id: `item-${Math.random().toString(36).slice(2)}`,
+    productType: source.productType,
+    title: source.title,
+    description: source.description,
+    quantity: source.quantity,
+    width: source.width,
+    height: source.height,
+    unit: source.unit,
+    artworkItems: source.artworkItems.map((a) => ({
+      id: `${a.file.name}-${a.file.size}-${a.file.lastModified}-${Math.random().toString(36).slice(2)}`,
+      file: a.file,
+      previewUrl: isImageFile(a.file) ? URL.createObjectURL(a.file) : null,
+    })),
+  };
+}
+
 function revokeArtwork(items: ArtworkItem[]) {
   items.forEach((a) => {
     if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
@@ -113,7 +131,7 @@ function itemSummary(item: LineItem, meta: Meta) {
   const files = item.artworkItems.length;
   const parts = [`${type}`, title, `qty ${qty}`];
   if (size) parts.push(size);
-  parts.push(files === 1 ? '1 file' : `${files} files`);
+  if (files > 0) parts.push(files === 1 ? '1 ref' : `${files} refs`);
   return parts.join(' · ');
 }
 
@@ -163,6 +181,24 @@ export default function PrintRequestForm() {
     }
     const next = newLineItem();
     setLineItems((prev) => [...prev, next]);
+    setExpandedId(next.id);
+  }
+
+  function duplicateLineItem(id: string) {
+    if (lineItems.length >= maxItems) {
+      toast.error(`Maximum ${maxItems} items`);
+      return;
+    }
+    const source = lineItems.find((it) => it.id === id);
+    if (!source) return;
+    const next = cloneLineItem(source);
+    setLineItems((prev) => {
+      const idx = prev.findIndex((it) => it.id === id);
+      if (idx < 0) return [...prev, next];
+      const copy = [...prev];
+      copy.splice(idx + 1, 0, next);
+      return copy;
+    });
     setExpandedId(next.id);
   }
 
@@ -260,11 +296,6 @@ export default function PrintRequestForm() {
         setExpandedId(it.id);
         return;
       }
-      if (it.artworkItems.length === 0) {
-        toast.error(`Please attach artwork on item ${i + 1}`);
-        setExpandedId(it.id);
-        return;
-      }
     }
 
     const fd = new FormData();
@@ -346,32 +377,23 @@ export default function PrintRequestForm() {
             'p-8 text-center'
           )}
         >
-          <img src={LOGO_SRC} alt="MK Hub" className="h-10 mx-auto" />
+          <img src={LOGO_SRC} alt="Mack Kirk" className="h-10 mx-auto" />
           <h1 className={uiTypography.pageTitle}>Request received</h1>
           <p className={uiTypography.pageSubtitle}>
             Your print request code is{' '}
             <span className={uiCx(uiTypography.sectionTitle, uiColors.textStrong)}>{confirmationCode}</span>.
-            We will email you when it is ready.
+            We emailed you a confirmation — our team will follow up with an estimated delivery date.
           </p>
           <div className={uiCx(uiLayout.actionsRow, 'justify-center')}>
             <AppButton
-              variant="secondary"
+              variant="primary"
               onClick={() => {
                 setConfirmationCode(null);
                 resetFormBody();
               }}
             >
-              Submit another
+              Submit another request
             </AppButton>
-            {getToken() ? (
-              <Link to="/print-shop">
-                <AppButton variant="primary">Open Print Shop</AppButton>
-              </Link>
-            ) : (
-              <Link to="/login">
-                <AppButton variant="primary">Sign in</AppButton>
-              </Link>
-            )}
           </div>
         </div>
       </div>
@@ -458,10 +480,12 @@ export default function PrintRequestForm() {
                 maxFiles={maxFiles}
                 expanded={expandedId === item.id}
                 canRemove={lineItems.length > 1}
+                canDuplicate={lineItems.length < maxItems}
                 onToggle={() =>
                   setExpandedId((cur) => (cur === item.id ? null : item.id))
                 }
                 onChange={(patch) => updateLineItem(item.id, patch)}
+                onDuplicate={() => duplicateLineItem(item.id)}
                 onRemove={() => removeLineItem(item.id)}
                 onAddFiles={(files) => addArtworkToItem(item.id, files)}
                 onRemoveFile={(artworkId) => removeArtworkFromItem(item.id, artworkId)}
@@ -499,8 +523,10 @@ function LineItemCard({
   maxFiles,
   expanded,
   canRemove,
+  canDuplicate,
   onToggle,
   onChange,
+  onDuplicate,
   onRemove,
   onAddFiles,
   onRemoveFile,
@@ -511,15 +537,17 @@ function LineItemCard({
   maxFiles: number;
   expanded: boolean;
   canRemove: boolean;
+  canDuplicate: boolean;
   onToggle: () => void;
   onChange: (patch: Partial<LineItem>) => void;
+  onDuplicate: () => void;
   onRemove: () => void;
   onAddFiles: (files: FileList | null) => void;
   onRemoveFile: (artworkId: string) => void;
 }) {
   const fileInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const incomplete = !item.title.trim() || item.artworkItems.length === 0;
+  const incomplete = !item.title.trim();
 
   return (
     <div
@@ -552,6 +580,22 @@ function LineItemCard({
           <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
             {itemSummary(item, meta)}
           </span>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDuplicate();
+          }}
+          disabled={!canDuplicate}
+          className={uiCx(
+            'shrink-0 px-3 text-gray-500 hover:bg-gray-100 hover:text-gray-800',
+            !canDuplicate && 'opacity-40 pointer-events-none'
+          )}
+          aria-label={`Duplicate item ${index + 1}`}
+          title="Duplicate item"
+        >
+          <Copy className="h-4 w-4" />
         </button>
         {canRemove ? (
           <button
@@ -633,14 +677,16 @@ function LineItemCard({
               label="Description"
               value={item.description}
               onChange={(e) => onChange({ description: e.target.value })}
-              rows={2}
-              placeholder="Details for this item…"
+              rows={3}
+              placeholder="Describe what you need: colours, text/wording, shape, material, finish…"
+              helperText="Include colours, written text, shape, and any other details so we can produce it even without a file."
             />
 
             <div className="space-y-2">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <label className={uiTypography.controlLabel} htmlFor={fileInputId}>
-                  Artwork <span className="text-brand-red">*</span>
+                  Example / art reference
+                  <span className={uiCx(uiTypography.helper, 'ml-1 font-normal')}>(optional)</span>
                 </label>
                 <input
                   id={fileInputId}
@@ -660,7 +706,7 @@ function LineItemCard({
                 />
               </div>
               <p className={uiTypography.helper}>
-                PDF / PNG / JPG · up to {maxFiles} files
+                Optional mockup, photo, or sketch · PDF / PNG / JPG · up to {maxFiles} files
               </p>
 
               {item.artworkItems.length > 0 ? (

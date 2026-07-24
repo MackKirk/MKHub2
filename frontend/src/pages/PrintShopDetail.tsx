@@ -16,7 +16,9 @@ import { formatDateTimeVancouver } from '@/lib/dateUtils';
 import {
   AppBadge,
   AppButton,
+  AppCheckbox,
   AppDatePicker,
+  AppInput,
   AppPageHeader,
   AppTextarea,
   uiColors,
@@ -59,6 +61,7 @@ type PrintShopRequestDetail = {
   due_date?: string | null;
   estimated_delivery_date?: string | null;
   estimate_message?: string | null;
+  pickup_location?: string | null;
   requester_name: string;
   requester_email: string;
   notes?: string | null;
@@ -69,6 +72,7 @@ type PrintShopRequestDetail = {
   ready_emailed_at?: string | null;
   created_at?: string | null;
   email_sent?: boolean;
+  email_skipped?: boolean;
 };
 
 function statusBadgeVariant(status: string): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
@@ -130,6 +134,9 @@ export default function PrintShopDetail() {
   const [estimateDate, setEstimateDate] = useState('');
   const [estimateMessage, setEstimateMessage] = useState('');
   const [estimateHydrated, setEstimateHydrated] = useState(false);
+  const [showReady, setShowReady] = useState(false);
+  const [pickupLocation, setPickupLocation] = useState('');
+  const [sendReadyEmail, setSendReadyEmail] = useState(true);
 
   const detailQuery = useQuery({
     queryKey: ['print-shop-request', id],
@@ -144,12 +151,16 @@ export default function PrintShopDetail() {
     setEstimateHydrated(false);
     setEstimateDate('');
     setEstimateMessage('');
+    setShowReady(false);
+    setPickupLocation('');
+    setSendReadyEmail(true);
   }, [id]);
 
   useEffect(() => {
     if (!row || estimateHydrated) return;
     setEstimateDate(row.estimated_delivery_date?.slice(0, 10) || '');
     setEstimateMessage(row.estimate_message || '');
+    setPickupLocation(row.pickup_location || '');
     setEstimateHydrated(true);
   }, [row, estimateHydrated]);
 
@@ -169,10 +180,16 @@ export default function PrintShopDetail() {
   });
 
   const readyMut = useMutation({
-    mutationFn: () => api<PrintShopRequestDetail>('POST', `/print-shop/requests/${id}/mark-ready`),
+    mutationFn: () =>
+      api<PrintShopRequestDetail>('POST', `/print-shop/requests/${id}/mark-ready`, {
+        pickup_location: pickupLocation.trim() || null,
+        send_email: sendReadyEmail,
+      }),
     onSuccess: (data) => {
-      if (data?.email_sent) toast.success('Marked ready — email sent to requester');
+      if (data?.email_skipped) toast.success('Marked ready — email not sent');
+      else if (data?.email_sent) toast.success('Marked ready — pickup email sent');
       else toast.success('Marked ready (email not sent — check SMTP settings)');
+      setShowReady(false);
       invalidate();
     },
     onError: (e: any) => toast.error(e?.message || 'Failed to mark ready'),
@@ -263,14 +280,22 @@ export default function PrintShopDetail() {
             {row.status === 'in_production' ? (
               <AppButton
                 variant="primary"
-                loading={readyMut.isPending}
-                onClick={() => readyMut.mutate()}
+                onClick={() => {
+                  setShowCancel(false);
+                  setShowReady((v) => !v);
+                }}
               >
                 Mark ready
               </AppButton>
             ) : null}
             {canAct ? (
-              <AppButton variant="secondary" onClick={() => setShowCancel((v) => !v)}>
+              <AppButton
+                variant="secondary"
+                onClick={() => {
+                  setShowReady(false);
+                  setShowCancel((v) => !v);
+                }}
+              >
                 Cancel
               </AppButton>
             ) : null}
@@ -291,7 +316,50 @@ export default function PrintShopDetail() {
             Est. {formatDisplayDate(row.estimated_delivery_date)}
           </span>
         ) : null}
+        {row.pickup_location ? (
+          <span className={uiCx(uiTypography.helper, 'inline-flex items-center gap-1')}>
+            <Package className="h-3.5 w-3.5" />
+            Pickup: {row.pickup_location}
+          </span>
+        ) : null}
       </div>
+
+      {showReady ? (
+        <div className={uiCx('rounded-lg border border-emerald-200 bg-emerald-50/60 p-4', uiSpacing.sectionStack, 'max-w-xl')}>
+          <p className={uiTypography.helper}>
+            Confirm pickup details. Uncheck the email if you are handing this over in person.
+          </p>
+          <AppInput
+            label="Pickup location"
+            value={pickupLocation}
+            onChange={(e) => setPickupLocation(e.target.value)}
+            placeholder="e.g. Mack Kirk office — front desk"
+          />
+          <AppCheckbox
+            label="Send ready email to requester"
+            checked={sendReadyEmail}
+            onChange={setSendReadyEmail}
+            fieldHint={
+              sendReadyEmail
+                ? 'Includes the pickup location in the email.'
+                : 'Status will still move to Ready — no email sent.'
+            }
+          />
+          <div className={uiLayout.actionsRow}>
+            <AppButton
+              variant="primary"
+              loading={readyMut.isPending}
+              disabled={sendReadyEmail && !pickupLocation.trim()}
+              onClick={() => readyMut.mutate()}
+            >
+              Confirm ready
+            </AppButton>
+            <AppButton variant="ghost" onClick={() => setShowReady(false)}>
+              Keep in production
+            </AppButton>
+          </div>
+        </div>
+      ) : null}
 
       {showCancel ? (
         <div className={uiCx('rounded-lg border border-rose-200 bg-rose-50/60 p-4', uiSpacing.sectionStack, 'max-w-xl')}>
@@ -441,7 +509,7 @@ export default function PrintShopDetail() {
                 <div className="p-4">
                   <div className="mb-2 flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 text-gray-400" />
-                    <p className={uiTypography.controlLabel}>Artwork</p>
+                    <p className={uiTypography.controlLabel}>Example / art reference</p>
                   </div>
                   {files.length > 0 ? (
                     <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -457,7 +525,7 @@ export default function PrintShopDetail() {
                               {isImg ? (
                                 <img
                                   src={thumb}
-                                  alt={f.original_name || 'Artwork'}
+                                  alt={f.original_name || 'Reference'}
                                   className="h-full w-full object-contain"
                                 />
                               ) : (
@@ -489,7 +557,9 @@ export default function PrintShopDetail() {
                       })}
                     </ul>
                   ) : (
-                    <p className={uiCx(uiTypography.body, uiColors.textMuted)}>No artwork</p>
+                    <p className={uiCx(uiTypography.body, uiColors.textMuted)}>
+                      No reference file — description only
+                    </p>
                   )}
                 </div>
               </div>

@@ -105,6 +105,11 @@ class SendEstimateBody(BaseModel):
     message: Optional[str] = None
 
 
+class MarkReadyBody(BaseModel):
+    pickup_location: Optional[str] = None
+    send_email: bool = True
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -368,6 +373,7 @@ def _serialize(row: PrintShopRequest, *, include_internal: bool = False) -> Dict
             row.estimated_delivery_date.isoformat() if row.estimated_delivery_date else None
         ),
         "estimate_message": row.estimate_message,
+        "pickup_location": row.pickup_location,
         "requester_name": row.requester_name,
         "requester_email": row.requester_email,
         "requested_by_user_id": str(row.requested_by_user_id) if row.requested_by_user_id else None,
@@ -415,7 +421,124 @@ def _items_email_block(row: PrintShopRequest) -> str:
     )
 
 
-def _smtp_send(*, subject: str, to_email: str, body: str, log_label: str) -> bool:
+def _items_email_html(row: PrintShopRequest) -> str:
+    item_rows = list(getattr(row, "items", None) or [])
+    if item_rows:
+        lis = []
+        for it in item_rows:
+            dims = ""
+            if it.width is not None and it.height is not None:
+                dims = f" · {it.width} × {it.height} {it.unit}"
+            title = (it.title or "").replace("<", "&lt;").replace(">", "&gt;")
+            lis.append(
+                f'<li style="margin:0 0 8px 0;">{title} '
+                f'<span style="color:#6b7280;">({_product_label(it.product_type)})</span> '
+                f'× <strong>{it.quantity}</strong>{dims}</li>'
+            )
+        return "<ul style=\"margin:0; padding-left:18px;\">" + "".join(lis) + "</ul>"
+    title = (row.title or "").replace("<", "&lt;").replace(">", "&gt;")
+    dims = ""
+    if row.width is not None and row.height is not None:
+        dims = f"<br/>Size: {row.width} × {row.height} {row.unit}"
+    return (
+        f"<p style=\"margin:0;\">{title}<br/>"
+        f"Type: {_product_label(row.product_type)}<br/>"
+        f"Quantity: {row.quantity}{dims}</p>"
+    )
+
+
+PRINT_SHOP_EMAIL_FROM_NAME = "Mack Kirk Printing Team"
+
+
+def _print_shop_logo_url() -> str:
+    base = (settings.public_base_url or "").rstrip("/")
+    return f"{base}/proposals/assets/MK_logo.png"
+
+
+def _print_shop_email_html(
+    *,
+    title: str,
+    greeting_name: str,
+    intro_html: str,
+    body_html: str,
+    footer_note: str = "",
+) -> str:
+    """Branded HTML shell for print-shop customer emails."""
+    logo_url = _print_shop_logo_url()
+    safe_name = (greeting_name or "there").replace("<", "&lt;").replace(">", "&gt;")
+    note_block = ""
+    if footer_note:
+        note_block = (
+            f'<p style="margin:24px 0 0 0; font-size:13px; line-height:1.55; color:#6b7280;">'
+            f"{footer_note}</p>"
+        )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title}</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f3f4f6; font-family: Georgia, 'Times New Roman', Times, serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px; background:#ffffff; border-radius:14px; overflow:hidden; border:1px solid #e5e7eb; box-shadow:0 8px 24px rgba(15,23,42,0.06);">
+          <tr>
+            <td align="center" style="padding:28px 28px 20px; background:linear-gradient(160deg, #7f1010 0%, #b91c1c 55%, #a31414 100%);">
+              <img src="{logo_url}" alt="Mack Kirk" width="220" style="max-width:220px; width:100%; height:auto; display:block; margin:0 auto;" />
+              <p style="margin:14px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; font-size:12px; letter-spacing:0.14em; text-transform:uppercase; color:rgba(255,255,255,0.85);">
+                Printing Team
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 28px 8px;">
+              <h1 style="margin:0 0 18px 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; font-size:22px; line-height:1.3; font-weight:700; color:#111827;">
+                {title}
+              </h1>
+              <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#374151;">
+                Hello {safe_name},
+              </p>
+              <div style="font-size:16px; line-height:1.65; color:#374151;">
+                {intro_html}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 28px;">
+              <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:16px 18px;">
+                {body_html}
+              </div>
+              {note_block}
+              <p style="margin:28px 0 0 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; font-size:14px; line-height:1.5; color:#6b7280;">
+                — {PRINT_SHOP_EMAIL_FROM_NAME}
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 28px 22px; border-top:1px solid #f3f4f6; background:#fafafa;">
+              <p style="margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; font-size:11px; line-height:1.5; color:#9ca3af; text-align:center;">
+                Mack Kirk Mechanical · Print requests
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
+def _smtp_send(
+    *,
+    subject: str,
+    to_email: str,
+    body: str,
+    log_label: str,
+    html_body: Optional[str] = None,
+) -> bool:
     if not settings.enable_email:
         logger.info("%s skipped (ENABLE_EMAIL=false)", log_label)
         return False
@@ -429,9 +552,16 @@ def _smtp_send(*, subject: str, to_email: str, body: str, log_label: str) -> boo
 
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = settings.mail_from
+    from_addr = settings.mail_from
+    # Prefer a friendly display name for customer-facing print emails
+    if "<" not in from_addr and PRINT_SHOP_EMAIL_FROM_NAME not in from_addr:
+        msg["From"] = f"{PRINT_SHOP_EMAIL_FROM_NAME} <{from_addr}>"
+    else:
+        msg["From"] = from_addr
     msg["To"] = to_email
     msg.set_content(body)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
 
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
@@ -448,22 +578,47 @@ def _smtp_send(*, subject: str, to_email: str, body: str, log_label: str) -> boo
 
 def _send_received_email(row: PrintShopRequest) -> bool:
     """Confirmation that the request was received; team will follow up with an estimate."""
-    due = f"\nRequested delivery: {row.due_date.isoformat()}" if row.due_date else ""
+    due_plain = f"\nRequested delivery: {row.due_date.isoformat()}" if row.due_date else ""
     items_block = _items_email_block(row)
     body = (
         f"Hello {row.requester_name},\n\n"
         f"We received your print request {row.request_code}. Thank you!\n\n"
         f"Here is a summary of what you submitted:\n"
-        f"{items_block}{due}\n\n"
+        f"{items_block}{due_plain}\n\n"
         f"Someone from our print shop team will review your request shortly and email you "
         f"an estimated production and delivery date based on our current print demand.\n\n"
         f"No action is needed from you right now — we will be in touch.\n\n"
-        f"— MK Hub Print Shop\n"
+        f"— {PRINT_SHOP_EMAIL_FROM_NAME}\n"
+    )
+    due_html = (
+        f'<p style="margin:12px 0 0 0; font-size:14px; color:#4b5563;">'
+        f"<strong>Requested delivery:</strong> {row.due_date.isoformat()}</p>"
+        if row.due_date
+        else ""
+    )
+    intro = (
+        f'<p style="margin:0 0 14px 0;">We received your print request '
+        f'<strong style="color:#7f1010;">{row.request_code}</strong>. Thank you!</p>'
+        f'<p style="margin:0 0 14px 0;">Someone from our team will review it shortly and email you '
+        f"an estimated production and delivery date based on our current print demand.</p>"
+        f'<p style="margin:0;">No action is needed from you right now — we will be in touch.</p>'
+    )
+    summary = (
+        f'<p style="margin:0 0 10px 0; font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif; '
+        f'font-size:12px; letter-spacing:0.06em; text-transform:uppercase; color:#6b7280;">Summary</p>'
+        f"{_items_email_html(row)}{due_html}"
+    )
+    html = _print_shop_email_html(
+        title="Request received",
+        greeting_name=row.requester_name or "there",
+        intro_html=intro,
+        body_html=summary,
     )
     return _smtp_send(
         subject=f"Print request {row.request_code} received",
         to_email=row.requester_email,
         body=body,
+        html_body=html,
         log_label=f"print shop received email for {row.request_code}",
     )
 
@@ -475,12 +630,23 @@ def _send_estimate_email(row: PrintShopRequest) -> bool:
     est = row.estimated_delivery_date.isoformat()
     due = f"\nYour requested delivery date: {row.due_date.isoformat()}" if row.due_date else ""
     staff_note = ""
+    staff_note_html = ""
     if row.estimate_message and row.estimate_message.strip():
-        staff_note = f"\nMessage from the print shop team:\n{row.estimate_message.strip()}\n"
+        msg = row.estimate_message.strip()
+        staff_note = f"\nMessage from the team:\n{msg}\n"
+        safe = msg.replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>")
+        staff_note_html = (
+            f'<div style="margin:16px 0 0 0; padding:14px 16px; background:#fff7ed; border:1px solid #fed7aa; '
+            f'border-radius:10px;">'
+            f'<p style="margin:0 0 6px 0; font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif; '
+            f'font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:#c2410c;">Message from our team</p>'
+            f'<p style="margin:0; font-size:15px; line-height:1.55; color:#9a3412;">{safe}</p>'
+            f"</div>"
+        )
     items_block = _items_email_block(row)
     body = (
         f"Hello {row.requester_name},\n\n"
-        f"Our print shop team has reviewed your request {row.request_code}.\n\n"
+        f"Our team has reviewed your request {row.request_code}.\n\n"
         f"Estimated ready / delivery date: {est}\n\n"
         f"Please note: this is an estimate only. Timing can change depending on print demand, "
         f"artwork adjustments, and production capacity. We will update you if the date needs "
@@ -488,36 +654,99 @@ def _send_estimate_email(row: PrintShopRequest) -> bool:
         f"{staff_note}\n"
         f"Request summary:\n"
         f"{items_block}{due}\n\n"
-        f"If you have questions, reply to this email.\n\n"
-        f"— MK Hub Print Shop\n"
+        f"— {PRINT_SHOP_EMAIL_FROM_NAME}\n"
+    )
+    due_html = (
+        f'<p style="margin:12px 0 0 0; font-size:14px; color:#4b5563;">'
+        f"<strong>Your requested delivery:</strong> {row.due_date.isoformat()}</p>"
+        if row.due_date
+        else ""
+    )
+    intro = (
+        f'<p style="margin:0 0 18px 0;">We reviewed your request '
+        f'<strong style="color:#7f1010;">{row.request_code}</strong>.</p>'
+        f'<div style="margin:0 0 18px 0; padding:18px 20px; text-align:center; '
+        f'background:linear-gradient(160deg,#7f1010 0%,#b91c1c 100%); border-radius:12px;">'
+        f'<p style="margin:0 0 6px 0; font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif; '
+        f'font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:rgba(255,255,255,0.8);">'
+        f"Estimated ready / delivery</p>"
+        f'<p style="margin:0; font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif; '
+        f'font-size:26px; font-weight:700; color:#ffffff; letter-spacing:0.02em;">{est}</p>'
+        f"</div>"
+        f'<p style="margin:0; font-size:15px; line-height:1.6; color:#4b5563;">'
+        f"Please note: this is an <em>estimate</em> only. Timing can change with print demand, "
+        f"artwork adjustments, and capacity. We will update you if it needs to shift significantly.</p>"
+        f"{staff_note_html}"
+    )
+    summary = (
+        f'<p style="margin:0 0 10px 0; font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif; '
+        f'font-size:12px; letter-spacing:0.06em; text-transform:uppercase; color:#6b7280;">Request summary</p>'
+        f"{_items_email_html(row)}{due_html}"
+    )
+    html = _print_shop_email_html(
+        title="Estimated delivery",
+        greeting_name=row.requester_name or "there",
+        intro_html=intro,
+        body_html=summary,
     )
     return _smtp_send(
         subject=f"Estimated delivery for print request {row.request_code}",
         to_email=row.requester_email,
         body=body,
+        html_body=html,
         log_label=f"print shop estimate email for {row.request_code}",
     )
 
 
 def _send_ready_email(row: PrintShopRequest) -> bool:
-    """Send ready notification. Returns True if sent. Does not raise for SMTP misconfig."""
-    due = f"\nRequested delivery: {row.due_date.isoformat()}" if row.due_date else ""
-    est = (
-        f"\nEstimated delivery: {row.estimated_delivery_date.isoformat()}"
-        if row.estimated_delivery_date
-        else ""
-    )
+    """Send ready-for-pickup notification. Returns True if sent. Does not raise for SMTP misconfig."""
+    location = (row.pickup_location or "").strip()
+    location_plain = f"\nPickup location:\n{location}\n" if location else ""
     items_block = _items_email_block(row)
     body = (
         f"Hello {row.requester_name},\n\n"
-        f"Your print request {row.request_code} is ready for pickup/delivery.\n\n"
-        f"{items_block}{due}{est}\n\n"
-        f"— MK Hub Print Shop\n"
+        f"Your print request {row.request_code} is ready for pickup.\n"
+        f"{location_plain}\n"
+        f"Request summary:\n"
+        f"{items_block}\n\n"
+        f"— {PRINT_SHOP_EMAIL_FROM_NAME}\n"
+    )
+    if location:
+        safe_loc = location.replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>")
+        location_html = (
+            f'<div style="margin:0 0 18px 0; padding:18px 20px; text-align:center; '
+            f'background:linear-gradient(160deg,#7f1010 0%,#b91c1c 100%); border-radius:12px;">'
+            f'<p style="margin:0 0 6px 0; font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif; '
+            f'font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:rgba(255,255,255,0.8);">'
+            f"Pickup location</p>"
+            f'<p style="margin:0; font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif; '
+            f'font-size:20px; font-weight:700; line-height:1.35; color:#ffffff;">{safe_loc}</p>'
+            f"</div>"
+        )
+    else:
+        location_html = ""
+    intro = (
+        f'<p style="margin:0 0 18px 0;">Great news — your print request '
+        f'<strong style="color:#7f1010;">{row.request_code}</strong> is '
+        f"<strong>ready for pickup</strong>.</p>"
+        f"{location_html}"
+    )
+    summary = (
+        f'<p style="margin:0 0 10px 0; font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif; '
+        f'font-size:12px; letter-spacing:0.06em; text-transform:uppercase; color:#6b7280;">Request summary</p>'
+        f"{_items_email_html(row)}"
+    )
+    html = _print_shop_email_html(
+        title="Ready for pickup",
+        greeting_name=row.requester_name or "there",
+        intro_html=intro,
+        body_html=summary,
     )
     return _smtp_send(
-        subject=f"Your print request {row.request_code} is ready",
+        subject=f"Your print request {row.request_code} is ready for pickup",
         to_email=row.requester_email,
         body=body,
+        html_body=html,
         log_label=f"print shop ready email for {row.request_code}",
     )
 
@@ -613,11 +842,6 @@ async def create_public_request(
         for u in uploads:
             if hasattr(u, "read") and hasattr(u, "filename"):
                 file_uploads.append(u)  # type: ignore[arg-type]
-        if not file_uploads:
-            raise HTTPException(
-                status_code=400,
-                detail=f"At least one artwork file is required on item {idx + 1}",
-            )
         if len(file_uploads) > MAX_ARTWORK_FILES:
             raise HTTPException(
                 status_code=400,
@@ -650,7 +874,7 @@ async def create_public_request(
         )
 
     first = parsed_items[0]
-    primary_fo = first["files"][0][0]
+    primary_fo = first["files"][0][0] if first["files"] else None
     summary_title = first["title"]
     if len(parsed_items) > 1:
         summary_title = f"{first['title']} (+{len(parsed_items) - 1} more)"
@@ -669,7 +893,7 @@ async def create_public_request(
         requester_name=name,
         requester_email=email,
         requested_by_user_id=user.id if user else None,
-        artwork_file_id=primary_fo.id,
+        artwork_file_id=primary_fo.id if primary_fo else None,
         notes=notes_s,
         created_at=now,
         updated_at=now,
@@ -790,6 +1014,7 @@ def start_production(
 @router.post("/requests/{request_id}/mark-ready")
 def mark_ready(
     request_id: str,
+    body: MarkReadyBody,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     __: Any = Depends(require_permissions("print_shop:write")),
@@ -797,14 +1022,28 @@ def mark_ready(
     row = _get_row(db, request_id)
     if row.status != STATUS_IN_PRODUCTION:
         raise HTTPException(status_code=400, detail="Only In Production requests can be marked ready")
+
+    location = (body.pickup_location or "").strip() or None
+    if body.send_email and not location:
+        raise HTTPException(
+            status_code=400,
+            detail="pickup_location is required when sending the ready email",
+        )
+
+    row.pickup_location = location
     _set_status(row, STATUS_READY, user)
-    sent = _send_ready_email(row)
-    if sent:
-        row.ready_emailed_at = _utcnow()
+
+    sent = False
+    if body.send_email:
+        sent = _send_ready_email(row)
+        if sent:
+            row.ready_emailed_at = _utcnow()
+
     db.commit()
     db.refresh(row)
     data = _serialize(row, include_internal=True)
     data["email_sent"] = sent
+    data["email_skipped"] = not body.send_email
     return data
 
 

@@ -2472,6 +2472,7 @@ def create_app() -> FastAPI:
                     for col, ddl in (
                         ("estimated_delivery_date", "DATE"),
                         ("estimate_message", "TEXT"),
+                        ("pickup_location", "TEXT"),
                         ("received_emailed_at", "TIMESTAMP WITH TIME ZONE"),
                         ("estimate_emailed_at", "TIMESTAMP WITH TIME ZONE"),
                     ):
@@ -2498,6 +2499,30 @@ def create_app() -> FastAPI:
                                 print(f"[startup] Added print_shop_requests.{col}")
                         except Exception as _e:
                             print(f"[startup] print_shop_requests.{col} migration (non-critical): {_e}")
+
+                    try:
+                        null_chk = db.execute(
+                            text(
+                                """
+                                SELECT is_nullable
+                                FROM information_schema.columns
+                                WHERE table_schema = 'public'
+                                  AND table_name = 'print_shop_requests'
+                                  AND column_name = 'artwork_file_id'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if null_chk and str(null_chk[0][0]).upper() == "NO":
+                            db.execute(
+                                text(
+                                    "ALTER TABLE print_shop_requests ALTER COLUMN artwork_file_id DROP NOT NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Made print_shop_requests.artwork_file_id nullable")
+                    except Exception as _e:
+                        print(f"[startup] print_shop_requests.artwork_file_id nullable (non-critical): {_e}")
 
                     try:
                         from .models.models import (

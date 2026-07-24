@@ -3429,6 +3429,8 @@ class PrintShopRequest(Base):
     # Staff-set estimate shared with the requester
     estimated_delivery_date: Mapped[Optional[date]] = mapped_column(Date, index=True)
     estimate_message: Mapped[Optional[str]] = mapped_column(Text())
+    # Where the requester picks up when marked ready
+    pickup_location: Mapped[Optional[str]] = mapped_column(Text())
 
     requester_name: Mapped[str] = mapped_column(String(255), nullable=False)
     requester_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
@@ -3436,8 +3438,8 @@ class PrintShopRequest(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
 
-    artwork_file_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="RESTRICT"), nullable=False, index=True
+    artwork_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     notes: Mapped[Optional[str]] = mapped_column(Text())
     internal_notes: Mapped[Optional[str]] = mapped_column(Text())
