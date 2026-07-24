@@ -4,6 +4,7 @@ import {
   BookOpen,
   Briefcase,
   Building2,
+  ClipboardList,
   Clock,
   FileText,
   Heart,
@@ -12,6 +13,7 @@ import {
   Receipt,
   Shield,
   User,
+  Users,
 } from 'lucide-react';
 
 /** Semantic section keys — same palette as User Details / Customer General tabs. */
@@ -33,7 +35,9 @@ export type AppSectionPresetKey =
   | 'proposal'
   | 'pricing'
   | 'opportunities'
-  | 'projects';
+  | 'projects'
+  | 'fieldBrief'
+  | 'team';
 
 type SectionPresetDef = {
   iconClassName: string;
@@ -59,6 +63,8 @@ const SECTION_PRESETS: Record<AppSectionPresetKey, SectionPresetDef> = {
   pricing: { iconClassName: 'bg-emerald-100 text-emerald-800', Icon: Receipt },
   opportunities: { iconClassName: 'bg-indigo-100 text-indigo-800', Icon: Briefcase },
   projects: { iconClassName: 'bg-orange-100 text-orange-800', Icon: Briefcase },
+  fieldBrief: { iconClassName: 'bg-teal-100 text-teal-800', Icon: ClipboardList },
+  team: { iconClassName: 'bg-blue-100 text-blue-800', Icon: Users },
 };
 
 /** Spread onto `AppSectionHeader` (icon + iconClassName). */

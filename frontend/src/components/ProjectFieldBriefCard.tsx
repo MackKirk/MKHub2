@@ -12,7 +12,9 @@ import {
   AppFormModal,
   AppHeroEditButton,
   AppInput,
+  AppReadOnlyField,
   AppSectionHeader,
+  AppTable,
   AppTextarea,
   appSectionPresetProps,
   uiCx,
@@ -74,14 +76,57 @@ export default function ProjectFieldBriefCard({
   const visible = projectHasFieldBriefContent(proj) || hasEditPermission;
   if (!visible) return null;
 
-  const body = (
+  const scopeValue = proj.scope_of_work?.trim();
+  const jceValue = proj.job_completion_estimate?.trim();
+
+  const materialRows = materials.map((item) => [
+    <span key={`${item.id}-name`} className="font-medium text-gray-900">
+      {item.name}
+    </span>,
+    item.quantity?.trim() || '—',
+    item.unit?.trim() || '—',
+    item.notes?.trim() || '—',
+  ]);
+
+  const designSystemBody = (
+    <div className="mt-3 space-y-4">
+      <AppReadOnlyField
+        label="Scope of Work"
+        value={
+          scopeValue ? (
+            <span className="whitespace-pre-wrap">{scopeValue}</span>
+          ) : (
+            <span className="italic text-gray-400">No scope defined</span>
+          )
+        }
+      />
+      <AppReadOnlyField
+        label="Job Completion Estimate"
+        value={jceValue || <span className="italic text-gray-400">Not specified</span>}
+      />
+
+      <div className="border-t border-gray-100 pt-4">
+        <div className="mb-3 text-sm font-semibold text-gray-900">Material List</div>
+        <p className={uiCx(uiTypography.helper, 'mb-3')}>
+          Product lines from the Costs tab. Edit materials in Costs to update this list.
+        </p>
+        <AppTable
+          columns={['Material', 'Qty', 'Unit', 'Notes']}
+          rows={materialRows}
+          emptyState="No materials in Costs yet"
+        />
+      </div>
+    </div>
+  );
+
+  const legacyBody = (
     <div className="mt-3 space-y-4">
       <div>
         <div className={uiCx(uiTypography.helper, 'mb-1 font-medium uppercase tracking-wide')}>
           Scope of Work
         </div>
-        {proj.scope_of_work?.trim() ? (
-          <p className={uiCx(uiTypography.body, 'whitespace-pre-wrap leading-snug')}>{proj.scope_of_work.trim()}</p>
+        {scopeValue ? (
+          <p className={uiCx(uiTypography.body, 'whitespace-pre-wrap leading-snug')}>{scopeValue}</p>
         ) : (
           <p className={uiCx(uiTypography.helper, 'italic')}>No scope defined</p>
         )}
@@ -91,55 +136,30 @@ export default function ProjectFieldBriefCard({
         <div className={uiCx(uiTypography.helper, 'mb-1 font-medium uppercase tracking-wide')}>
           Job Completion Estimate
         </div>
-        {proj.job_completion_estimate?.trim() ? (
-          <p className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{proj.job_completion_estimate.trim()}</p>
+        {jceValue ? (
+          <p className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{jceValue}</p>
         ) : (
           <p className={uiCx(uiTypography.helper, 'italic')}>Not specified</p>
         )}
       </div>
 
-      <div>
+      <div className="border-t border-gray-100 pt-4">
         <div className={uiCx(uiTypography.helper, 'mb-2 font-medium uppercase tracking-wide')}>Material List</div>
         <p className={uiCx(uiTypography.helper, 'mb-2')}>
           Product lines from the Costs tab. Edit materials in Costs to update this list.
         </p>
         {materials.length > 0 ? (
-          designSystem ? (
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  <tr>
-                    <th className="px-3 py-2">Material</th>
-                    <th className="px-3 py-2">Qty</th>
-                    <th className="px-3 py-2">Unit</th>
-                    <th className="px-3 py-2">Notes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {materials.map((item) => (
-                    <tr key={item.id}>
-                      <td className="px-3 py-2 font-medium text-gray-900">{item.name}</td>
-                      <td className="px-3 py-2 text-gray-700">{item.quantity?.trim() || '—'}</td>
-                      <td className="px-3 py-2 text-gray-700">{item.unit?.trim() || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600">{item.notes?.trim() || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <ul className="space-y-2 text-sm text-gray-700">
-              {materials.map((item) => (
-                <li key={item.id} className="rounded-lg border border-gray-200 px-3 py-2">
-                  <div className="font-medium text-gray-900">{item.name}</div>
-                  <div className="text-xs text-gray-600">
-                    {[item.quantity?.trim(), item.unit?.trim()].filter(Boolean).join(' ') || 'Qty not specified'}
-                    {item.notes?.trim() ? ` · ${item.notes.trim()}` : ''}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )
+          <ul className="space-y-2 text-sm text-gray-700">
+            {materials.map((item) => (
+              <li key={item.id} className="rounded-lg border border-gray-200 px-3 py-2">
+                <div className="font-medium text-gray-900">{item.name}</div>
+                <div className="text-xs text-gray-600">
+                  {[item.quantity?.trim(), item.unit?.trim()].filter(Boolean).join(' ') || 'Qty not specified'}
+                  {item.notes?.trim() ? ` · ${item.notes.trim()}` : ''}
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : (
           <p className={uiCx(uiTypography.helper, 'italic')}>No materials in Costs yet</p>
         )}
@@ -150,18 +170,18 @@ export default function ProjectFieldBriefCard({
   return (
     <>
       {designSystem ? (
-        <AppCard className="flex h-full min-h-0 flex-col">
+        <AppCard>
           <AppSectionHeader
             title="Field Brief"
             description="Scope, materials from Costs, and estimated job completion for the crew."
-            {...appSectionPresetProps('description')}
+            {...appSectionPresetProps('fieldBrief')}
             action={
               hasEditPermission ? (
                 <AppHeroEditButton title="Edit Field Brief" onClick={() => setEditOpen(true)} />
               ) : null
             }
           />
-          {body}
+          {designSystemBody}
         </AppCard>
       ) : (
         <div className="rounded-xl border bg-white p-4">
@@ -171,7 +191,7 @@ export default function ProjectFieldBriefCard({
               <AppHeroEditButton title="Edit Field Brief" onClick={() => setEditOpen(true)} />
             ) : null}
           </div>
-          {body}
+          {legacyBody}
         </div>
       )}
 

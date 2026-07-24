@@ -141,6 +141,15 @@ def _normalize_crew_material_list(raw) -> Optional[list]:
 
 
 def _normalize_field_brief_patch(payload: dict) -> None:
+    if "project_number" in payload:
+        raw = payload.get("project_number")
+        if raw is None:
+            payload["project_number"] = None
+        else:
+            s = str(raw).strip()
+            if len(s) > 100:
+                raise HTTPException(status_code=400, detail="project_number must be 100 characters or less")
+            payload["project_number"] = s if s else None
     if "scope_of_work" in payload:
         payload["scope_of_work"] = _normalize_optional_text(payload.get("scope_of_work"))
     if "job_completion_estimate" in payload:
@@ -1345,6 +1354,7 @@ def get_project(
     return {
         "id": str(p.id),
         "code": p.code,
+        "project_number": getattr(p, "project_number", None),
         "name": p.name,
         "slug": p.slug,
         "client_id": str(p.client_id) if p.client_id else None,
@@ -1425,6 +1435,7 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
     # Capture before state for audit log (hero and key project fields)
     before_state = {
         "name": getattr(p, 'name', None),
+        "project_number": getattr(p, 'project_number', None),
         "status_label": getattr(p, 'status_label', None),
         "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
         "estimator_ids": [str(e) for e in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else None,
@@ -1768,6 +1779,7 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         from ..services.audit import create_audit_log, compute_diff
         after_state = {
             "name": getattr(p, 'name', None),
+            "project_number": getattr(p, 'project_number', None),
             "status_label": getattr(p, 'status_label', None),
             "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
             "estimator_ids": [str(e) for e in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else None,

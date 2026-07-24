@@ -402,6 +402,7 @@ export default function QuoteDetail() {
                 clientId={String(quote.client_id || '')}
                 initial={quote}
                 disabled={!hasEditPermission}
+                disableHistoryGuard
               />
             </div>
           </AppCard>

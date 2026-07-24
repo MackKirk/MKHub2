@@ -290,6 +290,14 @@ export const uiLayout = {
   actionsRow: 'flex flex-wrap items-center gap-2',
   /** Primary (left) + sidebar (right). Use on full-width pages (Schedule, Clock In/Out). */
   pageTwoColumn: 'grid grid-cols-[1.5fr_1fr] items-stretch gap-2',
+  /** Project overview: primary operational column + secondary sidebar. */
+  overviewPrimaryRow:
+    'grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[3fr_2fr]',
+  overviewBalancedRow:
+    'grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-2',
+  /** Overview: tall left card + Description / Workload stacked on the right. */
+  overviewContextColumn:
+    'grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[3fr_2fr] lg:grid-rows-[auto_auto]',
   /** Overview: community feed + fixed-width utility sidebar. */
   pageOverview:
     'grid min-w-0 grid-cols-1 items-stretch gap-2 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]',

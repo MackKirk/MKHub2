@@ -38,7 +38,9 @@ import OrdersTab from '@/components/OrdersTab';
 import ProjectDocumentsTab from '@/components/ProjectDocumentsTab';
 import ProjectSafetyTab from '@/components/ProjectSafetyTab';
 import ProjectFieldBriefCard from '@/components/ProjectFieldBriefCard';
+import ProjectTeamCard from '@/components/ProjectTeamCard';
 import SiteFormModal, { type ClientSiteRecord } from '@/components/SiteFormModal';
+import NewContactModal from '@/components/NewContactModal';
 import ProjectBillingSection from '@/components/ProjectBillingSection';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import { DivisionIcon } from '@/components/DivisionIcon';
@@ -272,6 +274,7 @@ const PROJECT_UPDATE_LABELS: Record<string, string> = {
   lat: 'Location',
   lng: 'Location',
   lead_source: 'Lead source',
+  project_number: 'Project number',
   is_bidding: 'Is bidding',
   client_id: 'Client',
   code: 'Code',
@@ -436,7 +439,7 @@ function buildRecentActivityLabel(
     if (action === 'UPDATE') {
       if (context.conversion) {
         // Show conversion with each updated field and its value: "Field to "value"" (one line per logical field, prefer name over ID)
-        const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'date_awarded', 'progress', 'lead_source', 'lat', 'lng', 'related_client_ids', 'awarded_related_client_ids'];
+        const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'date_awarded', 'progress', 'lead_source', 'project_number', 'lat', 'lng', 'related_client_ids', 'awarded_related_client_ids'];
         const relevantChanged = changedFields.filter((f: string) => heroFields.includes(f) && f !== 'is_bidding');
         const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         const byLabel: Record<string, { value: string; isId: boolean }> = {};
@@ -455,7 +458,7 @@ function buildRecentActivityLabel(
         }
         return 'Opportunity converted to project';
       }
-      const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'date_awarded', 'progress', 'lead_source', 'lat', 'lng', 'related_client_ids', 'awarded_related_client_ids'];
+      const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'date_awarded', 'progress', 'lead_source', 'project_number', 'lat', 'lng', 'related_client_ids', 'awarded_related_client_ids'];
       const relevantChanged = changedFields.filter((f: string) => heroFields.includes(f));
       if (relevantChanged.length === 0) {
         // Fallback below
@@ -642,7 +645,7 @@ function ProjectRecentActivity({
 
   if (useDesignSystem) {
     return (
-      <AppCard className="flex min-h-0 flex-col">
+      <AppCard className="flex h-full min-h-0 flex-col">
         <AppSectionHeader
           title="Recent Activity"
           description="Latest updates and changes on this record."
@@ -893,7 +896,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, scope_of_work?:string|null, job_completion_estimate?:string|null, crew_material_list?:{ id: string; name: string; quantity?: string|null; unit?: string|null; notes?: string|null }[]|null, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
+type Project = { id:string, code?:string, project_number?:string|null, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, scope_of_work?:string|null, job_completion_estimate?:string|null, crew_material_list?:{ id: string; name: string; quantity?: string|null; unit?: string|null; notes?: string|null }[]|null, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
 
 function projectAwardedRelatedIdsSet(proj: Project | null | undefined): Set<string> {
   const raw = proj?.awarded_related_client_ids;
@@ -981,6 +984,54 @@ function ProjectHeroSiteField({
       {addressBelow ? (
         <div className="mt-0.5 text-[11px] font-normal leading-snug text-gray-600 break-words">
           {addressBelow}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProjectHeroContactField({
+  proj,
+  hasEditPermission,
+  canEdit,
+  onEdit,
+}: {
+  proj: Project | null | undefined;
+  hasEditPermission: boolean;
+  canEdit: boolean;
+  onEdit: () => void;
+}) {
+  const displayName = proj?.contact_name?.trim() || '—';
+  const email = proj?.contact_email?.trim() || '';
+  const phone = proj?.contact_phone?.trim() || '';
+  const secondaryLine =
+    email && phone ? `${email} · ${phone}` : email || phone || null;
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Contact</span>
+        {hasEditPermission && canEdit ? (
+          <button
+            onClick={onEdit}
+            className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+            title="Edit Contact"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+              />
+            </svg>
+          </button>
+        ) : null}
+      </div>
+      <div className="text-xs font-semibold text-gray-900 break-words">{displayName}</div>
+      {secondaryLine ? (
+        <div className="mt-0.5 text-[11px] font-normal leading-snug text-gray-600 break-words">
+          {secondaryLine}
         </div>
       ) : null}
     </div>
@@ -1277,6 +1328,8 @@ export default function ProjectDetail(){
   const [editStartDateModal, setEditStartDateModal] = useState(false);
   const [editAwardedDateModal, setEditAwardedDateModal] = useState(false);
   const [editLeadSourceModal, setEditLeadSourceModal] = useState(false);
+  const [editProjectNumberModal, setEditProjectNumberModal] = useState(false);
+  const [editContactModal, setEditContactModal] = useState(false);
   const [editRelatedCustomersModal, setEditRelatedCustomersModal] = useState(false);
   const [editDescriptionModal, setEditDescriptionModal] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -1811,6 +1864,41 @@ export default function ProjectDetail(){
                   compact={isOpportunityDetailRoute || isProjectDetailRoute}
                   designSystem={useDesignSystem}
                 />
+
+                {/* Status */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
+                    {hasEditPermission &&
+                      (useDesignSystem ? (
+                        <AppHeroEditButton
+                          onClick={() => setEditStatusModal(true)}
+                          title="Edit Status"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => setEditStatusModal(true)}
+                          className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                          title="Edit Status"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      ))}
+                  </div>
+                  {useDesignSystem ? (
+                    <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)}>
+                      {statusLabel || '—'}
+                    </AppBadge>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>
+                      {statusLabel || '—'}
+                    </span>
+                  )}
+                  {statusLabel && <StatusTimer project={proj} />}
+                </div>
+
                 {!isOpportunityStyleTabs ? (
                   <ProjectHeroPricingArea projectId={String(id || '')} proposals={proposals || []} />
                 ) : null}
@@ -1861,24 +1949,154 @@ export default function ProjectDetail(){
                       <div className="text-xs font-semibold text-gray-900 mt-0.5">{proj?.code || '—'}</div>
                     </div>
 
-                    {/* Project Owner / Source - only show for projects */}
-                    {!isOpportunityStyleTabs && (
+                    {/* Project Number */}
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Number</span>
+                        {hasEditPermission &&
+                          (useDesignSystem ? (
+                            <AppHeroEditButton
+                              onClick={() => setEditProjectNumberModal(true)}
+                              title="Edit Project Number"
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setEditProjectNumberModal(true)}
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Project Number"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          ))}
+                      </div>
+                      <div className="text-xs font-semibold text-gray-900">{proj?.project_number || '—'}</div>
+                    </div>
+
+                    {/* Project Owner / Source */}
+                    <div>
+                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Owner / Source</span>
+                      {proj?.client_id ? (
+                        <Link
+                          to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
+                          className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
+                        >
+                          {proj?.client_display_name || proj?.client_name || 'Open record'}
+                        </Link>
+                      ) : (
+                        <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
+                      )}
+                    </div>
+
+                    <ProjectHeroSiteField
+                      proj={proj}
+                      hasEditPermission={hasEditPermission}
+                      onEdit={() => setEditSiteModal(true)}
+                    />
+
+                    <ProjectHeroContactField
+                      proj={proj}
+                      hasEditPermission={hasEditPermission}
+                      canEdit={!!proj?.client_id}
+                      onEdit={() => setEditContactModal(true)}
+                    />
+                  </div>
+
+                  {/* Column 2 */}
+                  <div className={uiCx('min-w-0', HERO_FIELD_STACK)}>
+                    {/* Lead Source - opportunities and leak investigations */}
+                    {isOpportunityStyleTabs && (
                       <div>
-                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Owner / Source</span>
-                        {proj?.client_id ? (
-                          <Link
-                            to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
-                            className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
-                          >
-                            {proj?.client_display_name || proj?.client_name || 'Open record'}
-                          </Link>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Lead Source</span>
+                          {hasEditPermission &&
+                            (useDesignSystem ? (
+                              <AppHeroEditButton
+                                onClick={() => setEditLeadSourceModal(true)}
+                                title="Edit Lead Source"
+                              />
+                            ) : (
+                              <button
+                                onClick={() => setEditLeadSourceModal(true)}
+                                className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                                title="Edit Lead Source"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            ))}
+                        </div>
+                        <div className="text-xs font-semibold text-gray-900">{proj?.lead_source || '—'}</div>
+                      </div>
+                    )}
+
+                    {/* Related Customers - opportunities and leak investigations */}
+                    {isOpportunityStyleTabs && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Related Customers</span>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditRelatedCustomersModal(true)}
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Related Customers"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {(proj?.related_client_ids?.length ?? 0) > 0 ? (
+                          <div className="flex flex-wrap gap-x-1 gap-y-0.5 mt-0.5">
+                            {(proj?.related_client_ids ?? []).map((rid, i) => (
+                              <span key={rid}>
+                                <Link
+                                  to={`/customers/${encodeURIComponent(String(rid))}`}
+                                  className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
+                                >
+                                  {(proj?.related_client_display_names?.[i] ?? rid) || 'View Customer'}
+                                </Link>
+                                {i < (proj?.related_client_ids?.length ?? 0) - 1 ? ', ' : null}
+                              </span>
+                            ))}
+                          </div>
                         ) : (
                           <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
                         )}
                       </div>
                     )}
 
-                    {/* Related Customers - only show for projects (after conversion: list awarded only; tooltip for non-awarded) */}
+                    {/* Lead Source - only show for projects */}
+                    {!isOpportunityStyleTabs && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Lead Source</span>
+                          {hasEditPermission &&
+                            (useDesignSystem ? (
+                              <AppHeroEditButton
+                                onClick={() => setEditLeadSourceModal(true)}
+                                title="Edit Lead Source"
+                              />
+                            ) : (
+                              <button
+                                onClick={() => setEditLeadSourceModal(true)}
+                                className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                                title="Edit Lead Source"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            ))}
+                        </div>
+                        <div className="text-xs font-semibold text-gray-900">{proj?.lead_source || '—'}</div>
+                      </div>
+                    )}
+
+                    {/* Related Customers - projects (after conversion: list awarded only; tooltip for non-awarded) */}
                     {!isOpportunityStyleTabs && (() => {
                       const relatedHero = projectRelatedCustomersHeroSplit(proj);
                       const showInfoTooltip =
@@ -1946,173 +2164,7 @@ export default function ProjectDetail(){
                       );
                     })()}
 
-                    {/* Site - only show for projects */}
-                    {!isOpportunityStyleTabs && (
-                      <ProjectHeroSiteField
-                        proj={proj}
-                        hasEditPermission={hasEditPermission}
-                        onEdit={() => setEditSiteModal(true)}
-                      />
-                    )}
-
-                    {/* Status */}
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
-                        {hasEditPermission && (
-                          <button
-                            onClick={() => setEditStatusModal(true)}
-                            className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
-                            title="Edit Status"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                      {useDesignSystem ? (
-                        <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)}>
-                          {statusLabel || '—'}
-                        </AppBadge>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>
-                          {statusLabel || '—'}
-                        </span>
-                      )}
-                      {statusLabel && <StatusTimer project={proj} />}
-                    </div>
-                  </div>
-
-                  {/* Column 2 */}
-                  <div className={uiCx('min-w-0', HERO_FIELD_STACK)}>
-                    {/* Project Owner / Source - opportunities and leak investigations */}
-                    {isOpportunityStyleTabs && (
-                      <div>
-                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Owner / Source</span>
-                        {proj?.client_id ? (
-                          <Link
-                            to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
-                            className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
-                          >
-                            {proj?.client_display_name || proj?.client_name || 'Open record'}
-                          </Link>
-                        ) : (
-                          <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Related Customers - opportunities and leak investigations */}
-                    {isOpportunityStyleTabs && (
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Related Customers</span>
-                          {hasEditPermission && (
-                            <button
-                              onClick={() => setEditRelatedCustomersModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
-                              title="Edit Related Customers"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                        {(proj?.related_client_ids?.length ?? 0) > 0 ? (
-                          <div className="flex flex-wrap gap-x-1 gap-y-0.5 mt-0.5">
-                            {(proj?.related_client_ids ?? []).map((rid, i) => (
-                              <span key={rid}>
-                                <Link
-                                  to={`/customers/${encodeURIComponent(String(rid))}`}
-                                  className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
-                                >
-                                  {(proj?.related_client_display_names?.[i] ?? rid) || 'View Customer'}
-                                </Link>
-                                {i < (proj?.related_client_ids?.length ?? 0) - 1 ? ', ' : null}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Site - opportunities and leak investigations */}
-                    {isOpportunityStyleTabs && (
-                      <ProjectHeroSiteField
-                        proj={proj}
-                        hasEditPermission={hasEditPermission}
-                        onEdit={() => setEditSiteModal(true)}
-                      />
-                    )}
-
-                    {/* Lead Source - opportunities and leak investigations */}
-                    {isOpportunityStyleTabs && (
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Lead Source</span>
-                          {hasEditPermission && (
-                            <button
-                              onClick={() => setEditLeadSourceModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
-                              title="Edit Lead Source"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                        <div className="text-xs font-semibold text-gray-900">{proj?.lead_source || '—'}</div>
-                      </div>
-                    )}
-
-                    {/* Lead Source - only show for projects, at top of column 2 */}
-                    {!isOpportunityStyleTabs && (
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Lead Source</span>
-                          {hasEditPermission && (
-                            <button
-                              onClick={() => setEditLeadSourceModal(true)}
-                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
-                              title="Edit Lead Source"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                        <div className="text-xs font-semibold text-gray-900">{proj?.lead_source || '—'}</div>
-                      </div>
-                    )}
-
-                    {/* Start Date - only show for projects, not opportunities */}
-                    {!isOpportunityStyleTabs && (
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Start Date</span>
-                          {hasEditPermission && (
-                            <button
-                              onClick={() => setEditStartDateModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                              title="Edit Start Date"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                        <div className="text-sm font-medium">{proj?.date_start ? proj.date_start.slice(0, 10) : '—'}</div>
-                      </div>
-                    )}
-
-                    {/* Awarded Date - only show for projects, not opportunities */}
+                    {/* Awarded Date - only show for projects */}
                     {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
@@ -2133,7 +2185,28 @@ export default function ProjectDetail(){
                       </div>
                     )}
 
-                    {/* End date - only show for projects, not opportunities */}
+                    {/* Start Date - only show for projects */}
+                    {!isOpportunityStyleTabs && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Start Date</span>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditStartDateModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Start Date"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium">{proj?.date_start ? proj.date_start.slice(0, 10) : '—'}</div>
+                      </div>
+                    )}
+
+                    {/* End date - only show for projects */}
                     {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
@@ -2619,167 +2692,32 @@ export default function ProjectDetail(){
         <div className="mt-16 mb-4 shrink-0" aria-hidden />
       )}
 
-      {/* Calendar / team — overview (primary page, tab null) */}
+      {/* Overview body (primary page, tab null) */}
       {!tab && (
-        <>
-          {useDesignSystem && !isOpportunityStyleTabs ? (
-            <>
-              <div className={uiCx(uiLayout.pageTwoColumn, 'mb-4 auto-rows-auto')}>
-                <AppCard className="flex h-full min-h-0 flex-col">
-                  <AppSectionHeader
-                    title="Workload"
-                    description="Calendar events for this project."
-                    {...appSectionPresetProps('workload')}
-                    action={
-                      hasEditPermission ? (
-                        <AppButton type="button" size="sm" onClick={() => setWorkloadEventCreateOpen(true)}>
-                          + Create Event
-                        </AppButton>
-                      ) : null
-                    }
-                  />
-                  <div className="mt-3 min-h-0 flex-1">
-                    <CalendarMock
-                      title="Project Calendar"
-                      projectId={String(id)}
-                      hasEditPermission={hasEditPermission}
-                      useDesignSystem
-                      hideCreateButton
-                      createModalOpen={workloadEventCreateOpen}
-                      onCreateModalOpenChange={setWorkloadEventCreateOpen}
-                    />
-                  </div>
-                </AppCard>
-                <ProjectTeamCard
-                  projectId={String(id)}
-                  employees={employees || []}
-                  canManageMembers={canManageMembers}
-                  useDesignSystem
-                />
-              </div>
-              <ProjectDescriptionCard
-                proj={proj}
-                hasEditPermission={hasEditPermission}
-                useDesignSystem
-                isLeakInvestigation={isLeakInvestigation}
-                className="mb-4"
-                onEdit={() => setEditDescriptionModal(true)}
-              />
-              <div className={uiCx(uiLayout.pageTwoColumn, 'mb-4 auto-rows-auto')}>
-                <LastReportsCard reports={reports || []} useDesignSystem />
-                <ProjectFieldBriefCard
-                  projectId={String(id)}
-                  proj={fieldBriefProj}
-                  hasEditPermission={hasEditPermission}
-                  designSystem
-                  onSaved={(updated) => {
-                    queryClient.setQueryData<Project | undefined>(projectQueryKey, (old) =>
-                      old ? { ...old, ...updated } : old,
-                    );
-                    queryClient.invalidateQueries({ queryKey: projectQueryKey });
-                    invalidateRecentActivity();
-                  }}
-                />
-              </div>
-            </>
-          ) : !isOpportunityStyleTabs ? (
-            <>
-              <div className="mb-4 grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border bg-white p-4">
-                  <h4 className="font-semibold mb-3">Workload</h4>
-                  <CalendarMock title="Project Calendar" projectId={String(id)} hasEditPermission={hasEditPermission} />
-                </div>
-                <ProjectTeamCard
-                  projectId={String(id)}
-                  employees={employees||[]}
-                  canManageMembers={canManageMembers}
-                />
-              </div>
-              <ProjectDescriptionCard
-                proj={proj}
-                hasEditPermission={hasEditPermission}
-                isLeakInvestigation={isLeakInvestigation}
-                className="mb-4"
-                onEdit={() => setEditDescriptionModal(true)}
-              />
-              <div className="mb-4 grid gap-4 md:grid-cols-2">
-                <LastReportsCard reports={reports||[]} />
-                <ProjectFieldBriefCard
-                  projectId={String(id)}
-                  proj={fieldBriefProj}
-                  hasEditPermission={hasEditPermission}
-                  onSaved={(updated) => {
-                    queryClient.setQueryData<Project | undefined>(projectQueryKey, (old) =>
-                      old ? { ...old, ...updated } : old,
-                    );
-                    queryClient.invalidateQueries({ queryKey: projectQueryKey });
-                    invalidateRecentActivity();
-                  }}
-                />
-              </div>
-            </>
-          ) : useDesignSystem ? (
-            <div className={uiCx(uiLayout.pageTwoColumn, 'mb-4')}>
-              <AppCard className="flex h-full min-h-0 flex-col">
-                <AppSectionHeader
-                  title="Workload"
-                  description={
-                    isLeakInvestigation
-                      ? 'Calendar events for this project.'
-                      : 'Calendar events for this opportunity.'
-                  }
-                  {...appSectionPresetProps('workload')}
-                  action={
-                    hasEditPermission ? (
-                      <AppButton type="button" size="sm" onClick={() => setWorkloadEventCreateOpen(true)}>
-                        + Create Event
-                      </AppButton>
-                    ) : null
-                  }
-                />
-                <div className="mt-3 min-h-0 flex-1">
-                  <CalendarMock
-                    title={
-                      isLeakInvestigation
-                        ? 'Project Calendar'
-                        : proj?.is_bidding
-                          ? 'Opportunity Calendar'
-                          : 'Project Calendar'
-                    }
-                    projectId={String(id)}
-                    hasEditPermission={hasEditPermission}
-                    useDesignSystem
-                    hideCreateButton
-                    createModalOpen={workloadEventCreateOpen}
-                    onCreateModalOpenChange={setWorkloadEventCreateOpen}
-                  />
-                </div>
-              </AppCard>
-              <ProjectTeamCard
-                projectId={String(id)}
-                employees={employees||[]}
-                canManageMembers={canManageMembers}
-                useDesignSystem
-              />
-            </div>
-          ) : (
-            <div className="mb-4 grid md:grid-cols-2 gap-4">
-              <div className="rounded-xl border bg-white p-4">
-                <h4 className="font-semibold mb-3">Workload</h4>
-                <CalendarMock
-                  title={proj?.is_bidding ? 'Opportunity Calendar' : 'Project Calendar'}
-                  projectId={String(id)}
-                  hasEditPermission={hasEditPermission}
-                />
-              </div>
-              <ProjectTeamCard
-                projectId={String(id)}
-                employees={employees||[]}
-                canManageMembers={canManageMembers}
-              />
-            </div>
-          )}
-        </>
+        <ProjectOverviewBody
+          projectId={String(id)}
+          isOpportunityStyleTabs={isOpportunityStyleTabs}
+          useDesignSystem={useDesignSystem}
+          isLeakInvestigation={isLeakInvestigation}
+          proj={proj}
+          fieldBriefProj={fieldBriefProj}
+          reports={reports || []}
+          employees={employees || []}
+          hasEditPermission={hasEditPermission}
+          canManageMembers={canManageMembers}
+          workloadEventCreateOpen={workloadEventCreateOpen}
+          onWorkloadEventCreateOpenChange={setWorkloadEventCreateOpen}
+          onEditDescription={() => setEditDescriptionModal(true)}
+          onFieldBriefSaved={(updated) => {
+            queryClient.setQueryData<Project | undefined>(projectQueryKey, (old) =>
+              old ? { ...old, ...updated } : old,
+            );
+            queryClient.invalidateQueries({ queryKey: projectQueryKey });
+            invalidateRecentActivity();
+          }}
+          showBillingSection={showBillingSection}
+          onBillingSaved={() => queryClient.invalidateQueries({ queryKey: ['project', id] })}
+        />
       )}
 
       {/* Convert to Project Button (for opportunities — legacy layout only) */}
@@ -2829,34 +2767,32 @@ export default function ProjectDetail(){
         );
       })()}
 
-      {/* Description card — opportunities only (projects show it in overview grid) */}
+      {showBillingSection && !useDesignSystem && (
+          <>
+            <ProjectBillingSection
+              projectId={String(id ?? '')}
+              project={proj || undefined}
+              canEdit={hasEditPermission}
+              designSystem={false}
+              onSaved={() => queryClient.invalidateQueries({ queryKey: ['project', id] })}
+            />
+            <div className="mt-6">
+              <ProjectRecentActivity
+                projectId={String(id || '')}
+                isOpportunity={!!proj?.is_bidding}
+                isLeakInvestigation={isLeakInvestigation}
+                useDesignSystem={false}
+              />
+            </div>
+          </>
+        )}
+
+      {/* Recent Activity — opportunities (projects pair with billing above) */}
       {!tab && isOpportunityStyleTabs && (
-        <ProjectDescriptionCard
-          proj={proj}
-          hasEditPermission={hasEditPermission}
-          useDesignSystem={useDesignSystem}
-          isLeakInvestigation={isLeakInvestigation}
-          className="mt-6"
-          onEdit={() => setEditDescriptionModal(true)}
-        />
-      )}
-
-      {showBillingSection && (
-        <ProjectBillingSection
-          projectId={String(id ?? '')}
-          project={proj || undefined}
-          canEdit={hasEditPermission}
-          designSystem={useDesignSystem}
-          onSaved={() => queryClient.invalidateQueries({ queryKey: ['project', id] })}
-        />
-      )}
-
-      {/* Recent Activity */}
-      {!tab && (
-        <div className="mt-6">
+        <div className={uiCx(useDesignSystem ? 'mt-4' : 'mt-6')}>
           <ProjectRecentActivity
             projectId={String(id || '')}
-            isOpportunity={!!proj?.is_bidding}
+            isOpportunity
             isLeakInvestigation={isLeakInvestigation}
             useDesignSystem={useDesignSystem}
           />
@@ -3617,6 +3553,34 @@ export default function ProjectDetail(){
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
             invalidateRecentActivity();
             setEditLeadSourceModal(false);
+          }}
+        />
+      )}
+
+      {editProjectNumberModal && (
+        <EditProjectNumberModal
+          projectId={String(id)}
+          currentProjectNumber={proj?.project_number || ''}
+          designSystem={useDesignSystem}
+          onClose={() => setEditProjectNumberModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
+            setEditProjectNumberModal(false);
+          }}
+        />
+      )}
+
+      {editContactModal && (
+        <EditContactModal
+          projectId={String(id)}
+          project={proj}
+          designSystem={useDesignSystem}
+          onClose={() => setEditContactModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
+            setEditContactModal(false);
           }}
         />
       )}
@@ -4739,6 +4703,469 @@ function EditLeadSourceModal({ projectId, currentLeadSource, designSystem, onClo
         </div>
       </div>
     </div></OverlayPortal>
+  );
+}
+
+function EditProjectNumberModal({
+  projectId,
+  currentProjectNumber,
+  designSystem,
+  onClose,
+  onSave,
+}: {
+  projectId: string;
+  currentProjectNumber: string;
+  designSystem?: boolean;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [projectNumber, setProjectNumber] = useState(currentProjectNumber);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setProjectNumber(currentProjectNumber);
+  }, [currentProjectNumber]);
+
+  const handleSave = async () => {
+    const normalized = projectNumber.trim();
+    const currentNormalized = (currentProjectNumber || '').trim();
+    if (normalized === currentNormalized) {
+      onClose();
+      return;
+    }
+    if (normalized.length > 100) {
+      toast.error('Project number must be 100 characters or less');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        project_number: normalized || null,
+      });
+      toast.success('Project number updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.message || e?.response?.data?.detail || 'Failed to update project number');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (designSystem) {
+    return (
+      <AppFormModal
+        open
+        onClose={onClose}
+        title="Edit Project Number"
+        description="Set the customer-facing project number for this record"
+        formWidth="comfortable"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton type="button" size="sm" onClick={handleSave} disabled={saving} loading={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </AppButton>
+          </div>
+        }
+      >
+        <AppInput
+          label="Project Number"
+          value={projectNumber}
+          onChange={(e) => setProjectNumber(e.target.value)}
+          placeholder="Enter project number"
+          autoFocus
+          maxLength={100}
+          fieldHint="Project Number\n\nCustomer-facing reference separate from the internal system code."
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave();
+            else if (e.key === 'Escape') onClose();
+          }}
+        />
+      </AppFormModal>
+    );
+  }
+
+  return (
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Project Number</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Set the customer-facing project number</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Project Number</label>
+              <input
+                type="text"
+                value={projectNumber}
+                onChange={(e) => setProjectNumber(e.target.value)}
+                maxLength={100}
+                placeholder="Enter project number"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSave();
+                  else if (e.key === 'Escape') onClose();
+                }}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div></OverlayPortal>
+  );
+}
+
+function EditContactModal({
+  projectId,
+  project,
+  designSystem,
+  onClose,
+  onSave,
+}: {
+  projectId: string;
+  project: Project | null | undefined;
+  designSystem?: boolean;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [contactId, setContactId] = useState(project?.contact_id || '');
+  const [saving, setSaving] = useState(false);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+  const [newContactModalOpen, setNewContactModalOpen] = useState(false);
+
+  useEffect(() => {
+    setContactId(project?.contact_id || '');
+  }, [project?.contact_id]);
+
+  const loadContacts = useCallback(async () => {
+    if (!project?.client_id) {
+      setContacts([]);
+      return;
+    }
+    setLoadingContacts(true);
+    try {
+      const data = await api<any[]>('GET', `/clients/${encodeURIComponent(String(project.client_id))}/contacts`);
+      setContacts(data || []);
+    } catch {
+      setContacts([]);
+    } finally {
+      setLoadingContacts(false);
+    }
+  }, [project?.client_id]);
+
+  useEffect(() => {
+    void loadContacts();
+  }, [loadContacts]);
+
+  const selectedContact = contacts.find((c) => String(c.id) === String(contactId));
+  const currentContact = contacts.find((c) => String(c.id) === String(project?.contact_id));
+
+  const handleSave = async () => {
+    if (contactId === (project?.contact_id || '')) {
+      onClose();
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        contact_id: contactId || null,
+      });
+      toast.success('Contact updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update contact');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const contactOptions = useMemo(
+    () => [
+      { value: '', label: 'No contact' },
+      ...sortByLabel(contacts, (c: any) => (c.name || c.email || c.phone || c.id || '').toString()).map(
+        (c: any) => ({
+          value: String(c.id),
+          label: (c.name || c.email || c.phone || c.id) as string,
+        }),
+      ),
+    ],
+    [contacts],
+  );
+
+  const contactInformationPanel = selectedContact ? (
+    <div className="space-y-2 text-sm">
+      {selectedContact.name && (
+        <div>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Name:</span>
+          <span className="ml-2 text-gray-900">{selectedContact.name}</span>
+        </div>
+      )}
+      {selectedContact.email && (
+        <div>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Email:</span>
+          <span className="ml-2 text-gray-900">{selectedContact.email}</span>
+        </div>
+      )}
+      {selectedContact.phone && (
+        <div>
+          <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Phone:</span>
+          <span className="ml-2 text-gray-900">{selectedContact.phone}</span>
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  const newContactModal =
+    project?.client_id ? (
+      <NewContactModal
+        open={newContactModalOpen}
+        onClose={() => setNewContactModalOpen(false)}
+        clientId={String(project.client_id)}
+        clientDisplayName={project?.client_display_name || project?.client_name || ''}
+        stackOnTop
+        onCreated={async (c) => {
+          await loadContacts();
+          setContactId(String(c.id));
+          setNewContactModalOpen(false);
+        }}
+      />
+    ) : null;
+
+  if (!project?.client_id) {
+    if (designSystem) {
+      return (
+        <AppFormModal
+          open
+          onClose={onClose}
+          title="Edit Contact"
+          description="Assign a customer contact to this record"
+          formWidth="comfortable"
+          footer={
+            <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+              <AppButton type="button" size="sm" onClick={onClose}>
+                Close
+              </AppButton>
+            </div>
+          }
+        >
+          <p className={uiTypography.helper}>
+            Add a project owner customer before assigning a contact.
+          </p>
+        </AppFormModal>
+      );
+    }
+
+    return (
+      <OverlayPortal><div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        onClick={onClose}
+      >
+        <div
+          className="max-w-md w-full rounded-xl border border-gray-200 bg-white shadow-xl p-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 className="text-sm font-semibold text-gray-900">Edit Contact</h2>
+          <p className="text-xs text-gray-500 mt-2">Add a project owner customer before assigning a contact.</p>
+          <div className="mt-4 text-right">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212]"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div></OverlayPortal>
+    );
+  }
+
+  if (designSystem) {
+    return (
+      <>
+        <AppFormModal
+          open
+          onClose={onClose}
+          title="Edit Contact"
+          description="Choose the primary customer contact for this record"
+          formWidth="comfortable"
+          footer={
+            <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+              <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={saving}>
+                Cancel
+              </AppButton>
+              <AppButton type="button" size="sm" onClick={handleSave} disabled={saving || loadingContacts} loading={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </AppButton>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            {loadingContacts ? (
+              <p className={uiTypography.helper}>Loading contacts…</p>
+            ) : (
+              <AppSelect
+                label="Contact"
+                value={String(contactId || '')}
+                onChange={(e) => setContactId(e.target.value)}
+                options={contactOptions}
+                searchable={contactOptions.length > 8}
+                placeholder="Select contact…"
+                emptyMessage="No contacts found."
+                fieldHint="Contact\n\nPrimary customer contact for this project or opportunity."
+                createNewPlacement="footer"
+                onCreateNew={() => setNewContactModalOpen(true)}
+              />
+            )}
+
+            {selectedContact && (
+              <AppCard bodyClassName="p-4">
+                <p className={uiTypography.sectionTitle}>Contact information</p>
+                <div className="mt-3">{contactInformationPanel}</div>
+              </AppCard>
+            )}
+
+            {currentContact && contactId !== (project?.contact_id || '') && (
+              <p className={uiCx(uiTypography.helper, 'rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900')}>
+                Changing from <strong>{currentContact.name || currentContact.email || 'current contact'}</strong>{' '}
+                to <strong>{selectedContact?.name || selectedContact?.email || 'new contact'}</strong>.
+              </p>
+            )}
+          </div>
+        </AppFormModal>
+        {newContactModal}
+      </>
+    );
+  }
+
+  return (
+    <>
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Contact</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Choose the primary customer contact</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            {loadingContacts ? (
+              <p className="text-xs text-gray-500">Loading contacts...</p>
+            ) : (
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Contact</label>
+                <select
+                  value={contactId || ''}
+                  onChange={(e) => {
+                    if (e.target.value === '__create_new__') {
+                      setNewContactModalOpen(true);
+                      return;
+                    }
+                    setContactId(e.target.value);
+                  }}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                >
+                  <option value="">No contact</option>
+                  {sortByLabel(contacts, (c: any) => (c.name || c.email || c.phone || c.id || '').toString()).map(
+                    (c: any) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name || c.email || c.phone || c.id}
+                      </option>
+                    ),
+                  )}
+                  <option value="__create_new__">+ Create new contact</option>
+                </select>
+              </div>
+            )}
+            {contactInformationPanel ? (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">{contactInformationPanel}</div>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || loadingContacts}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div></OverlayPortal>
+    {newContactModal}
+    </>
   );
 }
 
@@ -7355,6 +7782,231 @@ function OnSiteLeadsModal({
   );
 }
 
+function ProjectOverviewWorkloadCard({
+  projectId,
+  hasEditPermission,
+  isLeakInvestigation,
+  isBidding,
+  useDesignSystem,
+  workloadEventCreateOpen,
+  onWorkloadEventCreateOpenChange,
+  density = 'compact',
+}: {
+  projectId: string;
+  hasEditPermission: boolean;
+  isLeakInvestigation?: boolean;
+  isBidding?: boolean;
+  useDesignSystem?: boolean;
+  workloadEventCreateOpen: boolean;
+  onWorkloadEventCreateOpenChange: (open: boolean) => void;
+  density?: 'default' | 'compact';
+}) {
+  const calendarTitle = isLeakInvestigation
+    ? 'Project Calendar'
+    : isBidding
+      ? 'Opportunity Calendar'
+      : 'Project Calendar';
+  const workloadDescription = isBidding
+    ? isLeakInvestigation
+      ? 'Calendar events for this project.'
+      : 'Calendar events for this opportunity.'
+    : 'Calendar events for this project.';
+
+  if (useDesignSystem) {
+    return (
+      <AppCard>
+        <AppSectionHeader
+          title="Workload"
+          description={workloadDescription}
+          {...appSectionPresetProps('workload')}
+          action={
+            hasEditPermission ? (
+              <AppButton type="button" size="sm" onClick={() => onWorkloadEventCreateOpenChange(true)}>
+                + Create Event
+              </AppButton>
+            ) : null
+          }
+        />
+        <div className="mt-3">
+          <CalendarMock
+            title={calendarTitle}
+            projectId={projectId}
+            hasEditPermission={hasEditPermission}
+            useDesignSystem
+            density={density}
+            hideCreateButton
+            createModalOpen={workloadEventCreateOpen}
+            onCreateModalOpenChange={onWorkloadEventCreateOpenChange}
+          />
+        </div>
+      </AppCard>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <h4 className="mb-3 font-semibold">Workload</h4>
+      <CalendarMock
+        title={calendarTitle}
+        projectId={projectId}
+        hasEditPermission={hasEditPermission}
+        density={density}
+      />
+    </div>
+  );
+}
+
+function ProjectOverviewBody({
+  projectId,
+  isOpportunityStyleTabs,
+  useDesignSystem,
+  isLeakInvestigation,
+  proj,
+  fieldBriefProj,
+  reports,
+  employees,
+  hasEditPermission,
+  canManageMembers,
+  workloadEventCreateOpen,
+  onWorkloadEventCreateOpenChange,
+  onEditDescription,
+  onFieldBriefSaved,
+  showBillingSection,
+  onBillingSaved,
+}: {
+  projectId: string;
+  isOpportunityStyleTabs: boolean;
+  useDesignSystem: boolean;
+  isLeakInvestigation: boolean;
+  proj: any;
+  fieldBriefProj: any;
+  reports: Report[];
+  employees: any[];
+  hasEditPermission: boolean;
+  canManageMembers: boolean;
+  workloadEventCreateOpen: boolean;
+  onWorkloadEventCreateOpenChange: (open: boolean) => void;
+  onEditDescription: () => void;
+  onFieldBriefSaved: (updated: any) => void;
+  showBillingSection?: boolean;
+  onBillingSaved?: () => void;
+}) {
+  const overviewRow = useDesignSystem ? uiLayout.overviewPrimaryRow : 'mb-4 grid gap-4 md:grid-cols-2 lg:grid-cols-[3fr_2fr]';
+  const overviewContextGrid = useDesignSystem
+    ? uiLayout.overviewContextColumn
+    : 'mb-4 grid gap-4 md:grid-cols-2 lg:grid-cols-[3fr_2fr] lg:grid-rows-[auto_auto]';
+
+  const showDescription = !!(proj?.description?.trim() || hasEditPermission);
+
+  const descriptionCard = showDescription ? (
+    <ProjectDescriptionCard
+      proj={proj}
+      hasEditPermission={hasEditPermission}
+      useDesignSystem={useDesignSystem}
+      isLeakInvestigation={isLeakInvestigation}
+      onEdit={onEditDescription}
+    />
+  ) : null;
+
+  const teamCard = (
+    <ProjectTeamCard
+      projectId={projectId}
+      employees={employees}
+      canManageMembers={canManageMembers}
+      useDesignSystem={useDesignSystem}
+      isOpportunity={isOpportunityStyleTabs}
+      className="h-full"
+    />
+  );
+
+  const teamColumnClass =
+    'order-2 flex h-full min-h-0 flex-col lg:order-none lg:col-start-1 lg:row-span-2 lg:row-start-1';
+
+  const workloadCard = (
+    <ProjectOverviewWorkloadCard
+      projectId={projectId}
+      hasEditPermission={hasEditPermission}
+      isLeakInvestigation={isLeakInvestigation}
+      isBidding={!!proj?.is_bidding}
+      useDesignSystem={useDesignSystem}
+      workloadEventCreateOpen={workloadEventCreateOpen}
+      onWorkloadEventCreateOpenChange={onWorkloadEventCreateOpenChange}
+      density="compact"
+    />
+  );
+
+  if (isOpportunityStyleTabs) {
+    if (!showDescription) {
+      return (
+        <div className={uiCx(overviewRow, 'mb-4')}>
+          <div className="flex h-full min-h-0 flex-col">{teamCard}</div>
+          {workloadCard}
+        </div>
+      );
+    }
+
+    return (
+      <div className={uiCx(overviewContextGrid, 'mb-4')}>
+        <div className={teamColumnClass}>{teamCard}</div>
+        <div className="order-1 lg:order-none lg:col-start-2 lg:row-start-1">{descriptionCard}</div>
+        <div className="order-3 lg:order-none lg:col-start-2 lg:row-start-2">{workloadCard}</div>
+      </div>
+    );
+  }
+
+  const notesWorkloadSection = showDescription ? (
+    <div className={uiCx(overviewContextGrid, 'mb-4 auto-rows-auto')}>
+      <div className="order-2 min-h-0 lg:order-none lg:col-start-1 lg:row-span-2 lg:row-start-1">
+        <LastReportsCard reports={reports} useDesignSystem={useDesignSystem} />
+      </div>
+      <div className="order-1 lg:order-none lg:col-start-2 lg:row-start-1">{descriptionCard}</div>
+      <div className="order-3 lg:order-none lg:col-start-2 lg:row-start-2">{workloadCard}</div>
+    </div>
+  ) : (
+    <div className={uiCx(overviewRow, 'mb-4 auto-rows-auto')}>
+      <LastReportsCard reports={reports} useDesignSystem={useDesignSystem} />
+      {workloadCard}
+    </div>
+  );
+
+  const billingActivityRow =
+    showBillingSection && useDesignSystem ? (
+      <div className={uiCx(overviewRow, 'mb-4 items-stretch')}>
+        <ProjectBillingSection
+          projectId={projectId}
+          project={proj}
+          canEdit={hasEditPermission}
+          designSystem
+          onSaved={onBillingSaved}
+        />
+        <div className="h-full min-h-0">
+          <ProjectRecentActivity
+            projectId={projectId}
+            isLeakInvestigation={isLeakInvestigation}
+            useDesignSystem
+          />
+        </div>
+      </div>
+    ) : null;
+
+  return (
+    <>
+      <div className={uiCx(overviewRow, 'mb-4 auto-rows-auto')}>
+        <ProjectFieldBriefCard
+          projectId={projectId}
+          proj={fieldBriefProj}
+          hasEditPermission={hasEditPermission}
+          designSystem={useDesignSystem}
+          onSaved={onFieldBriefSaved}
+        />
+        {teamCard}
+      </div>
+      {notesWorkloadSection}
+      {billingActivityRow}
+    </>
+  );
+}
+
 function ProjectDescriptionCard({
   proj,
   hasEditPermission,
@@ -7615,291 +8267,6 @@ function LastReportsCard({ reports, useDesignSystem }: { reports: Report[]; useD
       {notesBody}
     </div>
   );
-}
-
-function ProjectTeamCard({ projectId, employees, canManageMembers, useDesignSystem }: { projectId: string, employees: any[], canManageMembers: boolean, useDesignSystem?: boolean }){
-  const queryClient = useQueryClient();
-  const { data: shifts = [] } = useQuery({
-    queryKey: ['projectShifts', projectId],
-    queryFn: () => projectId ? api<any[]>('GET', `/dispatch/projects/${projectId}/shifts`) : Promise.resolve([]),
-    enabled: !!projectId,
-  });
-  const { data: allUsers = [] } = useQuery({
-    queryKey: ['employeesDirectory', 'all'],
-    queryFn: () => api<any[]>('GET', '/employees?limit=5000'),
-    staleTime: 300_000,
-  });
-  const { data: aclMembers = [] } = useQuery({
-    queryKey: ['projectMembers', projectId],
-    queryFn: () => projectId ? api<any[]>('GET', `/projects/${projectId}/members`) : Promise.resolve([]),
-    enabled: !!projectId,
-  });
-  const [showAddMember, setShowAddMember] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState('');
-  const [savingMember, setSavingMember] = useState(false);
-  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
-
-  // Extract unique worker IDs from shifts
-  const workerIds = useMemo(() => {
-    const ids = new Set<string>();
-    shifts.forEach((shift: any) => {
-      if (shift.worker_id) {
-        ids.add(String(shift.worker_id));
-      }
-    });
-    return Array.from(ids);
-  }, [shifts]);
-
-  // Get employee details for these IDs
-  const teamMembers = useMemo(() => {
-    return workerIds.map(wid => employees.find((e: any) => String(e.id) === String(wid))).filter(Boolean);
-  }, [workerIds, employees]);
-  const aclMemberUserIds = useMemo(() => new Set((aclMembers || []).map((m: any) => String(m.user_id))), [aclMembers]);
-  const userLabel = (u: any) => (u?.name || u?.username || u?.email_personal || u?.email || String(u?.id || '')).toString();
-  const availableEmployees = useMemo(
-    () =>
-      sortByLabel(
-        (allUsers || []).filter((u: any) => u?.id && !aclMemberUserIds.has(String(u.id))),
-        userLabel,
-      ),
-    [allUsers, aclMemberUserIds],
-  );
-
-  const onAddMember = async () => {
-    if (!selectedUserId) return;
-    setSavingMember(true);
-    try {
-      await api('POST', `/projects/${projectId}/members`, { user_id: selectedUserId });
-      setSelectedUserId('');
-      setShowAddMember(false);
-      await queryClient.invalidateQueries({ queryKey: ['projectMembers', projectId] });
-      toast.success('Member added');
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to add member');
-    } finally {
-      setSavingMember(false);
-    }
-  };
-
-  const onRemoveMember = async (member: any) => {
-    setRemovingMemberId(String(member.user_id));
-    try {
-      await api('DELETE', `/projects/${projectId}/members/${member.user_id}`);
-      await queryClient.invalidateQueries({ queryKey: ['projectMembers', projectId] });
-      toast.success('Member removed');
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to remove member');
-    } finally {
-      setRemovingMemberId(null);
-    }
-  };
-
-  const memberUserOptions = useMemo(
-    () => availableEmployees.map((e: any) => mapEmployeeToAppUserSelect(e)),
-    [availableEmployees],
-  );
-
-  const resolveMemberUser = useCallback(
-    (member: any) => {
-      const uid = String(member.user_id);
-      const fromDir =
-        employees.find((e: any) => String(e.id) === uid) ||
-        allUsers.find((u: any) => String(u.id) === uid);
-      if (fromDir) return mapEmployeeToAppUserSelect(fromDir);
-      return {
-        id: uid,
-        name: (member.name || member.username || 'User') as string,
-        username: member.username,
-      };
-    },
-    [employees, allUsers],
-  );
-
-  const addPeopleControl = canManageMembers ? (
-    useDesignSystem ? (
-      <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowAddMember((v) => !v)}>
-        {showAddMember ? 'Cancel' : 'Add people'}
-      </AppButton>
-    ) : (
-      <button
-        onClick={() => setShowAddMember((v) => !v)}
-        className="px-2 py-1 rounded border text-xs bg-white hover:bg-gray-50"
-      >
-        Add people
-      </button>
-    )
-  ) : null;
-
-  if (useDesignSystem) {
-    return (
-      <AppCard className="flex h-full min-h-0 flex-col">
-        <AppSectionHeader
-          title="Project Team"
-          description="Members with project access and workers scheduled on shifts."
-          {...appSectionPresetProps('contact')}
-          action={addPeopleControl}
-        />
-        <div className={uiCx('mt-3 flex min-h-0 flex-1 flex-col', uiSpacing.sectionStack)}>
-          {showAddMember && canManageMembers && (
-            <div className={uiCx('grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end')}>
-              <AppUserSelect
-                mode="single"
-                label="Team member"
-                users={memberUserOptions}
-                value={selectedUserId}
-                onChange={setSelectedUserId}
-                placeholder="Search user…"
-                fieldHint="Team member\n\nGrant this user access to the opportunity in MK Hub."
-              />
-              <AppButton
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="sm:mb-0.5"
-                disabled={!selectedUserId || savingMember}
-                loading={savingMember}
-                onClick={onAddMember}
-              >
-                Add
-              </AppButton>
-            </div>
-          )}
-
-          {(aclMembers || []).length > 0 ? (
-            <div className={uiCx(uiBorders.subtle, uiRadius.control, uiColors.surface, 'divide-y overflow-hidden')}>
-              {(aclMembers || []).map((member: any) => (
-                <div
-                  key={member.id}
-                  className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-gray-50"
-                >
-                  <AppUserAvatar user={resolveMemberUser(member)} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <div className={uiCx(uiTypography.body, 'truncate font-medium text-gray-900')}>
-                      {member.name || member.username}
-                    </div>
-                    <AppBadge variant={member.is_creator ? 'info' : 'neutral'} className="mt-1">
-                      {member.is_creator ? 'Creator' : member.member_role || 'Member'}
-                    </AppBadge>
-                  </div>
-                  {canManageMembers && !member.is_creator ? (
-                    <AppListRowIconButton
-                      preset="delete"
-                      label="Remove member"
-                      loading={removingMemberId === String(member.user_id)}
-                      disabled={removingMemberId === String(member.user_id)}
-                      onClick={() => onRemoveMember(member)}
-                    />
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <AppEmptyState
-              title="No team members yet"
-              description="Add people who need access to this opportunity."
-              action={
-                canManageMembers ? (
-                  <AppButton type="button" size="sm" variant="secondary" onClick={() => setShowAddMember(true)}>
-                    Add people
-                  </AppButton>
-                ) : undefined
-              }
-            />
-          )}
-
-          {teamMembers.length > 0 ? (
-            <div className={uiCx('border-t border-gray-100 pt-3', uiSpacing.sectionStack)}>
-              <p className={uiTypography.overline}>Scheduled workers</p>
-              <div className={uiUserSelect.chipRow}>
-                {teamMembers.map((member: any) => (
-                  <span key={member.id} className={uiUserSelect.chip}>
-                    <AppUserAvatar user={mapEmployeeToAppUserSelect(member)} size="sm" className={uiUserSelect.chipAvatar} />
-                    <span className="truncate">{member.name || member.username}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </AppCard>
-    );
-  }
-
-  const teamBody = (
-    <>
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="font-semibold">Project Team</h4>
-        {addPeopleControl}
-      </div>
-
-      {showAddMember && canManageMembers && (
-        <div className="mb-3 p-2 rounded border bg-gray-50 flex items-center gap-2">
-          <select
-            value={selectedUserId}
-            onChange={(e) => setSelectedUserId(e.target.value)}
-            className="flex-1 px-2 py-1.5 rounded border text-sm"
-          >
-            <option value="">Select user...</option>
-            {availableEmployees.map((e: any) => (
-              <option key={String(e.id)} value={String(e.id)}>
-                {userLabel(e)}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={onAddMember}
-            disabled={!selectedUserId || savingMember}
-            className="px-3 py-1.5 rounded bg-brand-red text-white text-sm disabled:opacity-50"
-          >
-            Add
-          </button>
-        </div>
-      )}
-
-      {(aclMembers || []).length > 0 ? (
-        <div className="grid grid-cols-2 gap-2">
-          {(aclMembers || []).map((member: any) => (
-            <div key={member.id} className="flex items-center gap-2 p-2 rounded border hover:bg-gray-50 transition-colors">
-              <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
-                {(member.name||member.username||'U')[0].toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 truncate">{member.name||member.username}</div>
-                <div className="text-[11px] text-gray-500">
-                  {member.is_creator ? 'Creator' : (member.member_role || 'Member')}
-                </div>
-              </div>
-              {canManageMembers && !member.is_creator && (
-                <button
-                  onClick={() => onRemoveMember(member)}
-                  disabled={removingMemberId === String(member.user_id)}
-                  className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-sm text-gray-500">No team members assigned yet</div>
-      )}
-      {teamMembers.length > 0 && (
-        <div className="mt-3 pt-3 border-t">
-          <div className="text-xs font-medium text-gray-500 mb-2">Scheduled workers</div>
-          <div className="flex flex-wrap gap-1.5">
-            {teamMembers.map((member: any) => (
-              <span key={member.id} className="px-2 py-1 rounded-full border text-xs bg-white">
-                {member.name || member.username}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-    </>
-  );
-
-  return <div className="rounded-xl border bg-white p-4">{teamBody}</div>;
 }
 
 function ProjectTabCards({ availableTabs, tabCounts, onTabClick, proj, currentTab, useDesignSystem, isHeroCollapsed, headerEnd }: { 

@@ -202,6 +202,7 @@ export default function ProjectProposalTab({
     ) : (
       <ProposalForm
         designSystem={designSystem}
+        disableHistoryGuard
         mode={selectedProposal ? 'edit' : 'new'}
         clientId={clientId}
         siteId={siteId}

@@ -41,6 +41,7 @@ type Props = {
   canEdit: boolean;
   designSystem?: boolean;
   onSaved?: () => void;
+  className?: string;
 };
 
 export default function ProjectBillingSection({
@@ -49,6 +50,7 @@ export default function ProjectBillingSection({
   canEdit,
   designSystem = false,
   onSaved,
+  className,
 }: Props) {
   const confirm = useConfirm();
   const [editOpen, setEditOpen] = useState(false);
@@ -197,15 +199,17 @@ export default function ProjectBillingSection({
   if (designSystem) {
     return (
       <>
-        <AppCard className="mt-6">
-          <AppSectionHeader
-            title="Billing Information"
-            description="Preferences used for invoices and payments."
-            {...appSectionPresetProps('billing')}
-            action={headerActions}
-          />
-          <div className="mt-4">{body}</div>
-        </AppCard>
+        <div className={uiCx('h-full min-h-0', className)}>
+          <AppCard className="flex h-full min-h-0 flex-col">
+            <AppSectionHeader
+              title="Billing Information"
+              description="Preferences used for invoices and payments."
+              {...appSectionPresetProps('billing')}
+              action={headerActions}
+            />
+            <div className="mt-3 min-h-0 flex-1 overflow-y-auto">{body}</div>
+          </AppCard>
+        </div>
         {modal}
       </>
     );

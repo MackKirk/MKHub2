@@ -179,7 +179,7 @@ function ProposalInlineControlSpacer({
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
-export default function QuoteForm({ mode, clientId: clientIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage }: { mode:'new'|'edit', clientId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string }){
+export default function QuoteForm({ mode, clientId: clientIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage, disableHistoryGuard = false }: { mode:'new'|'edit', clientId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string, disableHistoryGuard?: boolean }){
   const nav = useNavigate();
   const queryClient = useQueryClient();
 
@@ -960,9 +960,9 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       }
     };
 
-    // Intercept browser back button
-    const handlePopState = async (e: PopStateEvent) => {
-      if (!hasUnsaved) return;
+    // Intercept browser back button (skip when parent handles in-app navigation)
+    const handlePopState = async (_e: PopStateEvent) => {
+      if (disableHistoryGuard || !hasUnsaved) return;
       
       // Push state back to prevent navigation
       window.history.pushState(null, '', window.location.href);
@@ -988,20 +988,24 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     };
 
     // Push a state to enable popstate detection
-    if (hasUnsaved) {
+    if (!disableHistoryGuard && hasUnsaved) {
       window.history.pushState(null, '', window.location.href);
     }
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('popstate', handlePopState);
+    if (!disableHistoryGuard) {
+      window.addEventListener('popstate', handlePopState);
+    }
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('popstate', handlePopState);
+      if (!disableHistoryGuard) {
+        window.removeEventListener('popstate', handlePopState);
+      }
     };
-  }, [hasUnsavedChanges, confirm]);
+  }, [hasUnsavedChanges, confirm, disableHistoryGuard]);
 
   // derive company fields
   const companyName = (client?.display_name || client?.name || '').slice(0,50);

@@ -1298,6 +1298,19 @@ def create_app() -> FastAPI:
                                 db.commit()
                                 print(f"[startup] Added projects.{col}")
 
+                        project_number_rows = db.execute(
+                            text(
+                                """
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name = 'projects' AND column_name = 'project_number' LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not project_number_rows:
+                            db.execute(text("ALTER TABLE projects ADD COLUMN project_number VARCHAR(100) NULL"))
+                            db.commit()
+                            print("[startup] Added projects.project_number")
+
                         # Backfill active projects (not opportunities / leak investigations)
                         try:
                             from .services.billing_snapshot import billing_snapshot_from_client

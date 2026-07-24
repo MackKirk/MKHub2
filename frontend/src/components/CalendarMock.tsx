@@ -18,6 +18,8 @@ type CalendarMockProps = {
   /** Controlled create-modal open state (optional; pairs with onCreateModalOpenChange). */
   createModalOpen?: boolean;
   onCreateModalOpenChange?: (open: boolean) => void;
+  /** Denser month grid for overview sidebar widgets. */
+  density?: 'default' | 'compact';
 };
 
 type Event = {
@@ -89,6 +91,7 @@ export default function CalendarMock({
   hideCreateButton,
   createModalOpen: createModalOpenProp,
   onCreateModalOpenChange,
+  density = 'default',
 }: CalendarMockProps){
   const [anchorDate, setAnchorDate] = useState<Date>(()=>{
     const d = new Date();
@@ -414,6 +417,8 @@ export default function CalendarMock({
           days={appCalendarDays}
           onPrevious={goPrevMonth}
           onNext={goNextMonth}
+          compact={density === 'compact'}
+          compactCellProfile={density === 'compact' ? 'flat' : 'square'}
           headerExtra={
             <AppButton type="button" variant="ghost" size="sm" onClick={goTodayMonth}>
               Today

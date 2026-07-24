@@ -172,6 +172,7 @@ class Project(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    project_number: Mapped[Optional[str]] = mapped_column(String(100))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))

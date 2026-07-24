@@ -802,7 +802,7 @@ def _resolve_project_field_value(db: Session, field: str, val: Any) -> Optional[
         return ", ".join(names) + (" ..." if len(val) > 5 else "")
     if field == 'status_id' and val:
         return _resolve_status_label(db, str(val)) or str(val)
-    if field in ('name', 'address', 'status_label', 'lead_source'):
+    if field in ('name', 'address', 'status_label', 'lead_source', 'project_number'):
         return str(val)
     if field == 'progress' and val is not None:
         return f"{val}%"

@@ -324,6 +324,7 @@ export default function ProposalForm({
   projectStatusLabel,
   designSystem = false,
   isAdmin = false,
+  disableHistoryGuard = false,
 }: {
   mode: 'new' | 'edit';
   clientId?: string;
@@ -342,6 +343,8 @@ export default function ProposalForm({
   designSystem?: boolean;
   /** When true, admins can re-approve pricing items marked as not approved. */
   isAdmin?: boolean;
+  /** Skip popstate/pushState guard — use when parent handles in-app back/tabs (e.g. ProjectDetail). */
+  disableHistoryGuard?: boolean;
 }) {
   const nav = useNavigate();
   const queryClient = useQueryClient();
@@ -1128,9 +1131,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       }
     };
 
-    // Intercept browser back button
-    const handlePopState = async (e: PopStateEvent) => {
-      if (!hasUnsaved) return;
+    // Intercept browser back button (skip when parent handles in-app navigation)
+    const handlePopState = async (_e: PopStateEvent) => {
+      if (disableHistoryGuard || !hasUnsaved) return;
       
       // Push state back to prevent navigation
       window.history.pushState(null, '', window.location.href);
@@ -1156,20 +1159,24 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     };
 
     // Push a state to enable popstate detection
-    if (hasUnsaved) {
+    if (!disableHistoryGuard && hasUnsaved) {
       window.history.pushState(null, '', window.location.href);
     }
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('popstate', handlePopState);
+    if (!disableHistoryGuard) {
+      window.addEventListener('popstate', handlePopState);
+    }
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('popstate', handlePopState);
+      if (!disableHistoryGuard) {
+        window.removeEventListener('popstate', handlePopState);
+      }
     };
-  }, [hasUnsavedChanges, confirm]);
+  }, [hasUnsavedChanges, confirm, disableHistoryGuard]);
 
   // derive company fields
   const companyName = (client?.display_name || client?.name || '').slice(0,50);
