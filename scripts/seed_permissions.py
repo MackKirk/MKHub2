@@ -70,6 +70,7 @@ def seed_permissions():
             "equipment:read", "equipment:write", "equipment:manage",
             "work_orders:read", "work_orders:write", "work_orders:assign",
             "inspections:read", "inspections:write",
+            "print_shop:read", "print_shop:write",
         }
         
         # Define categories and permissions
@@ -297,6 +298,28 @@ def seed_permissions():
                         "description": "Allows creating and editing inspections",
                         "sort_index": 2,
                         "is_implemented": "inspections:write" in implemented_permissions,
+                    },
+                ],
+            },
+            {
+                "name": "print_shop",
+                "label": "Print Shop",
+                "description": "Permissions related to print shop requests (signs, stickers, etc.)",
+                "sort_index": 12,
+                "permissions": [
+                    {
+                        "key": "print_shop:read",
+                        "label": "View Print Shop Requests",
+                        "description": "Allows viewing print shop requests and artwork",
+                        "sort_index": 1,
+                        "is_implemented": "print_shop:read" in implemented_permissions,
+                    },
+                    {
+                        "key": "print_shop:write",
+                        "label": "Manage Print Shop Requests",
+                        "description": "Allows updating status, notes, and cancelling print shop requests",
+                        "sort_index": 2,
+                        "is_implemented": "print_shop:write" in implemented_permissions,
                     },
                 ],
             },

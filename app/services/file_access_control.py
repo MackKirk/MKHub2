@@ -32,6 +32,9 @@ from ..models.models import (
     UserDocument,
     WorkOrderFile,
     Proposal,
+    PrintShopRequest,
+    PrintShopRequestFile,
+    PrintShopSupplyOrderFile,
 )
 from ..services.permissions import is_admin
 from ..services.safety_sign_request_access import user_has_any_sign_request_on_project
@@ -686,6 +689,38 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
         if _has_permission(user, "fleet:access"):
             return
         raise _forbidden("missing fleet:access for work order file")
+
+    psr = db.query(PrintShopRequest).filter(PrintShopRequest.artwork_file_id == fo.id).first()
+    if psr:
+        if _has_permission(user, "print_shop:read") or _has_permission(user, "print_shop:write"):
+            return
+        raise _forbidden("missing print_shop:read for print shop artwork")
+
+    psf = db.query(PrintShopRequestFile).filter(PrintShopRequestFile.file_object_id == fo.id).first()
+    if psf:
+        if _has_permission(user, "print_shop:read") or _has_permission(user, "print_shop:write"):
+            return
+        raise _forbidden("missing print_shop:read for print shop artwork")
+
+    psof = db.query(PrintShopSupplyOrderFile).filter(PrintShopSupplyOrderFile.file_object_id == fo.id).first()
+    if psof:
+        if _has_permission(user, "print_shop:read") or _has_permission(user, "print_shop:write"):
+            return
+        raise _forbidden("missing print_shop:read for print shop supply file")
+
+    if (fo.source_ref or "") == "print-shop" or (
+        isinstance(fo.tags, dict) and fo.tags.get("scope") == "print-shop"
+    ):
+        if _has_permission(user, "print_shop:read") or _has_permission(user, "print_shop:write"):
+            return
+        raise _forbidden("missing print_shop:read for print shop artwork")
+
+    if (fo.source_ref or "") == "print-shop-supplies" or (
+        isinstance(fo.tags, dict) and fo.tags.get("scope") == "print-shop-supplies"
+    ):
+        if _has_permission(user, "print_shop:read") or _has_permission(user, "print_shop:write"):
+            return
+        raise _forbidden("missing print_shop:read for print shop supply file")
 
     proj_img = (
         db.query(Project)

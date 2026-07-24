@@ -64,6 +64,8 @@ from .routes.search import router as search_router
 from .routes.admin_system import router as admin_system_router
 from .routes.onboarding import me_router as onboarding_me_router, router as onboarding_router
 from .routes.offboarding import router as offboarding_router
+from .routes.print_shop import router as print_shop_router
+from .routes.print_shop_supplies import router as print_shop_supplies_router
 
 
 def create_app() -> FastAPI:
@@ -273,6 +275,8 @@ def create_app() -> FastAPI:
     app.include_router(onboarding_router)
     app.include_router(onboarding_me_router)
     app.include_router(offboarding_router)
+    app.include_router(print_shop_router)
+    app.include_router(print_shop_supplies_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)
@@ -339,6 +343,33 @@ def create_app() -> FastAPI:
             db = SessionLocal()
             try:
                 dialect = db.bind.dialect.name if getattr(db, "bind", None) is not None else ""
+                # Ensure print shop table on all dialects (SQLite local + PostgreSQL)
+                try:
+                    from .models.models import (
+                        PrintShopRequest,
+                        PrintShopRequestFile,
+                        PrintShopRequestItem,
+                        PrintShopSupplyOrder,
+                        PrintShopSupplyOrderFile,
+                        PrintShopSupplyOrderItem,
+                        PrintShopSupplyProduct,
+                    )
+
+                    Base.metadata.create_all(
+                        bind=engine,
+                        tables=[
+                            PrintShopRequest.__table__,
+                            PrintShopRequestItem.__table__,
+                            PrintShopRequestFile.__table__,
+                            PrintShopSupplyProduct.__table__,
+                            PrintShopSupplyOrder.__table__,
+                            PrintShopSupplyOrderItem.__table__,
+                            PrintShopSupplyOrderFile.__table__,
+                        ],
+                    )
+                except Exception as _e:
+                    print(f"[startup] print_shop_requests create_all (non-critical): {_e}")
+
                 if dialect != "postgresql" and "postgresql" not in dialect:
                     print("[startup] Skipping schema migrations (non-PostgreSQL). Production requires PostgreSQL.")
                 else:
@@ -2339,6 +2370,221 @@ def create_app() -> FastAPI:
                                 print(f"[startup] Added subcontractor_workers.{col}")
                         except Exception as _e:
                             pass
+
+                    # Print shop requests
+                    try:
+                        rows = db.execute(
+                            text(
+                                """
+                                SELECT 1
+                                FROM information_schema.tables
+                                WHERE table_name = 'print_shop_requests'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not rows:
+                            from .models.models import PrintShopRequest, PrintShopRequestFile, PrintShopRequestItem
+
+                            Base.metadata.create_all(
+                                bind=engine,
+                                tables=[
+                                    PrintShopRequest.__table__,
+                                    PrintShopRequestItem.__table__,
+                                    PrintShopRequestFile.__table__,
+                                ],
+                            )
+                            db.commit()
+                            print("[startup] Created print_shop_requests table")
+                    except Exception as _e:
+                        print(f"[startup] print_shop_requests migration (non-critical): {_e}")
+
+                    try:
+                        rows = db.execute(
+                            text(
+                                """
+                                SELECT 1
+                                FROM information_schema.tables
+                                WHERE table_name = 'print_shop_request_items'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not rows:
+                            from .models.models import PrintShopRequestItem
+
+                            Base.metadata.create_all(
+                                bind=engine, tables=[PrintShopRequestItem.__table__]
+                            )
+                            db.commit()
+                            print("[startup] Created print_shop_request_items table")
+                    except Exception as _e:
+                        print(f"[startup] print_shop_request_items migration (non-critical): {_e}")
+
+                    try:
+                        rows = db.execute(
+                            text(
+                                """
+                                SELECT 1
+                                FROM information_schema.tables
+                                WHERE table_name = 'print_shop_request_files'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not rows:
+                            from .models.models import PrintShopRequestFile
+
+                            Base.metadata.create_all(
+                                bind=engine, tables=[PrintShopRequestFile.__table__]
+                            )
+                            db.commit()
+                            print("[startup] Created print_shop_request_files table")
+                    except Exception as _e:
+                        print(f"[startup] print_shop_request_files migration (non-critical): {_e}")
+
+                    try:
+                        chk = db.execute(
+                            text(
+                                """
+                                SELECT data_type FROM information_schema.columns
+                                WHERE table_schema = 'public'
+                                  AND table_name = 'print_shop_request_files'
+                                  AND column_name = 'item_id'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not chk:
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE print_shop_request_files
+                                    ADD COLUMN item_id UUID NULL
+                                    REFERENCES print_shop_request_items(id) ON DELETE CASCADE
+                                    """
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added print_shop_request_files.item_id")
+                        elif str(chk[0][0]).lower() != "uuid":
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE print_shop_request_files
+                                    ALTER COLUMN item_id TYPE UUID
+                                    USING NULLIF(TRIM(item_id::text), '')::uuid
+                                    """
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Fixed print_shop_request_files.item_id type to UUID")
+                    except Exception as _e:
+                        print(f"[startup] print_shop_request_files.item_id migration (non-critical): {_e}")
+
+                    for col, ddl in (
+                        ("estimated_delivery_date", "DATE"),
+                        ("estimate_message", "TEXT"),
+                        ("pickup_location", "TEXT"),
+                        ("received_emailed_at", "TIMESTAMP WITH TIME ZONE"),
+                        ("estimate_emailed_at", "TIMESTAMP WITH TIME ZONE"),
+                    ):
+                        try:
+                            chk = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_schema = 'public'
+                                      AND table_name = 'print_shop_requests'
+                                      AND column_name = :c
+                                    LIMIT 1
+                                    """
+                                ),
+                                {"c": col},
+                            ).fetchall()
+                            if not chk:
+                                db.execute(
+                                    text(
+                                        f"ALTER TABLE print_shop_requests ADD COLUMN {col} {ddl} NULL"
+                                    )
+                                )
+                                db.commit()
+                                print(f"[startup] Added print_shop_requests.{col}")
+                        except Exception as _e:
+                            print(f"[startup] print_shop_requests.{col} migration (non-critical): {_e}")
+
+                    try:
+                        null_chk = db.execute(
+                            text(
+                                """
+                                SELECT is_nullable
+                                FROM information_schema.columns
+                                WHERE table_schema = 'public'
+                                  AND table_name = 'print_shop_requests'
+                                  AND column_name = 'artwork_file_id'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if null_chk and str(null_chk[0][0]).upper() == "NO":
+                            db.execute(
+                                text(
+                                    "ALTER TABLE print_shop_requests ALTER COLUMN artwork_file_id DROP NOT NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Made print_shop_requests.artwork_file_id nullable")
+                    except Exception as _e:
+                        print(f"[startup] print_shop_requests.artwork_file_id nullable (non-critical): {_e}")
+
+                    try:
+                        from .models.models import (
+                            PrintShopSupplyOrder,
+                            PrintShopSupplyOrderFile,
+                            PrintShopSupplyOrderItem,
+                            PrintShopSupplyProduct,
+                        )
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[
+                                PrintShopSupplyProduct.__table__,
+                                PrintShopSupplyOrder.__table__,
+                                PrintShopSupplyOrderItem.__table__,
+                                PrintShopSupplyOrderFile.__table__,
+                            ],
+                        )
+                        print("[startup] Ensured print shop supply tables")
+                    except Exception as _e:
+                        print(f"[startup] print shop supply tables (non-critical): {_e}")
+
+                    for col, ddl in (
+                        ("manufacturer", "VARCHAR(255)"),
+                        ("supplier_id", "UUID NULL REFERENCES suppliers(id) ON DELETE SET NULL"),
+                    ):
+                        try:
+                            chk = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_schema = 'public'
+                                      AND table_name = 'print_shop_supply_products'
+                                      AND column_name = :c
+                                    LIMIT 1
+                                    """
+                                ),
+                                {"c": col},
+                            ).fetchall()
+                            if not chk:
+                                db.execute(
+                                    text(
+                                        f"ALTER TABLE print_shop_supply_products ADD COLUMN {col} {ddl}"
+                                    )
+                                )
+                                db.commit()
+                                print(f"[startup] Added print_shop_supply_products.{col}")
+                        except Exception as _e:
+                            print(f"[startup] print_shop_supply_products.{col} (non-critical): {_e}")
 
                     # Soft delete columns (if missing)
                     for table_name, fk_col in [("projects", "deleted_by_id"), ("clients", "deleted_by_id"), ("proposals", "deleted_by_id"), ("quotes", "deleted_by_id")]:

@@ -112,6 +112,12 @@ const IconRequest = () => (
   </svg>
 );
 
+const IconPrinter = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+  </svg>
+);
+
 const IconUsers = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -588,6 +594,17 @@ export default function AppShell({ children }: PropsWithChildren){
       ]
     },
     {
+      id: 'print_shop',
+      label: 'Print Shop',
+      icon: <IconPrinter />,
+      items: [
+        { id: 'print-shop-new', label: 'New request', path: '/print-request', icon: <IconRequest />, requiredPermission: 'print_shop:read' },
+        { id: 'print-shop-queue', label: 'Requests', path: '/print-shop', icon: <IconPrinter />, requiredPermission: 'print_shop:read' },
+        { id: 'print-shop-supplies', label: 'Supply stock', path: '/print-shop/supplies', icon: <IconBox />, requiredPermission: 'print_shop:read' },
+        { id: 'print-shop-supply-orders', label: 'Supply orders', path: '/print-shop/supplies/orders', icon: <IconShoppingCart />, requiredPermission: 'print_shop:read' },
+      ]
+    },
+    {
       id: 'sales',
       label: '2B Removed',
       icon: <IconSales />,
@@ -937,6 +954,9 @@ export default function AppShell({ children }: PropsWithChildren){
           hasPermission('inventory:products:read');
         if (!hasBusinessAccess) return false;
       }
+      if (category.id === 'print_shop') {
+        if (!hasPermission('print_shop:read')) return false;
+      }
       if (category.id === 'sales') {
         if (!hasPermission('sales:quotations:read')) return false;
       }
@@ -1008,6 +1028,7 @@ export default function AppShell({ children }: PropsWithChildren){
       if (hasPermission('inventory:products:read')) return '/inventory/products';
       return category.items[0]?.path || '#';
     }
+    if (category.id === 'print_shop') return '/print-shop';
     if (category.id === 'sales') return '/quotes';
     if (category.id === 'company-assets') {
       if (hasPermission('fleet:equipment:read')) return '/company-assets/equipment';
