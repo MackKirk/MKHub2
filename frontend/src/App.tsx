@@ -73,6 +73,13 @@ import Community from './pages/Community';
 import CommunityGroups from './pages/CommunityGroups';
 import CommunityInsights from './pages/CommunityInsights';
 import CommunityNewPost from './pages/CommunityNewPost';
+import PrintRequestForm from './pages/PrintRequestForm';
+import PrintShopList from './pages/PrintShopList';
+import PrintShopDetail from './pages/PrintShopDetail';
+import PrintShopSupplies from './pages/PrintShopSupplies';
+import PrintShopSupplyOrders from './pages/PrintShopSupplyOrders';
+import PrintShopSupplyOrderNew from './pages/PrintShopSupplyOrderNew';
+import PrintShopSupplyOrderDetail from './pages/PrintShopSupplyOrderDetail';
 import FleetDashboard from './pages/FleetDashboard';
 import FleetAssets from './pages/FleetAssets';
 import FleetAssetNew from './pages/FleetAssetNew';
@@ -159,6 +166,7 @@ export default function App(){
         <Route path="/install" element={<Install/>} />
         <Route path="/privacy" element={<PrivacyPolicy/>} />
         <Route path="/privacy-policy" element={<PrivacyPolicy/>} />
+        <Route path="/print-request" element={<PrintRequestForm />} />
         <Route element={<Protected/>}>
           <Route path="/onboarding" element={<OnboardingWizard />} />
           <Route path="/onboarding/documents" element={<OnboardingDocuments />} />
@@ -170,6 +178,12 @@ export default function App(){
           <Route path="/clock-in-out" element={<AppShell><ClockInOut/></AppShell>} />
           <Route path="/task-requests" element={<AppShell><TaskRequests/></AppShell>} />
           <Route path="/tasks" element={<AppShell><Tasks/></AppShell>} />
+          <Route path="/print-shop" element={<AppShell><PrintShopList/></AppShell>} />
+          <Route path="/print-shop/supplies" element={<AppShell><PrintShopSupplies/></AppShell>} />
+          <Route path="/print-shop/supplies/orders" element={<AppShell><PrintShopSupplyOrders/></AppShell>} />
+          <Route path="/print-shop/supplies/orders/new" element={<AppShell><PrintShopSupplyOrderNew/></AppShell>} />
+          <Route path="/print-shop/supplies/orders/:id" element={<AppShell><PrintShopSupplyOrderDetail/></AppShell>} />
+          <Route path="/print-shop/:id" element={<AppShell><PrintShopDetail/></AppShell>} />
           <Route path="/customers" element={<AppShell><Customers/></AppShell>} />
           <Route path="/customers/new" element={<AppShell><CustomerNew/></AppShell>} />
           <Route path="/customers/:id" element={<AppShell><CustomerDetail/></AppShell>} />

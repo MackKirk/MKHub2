@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, List
 
 from sqlalchemy import (
@@ -3407,3 +3407,255 @@ class TrainingCertificate(Base):
         Index('idx_training_certificate_user_course', 'user_id', 'course_id'),
         Index('idx_training_certificate_expires', 'expires_at'),
     )
+
+
+class PrintShopRequest(Base):
+    """Internal print shop demand (header). Line items live in print_shop_request_items."""
+    __tablename__ = "print_shop_requests"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    request_code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
+    # todo | in_production | ready | cancelled
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="todo", index=True)
+    # Denormalized summary from first item (list UI / legacy)
+    product_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text())
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    width: Mapped[Optional[float]] = mapped_column(Float)
+    height: Mapped[Optional[float]] = mapped_column(Float)
+    unit: Mapped[str] = mapped_column(String(10), nullable=False, default="in")
+    due_date: Mapped[Optional[date]] = mapped_column(Date, index=True)
+    # Staff-set estimate shared with the requester
+    estimated_delivery_date: Mapped[Optional[date]] = mapped_column(Date, index=True)
+    estimate_message: Mapped[Optional[str]] = mapped_column(Text())
+
+    requester_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    requester_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    requested_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+
+    artwork_file_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text())
+    internal_notes: Mapped[Optional[str]] = mapped_column(Text())
+    cancelled_reason: Mapped[Optional[str]] = mapped_column(Text())
+    received_emailed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    estimate_emailed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    ready_emailed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    status_changed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    artwork_file = relationship("FileObject", foreign_keys=[artwork_file_id])
+    requested_by_user = relationship("User", foreign_keys=[requested_by_user_id])
+    items = relationship(
+        "PrintShopRequestItem",
+        back_populates="request",
+        cascade="all, delete-orphan",
+        order_by="PrintShopRequestItem.sort_index",
+    )
+    files = relationship(
+        "PrintShopRequestFile",
+        back_populates="request",
+        cascade="all, delete-orphan",
+        order_by="PrintShopRequestFile.sort_index",
+    )
+
+    __table_args__ = (
+        Index("idx_print_shop_requests_status_created", "status", "created_at"),
+    )
+
+
+class PrintShopRequestItem(Base):
+    """One product line on a print shop request (sign, sticker, etc.)."""
+    __tablename__ = "print_shop_request_items"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("print_shop_requests.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sort_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # sign | sticker | other
+    product_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text())
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    width: Mapped[Optional[float]] = mapped_column(Float)
+    height: Mapped[Optional[float]] = mapped_column(Float)
+    unit: Mapped[str] = mapped_column(String(10), nullable=False, default="in")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+    request = relationship("PrintShopRequest", back_populates="items")
+    files = relationship(
+        "PrintShopRequestFile",
+        back_populates="item",
+        order_by="PrintShopRequestFile.sort_index",
+    )
+
+    __table_args__ = (
+        Index("idx_print_shop_request_items_request_sort", "request_id", "sort_index"),
+    )
+
+
+class PrintShopRequestFile(Base):
+    """Artwork / attachment files for a print shop request (optionally tied to a line item)."""
+    __tablename__ = "print_shop_request_files"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("print_shop_requests.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("print_shop_request_items.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    original_name: Mapped[Optional[str]] = mapped_column(String(500))
+    sort_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+    request = relationship("PrintShopRequest", back_populates="files")
+    item = relationship("PrintShopRequestItem", back_populates="files")
+    file_object = relationship("FileObject", foreign_keys=[file_object_id])
+
+    __table_args__ = (
+        Index("idx_print_shop_request_files_request_sort", "request_id", "sort_index"),
+        Index("idx_print_shop_request_files_item_sort", "item_id", "sort_index"),
+    )
+
+
+class PrintShopSupplyProduct(Base):
+    """Catalog + on-hand stock for print shop consumables (ink, vinyl, boards, etc.)."""
+    __tablename__ = "print_shop_supply_products"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    unit: Mapped[str] = mapped_column(String(40), nullable=False, default="ea")
+    list_price_note: Mapped[Optional[str]] = mapped_column(String(100))
+    notes: Mapped[Optional[str]] = mapped_column(Text())
+    manufacturer: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    stock_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reorder_point: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sort_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+    supplier = relationship("Supplier", foreign_keys=[supplier_id])
+
+    __table_args__ = (
+        Index("idx_print_shop_supply_products_cat_sort", "category", "sort_index"),
+    )
+
+
+class PrintShopSupplyOrder(Base):
+    """Supplier order for print shop supplies (email draft + receive with attachments)."""
+    __tablename__ = "print_shop_supply_orders"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    order_code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
+    # draft | ordered | received | cancelled
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft", index=True)
+
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    contact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("supplier_contacts.id", ondelete="SET NULL"), index=True
+    )
+
+    email_to: Mapped[Optional[str]] = mapped_column(String(255))
+    email_subject: Mapped[Optional[str]] = mapped_column(String(255))
+    email_body: Mapped[Optional[str]] = mapped_column(Text())
+    notes: Mapped[Optional[str]] = mapped_column(Text())
+
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    ordered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    ordered_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    received_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+    supplier = relationship("Supplier", foreign_keys=[supplier_id])
+    contact = relationship("SupplierContact", foreign_keys=[contact_id])
+    items = relationship(
+        "PrintShopSupplyOrderItem",
+        back_populates="order",
+        cascade="all, delete-orphan",
+        order_by="PrintShopSupplyOrderItem.sort_index",
+    )
+    files = relationship(
+        "PrintShopSupplyOrderFile",
+        back_populates="order",
+        cascade="all, delete-orphan",
+        order_by="PrintShopSupplyOrderFile.created_at",
+    )
+
+    __table_args__ = (
+        Index("idx_print_shop_supply_orders_status_created", "status", "created_at"),
+    )
+
+
+class PrintShopSupplyOrderItem(Base):
+    __tablename__ = "print_shop_supply_order_items"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("print_shop_supply_orders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("print_shop_supply_products.id", ondelete="SET NULL"), index=True
+    )
+    product_name: Mapped[str] = mapped_column(String(500), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    sort_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    order = relationship("PrintShopSupplyOrder", back_populates="items")
+    product = relationship("PrintShopSupplyProduct", foreign_keys=[product_id])
+
+    __table_args__ = (
+        Index("idx_print_shop_supply_order_items_order_sort", "order_id", "sort_index"),
+    )
+
+
+class PrintShopSupplyOrderFile(Base):
+    """Attachments: supplier_order (quote/PO from supplier) or packing_slip (receipt photo)."""
+    __tablename__ = "print_shop_supply_order_files"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("print_shop_supply_orders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # supplier_order | packing_slip | other
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, default="other", index=True)
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    original_name: Mapped[Optional[str]] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    order = relationship("PrintShopSupplyOrder", back_populates="files")
+    file_object = relationship("FileObject", foreign_keys=[file_object_id])
