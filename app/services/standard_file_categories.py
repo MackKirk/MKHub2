@@ -31,6 +31,7 @@ DEFAULT_STANDARD_FILE_CATEGORIES: List[Dict[str, Any]] = [
     {"label": "photos", "value": "Photos", "sort_index": 14, "meta": {"icon": "📷", "description": ""}},
     {"label": "other", "value": "Other", "sort_index": 15, "meta": {"icon": "📦", "description": ""}},
     {"label": "safety", "value": "Safety", "sort_index": 16, "meta": {"icon": "⚠️", "description": "Site safety inspection PDFs"}},
+    {"label": "warranty", "value": "Warranty", "sort_index": 17, "meta": {"icon": "🛡️", "description": "Warranty documents and claim attachments"}},
 ]
 
 LIST_NAME = "standard_file_categories"
@@ -38,6 +39,7 @@ LIST_NAME = "standard_file_categories"
 # Merged on every GET if missing (DBs seeded before `safety` existed).
 _MERGE_CATEGORY_SPECS: List[Dict[str, Any]] = [
     {"label": "safety", "value": "Safety", "sort_index": 16, "meta": {"icon": "⚠️", "description": "Site safety inspection PDFs"}},
+    {"label": "warranty", "value": "Warranty", "sort_index": 17, "meta": {"icon": "🛡️", "description": "Warranty documents and claim attachments"}},
 ]
 
 

@@ -301,6 +301,7 @@ SECTION_ENTITY_TYPES = {
     "pricing": ["proposal", "proposal_draft"],
     "estimate": ["estimate", "estimate_item"],
     "orders": ["order", "order_item"],
+    "warranties": ["project_warranty", "warranty_claim", "warranty_maintenance"],
     "workload": ["shift"],
     "timesheet": ["attendance", "timesheet_entry"],
     "general": ["project"],

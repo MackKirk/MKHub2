@@ -37,6 +37,7 @@ import ProjectFilesTabEnhanced from '@/components/ProjectFilesTabEnhanced';
 import OrdersTab from '@/components/OrdersTab';
 import ProjectDocumentsTab from '@/components/ProjectDocumentsTab';
 import ProjectSafetyTab from '@/components/ProjectSafetyTab';
+import ProjectWarrantiesTab from '@/components/ProjectWarrantiesTab';
 import ProjectFieldBriefCard from '@/components/ProjectFieldBriefCard';
 import ProjectTeamCard from '@/components/ProjectTeamCard';
 import SiteFormModal, { type ClientSiteRecord } from '@/components/SiteFormModal';
@@ -1113,8 +1114,8 @@ export default function ProjectDetail(){
   const { data:projectEstimates } = useQuery({ queryKey:['projectEstimates', id], queryFn: ()=>api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(id||''))}`), enabled: !!id && !signOnlySafetySession });
   const primaryCostsEstimateId = projectEstimates?.[0]?.id as number | undefined;
   // Tab query parameter (searchParams above)
-  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null) || null;
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null>(initialTab);
+  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|null) || null;
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|null>(initialTab);
   const { data: costsEstimateDetail } = useQuery({
     queryKey: ['estimate', primaryCostsEstimateId],
     queryFn: () => api<any>('GET', `/estimate/estimates/${primaryCostsEstimateId}`),
@@ -1185,6 +1186,7 @@ export default function ProjectDetail(){
       proposal: 'proposal',
       pricing: 'proposal',
       estimate: 'costs',
+      warranties: 'warranties',
       orders: 'orders',
       safety: 'safety',
     };
@@ -1200,10 +1202,10 @@ export default function ProjectDetail(){
     if (me === undefined) return;
 
     const sp = new URLSearchParams(location.search);
-    const tabParam = sp.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null;
+    const tabParam = sp.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|null;
     const signOnly =
       sp.get('sign_only') === '1' && Boolean(sp.get('safety_inspection')?.trim());
-    const validTabs = ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','estimate','orders','safety'];
+    const validTabs = ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','estimate','warranties','orders','safety'];
     if (tabParam && validTabs.includes(tabParam)) {
       if (tabParam === 'safety' && signOnly) {
         setTab('safety');
@@ -1231,6 +1233,11 @@ export default function ProjectDetail(){
       setTab(null);
       nav(location.pathname, { replace: true });
       toast.error('Safety inspections are only available for awarded projects.');
+    }
+    if (isOpportunityStyleTabs && tab === 'warranties') {
+      setTab(null);
+      nav(location.pathname, { replace: true });
+      toast.error('Warranties are only available for awarded projects.');
     }
   }, [isLoading, proj, tab, location.pathname, nav, isOpportunityStyleTabs]);
 
@@ -1338,7 +1345,7 @@ export default function ProjectDetail(){
   // Base available tabs (leak investigations use the same strip as opportunities)
   const baseAvailableTabs = isOpportunityStyleTabs
     ? (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','estimate'] as const)
-    : (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','estimate','orders','safety'] as const);
+    : (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','estimate','warranties','orders','safety'] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
   const availableTabs = useMemo(() => {
@@ -1437,6 +1444,12 @@ export default function ProjectDetail(){
         queryClient.invalidateQueries({ queryKey: ['projectSafetyInspection', projectId] });
         queryClient.invalidateQueries({ queryKey: ['safetyInspections'] });
         queryClient.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
+        break;
+      case 'warranties':
+        queryClient.invalidateQueries({ queryKey: ['projectWarrantySummary', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['projectWarranties', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['projectWarrantyClaims', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['projectWarrantyActivities', projectId] });
         break;
       default:
         break;
@@ -1539,6 +1552,7 @@ export default function ProjectDetail(){
       'proposal': 'Proposal',
       'pricing': 'Pricing',
       'estimate': 'Costs',
+      'warranties': 'Warranties',
       'orders': 'Orders',
       'safety': 'Safety',
     };
@@ -1568,6 +1582,7 @@ export default function ProjectDetail(){
       'proposal': 'Full proposal with General Information, Sections, Pricing, Optional Services, Terms',
       'pricing': 'Project pricing',
       'estimate': 'Project costs and budgets',
+      'warranties': 'Warranty coverage, maintenance, documents and claims',
       'orders': 'Purchase orders and supplies',
       'safety': 'Site safety inspections',
     };
@@ -3198,6 +3213,42 @@ export default function ProjectDetail(){
 
               {tab==='orders' && (
                 <OrdersTab projectId={String(id)} project={proj||{id: String(id)}} statusLabel={proj?.status_label||''} />
+              )}
+
+              {tab==='warranties' && !isOpportunityStyleTabs && (
+                <ProjectWarrantiesTab
+                  projectId={String(id)}
+                  projectDivisionIds={Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []}
+                  canRead={hasProjectFeatureReadPermission(
+                    permissions,
+                    projectBusinessLine,
+                    'warranties',
+                    isAdmin,
+                    location.pathname
+                  )}
+                  canWrite={hasProjectFeatureWritePermission(
+                    permissions,
+                    projectBusinessLine,
+                    'warranties',
+                    isAdmin,
+                    location.pathname
+                  )}
+                  canViewCosts={
+                    isAdmin ||
+                    permissions.has('business:projects:warranties:costs:read') ||
+                    permissions.has('business:construction:projects:warranties:costs:read') ||
+                    permissions.has('business:rm:projects:warranties:costs:read') ||
+                    hasProjectFeatureWritePermission(
+                      permissions,
+                      projectBusinessLine,
+                      'warranties',
+                      isAdmin,
+                      location.pathname
+                    )
+                  }
+                  designSystem={useDesignSystem}
+                  onNavigateFiles={() => doTabSwitch('files')}
+                />
               )}
 
               {tab==='safety' && !isOpportunityStyleTabs && (
@@ -8270,11 +8321,11 @@ function LastReportsCard({ reports, useDesignSystem }: { reports: Report[]; useD
 }
 
 function ProjectTabCards({ availableTabs, tabCounts, onTabClick, proj, currentTab, useDesignSystem, isHeroCollapsed, headerEnd }: { 
-  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety')[], 
+  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety')[], 
   tabCounts?: Partial<Record<string, number>>,
   onTabClick: (tab: typeof availableTabs[number] | 'overview' | null) => void,
   proj: any,
-  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null,
+  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'warranties'|'orders'|'safety'|null,
   useDesignSystem?: boolean,
   isHeroCollapsed?: boolean,
   headerEnd?: ReactNode,
@@ -8289,6 +8340,7 @@ function ProjectTabCards({ availableTabs, tabCounts, onTabClick, proj, currentTa
     proposal: { label: 'Proposal', icon: '📄' },
     pricing: { label: 'Pricing', icon: '💰' },
     estimate: { label: 'Costs', icon: '💰' },
+    warranties: { label: 'Warranties', icon: '🛡️' },
     orders: { label: 'Orders', icon: '🛒' },
     safety: { label: 'Safety', icon: '🦺' },
   };

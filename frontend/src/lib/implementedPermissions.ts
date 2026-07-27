@@ -12,6 +12,7 @@ const LINE_PROJECT_SUB_FEATURES = [
   'proposal',
   'costs',
   'safety',
+  'warranties',
 ] as const;
 
 const LINE_PROJECT_PREFIXES = ['business:construction:projects', 'business:rm:projects'] as const;
@@ -21,6 +22,7 @@ const LINE_PROJECT_SUB_KEYS = LINE_PROJECT_PREFIXES.flatMap((prefix) => [
     `${prefix}:${feat}:read`,
     `${prefix}:${feat}:write`,
   ]),
+  `${prefix}:warranties:costs:read`,
   `${prefix}:members:write`,
 ]);
 
@@ -81,6 +83,18 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'hr:offboarding:read',
   'hr:offboarding:write',
   'settings:access',
+  'settings:lookup_lists:read',
+  'settings:lookup_lists:write',
+  'settings:files_assets:read',
+  'settings:files_assets:write',
+  'settings:permission_templates:read',
+  'settings:permission_templates:write',
+  'settings:terms_templates:read',
+  'settings:terms_templates:write',
+  'settings:document_backgrounds:read',
+  'settings:document_backgrounds:write',
+  'settings:document_templates:read',
+  'settings:document_templates:write',
   'documents:access',
   'documents:read',
   'documents:write',
@@ -180,6 +194,9 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'business:projects:costs:write',
   'business:projects:safety:read',
   'business:projects:safety:write',
+  'business:projects:warranties:read',
+  'business:projects:warranties:write',
+  'business:projects:warranties:costs:read',
   'sales:access',
   'sales:quotations:read',
   'sales:quotations:write',
@@ -194,6 +211,7 @@ export function isHiddenPermissionKey(key: string): boolean {
   if (key === 'hr:access') return true;
   if (key === 'fleet:access') return true;
   if (key === 'training:access' || key === 'training:manage') return true;
+  if (key === 'settings:access') return true;
   if (key === 'documents:delete' || key === 'documents:move') return true;
   if (isHiddenProjectLinePermissionKey(key)) return true;
   if (key === 'fleet:read' || key === 'fleet:write' || key === 'fleet:manage') return true;

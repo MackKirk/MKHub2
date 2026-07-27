@@ -233,7 +233,7 @@ def assert_can_initiate_upload(
         or _has_permission(user, "documents:write")
         or _has_permission(user, "training:admin:write")
         or _has_permission(user, "training:manage")
-        or _has_permission(user, "settings:access")
+        or _has_permission(user, "settings:files_assets:write")
     ):
         raise _forbidden("missing upload permission for misc scope")
 
@@ -614,7 +614,8 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
             or _has_permission(user, "training:admin:write")
             or _has_permission(user, "training:manage")
             or _has_permission(user, "users:write")
-            or _has_permission(user, "settings:access")
+            or _has_permission(user, "settings:files_assets:read")
+            or _has_permission(user, "settings:files_assets:write")
         ):
             return
         raise _forbidden("missing permission to read organization logo library")
@@ -625,7 +626,8 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
             or _has_permission(user, "training:admin:write")
             or _has_permission(user, "training:manage")
             or _has_permission(user, "users:write")
-            or _has_permission(user, "settings:access")
+            or _has_permission(user, "settings:files_assets:read")
+            or _has_permission(user, "settings:files_assets:write")
         ):
             return
         raise _forbidden("missing permission to read certificate background library")

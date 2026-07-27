@@ -313,6 +313,24 @@ def seed_business_permissions():
                 "description": "Allows creating and editing safety inspections in the Safety tab (awarded projects only)",
                 "sort_index": 23,
             },
+            {
+                "key": "business:projects:warranties:read",
+                "label": "View Warranties",
+                "description": "Allows viewing the Warranties tab in project details (awarded projects only)",
+                "sort_index": 24,
+            },
+            {
+                "key": "business:projects:warranties:write",
+                "label": "Edit Warranties",
+                "description": "Allows creating and editing warranties and claims in the Warranties tab (awarded projects only)",
+                "sort_index": 25,
+            },
+            {
+                "key": "business:projects:warranties:costs:read",
+                "label": "View Warranty Claim Costs",
+                "description": "Allows viewing financial cost fields on warranty claims",
+                "sort_index": 26,
+            },
         ]
 
         # Per business line (Production / R&M): same sub-permissions as legacy business:projects:* 
@@ -325,6 +343,7 @@ def seed_business_permissions():
             ("proposal", "Proposal", "Proposal tab in project details"),
             ("costs", "Costs", "Costs tab in project and opportunity details"),
             ("safety", "Safety", "Safety tab in project details (awarded projects only)"),
+            ("warranties", "Warranties", "Warranties tab in project details (awarded projects only)"),
         ]
         line_defs = [
             ("business:construction:projects", 50),
@@ -347,6 +366,13 @@ def seed_business_permissions():
                     "sort_index": sort,
                 })
                 sort += 1
+            business_permissions.append({
+                "key": f"{prefix}:warranties:costs:read",
+                "label": "View Warranty Claim Costs",
+                "description": "Allows viewing financial cost fields on warranty claims",
+                "sort_index": sort,
+            })
+            sort += 1
             business_permissions.append({
                 "key": f"{prefix}:members:write",
                 "label": "Manage Project Members",

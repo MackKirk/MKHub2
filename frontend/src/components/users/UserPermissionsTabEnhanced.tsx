@@ -12,6 +12,7 @@ import { FleetPermissionsPanel } from '@/components/FleetPermissionsPanel';
 import { CompanyAssetsPermissionsPanel } from '@/components/CompanyAssetsPermissionsPanel';
 import { HrPermissionsPanel } from '@/components/HrPermissionsPanel';
 import { TrainingPermissionsPanel } from '@/components/TrainingPermissionsPanel';
+import { SettingsPermissionsPanel } from '@/components/SettingsPermissionsPanel';
 import { ProjectLinePermissionsGrid } from '@/components/ProjectLinePermissionsGrid';
 import {
   applyCustomerAccessLevel,
@@ -68,6 +69,14 @@ import {
   syncTrainingAccess,
   type TrainingAccessLevel,
 } from '@/lib/trainingPermissions';
+import {
+  applySettingsAccessLevel,
+  filterSettingsAreaPermissions,
+  syncSettingsAccess,
+  SETTINGS_CHILD_READ_KEYS,
+  SETTINGS_CHILD_WRITE_KEYS,
+  type SettingsAccessLevel,
+} from '@/lib/settingsPermissions';
 import {
   applyProjectLineAccessLevel,
   type ProjectLine,
@@ -221,8 +230,8 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
         perms[perm.key] = perm.is_granted;
       });
     });
-    setPermissions(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(perms))))));
-    setInitialPermissions(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess({ ...perms }))))));
+    setPermissions(syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(perms)))))));
+    setInitialPermissions(syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess({ ...perms })))))));
 
     const cfg = permissionsData?.configs || {};
     const nextConfigs: LineCategoryConfigs = {
@@ -580,6 +589,8 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
           newPerms['business:projects:estimate:read'] = false;
           newPerms['business:projects:orders:read'] = false;
           newPerms['business:projects:safety:read'] = false;
+          newPerms['business:projects:warranties:read'] = false;
+          newPerms['business:projects:warranties:costs:read'] = false;
         }
         // If disabling Edit Projects & Opportunities, disable all edit sub-permissions
         else if (key === 'business:projects:write') {
@@ -593,16 +604,17 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
           newPerms['business:projects:estimate:write'] = false;
           newPerms['business:projects:orders:write'] = false;
           newPerms['business:projects:safety:write'] = false;
+          newPerms['business:projects:warranties:write'] = false;
         }
         // If disabling a view sub-permission, also disable the corresponding edit permission
         else if (key.startsWith('business:projects:') && key.endsWith(':read') && key !== 'business:projects:read') {
           const editKey = key.replace(':read', ':write');
           newPerms[editKey] = false;
         }
-        return syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(applyPermissionUncheckCascade(key, newPerms))))));
+        return syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(applyPermissionUncheckCascade(key, newPerms)))))));
       }
       
-      return syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(newPerms)))));
+      return syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(newPerms))))));
     });
   };
   
@@ -679,6 +691,13 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     [],
   );
 
+  const handleSettingsAccessLevel = useCallback(
+    (readKey: string, writeKey: string | undefined, level: SettingsAccessLevel) => {
+      setPermissions((prev) => applySettingsAccessLevel(prev, readKey, writeKey, level));
+    },
+    [],
+  );
+
   const handleProjectLineAccessLevel = useCallback(
     (
       line: ProjectLine,
@@ -711,16 +730,20 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       return;
     }
     setPermissions((prev) =>
-      syncTrainingAccess(syncHrAccess(
-        syncDocumentsAccess(
-          syncFleetAccess(
-            syncCompanyAssetsAccess({
-              ...prev,
-              ...Object.fromEntries((template.permission_keys || []).map((k) => [k, true])),
-            }),
+      syncSettingsAccess(
+        syncTrainingAccess(
+          syncHrAccess(
+            syncDocumentsAccess(
+              syncFleetAccess(
+                syncCompanyAssetsAccess({
+                  ...prev,
+                  ...Object.fromEntries((template.permission_keys || []).map((k) => [k, true])),
+                }),
+              ),
+            ),
           ),
         ),
-      )),
+      ),
     );
     toast.success(`Applied template "${template.name}" (merge)`);
     setShowApplyTemplateModal(false);
@@ -746,7 +769,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
         if (allKeys.includes(areaAccessKey)) next[areaAccessKey] = true;
       }
     });
-    setPermissions(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(next))))));
+    setPermissions(syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(next)))))));
     setShowApplyTemplateModal(false);
   }, [selectedTemplateId, permissionTemplates, permissionsData]);
 
@@ -780,6 +803,10 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       validPermKeys.forEach((key) => {
         payload[key] = !!permissions[key];
       });
+      const settingsChildKeys = [...SETTINGS_CHILD_READ_KEYS, ...SETTINGS_CHILD_WRITE_KEYS];
+      if (validPermKeys.has('settings:access')) {
+        payload['settings:access'] = false;
+      }
       applyLineCategoryConfigToPayload(payload, 'construction', lineCategoryConfigs.construction);
       applyLineCategoryConfigToPayload(payload, 'repairs', lineCategoryConfigs.repairs);
       applyCompanyFilesCategoryConfigToPayload(payload, companyFilesCategoryConfig);
@@ -806,10 +833,20 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       // If editing own permissions, invalidate /auth/me cache to refresh permissions
       if (currentUser && currentUser.id === userId) {
         await queryClient.invalidateQueries({ queryKey: ['me'] });
+        await queryClient.invalidateQueries({ queryKey: ['me-settings-permissions'] });
         await queryClient.invalidateQueries({ queryKey: ['project-files-category-perms'] });
         await queryClient.invalidateQueries({ queryKey: ['project-reports-category-perms'] });
         await queryClient.invalidateQueries({ queryKey: ['company-files-department-perms'] });
         await queryClient.invalidateQueries({ queryKey: ['company-files-departments'] });
+      }
+      // Always invalidate me when saving settings-related keys so menu/tabs refresh promptly
+      const savedSettingsChild = settingsChildKeys.some((k) => payload[k] === true || payload[k] === false);
+      if (savedSettingsChild) {
+        await queryClient.invalidateQueries({ queryKey: ['me'] });
+        await queryClient.invalidateQueries({ queryKey: ['me-settings-permissions'] });
+        await queryClient.invalidateQueries({ queryKey: ['settings'] });
+        await queryClient.invalidateQueries({ queryKey: ['settings-bundle'] });
+        await queryClient.invalidateQueries({ queryKey: ['settings-admin-bundle'] });
       }
     } catch (e: any) {
       toast.error(e?.detail || 'Failed to save permissions');
@@ -1112,6 +1149,16 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                   },
                   permissions: filterTrainingAreaPermissions(cat.permissions),
                 });
+              } else if (cat.category.name === 'settings') {
+                processedCategories.push({
+                  ...cat,
+                  category: {
+                    ...cat.category,
+                    label: 'Settings',
+                    description: 'System settings — lookup lists, files & assets, and templates.',
+                  },
+                  permissions: filterSettingsAreaPermissions(cat.permissions),
+                });
               } else if (cat.category.name === 'work_orders' || cat.category.name === 'inspections') {
                 // Legacy categories — superseded by fleet:* keys in UI
               } else {
@@ -1226,6 +1273,13 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                         permissions={permissions}
                         canEdit={canEdit}
                         onAccessLevelChange={handleTrainingAccessLevel}
+                      />
+                    ) : cat.category.name === 'settings' ? (
+                      <SettingsPermissionsPanel
+                        areaPerms={subPermissions}
+                        permissions={permissions}
+                        canEdit={canEdit}
+                        onAccessLevelChange={handleSettingsAccessLevel}
                       />
                     ) : cat.category.name === 'repairs_maintenance' ? (
                       <div className="space-y-4">

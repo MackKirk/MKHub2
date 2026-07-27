@@ -90,6 +90,9 @@ from ..routes.form_templates import _normalize_definition
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
+from .project_warranties import router as project_warranties_router
+router.include_router(project_warranties_router)
+
 _BILLING_PATCH_FIELDS = frozenset(
     {
         "purchase_order_number",
@@ -429,6 +432,14 @@ def _assert_awarded_project_for_safety(p: Project) -> None:
         raise HTTPException(
             status_code=403,
             detail="Safety inspections are only available for awarded projects",
+        )
+
+
+def _assert_awarded_project_for_warranties(p: Project) -> None:
+    if getattr(p, "is_bidding", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Warranties are only available for awarded projects",
         )
 
 
@@ -2552,6 +2563,8 @@ def attach_project_file(
     category: Optional[str] = None,
     original_name: Optional[str] = None,
     folder_id: Optional[str] = None,
+    related_warranty_id: Optional[str] = None,
+    related_warranty_claim_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions("business:projects:files:write")),
@@ -2580,7 +2593,43 @@ def attach_project_file(
     # Stamp project_id on FileObject to enable filtering
     fo.project_id = proj.id
     cf_folder_id = uuid.UUID(str(folder_id)) if folder_id else None
-    row = ClientFile(client_id=proj.client_id, site_id=None, file_object_id=fo.id, category=category, folder_id=cf_folder_id, key=fo.key, original_name=original_name)
+    rw_id = None
+    rwc_id = None
+    if related_warranty_id:
+        try:
+            rw_id = uuid.UUID(str(related_warranty_id))
+            from ..models.models import ProjectWarranty
+            w = db.query(ProjectWarranty).filter(
+                ProjectWarranty.id == rw_id, ProjectWarranty.project_id == project_id
+            ).first()
+            if not w:
+                raise HTTPException(status_code=400, detail="Warranty not found in project")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid related_warranty_id")
+    if related_warranty_claim_id:
+        try:
+            rwc_id = uuid.UUID(str(related_warranty_claim_id))
+            from ..models.models import WarrantyClaim
+            c = db.query(WarrantyClaim).filter(
+                WarrantyClaim.id == rwc_id, WarrantyClaim.project_id == project_id
+            ).first()
+            if not c:
+                raise HTTPException(status_code=400, detail="Claim not found in project")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid related_warranty_claim_id")
+    if (related_warranty_id or related_warranty_claim_id) and (category or "").strip().lower() != "warranty":
+        category = category or "warranty"
+    row = ClientFile(
+        client_id=proj.client_id,
+        site_id=None,
+        file_object_id=fo.id,
+        category=category,
+        folder_id=cf_folder_id,
+        key=fo.key,
+        original_name=original_name,
+        related_warranty_id=rw_id,
+        related_warranty_claim_id=rwc_id,
+    )
     db.add(row)
     db.commit()
     

@@ -51,7 +51,7 @@ def list_permission_definitions(
     category_id: Optional[str] = None,
     include_inactive: bool = False,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "settings:permission_templates:read"))
 ):
     """List all permission definitions grouped by category"""
     query_categories = db.query(PermissionCategory)
@@ -98,7 +98,7 @@ def list_permission_definitions(
 def list_permission_categories(
     include_inactive: bool = False,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "settings:permission_templates:read"))
 ):
     """List all permission categories"""
     query = db.query(PermissionCategory)
@@ -265,16 +265,14 @@ def update_user_permissions(
     # Start with existing overrides or empty dict
     current_overrides = user.permissions_override or {}
     
-    # Update with new boolean permissions (only include truthy values)
-    new_overrides = {k: True for k, v in bool_updates.items() if v}
-    
-    # Merge: new overrides take precedence, but keep existing ones that weren't updated
-    updated_overrides = {**current_overrides, **new_overrides}
-    
-    # Remove boolean permissions that were explicitly set to False
-    for key in permission_keys:
-        if not bool_updates.get(key, False):
-            updated_overrides.pop(key, None)
+    # Update with new boolean permissions
+    updated_overrides = {**current_overrides}
+    for key, value in bool_updates.items():
+        if value:
+            updated_overrides[key] = True
+        else:
+            # Explicit deny so role grants do not re-apply when user blocks a permission.
+            updated_overrides[key] = False
     
     # Apply config updates
     # Semantics: missing key => keep existing; empty list => remove (meaning: allow all categories)
@@ -299,7 +297,7 @@ def check_user_permission(
     user_id: str,
     permission_key: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "settings:permission_templates:read"))
 ):
     """Check if a user has a specific permission"""
     from ..auth.security import _has_permission
@@ -360,7 +358,7 @@ def _validate_permission_keys(db: Session, keys: List[str]) -> None:
 @router.get("/templates")
 def list_permission_templates(
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "settings:permission_templates:read"))
 ):
     """List all permission templates (id, name, permission_keys)."""
     templates = db.query(PermissionTemplate).order_by(PermissionTemplate.name.asc()).all()
@@ -378,7 +376,7 @@ def list_permission_templates(
 def get_permission_template(
     template_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "settings:permission_templates:read"))
 ):
     """Get a single permission template by id."""
     template = db.query(PermissionTemplate).filter(PermissionTemplate.id == template_id).first()
@@ -395,7 +393,7 @@ def get_permission_template(
 def create_permission_template(
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("users:write", "settings:permission_templates:write"))
 ):
     """Create a permission template. Body: { name: string, permission_keys: string[] }."""
     name = (payload.get("name") or "").strip()
@@ -423,7 +421,7 @@ def update_permission_template(
     template_id: str,
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("users:write", "settings:permission_templates:write"))
 ):
     """Update a permission template. Body may include name and/or permission_keys."""
     template = db.query(PermissionTemplate).filter(PermissionTemplate.id == template_id).first()
@@ -455,7 +453,7 @@ def update_permission_template(
 def delete_permission_template(
     template_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("users:write", "settings:permission_templates:write"))
 ):
     """Delete a permission template."""
     template = db.query(PermissionTemplate).filter(PermissionTemplate.id == template_id).first()
@@ -470,7 +468,7 @@ def delete_permission_template(
 def duplicate_permission_template(
     template_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("users:write", "settings:permission_templates:write"))
 ):
     """Create a new template with same permission_keys and name + ' (copy)'."""
     template = db.query(PermissionTemplate).filter(PermissionTemplate.id == template_id).first()

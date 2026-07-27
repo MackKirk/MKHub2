@@ -435,6 +435,233 @@ class ProjectSafetyInspectionSignRequest(Base):
     inspection = relationship("ProjectSafetyInspection", back_populates="sign_requests")
 
 
+# =====================
+# Project Warranties domain
+# =====================
+
+
+class ProjectWarranty(Base):
+    """Warranty record for an awarded project."""
+
+    __tablename__ = "project_warranties"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    warranty_type: Mapped[str] = mapped_column(String(50), nullable=False, default="workmanship")
+    provider_type: Mapped[str] = mapped_column(String(50), nullable=False, default="other")
+    provider_name: Mapped[Optional[str]] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft", index=True)
+    certificate_or_registration_number: Mapped[Optional[str]] = mapped_column(String(255))
+    internal_responsible_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    provider_contact_name: Mapped[Optional[str]] = mapped_column(String(255))
+    provider_contact_email: Mapped[Optional[str]] = mapped_column(String(255))
+    provider_contact_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="SET NULL")
+    )
+    subcontractor_company_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subcontractor_companies.id", ondelete="SET NULL")
+    )
+    coverage_type: Mapped[str] = mapped_column(String(50), nullable=False, default="entire_project")
+    covered_division_ids: Mapped[Optional[list]] = mapped_column(JSON)
+    covered_scope_ids: Mapped[Optional[list]] = mapped_column(JSON)
+    coverage_description: Mapped[Optional[str]] = mapped_column(Text)
+    exclusions: Mapped[Optional[str]] = mapped_column(Text)
+    special_conditions: Mapped[Optional[str]] = mapped_column(Text)
+    maximum_coverage_amount: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    start_date: Mapped[Optional[date]] = mapped_column(Date)
+    duration_value: Mapped[Optional[int]] = mapped_column(Integer)
+    duration_unit: Mapped[Optional[str]] = mapped_column(String(20))
+    end_date: Mapped[Optional[date]] = mapped_column(Date, index=True)
+    start_date_basis: Mapped[Optional[str]] = mapped_column(String(50))
+    issue_date: Mapped[Optional[date]] = mapped_column(Date)
+    activation_date: Mapped[Optional[date]] = mapped_column(Date)
+    maintenance_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    maintenance_frequency: Mapped[Optional[str]] = mapped_column(String(50))
+    maintenance_interval_value: Mapped[Optional[int]] = mapped_column(Integer)
+    maintenance_interval_unit: Mapped[Optional[str]] = mapped_column(String(20))
+    first_maintenance_due_date: Mapped[Optional[date]] = mapped_column(Date)
+    next_maintenance_due_date: Mapped[Optional[date]] = mapped_column(Date, index=True)
+    maintenance_instructions: Mapped[Optional[str]] = mapped_column(Text)
+    maintenance_responsible_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    consequence_if_missed: Mapped[Optional[str]] = mapped_column(Text)
+    last_maintenance_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_maintenance_completed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    document_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    registration_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    voided_reason: Mapped[Optional[str]] = mapped_column(Text)
+    voided_notes: Mapped[Optional[str]] = mapped_column(Text)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    cancelled_reason: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    maintenances = relationship(
+        "WarrantyMaintenance",
+        back_populates="warranty",
+        cascade="all, delete-orphan",
+        order_by="WarrantyMaintenance.completed_at.desc()",
+    )
+    claims = relationship("WarrantyClaim", back_populates="warranty")
+
+    __table_args__ = (
+        Index("ix_project_warranties_project_status", "project_id", "status"),
+    )
+
+
+class WarrantyMaintenance(Base):
+    """Completed maintenance history for a warranty."""
+
+    __tablename__ = "warranty_maintenances"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    warranty_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_warranties.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    next_due_date_snapshot: Mapped[Optional[date]] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    warranty = relationship("ProjectWarranty", back_populates="maintenances")
+
+    __table_args__ = (
+        Index("ix_warranty_maintenances_warranty_completed", "warranty_id", "completed_at"),
+    )
+
+
+class WarrantyClaim(Base):
+    """Warranty claim for a project."""
+
+    __tablename__ = "warranty_claims"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    warranty_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_warranties.id", ondelete="SET NULL"), index=True
+    )
+    claim_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    reported_date: Mapped[date] = mapped_column(Date, nullable=False)
+    reported_by_name: Mapped[Optional[str]] = mapped_column(String(255))
+    reported_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    customer_contact_name: Mapped[Optional[str]] = mapped_column(String(255))
+    customer_contact_email: Mapped[Optional[str]] = mapped_column(String(255))
+    customer_contact_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    issue_location: Mapped[Optional[str]] = mapped_column(String(500))
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
+    assigned_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="reported", index=True)
+    coverage_decision: Mapped[str] = mapped_column(String(50), nullable=False, default="pending_assessment")
+    assessment_notes: Mapped[Optional[str]] = mapped_column(Text)
+    decision_date: Mapped[Optional[date]] = mapped_column(Date)
+    decision_made_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    customer_notified_date: Mapped[Optional[date]] = mapped_column(Date)
+    denial_reason: Mapped[Optional[str]] = mapped_column(Text)
+    follow_up_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    follow_up_date: Mapped[Optional[date]] = mapped_column(Date, index=True)
+    root_cause: Mapped[Optional[str]] = mapped_column(Text)
+    work_performed: Mapped[Optional[str]] = mapped_column(Text)
+    resolution_notes: Mapped[Optional[str]] = mapped_column(Text)
+    completion_date: Mapped[Optional[date]] = mapped_column(Date)
+    resolved_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    customer_confirmation: Mapped[Optional[bool]] = mapped_column(Boolean)
+    labour_cost: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    material_cost: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    subcontractor_cost: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    other_cost: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    total_internal_cost: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    amount_charged_to_customer: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    recoverable_amount: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    cost_responsibility: Mapped[Optional[str]] = mapped_column(String(50))
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    cancelled_reason: Mapped[Optional[str]] = mapped_column(Text)
+    cancelled_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    warranty = relationship("ProjectWarranty", back_populates="claims")
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "claim_number", name="uq_warranty_claim_project_number"),
+        Index("ix_warranty_claims_project_status", "project_id", "status"),
+    )
+
+
+class WarrantyActivityLog(Base):
+    """Activity timeline for warranties tab."""
+
+    __tablename__ = "warranty_activity_logs"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    warranty_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_warranties.id", ondelete="SET NULL")
+    )
+    claim_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("warranty_claims.id", ondelete="SET NULL")
+    )
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    details: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    __table_args__ = (
+        Index("ix_warranty_activity_project_created", "project_id", "created_at"),
+    )
+
+
+class WarrantyAlertEvent(Base):
+    """Tracks sent warranty/claim alerts for idempotency."""
+
+    __tablename__ = "warranty_alert_events"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    entity_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    alert_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", "alert_key", name="uq_warranty_alert_event"),
+        Index("ix_warranty_alert_events_entity", "entity_type", "entity_id"),
+    )
+
+
 class ProjectEvent(Base):
     __tablename__ = "project_events"
 
@@ -619,6 +846,12 @@ class ClientFile(Base):
     # Soft-delete when removed from project/opportunity files (admin can purge row + storage later)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    related_warranty_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_warranties.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    related_warranty_claim_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("warranty_claims.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 # Logical customer folders and documents (parallel to employee folders/docs)

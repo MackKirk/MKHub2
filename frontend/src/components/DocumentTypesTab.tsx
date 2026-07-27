@@ -124,7 +124,7 @@ function TemplateIcon({ className }: { className?: string }) {
   );
 }
 
-export default function DocumentTypesTab() {
+export default function DocumentTypesTab({ readOnly = false }: { readOnly?: boolean }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
@@ -449,6 +449,7 @@ export default function DocumentTypesTab() {
             </div>
           )}
         </div>
+        {!readOnly ? (
         <button
           type="button"
           onClick={openCreate}
@@ -456,6 +457,7 @@ export default function DocumentTypesTab() {
         >
           Create document template
         </button>
+        ) : null}
       </div>
       {documentTypes.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 p-8 text-center">
@@ -463,6 +465,7 @@ export default function DocumentTypesTab() {
           <p className="text-sm text-gray-500 mb-4">
             Create a preset (e.g. Cover + Back cover + Content) so users can pick it when creating a document.
           </p>
+          {!readOnly ? (
           <button
             type="button"
             onClick={openCreate}
@@ -470,6 +473,7 @@ export default function DocumentTypesTab() {
           >
             Create document template
           </button>
+          ) : null}
         </div>
       ) : (
         <div className="rounded-xl border bg-white overflow-hidden">
@@ -485,8 +489,8 @@ export default function DocumentTypesTab() {
             {documentTypes.map((dt) => (
               <div
                 key={dt.id}
-                onClick={() => openEdit(dt)}
-                className="group grid grid-cols-[1fr_8rem_8rem] gap-2 sm:gap-4 items-center px-4 py-2.5 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors"
+                onClick={() => !readOnly && openEdit(dt)}
+                className={`group grid grid-cols-[1fr_8rem_8rem] gap-2 sm:gap-4 items-center px-4 py-2.5 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 ${readOnly ? '' : 'cursor-pointer'} transition-colors`}
               >
                 <div className="min-w-0 flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
@@ -512,6 +516,8 @@ export default function DocumentTypesTab() {
                   {(dt.page_templates || []).length} page(s)
                 </div>
                 <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+                  {!readOnly ? (
+                  <>
                   <button
                     type="button"
                     onClick={(e) => {
@@ -545,6 +551,8 @@ export default function DocumentTypesTab() {
                   >
                     <TrashIcon />
                   </button>
+                  </>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -552,7 +560,7 @@ export default function DocumentTypesTab() {
         </div>
       )}
 
-      {showForm && (
+      {showForm && !readOnly && (
         <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] flex flex-col">

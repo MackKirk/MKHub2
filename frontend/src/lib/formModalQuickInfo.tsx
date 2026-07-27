@@ -2066,3 +2066,52 @@ export function manageCommunityGroupQuickInfo(tab: ManageCommunityGroupQuickInfo
     ),
   });
 }
+
+/** Add / edit project warranty (Warranties tab). */
+export const projectWarrantyFormQuickInfo = formModalQuickInfo({
+  purpose: <>Create or update a warranty record for an awarded project.</>,
+  howToUse: (
+    <>
+      Enter {uiLabel('Name')}, choose {uiLabel('Type')} and {uiLabel('Provider type')}, then set the period using{' '}
+      {uiLabel('Period definition')}: {uiLabel('By duration')} (start + term) or {uiLabel('By end date')} (start +
+      end). Optionally enable {uiLabel('Maintenance required')} and set {uiLabel('Frequency')} plus{' '}
+      {uiLabel('Maintenance due date')}. Attach documents from Files after saving.
+    </>
+  ),
+  behavior: (
+    <>
+      In {uiLabel('By duration')} mode the end date is calculated from the start date and term. In {uiLabel('By end date')}{' '}
+      mode you set the end date directly and duration is not stored. With {uiLabel('Maintenance required')}, choose a
+      preset frequency or {uiLabel('Custom interval')}, then set the next due date for tracking and alerts.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Create warranty')} or {uiLabel('Save changes')} persists
+      the record and refreshes the warranties list.
+    </>
+  ),
+});
+
+/** Register warranty claim (Warranties tab). */
+export const projectWarrantyClaimQuickInfo = formModalQuickInfo({
+  purpose: <>Register a warranty claim reported on this project.</>,
+  howToUse: (
+    <>
+      Optionally link a {uiLabel('Related warranty')}, describe the issue, set {uiLabel('Severity')} and{' '}
+      {uiLabel('Reported date')}, then register.
+    </>
+  ),
+  behavior: (
+    <>
+      Emergency severity triggers an immediate notification to the project admin. Claims can be tracked and resolved
+      from the claims list.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without creating a claim. {uiLabel('Register claim')} saves the claim and refreshes
+      summary and activity.
+    </>
+  ),
+});

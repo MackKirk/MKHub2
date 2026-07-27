@@ -117,13 +117,13 @@ function ColorSwatchInput({
   );
 }
 
-export default function SettingsLookupListsPanel() {
+export default function SettingsLookupListsPanel({ canEdit = true }: { canEdit?: boolean }) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data, refetch, isLoading } = useQuery({
-    queryKey: ['settings-bundle'],
-    queryFn: () => api<Record<string, Item[]>>('GET', '/settings'),
+    queryKey: ['settings-admin-bundle'],
+    queryFn: () => api<Record<string, Item[]>>('GET', '/settings/admin-bundle'),
   });
 
   const lists = useMemo(
@@ -441,7 +441,7 @@ export default function SettingsLookupListsPanel() {
               <p className={uiCx('mt-1 max-w-2xl', uiTypography.helper)}>{listSubtitle}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {!isTimesheetConfig && (
+              {!isTimesheetConfig && canEdit && (
                 <AppButton
                   type="button"
                   variant={addOpen ? 'secondary' : 'primary'}
@@ -492,6 +492,7 @@ export default function SettingsLookupListsPanel() {
                     />
                   </div>
                   <div className={uiCx('sm:col-span-2 flex justify-end pt-1', uiLayout.actionsRow)}>
+                    {canEdit ? (
                     <AppButton
                       onClick={async () => {
                         try {
@@ -530,7 +531,7 @@ export default function SettingsLookupListsPanel() {
                             );
                           }
                           await refetch();
-                          queryClient.invalidateQueries({ queryKey: ['settings-bundle'] });
+                          queryClient.invalidateQueries({ queryKey: ['settings-admin-bundle'] });
                           toast.success('Timesheet settings saved');
                         } catch {
                           toast.error('Failed to save');
@@ -539,12 +540,13 @@ export default function SettingsLookupListsPanel() {
                     >
                       Save settings
                     </AppButton>
+                    ) : null}
                   </div>
                 </div>
               </div>
             ) : (
               <>
-                {addOpen && (
+                {addOpen && canEdit && (
                   <div className={uiCx(uiBorders.subtle, uiRadius.card, 'border-dashed bg-red-50/30 p-4')}>
                     <div className={uiCx('mb-3', uiTypography.sectionTitle)}>
                       {isTermsTemplates ? 'New terms template' : 'New list item'}
@@ -658,7 +660,7 @@ export default function SettingsLookupListsPanel() {
                     title="No items yet"
                     description="Add the first value for this list."
                     action={
-                      !addOpen ? (
+                      !addOpen && canEdit ? (
                         <AppButton type="button" size="sm" leftIcon={<Plus className="h-4 w-4" />} onClick={() => setAddOpen(true)}>
                           Add item
                         </AppButton>
@@ -798,6 +800,7 @@ export default function SettingsLookupListsPanel() {
                                   </td>
                                 ) : null}
                                 <td className="px-3 py-3">
+                                  {canEdit ? (
                                   <div className="flex justify-end gap-2">
                                     <AppButton
                                       type="button"
@@ -819,6 +822,7 @@ export default function SettingsLookupListsPanel() {
                                       Delete
                                     </AppButton>
                                   </div>
+                                  ) : null}
                                 </td>
                               </tr>
                             );

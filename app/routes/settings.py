@@ -303,32 +303,34 @@ def calculate_break_minutes(
 
 @router.get("")
 def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
-    from ..auth.security import _has_permission
-    
-    # Allow access if user has settings:access OR any timesheet-related permissions OR business permissions
-    has_access = _has_permission(user, "settings:access") or \
-                 _has_permission(user, "hr:users:edit:timesheet") or \
-                 _has_permission(user, "hr:users:view:timesheet") or \
-                 _has_permission(user, "hr:attendance:write") or \
-                 _has_permission(user, "hr:attendance:read") or \
-                 _has_permission(user, "users:write") or \
-                 _has_permission(user, "users:read") or \
-                 _has_permission(user, "business:customers:read") or \
-                 _has_permission(user, "business:projects:read")
-    
-    out = {}
-    
-    # Only include setting lists if user has access
-    if has_access:
+    from ..auth.settings_permissions import can_read_list_in_settings_bundle, has_any_settings_permission
+
+    out: dict = {}
+
+    if has_any_settings_permission(user):
         ensure_standard_file_categories(db)
         ensure_training_matrix_slots(db)
         ensure_organization_logos_list(db)
         ensure_certificate_backgrounds_list(db)
-        rows = db.query(SettingList).all()
-        for lst in rows:
-            items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
-            out[lst.name] = [{"id": str(i.id), "label": i.label, "value": i.value, "sort_index": i.sort_index, "meta": i.meta or None} for i in items]
-        # convenience aliases
+
+    rows = db.query(SettingList).all()
+    for lst in rows:
+        if not can_read_list_in_settings_bundle(user, lst.name):
+            continue
+        items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
+        out[lst.name] = [
+            {
+                "id": str(i.id),
+                "label": i.label,
+                "value": i.value,
+                "sort_index": i.sort_index,
+                "meta": i.meta or None,
+            }
+            for i in items
+        ]
+
+    if has_any_settings_permission(user):
+        # convenience aliases for Settings admin UI
         out.setdefault("client_types", [])
         out.setdefault("client_statuses", [])
         out.setdefault("payment_terms", [])
@@ -338,9 +340,44 @@ def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(
         out.setdefault("timesheet", [])
         out.setdefault("report_categories", [])
         out.setdefault("terms-templates", [])
-    
-    # Google Places: use server-side proxy (/integrations/places/*); do not expose API key to clients.
-    # Users without settings lists access still get an empty bundle (200) so generic /settings callers do not 403.
+
+    return out
+
+
+@router.get("/admin-bundle")
+def get_settings_admin_bundle(db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+    from ..auth.settings_permissions import can_read_setting_list, has_any_settings_permission
+
+    if not has_any_settings_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    ensure_standard_file_categories(db)
+    ensure_training_matrix_slots(db)
+    ensure_organization_logos_list(db)
+    ensure_certificate_backgrounds_list(db)
+
+    out: dict = {}
+    rows = db.query(SettingList).all()
+    for lst in rows:
+        if not can_read_setting_list(user, lst.name):
+            continue
+        items = (
+            db.query(SettingItem)
+            .filter(SettingItem.list_id == lst.id)
+            .order_by(SettingItem.sort_index.asc())
+            .all()
+        )
+        out[lst.name] = [
+            {
+                "id": str(i.id),
+                "label": i.label,
+                "value": i.value,
+                "sort_index": i.sort_index,
+                "meta": i.meta or None,
+            }
+            for i in items
+        ]
+
     return out
 
 
@@ -425,7 +462,16 @@ def get_division_subdivisions(division_id: str, db: Session = Depends(get_db), u
 
 
 @router.get("/{list_name}")
-def list_settings(list_name: str, db: Session = Depends(get_db), _=Depends(require_permissions("settings:access"))):
+def list_settings(
+    list_name: str,
+    db: Session = Depends(get_db),
+    user: UserType = Depends(get_current_user),
+):
+    from ..auth.settings_permissions import can_read_setting_list
+
+    if not can_read_setting_list(user, list_name):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         return []
@@ -453,14 +499,9 @@ def create_setting_item(
     db: Session = Depends(get_db),
     user: UserType = Depends(get_current_user),
 ):
-    from ..auth.security import _has_permission
-    
-    # Check permissions: settings:access OR users:write OR (for break_eligible_employees in timesheet, also allow hr:users:edit:timesheet)
-    has_permission = _has_permission(user, "settings:access") or _has_permission(user, "users:write")
-    if not has_permission and list_name == "timesheet" and label == "break_eligible_employees":
-        has_permission = _has_permission(user, "hr:users:edit:timesheet") or _has_permission(user, "hr:attendance:write")
-    
-    if not has_permission:
+    from ..auth.settings_permissions import can_write_setting_list
+
+    if not can_write_setting_list(user, list_name, label):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     if list_name == "standard_file_categories":
@@ -664,10 +705,22 @@ def delete_attendance(
 
 
 @router.delete("/{list_name}/{item_id}")
-def delete_setting_item(list_name: str, item_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("settings:access", "users:write"))):
+def delete_setting_item(
+    list_name: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    user: UserType = Depends(get_current_user),
+):
+    from ..auth.settings_permissions import can_write_setting_list
+
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         return {"status": "ok"}
+
+    it = db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.id == item_id).first()
+    if it and not can_write_setting_list(user, list_name, it.label):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.id == item_id).delete()
     db.commit()
     return {"status": "ok"}
@@ -824,21 +877,17 @@ def update_attendance(
 
 @router.put("/{list_name}/{item_id}")
 def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, description: Optional[str] = None, icon: Optional[str] = None, show_in_project: Optional[str] = None, show_in_opportunity: Optional[str] = None, cell_kind: Optional[str] = None, file_object_id: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
-    from ..auth.security import _has_permission
-    
+    from ..auth.settings_permissions import can_write_setting_list
+
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         return {"status": "ok"}
     it = db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.id == item_id).first()
     if not it:
         return {"status": "ok"}
-    
-    # Check permissions: settings:access OR users:write OR (for break_eligible_employees in timesheet, also allow hr:users:edit:timesheet)
-    has_permission = _has_permission(user, "settings:access") or _has_permission(user, "users:write")
-    if not has_permission and list_name == "timesheet" and (it.label == "break_eligible_employees" or label == "break_eligible_employees"):
-        has_permission = _has_permission(user, "hr:users:edit:timesheet") or _has_permission(user, "hr:attendance:write")
-    
-    if not has_permission:
+
+    effective_label = label if label is not None else it.label
+    if not can_write_setting_list(user, list_name, effective_label):
         raise HTTPException(status_code=403, detail="Forbidden")
     old_label = it.label
     label_changed = label is not None and label != old_label

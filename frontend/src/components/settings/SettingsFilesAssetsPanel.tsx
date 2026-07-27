@@ -55,7 +55,7 @@ function parseView(raw: string | null): FilesView {
   return 'categories';
 }
 
-export default function SettingsFilesAssetsPanel() {
+export default function SettingsFilesAssetsPanel({ canEdit = true }: { canEdit?: boolean }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState<FilesView>(() => parseView(searchParams.get('view')));
 
@@ -91,16 +91,16 @@ export default function SettingsFilesAssetsPanel() {
         </div>
       </AppCard>
 
-      {view === 'categories' && <FileCategoriesView />}
-      {view === 'logos' && <BrandAssetsView />}
-      {view === 'certificates' && <CertificateAssetsView />}
+      {view === 'categories' && <FileCategoriesView canEdit={canEdit} />}
+      {view === 'logos' && <BrandAssetsView canEdit={canEdit} />}
+      {view === 'certificates' && <CertificateAssetsView canEdit={canEdit} />}
     </div>
   );
 }
 
 /* ——— File categories ——— */
 
-function FileCategoriesView() {
+function FileCategoriesView({ canEdit = true }: { canEdit?: boolean }) {
   return (
     <div className={uiSpacing.pageStack}>
       <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -121,14 +121,14 @@ function FileCategoriesView() {
       </AppCard>
 
       <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
-        <CompanyFileCategoriesCard />
-        <ProjectFileCategoriesCard />
+        <CompanyFileCategoriesCard canEdit={canEdit} />
+        <ProjectFileCategoriesCard canEdit={canEdit} />
       </div>
     </div>
   );
 }
 
-function CompanyFileCategoriesCard() {
+function CompanyFileCategoriesCard({ canEdit = true }: { canEdit?: boolean }) {
   const confirm = useConfirm();
   const qc = useQueryClient();
   const { data: departments, isLoading } = useQuery({
@@ -143,7 +143,7 @@ function CompanyFileCategoriesCard() {
     mutationFn: (label: string) => api('POST', `/settings/departments?label=${encodeURIComponent(label)}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['departments'] });
-      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      qc.invalidateQueries({ queryKey: ['settings-admin-bundle'] });
       setNewDept('');
       setAddOpen(false);
       toast.success('Category created');
@@ -155,7 +155,7 @@ function CompanyFileCategoriesCard() {
     mutationFn: (id: string) => api('DELETE', `/settings/departments/${encodeURIComponent(id)}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['departments'] });
-      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      qc.invalidateQueries({ queryKey: ['settings-admin-bundle'] });
       toast.success('Deleted');
     },
     onError: (e: any) => toast.error(e?.message || 'Failed to delete'),
@@ -170,7 +170,7 @@ function CompanyFileCategoriesCard() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['departments'] });
-      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      qc.invalidateQueries({ queryKey: ['settings-admin-bundle'] });
       toast.success('Updated');
     },
     onError: (e: any) => toast.error(e?.message || 'Failed to update'),
@@ -204,6 +204,7 @@ function CompanyFileCategoriesCard() {
           </div>
           <div className="flex items-center gap-2">
             <AppBadge variant="neutral">{sorted.length}</AppBadge>
+            {canEdit ? (
             <AppButton
               type="button"
               size="sm"
@@ -213,12 +214,13 @@ function CompanyFileCategoriesCard() {
             >
               {addOpen ? 'Cancel' : 'Add'}
             </AppButton>
+            ) : null}
           </div>
         </div>
       </div>
 
       <div className={uiCx('p-5', uiSpacing.sectionStack)}>
-        {addOpen && (
+        {addOpen && canEdit && (
           <div className={uiCx(uiBorders.subtle, uiRadius.card, 'border-dashed bg-red-50/30 p-4')}>
             <div className={uiCx(uiLayout.actionsRow, 'flex-wrap gap-2')}>
               <AppInput
@@ -361,7 +363,7 @@ function CompanyFileCategoriesCard() {
   );
 }
 
-function ProjectFileCategoriesCard() {
+function ProjectFileCategoriesCard({ canEdit = true }: { canEdit?: boolean }) {
   const confirm = useConfirm();
   const qc = useQueryClient();
   const { data: categories, isLoading } = useQuery({
@@ -399,7 +401,7 @@ function ProjectFileCategoriesCard() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['file-categories'] });
-      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      qc.invalidateQueries({ queryKey: ['settings-admin-bundle'] });
       toast.success('Saved');
     },
     onError: () => toast.error('Failed to save'),
@@ -421,7 +423,7 @@ function ProjectFileCategoriesCard() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['file-categories'] });
-      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      qc.invalidateQueries({ queryKey: ['settings-admin-bundle'] });
       setNewSlug('');
       setNewName('');
       setNewIcon('📁');
@@ -437,7 +439,7 @@ function ProjectFileCategoriesCard() {
       api('DELETE', `/settings/standard_file_categories/${encodeURIComponent(itemId)}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['file-categories'] });
-      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      qc.invalidateQueries({ queryKey: ['settings-admin-bundle'] });
       toast.success('Deleted');
     },
     onError: () => toast.error('Failed to delete'),
@@ -487,6 +489,7 @@ function ProjectFileCategoriesCard() {
           </div>
           <div className="flex items-center gap-2">
             <AppBadge variant="neutral">{sorted.length}</AppBadge>
+            {canEdit ? (
             <AppButton
               type="button"
               size="sm"
@@ -496,12 +499,13 @@ function ProjectFileCategoriesCard() {
             >
               {addOpen ? 'Cancel' : 'Add'}
             </AppButton>
+            ) : null}
           </div>
         </div>
       </div>
 
       <div className={uiCx('p-5', uiSpacing.sectionStack)}>
-        {addOpen && (
+        {addOpen && canEdit && (
           <div className={uiCx(uiBorders.subtle, uiRadius.card, 'border-dashed bg-red-50/30 p-4')}>
             <div className={uiCx('mb-3', uiTypography.sectionTitle)}>New project category</div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -708,9 +712,10 @@ function ProjectFileCategoriesCard() {
 
 /* ——— Brand / certificate asset libraries ——— */
 
-function BrandAssetsView() {
+function BrandAssetsView({ canEdit = true }: { canEdit?: boolean }) {
   return (
     <AssetLibraryView
+      canEdit={canEdit}
       kind="logos"
       title="Brand assets"
       subtitle="Upload logos once and reuse them in LMS certificates and other surfaces."
@@ -718,7 +723,7 @@ function BrandAssetsView() {
       emptyTitle="No logos yet"
       emptyDescription="Upload PNG, JPEG, WebP, or GIF logos to build the brand library."
       listKey="organization_logos"
-      invalidateKeys={['settings-bundle', 'training-organization-logo-presets']}
+      invalidateKeys={['settings-admin-bundle', 'training-organization-logo-presets']}
       uploadFn={uploadOrganizationLogoFile}
       apiBase="/settings/organization_logos"
       previewFor={(it) => {
@@ -730,9 +735,10 @@ function BrandAssetsView() {
   );
 }
 
-function CertificateAssetsView() {
+function CertificateAssetsView({ canEdit = true }: { canEdit?: boolean }) {
   return (
     <AssetLibraryView
+      canEdit={canEdit}
       kind="certificates"
       title="Certificate assets"
       subtitle="Landscape backgrounds for LMS completion certificates. Authors pick these in the course Certificate tab."
@@ -740,7 +746,7 @@ function CertificateAssetsView() {
       emptyTitle="No certificate backgrounds yet"
       emptyDescription="Upload high-resolution landscape images (PNG, JPEG, WebP)."
       listKey="certificate_backgrounds"
-      invalidateKeys={['settings-bundle', 'training-certificate-bg-presets']}
+      invalidateKeys={['settings-admin-bundle', 'training-certificate-bg-presets']}
       uploadFn={uploadCertificateBackgroundFile}
       apiBase="/settings/certificate_backgrounds"
       previewFor={(it) =>
@@ -764,6 +770,7 @@ function AssetLibraryView({
   apiBase,
   previewFor,
   objectFit,
+  canEdit = true,
 }: {
   kind: 'logos' | 'certificates';
   title: string;
@@ -777,14 +784,15 @@ function AssetLibraryView({
   apiBase: string;
   previewFor: (it: SettingItem) => string | null;
   objectFit: 'contain' | 'cover';
+  canEdit?: boolean;
 }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const replaceRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const { data, isLoading } = useQuery({
-    queryKey: ['settings-bundle'],
-    queryFn: () => api<Record<string, SettingItem[]>>('GET', '/settings'),
+    queryKey: ['settings-admin-bundle'],
+    queryFn: () => api<Record<string, SettingItem[]>>('GET', '/settings/admin-bundle'),
   });
   const items = (data?.[listKey] || []) as SettingItem[];
   const [busy, setBusy] = useState(false);
@@ -797,7 +805,7 @@ function AssetLibraryView({
   };
 
   const addFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
+    if (!canEdit || !files?.length) return;
     setBusy(true);
     try {
       const arr = Array.from(files);
@@ -880,6 +888,8 @@ function AssetLibraryView({
         </div>
         <div className="flex items-center gap-2">
           <AppBadge variant="neutral">{items.length}</AppBadge>
+          {canEdit ? (
+          <>
           <input
             ref={fileRef}
             type="file"
@@ -902,6 +912,8 @@ function AssetLibraryView({
           >
             {busy ? 'Uploading…' : 'Upload'}
           </AppButton>
+          </>
+          ) : null}
         </div>
       </div>
 

@@ -1125,6 +1125,13 @@ def me(user: User = Depends(get_current_user)):
     )
 
 
+@router.get("/me/settings-permissions")
+def my_settings_permissions(user: User = Depends(get_current_user)):
+    from ..auth.settings_permissions import settings_permissions_payload
+
+    return settings_permissions_payload(user)
+
+
 def _category_config_for_line(perm_map: dict, business_line: Optional[str], feature: str):
     from ..auth.security import _project_line_perm_prefix
 

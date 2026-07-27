@@ -12,7 +12,7 @@ type Template = {
   background_file_id?: string;
 };
 
-export default function DocumentTemplatesTab() {
+export default function DocumentTemplatesTab({ readOnly = false }: { readOnly?: boolean }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [name, setName] = useState('');
@@ -176,6 +176,7 @@ export default function DocumentTemplatesTab() {
 
   return (
     <div className="space-y-4">
+      {!readOnly ? (
       <div className="rounded-xl border bg-white p-4">
         <h2 className="text-sm font-semibold text-gray-900 mb-3">Add background template</h2>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -231,6 +232,7 @@ export default function DocumentTemplatesTab() {
           </button>
         </div>
       </div>
+      ) : null}
 
       <div className="rounded-xl border bg-white p-4">
         <h2 className="text-sm font-semibold text-gray-900 mb-3">Registered templates</h2>
@@ -263,6 +265,8 @@ export default function DocumentTemplatesTab() {
                   )}
                 </div>
                 <div className="p-2 flex items-center gap-0.5 border-t border-gray-100">
+                  {!readOnly ? (
+                  <>
                   <button
                     type="button"
                     onClick={() => openEditTemplate(t)}
@@ -285,13 +289,15 @@ export default function DocumentTemplatesTab() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
+                  </>
+                  ) : null}
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
-      {editingTemplate && (
+      {editingTemplate && !readOnly && (
         <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
             <div className="p-4 border-b border-gray-200">

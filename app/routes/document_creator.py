@@ -158,7 +158,12 @@ def _project_token_values(project_id: uuid.UUID, db: Session) -> Optional[dict]:
 def list_document_types(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions(
+        "documents:read",
+        "business:projects:documents:read",
+        "settings:document_templates:read",
+        "settings:document_templates:write",
+    )),
 ):
     """List document type presets (e.g. cover + back cover + content page)."""
     types = db.query(DocumentType).order_by(DocumentType.category or "", DocumentType.name).all()
@@ -194,7 +199,11 @@ def create_document_type(
     body: DocumentTypeCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(
+        "documents:write",
+        "business:projects:documents:write",
+        "settings:document_templates:write",
+    )),
 ):
     """Create a document type preset (ordered list of page templates)."""
     doc_type = DocumentType(
@@ -222,7 +231,11 @@ def update_document_type(
     body: DocumentTypeUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(
+        "documents:write",
+        "business:projects:documents:write",
+        "settings:document_templates:write",
+    )),
 ):
     """Update a document type preset."""
     try:
@@ -257,7 +270,11 @@ def delete_document_type(
     document_type_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(
+        "documents:write",
+        "business:projects:documents:write",
+        "settings:document_templates:write",
+    )),
 ):
     """Delete a document type preset."""
     try:
@@ -277,7 +294,11 @@ def duplicate_document_type(
     document_type_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(
+        "documents:write",
+        "business:projects:documents:write",
+        "settings:document_templates:write",
+    )),
 ):
     """Duplicate a document type preset. Creates a new one with name + ' (copy)' and same category, description, page_templates."""
     try:
@@ -383,7 +404,14 @@ def expand_document_type_pages(
 def list_templates(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions(
+        "documents:read",
+        "business:projects:documents:read",
+        "settings:document_backgrounds:read",
+        "settings:document_backgrounds:write",
+        "settings:document_templates:read",
+        "settings:document_templates:write",
+    )),
 ):
     """List all document templates (name, id, thumbnail via background_file_id)."""
     templates = db.query(DocumentTemplate).order_by(DocumentTemplate.name).all()
@@ -395,7 +423,14 @@ def get_template(
     template_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions(
+        "documents:read",
+        "business:projects:documents:read",
+        "settings:document_backgrounds:read",
+        "settings:document_backgrounds:write",
+        "settings:document_templates:read",
+        "settings:document_templates:write",
+    )),
 ):
     """Get template by id including areas_definition."""
     try:
@@ -429,7 +464,11 @@ def create_template(
     body: TemplateCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(
+        "documents:write",
+        "business:projects:documents:write",
+        "settings:document_backgrounds:write",
+    )),
 ):
     """Create a new document template (background)."""
     bg_id = None
@@ -460,7 +499,11 @@ def update_template(
     body: TemplateUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(
+        "documents:write",
+        "business:projects:documents:write",
+        "settings:document_backgrounds:write",
+    )),
 ):
     """Update template name, description or background."""
     try:
@@ -496,7 +539,11 @@ def delete_template(
     template_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(
+        "documents:write",
+        "business:projects:documents:write",
+        "settings:document_backgrounds:write",
+    )),
 ):
     """Delete a template."""
     try:

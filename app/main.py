@@ -2586,6 +2586,63 @@ def create_app() -> FastAPI:
                         except Exception as _e:
                             print(f"[startup] print_shop_supply_products.{col} (non-critical): {_e}")
 
+                    # Project warranties tables
+                    try:
+                        rows = db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_name = 'project_warranties' LIMIT 1"
+                            )
+                        ).fetchall()
+                        if not rows:
+                            from .models.models import (
+                                ProjectWarranty,
+                                WarrantyMaintenance,
+                                WarrantyClaim,
+                                WarrantyActivityLog,
+                                WarrantyAlertEvent,
+                            )
+                            Base.metadata.create_all(
+                                bind=engine,
+                                tables=[
+                                    ProjectWarranty.__table__,
+                                    WarrantyMaintenance.__table__,
+                                    WarrantyClaim.__table__,
+                                    WarrantyActivityLog.__table__,
+                                    WarrantyAlertEvent.__table__,
+                                ],
+                            )
+                            db.commit()
+                            print("[startup] Created project warranty tables")
+                    except Exception as _e:
+                        print(f"[startup] project warranty tables (non-critical): {_e}")
+
+                    try:
+                        for col, ddl in [
+                            (
+                                "related_warranty_id",
+                                "UUID REFERENCES project_warranties(id) ON DELETE SET NULL",
+                            ),
+                            (
+                                "related_warranty_claim_id",
+                                "UUID REFERENCES warranty_claims(id) ON DELETE SET NULL",
+                            ),
+                        ]:
+                            exists = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_name = 'client_files' AND column_name = :c
+                                    """
+                                ),
+                                {"c": col},
+                            ).fetchall()
+                            if not exists:
+                                db.execute(text(f"ALTER TABLE client_files ADD COLUMN {col} {ddl}"))
+                                db.commit()
+                                print(f"[startup] Added client_files.{col}")
+                    except Exception as _e:
+                        print(f"[startup] client_files warranty columns (non-critical): {_e}")
+
                     # Soft delete columns (if missing)
                     for table_name, fk_col in [("projects", "deleted_by_id"), ("clients", "deleted_by_id"), ("proposals", "deleted_by_id"), ("quotes", "deleted_by_id")]:
                         try:
@@ -2639,6 +2696,13 @@ def create_app() -> FastAPI:
             start_offboarding_revocation_scheduler()
         except Exception as e:
             print(f"⚠️  Could not start offboarding revocation scheduler: {e}")
+
+        try:
+            from .services.warranty_alerts_scheduler import start_warranty_alerts_scheduler
+
+            start_warranty_alerts_scheduler()
+        except Exception as e:
+            print(f"⚠️  Could not start warranty alerts scheduler: {e}")
 
         print("[startup] Application startup complete - server ready!")
 

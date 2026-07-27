@@ -277,6 +277,77 @@ def _legacy_project_sub_feature_key(key: str) -> bool:
     return True
 
 
+def _legacy_full_settings_access(perm_map: dict) -> bool:
+    """
+    Legacy settings:access — full System Settings access (all tabs).
+    Only when no granular settings:* keys exist in the permission map (role override).
+    Granular grants must not imply full access via settings:access.
+    """
+    if not is_granted_perm_value(perm_map.get("settings:access")):
+        return False
+    child_keys = (
+        "settings:lookup_lists:read",
+        "settings:lookup_lists:write",
+        "settings:files_assets:read",
+        "settings:files_assets:write",
+        "settings:permission_templates:read",
+        "settings:permission_templates:write",
+        "settings:terms_templates:read",
+        "settings:terms_templates:write",
+        "settings:document_backgrounds:read",
+        "settings:document_backgrounds:write",
+        "settings:document_templates:read",
+        "settings:document_templates:write",
+    )
+    children_in_map = [k for k in child_keys if k in perm_map]
+    return not children_in_map
+
+
+def _settings_access_effective(perm_map: dict) -> bool:
+    """
+    Whether settings:access is denied when granular overrides exist but none are granted.
+    Legacy standalone access (no granular keys in map) still grants full access.
+    """
+    if not is_granted_perm_value(perm_map.get("settings:access")):
+        return False
+    child_keys = (
+        "settings:lookup_lists:read",
+        "settings:lookup_lists:write",
+        "settings:files_assets:read",
+        "settings:files_assets:write",
+        "settings:permission_templates:read",
+        "settings:permission_templates:write",
+        "settings:terms_templates:read",
+        "settings:terms_templates:write",
+        "settings:document_backgrounds:read",
+        "settings:document_backgrounds:write",
+        "settings:document_templates:read",
+        "settings:document_templates:write",
+    )
+    children_in_map = [k for k in child_keys if k in perm_map]
+    if not children_in_map:
+        return True
+    return any(is_granted_perm_value(perm_map.get(k)) for k in children_in_map)
+
+
+def _any_settings_child_granted(perm_map: dict) -> bool:
+    child_keys = (
+        "settings:lookup_lists:read",
+        "settings:lookup_lists:write",
+        "settings:files_assets:read",
+        "settings:files_assets:write",
+        "settings:permission_templates:read",
+        "settings:permission_templates:write",
+        "settings:terms_templates:read",
+        "settings:terms_templates:write",
+        "settings:document_backgrounds:read",
+        "settings:document_backgrounds:write",
+        "settings:document_templates:read",
+        "settings:document_templates:write",
+    )
+    return any(is_granted_perm_value(perm_map.get(k)) for k in child_keys)
+
+
 def granted_permission_keys_from_map(perm_map: dict) -> List[str]:
     """Keys granted for /auth/me and frontend permission sets."""
     config_keys = _permission_config_keys()
@@ -285,6 +356,8 @@ def granted_permission_keys_from_map(perm_map: dict) -> List[str]:
         if key in config_keys:
             continue
         if _legacy_project_sub_feature_key(key):
+            continue
+        if key == "settings:access":
             continue
         if is_granted_perm_value(value):
             granted.append(key)
@@ -363,6 +436,17 @@ def _documents_area_unlocked(perm_map: dict) -> bool:
     )
 
 
+def _settings_area_unlocked(perm_map: dict) -> bool:
+    """True if user may use Settings scoped permissions (access or any settings:* child)."""
+    if is_granted_perm_value(perm_map.get("settings:access")):
+        return True
+    return any(
+        is_granted_perm_value(v)
+        for k, v in perm_map.items()
+        if isinstance(k, str) and k.startswith("settings:") and k != "settings:access"
+    )
+
+
 def _hr_area_unlocked(perm_map: dict) -> bool:
     """True if user may use HR scoped permissions (access or any hr:* child)."""
     if is_granted_perm_value(perm_map.get("hr:access")):
@@ -376,6 +460,8 @@ def _hr_area_unlocked(perm_map: dict) -> bool:
 
 def _perm_matches_map(perm_map: dict, perm: str) -> bool:
     """Whether perm_map grants `perm`, including granular Fleet & Equipment aliases."""
+    if perm == "settings:access":
+        return _legacy_full_settings_access(perm_map)
     if is_granted_perm_value(perm_map.get(perm)):
         return True
     if perm == "fleet:access":
@@ -572,6 +658,8 @@ def _has_permission(user: User, perm: str) -> bool:
                         return False
                     if not _hr_area_unlocked(perm_map):
                         return False
+                elif area == 'settings' and perm != 'settings:access':
+                    pass
                 # Equipment API uses equipment:read/write; those are granted via fleet:equipment:* + company assets
                 elif area == 'equipment' and perm in ('equipment:read', 'equipment:write'):
                     pass

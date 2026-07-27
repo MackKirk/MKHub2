@@ -37,7 +37,8 @@ export type AppSectionPresetKey =
   | 'opportunities'
   | 'projects'
   | 'fieldBrief'
-  | 'team';
+  | 'team'
+  | 'warranties';
 
 type SectionPresetDef = {
   iconClassName: string;
@@ -65,6 +66,7 @@ const SECTION_PRESETS: Record<AppSectionPresetKey, SectionPresetDef> = {
   projects: { iconClassName: 'bg-orange-100 text-orange-800', Icon: Briefcase },
   fieldBrief: { iconClassName: 'bg-teal-100 text-teal-800', Icon: ClipboardList },
   team: { iconClassName: 'bg-blue-100 text-blue-800', Icon: Users },
+  warranties: { iconClassName: 'bg-sky-100 text-sky-800', Icon: Shield },
 };
 
 /** Spread onto `AppSectionHeader` (icon + iconClassName). */

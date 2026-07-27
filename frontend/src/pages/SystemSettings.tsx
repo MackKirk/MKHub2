@@ -87,31 +87,93 @@ import {
   syncTrainingAccessInKeySet,
   type TrainingAccessLevel,
 } from '@/lib/trainingPermissions';
+import { syncSettingsAccessInKeySet, filterSettingsAreaPermissions } from '@/lib/settingsPermissions';
 import {
   applyProjectLineAccessLevelToKeySet,
   type ProjectLinePermissionRow,
 } from '@/lib/projectLinePermissions';
 import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
+import { isAdminRole } from '@/lib/projectLinePermissionKeys';
+import {
+  canEditDocumentBackgroundsCard,
+  canEditDocumentTemplatesCard,
+  canEditFilesAssetsTab,
+  canEditLookupListsTab,
+  canEditPermissionTemplatesCard,
+  canEditTermsTemplatesCard,
+  canViewDocumentBackgroundsCard,
+  canViewDocumentTemplatesCard,
+  canViewFilesAssetsTab,
+  canViewLookupListsTab,
+  canViewPermissionTemplatesCard,
+  canViewTermsTemplatesCard,
+  canViewTemplatesTab,
+} from '@/lib/settingsPermissions';
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
 type SettingsSection = 'files' | 'templates' | 'lists';
 
-export default function SystemSettings(){
+export default function SystemSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const { data: settingsPerms, isFetched: settingsPermsFetched } = useQuery({
+    queryKey: ['me-settings-permissions'],
+    queryFn: () => api<any>('GET', '/auth/me/settings-permissions'),
+    refetchOnMount: 'always',
+    staleTime: 0,
+  });
+  const canAccessSettings = !!settingsPerms?.can_access_settings;
 
+  useEffect(() => {
+    if (!settingsPermsFetched) return;
+    if (!canAccessSettings) {
+      queryClient.removeQueries({ queryKey: ['settings'] });
+      queryClient.removeQueries({ queryKey: ['settings-bundle'] });
+      queryClient.removeQueries({ queryKey: ['settings-admin-bundle'] });
+    }
+  }, [settingsPermsFetched, canAccessSettings, queryClient]);
 
+  const canViewLists = !!settingsPerms?.can_view_lookup_lists;
+  const canEditLists = !!settingsPerms?.can_edit_lookup_lists;
+  const canViewFiles = !!settingsPerms?.can_view_files_assets;
+  const canEditFiles = !!settingsPerms?.can_edit_files_assets;
+  const canViewTemplates = !!settingsPerms?.can_view_templates_tab;
+  const canViewPermTpl = !!settingsPerms?.can_view_permission_templates;
+  const canEditPermTpl = !!settingsPerms?.can_edit_permission_templates;
+  const canViewTermsTpl = !!settingsPerms?.can_view_terms_templates;
+  const canEditTermsTpl = !!settingsPerms?.can_edit_terms_templates;
+  const canViewDocBg = !!settingsPerms?.can_view_document_backgrounds;
+  const canEditDocBg = !!settingsPerms?.can_edit_document_backgrounds;
+  const canViewDocTpl = !!settingsPerms?.can_view_document_templates;
+  const canEditDocTpl = !!settingsPerms?.can_edit_document_templates;
+
+  const allowedSections = useMemo(() => {
+    const sections: SettingsSection[] = [];
+    if (canViewLists) sections.push('lists');
+    if (canViewFiles) sections.push('files');
+    if (canViewTemplates) sections.push('templates');
+    return sections;
+  }, [canViewLists, canViewFiles, canViewTemplates]);
 
   const [section, setSection] = useState<SettingsSection>('lists');
 
   useEffect(() => {
     const raw = (searchParams.get('section') || '').toLowerCase();
+    let desired: SettingsSection | null = null;
     if (raw === 'templates' || raw === 'files' || raw === 'lists') {
-      setSection(raw as SettingsSection);
+      desired = raw as SettingsSection;
     } else if (!raw) {
-      setSection('lists');
+      desired = 'lists';
     }
-  }, [searchParams]);
+    if (desired && allowedSections.includes(desired)) {
+      setSection(desired);
+      return;
+    }
+    if (allowedSections.length > 0) {
+      setSection(allowedSections[0]);
+    }
+  }, [searchParams, allowedSections]);
 
   const handleSectionTab = (id: SettingsSection) => {
     setSection(id);
@@ -126,11 +188,44 @@ export default function SystemSettings(){
     setSearchParams(next, { replace: true });
   };
 
-  const sectionTabs: { id: SettingsSection; label: string }[] = [
-    { id: 'lists', label: 'Lookup lists' },
-    { id: 'files', label: 'Files & assets' },
-    { id: 'templates', label: 'Templates' },
-  ];
+  const sectionTabs = [
+    canViewLists ? { id: 'lists' as SettingsSection, label: 'Lookup lists' } : null,
+    canViewFiles ? { id: 'files' as SettingsSection, label: 'Files & assets' } : null,
+    canViewTemplates ? { id: 'templates' as SettingsSection, label: 'Templates' } : null,
+  ].filter(Boolean) as { id: SettingsSection; label: string }[];
+
+  if (!settingsPermsFetched) {
+    return (
+      <div className={uiCx(uiSpacing.pageStack, 'bg-gray-50')}>
+        <AppPageHeader
+          title="System settings"
+          subtitle="Administration for lookup lists, files & assets, and templates used across MKHub."
+          icon={<Settings className="h-4 w-4" />}
+        />
+        <AppCard>
+          <AppEmptyState title="Loading…" description="Checking your permissions." />
+        </AppCard>
+      </div>
+    );
+  }
+
+  if (!canAccessSettings) {
+    return (
+      <div className={uiCx(uiSpacing.pageStack, 'bg-gray-50')}>
+        <AppPageHeader
+          title="System settings"
+          subtitle="Administration for lookup lists, files & assets, and templates used across MKHub."
+          icon={<Settings className="h-4 w-4" />}
+        />
+        <AppCard>
+          <AppEmptyState
+            title="No access"
+            description="You do not have permission to view System Settings. Ask an administrator to grant Settings permissions."
+          />
+        </AppCard>
+      </div>
+    );
+  }
 
   return (
     <div className={uiCx(uiSpacing.pageStack, 'bg-gray-50')}>
@@ -140,50 +235,70 @@ export default function SystemSettings(){
         icon={<Settings className="h-4 w-4" />}
       />
 
-      <AppCard bodyClassName={uiSpacing.compactCardPadding}>
-        <AppTabs
-          tabs={sectionTabs.map((t) => ({ key: t.id, label: t.label }))}
-          value={section}
-          onChange={(key) => handleSectionTab(key as SettingsSection)}
-        />
-      </AppCard>
+      {sectionTabs.length > 0 ? (
+        <AppCard bodyClassName={uiSpacing.compactCardPadding}>
+          <AppTabs
+            tabs={sectionTabs.map((t) => ({ key: t.id, label: t.label }))}
+            value={section}
+            onChange={(key) => handleSectionTab(key as SettingsSection)}
+          />
+        </AppCard>
+      ) : null}
 
-      {section === 'lists' && <SettingsLookupListsPanel />}
+      {section === 'lists' && canViewLists && <SettingsLookupListsPanel canEdit={canEditLists} />}
 
-      {section === 'files' && <SettingsFilesAssetsPanel />}
+      {section === 'files' && canViewFiles && <SettingsFilesAssetsPanel canEdit={canEditFiles} />}
 
-      {section === 'templates' && (
+      {section === 'templates' && canViewTemplates && (
         <div className={uiSpacing.pageStack}>
-          <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
+          {canViewPermTpl || canViewTermsTpl ? (
+            <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
+              {canViewPermTpl ? (
+                <AppCard
+                  title="Permission templates"
+                  subtitle="Apply bundles of permissions from a user's Permissions tab."
+                  className="min-w-0"
+                >
+                  <PermissionTemplatesSection canEdit={canEditPermTpl} />
+                </AppCard>
+              ) : null}
+              {canViewTermsTpl ? (
+                <AppCard
+                  title="Terms templates"
+                  subtitle="Preset terms for proposals and quotes."
+                  className="min-w-0"
+                >
+                  <TermsTemplatesSection canEdit={canEditTermsTpl} />
+                </AppCard>
+              ) : null}
+            </div>
+          ) : null}
+          {canViewDocBg ? (
             <AppCard
-              title="Permission templates"
-              subtitle="Apply bundles of permissions from a user's Permissions tab."
+              title="Document creator — background templates"
+              subtitle="Page backgrounds (images) used when building documents in the Document creator (sidebar → Documents)."
               className="min-w-0"
             >
-              <PermissionTemplatesSection />
+              <DocumentTemplatesTab readOnly={!canEditDocBg} />
             </AppCard>
+          ) : null}
+          {canViewDocTpl ? (
             <AppCard
-              title="Terms templates"
-              subtitle="Preset terms for proposals and quotes."
+              title="Document creator — document templates"
+              subtitle="Preset layouts (ordered pages with backgrounds and fields) offered when creating a new document."
               className="min-w-0"
             >
-              <TermsTemplatesSection />
+              <DocumentTypesTab readOnly={!canEditDocTpl} />
             </AppCard>
-          </div>
-          <AppCard
-            title="Document creator — background templates"
-            subtitle="Page backgrounds (images) used when building documents in the Document creator (sidebar → Documents)."
-            className="min-w-0"
-          >
-            <DocumentTemplatesTab />
-          </AppCard>
-          <AppCard
-            title="Document creator — document templates"
-            subtitle="Preset layouts (ordered pages with backgrounds and fields) offered when creating a new document."
-            className="min-w-0"
-          >
-            <DocumentTypesTab />
-          </AppCard>
+          ) : null}
+          {!canViewPermTpl && !canViewTermsTpl && !canViewDocBg && !canViewDocTpl ? (
+            <AppCard>
+              <AppEmptyState
+                title="No template access"
+                description="You can open the Templates tab but no template cards are enabled for your account."
+              />
+            </AppCard>
+          ) : null}
         </div>
       )}
     </div>
@@ -195,7 +310,7 @@ type PermTemplate = { id: string; name: string; permission_keys: string[] };
 type PermDefItem = { id: string; key: string; label: string; description?: string };
 type PermDefCategory = { id: string; name: string; label: string; description?: string; permissions: PermDefItem[] };
 
-function PermissionTemplatesSection() {
+function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { data: templates = [], isLoading: loadingTemplates } = useQuery({
@@ -288,6 +403,13 @@ function PermissionTemplatesSection() {
           label: 'Training & Learning',
           description: 'Organization training dashboard and LMS administration.',
           permissions: filterTrainingAreaPermissions(cat.permissions || []),
+        });
+      } else if (cat.name === 'settings') {
+        processed.push({
+          ...cat,
+          label: 'Settings',
+          description: 'System settings — lookup lists, files & assets, and templates.',
+          permissions: filterSettingsAreaPermissions(cat.permissions || []),
         });
       } else if (cat.name === 'work_orders' || cat.name === 'inspections') {
         // Legacy categories — superseded by fleet:* keys in UI
@@ -393,13 +515,15 @@ function PermissionTemplatesSection() {
     if (e) return e;
     return {
       name: t.name,
-      selectedKeys: syncTrainingAccessInKeySet(syncHrAccessInKeySet(
-        syncDocumentsAccessInKeySet(
-          syncFleetAccessInKeySet(
-            syncCompanyAssetsAccessInKeySet(new Set(t.permission_keys || [])),
+      selectedKeys: syncSettingsAccessInKeySet(
+        syncTrainingAccessInKeySet(syncHrAccessInKeySet(
+          syncDocumentsAccessInKeySet(
+            syncFleetAccessInKeySet(
+              syncCompanyAssetsAccessInKeySet(new Set(t.permission_keys || [])),
+            ),
           ),
-        ),
-      )),
+        )),
+      ),
     };
   };
 
@@ -425,6 +549,7 @@ function PermissionTemplatesSection() {
       next = syncFleetAccessInKeySet(next);
       next = syncHrAccessInKeySet(next);
       next = syncTrainingAccessInKeySet(next);
+      next = syncSettingsAccessInKeySet(next);
       onChange(next);
     };
     const permRow = (perm: PermDefItem, indent = false) => {
@@ -813,39 +938,41 @@ function PermissionTemplatesSection() {
 
   return (
     <div className={uiSpacing.sectionStack}>
-      <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
-        <h4 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Create New Template</h4>
-        <div className={uiSpacing.sectionStack}>
-          <AppInput
-            label="Template Name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="e.g., Sales, Field Technician"
-          />
-          <div>
-            <div className={uiCx(uiTypography.controlLabel, 'mb-1 block')}>Permissions (select all that apply)</div>
-            {renderPermissionCheckboxes(newSelectedKeys, setNewSelectedKeys)}
-          </div>
-          <div className="flex justify-end">
-            <AppButton
-              loading={createMutation.isPending}
-              disabled={createMutation.isPending}
-              onClick={() => {
-                if (!newName.trim()) {
-                  toast.error('Template name is required');
-                  return;
-                }
-                createMutation.mutate({
-                  name: newName.trim(),
-                  permission_keys: Array.from(newSelectedKeys),
-                });
-              }}
-            >
-              Create Template
-            </AppButton>
+      {canEdit ? (
+        <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
+          <h4 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Create New Template</h4>
+          <div className={uiSpacing.sectionStack}>
+            <AppInput
+              label="Template Name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="e.g., Sales, Field Technician"
+            />
+            <div>
+              <div className={uiCx(uiTypography.controlLabel, 'mb-1 block')}>Permissions (select all that apply)</div>
+              {renderPermissionCheckboxes(newSelectedKeys, setNewSelectedKeys)}
+            </div>
+            <div className="flex justify-end">
+              <AppButton
+                loading={createMutation.isPending}
+                disabled={createMutation.isPending}
+                onClick={() => {
+                  if (!newName.trim()) {
+                    toast.error('Template name is required');
+                    return;
+                  }
+                  createMutation.mutate({
+                    name: newName.trim(),
+                    permission_keys: Array.from(newSelectedKeys),
+                  });
+                }}
+              >
+                Create Template
+              </AppButton>
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       <div>
         <h4 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Existing Templates</h4>
@@ -883,6 +1010,7 @@ function PermissionTemplatesSection() {
                         <AppInput
                           label="Template Name"
                           value={e.name}
+                          disabled={!canEdit}
                           onChange={(ev) =>
                             setEdits((s) => ({
                               ...s,
@@ -898,44 +1026,47 @@ function PermissionTemplatesSection() {
                               setEdits((s) => ({
                                 ...s,
                                 [t.id]: { ...(s[t.id] || e), selectedKeys: next },
-                              }))
+                              })),
+                            !canEdit,
                           )}
                         </div>
-                        <div className={uiCx('flex justify-end gap-2', uiLayout.actionsRow)}>
-                          <AppButton
-                            loading={updateMutation.isPending}
-                            disabled={updateMutation.isPending}
-                            onClick={() =>
-                              updateMutation.mutate({
-                                id: t.id,
-                                name: e.name,
-                                permission_keys: Array.from(e.selectedKeys),
-                              })
-                            }
-                          >
-                            Save
-                          </AppButton>
-                          <AppButton
-                            variant="secondary"
-                            loading={duplicateMutation.isPending}
-                            disabled={duplicateMutation.isPending}
-                            onClick={() => duplicateMutation.mutate(t.id)}
-                          >
-                            Duplicate
-                          </AppButton>
-                          <AppButton
-                            variant="secondary"
-                            loading={deleteMutation.isPending}
-                            disabled={deleteMutation.isPending}
-                            onClick={async () => {
-                              if (!(await confirm({ title: 'Delete template?', description: 'This action cannot be undone.' })))
-                                return;
-                              deleteMutation.mutate(t.id);
-                            }}
-                          >
-                            Delete
-                          </AppButton>
-                        </div>
+                        {canEdit ? (
+                          <div className={uiCx('flex justify-end gap-2', uiLayout.actionsRow)}>
+                            <AppButton
+                              loading={updateMutation.isPending}
+                              disabled={updateMutation.isPending}
+                              onClick={() =>
+                                updateMutation.mutate({
+                                  id: t.id,
+                                  name: e.name,
+                                  permission_keys: Array.from(e.selectedKeys),
+                                })
+                              }
+                            >
+                              Save
+                            </AppButton>
+                            <AppButton
+                              variant="secondary"
+                              loading={duplicateMutation.isPending}
+                              disabled={duplicateMutation.isPending}
+                              onClick={() => duplicateMutation.mutate(t.id)}
+                            >
+                              Duplicate
+                            </AppButton>
+                            <AppButton
+                              variant="secondary"
+                              loading={deleteMutation.isPending}
+                              disabled={deleteMutation.isPending}
+                              onClick={async () => {
+                                if (!(await confirm({ title: 'Delete template?', description: 'This action cannot be undone.' })))
+                                  return;
+                                deleteMutation.mutate(t.id);
+                              }}
+                            >
+                              Delete
+                            </AppButton>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   )}
@@ -950,12 +1081,12 @@ function PermissionTemplatesSection() {
 }
 
 // Terms Templates Section Component
-function TermsTemplatesSection(){
+function TermsTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { data: settings, isLoading, refetch } = useQuery({ 
-    queryKey:['settings-bundle'], 
-    queryFn: ()=>api<Record<string, Item[]>>('GET','/settings') 
+    queryKey:['settings-admin-bundle'], 
+    queryFn: ()=>api<Record<string, Item[]>>('GET','/settings/admin-bundle') 
   });
   const templates = (settings?.['terms-templates'] || []) as Item[];
   const [newTemplateName, setNewTemplateName] = useState('');
@@ -980,7 +1111,7 @@ function TermsTemplatesSection(){
       return api('POST', `/settings/terms-templates?label=${encodeURIComponent(payload.name)}&description=${encodeURIComponent(payload.description)}`);
     },
     onSuccess: ()=>{
-      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      qc.invalidateQueries({ queryKey: ['settings-admin-bundle'] });
       setNewTemplateName('');
       setNewTemplateDescription('');
       toast.success('Terms template created');
@@ -991,7 +1122,7 @@ function TermsTemplatesSection(){
   const deleteMutation = useMutation({
     mutationFn: (id: string)=>api('DELETE', `/settings/terms-templates/${encodeURIComponent(id)}`),
     onSuccess: ()=>{
-      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      qc.invalidateQueries({ queryKey: ['settings-admin-bundle'] });
       toast.success('Deleted');
     },
     onError: (e: any)=>toast.error(e?.message || 'Failed to delete')
@@ -1005,7 +1136,7 @@ function TermsTemplatesSection(){
       return api('PUT', `/settings/terms-templates/${encodeURIComponent(payload.id)}?${params.toString()}`);
     },
     onSuccess: ()=>{
-      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      qc.invalidateQueries({ queryKey: ['settings-admin-bundle'] });
       toast.success('Updated');
     },
     onError: (e: any)=>toast.error(e?.message || 'Failed to update')
@@ -1015,39 +1146,41 @@ function TermsTemplatesSection(){
 
   return (
     <div className={uiSpacing.sectionStack}>
-      <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
-        <h4 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Create New Template</h4>
-        <div className={uiSpacing.sectionStack}>
-          <AppInput
-            label="Template Name"
-            value={newTemplateName}
-            onChange={e=>setNewTemplateName(e.target.value)}
-            placeholder="e.g., Standard Terms, Commercial Terms"
-          />
-          <AppTextarea
-            label="Terms Description"
-            value={newTemplateDescription}
-            onChange={e=>setNewTemplateDescription(e.target.value)}
-            placeholder="Enter the full terms text..."
-            rows={6}
-          />
-          <div className="flex justify-end">
-            <AppButton
-              loading={createMutation.isPending}
-              disabled={createMutation.isPending}
-              onClick={()=>{
-                if(!newTemplateName.trim()){
-                  toast.error('Template name is required');
-                  return;
-                }
-                createMutation.mutate({ name: newTemplateName.trim(), description: newTemplateDescription });
-              }}
-            >
-              Create Template
-            </AppButton>
+      {canEdit ? (
+        <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
+          <h4 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Create New Template</h4>
+          <div className={uiSpacing.sectionStack}>
+            <AppInput
+              label="Template Name"
+              value={newTemplateName}
+              onChange={e=>setNewTemplateName(e.target.value)}
+              placeholder="e.g., Standard Terms, Commercial Terms"
+            />
+            <AppTextarea
+              label="Terms Description"
+              value={newTemplateDescription}
+              onChange={e=>setNewTemplateDescription(e.target.value)}
+              placeholder="Enter the full terms text..."
+              rows={6}
+            />
+            <div className="flex justify-end">
+              <AppButton
+                loading={createMutation.isPending}
+                disabled={createMutation.isPending}
+                onClick={()=>{
+                  if(!newTemplateName.trim()){
+                    toast.error('Template name is required');
+                    return;
+                  }
+                  createMutation.mutate({ name: newTemplateName.trim(), description: newTemplateDescription });
+                }}
+              >
+                Create Template
+              </AppButton>
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       <div>
         <h4 className={uiCx(uiTypography.sectionTitle, 'mb-3')}>Existing Templates</h4>
@@ -1083,43 +1216,47 @@ function TermsTemplatesSection(){
                         <AppInput
                           label="Template Name"
                           value={e.label}
+                          disabled={!canEdit}
                           onChange={ev=> setEdits(s=>({ ...s, [template.id]: { ...(s[template.id]||template), label: ev.target.value } }))}
                         />
                         <AppTextarea
                           label="Terms Description"
                           value={e.meta?.description||''}
+                          disabled={!canEdit}
                           onChange={ev=> setEdits(s=>({ ...s, [template.id]: { ...(s[template.id]||template), meta: { ...(s[template.id]?.meta||template.meta||{}), description: ev.target.value } } }))}
                           rows={6}
                         />
-                        <div className={uiCx('flex justify-end gap-2', uiLayout.actionsRow)}>
-                          <AppButton
-                            loading={updateMutation.isPending}
-                            disabled={updateMutation.isPending}
-                            onClick={async()=>{
-                              try{
-                                await updateMutation.mutateAsync({
-                                  id: template.id,
-                                  label: e.label,
-                                  description: e.meta?.description||''
-                                });
-                                setEdits(s=>{ const {[template.id]:_, ...rest} = s; return rest; });
-                              }catch(_e){}
-                            }}
-                          >
-                            Save
-                          </AppButton>
-                          <AppButton
-                            variant="secondary"
-                            loading={deleteMutation.isPending}
-                            disabled={deleteMutation.isPending}
-                            onClick={async()=>{
-                              if(!(await confirm({ title: 'Delete template?', description: 'This action cannot be undone.' }))) return;
-                              deleteMutation.mutate(template.id);
-                            }}
-                          >
-                            Delete
-                          </AppButton>
-                        </div>
+                        {canEdit ? (
+                          <div className={uiCx('flex justify-end gap-2', uiLayout.actionsRow)}>
+                            <AppButton
+                              loading={updateMutation.isPending}
+                              disabled={updateMutation.isPending}
+                              onClick={async()=>{
+                                try{
+                                  await updateMutation.mutateAsync({
+                                    id: template.id,
+                                    label: e.label,
+                                    description: e.meta?.description||''
+                                  });
+                                  setEdits(s=>{ const {[template.id]:_, ...rest} = s; return rest; });
+                                }catch(_e){}
+                              }}
+                            >
+                              Save
+                            </AppButton>
+                            <AppButton
+                              variant="secondary"
+                              loading={deleteMutation.isPending}
+                              disabled={deleteMutation.isPending}
+                              onClick={async()=>{
+                                if(!(await confirm({ title: 'Delete template?', description: 'This action cannot be undone.' }))) return;
+                                deleteMutation.mutate(template.id);
+                              }}
+                            >
+                              Delete
+                            </AppButton>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   )}

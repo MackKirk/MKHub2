@@ -221,6 +221,7 @@ const LEGACY_PROJECT_SUB_FEATURES = [
   'costs',
   'orders',
   'safety',
+  'warranties',
 ] as const;
 
 /** Sub-features removed from the app — hidden in permission UIs (tab no longer exists). */
@@ -257,6 +258,7 @@ export function isLegacySharedProjectPermissionKey(key: string): boolean {
     rest.startsWith('costs:') ||
     rest.startsWith('orders:') ||
     rest.startsWith('safety:') ||
+    rest.startsWith('warranties:') ||
     rest === 'members:write'
   );
 }

@@ -63,6 +63,9 @@ export function canEnablePermission(
   if (permKey === 'training:admin:write') {
     return has('training:admin:read');
   }
+  if (permKey.startsWith('settings:') && permKey.endsWith(':write')) {
+    return has(permKey.replace(':write', ':read'));
+  }
   if (permKey === 'hr:offboarding:read') {
     // hr:access is an implicit area gate (auto-synced); no prerequisite checkbox.
     return true;
@@ -551,6 +554,12 @@ export function applyPermissionUncheckCascade(
     newPerms['sales:quotations:write'] = false;
   } else if (uncheckedKey === 'training:admin:read') {
     newPerms['training:admin:write'] = false;
+  } else if (
+    uncheckedKey.startsWith('settings:') &&
+    uncheckedKey.endsWith(':read') &&
+    uncheckedKey !== 'settings:access'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
   } else if (uncheckedKey === 'business:construction:projects:read') {
     newPerms['business:construction:projects:write'] = false;
     newPerms['business:construction:projects:read:all'] = false;
@@ -582,6 +591,8 @@ export function applyPermissionUncheckCascade(
     newPerms['business:projects:estimate:read'] = false;
     newPerms['business:projects:orders:read'] = false;
     newPerms['business:projects:safety:read'] = false;
+    newPerms['business:projects:warranties:read'] = false;
+    newPerms['business:projects:warranties:costs:read'] = false;
     clearMembersWriteIfNoLineRead(newPerms);
   } else if (uncheckedKey === 'business:projects:write') {
     newPerms['business:projects:reports:write'] = false;
@@ -594,6 +605,7 @@ export function applyPermissionUncheckCascade(
     newPerms['business:projects:estimate:write'] = false;
     newPerms['business:projects:orders:write'] = false;
     newPerms['business:projects:safety:write'] = false;
+    newPerms['business:projects:warranties:write'] = false;
   } else if (
     uncheckedKey.startsWith('business:projects:') &&
     uncheckedKey.endsWith(':read') &&
@@ -670,6 +682,11 @@ export function applyPermissionUncheckCascade(
       newPerms['training:admin:write']
     );
     newPerms['training:access'] = hasChild;
+  }
+
+  // Settings no longer uses a legacy area gate in runtime checks.
+  if (uncheckedKey === 'settings:access' || uncheckedKey.startsWith('settings:')) {
+    newPerms['settings:access'] = false;
   }
 
   return newPerms;

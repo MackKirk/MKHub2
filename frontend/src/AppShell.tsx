@@ -274,7 +274,18 @@ export default function AppShell({ children }: PropsWithChildren){
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data:meProfile, isLoading: meProfileLoading } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });
-  const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const { data: me, isLoading: meLoading } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<any>('GET', '/auth/me'),
+    refetchOnMount: 'always',
+    staleTime: 0,
+  });
+  const { data: settingsPerms } = useQuery({
+    queryKey: ['me-settings-permissions'],
+    queryFn: () => api<any>('GET', '/auth/me/settings-permissions'),
+    refetchOnMount: 'always',
+    staleTime: 0,
+  });
   const userId = me?.id ? String(me.id) : '';
   
   // Check emergency contacts
@@ -404,7 +415,10 @@ export default function AppShell({ children }: PropsWithChildren){
   const confirm = useConfirm();
 
   const isAdmin = isAdminRole(me?.roles);
-  const permissionsSet = useMemo(() => new Set((me?.permissions || []).map((p: any) => String(p))), [me]);
+  const permissionsSet = useMemo<Set<string>>(
+    () => new Set((me?.permissions || []).map((p: unknown) => String(p))),
+    [me?.permissions],
+  );
 
   const hasPermission = (requiredPermission?: string) => {
     if (!requiredPermission) return true;
@@ -484,6 +498,9 @@ export default function AppShell({ children }: PropsWithChildren){
         permissionsSet.has('documents:move')
       );
     }
+    if (requiredPermission === 'settings:access') {
+      return !!settingsPerms?.can_access_settings;
+    }
     if (requiredPermission === 'business:projects:safety:read') {
       return (
         has ||
@@ -504,6 +521,9 @@ export default function AppShell({ children }: PropsWithChildren){
   };
 
   const canSeeMenuItem = (item: MenuItem): boolean => {
+    if (item.id === 'system-settings') {
+      return !!settingsPerms?.can_access_settings;
+    }
     if (hasPermission(item.requiredPermission)) return true;
     return Array.isArray(item.children) && item.children.some(canSeeMenuItem);
   };
@@ -959,6 +979,9 @@ export default function AppShell({ children }: PropsWithChildren){
       }
       if (category.id === 'sales') {
         if (!hasPermission('sales:quotations:read')) return false;
+      }
+      if (category.id === 'settings') {
+        if (!settingsPerms?.can_access_settings) return false;
       }
       const visibleItems = category.items.filter(canSeeMenuItem);
       return visibleItems.length > 0;
