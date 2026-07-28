@@ -32,9 +32,16 @@ import {
   partitionGridFiles,
   toGridFileFromClientLike,
   isFileGridImage,
+  ProjectFilesHome,
+  buildCategoryHomeRows,
+  getRecentFiles,
+  type FilesLibraryHomeFile,
 } from '@/components/files';
 import { libraryFilesMoveCategoryQuickInfo } from '@/lib/formModalQuickInfo';
-import { AppSectionHeader, appSectionPresetProps, AppCard, AppCheckboxControl, AppListRowIconButton, uiCx, uiSpacing } from '@/components/ui';
+import { AppButton, AppSectionHeader, appSectionPresetProps, AppCard, AppCheckboxControl, AppListRowIconButton, AppSelect, uiCx, uiSpacing } from '@/components/ui';
+
+type FilesLibraryView = 'home' | 'browser';
+type UploadModalContext = 'current-location' | 'choose-location';
 
 export type ClientFileForFiles = { id: string; file_object_id: string; is_image?: boolean; content_type?: string; category?: string; original_name?: string; uploaded_at?: string; site_id?: string };
 
@@ -66,6 +73,11 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
   const [editingFileNameValue, setEditingFileNameValue] = useState('');
   const [moveLocationFileId, setMoveLocationFileId] = useState<string | null>(null);
+  const [filesLibraryView, setFilesLibraryView] = useState<FilesLibraryView>('home');
+  const [pendingPreviewFileId, setPendingPreviewFileId] = useState<string | null>(null);
+  const [uploadModalContext, setUploadModalContext] = useState<UploadModalContext>('current-location');
+  const [uploadDestinationCategory, setUploadDestinationCategory] = useState('');
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
@@ -100,6 +112,82 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
     return grouped;
   }, [files]);
 
+  const homeTotalFiles = useMemo(() => filesByCategory['all']?.length ?? 0, [filesByCategory]);
+
+  const homeCategories = useMemo(
+    () =>
+      buildCategoryHomeRows(
+        visibleCategories.map((c: { id: string; name: string; icon?: string }) => ({
+          id: String(c.id),
+          name: String(c.name),
+          icon: c.icon,
+        })),
+        filesByCategory,
+        [],
+        () => canEditFiles,
+      ),
+    [visibleCategories, filesByCategory, canEditFiles],
+  );
+
+  const categoryNameById = useMemo(() => {
+    const map: Record<string, string> = { uncategorized: 'Uncategorized' };
+    visibleCategories.forEach((c: { id: string; name: string }) => {
+      map[String(c.id)] = String(c.name);
+    });
+    return map;
+  }, [visibleCategories]);
+
+  const writableCategoryOptions = useMemo(
+    () => [
+      { value: '', label: 'Select category...' },
+      ...visibleCategories.map((cat: { id: string; name: string }) => ({
+        value: String(cat.id),
+        label: String(cat.name),
+      })),
+    ],
+    [visibleCategories],
+  );
+
+  const openFilesHome = () => {
+    fileSelection.clear();
+    setFilesLibraryView('home');
+  };
+
+  const openAllFilesBrowser = (searchQuery?: string) => {
+    fileSelection.clear();
+    setFileSearchQuery(searchQuery ?? '');
+    setSelectedCategory('all');
+    setFilesLibraryView('browser');
+  };
+
+  const openCategoryBrowser = (categoryId: string) => {
+    fileSelection.clear();
+    setFileSearchQuery('');
+    setSelectedCategory(categoryId);
+    setFilesLibraryView('browser');
+  };
+
+  const openUncategorizedBrowser = () => {
+    fileSelection.clear();
+    setFileSearchQuery('');
+    setSelectedCategory('uncategorized');
+    setFilesLibraryView('browser');
+  };
+
+  const openUploadModal = (context: UploadModalContext) => {
+    setUploadModalContext(context);
+    if (context === 'choose-location') setUploadDestinationCategory('');
+    setShowUpload(true);
+  };
+
+  const openRecentFileFromHome = (file: FilesLibraryHomeFile) => {
+    const cat = file.categoryId && file.categoryId !== '' ? file.categoryId : 'uncategorized';
+    setSelectedCategory(cat);
+    setFileSearchQuery('');
+    setFilesLibraryView('browser');
+    setPendingPreviewFileId(file.id);
+  };
+
   useEffect(() => {
     if (selectedCategory === 'all' || selectedCategory === 'uncategorized') return;
     if (!visibleCategories.find((c: any) => c.id === selectedCategory)) {
@@ -119,9 +207,30 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
     return ext.toUpperCase() || 'File';
   };
 
+  const homeRecentFiles = useMemo((): FilesLibraryHomeFile[] => {
+    return getRecentFiles(files, 6).map((f) => {
+      const cat = f.category || 'uncategorized';
+      return {
+        id: f.id,
+        fileObjectId: f.file_object_id,
+        name: f.original_name || f.file_object_id,
+        categoryId: f.category,
+        categoryName: categoryNameById[cat] || cat,
+        uploadedAt: f.uploaded_at,
+        isImage: f.is_image,
+        contentType: f.content_type,
+        typeLabel: getFileTypeLabel(f),
+      };
+    });
+  }, [files, categoryNameById]);
+
   const currentFiles = useMemo(() => {
     const list = filesByCategory[selectedCategory] || [];
-    return [...list].sort((a, b) => {
+    const q = fileSearchQuery.trim().toLowerCase();
+    const filtered = q
+      ? list.filter((f) => (f.original_name || f.file_object_id || '').toLowerCase().includes(q))
+      : list;
+    return [...filtered].sort((a, b) => {
       let aVal: any, bVal: any;
       if (sortBy === 'uploaded_at') {
         aVal = a.uploaded_at || '';
@@ -137,7 +246,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
       if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [filesByCategory, selectedCategory, sortBy, sortOrder]);
+  }, [filesByCategory, selectedCategory, sortBy, sortOrder, fileSearchQuery]);
 
   const visibleFileIds = useMemo(() => currentFiles.map((f) => f.id), [currentFiles]);
   const { allSelected: allVisibleSelected } = fileSelection.getSelectionState(visibleFileIds);
@@ -298,6 +407,14 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
       toast.error('Preview not available');
     }
   };
+
+  useEffect(() => {
+    if (filesLibraryView !== 'browser' || !pendingPreviewFileId) return;
+    const f = files.find((x) => x.id === pendingPreviewFileId);
+    if (!f) return;
+    void handleFilePreview(f);
+    setPendingPreviewFileId(null);
+  }, [filesLibraryView, pendingPreviewFileId, files]);
 
   const fetchDownloadUrl = async (fid: string) => {
     try {
@@ -605,9 +722,29 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
               </div>
             </div>
           </div>
-        ) : null}
-
-        {!(isAdmin && filesSection === 'deleted') && (
+        ) : filesLibraryView === 'home' ? (
+          <ProjectFilesHome
+            title="Customer Files"
+            description="Browse files by category or open the complete customer library."
+            categories={homeCategories}
+            totalFileCount={homeTotalFiles}
+            totalFolderCount={0}
+            recentFiles={homeRecentFiles}
+            canWrite={canEditFiles}
+            designSystem={true}
+            supportsFolders={false}
+            supportsCreateFolder={false}
+            uncategorizedFileCount={filesByCategory['uncategorized']?.length ?? 0}
+            showUncategorizedCard={(filesByCategory['uncategorized']?.length ?? 0) > 0}
+            onOpenAllFiles={() => openAllFilesBrowser()}
+            onOpenCategory={openCategoryBrowser}
+            onOpenUncategorized={openUncategorizedBrowser}
+            onOpenRecentFile={openRecentFileFromHome}
+            onSearch={(q) => openAllFilesBrowser(q)}
+            onUpload={() => openUploadModal('choose-location')}
+            onCreateFolder={() => {}}
+          />
+        ) : (
         <div className="rounded-xl border bg-white overflow-hidden">
           <div className="flex h-[calc(100vh-400px)]">
             <div className="w-64 border-r bg-gray-50 flex flex-col">
@@ -615,13 +752,6 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                 <div className="text-xs font-semibold text-gray-700">File Categories</div>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <button onClick={() => setSelectedCategory('all')} className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${selectedCategory === 'all' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'}`}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs">📁</span>
-                    <span className="text-xs">All Files</span>
-                    <span className="ml-auto text-[10px] text-gray-500">({filesByCategory['all']?.length || 0})</span>
-                  </div>
-                </button>
                 {visibleCategories.map((cat: any) => {
                   const count = filesByCategory[cat.id]?.length || 0;
                   const canEditCat = canEditFiles;
@@ -683,6 +813,13 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                     </div>
                   </button>
                 )}
+                <button onClick={() => setSelectedCategory('all')} className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${selectedCategory === 'all' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs">📁</span>
+                    <span className="text-xs">All Files</span>
+                    <span className="ml-auto text-[10px] text-gray-500">({filesByCategory['all']?.length || 0})</span>
+                  </div>
+                </button>
               </div>
             </div>
             <div
@@ -711,6 +848,24 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                 }
               } : undefined}
             >
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <AppButton type="button" variant="ghost" size="sm" onClick={openFilesHome}>
+                  ← Files Home
+                </AppButton>
+                <span className="text-xs text-gray-500 hidden sm:inline">
+                  Files Home
+                  {selectedCategory !== 'all' ? (
+                    <>
+                      {' / '}
+                      <span className="text-gray-700 font-medium">
+                        {selectedCategory === 'uncategorized'
+                          ? 'Uncategorized'
+                          : visibleCategories.find((c: { id: string }) => c.id === selectedCategory)?.name || selectedCategory}
+                      </span>
+                    </>
+                  ) : null}
+                </span>
+              </div>
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="text-xs font-semibold">
                   {selectedCategory === 'all' ? 'All Files' : selectedCategory === 'uncategorized' ? 'Uncategorized Files' : visibleCategories.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
@@ -725,7 +880,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                     onTileSizeChange={setTileSize}
                   />
                 {canEditFiles && (
-                  <button onClick={() => setShowUpload(true)} className="px-2 py-1 rounded bg-brand-red text-white text-xs">
+                  <button onClick={() => openUploadModal('current-location')} className="px-2 py-1 rounded bg-brand-red text-white text-xs">
                     + Upload File
                   </button>
                 )}
@@ -962,9 +1117,41 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
           <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
             <div className="text-sm font-semibold mb-3">Upload Files</div>
             <div className="space-y-3">
+              {uploadModalContext === 'choose-location' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+                  <select
+                    value={uploadDestinationCategory}
+                    onChange={(e) => setUploadDestinationCategory(e.target.value)}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                  >
+                    {writableCategoryOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <div className="text-xs font-medium text-gray-600 mb-1.5">Files (multiple files supported)</div>
-                <input type="file" multiple onChange={async (e) => { const fileList = e.target.files; if (fileList?.length) { setShowUpload(false); await uploadMultiple(Array.from(fileList)); } }} className="w-full text-xs" />
+                <input
+                  type="file"
+                  multiple
+                  onChange={async (e) => {
+                    const fileList = e.target.files;
+                    if (!fileList?.length) return;
+                    if (uploadModalContext === 'choose-location' && !uploadDestinationCategory) {
+                      toast.error('Select a category');
+                      return;
+                    }
+                    setShowUpload(false);
+                    if (uploadModalContext === 'choose-location') {
+                      await uploadMultiple(Array.from(fileList), uploadDestinationCategory);
+                    } else {
+                      await uploadMultiple(Array.from(fileList));
+                    }
+                  }}
+                  className="w-full text-xs"
+                />
               </div>
               <div className="text-[10px] text-gray-500">You can also drag and drop files directly onto the category area</div>
             </div>

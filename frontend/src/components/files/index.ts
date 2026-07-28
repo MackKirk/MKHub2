@@ -22,6 +22,7 @@ export { FileListDropHint, fileDropTargetProps, isOverNestedFileDropTarget } fro
 export { FileListSelectionBar } from './FileListSelectionBar';
 export {
   buildFolderOptionsForCategory,
+  buildFolderPathOptionsForCategory,
   resolveInitialFolderValue,
   type FileLocationFolder,
   type FileLocationOption,
@@ -55,3 +56,22 @@ export {
 export { FileViewModeToolbar } from './FileViewModeToolbar';
 export { FileFolderGridTile, FileParentGridTile } from './FileFolderGridTile';
 export { FileImageGrid, FileGridNonImageList } from './FileImageGrid';
+export { default as ProjectFilesHome } from './ProjectFilesHome';
+export type {
+  FilesLibraryHomeFile,
+  FilesLibraryHomeCategory,
+  ProjectFilesHomeProps,
+} from './filesLibraryHomeTypes';
+export {
+  buildCategoryHomeRows,
+  buildFolderPathOptions,
+  buildTreeFolderPathOptions,
+  getLatestUploadedAt,
+  getRecentFiles,
+  partitionCategoriesInUse,
+  compareCategoriesByActivity,
+  type HomeFileLike,
+  type HomeCategoryLike,
+  type HomeFolderLike,
+  type TreeFolderLike,
+} from './filesLibraryHomeHelpers';

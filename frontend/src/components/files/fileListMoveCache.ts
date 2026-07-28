@@ -1,6 +1,6 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
 
-type FileRow = { id: string };
+type FileRow = { id: string; category?: string | null };
 
 export function patchFilesInQueryCache<T extends FileRow>(
   queryClient: QueryClient,

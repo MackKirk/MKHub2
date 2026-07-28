@@ -333,25 +333,19 @@ export default function ProjectWarrantiesTab({
 
   const sectionProps = designSystem ? appSectionPresetProps('warranties') : {};
 
-  const content = (
-    <div className={uiCx(uiSpacing.pageStack, 'min-w-0')}>
-      <div className={uiCx(uiLayout.actionsRow, 'items-center justify-between gap-3')}>
-        <div className="min-w-0">
-          <h2 className={uiTypography.sectionTitle}>Warranties</h2>
-          <p className={uiTypography.sectionSubtitle}>Coverage, maintenance, documents and claims</p>
-        </div>
-        {canWrite ? (
-          <div className={uiLayout.actionsRow}>
-            <AppButton variant="primary" size="sm" onClick={openAddWarranty}>
-              Add Warranty
-            </AppButton>
-            <AppButton variant="secondary" size="sm" onClick={() => openRegisterClaim()}>
-              Register Claim
-            </AppButton>
-          </div>
-        ) : null}
-      </div>
+  const headerActions = canWrite ? (
+    <div className={uiCx(uiLayout.actionsRow, 'shrink-0')}>
+      <AppButton variant="primary" size="sm" onClick={openAddWarranty}>
+        Add Warranty
+      </AppButton>
+      <AppButton variant="secondary" size="sm" onClick={() => openRegisterClaim()}>
+        Register Claim
+      </AppButton>
+    </div>
+  ) : undefined;
 
+  const tabBody = (
+    <>
       <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         {summaryCards.map((card) => (
           <WarrantySummaryKpiCard key={card.key} label={card.label} value={card.value} onClick={card.onClick} />
@@ -363,7 +357,7 @@ export default function ProjectWarrantiesTab({
           <AppSectionHeader
             title="Warranty Records"
             description="Coverage periods, maintenance and documents"
-            {...sectionProps}
+            {...(designSystem ? {} : sectionProps)}
           />
           <div className="mt-3 max-w-xs">
             <AppSelect
@@ -431,7 +425,7 @@ export default function ProjectWarrantiesTab({
       <div id="warranty-claims-section">
         <AppCard bodyClassName="!p-0">
           <div className={uiSpacing.cardPadding}>
-            <AppSectionHeader title="Claims" description="Warranty claims for this project" {...sectionProps} />
+            <AppSectionHeader title="Claims" description="Warranty claims for this project" {...(designSystem ? {} : sectionProps)} />
             <div className="mt-3">
               <AppCheckbox
                 label="Open claims only"
@@ -485,7 +479,7 @@ export default function ProjectWarrantiesTab({
 
       <AppCard bodyClassName="!p-0">
         <div className={uiSpacing.cardPadding}>
-          <AppSectionHeader title="Activity History" {...sectionProps} />
+          <AppSectionHeader title="Activity History" {...(designSystem ? {} : sectionProps)} />
         </div>
         {activitiesQ.isLoading ? (
           <SectionLoading message="Loading activity…" />
@@ -509,7 +503,11 @@ export default function ProjectWarrantiesTab({
           </ul>
         )}
       </AppCard>
+    </>
+  );
 
+  const modals = (
+    <>
       <WarrantyDetailModal
         open={Boolean(viewWarrantyId)}
         onClose={() => setViewWarrantyId(null)}
@@ -565,8 +563,37 @@ export default function ProjectWarrantiesTab({
           setViewClaimId(null);
         }}
       />
-    </div>
+    </>
   );
 
-  return content;
+  if (designSystem) {
+    return (
+      <>
+        <AppCard className="!rounded-2xl" bodyClassName={uiSpacing.cardPadding}>
+          <AppSectionHeader
+            title="Warranties"
+            description="Coverage, maintenance, documents and claims"
+            {...appSectionPresetProps('warranties')}
+            action={headerActions}
+          />
+          <div className={uiCx('mt-4 min-w-0', uiSpacing.sectionStack)}>{tabBody}</div>
+        </AppCard>
+        {modals}
+      </>
+    );
+  }
+
+  return (
+    <div className={uiCx(uiSpacing.pageStack, 'min-w-0')}>
+      <div className={uiCx(uiLayout.actionsRow, 'items-center justify-between gap-3')}>
+        <div className="min-w-0">
+          <h2 className={uiTypography.sectionTitle}>Warranties</h2>
+          <p className={uiTypography.sectionSubtitle}>Coverage, maintenance, documents and claims</p>
+        </div>
+        {headerActions}
+      </div>
+      {tabBody}
+      {modals}
+    </div>
+  );
 }

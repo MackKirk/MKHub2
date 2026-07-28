@@ -34,6 +34,11 @@ import {
   toGridFileFromCompanyDoc,
   isFileGridImage,
   type FileGridFileItem,
+  ProjectFilesHome,
+  buildCategoryHomeRows,
+  buildTreeFolderPathOptions,
+  getRecentFiles,
+  type FilesLibraryHomeFile,
 } from '@/components/files';
 import { isAdminRole } from '@/lib/projectLinePermissionKeys';
 import {
@@ -98,6 +103,8 @@ type CompanyDocument = {
 type Department = { id: string; label: string; sort_index?: number };
 type UserOption = { id: string; username: string; email?: string };
 type DivisionOption = { id: string; label: string };
+type FilesLibraryView = 'home' | 'browser';
+type UploadModalContext = 'current-location' | 'choose-location';
 
 export default function CompanyFilesTabEnhanced() {
   const confirm = useConfirm();
@@ -136,6 +143,13 @@ export default function CompanyFilesTabEnhanced() {
   const [showUpload, setShowUpload] = useState(false);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderParentId, setNewFolderParentId] = useState<string | null>(null);
+  const [newFolderDept, setNewFolderDept] = useState('');
+  const [filesLibraryView, setFilesLibraryView] = useState<FilesLibraryView>('home');
+  const [pendingPreviewDocId, setPendingPreviewDocId] = useState<string | null>(null);
+  const [uploadModalContext, setUploadModalContext] = useState<UploadModalContext>('current-location');
+  const [uploadDestinationDept, setUploadDestinationDept] = useState('');
+  const [uploadDestinationFolderId, setUploadDestinationFolderId] = useState<string | null>(null);
   const [uploadQueue, setUploadQueue] = useState<
     Array<{ id: string; file: File; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }>
   >([]);
@@ -172,9 +186,20 @@ export default function CompanyFilesTabEnhanced() {
     enabled: canRead,
   });
 
+  const readAllowList: string[] | null = Array.isArray(departmentPerms?.read_categories)
+    ? departmentPerms.read_categories
+    : null;
   const writeAllowList: string[] | null = Array.isArray(departmentPerms?.write_categories)
     ? departmentPerms.write_categories
     : null;
+
+  const isReadDepartmentAllowed = useCallback(
+    (departmentId: string) => {
+      if (isAdmin) return true;
+      return readAllowList === null ? true : readAllowList.includes(departmentId);
+    },
+    [readAllowList, isAdmin],
+  );
 
   const isWriteDepartmentAllowed = useCallback(
     (departmentId: string) => {
@@ -206,6 +231,88 @@ export default function CompanyFilesTabEnhanced() {
     return counts;
   }, [departments, deptCountQueries]);
 
+  const visibleDepartments = useMemo(() => {
+    const base = (departments || []).sort((a, b) =>
+      (a.sort_index ?? 0) - (b.sort_index ?? 0) || a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+    );
+    if (readAllowList === null) return base;
+    return base.filter((d) => readAllowList.includes(d.id));
+  }, [departments, readAllowList]);
+
+  const writableDepartments = useMemo(
+    () => visibleDepartments.filter((d) => isWriteDepartmentAllowed(d.id)),
+    [visibleDepartments, isWriteDepartmentAllowed],
+  );
+
+  const writableDepartmentOptions = useMemo(
+    () => [
+      { value: '', label: 'Select file category...' },
+      ...writableDepartments.map((d) => ({ value: d.id, label: d.label })),
+    ],
+    [writableDepartments],
+  );
+
+  const openFilesHome = () => {
+    fileSelection.clear();
+    setFilesLibraryView('home');
+  };
+
+  const openAllFilesBrowser = (searchQuery?: string) => {
+    const dept = visibleDepartments[0]?.id;
+    if (!dept) return;
+    fileSelection.clear();
+    setSelectedDept(dept);
+    setSelectedFolderId(null);
+    setFileSearchQuery(searchQuery ?? '');
+    setFilesLibraryView('browser');
+  };
+
+  const openDepartmentBrowser = (departmentId: string) => {
+    fileSelection.clear();
+    setSelectedDept(departmentId);
+    setSelectedFolderId(null);
+    setFileSearchQuery('');
+    setFilesLibraryView('browser');
+  };
+
+  const openUploadModal = (context: UploadModalContext) => {
+    setUploadModalContext(context);
+    if (context === 'choose-location') {
+      setUploadDestinationDept('');
+      setUploadDestinationFolderId(null);
+    }
+    setShowUpload(true);
+  };
+
+  const openNewFolderModal = (options?: { departmentId?: string; parentFolderId?: string | null }) => {
+    setNewFolderName('');
+    setNewFolderDept(options?.departmentId ?? selectedDept);
+    setNewFolderParentId(options?.parentFolderId ?? selectedFolderId);
+    setShowNewFolderModal(true);
+  };
+
+  const openRecentFileFromHome = (file: FilesLibraryHomeFile) => {
+    fileSelection.clear();
+    setSelectedDept(file.categoryId || '');
+    setSelectedFolderId(file.folderId ?? null);
+    setFileSearchQuery('');
+    setFilesLibraryView('browser');
+    setPendingPreviewDocId(file.id);
+  };
+
+  const homeFolderTreeQueries = useQueries({
+    queries: visibleDepartments.map((d) => ({
+      queryKey: ['company-folder-tree', d.id],
+      queryFn: () =>
+        api<{ root_folder_id: string; folders: FolderItem[] }>(
+          'GET',
+          `/company/files/folders/tree?department_id=${encodeURIComponent(d.id)}`,
+        ),
+      staleTime: 60_000,
+      enabled: filesLibraryView === 'home' && filesSection === 'active' && canRead && visibleDepartments.length > 0,
+    })),
+  });
+
   const { data: folderTree, refetch: refetchFolderTree } = useQuery({
     queryKey: ['company-folder-tree', selectedDept],
     queryFn: () =>
@@ -213,7 +320,17 @@ export default function CompanyFilesTabEnhanced() {
         'GET',
         `/company/files/folders/tree?department_id=${encodeURIComponent(selectedDept)}`
       ),
-    enabled: !!selectedDept && filesSection === 'active',
+    enabled: !!selectedDept && filesSection === 'active' && filesLibraryView === 'browser',
+  });
+
+  const { data: uploadModalFolderTree } = useQuery({
+    queryKey: ['company-folder-tree', uploadDestinationDept],
+    queryFn: () =>
+      api<{ root_folder_id: string; folders: FolderItem[] }>(
+        'GET',
+        `/company/files/folders/tree?department_id=${encodeURIComponent(uploadDestinationDept)}`,
+      ),
+    enabled: showUpload && uploadModalContext === 'choose-location' && !!uploadDestinationDept,
   });
 
   const rootFolderId = folderTree?.root_folder_id ?? null;
@@ -350,6 +467,118 @@ export default function CompanyFilesTabEnhanced() {
     if (['ppt', 'pptx'].includes(ext) || ct.includes('powerpoint')) return 'PowerPoint';
     return ext.toUpperCase() || 'File';
   };
+
+  const allHomeDocs = useMemo(() => {
+    if (!visibleDepartments.length) return [];
+    const result: Array<CompanyDocument & { department_id: string }> = [];
+    visibleDepartments.forEach((d, i) => {
+      const deptIndex = departments?.findIndex((dept) => dept.id === d.id) ?? -1;
+      if (deptIndex < 0) return;
+      const deptDocs = deptCountQueries[deptIndex]?.data ?? [];
+      deptDocs.forEach((doc) => result.push({ ...doc, department_id: d.id }));
+    });
+    return result;
+  }, [visibleDepartments, departments, deptCountQueries]);
+
+  const filesByCategoryForHome = useMemo(() => {
+    const map: Record<string, Array<CompanyDocument & { department_id?: string }>> = {};
+    visibleDepartments.forEach((d, i) => {
+      const deptIndex = departments?.findIndex((dept) => dept.id === d.id) ?? -1;
+      if (deptIndex < 0) return;
+      map[d.id] = (deptCountQueries[deptIndex]?.data ?? []).map((doc) => ({
+        ...doc,
+        department_id: d.id,
+        original_name: doc.original_name || doc.title,
+        uploaded_at: doc.created_at,
+        category: d.id,
+        folder_id: doc.folder_id,
+      }));
+    });
+    return map;
+  }, [visibleDepartments, departments, deptCountQueries]);
+
+  const homeFoldersForCategories = useMemo(() => {
+    const folders: Array<{ id: string; name: string; category: string; parent_id?: string | null }> = [];
+    visibleDepartments.forEach((d, i) => {
+      const tree = homeFolderTreeQueries[i]?.data;
+      const rootId = tree?.root_folder_id;
+      (tree?.folders ?? []).forEach((f) => {
+        if (rootId && f.id === rootId) return;
+        folders.push({ id: f.id, name: f.name, category: d.id, parent_id: f.parent_id });
+      });
+    });
+    return folders;
+  }, [visibleDepartments, homeFolderTreeQueries]);
+
+  const homeTotalFiles = useMemo(
+    () => visibleDepartments.reduce((sum, d) => sum + (deptDocCounts[d.id] ?? 0), 0),
+    [visibleDepartments, deptDocCounts],
+  );
+
+  const homeTotalFolders = useMemo(
+    () => homeFoldersForCategories.length,
+    [homeFoldersForCategories],
+  );
+
+  const homeCategories = useMemo(
+    () =>
+      buildCategoryHomeRows(
+        visibleDepartments.map((d) => ({ id: d.id, name: d.label, icon: '📁' })),
+        filesByCategoryForHome,
+        homeFoldersForCategories,
+        isWriteDepartmentAllowed,
+      ),
+    [visibleDepartments, filesByCategoryForHome, homeFoldersForCategories, isWriteDepartmentAllowed],
+  );
+
+  const homeRecentFiles = useMemo(() => {
+    const mapped = allHomeDocs.map((d) => {
+      const deptIndex = visibleDepartments.findIndex((v) => v.id === d.department_id);
+      const tree = deptIndex >= 0 ? homeFolderTreeQueries[deptIndex]?.data : undefined;
+      const rootId = tree?.root_folder_id;
+      const folderId = d.folder_id && d.folder_id !== rootId ? d.folder_id : null;
+      return {
+        id: d.id,
+        fileObjectId: d.file_id || '',
+        name: d.original_name || d.title || 'Document',
+        categoryId: d.department_id,
+        categoryName: visibleDepartments.find((v) => v.id === d.department_id)?.label,
+        folderId,
+        uploadedAt: d.created_at,
+        isImage: d.is_image,
+        contentType: d.content_type,
+        typeLabel: getFileTypeLabel(d),
+        category: d.department_id,
+        uploaded_at: d.created_at,
+      };
+    });
+    return getRecentFiles(mapped, 6, isReadDepartmentAllowed).map((f) => ({
+      id: f.id || '',
+      fileObjectId: f.fileObjectId || '',
+      name: f.name,
+      categoryId: f.categoryId,
+      categoryName: f.categoryName,
+      folderId: f.folderId,
+      uploadedAt: f.uploadedAt,
+      isImage: f.isImage,
+      contentType: f.contentType,
+      typeLabel: f.typeLabel,
+    }));
+  }, [allHomeDocs, visibleDepartments, homeFolderTreeQueries, isReadDepartmentAllowed]);
+
+  const uploadFolderPathOptions = useMemo(
+    () =>
+      buildTreeFolderPathOptions(
+        uploadModalFolderTree?.folders ?? [],
+        uploadModalFolderTree?.root_folder_id,
+      ),
+    [uploadModalFolderTree],
+  );
+
+  const needsNewFolderDeptPicker = filesLibraryView === 'home' || !newFolderDept;
+  const effectiveNewFolderDept = newFolderDept || selectedDept;
+  const canEditNewFolderDept =
+    effectiveNewFolderDept && canWrite && isWriteDepartmentAllowed(effectiveNewFolderDept);
 
   const currentFiles = useMemo(() => {
     const q = fileSearchQuery.trim().toLowerCase();
@@ -547,6 +776,15 @@ export default function CompanyFilesTabEnhanced() {
     }
   };
 
+  useEffect(() => {
+    if (filesLibraryView !== 'browser' || !pendingPreviewDocId) return;
+    const doc = allHomeDocs.find((d) => d.id === pendingPreviewDocId);
+    if (!doc) return;
+    if (selectedDept && folderTree === undefined) return;
+    void handleFilePreview(doc);
+    setPendingPreviewDocId(null);
+  }, [filesLibraryView, pendingPreviewDocId, allHomeDocs, selectedDept, folderTree]);
+
   const refreshAll = useCallback(async () => {
     await Promise.all([
       refetchDocs(),
@@ -638,12 +876,18 @@ export default function CompanyFilesTabEnhanced() {
     });
   };
 
-  const uploadMultiple = async (files: FileList | File[], folderId?: string) => {
-    if (!canEditInDept) {
+  const uploadMultiple = async (
+    files: FileList | File[],
+    options?: { targetFolderId?: string; departmentId?: string },
+  ) => {
+    const deptId = options?.departmentId ?? selectedDept;
+    const canUpload =
+      deptId && canWrite && isWriteDepartmentAllowed(deptId);
+    if (!canUpload) {
       toast.error('You do not have permission to upload files');
       return;
     }
-    const targetFolderId = folderId || effectiveFolderId;
+    const targetFolderId = options?.targetFolderId ?? effectiveFolderId;
     if (!targetFolderId) {
       toast.error('Select a file category first');
       return;
@@ -682,22 +926,28 @@ export default function CompanyFilesTabEnhanced() {
       toast.error('Folder name required');
       return;
     }
-    if (!canEditInDept) {
+    const dept = newFolderDept || selectedDept;
+    if (!dept || !canWrite || !isWriteDepartmentAllowed(dept)) {
       toast.error('You do not have permission to create folders');
       return;
     }
     try {
       const body: Record<string, string> = { name };
-      if (selectedFolderId) {
-        body.parent_id = selectedFolderId;
-      } else if (selectedDept) {
-        body.department_id = selectedDept;
+      if (newFolderParentId) {
+        body.parent_id = newFolderParentId;
+      } else {
+        body.department_id = dept;
       }
       await api('POST', '/company/files/folders', body);
       toast.success('Folder created');
       setNewFolderName('');
       setShowNewFolderModal(false);
-      await refetchFolderTree();
+      setNewFolderParentId(null);
+      setNewFolderDept('');
+      if (dept === selectedDept) {
+        await refetchFolderTree();
+      }
+      queryClient.invalidateQueries({ queryKey: ['company-folder-tree'] });
     } catch {
       toast.error('Failed to create folder');
     }
@@ -905,10 +1155,8 @@ export default function CompanyFilesTabEnhanced() {
     selectedDept &&
     (currentParentFolderId !== null || currentFolderChildren.length > 0 || currentFiles.length > 0);
 
-  const filesBrowserBody = (
-    <>
-      {isAdmin && filesSection === 'deleted' ? (
-        <div className="overflow-hidden rounded-xl border border-amber-100 bg-amber-50/50">
+  const deletedFilesBody = (
+    <div className="overflow-hidden rounded-xl border border-amber-100 bg-amber-50/50">
           <p className="border-b border-amber-100/80 px-3 py-2 text-xs text-amber-900">
             Same previews and downloads as the library. Restore returns the file to Company Files, or purge to remove it
             permanently.
@@ -1016,9 +1264,9 @@ export default function CompanyFilesTabEnhanced() {
             </div>
           </div>
         </div>
-      ) : null}
+  );
 
-      {!(isAdmin && filesSection === 'deleted') && (
+  const activeFilesBrowserBody = (
         <div className="overflow-hidden bg-white">
           <div className="flex h-[calc(100vh-400px)]">
             <div className="flex w-64 flex-col border-r bg-gray-50">
@@ -1026,7 +1274,7 @@ export default function CompanyFilesTabEnhanced() {
                 <div className="text-xs font-semibold text-gray-700">File Categories</div>
               </div>
               <div className="flex-1 overflow-y-auto">
-                {(departments || []).map((d) => (
+                {visibleDepartments.map((d) => (
                   <button
                     key={d.id}
                     type="button"
@@ -1076,7 +1324,7 @@ export default function CompanyFilesTabEnhanced() {
                       if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {
                         setIsDragging(true);
                       }
-                      if (isInternalFileDrag(e.dataTransfer) && !isOverNestedFileDropTarget(e)) {
+                      if (isInternalFileDrag(e.dataTransfer) && !isOverNestedFileDropTarget(e.nativeEvent)) {
                         setDropTarget({ kind: 'root', id: selectedDept, label: 'Root' });
                       }
                     }
@@ -1118,6 +1366,14 @@ export default function CompanyFilesTabEnhanced() {
                 />
               ) : (
                 <>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <AppButton type="button" variant="ghost" size="sm" onClick={openFilesHome}>
+                      ← Files Home
+                    </AppButton>
+                    <span className="hidden text-xs text-gray-500 sm:inline">
+                      Files Home / <span className="font-medium text-gray-800">{selectedDeptLabel}</span>
+                    </span>
+                  </div>
                   <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <AppInput
@@ -1146,14 +1402,11 @@ export default function CompanyFilesTabEnhanced() {
                           type="button"
                           variant="secondary"
                           size="sm"
-                          onClick={() => {
-                            setNewFolderName('');
-                            setShowNewFolderModal(true);
-                          }}
+                          onClick={() => openNewFolderModal()}
                         >
                           {selectedFolderId ? 'Add subfolder' : 'Add folder'}
                         </AppButton>
-                        <AppButton type="button" size="sm" onClick={() => setShowUpload(true)}>
+                        <AppButton type="button" size="sm" onClick={() => openUploadModal('current-location')}>
                           + Upload File
                         </AppButton>
                       </div>
@@ -1227,7 +1480,7 @@ export default function CompanyFilesTabEnhanced() {
                                     return;
                                   }
                                   if (isExternalFileDrop(e.dataTransfer)) {
-                                    await uploadMultiple(e.dataTransfer.files, folderId);
+                                    await uploadMultiple(e.dataTransfer.files, { targetFolderId: folderId });
                                   }
                                 })
                               : {};
@@ -1406,7 +1659,7 @@ export default function CompanyFilesTabEnhanced() {
                                         return;
                                       }
                                       if (isExternalFileDrop(e.dataTransfer)) {
-                                        await uploadMultiple(e.dataTransfer.files, folder.id);
+                                        await uploadMultiple(e.dataTransfer.files, { targetFolderId: folder.id });
                                       }
                                     })
                                   : {})}
@@ -1635,9 +1888,34 @@ export default function CompanyFilesTabEnhanced() {
             </div>
           </div>
         </div>
-      )}
-    </>
   );
+
+  const activeLibraryBody =
+    filesLibraryView === 'home' ? (
+      <ProjectFilesHome
+        title="Company Files"
+        description="Browse files by department or open the complete company document library."
+        categories={homeCategories}
+        totalFileCount={homeTotalFiles}
+        totalFolderCount={homeTotalFolders}
+        recentFiles={homeRecentFiles}
+        canWrite={canWrite && writableDepartments.length > 0}
+        designSystem={true}
+        supportsFolders={true}
+        supportsCreateFolder={true}
+        onOpenAllFiles={() => openAllFilesBrowser()}
+        onOpenCategory={openDepartmentBrowser}
+        onOpenRecentFile={openRecentFileFromHome}
+        onSearch={(q) => openAllFilesBrowser(q)}
+        onUpload={() => openUploadModal('choose-location')}
+        onCreateFolder={() => openNewFolderModal({ departmentId: '', parentFolderId: null })}
+      />
+    ) : (
+      activeFilesBrowserBody
+    );
+
+  const libraryBody =
+    isAdmin && filesSection === 'deleted' ? deletedFilesBody : activeLibraryBody;
 
   return (
     <>
@@ -1658,7 +1936,7 @@ export default function CompanyFilesTabEnhanced() {
             action={filesSectionTabs}
           />
         </div>
-        <div className="border-t border-gray-100">{filesBrowserBody}</div>
+        <div className="border-t border-gray-100">{libraryBody}</div>
       </AppCard>
       )}
 
@@ -1676,45 +1954,117 @@ export default function CompanyFilesTabEnhanced() {
             </div>
           }
         >
-          <AppFileUpload
-            mode="multiple"
-            value={[]}
-            onChange={() => {}}
-            accept="*"
-            onFilesSelected={async (added) => {
-              if (added.length > 0) {
+          <div className={uiSpacing.sectionStack}>
+            {uploadModalContext === 'choose-location' && (
+              <>
+                <AppSelect
+                  label="File category"
+                  value={uploadDestinationDept}
+                  onChange={(e) => {
+                    setUploadDestinationDept(e.target.value);
+                    setUploadDestinationFolderId(null);
+                  }}
+                  options={writableDepartmentOptions}
+                />
+                {uploadDestinationDept ? (
+                  <AppSelect
+                    label="Folder"
+                    value={uploadDestinationFolderId ?? ''}
+                    onChange={(e) =>
+                      setUploadDestinationFolderId(e.target.value ? e.target.value : null)
+                    }
+                    options={uploadFolderPathOptions}
+                  />
+                ) : null}
+              </>
+            )}
+            <AppFileUpload
+              mode="multiple"
+              value={[]}
+              onChange={() => {}}
+              accept="*"
+              onFilesSelected={async (added) => {
+                if (added.length === 0) return;
+                if (uploadModalContext === 'choose-location') {
+                  if (!uploadDestinationDept) {
+                    toast.error('Select a file category');
+                    return;
+                  }
+                  const rootId = uploadModalFolderTree?.root_folder_id;
+                  const targetFolderId = uploadDestinationFolderId || rootId;
+                  if (!targetFolderId) {
+                    toast.error('Loading folder tree…');
+                    return;
+                  }
+                  setShowUpload(false);
+                  await uploadMultiple(added, {
+                    targetFolderId,
+                    departmentId: uploadDestinationDept,
+                  });
+                  return;
+                }
                 setShowUpload(false);
                 await uploadMultiple(added);
-              }
-            }}
-            fieldHint="Files\n\nPick one or more files to add to the current category and folder. You can also drag files onto the file list."
-          />
+              }}
+              fieldHint="Files\n\nPick one or more files to add to the current category and folder. You can also drag files onto the file list."
+            />
+          </div>
         </AppFormModal>
       ) : null}
 
       {showNewFolderModal ? (
         <AppFormModal
           open
-          onClose={() => setShowNewFolderModal(false)}
-          title={selectedFolderId ? 'New subfolder' : 'New folder'}
+          onClose={() => {
+            setShowNewFolderModal(false);
+            setNewFolderParentId(null);
+            setNewFolderDept('');
+          }}
+          title={newFolderParentId ? 'New subfolder' : 'New folder'}
           quickInfo={companyFilesNewFolderQuickInfo}
           footer={
             <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-              <AppButton variant="secondary" size="sm" type="button" onClick={() => setShowNewFolderModal(false)}>
+              <AppButton
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={() => {
+                  setShowNewFolderModal(false);
+                  setNewFolderParentId(null);
+                  setNewFolderDept('');
+                }}
+              >
                 Cancel
               </AppButton>
-              <AppButton size="sm" type="button" onClick={handleCreateFolder} disabled={!newFolderName.trim()}>
+              <AppButton
+                size="sm"
+                type="button"
+                onClick={handleCreateFolder}
+                disabled={
+                  !newFolderName.trim() ||
+                  (needsNewFolderDeptPicker && !effectiveNewFolderDept) ||
+                  !canEditNewFolderDept
+                }
+              >
                 Create
               </AppButton>
             </div>
           }
         >
           <div className={uiSpacing.sectionStack}>
-            {selectedFolderId ? (
+            {needsNewFolderDeptPicker ? (
+              <AppSelect
+                label="File category"
+                value={newFolderDept}
+                onChange={(e) => setNewFolderDept(e.target.value)}
+                options={writableDepartmentOptions}
+              />
+            ) : null}
+            {newFolderParentId ? (
               <p className={uiTypography.helper}>
                 Creating inside{' '}
                 <span className="font-medium text-gray-900">
-                  {allFolders.find((f) => f.id === selectedFolderId)?.name ?? 'folder'}
+                  {allFolders.find((f) => f.id === newFolderParentId)?.name ?? 'folder'}
                 </span>
               </p>
             ) : null}

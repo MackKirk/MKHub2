@@ -43,6 +43,11 @@ import {
   toGridFileFromClientLike,
   isFileGridImage,
   type FileGridFileItem,
+  ProjectFilesHome,
+  buildCategoryHomeRows,
+  getRecentFiles,
+  buildFolderPathOptionsForCategory,
+  type FilesLibraryHomeFile,
 } from '@/components/files';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
@@ -101,6 +106,9 @@ export type ProjectFilesTabEnhancedProps = {
 /** Row: category column sets height; file list scrolls inside the same height. */
 const FILES_BROWSER_ROW_CLASS = 'flex w-full items-start';
 
+type FilesLibraryView = 'home' | 'browser';
+type UploadModalContext = 'current-location' | 'choose-location';
+
 export default function ProjectFilesTabEnhanced({
   projectId,
   businessLine,
@@ -132,6 +140,12 @@ export default function ProjectFilesTabEnhanced({
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderCategory, setNewFolderCategory] = useState<string>('');
+  const [newFolderParentId, setNewFolderParentId] = useState<string | null>(null);
+  const [filesLibraryView, setFilesLibraryView] = useState<FilesLibraryView>('home');
+  const [pendingPreviewFileId, setPendingPreviewFileId] = useState<string | null>(null);
+  const [uploadModalContext, setUploadModalContext] = useState<UploadModalContext>('current-location');
+  const [uploadDestinationCategory, setUploadDestinationCategory] = useState('');
+  const [uploadDestinationFolderId, setUploadDestinationFolderId] = useState<string | null>(null);
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
   const [editingFileNameValue, setEditingFileNameValue] = useState('');
@@ -216,6 +230,80 @@ export default function ProjectFilesTabEnhanced({
     return base;
   }, [categories, readAllowList]);
   
+  const writableCategories = useMemo(
+    () => visibleCategories.filter((c: { id: string }) => isWriteCategoryAllowed(String(c.id))),
+    [visibleCategories, isWriteCategoryAllowed],
+  );
+
+  const categoryNameById = useMemo(() => {
+    const map: Record<string, string> = { uncategorized: 'Uncategorized' };
+    visibleCategories.forEach((c: { id: string; name: string }) => {
+      map[String(c.id)] = String(c.name);
+    });
+    return map;
+  }, [visibleCategories]);
+
+  const writableCategoryOptions = useMemo(
+    () => [
+      { value: '', label: 'Select category...' },
+      ...writableCategories.map((cat: { id: string; name: string }) => ({
+        value: String(cat.id),
+        label: String(cat.name),
+      })),
+    ],
+    [writableCategories],
+  );
+
+  const openFilesHome = () => {
+    fileSelection.clear();
+    setFilesLibraryView('home');
+  };
+
+  const openAllFilesBrowser = (searchQuery?: string) => {
+    fileSelection.clear();
+    setSelectedFolderId(null);
+    setSelectedCategory('all');
+    setFileSearchQuery(searchQuery ?? '');
+    setFilesLibraryView('browser');
+  };
+
+  const openCategoryBrowser = (categoryId: string) => {
+    fileSelection.clear();
+    setSelectedFolderId(null);
+    setFileSearchQuery('');
+    setSelectedCategory(categoryId);
+    setFilesLibraryView('browser');
+  };
+
+  const openUncategorizedBrowser = () => {
+    fileSelection.clear();
+    setSelectedFolderId(null);
+    setFileSearchQuery('');
+    setSelectedCategory('uncategorized');
+    setFilesLibraryView('browser');
+  };
+
+  const openUploadModal = (context: UploadModalContext) => {
+    setUploadModalContext(context);
+    if (context === 'choose-location') {
+      setUploadDestinationCategory('');
+      setUploadDestinationFolderId(null);
+    }
+    setShowUpload(true);
+  };
+
+  const openRecentFileFromHome = (file: FilesLibraryHomeFile) => {
+    const cat =
+      file.categoryId && file.categoryId !== ''
+        ? file.categoryId
+        : 'uncategorized';
+    setSelectedCategory(cat);
+    setSelectedFolderId(file.folderId ?? null);
+    setFileSearchQuery('');
+    setFilesLibraryView('browser');
+    setPendingPreviewFileId(file.id);
+  };
+
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
     queryFn: ()=>api<any>('GET', `/projects/${projectId}`)
@@ -255,6 +343,29 @@ export default function ProjectFilesTabEnhanced({
     });
     return grouped;
   }, [files, isReadCategoryAllowed]);
+
+  const homeTotalFiles = useMemo(() => filesByCategory['all']?.length ?? 0, [filesByCategory]);
+
+  const homeTotalFolders = useMemo(
+    () =>
+      projectFolders.filter((f: ProjectFolderItem) => isReadCategoryAllowed(f.category)).length,
+    [projectFolders, isReadCategoryAllowed],
+  );
+
+  const homeCategories = useMemo(
+    () =>
+      buildCategoryHomeRows(
+        visibleCategories.map((c: { id: string; name: string; icon?: string }) => ({
+          id: String(c.id),
+          name: String(c.name),
+          icon: c.icon,
+        })),
+        filesByCategory,
+        projectFolders,
+        isWriteCategoryAllowed,
+      ),
+    [visibleCategories, filesByCategory, projectFolders, isWriteCategoryAllowed],
+  );
 
   // If the currently selected category becomes unavailable due to permission filtering, reset to All.
   useEffect(() => {
@@ -589,6 +700,14 @@ export default function ProjectFilesTabEnhanced({
     }
   };
 
+  useEffect(() => {
+    if (filesLibraryView !== 'browser' || !pendingPreviewFileId) return;
+    const f = files.find((x) => x.id === pendingPreviewFileId);
+    if (!f) return;
+    void handleFilePreview(f);
+    setPendingPreviewFileId(null);
+  }, [filesLibraryView, pendingPreviewFileId, files]);
+
   const fetchDownloadUrl = async (fid:string)=>{
     try{ const r:any = await api('GET', withFileAccessToken(`/files/${fid}/download`)); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
   };
@@ -913,10 +1032,11 @@ export default function ProjectFilesTabEnhanced({
       await api('POST', `/projects/${projectId}/folders`, {
         name,
         category,
-        ...(selectedFolderId ? { parent_id: selectedFolderId } : {}),
+        ...(newFolderParentId ? { parent_id: newFolderParentId } : {}),
       });
       setNewFolderName('');
       setNewFolderCategory('');
+      setNewFolderParentId(null);
       setShowNewFolderModal(false);
       queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
       await onRefresh();
@@ -926,11 +1046,24 @@ export default function ProjectFilesTabEnhanced({
     }
   };
 
-  const openNewFolderModal = () => {
+  const openNewFolderModal = (options?: { category?: string | null; parentFolderId?: string | null }) => {
     setNewFolderName('');
-    setNewFolderCategory(selectedCategory === 'all' || selectedCategory === 'uncategorized' ? '' : selectedCategory);
+    const cat =
+      options?.category !== undefined
+        ? options.category
+        : selectedCategory === 'all' || selectedCategory === 'uncategorized'
+          ? null
+          : selectedCategory;
+    setNewFolderCategory(cat || '');
+    setNewFolderParentId(options?.parentFolderId ?? null);
     setShowNewFolderModal(true);
   };
+
+  const needsNewFolderCategoryPicker =
+    !newFolderCategory ||
+    selectedCategory === 'all' ||
+    selectedCategory === 'uncategorized' ||
+    filesLibraryView === 'home';
 
   const handleDeleteFolder = async (folderId: string) => {
     const result = await confirm({
@@ -1133,6 +1266,32 @@ export default function ProjectFilesTabEnhanced({
     [projectFolders],
   );
 
+  const homeRecentFiles = useMemo((): FilesLibraryHomeFile[] => {
+    return getRecentFiles(files, 6, isReadCategoryAllowed).map((f) => {
+      const cat = f.category || 'uncategorized';
+      return {
+        id: f.id,
+        fileObjectId: f.file_object_id,
+        name: f.original_name || f.file_object_id,
+        categoryId: f.category,
+        categoryName: categoryNameById[cat] || cat,
+        folderId: f.folder_id,
+        uploadedAt: f.uploaded_at,
+        isImage: f.is_image,
+        contentType: f.content_type,
+        typeLabel: getFileTypeLabel(f),
+      };
+    });
+  }, [files, isReadCategoryAllowed, categoryNameById]);
+
+  const uploadFolderPathOptions = useMemo(
+    () =>
+      uploadDestinationCategory
+        ? buildFolderPathOptionsForCategory(fileLocationFolders, uploadDestinationCategory)
+        : [{ value: '', label: 'Root' }],
+    [uploadDestinationCategory, fileLocationFolders],
+  );
+
   const moveLocationSelectedCount = useMemo(() => {
     if (!moveLocationFileId) return 1;
     const ids = fileSelection.resolveDragIds(moveLocationFileId);
@@ -1191,15 +1350,19 @@ export default function ProjectFilesTabEnhanced({
   const newFolderCategoryOptions = useMemo(
     () => [
       { value: '', label: 'Select category...' },
-      ...visibleCategories.map((cat: any) => ({ value: String(cat.id), label: String(cat.name) })),
+      ...writableCategories.map((cat: { id: string; name: string }) => ({
+        value: String(cat.id),
+        label: String(cat.name),
+      })),
     ],
-    [visibleCategories],
+    [writableCategories],
   );
 
   const categoryColumnRef = useRef<HTMLDivElement>(null);
   const [categoryColumnHeight, setCategoryColumnHeight] = useState<number | undefined>(undefined);
 
   useLayoutEffect(() => {
+    if (filesLibraryView !== 'browser') return;
     const el = categoryColumnRef.current;
     if (!el) return;
     const update = () => setCategoryColumnHeight(el.getBoundingClientRect().height);
@@ -1207,11 +1370,10 @@ export default function ProjectFilesTabEnhanced({
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [visibleCategories.length, filesSection, filesByCategory['uncategorized']?.length]);
+  }, [visibleCategories.length, filesSection, filesByCategory['uncategorized']?.length, filesLibraryView]);
 
-  const filesBrowserBody = (
-        <>
-        {isAdmin && filesSection === 'deleted' ? (
+  const deletedFilesBody =
+    isAdmin && filesSection === 'deleted' ? (
           <div className="rounded-xl border border-amber-100 bg-amber-50/50 overflow-hidden">
             <p className="text-xs text-amber-900 px-3 py-2 border-b border-amber-100/80">
               Same previews and downloads as the library. Restore returns the file to the project, or delete permanently to remove it from storage.
@@ -1326,9 +1488,9 @@ export default function ProjectFilesTabEnhanced({
               </div>
             </div>
           </div>
-        ) : null}
-        
-        {!(isAdmin && filesSection === 'deleted') && (
+        ) : null;
+
+  const activeFilesBrowserBody = (
         <div
           className={
             designSystem
@@ -1350,18 +1512,6 @@ export default function ProjectFilesTabEnhanced({
               aria-label="File categories"
             >
               <div className="divide-y divide-gray-200">
-              <button
-                onClick={() => setSelectedCategory('all')}
-                className={`w-full text-left px-3 py-1.5 hover:bg-white transition-colors ${
-                  selectedCategory === 'all' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-xs">📁</span>
-                  <span className="text-xs">All Files</span>
-                  <span className="ml-auto text-[10px] text-gray-500">({filesByCategory['all']?.length || 0})</span>
-                </div>
-              </button>
               {visibleCategories.map((cat: any) => {
                 const count = filesByCategory[cat.id]?.length || 0;
                 const canEditCategory = canWriteFiles && isWriteCategoryAllowed(String(cat.id));
@@ -1437,6 +1587,18 @@ export default function ProjectFilesTabEnhanced({
                   </div>
                 </button>
               )}
+              <button
+                onClick={() => setSelectedCategory('all')}
+                className={`w-full text-left px-3 py-1.5 hover:bg-white transition-colors ${
+                  selectedCategory === 'all' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs">📁</span>
+                  <span className="text-xs">All Files</span>
+                  <span className="ml-auto text-[10px] text-gray-500">({filesByCategory['all']?.length || 0})</span>
+                </div>
+              </button>
               </div>
             </nav>
           </div>
@@ -1495,6 +1657,35 @@ export default function ProjectFilesTabEnhanced({
               }
             } : undefined}
           >
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {designSystem ? (
+                <AppButton type="button" variant="ghost" size="sm" onClick={openFilesHome}>
+                  ← Files Home
+                </AppButton>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openFilesHome}
+                  className="text-xs text-brand-red hover:underline font-medium"
+                >
+                  ← Files Home
+                </button>
+              )}
+              <span className="text-xs text-gray-500 hidden sm:inline">
+                Files Home
+                {selectedCategory !== 'all' ? (
+                  <>
+                    {' '}
+                    /{' '}
+                    <span className="text-gray-700 font-medium">
+                      {selectedCategory === 'uncategorized'
+                        ? 'Uncategorized'
+                        : visibleCategories.find((c: { id: string }) => c.id === selectedCategory)?.name || selectedCategory}
+                    </span>
+                  </>
+                ) : null}
+              </span>
+            </div>
             <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 {designSystem ? (
@@ -1552,19 +1743,35 @@ export default function ProjectFilesTabEnhanced({
                         type="button"
                         variant="secondary"
                         size="sm"
-                        onClick={openNewFolderModal}
+                        onClick={() =>
+                          openNewFolderModal({
+                            category:
+                              selectedCategory === 'all' || selectedCategory === 'uncategorized'
+                                ? null
+                                : selectedCategory,
+                            parentFolderId: selectedFolderId,
+                          })
+                        }
                         title={selectedCategory !== 'all' && selectedCategory !== 'uncategorized' ? (selectedFolderId ? 'Create a subfolder inside the current folder' : 'Create a folder at the category root') : 'Create subfolder (choose category in modal)'}
                       >
                         {selectedFolderId ? 'Add subfolder' : 'Add folder'}
                       </AppButton>
-                      <AppButton type="button" size="sm" onClick={() => setShowUpload(true)}>
+                      <AppButton type="button" size="sm" onClick={() => openUploadModal('current-location')}>
                         + Upload File
                       </AppButton>
                     </>
                   ) : (
                     <>
                   <button
-                    onClick={openNewFolderModal}
+                    onClick={() =>
+                      openNewFolderModal({
+                        category:
+                          selectedCategory === 'all' || selectedCategory === 'uncategorized'
+                            ? null
+                            : selectedCategory,
+                        parentFolderId: selectedFolderId,
+                      })
+                    }
                     className="px-2 py-1.5 rounded border border-gray-300 bg-white text-gray-700 text-xs font-medium hover:bg-gray-50 flex items-center gap-1"
                     title={selectedCategory !== 'all' && selectedCategory !== 'uncategorized' ? (selectedFolderId ? 'Create a subfolder inside the current folder' : 'Create a folder at the category root') : 'Create subfolder (choose category in modal)'}
                   >
@@ -1572,7 +1779,7 @@ export default function ProjectFilesTabEnhanced({
                     {selectedFolderId ? 'Add subfolder' : 'Add folder'}
                   </button>
                   <button
-                    onClick={() => setShowUpload(true)}
+                    onClick={() => openUploadModal('current-location')}
                     className="px-2 py-1.5 rounded bg-brand-red text-white text-xs font-medium"
                   >
                     + Upload File
@@ -1606,16 +1813,16 @@ export default function ProjectFilesTabEnhanced({
             {showNewFolderModal && !designSystem && (
               <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowNewFolderModal(false)}>
                 <div className="bg-white rounded-lg shadow-xl p-4 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
-                  <h3 className="text-sm font-semibold mb-2">{selectedFolderId ? 'New subfolder' : 'New folder'}</h3>
-                  {selectedFolderId && selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (
+                  <h3 className="text-sm font-semibold mb-2">{newFolderParentId ? 'New subfolder' : 'New folder'}</h3>
+                  {newFolderParentId && newFolderCategory && (
                     <p className="text-xs text-gray-600 mb-3">
                       Creating inside{' '}
                       <span className="font-medium text-gray-900">
-                        {foldersInSelectedCategory.find((f: ProjectFolderItem) => f.id === selectedFolderId)?.name ?? 'folder'}
+                        {projectFolders.find((f: ProjectFolderItem) => f.id === newFolderParentId)?.name ?? 'folder'}
                       </span>
                     </p>
                   )}
-                  {(selectedCategory === 'all' || selectedCategory === 'uncategorized') && (
+                  {needsNewFolderCategoryPicker && (
                     <div className="mb-3">
                       <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
                       <select
@@ -1623,9 +1830,8 @@ export default function ProjectFilesTabEnhanced({
                         onChange={e => setNewFolderCategory(e.target.value)}
                         className="w-full border rounded px-3 py-2 text-sm"
                       >
-                        <option value="">Select category...</option>
-                        {visibleCategories.map((cat: any) => (
-                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        {newFolderCategoryOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                       </select>
                     </div>
@@ -1645,7 +1851,7 @@ export default function ProjectFilesTabEnhanced({
                     <button onClick={() => setShowNewFolderModal(false)} className="px-3 py-1.5 text-sm rounded border">Cancel</button>
                     <button
                       onClick={handleCreateFolder}
-                      disabled={!newFolderName.trim() || ((selectedCategory === 'all' || selectedCategory === 'uncategorized') && !newFolderCategory)}
+                      disabled={!newFolderName.trim() || (needsNewFolderCategoryPicker && !newFolderCategory)}
                       className="px-3 py-1.5 text-sm rounded bg-brand-red text-white disabled:opacity-50"
                     >
                       Create
@@ -2201,10 +2407,37 @@ export default function ProjectFilesTabEnhanced({
           </div>
         </div>
       </div>
-        )}
-
-        </>
   );
+
+  const activeLibraryBody =
+    filesLibraryView === 'home' ? (
+      <ProjectFilesHome
+        title="Project Files"
+        description="Browse files by category or open the complete project library."
+        categories={homeCategories}
+        totalFileCount={homeTotalFiles}
+        totalFolderCount={homeTotalFolders}
+        recentFiles={homeRecentFiles}
+        canWrite={canWriteFiles}
+        designSystem={designSystem}
+        supportsFolders={true}
+        supportsCreateFolder={true}
+        uncategorizedFileCount={filesByCategory['uncategorized']?.length ?? 0}
+        showUncategorizedCard={(filesByCategory['uncategorized']?.length ?? 0) > 0}
+        onOpenAllFiles={() => openAllFilesBrowser()}
+        onOpenCategory={openCategoryBrowser}
+        onOpenUncategorized={openUncategorizedBrowser}
+        onOpenRecentFile={openRecentFileFromHome}
+        onSearch={(q) => openAllFilesBrowser(q)}
+        onUpload={() => openUploadModal('choose-location')}
+        onCreateFolder={() => openNewFolderModal({ category: null, parentFolderId: null })}
+      />
+    ) : (
+      activeFilesBrowserBody
+    );
+
+  const libraryBody =
+    isAdmin && filesSection === 'deleted' ? deletedFilesBody : activeLibraryBody;
 
   return (
     <>
@@ -2218,7 +2451,7 @@ export default function ProjectFilesTabEnhanced({
               action={filesSectionTabs}
             />
           </div>
-          <div className="border-t border-gray-100">{filesBrowserBody}</div>
+          <div className="border-t border-gray-100">{libraryBody}</div>
         </AppCard>
       ) : (
         <div className="space-y-4">
@@ -2234,7 +2467,7 @@ export default function ProjectFilesTabEnhanced({
               </div>
               {filesSectionTabs}
             </div>
-            {filesBrowserBody}
+            {libraryBody}
           </div>
         </div>
       )}
@@ -2254,19 +2487,55 @@ export default function ProjectFilesTabEnhanced({
             </div>
           }
         >
-          <AppFileUpload
-            mode="multiple"
-            accept={FILE_LIBRARY_ACCEPT}
-            value={[]}
-            onChange={() => {}}
-            onFilesSelected={async (added) => {
-              if (added.length > 0) {
+          <div className={uiSpacing.sectionStack}>
+            {uploadModalContext === 'choose-location' && (
+              <>
+                <AppSelect
+                  label="Category"
+                  value={uploadDestinationCategory}
+                  options={writableCategoryOptions}
+                  onChange={(e) => {
+                    setUploadDestinationCategory(e.target.value);
+                    setUploadDestinationFolderId(null);
+                  }}
+                  fieldHint="Category\n\nChoose where these files should be stored."
+                />
+                <AppSelect
+                  label="Folder"
+                  value={uploadDestinationFolderId ?? ''}
+                  options={uploadFolderPathOptions}
+                  onChange={(e) =>
+                    setUploadDestinationFolderId(e.target.value ? e.target.value : null)
+                  }
+                  fieldHint="Folder\n\nOptional. Leave as Root to upload to the category root."
+                />
+              </>
+            )}
+            <AppFileUpload
+              mode="multiple"
+              accept={FILE_LIBRARY_ACCEPT}
+              value={[]}
+              onChange={() => {}}
+              onFilesSelected={async (added) => {
+                if (added.length === 0) return;
+                if (uploadModalContext === 'choose-location' && !uploadDestinationCategory) {
+                  toast.error('Select a category');
+                  return;
+                }
                 setShowUpload(false);
-                await uploadMultiple(added);
-              }
-            }}
-            fieldHint="Files\n\nAny file type (images, PDF, Office, zip, etc.). Pick one or more to add to the current category and folder. You can also drag files onto the file list."
-          />
+                if (uploadModalContext === 'choose-location') {
+                  await uploadMultiple(
+                    added,
+                    uploadDestinationCategory,
+                    uploadDestinationFolderId,
+                  );
+                } else {
+                  await uploadMultiple(added);
+                }
+              }}
+              fieldHint="Files\n\nAny file type (images, PDF, Office, zip, etc.). Pick one or more to add to the selected location."
+            />
+          </div>
         </AppFormModal>
       )}
       {showUpload && !designSystem && (
@@ -2274,6 +2543,39 @@ export default function ProjectFilesTabEnhanced({
           <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
             <div className="text-sm font-semibold mb-3">Upload Files</div>
             <div className="space-y-3">
+              {uploadModalContext === 'choose-location' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+                    <select
+                      value={uploadDestinationCategory}
+                      onChange={(e) => {
+                        setUploadDestinationCategory(e.target.value);
+                        setUploadDestinationFolderId(null);
+                      }}
+                      className="w-full border rounded px-3 py-2 text-sm"
+                    >
+                      {writableCategoryOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Folder</label>
+                    <select
+                      value={uploadDestinationFolderId ?? ''}
+                      onChange={(e) =>
+                        setUploadDestinationFolderId(e.target.value ? e.target.value : null)
+                      }
+                      className="w-full border rounded px-3 py-2 text-sm"
+                    >
+                      {uploadFolderPathOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
               <div>
                 <div className="text-xs font-medium text-gray-600 mb-1.5">Files (multiple files supported)</div>
                 <input
@@ -2282,8 +2584,20 @@ export default function ProjectFilesTabEnhanced({
                   onChange={async (e) => {
                     const fileList = e.target.files;
                     if (fileList && fileList.length > 0) {
+                      if (uploadModalContext === 'choose-location' && !uploadDestinationCategory) {
+                        toast.error('Select a category');
+                        return;
+                      }
                       setShowUpload(false);
-                      await uploadMultiple(Array.from(fileList));
+                      if (uploadModalContext === 'choose-location') {
+                        await uploadMultiple(
+                          Array.from(fileList),
+                          uploadDestinationCategory,
+                          uploadDestinationFolderId,
+                        );
+                      } else {
+                        await uploadMultiple(Array.from(fileList));
+                      }
                     }
                   }}
                   className="w-full text-xs"
@@ -2423,7 +2737,7 @@ export default function ProjectFilesTabEnhanced({
         <AppFormModal
           open
           onClose={() => setShowNewFolderModal(false)}
-          title={selectedFolderId ? 'New subfolder' : 'New folder'}
+          title={newFolderParentId ? 'New subfolder' : 'New folder'}
           quickInfo={projectFilesNewFolderQuickInfo}
           footer={
             <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
@@ -2434,7 +2748,7 @@ export default function ProjectFilesTabEnhanced({
                 size="sm"
                 type="button"
                 onClick={handleCreateFolder}
-                disabled={!newFolderName.trim() || ((selectedCategory === 'all' || selectedCategory === 'uncategorized') && !newFolderCategory)}
+                disabled={!newFolderName.trim() || (needsNewFolderCategoryPicker && !newFolderCategory)}
               >
                 Create
               </AppButton>
@@ -2442,15 +2756,15 @@ export default function ProjectFilesTabEnhanced({
           }
         >
           <div className={uiSpacing.sectionStack}>
-            {selectedFolderId && selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (
+            {newFolderParentId && newFolderCategory && (
               <p className={uiTypography.helper}>
                 Creating inside{' '}
                 <span className="font-medium text-gray-900">
-                  {foldersInSelectedCategory.find((f: ProjectFolderItem) => f.id === selectedFolderId)?.name ?? 'folder'}
+                  {projectFolders.find((f: ProjectFolderItem) => f.id === newFolderParentId)?.name ?? 'folder'}
                 </span>
               </p>
             )}
-            {(selectedCategory === 'all' || selectedCategory === 'uncategorized') && (
+            {needsNewFolderCategoryPicker && (
               <AppSelect
                 label="Category"
                 value={newFolderCategory}

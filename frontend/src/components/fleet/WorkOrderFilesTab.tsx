@@ -33,6 +33,10 @@ import {
   partitionGridFiles,
   toGridFileFromWorkOrder,
   isFileGridImage,
+  ProjectFilesHome,
+  buildCategoryHomeRows,
+  getRecentFiles,
+  type FilesLibraryHomeFile,
 } from '@/components/files';
 import { libraryFilesMoveCategoryQuickInfo } from '@/lib/formModalQuickInfo';
 import {
@@ -63,14 +67,18 @@ import {
 } from '@/components/ui';
 
 const WO_FILE_CATEGORIES = [
-  { id: 'all', label: 'All Files' },
   { id: 'orcamentos', label: 'Quotes' },
   { id: 'photos', label: 'Photos' },
   { id: 'invoices', label: 'Invoices' },
   { id: 'outros', label: 'Other' },
 ] as const;
 
+const WO_ALL_FILES_CATEGORY = { id: 'all', label: 'All Files' } as const;
+
 const FILES_GRID_COLS = 'grid-cols-[2rem_56px_minmax(0,1fr)_5.5rem_7rem_auto]';
+
+type FilesLibraryView = 'home' | 'browser';
+type UploadModalContext = 'current-location' | 'choose-location';
 
 type WorkOrderFileItem = {
   id: string;
@@ -117,6 +125,10 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
   const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
   const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
   const [moveLocationFileId, setMoveLocationFileId] = useState<string | null>(null);
+  const [filesLibraryView, setFilesLibraryView] = useState<FilesLibraryView>('home');
+  const [pendingPreviewFileId, setPendingPreviewFileId] = useState<string | null>(null);
+  const [uploadModalContext, setUploadModalContext] = useState<UploadModalContext>('current-location');
+  const [uploadDestinationCategory, setUploadDestinationCategory] = useState('outros');
 
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['workOrderFiles', workOrderId],
@@ -127,7 +139,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
   const filesByCategory = useMemo(() => {
     const grouped: Record<string, WorkOrderFileItem[]> = { all: [] };
     WO_FILE_CATEGORIES.forEach((c) => {
-      if (c.id !== 'all') grouped[c.id] = [];
+      grouped[c.id] = [];
     });
     files.forEach((f) => {
       const cat = f.category || 'outros';
@@ -137,6 +149,61 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
     });
     return grouped;
   }, [files]);
+
+  const woCategoriesForHome = useMemo(
+    () => WO_FILE_CATEGORIES.map((c) => ({ id: c.id, name: c.label })),
+    [],
+  );
+
+  const homeTotalFiles = useMemo(() => filesByCategory['all']?.length ?? 0, [filesByCategory]);
+
+  const homeCategories = useMemo(
+    () => buildCategoryHomeRows(woCategoriesForHome, filesByCategory, [], () => canEdit),
+    [woCategoriesForHome, filesByCategory, canEdit],
+  );
+
+  const categoryNameById = useMemo(() => {
+    const map: Record<string, string> = {
+      [WO_ALL_FILES_CATEGORY.id]: WO_ALL_FILES_CATEGORY.label,
+    };
+    WO_FILE_CATEGORIES.forEach((c) => {
+      map[c.id] = c.label;
+    });
+    return map;
+  }, []);
+
+  const openFilesHome = () => {
+    fileSelection.clear();
+    setFilesLibraryView('home');
+  };
+
+  const openAllFilesBrowser = (searchQuery?: string) => {
+    fileSelection.clear();
+    setFileSearchQuery(searchQuery ?? '');
+    setSelectedCategory('all');
+    setFilesLibraryView('browser');
+  };
+
+  const openCategoryBrowser = (categoryId: string) => {
+    fileSelection.clear();
+    setFileSearchQuery('');
+    setSelectedCategory(categoryId);
+    setFilesLibraryView('browser');
+  };
+
+  const openUploadModal = (context: UploadModalContext) => {
+    setUploadModalContext(context);
+    if (context === 'choose-location') setUploadDestinationCategory('outros');
+    setShowUpload(true);
+  };
+
+  const openRecentFileFromHome = (file: FilesLibraryHomeFile) => {
+    const cat = file.categoryId && file.categoryId !== '' ? file.categoryId : 'outros';
+    setSelectedCategory(cat);
+    setFileSearchQuery('');
+    setFilesLibraryView('browser');
+    setPendingPreviewFileId(file.id);
+  };
 
   const getFileTypeLabel = (f: WorkOrderFileItem): string => {
     const name = String(f.original_name || '');
@@ -149,6 +216,23 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
     if (['ppt', 'pptx'].includes(ext) || ct.includes('powerpoint')) return 'PowerPoint';
     return ext.toUpperCase() || 'File';
   };
+
+  const homeRecentFiles = useMemo((): FilesLibraryHomeFile[] => {
+    return getRecentFiles(files, 6).map((f) => {
+      const cat = f.category || 'outros';
+      return {
+        id: f.id,
+        fileObjectId: f.file_object_id,
+        name: f.original_name || f.file_object_id,
+        categoryId: f.category,
+        categoryName: categoryNameById[cat] || cat,
+        uploadedAt: f.uploaded_at,
+        isImage: f.is_image,
+        contentType: f.content_type,
+        typeLabel: getFileTypeLabel(f),
+      };
+    });
+  }, [files, categoryNameById]);
 
   const currentFiles = useMemo(() => {
     let list = filesByCategory[selectedCategory] || [];
@@ -346,6 +430,14 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
     }
   };
 
+  useEffect(() => {
+    if (filesLibraryView !== 'browser' || !pendingPreviewFileId) return;
+    const f = files.find((x) => x.id === pendingPreviewFileId);
+    if (!f) return;
+    void handleFilePreview(f);
+    setPendingPreviewFileId(null);
+  }, [filesLibraryView, pendingPreviewFileId, files]);
+
   const uploadFileToBlob = async (file: File): Promise<string> => {
     const type = file.type || 'application/octet-stream';
     const up: any = await api('POST', '/files/upload', {
@@ -453,7 +545,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
     }
   };
 
-  const uploadCategoryOptions = WO_FILE_CATEGORIES.filter((c) => c.id !== 'all').map((c) => ({
+  const uploadCategoryOptions = WO_FILE_CATEGORIES.map((c) => ({
     value: c.id,
     label: c.label,
   }));
@@ -471,7 +563,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
 
   const moveLocationInitialCategory = useMemo(() => {
     const fileCat = moveLocationFile?.category;
-    if (fileCat && WO_FILE_CATEGORIES.some((c) => c.id === fileCat && c.id !== 'all')) return fileCat;
+    if (fileCat && WO_FILE_CATEGORIES.some((c) => c.id === fileCat)) return fileCat;
     if (selectedCategory !== 'all') return selectedCategory;
     return 'outros';
   }, [moveLocationFile, selectedCategory]);
@@ -481,7 +573,9 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
     return fileSelection.resolveDragIds(moveLocationFileId).length;
   }, [moveLocationFileId, fileSelection]);
 
-  const selectedCategoryLabel = WO_FILE_CATEGORIES.find((c) => c.id === selectedCategory)?.label ?? selectedCategory;
+  const selectedCategoryLabel =
+    WO_FILE_CATEGORIES.find((c) => c.id === selectedCategory)?.label ??
+    (selectedCategory === WO_ALL_FILES_CATEGORY.id ? WO_ALL_FILES_CATEGORY.label : selectedCategory);
 
   return (
     <>
@@ -494,7 +588,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
               {...appSectionPresetProps('files')}
               action={
                 canEdit ? (
-                  <AppButton type="button" size="sm" onClick={() => setShowUpload(true)}>
+                  <AppButton type="button" size="sm" onClick={() => openUploadModal(filesLibraryView === 'home' ? 'choose-location' : 'current-location')}>
                     Upload file
                   </AppButton>
                 ) : undefined
@@ -506,6 +600,25 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
             <div className={uiCx(uiTypography.helper, 'border-t border-gray-100 px-4 py-8 text-center')}>
               Loading files…
             </div>
+          ) : filesLibraryView === 'home' ? (
+            <ProjectFilesHome
+              title="Work Order Files"
+              description="Browse files by category or open the complete work order library."
+              categories={homeCategories}
+              totalFileCount={homeTotalFiles}
+              totalFolderCount={0}
+              recentFiles={homeRecentFiles}
+              canWrite={canEdit}
+              designSystem={true}
+              supportsFolders={false}
+              supportsCreateFolder={false}
+              onOpenAllFiles={() => openAllFilesBrowser()}
+              onOpenCategory={openCategoryBrowser}
+              onOpenRecentFile={openRecentFileFromHome}
+              onSearch={(q) => openAllFilesBrowser(q)}
+              onUpload={() => openUploadModal('choose-location')}
+              onCreateFolder={() => {}}
+            />
           ) : (
             <div className={uiCx('border-t', uiBorders.subtle)}>
               <div className="flex min-h-[400px] min-w-0">
@@ -524,19 +637,17 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                       <button
                         key={cat.id}
                         type="button"
-                        {...(cat.id !== 'all' ? fileDropTargetProps('category') : {})}
+                        {...fileDropTargetProps('category')}
                         onClick={() => setSelectedCategory(cat.id)}
-                        {...(cat.id !== 'all'
-                          ? makeDropHandlers('category', cat.id, cat.label, async (e) => {
-                              if (isInternalFileDrag(e.dataTransfer)) {
-                                await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, cat.id, cat.label));
-                                return;
-                              }
-                              if (isExternalFileDrop(e.dataTransfer)) {
-                                await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
-                              }
-                            })
-                          : {})}
+                        {...makeDropHandlers('category', cat.id, cat.label, async (e) => {
+                          if (isInternalFileDrag(e.dataTransfer)) {
+                            await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, cat.id, cat.label));
+                            return;
+                          }
+                          if (isExternalFileDrop(e.dataTransfer)) {
+                            await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
+                          }
+                        })}
                         className={uiCx(
                           'w-full border-b text-left transition-colors',
                           uiBorders.subtle,
@@ -544,7 +655,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                           'px-3 py-2 hover:bg-white',
                           selectedCategory === cat.id &&
                             'border-l-4 border-l-brand-red bg-white font-semibold text-gray-900',
-                          cat.id !== 'all' ? dropTargetClass(isDropActive('category', cat.id), 'category') : '',
+                          dropTargetClass(isDropActive('category', cat.id), 'category'),
                         )}
                       >
                         <span className="flex items-center gap-2">
@@ -555,6 +666,26 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                         </span>
                       </button>
                     ))}
+                    <button
+                      key={WO_ALL_FILES_CATEGORY.id}
+                      type="button"
+                      onClick={() => setSelectedCategory(WO_ALL_FILES_CATEGORY.id)}
+                      className={uiCx(
+                        'w-full border-b text-left transition-colors',
+                        uiBorders.subtle,
+                        uiTypography.helper,
+                        'px-3 py-2 hover:bg-white',
+                        selectedCategory === WO_ALL_FILES_CATEGORY.id &&
+                          'border-l-4 border-l-brand-red bg-white font-semibold text-gray-900',
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="truncate">{WO_ALL_FILES_CATEGORY.label}</span>
+                        <span className={uiCx(uiTypography.helper, 'ml-auto shrink-0 text-gray-500')}>
+                          ({filesByCategory[WO_ALL_FILES_CATEGORY.id]?.length ?? 0})
+                        </span>
+                      </span>
+                    </button>
                   </div>
                 </aside>
 
@@ -577,6 +708,20 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                   }}
                   onDrop={onDropRight}
                 >
+                  <div className={uiCx(uiLayout.actionsRow, 'mb-2 flex-wrap gap-2')}>
+                    <AppButton type="button" variant="ghost" size="sm" onClick={openFilesHome}>
+                      ← Files Home
+                    </AppButton>
+                    <span className={uiCx(uiTypography.helper, 'hidden sm:inline text-gray-500')}>
+                      Files Home
+                      {selectedCategory !== 'all' ? (
+                        <>
+                          {' / '}
+                          <span className="font-medium text-gray-800">{selectedCategoryLabel}</span>
+                        </>
+                      ) : null}
+                    </span>
+                  </div>
                   <div className={uiCx(uiLayout.actionsRow, 'mb-3 flex-wrap items-center justify-between gap-3')}>
                     <div className={uiCx(uiLayout.actionsRow, 'min-w-0 flex-1 flex-wrap gap-3')}>
                       <div className="max-w-sm min-w-0 flex-1">
@@ -852,11 +997,17 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
         }
       >
         <div className={uiSpacing.sectionStack}>
-          {selectedCategory === 'all' && (
+          {(uploadModalContext === 'choose-location' || selectedCategory === 'all') && (
             <AppSelect
               label="Category"
-              value={uploadCategory}
-              onChange={(e) => setUploadCategory(e.target.value)}
+              value={uploadModalContext === 'choose-location' ? uploadDestinationCategory : uploadCategory}
+              onChange={(e) => {
+                if (uploadModalContext === 'choose-location') {
+                  setUploadDestinationCategory(e.target.value);
+                } else {
+                  setUploadCategory(e.target.value);
+                }
+              }}
               options={uploadCategoryOptions}
             />
           )}
@@ -866,8 +1017,15 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
             value={[]}
             onChange={() => {}}
             onFilesSelected={async (added) => {
-              if (added.length > 0) {
-                setShowUpload(false);
+              if (added.length === 0) return;
+              if (uploadModalContext === 'choose-location' && !uploadDestinationCategory) {
+                toast.error('Select a category');
+                return;
+              }
+              setShowUpload(false);
+              if (uploadModalContext === 'choose-location') {
+                await uploadMultiple(added, uploadDestinationCategory);
+              } else {
                 await uploadMultiple(added);
               }
             }}
