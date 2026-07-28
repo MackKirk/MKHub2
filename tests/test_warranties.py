@@ -9,8 +9,10 @@ from app.services.warranty import (
     calculate_next_maintenance_date,
     compute_overall_warranty_status,
     compute_total_internal_cost,
+    validate_claim_payload,
     validate_warranty_payload,
 )
+from fastapi import HTTPException
 
 
 class _ProjectStub:
@@ -158,6 +160,56 @@ class TestValidateWarrantyPayload(unittest.TestCase):
         self.assertIsNone(result["maintenance_frequency"])
         self.assertIsNone(result["next_maintenance_due_date"])
         self.assertIsNone(result["first_maintenance_due_date"])
+
+
+class _ClaimStub:
+    def __init__(self, **kwargs):
+        self.description = kwargs.get("description", "Issue")
+        self.coverage_decision = kwargs.get("coverage_decision", "pending_assessment")
+        self.status = kwargs.get("status", "reported")
+        self.denial_reason = kwargs.get("denial_reason")
+        self.assessment_notes = kwargs.get("assessment_notes")
+        self.completion_date = kwargs.get("completion_date")
+        self.resolved_by_user_id = kwargs.get("resolved_by_user_id")
+        self.resolution_notes = kwargs.get("resolution_notes")
+        self.follow_up_required = kwargs.get("follow_up_required", False)
+        self.follow_up_date = kwargs.get("follow_up_date")
+        self.decision_date = kwargs.get("decision_date")
+
+
+class TestValidateClaimPayload(unittest.TestCase):
+    def test_not_covered_requires_denial_reason(self):
+        with self.assertRaises(HTTPException) as ctx:
+            validate_claim_payload({"coverage_decision": "not_covered"}, existing=_ClaimStub())
+        self.assertIn("Denial reason", str(ctx.exception.detail))
+
+    def test_partially_covered_requires_assessment_notes(self):
+        with self.assertRaises(HTTPException) as ctx:
+            validate_claim_payload({"coverage_decision": "partially_covered"}, existing=_ClaimStub())
+        self.assertIn("Assessment notes", str(ctx.exception.detail))
+
+    def test_resolved_requires_completion_and_resolution_fields(self):
+        with self.assertRaises(HTTPException) as ctx:
+            validate_claim_payload({"status": "resolved"}, existing=_ClaimStub())
+        self.assertIn("Completion date", str(ctx.exception.detail))
+
+    def test_resolved_requires_resolved_by(self):
+        existing = _ClaimStub(completion_date=__import__("datetime").date(2026, 7, 1), resolution_notes="Done")
+        with self.assertRaises(HTTPException) as ctx:
+            validate_claim_payload({"status": "resolved"}, existing=existing)
+        self.assertIn("Resolved by", str(ctx.exception.detail))
+
+    def test_follow_up_required_needs_date(self):
+        with self.assertRaises(HTTPException) as ctx:
+            validate_claim_payload({"follow_up_required": True}, existing=_ClaimStub())
+        self.assertIn("Follow-up date", str(ctx.exception.detail))
+
+    def test_cost_fields_compute_total_internal_cost(self):
+        result = validate_claim_payload(
+            {"labour_cost": 100, "material_cost": 50, "subcontractor_cost": 25, "other_cost": 25},
+            existing=_ClaimStub(),
+        )
+        self.assertEqual(result["total_internal_cost"], 200.0)
 
 
 if __name__ == "__main__":

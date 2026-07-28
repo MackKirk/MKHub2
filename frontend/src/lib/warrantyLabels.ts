@@ -109,3 +109,54 @@ export function claimSeverityBadgeClass(severity: string): string {
       return 'bg-gray-100 text-gray-700';
   }
 }
+
+export type WarrantyBadgeVariant = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
+
+export function warrantyStatusBadgeVariant(status: string): WarrantyBadgeVariant {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'expiring_soon':
+      return 'warning';
+    case 'expired':
+      return 'neutral';
+    case 'voided':
+    case 'cancelled':
+      return 'danger';
+    case 'pending_documents':
+    case 'pending_registration':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+export function claimSeverityBadgeVariant(severity: string): WarrantyBadgeVariant {
+  switch (severity) {
+    case 'emergency':
+      return 'danger';
+    case 'high':
+      return 'warning';
+    case 'medium':
+      return 'info';
+    default:
+      return 'neutral';
+  }
+}
+
+export function claimStatusBadgeVariant(status: string): WarrantyBadgeVariant {
+  switch (status) {
+    case 'resolved':
+      return 'success';
+    case 'in_progress':
+    case 'scheduled':
+    case 'site_visit_required':
+      return 'info';
+    case 'under_review':
+      return 'warning';
+    case 'closed':
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+}

@@ -1,17 +1,27 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import WarrantyClaimFormModal from '@/components/warranties/WarrantyClaimFormModal';
+import WarrantyClaimCancelModal from '@/components/warranties/WarrantyClaimCancelModal';
+import WarrantyClaimDetailModal from '@/components/warranties/WarrantyClaimDetailModal';
+import WarrantyClaimFormModal, { type WarrantyClaimEditSource } from '@/components/warranties/WarrantyClaimFormModal';
+import WarrantyDetailModal from '@/components/warranties/WarrantyDetailModal';
 import WarrantyFormModal, { type WarrantyEditSource } from '@/components/warranties/WarrantyFormModal';
+import { WarrantySummaryKpiCard } from '@/components/warranties/WarrantySummaryKpiCard';
 import {
   AppBadge,
   AppButton,
   AppCard,
+  AppCheckbox,
   AppEmptyState,
   AppSectionHeader,
+  AppSelect,
   appSectionPresetProps,
+  uiBorders,
   uiCx,
+  uiLayout,
+  uiRadius,
+  uiSortableEntityList,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
@@ -23,8 +33,9 @@ import {
   PROVIDER_TYPE_LABELS,
   WARRANTY_STATUS_LABELS,
   WARRANTY_TYPE_LABELS,
-  claimSeverityBadgeClass,
-  warrantyStatusBadgeClass,
+  claimSeverityBadgeVariant,
+  claimStatusBadgeVariant,
+  warrantyStatusBadgeVariant,
 } from '@/lib/warrantyLabels';
 
 type WarrantySummary = {
@@ -61,20 +72,7 @@ type Warranty = {
   open_claims_count: number;
 };
 
-type WarrantyClaim = {
-  id: string;
-  claim_number: string;
-  warranty_id?: string | null;
-  reported_date: string;
-  description: string;
-  severity: string;
-  status: string;
-  coverage_decision: string;
-  assigned_user_id?: string | null;
-  follow_up_date?: string | null;
-  labour_cost?: number | null;
-  total_internal_cost?: number | null;
-};
+type WarrantyClaim = WarrantyClaimEditSource;
 
 type ActivityEntry = {
   id: string;
@@ -95,6 +93,11 @@ type Props = {
   designSystem?: boolean;
   onNavigateFiles?: () => void;
 };
+
+const STATUS_FILTER_OPTIONS = [
+  { value: '', label: 'All statuses' },
+  ...Object.entries(WARRANTY_STATUS_LABELS).map(([value, label]) => ({ value, label })),
+];
 
 function formatDate(s?: string | null) {
   if (!s) return '—';
@@ -133,6 +136,14 @@ function formatActivityMessage(entry: ActivityEntry): string {
   }
 }
 
+function SectionLoading({ message }: { message: string }) {
+  return <div className={uiCx(uiSpacing.cardPadding, 'text-center', uiTypography.helper)}>{message}</div>;
+}
+
+function SectionError({ message }: { message: string }) {
+  return <div className={uiCx(uiSpacing.cardPadding, 'text-center text-sm text-red-600')}>{message}</div>;
+}
+
 export default function ProjectWarrantiesTab({
   projectId,
   canRead,
@@ -142,16 +153,24 @@ export default function ProjectWarrantiesTab({
   onNavigateFiles,
 }: Props) {
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const uploadWarrantyIdRef = useRef<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState('');
   const [claimsOpenOnly, setClaimsOpenOnly] = useState(false);
-  const [selectedWarrantyId, setSelectedWarrantyId] = useState<string | null>(null);
+  const [viewWarrantyId, setViewWarrantyId] = useState<string | null>(null);
+  const [viewClaimId, setViewClaimId] = useState<string | null>(null);
   const [showWarrantyModal, setShowWarrantyModal] = useState(false);
   const [showClaimModal, setShowClaimModal] = useState(false);
+  const [showClaimCancelModal, setShowClaimCancelModal] = useState(false);
   const [editingWarranty, setEditingWarranty] = useState<WarrantyEditSource | null>(null);
+  const [editingClaim, setEditingClaim] = useState<WarrantyClaimEditSource | null>(null);
+  const [cancellingClaim, setCancellingClaim] = useState<WarrantyClaimEditSource | null>(null);
   const [claimDefaultWarrantyId, setClaimDefaultWarrantyId] = useState<string | undefined>();
+
+  const meQ = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<{ id?: string }>('GET', '/auth/me'),
+    enabled: canRead,
+  });
 
   const summaryQ = useQuery({
     queryKey: ['projectWarrantySummary', projectId],
@@ -187,61 +206,19 @@ export default function ProjectWarrantiesTab({
     enabled: canRead,
   });
 
-  const warrantyDetailQ = useQuery({
-    queryKey: ['projectWarranty', projectId, selectedWarrantyId],
-    queryFn: () => api<Warranty & Record<string, unknown>>('GET', `/projects/${projectId}/warranties/${selectedWarrantyId}`),
-    enabled: Boolean(selectedWarrantyId),
-  });
-
-  const documentsQ = useQuery({
-    queryKey: ['projectWarrantyDocuments', projectId, selectedWarrantyId],
-    queryFn: () => api<{ id: string; original_name?: string; uploaded_at?: string; size_bytes?: number }[]>(
-      'GET',
-      `/projects/${projectId}/warranties/${selectedWarrantyId}/documents`
-    ),
-    enabled: Boolean(selectedWarrantyId),
-  });
-
   const invalidateAll = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['projectWarrantySummary', projectId] });
     queryClient.invalidateQueries({ queryKey: ['projectWarranties', projectId] });
     queryClient.invalidateQueries({ queryKey: ['projectWarrantyClaims', projectId] });
     queryClient.invalidateQueries({ queryKey: ['projectWarrantyActivities', projectId] });
-    if (selectedWarrantyId) {
-      queryClient.invalidateQueries({ queryKey: ['projectWarranty', projectId, selectedWarrantyId] });
-      queryClient.invalidateQueries({ queryKey: ['projectWarrantyDocuments', projectId, selectedWarrantyId] });
+    if (viewWarrantyId) {
+      queryClient.invalidateQueries({ queryKey: ['projectWarranty', projectId, viewWarrantyId] });
+      queryClient.invalidateQueries({ queryKey: ['projectWarrantyDocuments', projectId, viewWarrantyId] });
     }
-  }, [queryClient, projectId, selectedWarrantyId]);
-
-  const uploadDocument = async (file: File, warrantyId: string) => {
-    const up: { upload_url: string; key: string } = await api('POST', '/files/upload', {
-      project_id: projectId,
-      original_name: file.name,
-      content_type: file.type || 'application/octet-stream',
-      category_id: 'warranty',
-    });
-    await fetch(up.upload_url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': file.type || 'application/octet-stream',
-        'x-ms-blob-type': 'BlockBlob',
-      },
-      body: file,
-    });
-    const conf: { id: string } = await api('POST', '/files/confirm', {
-      key: up.key,
-      size_bytes: file.size,
-      checksum_sha256: 'na',
-      content_type: file.type || 'application/octet-stream',
-    });
-    const params = new URLSearchParams({
-      file_object_id: conf.id,
-      original_name: file.name,
-    });
-    await api('POST', `/projects/${projectId}/warranties/${warrantyId}/documents?${params.toString()}`);
-    toast.success('Document uploaded successfully. It is also available in Files > Warranty.');
-    invalidateAll();
-  };
+    if (viewClaimId) {
+      queryClient.invalidateQueries({ queryKey: ['projectWarrantyClaim', projectId, viewClaimId] });
+    }
+  }, [queryClient, projectId, viewWarrantyId, viewClaimId]);
 
   const summary = summaryQ.data;
   const warranties = warrantiesQ.data || [];
@@ -259,8 +236,20 @@ export default function ProjectWarrantiesTab({
   };
 
   const openRegisterClaim = (warrantyId?: string) => {
+    setEditingClaim(null);
     setClaimDefaultWarrantyId(warrantyId);
     setShowClaimModal(true);
+  };
+
+  const openEditClaim = (claim: WarrantyClaimEditSource) => {
+    setEditingClaim(claim);
+    setClaimDefaultWarrantyId(undefined);
+    setShowClaimModal(true);
+  };
+
+  const openCancelClaim = (claim: WarrantyClaimEditSource) => {
+    setCancellingClaim(claim);
+    setShowClaimCancelModal(true);
   };
 
   const closeWarrantyModal = () => {
@@ -271,6 +260,12 @@ export default function ProjectWarrantiesTab({
   const closeClaimModal = () => {
     setShowClaimModal(false);
     setClaimDefaultWarrantyId(undefined);
+    setEditingClaim(null);
+  };
+
+  const closeClaimCancelModal = () => {
+    setShowClaimCancelModal(false);
+    setCancellingClaim(null);
   };
 
   const summaryCards = useMemo(
@@ -307,7 +302,7 @@ export default function ProjectWarrantiesTab({
         label: 'Next Expiration',
         value: formatDate(summary?.next_expiration_date),
         onClick: () => {
-          if (summary?.next_expiration_warranty_id) setSelectedWarrantyId(summary.next_expiration_warranty_id);
+          if (summary?.next_expiration_warranty_id) setViewWarrantyId(summary.next_expiration_warranty_id);
         },
       },
       {
@@ -315,7 +310,7 @@ export default function ProjectWarrantiesTab({
         label: 'Next Maintenance',
         value: formatDate(summary?.next_maintenance_date),
         onClick: () => {
-          if (summary?.next_maintenance_warranty_id) setSelectedWarrantyId(summary.next_maintenance_warranty_id);
+          if (summary?.next_maintenance_warranty_id) setViewWarrantyId(summary.next_maintenance_warranty_id);
         },
       },
       {
@@ -330,20 +325,23 @@ export default function ProjectWarrantiesTab({
 
   if (!canRead) {
     return (
-      <div className="rounded-xl border bg-white p-6 text-sm text-gray-600">
-        You do not have permission to view warranties.
-      </div>
+      <AppCard>
+        <AppEmptyState title="You do not have permission to view warranties." />
+      </AppCard>
     );
   }
 
   const sectionProps = designSystem ? appSectionPresetProps('warranties') : {};
 
   const content = (
-    <div className={uiCx('space-y-6', uiSpacing.pageStack)}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={uiTypography.sectionTitle}>Warranties</h2>
-        {canWrite && (
-          <div className="flex flex-wrap gap-2">
+    <div className={uiCx(uiSpacing.pageStack, 'min-w-0')}>
+      <div className={uiCx(uiLayout.actionsRow, 'items-center justify-between gap-3')}>
+        <div className="min-w-0">
+          <h2 className={uiTypography.sectionTitle}>Warranties</h2>
+          <p className={uiTypography.sectionSubtitle}>Coverage, maintenance, documents and claims</p>
+        </div>
+        {canWrite ? (
+          <div className={uiLayout.actionsRow}>
             <AppButton variant="primary" size="sm" onClick={openAddWarranty}>
               Add Warranty
             </AppButton>
@@ -351,78 +349,78 @@ export default function ProjectWarrantiesTab({
               Register Claim
             </AppButton>
           </div>
-        )}
+        ) : null}
       </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 min-w-0">
+      <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         {summaryCards.map((card) => (
-          <button
-            key={card.key}
-            type="button"
-            onClick={card.onClick}
-            className="rounded-lg border border-gray-200 bg-white p-3 text-left hover:border-brand-red/40 hover:bg-gray-50 transition-colors min-w-0"
-          >
-            <div className="text-xs text-gray-500 truncate">{card.label}</div>
-            <div className="text-sm font-semibold text-gray-900 mt-1 truncate">{card.value}</div>
-          </button>
+          <WarrantySummaryKpiCard key={card.key} label={card.label} value={card.value} onClick={card.onClick} />
         ))}
       </div>
 
-      {/* Warranty records */}
-      <AppCard>
-        <AppSectionHeader title="Warranty Records" description="Coverage periods, maintenance and documents" {...sectionProps} />
-        <div className="px-4 pb-2">
-          <select
-            className="text-sm border rounded-md px-2 py-1"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">All statuses</option>
-            {Object.entries(WARRANTY_STATUS_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
+      <AppCard bodyClassName="!p-0">
+        <div className={uiSpacing.cardPadding}>
+          <AppSectionHeader
+            title="Warranty Records"
+            description="Coverage periods, maintenance and documents"
+            {...sectionProps}
+          />
+          <div className="mt-3 max-w-xs">
+            <AppSelect
+              label="Status filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              options={STATUS_FILTER_OPTIONS}
+            />
+          </div>
         </div>
         {warrantiesQ.isLoading ? (
-          <div className="p-8 text-center text-gray-500 text-sm">Loading…</div>
+          <SectionLoading message="Loading warranties…" />
         ) : warrantiesQ.isError ? (
-          <div className="p-8 text-center text-red-600 text-sm">
-            {(warrantiesQ.error as Error)?.message || 'Failed to load warranties'}
-          </div>
+          <SectionError message={(warrantiesQ.error as Error)?.message || 'Failed to load warranties'} />
         ) : warranties.length === 0 ? (
-          <AppEmptyState
-            title="No warranties have been added to this project."
-            description="Create a warranty to track coverage periods, required maintenance, documents and claims."
-            action={canWrite ? <AppButton onClick={openAddWarranty}>Add Warranty</AppButton> : undefined}
-          />
+          <div className={uiSpacing.cardPadding}>
+            <AppEmptyState
+              title="No warranties have been added to this project."
+              description="Create a warranty to track coverage periods, required maintenance, documents and claims."
+              action={canWrite ? <AppButton onClick={openAddWarranty}>Add Warranty</AppButton> : undefined}
+            />
+          </div>
         ) : (
-          <ul className="divide-y divide-gray-100 border-t">
+          <ul className={uiCx(uiBorders.subtle, 'border-x-0 border-b-0')}>
             {warranties.map((w) => (
-              <li key={w.id} className="px-4 py-3 flex flex-wrap items-center justify-between gap-3 hover:bg-gray-50">
-                <button type="button" className="text-left min-w-0 flex-1" onClick={() => setSelectedWarrantyId(w.id)}>
-                  <div className="font-medium text-sm text-gray-900">{w.name}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {WARRANTY_TYPE_LABELS[w.warranty_type] || w.warranty_type}
-                    {' · '}
-                    {w.provider_name || PROVIDER_TYPE_LABELS[w.provider_type] || w.provider_type}
+              <li key={w.id} className={uiSortableEntityList.rowFlat}>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3">
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setViewWarrantyId(w.id)}>
+                    <div className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{w.name}</div>
+                    <div className={uiTypography.helper}>
+                      {WARRANTY_TYPE_LABELS[w.warranty_type] || w.warranty_type}
+                      {' · '}
+                      {w.provider_name || PROVIDER_TYPE_LABELS[w.provider_type] || w.provider_type}
+                    </div>
+                    <div className={uiTypography.helper}>
+                      {formatDate(w.start_date)} – {formatDate(w.end_date)}
+                      {w.open_claims_count > 0 && ` · ${w.open_claims_count} open claim(s)`}
+                    </div>
+                  </button>
+                  <div className={uiCx(uiLayout.actionsRow, 'shrink-0')}>
+                    <AppBadge variant={warrantyStatusBadgeVariant(w.status)}>
+                      {WARRANTY_STATUS_LABELS[w.status] || w.status}
+                    </AppBadge>
+                    <AppButton size="sm" variant="ghost" onClick={() => setViewWarrantyId(w.id)}>
+                      View
+                    </AppButton>
+                    {canWrite ? (
+                      <>
+                        <AppButton size="sm" variant="ghost" onClick={() => openEditWarranty(w)}>
+                          Edit
+                        </AppButton>
+                        <AppButton size="sm" variant="ghost" onClick={() => openRegisterClaim(w.id)}>
+                          Register Claim
+                        </AppButton>
+                      </>
+                    ) : null}
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {formatDate(w.start_date)} – {formatDate(w.end_date)}
-                    {w.open_claims_count > 0 && ` · ${w.open_claims_count} open claim(s)`}
-                  </div>
-                </button>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${warrantyStatusBadgeClass(w.status)}`}>
-                    {WARRANTY_STATUS_LABELS[w.status] || w.status}
-                  </span>
-                  {canWrite && (
-                    <>
-                      <AppButton size="sm" variant="ghost" onClick={() => setSelectedWarrantyId(w.id)}>View</AppButton>
-                      <AppButton size="sm" variant="ghost" onClick={() => openEditWarranty(w)}>Edit</AppButton>
-                      <AppButton size="sm" variant="ghost" onClick={() => openRegisterClaim(w.id)}>Register Claim</AppButton>
-                    </>
-                  )}
                 </div>
               </li>
             ))}
@@ -430,130 +428,81 @@ export default function ProjectWarrantiesTab({
         )}
       </AppCard>
 
-      {/* Warranty detail drawer */}
-      {selectedWarrantyId && warrantyDetailQ.data && (
-        <AppCard>
-          <AppSectionHeader
-            title={warrantyDetailQ.data.name}
-            description="Warranty details"
-            {...sectionProps}
-            action={
-              <AppButton size="sm" variant="ghost" onClick={() => setSelectedWarrantyId(null)}>Close</AppButton>
-            }
-          />
-          <div className="px-4 pb-4 space-y-4 text-sm">
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div><dt className="text-gray-500">Type</dt><dd>{WARRANTY_TYPE_LABELS[warrantyDetailQ.data.warranty_type]}</dd></div>
-              <div><dt className="text-gray-500">Status</dt><dd>{WARRANTY_STATUS_LABELS[warrantyDetailQ.data.status]}</dd></div>
-              <div><dt className="text-gray-500">Period</dt><dd>{formatDate(warrantyDetailQ.data.start_date)} – {formatDate(warrantyDetailQ.data.end_date)}</dd></div>
-              <div><dt className="text-gray-500">Next maintenance</dt><dd>{formatDate(warrantyDetailQ.data.next_maintenance_due_date)}</dd></div>
-            </dl>
-            {warrantyDetailQ.data.coverage_description && (
-              <div><span className="text-gray-500">Coverage: </span>{warrantyDetailQ.data.coverage_description}</div>
-            )}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-medium">Documents</span>
-                {canWrite && (
-                  <AppButton
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      uploadWarrantyIdRef.current = selectedWarrantyId;
-                      fileInputRef.current?.click();
-                    }}
-                  >
-                    Upload Document
-                  </AppButton>
-                )}
-              </div>
-              {(documentsQ.data || []).length === 0 ? (
-                <p className="text-gray-500 text-sm">No documents have been uploaded for this warranty.</p>
-              ) : (
-                <ul className="divide-y border rounded-md">
-                  {(documentsQ.data || []).map((doc) => (
-                    <li key={doc.id} className="px-3 py-2 flex justify-between gap-2 text-sm">
-                      <span className="truncate">{doc.original_name || 'Document'}</span>
-                      <span className="text-gray-500 flex-shrink-0">{formatDate(doc.uploaded_at)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {onNavigateFiles && (
-                <AppButton size="sm" variant="ghost" className="mt-2" onClick={onNavigateFiles}>Open in Files</AppButton>
-              )}
+      <div id="warranty-claims-section">
+        <AppCard bodyClassName="!p-0">
+          <div className={uiSpacing.cardPadding}>
+            <AppSectionHeader title="Claims" description="Warranty claims for this project" {...sectionProps} />
+            <div className="mt-3">
+              <AppCheckbox
+                label="Open claims only"
+                checked={claimsOpenOnly}
+                onChange={setClaimsOpenOnly}
+              />
             </div>
           </div>
-        </AppCard>
-      )}
-
-      {/* Claims */}
-      <div id="warranty-claims-section">
-      <AppCard>
-        <AppSectionHeader title="Claims" description="Warranty claims for this project" {...sectionProps} />
-        <div className="px-4 pb-2">
-          <label className="text-sm flex items-center gap-2">
-            <input type="checkbox" checked={claimsOpenOnly} onChange={(e) => setClaimsOpenOnly(e.target.checked)} />
-            Open claims only
-          </label>
-        </div>
-        {claimsQ.isLoading ? (
-          <div className="p-8 text-center text-gray-500 text-sm">Loading…</div>
-        ) : claimsQ.isError ? (
-          <div className="p-8 text-center text-red-600 text-sm">
-            {(claimsQ.error as Error)?.message || 'Failed to load claims'}
-          </div>
-        ) : claims.length === 0 ? (
-          <AppEmptyState title="No warranty claims have been reported." />
-        ) : (
-          <ul className="divide-y divide-gray-100 border-t">
-            {claims.map((c) => (
-              <li key={c.id} className="px-4 py-3 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <span className="font-medium">{c.claim_number}</span>
-                    <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${claimSeverityBadgeClass(c.severity)}`}>
-                      {CLAIM_SEVERITY_LABELS[c.severity]}
-                    </span>
+          {claimsQ.isLoading ? (
+            <SectionLoading message="Loading claims…" />
+          ) : claimsQ.isError ? (
+            <SectionError message={(claimsQ.error as Error)?.message || 'Failed to load claims'} />
+          ) : claims.length === 0 ? (
+            <div className={uiSpacing.cardPadding}>
+              <AppEmptyState title="No warranty claims have been reported." />
+            </div>
+          ) : (
+            <ul className={uiCx(uiBorders.subtle, 'border-x-0 border-b-0')}>
+              {claims.map((c) => (
+                <li key={c.id} className={uiCx(uiSpacing.cardPadding, 'border-b border-gray-100 last:border-b-0')}>
+                  <div className={uiCx(uiLayout.actionsRow, 'items-start justify-between gap-2')}>
+                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setViewClaimId(c.id)}>
+                      <div className={uiCx(uiLayout.actionsRow, 'min-w-0 items-center gap-2')}>
+                        <span className={uiCx(uiTypography.body, 'font-medium')}>{c.claim_number}</span>
+                        <AppBadge variant={claimSeverityBadgeVariant(c.severity)}>
+                          {CLAIM_SEVERITY_LABELS[c.severity]}
+                        </AppBadge>
+                        <AppBadge variant={claimStatusBadgeVariant(c.status)}>
+                          {CLAIM_STATUS_LABELS[c.status] || c.status}
+                        </AppBadge>
+                      </div>
+                      <p className={uiCx(uiTypography.body, 'mt-1 line-clamp-2 text-gray-600')}>{c.description}</p>
+                      <div className={uiTypography.helper}>
+                        Reported {formatDate(c.reported_date)}
+                        {' · '}
+                        {COVERAGE_DECISION_LABELS[c.coverage_decision]}
+                        {!c.assigned_user_id && ' · Attention required'}
+                        {canViewCosts && c.total_internal_cost != null && ` · $${c.total_internal_cost.toFixed(2)}`}
+                      </div>
+                    </button>
+                    <AppButton size="sm" variant="ghost" className="shrink-0" onClick={() => setViewClaimId(c.id)}>
+                      View
+                    </AppButton>
                   </div>
-                  <AppBadge variant="neutral">{CLAIM_STATUS_LABELS[c.status] || c.status}</AppBadge>
-                </div>
-                <p className="text-gray-600 mt-1 line-clamp-2">{c.description}</p>
-                <div className="text-xs text-gray-500 mt-1">
-                  Reported {formatDate(c.reported_date)}
-                  {' · '}
-                  {COVERAGE_DECISION_LABELS[c.coverage_decision]}
-                  {!c.assigned_user_id && ' · Attention required'}
-                  {canViewCosts && c.total_internal_cost != null && ` · $${c.total_internal_cost.toFixed(2)}`}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </AppCard>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AppCard>
       </div>
 
-      {/* Activity */}
-      <AppCard>
-        <AppSectionHeader title="Activity History" {...sectionProps} />
+      <AppCard bodyClassName="!p-0">
+        <div className={uiSpacing.cardPadding}>
+          <AppSectionHeader title="Activity History" {...sectionProps} />
+        </div>
         {activitiesQ.isLoading ? (
-          <div className="p-8 text-center text-gray-500 text-sm">Loading…</div>
+          <SectionLoading message="Loading activity…" />
         ) : activitiesQ.isError ? (
-          <div className="p-8 text-center text-red-600 text-sm">
-            {(activitiesQ.error as Error)?.message || 'Failed to load activity'}
-          </div>
+          <SectionError message={(activitiesQ.error as Error)?.message || 'Failed to load activity'} />
         ) : activities.length === 0 ? (
-          <p className="px-4 pb-4 text-sm text-gray-500">No activity yet.</p>
+          <p className={uiCx(uiSpacing.cardPadding, 'pt-0', uiTypography.helper)}>No activity yet.</p>
         ) : (
-          <ul className="px-4 pb-4 space-y-3 border-t pt-4">
+          <ul className={uiCx(uiSpacing.cardPadding, 'space-y-3 border-t border-gray-100 pt-4')}>
             {activities.map((entry) => (
-              <li key={entry.id} className="border-l-2 border-gray-200 pl-3 text-sm">
-                <div className="text-xs text-gray-500">{formatDate(entry.created_at)}</div>
-                <div className="text-gray-900">
+              <li key={entry.id} className="border-l-2 border-gray-200 pl-3">
+                <div className={uiTypography.helper}>{formatDate(entry.created_at)}</div>
+                <div className={uiTypography.body}>
                   {formatActivityMessage(entry)}
-                  {entry.created_by_display && (
+                  {entry.created_by_display ? (
                     <span className="text-gray-500"> by {entry.created_by_display}</span>
-                  )}
+                  ) : null}
                 </div>
               </li>
             ))}
@@ -561,21 +510,16 @@ export default function ProjectWarrantiesTab({
         )}
       </AppCard>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        className="hidden"
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          const wid = uploadWarrantyIdRef.current;
-          e.target.value = '';
-          if (!file || !wid) return;
-          try {
-            await uploadDocument(file, wid);
-          } catch (err) {
-            toast.error(err instanceof Error ? err.message : 'Upload failed');
-          }
-        }}
+      <WarrantyDetailModal
+        open={Boolean(viewWarrantyId)}
+        onClose={() => setViewWarrantyId(null)}
+        projectId={projectId}
+        warrantyId={viewWarrantyId}
+        canWrite={canWrite}
+        onEdit={openEditWarranty}
+        onRegisterClaim={openRegisterClaim}
+        onNavigateFiles={onNavigateFiles}
+        onChanged={invalidateAll}
       />
 
       <WarrantyFormModal
@@ -586,19 +530,43 @@ export default function ProjectWarrantiesTab({
         onSuccess={invalidateAll}
       />
 
+      <WarrantyClaimDetailModal
+        open={Boolean(viewClaimId)}
+        onClose={() => setViewClaimId(null)}
+        projectId={projectId}
+        claimId={viewClaimId}
+        canWrite={canWrite}
+        canViewCosts={canViewCosts}
+        warranties={warranties}
+        onEdit={openEditClaim}
+        onCancel={openCancelClaim}
+      />
+
       <WarrantyClaimFormModal
         open={showClaimModal}
         onClose={closeClaimModal}
         projectId={projectId}
         warranties={warranties}
         defaultWarrantyId={claimDefaultWarrantyId}
+        editingClaim={editingClaim}
+        canViewCosts={canViewCosts}
+        currentUserId={meQ.data?.id}
         onSuccess={invalidateAll}
+      />
+
+      <WarrantyClaimCancelModal
+        open={showClaimCancelModal}
+        onClose={closeClaimCancelModal}
+        projectId={projectId}
+        claimId={cancellingClaim?.id || ''}
+        claimNumber={cancellingClaim?.claim_number || ''}
+        onSuccess={() => {
+          invalidateAll();
+          setViewClaimId(null);
+        }}
       />
     </div>
   );
 
-  if (designSystem) {
-    return <AppCard>{content}</AppCard>;
-  }
-  return <div className="rounded-xl border bg-white p-4">{content}</div>;
+  return content;
 }

@@ -2104,14 +2104,55 @@ export const projectWarrantyClaimQuickInfo = formModalQuickInfo({
   ),
   behavior: (
     <>
-      Emergency severity triggers an immediate notification to the project admin. Claims can be tracked and resolved
-      from the claims list.
+      Emergency severity triggers an immediate notification to the project admin. After registering, open the claim
+      from the list to assign, assess coverage and resolve it.
     </>
   ),
   actions: (
     <>
       {uiLabel('Cancel')} closes without creating a claim. {uiLabel('Register claim')} saves the claim and refreshes
       summary and activity.
+    </>
+  ),
+});
+
+/** Edit warranty claim (Warranties tab). */
+export const projectWarrantyClaimEditQuickInfo = formModalQuickInfo({
+  purpose: <>Update an existing warranty claim through assessment and resolution.</>,
+  howToUse: (
+    <>
+      Set {uiLabel('Status')} and {uiLabel('Assigned to')}, record the {uiLabel('Coverage decision')}, then add
+      resolution details when closing the claim.
+    </>
+  ),
+  behavior: (
+    <>
+      Not Covered requires a denial reason. Partially Covered requires assessment notes. Resolved status requires
+      completion date, resolution notes and resolved by.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save changes')} updates the claim and refreshes the list and
+      activity.
+    </>
+  ),
+});
+
+/** Warranty claim detail (Warranties tab). */
+export const projectWarrantyClaimDetailQuickInfo = formModalQuickInfo({
+  purpose: <>Review a warranty claim reported on this project.</>,
+  howToUse: (
+    <>
+      Read status, assignment, coverage assessment, resolution and costs. Use {uiLabel('Edit')} to update the claim or{' '}
+      {uiLabel('Cancel claim')} to close it with a reason.
+    </>
+  ),
+  behavior: <>Claims without an assignee show Attention required until someone is assigned.</>,
+  actions: (
+    <>
+      {uiLabel('Close')} returns to the list. {uiLabel('Edit')} opens the edit form. {uiLabel('Cancel claim')} requires
+      a cancellation reason.
     </>
   ),
 });

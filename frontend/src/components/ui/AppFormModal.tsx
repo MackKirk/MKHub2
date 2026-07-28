@@ -76,6 +76,8 @@ export type AppFormModalProps = {
   formWidth?: 'default' | 'wide' | 'comfortable';
   /** Overrides default body wrapper classes on AppModal. */
   bodyClassName?: string;
+  /** When false, modal body height follows content instead of filling the dialog shell. */
+  bodyFill?: boolean;
   /** Backdrop z-index / layout when stacked on another modal (e.g. `z-[200]`). */
   overlayClassName?: string;
   /**
@@ -105,6 +107,7 @@ export function AppFormModal({
   bodyClassName: bodyClassNameProp,
   overlayClassName,
   scrollBody = true,
+  bodyFill: bodyFillProp,
   children,
 }: AppFormModalProps) {
   const isDetailLayout = layout === 'detail';
@@ -257,6 +260,8 @@ export function AppFormModal({
     footer && !isDetailLayout && 'flex min-h-0 flex-col overflow-hidden',
   );
 
+  const resolvedBodyFill = bodyFillProp ?? isDetailLayout;
+
   return (
     <AppModal
       open={open}
@@ -267,7 +272,7 @@ export function AppFormModal({
       size={isDetailLayout ? size : 'sm'}
       headerActions={headerActions}
       bodyClassName={resolvedBodyClassName}
-      bodyFill={isDetailLayout}
+      bodyFill={resolvedBodyFill}
       overlayClassName={overlayClassName}
       dialogClassName={uiCx(DIALOG_WIDTH_TRANSITION, resolvedDialogClassName)}
     >
