@@ -1,6 +1,7 @@
-import DocumentEditor from '@/components/DocumentEditor';
+import DocumentEditor, { type DocumentEditorHandle } from '@/components/DocumentEditor';
 import OverlayPortal from '@/components/OverlayPortal';
 import { CompressIcon } from '@/components/document-editor/documentEditorIcons';
+import type { Ref } from 'react';
 
 type DocumentCreatorModalProps = {
   open: boolean;
@@ -13,6 +14,7 @@ type DocumentCreatorModalProps = {
   readOnly?: boolean;
   /** When provided, shows a compress button in the ribbon to exit full-screen mode. */
   onCompress?: () => void;
+  editorRef?: Ref<DocumentEditorHandle>;
 };
 
 export function DocumentCreatorModal({
@@ -23,6 +25,7 @@ export function DocumentCreatorModal({
   onAfterClose,
   readOnly = false,
   onCompress,
+  editorRef,
 }: DocumentCreatorModalProps) {
   const handleClose = () => {
     onAfterClose?.();
@@ -48,6 +51,7 @@ export function DocumentCreatorModal({
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {documentId ? (
           <DocumentEditor
+            ref={editorRef}
             documentId={documentId}
             projectId={projectId}
             onClose={handleClose}

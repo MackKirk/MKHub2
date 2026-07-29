@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
@@ -6,6 +6,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken, withFileAccessToken } from '@/lib/api';
 import { getOverlayRoot } from '@/lib/overlayRoot';
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ConfirmProvider';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useDocumentAutoSave, type DocumentSaveStatus } from '@/hooks/useDocumentAutoSave';
 import DocumentPreview from '@/components/DocumentPreview';
 import DocumentPagesStrip from '@/components/DocumentPagesStrip';
 import { AddPageModal } from '@/components/AddPageModal';
@@ -132,7 +135,12 @@ function isTemplateMode(props: DocumentEditorProps): props is DocumentEditorTemp
   return 'mode' in props && props.mode === 'template';
 }
 
-export default function DocumentEditor(props: DocumentEditorProps) {
+export type DocumentEditorHandle = {
+  hasUnsavedChanges: () => boolean;
+  flushSave: () => Promise<boolean>;
+};
+
+const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(function DocumentEditor(props, ref) {
   const isTemplate = isTemplateMode(props);
   const documentId = !isTemplate ? props.documentId : undefined;
   const projectId = !isTemplate ? props.projectId : undefined;
@@ -146,13 +154,14 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   const navigate = useNavigate();
   const navigateBackToDocumentCreate = useNavigateBack('/documents/create');
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bgBackgroundTriggerRef = useRef<HTMLButtonElement>(null);
   const bgDropdownRef = useRef<HTMLDivElement>(null);
   const [bgMenuPos, setBgMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
-  const lastSavedRef = useRef<{ title: string; pagesStr: string } | null>(null);
   /** After initial GET for a document id, ignore refetches (e.g. post-save invalidate) so undo/redo is not cleared. */
   const serverDocHydratedForIdRef = useRef<string | null>(null);
+  const [isDocHydrated, setIsDocHydrated] = useState(false);
   const id = documentId;
 
   const [title, setTitle] = useState('New document');
@@ -161,7 +170,6 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   /** Inline text edit active — block selecting other elements until Done / Escape. */
   const [textEditingElementId, setTextEditingElementId] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const [showAddPageModal, setShowAddPageModal] = useState(false);
   const [pagesPanelCollapsed, setPagesPanelCollapsed] = useState(false);
   const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(false);
@@ -300,8 +308,52 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     enabled: !!id,
   });
 
+  const persistDocument = useCallback(
+    async (snapshot: EditorSnapshot) => {
+      if (!id) return;
+      const payload = {
+        title: snapshot.title,
+        pages: snapshot.pages.map((p) => ({
+          template_id: p.template_id,
+          margins: p.margins ?? undefined,
+          elements: p.elements ?? [],
+        })),
+      };
+      try {
+        await api('PATCH', `/document-creator/documents/${id}`, payload);
+        queryClient.invalidateQueries({ queryKey: ['document-creator-doc', id] });
+        queryClient.invalidateQueries({ queryKey: ['document-creator-documents'] });
+        if (projectId) {
+          queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
+        }
+      } catch (e: any) {
+        toast.error(e?.message || 'Failed to save.');
+        throw e;
+      }
+    },
+    [id, projectId, queryClient],
+  );
+
+  const {
+    saveStatus,
+    hasUnsavedChanges,
+    flushSave,
+    hydrateBaseline,
+    notifyEdited,
+  } = useDocumentAutoSave({
+    documentId: id,
+    readOnly: readOnly || isTemplate,
+    isHydrated: isDocHydrated,
+    getSnapshot: () => ({
+      title: stateRef.current.title,
+      pages: stateRef.current.pages,
+    }),
+    save: persistDocument,
+  });
+
   useEffect(() => {
     serverDocHydratedForIdRef.current = null;
+    setIsDocHydrated(false);
   }, [id]);
 
   useEffect(() => {
@@ -352,7 +404,6 @@ export default function DocumentEditor(props: DocumentEditorProps) {
       const t = doc.title || 'New document';
       setTitle(t);
       setPages(emptyPages);
-      lastSavedRef.current = { title: t, pagesStr: JSON.stringify(emptyPages) };
       stateRef.current = {
         title: t,
         pages: emptyPages,
@@ -363,6 +414,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
       redoRef.current = [];
       bumpHistory();
       serverDocHydratedForIdRef.current = id;
+      hydrateBaseline({ title: t, pages: emptyPages });
+      setIsDocHydrated(true);
       return;
     }
 
@@ -386,10 +439,6 @@ export default function DocumentEditor(props: DocumentEditorProps) {
       return { ...base, elements: elements.length ? elements : [] };
     });
     setPages(converted);
-    lastSavedRef.current = {
-      title: doc.title || 'New document',
-      pagesStr: JSON.stringify(converted),
-    };
     // Reset history on first load from server only (not on invalidate/refetch).
     stateRef.current = {
       title: doc.title || 'New document',
@@ -401,8 +450,10 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     redoRef.current = [];
     bumpHistory();
     serverDocHydratedForIdRef.current = id;
+    hydrateBaseline({ title: doc.title || 'New document', pages: converted });
+    setIsDocHydrated(true);
     requestAnimationFrame(() => scrollCanvasToTop());
-  }, [doc, templates, id, bumpHistory, scrollCanvasToTop]);
+  }, [doc, templates, id, bumpHistory, scrollCanvasToTop, hydrateBaseline]);
 
   // Keep ref updated for history snapshots
   useEffect(() => {
@@ -413,6 +464,73 @@ export default function DocumentEditor(props: DocumentEditorProps) {
       selectedElementIds,
     };
   }, [title, pages, currentPageIndex, selectedElementIds]);
+
+  useEffect(() => {
+    if (!isDocHydrated || isTemplate || readOnly) return;
+    notifyEdited();
+  }, [title, pages, isDocHydrated, isTemplate, readOnly, notifyEdited]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      hasUnsavedChanges: () => hasUnsavedChanges,
+      flushSave,
+    }),
+    [hasUnsavedChanges, flushSave],
+  );
+
+  const enableNavigationGuard = !isTemplate && !readOnly && !!id;
+  useUnsavedChangesGuard(
+    enableNavigationGuard ? hasUnsavedChanges : false,
+    enableNavigationGuard
+      ? async () => {
+          await flushSave();
+        }
+      : undefined,
+  );
+
+  const handleCloseOrBack = useCallback(async () => {
+    const close = onClose ?? navigateBackToDocumentCreate;
+    if (isTemplate || readOnly || !id) {
+      close();
+      return;
+    }
+    if (!hasUnsavedChanges) {
+      close();
+      return;
+    }
+    const saved = await flushSave();
+    if (saved) {
+      close();
+      return;
+    }
+    const result = await confirm({
+      title: "Couldn't save document",
+      message: 'Your changes could not be saved. What would you like to do?',
+      confirmText: 'Retry',
+      cancelText: 'Cancel',
+      showDiscard: true,
+      discardText: 'Close without saving',
+    });
+    if (result === 'confirm') {
+      const retry = await flushSave();
+      if (retry) close();
+    } else if (result === 'discard') {
+      close();
+    }
+  }, [
+    onClose,
+    navigateBackToDocumentCreate,
+    isTemplate,
+    readOnly,
+    id,
+    hasUnsavedChanges,
+    flushSave,
+    confirm,
+  ]);
+
+  const ribbonSaveStatus: DocumentSaveStatus | null =
+    isTemplate || readOnly ? null : saveStatus;
 
   // Keyboard shortcuts: Delete, Arrow keys, Undo/Redo, Copy/Paste/Duplicate
   useEffect(() => {
@@ -1047,51 +1165,6 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     setImagePickerOpen(true);
   }, [elements]);
 
-  const saveDocument = useCallback(async () => {
-    if (!id) return;
-    if (serverDocHydratedForIdRef.current !== id) return;
-    const st = stateRef.current;
-    const payload = {
-      title: st.title,
-      pages: st.pages.map((p) => ({
-        template_id: p.template_id,
-        margins: p.margins ?? undefined,
-        elements: p.elements ?? [],
-      })),
-    };
-    setIsSaving(true);
-    try {
-      await api('PATCH', `/document-creator/documents/${id}`, payload);
-      lastSavedRef.current = { title: st.title, pagesStr: JSON.stringify(st.pages) };
-      queryClient.invalidateQueries({ queryKey: ['document-creator-doc', id] });
-      queryClient.invalidateQueries({ queryKey: ['document-creator-documents'] });
-      if (projectId) {
-        queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
-      }
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to save.');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [id, projectId, queryClient]);
-
-  useEffect(() => {
-    if (!id || readOnly) return;
-    // Critical: do not PATCH until the server document has been merged into React state at least once.
-    // Otherwise the debounced save can fire while `pages` is still the initial default ([blank page]) —
-    // e.g. slow GET after a server restart, or hydration waiting on templates — and overwrite real content.
-    if (serverDocHydratedForIdRef.current !== id) return;
-    const pagesStr = JSON.stringify(pages);
-    if (
-      lastSavedRef.current &&
-      lastSavedRef.current.title === title &&
-      lastSavedRef.current.pagesStr === pagesStr
-    )
-      return;
-    const t = setTimeout(saveDocument, 1500);
-    return () => clearTimeout(t);
-  }, [id, title, pages, saveDocument, readOnly]);
-
   const handleExportPdf = useCallback(async () => {
     if (!id) return;
     try {
@@ -1279,7 +1352,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
         }
       >
       <DocumentEditorRibbon
-        onCloseOrBack={onClose ?? navigateBackToDocumentCreate}
+        onCloseOrBack={handleCloseOrBack}
         useCloseIcon={!!onClose}
         modeHeading={
           isTemplate && templateProps
@@ -1293,7 +1366,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
         title={title}
         onTitleChange={setTitle}
         showTitleInput={!isTemplate && !readOnly}
-        isSaving={isSaving}
+        saveStatus={ribbonSaveStatus}
         isTemplate={!!isTemplate}
         showExportPdf={!isTemplate}
         onExportPdf={handleExportPdf}
@@ -1794,4 +1867,6 @@ export default function DocumentEditor(props: DocumentEditorProps) {
       )}
     </div>
   );
-}
+});
+
+export default DocumentEditor;

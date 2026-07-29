@@ -22,6 +22,7 @@ import {
   UndoIcon,
   ZoomIcon,
 } from '@/components/document-editor/documentEditorIcons';
+import type { DocumentSaveStatus } from '@/hooks/useDocumentAutoSave';
 
 export type DocumentEditorRibbonProps = {
   onCloseOrBack: () => void;
@@ -30,7 +31,7 @@ export type DocumentEditorRibbonProps = {
   title: string;
   onTitleChange: (value: string) => void;
   showTitleInput: boolean;
-  isSaving: boolean;
+  saveStatus?: DocumentSaveStatus | null;
   isTemplate: boolean;
   showExportPdf: boolean;
   onExportPdf: () => void;
@@ -66,6 +67,51 @@ const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const ribbonDropdownTriggerClass =
   'inline-flex items-center gap-2 rounded-xl border border-slate-300/90 bg-white px-2.5 py-2 text-sm font-semibold text-slate-800 shadow-[0_1px_3px_rgba(15,23,42,0.08)] transition-[border-color,box-shadow,background-color] duration-200 ease-out hover:border-slate-400 hover:bg-slate-50 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35';
 
+function DocumentSaveStatusBadge({ status }: { status: DocumentSaveStatus }) {
+  const badgeClass =
+    'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums shadow-sm whitespace-nowrap';
+
+  if (status === 'hydrating') return null;
+
+  if (status === 'saving') {
+    return (
+      <span className={`${badgeClass} border border-slate-300/80 bg-slate-100 text-slate-600`}>
+        Saving…
+      </span>
+    );
+  }
+
+  if (status === 'save_failed') {
+    return (
+      <span className={`${badgeClass} border border-red-200 bg-red-50 text-red-700`}>
+        Save failed
+      </span>
+    );
+  }
+
+  if (status === 'dirty') {
+    return (
+      <span className={`${badgeClass} border border-amber-200 bg-amber-50 text-amber-800`}>
+        Unsaved changes
+      </span>
+    );
+  }
+
+  if (status === 'saved') {
+    return (
+      <span className={`${badgeClass} border border-green-200 bg-green-50 text-green-700`}>
+        Saved
+      </span>
+    );
+  }
+
+  return (
+    <span className={`${badgeClass} border border-green-200 bg-green-50 text-green-700`}>
+      All changes saved
+    </span>
+  );
+}
+
 export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
   const {
     onCloseOrBack,
@@ -74,7 +120,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     title,
     onTitleChange,
     showTitleInput,
-    isSaving,
+    saveStatus,
     isTemplate,
     showExportPdf,
     onExportPdf,
@@ -284,11 +330,6 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
               )
             )}
           </div>
-          {isSaving && !showExportPdf ? (
-            <span className="mb-1 shrink-0 self-end rounded-full border border-slate-300/80 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-slate-600 shadow-sm">
-              Saving…
-            </span>
-          ) : null}
         </RibbonGroup>
 
         <RibbonGroup label="Clipboard">
@@ -441,26 +482,6 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
           </div>
         </RibbonGroup>
 
-        {showExportPdf && (
-          <RibbonGroup label="Export">
-            <div className="flex flex-wrap items-end gap-2">
-              <RibbonCompactButton
-                icon={<ExportPdfIcon className="w-4 h-4" />}
-                label={isExportingPdf ? 'Exporting…' : 'Export PDF'}
-                onClick={onExportPdf}
-                disabled={isExportingPdf}
-                title="Export PDF"
-                variant="primary"
-              />
-              {isSaving ? (
-                <span className="shrink-0 rounded-full border border-slate-300/80 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-slate-600 shadow-sm">
-                  Saving…
-                </span>
-              ) : null}
-            </div>
-          </RibbonGroup>
-        )}
-
         {showSaveTemplate && (
           <RibbonGroup label="Template">
             <button
@@ -473,9 +494,24 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
           </RibbonGroup>
         )}
 
-        {extraActions && (
-          <div className="ml-auto flex shrink-0 items-end pb-2.5 pr-1">
-            {extraActions}
+        {(showExportPdf || saveStatus || extraActions) && (
+          <div className="ml-auto flex shrink-0 items-end gap-2 border-l border-slate-200/75 pl-2 sm:pl-2.5">
+            {(showExportPdf || saveStatus) && (
+              <div className="flex min-h-[64px] flex-col items-center justify-end gap-1 py-1">
+                {showExportPdf ? (
+                  <RibbonCompactButton
+                    icon={<ExportPdfIcon className="w-4 h-4" />}
+                    label={isExportingPdf ? 'Exporting…' : 'Export PDF'}
+                    onClick={onExportPdf}
+                    disabled={isExportingPdf}
+                    title="Export PDF"
+                    variant="primary"
+                  />
+                ) : null}
+                {saveStatus ? <DocumentSaveStatusBadge status={saveStatus} /> : null}
+              </div>
+            )}
+            {extraActions ? <div className="flex shrink-0 items-end pb-2.5 pr-1">{extraActions}</div> : null}
           </div>
         )}
       </div>

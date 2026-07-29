@@ -33,7 +33,8 @@ export function hexToRgba(hex: string, opacity: number): string {
 
 export type ShapeFillGeometry =
   | { kind: 'rect'; x: number; y: number; w: number; h: number }
-  | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number };
+  | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
+  | { kind: 'polygon'; points: { x: number; y: number }[] };
 
 export type ShapeFillOptions = {
   enabled: boolean;
@@ -48,6 +49,14 @@ function buildShapePath(ctx: CanvasRenderingContext2D, geometry: ShapeFillGeomet
   ctx.beginPath();
   if (geometry.kind === 'rect') {
     ctx.rect(geometry.x, geometry.y, geometry.w, geometry.h);
+  } else if (geometry.kind === 'polygon') {
+    const pts = geometry.points;
+    if (pts.length < 2) return;
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.closePath();
   } else {
     const rx = Math.max(1, geometry.rx);
     const ry = Math.max(1, geometry.ry);
@@ -67,6 +76,21 @@ function hatchBounds(geometry: ShapeFillGeometry): { x: number; y: number; w: nu
       w: Math.abs(geometry.w),
       h: Math.abs(geometry.h),
     };
+  }
+  if (geometry.kind === 'polygon') {
+    const pts = geometry.points;
+    if (!pts.length) return { x: 0, y: 0, w: 0, h: 0 };
+    let minX = pts[0].x;
+    let minY = pts[0].y;
+    let maxX = pts[0].x;
+    let maxY = pts[0].y;
+    for (const p of pts) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   }
   return {
     x: geometry.cx - geometry.rx,
@@ -134,7 +158,7 @@ function drawStripeBands(
 }
 
 /**
- * Fill a rect/ellipse path (already to be built) then caller strokes the outline.
+ * Fill a rect/ellipse/polygon path (already to be built) then caller strokes the outline.
  * Does nothing when fill is disabled.
  */
 export function applyShapeFill(

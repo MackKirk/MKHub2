@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useLayoutEffect } from 'react';
+import { useState, useRef, useCallback, useLayoutEffect, forwardRef, useImperativeHandle } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -6,7 +6,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { DocumentCreatorModal } from '@/components/DocumentCreatorModal';
 import { ChooseDocumentTypeModal } from '@/components/ChooseDocumentTypeModal';
 import { DocumentPagePreviewThumbnails } from '@/components/DocumentPagePreviewThumbnails';
-import DocumentEditor from '@/components/DocumentEditor';
+import DocumentEditor, { type DocumentEditorHandle } from '@/components/DocumentEditor';
 import { ExpandIcon } from '@/components/document-editor/documentEditorIcons';
 import type { DocumentPage } from '@/types/documentCreator';
 import {
@@ -110,14 +110,23 @@ type ProjectDocumentsTabProps = {
   designSystem?: boolean;
 };
 
-export default function ProjectDocumentsTab({
-  projectId,
-  isBidding,
-  canEditDocuments = true,
-  designSystem = false,
-}: ProjectDocumentsTabProps) {
+export type ProjectDocumentsTabHandle = {
+  hasUnsavedChanges: () => boolean;
+  flushSave: () => Promise<boolean>;
+};
+
+const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumentsTabProps>(function ProjectDocumentsTab(
+  {
+    projectId,
+    isBidding,
+    canEditDocuments = true,
+    designSystem = false,
+  },
+  ref,
+) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const documentEditorRef = useRef<DocumentEditorHandle>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -141,7 +150,19 @@ export default function ProjectDocumentsTab({
   });
 
   const subjectLabel = isBidding ? 'opportunity' : 'project';
-  const sectionDescription = `Create and edit documents linked to this ${subjectLabel}. Edit in the document creator; changes auto-save.`;
+  const sectionDescription = `Create and edit documents linked to this ${subjectLabel}. Changes auto-save while you edit; status is shown in the editor toolbar.`;
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      hasUnsavedChanges: () => documentEditorRef.current?.hasUnsavedChanges() ?? false,
+      flushSave: async () => {
+        if (!documentEditorRef.current) return true;
+        return documentEditorRef.current.flushSave();
+      },
+    }),
+    [],
+  );
 
   const handleCreateNew = async (documentTypeId: string | null) => {
     setIsCreating(true);
@@ -406,6 +427,7 @@ export default function ProjectDocumentsTab({
           style={{ height: inlineEditorHeightPx }}
         >
           <DocumentEditor
+            ref={documentEditorRef}
             documentId={modalDocumentId}
             projectId={projectId}
             onClose={handleCloseModal}
@@ -430,6 +452,7 @@ export default function ProjectDocumentsTab({
           onClose={handleCloseModal}
           readOnly={!canEditDocuments}
           onCompress={() => setIsExpanded(false)}
+          editorRef={documentEditorRef}
         />
       </>
     );
@@ -478,7 +501,10 @@ export default function ProjectDocumentsTab({
         onClose={handleCloseModal}
         readOnly={!canEditDocuments}
         onCompress={() => setIsExpanded(false)}
+        editorRef={documentEditorRef}
       />
     </>
   );
-}
+});
+
+export default ProjectDocumentsTab;

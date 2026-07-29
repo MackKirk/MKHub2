@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 
 export type FileViewMode = 'list' | 'grid';
-export type FileGridTileSize = 'small' | 'medium' | 'large';
+export type FileGridTileSize = 'small' | 'medium' | 'large' | 'xlarge';
 
 export type FileViewModeContext = {
   category?: string | null;
+  defaultTileSize?: FileGridTileSize;
+  defaultViewMode?: FileViewMode;
 };
 
 const TILE_SIZE_CONFIG: Record<
@@ -26,6 +28,11 @@ const TILE_SIZE_CONFIG: Record<
     gridClass: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4',
     tileHeightClass: 'h-52',
   },
+  xlarge: {
+    thumbnailWidth: 900,
+    gridClass: 'grid-cols-1 sm:grid-cols-2',
+    tileHeightClass: 'h-72',
+  },
 };
 
 export function getTileSizeConfig(size: FileGridTileSize) {
@@ -33,13 +40,14 @@ export function getTileSizeConfig(size: FileGridTileSize) {
 }
 
 export function getDefaultViewMode(context?: FileViewModeContext): FileViewMode {
+  if (context?.defaultViewMode) return context.defaultViewMode;
   const cat = String(context?.category || '').toLowerCase();
   if (cat === 'pictures' || cat === 'photos') return 'grid';
   return 'list';
 }
 
-export function getDefaultTileSize(): FileGridTileSize {
-  return 'medium';
+export function getDefaultTileSize(context?: FileViewModeContext): FileGridTileSize {
+  return context?.defaultTileSize ?? 'medium';
 }
 
 type PersistedFileViewPrefs = {
@@ -53,7 +61,10 @@ function parsePersisted(raw: string | null): PersistedFileViewPrefs | null {
     const parsed = JSON.parse(raw) as Partial<PersistedFileViewPrefs>;
     const viewMode = parsed.viewMode === 'grid' ? 'grid' : parsed.viewMode === 'list' ? 'list' : null;
     const tileSize =
-      parsed.tileSize === 'small' || parsed.tileSize === 'medium' || parsed.tileSize === 'large'
+      parsed.tileSize === 'small' ||
+      parsed.tileSize === 'medium' ||
+      parsed.tileSize === 'large' ||
+      parsed.tileSize === 'xlarge'
         ? parsed.tileSize
         : null;
     if (!viewMode || !tileSize) return null;
@@ -86,7 +97,7 @@ export function usePersistedFileViewMode(storageKey: string, context?: FileViewM
   });
   const [tileSize, setTileSizeState] = useState<FileGridTileSize>(() => {
     const saved = loadPrefs(storageKey);
-    return saved?.tileSize ?? getDefaultTileSize();
+    return saved?.tileSize ?? getDefaultTileSize(context);
   });
 
   const setViewMode = useCallback(
@@ -115,11 +126,11 @@ export function usePersistedFileViewMode(storageKey: string, context?: FileViewM
     const saved = loadPrefs(storageKey);
     if (saved) return;
     const nextMode = getDefaultViewMode(context);
-    const nextSize = getDefaultTileSize();
+    const nextSize = getDefaultTileSize(context);
     setViewModeState(nextMode);
     setTileSizeState(nextSize);
     savePrefs(storageKey, { viewMode: nextMode, tileSize: nextSize });
-  }, [storageKey, context?.category]);
+  }, [storageKey, context?.category, context?.defaultTileSize, context?.defaultViewMode]);
 
   return { viewMode, tileSize, setViewMode, setTileSize };
 }

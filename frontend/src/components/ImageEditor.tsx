@@ -167,9 +167,37 @@ const pencilCursorIcon = `/ui/assets/icons/pencil-cursor.png${iconCacheBuster}`;
 const deleteIcon = `/ui/assets/icons/del.png${iconCacheBuster}`;
 const saveIcon = `/ui/assets/icons/save.png${iconCacheBuster}`;
 
+const POLYGON_SNAP_RADIUS = 10;
+
+function PolygonToolIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {/* Placed segments */}
+      <path d="M4 17V9l7-4 7 6" />
+      {/* Rubber-band preview to next point */}
+      <path d="M18 11l3-4" strokeDasharray="2.5 2.5" opacity="0.55" />
+      {/* Vertex anchors */}
+      <circle cx="4" cy="17" r="1.75" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="9" r="1.75" fill="currentColor" stroke="none" />
+      <circle cx="11" cy="5" r="1.75" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="11" r="1.75" fill="currentColor" stroke="none" />
+      <circle cx="21" cy="7" r="1.25" fill="currentColor" stroke="none" opacity="0.55" />
+    </svg>
+  );
+}
+
 type AnnotationItem = {
   id: string;
-  type: 'rect' | 'arrow' | 'text' | 'circle' | 'path';
+  type: 'rect' | 'arrow' | 'text' | 'circle' | 'path' | 'polygon';
   x: number;
   y: number;
   w?: number;
@@ -180,6 +208,7 @@ type AnnotationItem = {
   rx?: number; // For ellipses
   ry?: number; // For ellipses
   points?: { x: number; y: number }[];
+  closed?: boolean;
   text?: string;
   color: string;
   stroke: number;
@@ -236,6 +265,92 @@ function drawArrow(
   ctx.fill();
 }
 
+function strokePolygonPath(
+  ctx: CanvasRenderingContext2D,
+  points: { x: number; y: number }[],
+  closed: boolean,
+) {
+  if (points.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  if (closed) ctx.closePath();
+  ctx.stroke();
+}
+
+function drawPolygonAnnotation(
+  ctx: CanvasRenderingContext2D,
+  it: AnnotationItem,
+  fillDefaults: {
+    fillEnabled: boolean;
+    fillColor: string;
+    fillOpacity: number;
+    fillPattern: ShapeFillPattern;
+    scale?: number;
+  },
+  preview?: { x: number; y: number } | null,
+) {
+  const pts = it.points || [];
+  if (pts.length < 1) return;
+
+  const closed = !!it.closed;
+  if (closed && pts.length >= 3) {
+    const enabled = it.fillEnabled !== undefined ? it.fillEnabled : fillDefaults.fillEnabled;
+    applyShapeFill(
+      ctx,
+      { kind: 'polygon', points: pts },
+      {
+        enabled,
+        color: it.fillColor || fillDefaults.fillColor,
+        opacity: it.fillOpacity !== undefined ? it.fillOpacity : fillDefaults.fillOpacity,
+        pattern: it.fillPattern || fillDefaults.fillPattern,
+        scale: fillDefaults.scale,
+      },
+    );
+  }
+
+  ctx.strokeStyle = it.color;
+  ctx.lineWidth = it.stroke;
+  if (pts.length >= 2) {
+    strokePolygonPath(ctx, pts, closed);
+  }
+
+  if (preview && pts.length >= 1 && !closed) {
+    const last = pts[pts.length - 1];
+    const first = pts[0];
+    const nearFirst =
+      pts.length >= 3 && Math.hypot(preview.x - first.x, preview.y - first.y) <= POLYGON_SNAP_RADIUS;
+
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = it.color;
+    ctx.lineWidth = it.stroke;
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(nearFirst ? first.x : preview.x, nearFirst ? first.y : preview.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const vertexRadius = 4;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const isFirst = i === 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, isFirst && nearFirst ? vertexRadius + 2 : vertexRadius, 0, Math.PI * 2);
+      ctx.fillStyle = isFirst ? '#d11616' : it.color;
+      ctx.fill();
+      if (isFirst) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+}
+
 type ImageEditorProps = {
   isOpen: boolean;
   onClose: () => void;
@@ -261,7 +376,7 @@ export default function ImageEditor({
   editorScaleFactor = 2.5,
   overlayClassName,
 }: ImageEditorProps) {
-  const [mode, setMode] = useState<'pan' | 'rect' | 'arrow' | 'text' | 'circle' | 'draw' | 'select' | 'delete'>('select');
+  const [mode, setMode] = useState<'pan' | 'rect' | 'arrow' | 'text' | 'circle' | 'draw' | 'polygon' | 'select' | 'delete'>('select');
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -301,6 +416,7 @@ export default function ImageEditor({
   
   const draggingRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const drawingRef = useRef<AnnotationItem | null>(null);
+  const polygonPreviewRef = useRef<{ x: number; y: number } | null>(null);
   const movingRef = useRef<{ item: AnnotationItem; startX: number; startY: number } | null>(null);
   const resizingRef = useRef<{ item: AnnotationItem; handle: string; startX: number; startY: number; startW?: number; startH?: number; startR?: number; startRx?: number; startRy?: number; startX2?: number; startY2?: number } | null>(null);
   const marqueeRef = useRef<{ x: number; y: number; x2: number; y2: number } | null>(null);
@@ -356,14 +472,17 @@ export default function ImageEditor({
     }
   }, [textBackgroundEnabled, textBackgroundColor, textBackgroundOpacity, selectedIds]);
 
-  // Update shape fill settings of selected rect/circle items when settings change
+  // Update shape fill settings of selected rect/circle/polygon items when settings change
   useEffect(() => {
     if (selectedIds.length > 0) {
       setItems((prev) =>
         prev
           .map((it) => {
             if (!it || !it.id) return it;
-            if (selectedIds.includes(it.id) && (it.type === 'rect' || it.type === 'circle')) {
+            if (
+              selectedIds.includes(it.id) &&
+              (it.type === 'rect' || it.type === 'circle' || (it.type === 'polygon' && it.closed))
+            ) {
               return {
                 ...it,
                 fillEnabled,
@@ -382,9 +501,10 @@ export default function ImageEditor({
   const showShapeFillPanel =
     mode === 'rect' ||
     mode === 'circle' ||
+    mode === 'polygon' ||
     selectedIds.some((id) => {
       const it = items.find((x) => x?.id === id);
-      return it?.type === 'rect' || it?.type === 'circle';
+      return it?.type === 'rect' || it?.type === 'circle' || (it?.type === 'polygon' && it.closed);
     });
 
   // Track previous colors/stroke to only update when they actually change
@@ -881,7 +1001,7 @@ export default function ImageEditor({
         return { x: it.x - r, y: it.y - r, w: r * 2, h: r * 2 };
       }
     }
-    if (it.type === 'path') {
+    if (it.type === 'path' || it.type === 'polygon') {
       const pts = it.points || [];
       if (!pts.length) return null;
       let minX = pts[0].x, minY = pts[0].y, maxX = pts[0].x, maxY = pts[0].y;
@@ -1174,6 +1294,14 @@ export default function ImageEditor({
           }
           ctx.stroke();
         }
+      } else if (it.type === 'polygon') {
+        const isInProgress = drawingRef.current?.id === it.id;
+        drawPolygonAnnotation(
+          ctx,
+          it,
+          { fillEnabled, fillColor, fillOpacity, fillPattern },
+          isInProgress ? polygonPreviewRef.current : null,
+        );
       }
       
       // Draw selection border in red when items are selected (only in select mode, not during drawing)
@@ -1429,6 +1557,83 @@ export default function ImageEditor({
       canvas.removeEventListener('wheel', handleWheel, { capture: true } as any);
     };
   }, [isOpen, mode, img, clampOffset]);
+
+  const cancelPolygonDrawing = useCallback(() => {
+    const drawing = drawingRef.current;
+    if (!drawing || drawing.type !== 'polygon') return;
+    const drawnId = drawing.id;
+    setItems((prev) => prev.filter((it) => it && it.id && it.id !== drawnId));
+    setSelectedIds((prev) => prev.filter((id) => id !== drawnId));
+    drawingRef.current = null;
+    polygonPreviewRef.current = null;
+  }, []);
+
+  const finalizePolygon = useCallback((closed: boolean) => {
+    const drawing = drawingRef.current;
+    if (!drawing || drawing.type !== 'polygon') return;
+    const drawnId = drawing.id;
+    const minPts = closed ? 3 : 2;
+    let kept = false;
+
+    setItems((prev) => {
+      const item = prev.find((it) => it?.id === drawnId);
+      const pts = item?.points || [];
+      if (!item || pts.length < minPts) {
+        return prev.filter((it) => it && it.id && it.id !== drawnId);
+      }
+      kept = true;
+      return prev
+        .map((it) => (it?.id === drawnId ? { ...it, closed } : it))
+        .filter((it) => it && it.id);
+    });
+
+    setSelectedIds(kept ? [drawnId] : (prev) => prev.filter((id) => id !== drawnId));
+    drawingRef.current = null;
+    polygonPreviewRef.current = null;
+    setMode('select');
+  }, []);
+
+  const popPolygonVertex = useCallback(() => {
+    const drawing = drawingRef.current;
+    if (!drawing || drawing.type !== 'polygon') return;
+    const drawnId = drawing.id;
+
+    setItems((prev) => {
+      const item = prev.find((it) => it?.id === drawnId);
+      const pts = item?.points || [];
+      if (!item || pts.length <= 1) {
+        drawingRef.current = null;
+        polygonPreviewRef.current = null;
+        setSelectedIds((prev) => prev.filter((id) => id !== drawnId));
+        return prev.filter((it) => it && it.id && it.id !== drawnId);
+      }
+      const newPts = pts.slice(0, -1);
+      const updated = { ...item, points: newPts };
+      drawingRef.current = updated;
+      return prev.map((it) => (it?.id === drawnId ? updated : it)).filter((it) => it && it.id);
+    });
+  }, []);
+
+  // Sync fill settings onto polygon currently being drawn
+  useEffect(() => {
+    if (mode !== 'polygon' || drawingRef.current?.type !== 'polygon') return;
+    const drawnId = drawingRef.current.id;
+    setItems((prev) =>
+      prev
+        .map((it) => {
+          if (!it || !it.id || it.id !== drawnId) return it;
+          return { ...it, fillEnabled, fillColor, fillOpacity, fillPattern };
+        })
+        .filter((it) => it && it.id),
+    );
+  }, [fillEnabled, fillColor, fillOpacity, fillPattern, mode]);
+
+  // Cancel in-progress polygon when leaving polygon mode (e.g. switching tools)
+  useEffect(() => {
+    if (mode !== 'polygon' && drawingRef.current?.type === 'polygon') {
+      cancelPolygonDrawing();
+    }
+  }, [mode, cancelPolygonDrawing]);
 
   // Pointer event handlers for drag - like ImagePicker
   const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1729,6 +1934,58 @@ export default function ImageEditor({
         setItems(prev => [...prev.filter(it => it && it.id), newItem]);
         setSelectedIds([newItem.id]);
         drawingRef.current = newItem;
+      } else if (mode === 'polygon') {
+        const currentDrawing = drawingRef.current;
+        if (currentDrawing?.type === 'polygon') {
+          const pts = currentDrawing.points || [];
+          const first = pts[0];
+          const nearFirst =
+            pts.length >= 3 &&
+            first &&
+            Math.hypot(x - first.x, y - first.y) <= POLYGON_SNAP_RADIUS;
+
+          if (e.detail >= 2) {
+            finalizePolygon(false);
+            return;
+          }
+          if (nearFirst) {
+            finalizePolygon(true);
+            return;
+          }
+
+          setItems((prev) =>
+            prev
+              .map((it) => {
+                if (!it || !it.id || it.id !== currentDrawing.id) return it;
+                const nextPts = [...(it.points || []), { x, y }];
+                const updated = { ...it, points: nextPts };
+                drawingRef.current = updated;
+                return updated;
+              })
+              .filter((it) => it && it.id),
+          );
+          polygonPreviewRef.current = { x, y };
+          return;
+        }
+
+        const newItem: AnnotationItem = {
+          id: 'it_' + Date.now(),
+          type: 'polygon',
+          x,
+          y,
+          points: [{ x, y }],
+          closed: false,
+          color: strokeColor,
+          stroke,
+          fillEnabled,
+          fillColor,
+          fillOpacity,
+          fillPattern,
+        };
+        setItems((prev) => [...prev.filter((it) => it && it.id), newItem]);
+        setSelectedIds([newItem.id]);
+        drawingRef.current = newItem;
+        polygonPreviewRef.current = { x, y };
       } else if (mode === 'text') {
         // Create a text area by drawing a rectangle first - only store in drawingRef, don't add to items yet
         const newItem: AnnotationItem = {
@@ -1983,6 +2240,12 @@ export default function ImageEditor({
       drawOverlay();
       return;
     }
+
+    if (mode === 'polygon' && drawingRef.current?.type === 'polygon') {
+      polygonPreviewRef.current = { x, y };
+      drawOverlay();
+      return;
+    }
     
     const drawing = drawingRef.current;
     if (drawing) {
@@ -2160,8 +2423,8 @@ export default function ImageEditor({
             } else {
               return { ...it, x2: origX2 + dx, y2: origY2 + dy };
             }
-          } else if (it.type === 'path') {
-            // For paths, allow resizing the bounding box
+          } else if (it.type === 'path' || it.type === 'polygon') {
+            // For paths/polygons, allow resizing the bounding box
             const { handle, startW, startH } = resizeState;
             const origX = item.x;
             const origY = item.y;
@@ -2249,7 +2512,7 @@ export default function ImageEditor({
               return { ...it, x: origX + dx, y: origY + dy };
             } else if (it.type === 'circle') {
               return { ...it, x: origX + dx, y: origY + dy };
-            } else if (it.type === 'path') {
+            } else if (it.type === 'path' || it.type === 'polygon') {
               const origPoints = moveState.item.points || [];
               return { 
                 ...it, 
@@ -2292,7 +2555,8 @@ export default function ImageEditor({
     }
     
     // If we just finished drawing rect, arrow, circle, or text, switch to select mode
-    if (drawingRef.current) {
+    const keepPolygonDrawing = mode === 'polygon' && drawingRef.current?.type === 'polygon';
+    if (drawingRef.current && !keepPolygonDrawing) {
       const drawnType = drawingRef.current.type;
       const drawnId = drawingRef.current.id;
       if (drawnType === 'rect' || drawnType === 'circle') {
@@ -2355,7 +2619,9 @@ export default function ImageEditor({
       }
     }
     
-    drawingRef.current = null;
+    if (!keepPolygonDrawing) {
+      drawingRef.current = null;
+    }
     movingRef.current = null;
     resizingRef.current = null;
   };
@@ -2543,6 +2809,17 @@ export default function ImageEditor({
         // Only delete when not editing text
         setItems(prev => prev.filter(it => it && it.id && !selectedIds.includes(it.id)));
         setSelectedIds([]);
+      } else if (mode === 'polygon' && drawingRef.current?.type === 'polygon') {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          finalizePolygon(false);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          cancelPolygonDrawing();
+        } else if (e.key === 'Backspace') {
+          e.preventDefault();
+          popPolygonVertex();
+        }
       } else if (e.key === 'Escape' && mode !== 'select' && mode !== 'pan') {
         // Escape key -> return to select mode
         setMode('select');
@@ -2551,7 +2828,7 @@ export default function ImageEditor({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, selectedIds, items, mode]);
+  }, [isOpen, selectedIds, items, mode, finalizePolygon, cancelPolygonDrawing, popPolygonVertex]);
 
   // Reset
   const handleReset = () => {
@@ -2561,6 +2838,8 @@ export default function ImageEditor({
     setOffsetY(0);
     setItems([]);
     setSelectedIds([]);
+    drawingRef.current = null;
+    polygonPreviewRef.current = null;
   };
 
   // Save
@@ -2570,6 +2849,14 @@ export default function ImageEditor({
     const canvas = canvasRef.current;
     const overlay = overlayRef.current;
     if (!canvas || !overlay || !img) return;
+
+    let itemsToRender = items;
+    if (drawingRef.current?.type === 'polygon') {
+      const drawnId = drawingRef.current.id;
+      itemsToRender = items.filter((it) => it?.id !== drawnId);
+      drawingRef.current = null;
+      polygonPreviewRef.current = null;
+    }
     
     setIsSaving(true);
     
@@ -2617,7 +2904,7 @@ export default function ImageEditor({
     ctx.restore();
     
     // Draw annotations in image coordinates (scaled from display)
-    for (const it of items) {
+    for (const it of itemsToRender) {
       if (!it || !it.id) continue;
       ctx.save();
       ctx.strokeStyle = it.color;
@@ -2778,6 +3065,37 @@ export default function ImageEditor({
             const pt = dispToImg(pts[i].x, pts[i].y);
             ctx.lineTo(pt.xi, pt.yi);
           }
+          ctx.stroke();
+        }
+      } else if (it.type === 'polygon') {
+        const pts = it.points || [];
+        if (pts.length >= 2) {
+          const imgPts = pts.map((p) => dispToImg(p.x, p.y));
+          if (it.closed && imgPts.length >= 3) {
+            const enabled = it.fillEnabled !== undefined ? it.fillEnabled : fillEnabled;
+            applyShapeFill(
+              ctx,
+              {
+                kind: 'polygon',
+                points: imgPts.map((p) => ({ x: p.xi, y: p.yi })),
+              },
+              {
+                enabled,
+                color: it.fillColor || fillColor,
+                opacity: it.fillOpacity !== undefined ? it.fillOpacity : fillOpacity,
+                pattern: it.fillPattern || fillPattern,
+                scale: lenScale,
+              },
+            );
+          }
+          ctx.strokeStyle = it.color;
+          ctx.lineWidth = Math.max(0.5, (it.stroke || 1) * lenScale);
+          ctx.beginPath();
+          ctx.moveTo(imgPts[0].xi, imgPts[0].yi);
+          for (let i = 1; i < imgPts.length; i++) {
+            ctx.lineTo(imgPts[i].xi, imgPts[i].yi);
+          }
+          if (it.closed) ctx.closePath();
           ctx.stroke();
         }
       }
@@ -3068,7 +3386,7 @@ export default function ImageEditor({
 
               <div className="border-t border-slate-200/80 pt-3">
                 <span className={`${editorGroupLabelClass} mb-2 block`}>Tools</span>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-4 gap-1.5">
                   <button onClick={() => {
                     // Disable text editing when changing tools
                     if (textEditingRef.current) {
@@ -3143,6 +3461,14 @@ export default function ImageEditor({
                     setMode('draw');
                   }} className={mode === 'draw' ? toolBtnActive : toolBtnIdle} title="Draw">
                     <img src={pencilIcon} alt="Draw" className="w-5 h-5" />
+                  </button>
+                  <button onClick={() => {
+                    if (textEditingRef.current) {
+                      exitTextEditing();
+                    }
+                    setMode('polygon');
+                  }} className={mode === 'polygon' ? toolBtnActive : toolBtnIdle} title="Polygon">
+                    <PolygonToolIcon className="h-5 w-5" />
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {

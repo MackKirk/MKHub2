@@ -35,7 +35,7 @@ import DispatchTab from '@/components/DispatchTab';
 import ProjectTimesheetTab from '@/components/ProjectTimesheetTab';
 import ProjectFilesTabEnhanced from '@/components/ProjectFilesTabEnhanced';
 import OrdersTab from '@/components/OrdersTab';
-import ProjectDocumentsTab from '@/components/ProjectDocumentsTab';
+import ProjectDocumentsTab, { type ProjectDocumentsTabHandle } from '@/components/ProjectDocumentsTab';
 import ProjectSafetyTab from '@/components/ProjectSafetyTab';
 import ProjectWarrantiesTab from '@/components/ProjectWarrantiesTab';
 import ProjectFieldBriefCard from '@/components/ProjectFieldBriefCard';
@@ -1140,6 +1140,7 @@ export default function ProjectDetail(){
   /** After collapse animation finishes, drop the empty AppCard chrome so no white strip remains above tabs. */
   const [heroChromeHidden, setHeroChromeHidden] = useState(() => signOnlySafetySession);
   const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
+  const documentsTabRef = useRef<ProjectDocumentsTabHandle>(null);
   const proposalFormSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const safetyTabSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const { hasUnsavedChanges, getHasUnsavedChanges } = useUnsavedChanges();
@@ -1475,6 +1476,29 @@ export default function ProjectDetail(){
     // Check permission for the tab being accessed (when not going to overview)
     if (newTab !== null && newTab !== 'overview' && !hasTabPermission(newTab)) {
       toast.error('You do not have permission to access this tab');
+      return;
+    }
+
+    const leavingDocumentsWithUnsaved =
+      tab === 'documents' && newTab !== 'documents' && documentsTabRef.current?.hasUnsavedChanges();
+
+    if (leavingDocumentsWithUnsaved) {
+      const result = await confirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes in the Documents tab. What would you like to do?',
+        confirmText: 'Save and Continue',
+        cancelText: 'Cancel',
+        showDiscard: true,
+        discardText: 'Discard Changes',
+      });
+
+      if (result === 'confirm') {
+        const saved = await documentsTabRef.current?.flushSave();
+        if (!saved) return;
+        doTabSwitch(newTab);
+      } else if (result === 'discard') {
+        doTabSwitch(newTab);
+      }
       return;
     }
 
@@ -3128,6 +3152,7 @@ export default function ProjectDetail(){
 
               {tab==='documents' && (
                 <ProjectDocumentsTab
+                  ref={documentsTabRef}
                   projectId={String(id)}
                   isBidding={isOpportunityStyleTabs}
                   canEditDocuments={hasProjectFeatureWritePermission(

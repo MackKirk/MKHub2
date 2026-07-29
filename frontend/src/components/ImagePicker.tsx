@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImageEditor from '@/components/ImageEditor';
+import ImagePickerGalleryDialog from '@/components/ImagePickerGalleryDialog';
 import OverlayPortal from '@/components/OverlayPortal';
 import { uiCx, uiModalLayer } from '@/components/ui/tokens';
 import {
@@ -174,13 +175,11 @@ export default function ImagePicker({
   );
   const hasLibrary = !!(clientId || projectId);
   const [tab, setTab] = useState<'upload'|'library'>('upload');
+  const [galleryDialogOpen, setGalleryDialogOpen] = useState(false);
   const [filesOriginals, setFilesOriginals] = useState<LibraryFile[]>([]);
   const [filesDerived, setFilesDerived] = useState<LibraryFile[]>([]);
   const [isLoadingLibrary, setIsLoadingLibrary] = useState<boolean>(false);
   const [libraryLoaded, setLibraryLoaded] = useState<boolean>(false);
-  const [displayPageOriginals, setDisplayPageOriginals] = useState<number>(0);
-  const [displayPageDerived, setDisplayPageDerived] = useState<number>(0);
-  const IMAGES_PER_PAGE = 9;
   const [img, setImg] = useState<HTMLImageElement|null>(null);
   const [originalFileObjectId, setOriginalFileObjectId] = useState<string|undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -205,8 +204,9 @@ export default function ImagePicker({
   useEffect(()=>{
     if(!isOpen){
       setImg(null); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setTab('upload');
+      setGalleryDialogOpen(false);
       setOrientation('landscape');
-      setLibraryLoaded(false); setFilesOriginals([]); setFilesDerived([]); setDisplayPageOriginals(0); setDisplayPageDerived(0);
+      setLibraryLoaded(false); setFilesOriginals([]); setFilesDerived([]);
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
@@ -355,10 +355,6 @@ export default function ImagePicker({
       setFilesOriginals(imgs.filter((f) => !isDerived(f)));
       setFilesDerived(imgs.filter(isDerived));
       setLibraryLoaded(true);
-      if (reset) {
-        setDisplayPageOriginals(0);
-        setDisplayPageDerived(0);
-      }
     } catch (err) { /* ignore */ }
     finally { setIsLoadingLibrary(false); }
   };
@@ -1018,7 +1014,10 @@ export default function ImagePicker({
                     <div className={`${editorSegmentedControlTrackClass} w-full`}>
                       <button
                         type="button"
-                        onClick={() => setTab('upload')}
+                        onClick={() => {
+                          setTab('upload');
+                          setGalleryDialogOpen(false);
+                        }}
                         className={`flex h-full min-h-0 flex-1 items-center justify-center px-2 text-[11px] font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
                           tab === 'upload' ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
                         }`}
@@ -1027,7 +1026,10 @@ export default function ImagePicker({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setTab('library')}
+                        onClick={() => {
+                          setTab('library');
+                          setGalleryDialogOpen(true);
+                        }}
                         className={`flex h-full min-h-0 flex-1 items-center justify-center px-2 text-[11px] font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
                           tab === 'library' ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
                         }`}
@@ -1095,144 +1097,24 @@ export default function ImagePicker({
                         </button>
                       </div>
                     ) : (
-                      <div className="p-3">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <div className="truncate text-sm font-semibold text-slate-900">
-                            {projectId ? 'Project gallery' : 'Library'}
-                          </div>
+                      <div className="flex flex-col gap-3 p-3">
+                        <p className="text-sm leading-snug text-slate-600">
+                          Browse {projectId ? 'project' : 'client'} images in the gallery viewer. Use the
+                          thumbnail size icons in the toolbar to adjust preview size.
+                        </p>
+                        {isLoadingLibrary ? (
+                          <p className="text-xs text-slate-500">Loading gallery…</p>
+                        ) : null}
+                        {!galleryDialogOpen ? (
                           <button
                             type="button"
-                            disabled={isLoadingLibrary}
-                            onClick={() => loadLibrary(true)}
-                            className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-2 text-xs`}
+                            onClick={() => setGalleryDialogOpen(true)}
+                            className={`${editorTransitionInteractive} rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40`}
                           >
-                            Reload
+                            Open gallery
                           </button>
-                        </div>
-                        {!libraryLoaded && (
-                          <div className="py-8 text-center">
-                            <button
-                              type="button"
-                              disabled={isLoadingLibrary}
-                              onClick={() => loadLibrary(true)}
-                              className={`${editorTransitionInteractive} rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40 disabled:opacity-50`}
-                            >
-                              Load gallery
-                            </button>
-                          </div>
-                        )}
-                        {libraryLoaded && (
-                          <div className="max-h-[min(380px,50vh)] space-y-4 overflow-auto">
-                            <div>
-                              <div className="mb-1.5 flex items-center justify-between">
-                                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Original images</span>
-                                {filesOriginals.length > IMAGES_PER_PAGE && (
-                                  <span className="text-[10px] text-slate-500">
-                                    {displayPageOriginals * IMAGES_PER_PAGE + 1}–
-                                    {Math.min((displayPageOriginals + 1) * IMAGES_PER_PAGE, filesOriginals.length)} of{' '}
-                                    {filesOriginals.length}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="grid grid-cols-3 gap-2">
-                                {filesOriginals
-                                  .slice(displayPageOriginals * IMAGES_PER_PAGE, (displayPageOriginals + 1) * IMAGES_PER_PAGE)
-                                  .map((f) => (
-                                    <button
-                                      type="button"
-                                      key={f.id}
-                                      className="overflow-hidden rounded-lg border border-slate-200/90 transition-shadow hover:ring-2 hover:ring-brand-red/45 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
-                                      onClick={() => loadFromFileObject(f.file_object_id)}
-                                    >
-                                      <img
-                                        className="h-20 w-full object-cover"
-                                        src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=160`)}
-                                        loading="lazy"
-                                        alt=""
-                                      />
-                                    </button>
-                                  ))}
-                              </div>
-                              {filesOriginals.length > IMAGES_PER_PAGE && (
-                                <div className="mt-2 flex items-center justify-center gap-1">
-                                  <button
-                                    type="button"
-                                    disabled={displayPageOriginals === 0}
-                                    onClick={() => setDisplayPageOriginals((p) => p - 1)}
-                                    className={`${selectionToolButtonGhostClass} h-8 px-2 text-xs disabled:opacity-40`}
-                                  >
-                                    Previous
-                                  </button>
-                                  <span className="px-1 text-xs text-slate-500">
-                                    {displayPageOriginals + 1} / {Math.ceil(filesOriginals.length / IMAGES_PER_PAGE)}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    disabled={(displayPageOriginals + 1) * IMAGES_PER_PAGE >= filesOriginals.length}
-                                    onClick={() => setDisplayPageOriginals((p) => p + 1)}
-                                    className={`${selectionToolButtonGhostClass} h-8 px-2 text-xs disabled:opacity-40`}
-                                  >
-                                    Next
-                                  </button>
-                                </div>
-                              )}
-                              {filesOriginals.length === 0 && <p className="py-2 text-xs text-slate-400">No original images</p>}
-                            </div>
-                            <div>
-                              <div className="mb-1.5 flex items-center justify-between">
-                                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Edited images</span>
-                                {filesDerived.length > IMAGES_PER_PAGE && (
-                                  <span className="text-[10px] text-slate-500">
-                                    {displayPageDerived * IMAGES_PER_PAGE + 1}–
-                                    {Math.min((displayPageDerived + 1) * IMAGES_PER_PAGE, filesDerived.length)} of {filesDerived.length}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="grid grid-cols-3 gap-2">
-                                {filesDerived
-                                  .slice(displayPageDerived * IMAGES_PER_PAGE, (displayPageDerived + 1) * IMAGES_PER_PAGE)
-                                  .map((f) => (
-                                    <button
-                                      type="button"
-                                      key={f.id}
-                                      className="overflow-hidden rounded-lg border border-slate-200/90 transition-shadow hover:ring-2 hover:ring-brand-red/45 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
-                                      onClick={() => loadFromFileObject(f.file_object_id)}
-                                    >
-                                      <img
-                                        className="h-20 w-full object-cover"
-                                        src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=160`)}
-                                        loading="lazy"
-                                        alt=""
-                                      />
-                                    </button>
-                                  ))}
-                              </div>
-                              {filesDerived.length > IMAGES_PER_PAGE && (
-                                <div className="mt-2 flex items-center justify-center gap-1">
-                                  <button
-                                    type="button"
-                                    disabled={displayPageDerived === 0}
-                                    onClick={() => setDisplayPageDerived((p) => p - 1)}
-                                    className={`${selectionToolButtonGhostClass} h-8 px-2 text-xs disabled:opacity-40`}
-                                  >
-                                    Previous
-                                  </button>
-                                  <span className="px-1 text-xs text-slate-500">
-                                    {displayPageDerived + 1} / {Math.ceil(filesDerived.length / IMAGES_PER_PAGE)}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    disabled={(displayPageDerived + 1) * IMAGES_PER_PAGE >= filesDerived.length}
-                                    onClick={() => setDisplayPageDerived((p) => p + 1)}
-                                    className={`${selectionToolButtonGhostClass} h-8 px-2 text-xs disabled:opacity-40`}
-                                  >
-                                    Next
-                                  </button>
-                                </div>
-                              )}
-                              {filesDerived.length === 0 && <p className="py-2 text-xs text-slate-400">No edited images</p>}
-                            </div>
-                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500">Gallery viewer is open.</p>
                         )}
                       </div>
                     )}
@@ -1469,6 +1351,21 @@ export default function ImagePicker({
           editorScaleFactor={editorScaleFactor}
           onSave={handleImageEditorSave}
           overlayClassName={editorOverlayClassName}
+        />
+      )}
+      {hasLibrary && tab === 'library' && (
+        <ImagePickerGalleryDialog
+          isOpen={galleryDialogOpen}
+          onClose={() => setGalleryDialogOpen(false)}
+          title={projectId ? 'Project gallery' : 'Library'}
+          isLoading={isLoadingLibrary}
+          filesOriginals={filesOriginals}
+          filesDerived={filesDerived}
+          onReload={() => loadLibrary(true)}
+          onSelect={(fileObjectId) => {
+            void loadFromFileObject(fileObjectId);
+            setGalleryDialogOpen(false);
+          }}
         />
       )}
     </>
