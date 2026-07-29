@@ -197,6 +197,27 @@ export default function PrintShopSupplyOrderDetail() {
     window.location.href = href;
   };
 
+  const openFile = (fileObjectId: string) => {
+    window.open(withFileAccessToken(`/files/${fileObjectId}`), '_blank', 'noopener,noreferrer');
+  };
+
+  const downloadFile = async (fileObjectId: string) => {
+    try {
+      const r = await api<{ download_url?: string }>(
+        'GET',
+        withFileAccessToken(`/files/${fileObjectId}/download`),
+      );
+      const url = String(r.download_url || '');
+      if (!url) {
+        toast.error('Download link unavailable');
+        return;
+      }
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      toast.error('Download link unavailable');
+    }
+  };
+
   const FileList = ({
     files,
     empty,
@@ -210,36 +231,54 @@ export default function PrintShopSupplyOrderDetail() {
       <ul className="space-y-2">
         {files.map((f) => {
           const isImg = (f.content_type || '').startsWith('image/');
-          const url = withFileAccessToken(`/files/${f.file_object_id}`);
+          const viewUrl = withFileAccessToken(`/files/${f.file_object_id}`);
           return (
             <li
               key={f.id}
               className="flex items-start gap-3 rounded-lg border border-gray-200 p-2"
             >
               {isImg ? (
-                <a href={url} target="_blank" rel="noreferrer" className="shrink-0">
+                <a href={viewUrl} target="_blank" rel="noreferrer" className="shrink-0">
                   <img
-                    src={url}
+                    src={viewUrl}
                     alt={f.original_name || 'Attachment'}
                     className="h-16 w-16 object-cover rounded border border-gray-100"
                   />
                 </a>
               ) : (
-                <div className="h-16 w-16 flex items-center justify-center rounded bg-gray-50 text-xs text-gray-500">
+                <button
+                  type="button"
+                  onClick={() => openFile(f.file_object_id)}
+                  className="h-16 w-16 flex items-center justify-center rounded bg-gray-50 text-xs text-gray-500 hover:bg-gray-100"
+                  title="Open file"
+                >
                   PDF
-                </div>
+                </button>
               )}
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-gray-800">{f.original_name || f.id}</div>
+                <button
+                  type="button"
+                  onClick={() => openFile(f.file_object_id)}
+                  className="truncate text-left text-sm text-gray-800 hover:text-brand-red hover:underline"
+                  title="Open file"
+                >
+                  {f.original_name || f.id}
+                </button>
                 <div className="mt-1 flex gap-2">
-                  <a
-                    href={withFileAccessToken(`/files/${f.file_object_id}/download`)}
+                  <button
+                    type="button"
+                    onClick={() => openFile(f.file_object_id)}
                     className="inline-flex items-center gap-1 text-xs text-brand-red hover:underline"
-                    target="_blank"
-                    rel="noreferrer"
+                  >
+                    Open
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadFile(f.file_object_id)}
+                    className="inline-flex items-center gap-1 text-xs text-brand-red hover:underline"
                   >
                     <Download className="h-3.5 w-3.5" /> Download
-                  </a>
+                  </button>
                   {canAct ? (
                     <button
                       type="button"
