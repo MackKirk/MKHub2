@@ -187,6 +187,29 @@ def _parse_due_date(raw: Optional[str]) -> Optional[date]:
         raise HTTPException(status_code=400, detail="Invalid due_date (use YYYY-MM-DD)")
 
 
+def _parse_created_at(raw: Optional[str]) -> Optional[datetime]:
+    """Parse YYYY-MM-DD (or ISO datetime) for backdating historical print requests."""
+    if raw is None or str(raw).strip() == "":
+        return None
+    s = str(raw).strip()
+    try:
+        if "T" in s:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        d = date.fromisoformat(s[:10])
+        # Noon Vancouver so the calendar day stays stable in local display
+        try:
+            from zoneinfo import ZoneInfo
+
+            return datetime(d.year, d.month, d.day, 12, 0, 0, tzinfo=ZoneInfo("America/Vancouver"))
+        except Exception:
+            return datetime(d.year, d.month, d.day, 20, 0, 0, tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid created_at (use YYYY-MM-DD)")
+
+
 def _artwork_key(original_name: str) -> str:
     today = _utcnow().strftime("%Y-%m-%d")
     year = _utcnow().strftime("%Y")
@@ -275,6 +298,71 @@ async def _read_artwork(file: UploadFile) -> Tuple[bytes, str, str]:
     if not content:
         raise HTTPException(status_code=400, detail="Artwork file is empty")
     return content, content_type, original_name
+
+
+def _sync_request_header_from_items(
+    row: PrintShopRequest,
+    *,
+    first: Dict[str, Any],
+    item_count: int,
+    primary_file_id: Optional[uuid.UUID],
+) -> None:
+    summary_title = str(first["title"])
+    if item_count > 1:
+        summary_title = f"{first['title']} (+{item_count - 1} more)"
+    row.product_type = first["product_type"]
+    row.title = summary_title
+    row.description = first.get("description")
+    row.quantity = first["quantity"]
+    row.width = first.get("width")
+    row.height = first.get("height")
+    row.unit = first["unit"]
+    row.artwork_file_id = primary_file_id
+
+
+def _parse_item_fields(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
+    ptype = str(raw.get("product_type") or "").strip().lower()
+    title_s = str(raw.get("title") or "").strip()
+    unit_s = str(raw.get("unit") or "in").strip().lower()
+    desc = str(raw.get("description") or "").strip() or None
+    try:
+        quantity = int(raw.get("quantity") or 1)
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"Invalid quantity on item {idx + 1}")
+    if ptype not in PRODUCT_TYPE_KEYS:
+        raise HTTPException(status_code=400, detail=f"Invalid product_type on item {idx + 1}")
+    if not title_s:
+        raise HTTPException(status_code=400, detail=f"Title is required on item {idx + 1}")
+    if quantity < 1 or quantity > 100_000:
+        raise HTTPException(status_code=400, detail=f"Invalid quantity on item {idx + 1}")
+    if unit_s not in UNIT_KEYS:
+        raise HTTPException(status_code=400, detail=f"Invalid unit on item {idx + 1}")
+
+    width_raw = raw.get("width")
+    height_raw = raw.get("height")
+    width_f = _parse_optional_float(
+        None if width_raw is None or width_raw == "" else str(width_raw), "width"
+    )
+    height_f = _parse_optional_float(
+        None if height_raw is None or height_raw == "" else str(height_raw), "height"
+    )
+    return {
+        "product_type": ptype,
+        "title": title_s,
+        "description": desc,
+        "quantity": quantity,
+        "width": width_f,
+        "height": height_f,
+        "unit": unit_s,
+    }
+
+
+def _assert_request_editable(row: PrintShopRequest) -> None:
+    if row.status not in (STATUS_TODO, STATUS_IN_PRODUCTION):
+        raise HTTPException(
+            status_code=400,
+            detail="Only To Do or In Production requests can be edited",
+        )
 
 
 def _product_label(key: str) -> str:
@@ -811,31 +899,7 @@ async def create_public_request(
     for idx, raw in enumerate(raw_items):
         if not isinstance(raw, dict):
             raise HTTPException(status_code=400, detail=f"Invalid item at index {idx}")
-        ptype = str(raw.get("product_type") or "").strip().lower()
-        title_s = str(raw.get("title") or "").strip()
-        unit_s = str(raw.get("unit") or "in").strip().lower()
-        desc = str(raw.get("description") or "").strip() or None
-        try:
-            quantity = int(raw.get("quantity") or 1)
-        except Exception:
-            raise HTTPException(status_code=400, detail=f"Invalid quantity on item {idx + 1}")
-        if ptype not in PRODUCT_TYPE_KEYS:
-            raise HTTPException(status_code=400, detail=f"Invalid product_type on item {idx + 1}")
-        if not title_s:
-            raise HTTPException(status_code=400, detail=f"Title is required on item {idx + 1}")
-        if quantity < 1 or quantity > 100_000:
-            raise HTTPException(status_code=400, detail=f"Invalid quantity on item {idx + 1}")
-        if unit_s not in UNIT_KEYS:
-            raise HTTPException(status_code=400, detail=f"Invalid unit on item {idx + 1}")
-
-        width_raw = raw.get("width")
-        height_raw = raw.get("height")
-        width_f = _parse_optional_float(
-            None if width_raw is None or width_raw == "" else str(width_raw), "width"
-        )
-        height_f = _parse_optional_float(
-            None if height_raw is None or height_raw == "" else str(height_raw), "height"
-        )
+        fields = _parse_item_fields(raw, idx)
 
         uploads = form.getlist(f"artwork_{idx}")
         file_uploads: List[UploadFile] = []
@@ -860,30 +924,16 @@ async def create_public_request(
             )
             stored.append((fo, original_name))
 
-        parsed_items.append(
-            {
-                "product_type": ptype,
-                "title": title_s,
-                "description": desc,
-                "quantity": quantity,
-                "width": width_f,
-                "height": height_f,
-                "unit": unit_s,
-                "files": stored,
-            }
-        )
+        parsed_items.append({**fields, "files": stored})
 
     first = parsed_items[0]
     primary_fo = first["files"][0][0] if first["files"] else None
-    summary_title = first["title"]
-    if len(parsed_items) > 1:
-        summary_title = f"{first['title']} (+{len(parsed_items) - 1} more)"
 
     row = PrintShopRequest(
         request_code=_next_request_code(db),
         status=STATUS_TODO,
         product_type=first["product_type"],
-        title=summary_title,
+        title=first["title"],
         description=first["description"],
         quantity=first["quantity"],
         width=first["width"],
@@ -893,12 +943,18 @@ async def create_public_request(
         requester_name=name,
         requester_email=email,
         requested_by_user_id=user.id if user else None,
-        artwork_file_id=primary_fo.id if primary_fo else None,
+        artwork_file_id=None,
         notes=notes_s,
         created_at=now,
         updated_at=now,
         status_changed_at=now,
         status_changed_by=user.id if user else None,
+    )
+    _sync_request_header_from_items(
+        row,
+        first=first,
+        item_count=len(parsed_items),
+        primary_file_id=primary_fo.id if primary_fo else None,
     )
     db.add(row)
     db.flush()
@@ -1099,6 +1155,175 @@ def cancel_request(
     row.cancelled_reason = reason
     db.commit()
     db.refresh(row)
+    return _serialize(row, include_internal=True)
+
+
+@router.post("/requests/{request_id}/update")
+async def update_request(
+    request_id: str,
+    request: Request,
+    requester_name: str = Form(...),
+    requester_email: str = Form(...),
+    due_date: Optional[str] = Form(None),
+    created_at: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    items_json: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    __: Any = Depends(require_permissions("print_shop:write")),
+):
+    """Replace requester + line items (and artwork keep/add) while request is still open.
+
+    `items_json` entries may include `keep_file_ids` (existing FileObject ids to retain).
+    New uploads use the same `artwork_{index}` multipart fields as public create.
+    Optional `created_at` (YYYY-MM-DD) backdates the request for historical records.
+    """
+    import json
+
+    row = _get_row(db, request_id)
+    _assert_request_editable(row)
+
+    name = (requester_name or "").strip()
+    email = (requester_email or "").strip().lower()
+    notes_s = (notes or "").strip() or None
+    if not name:
+        raise HTTPException(status_code=400, detail="requester_name is required")
+    if not email or not EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Valid requester_email is required")
+
+    try:
+        raw_items = json.loads(items_json or "[]")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid items_json")
+    if not isinstance(raw_items, list) or len(raw_items) < 1:
+        raise HTTPException(status_code=400, detail="At least one item is required")
+    if len(raw_items) > MAX_LINE_ITEMS:
+        raise HTTPException(status_code=400, detail=f"Too many items (max {MAX_LINE_ITEMS})")
+
+    form = await request.form()
+    due = _parse_due_date(due_date)
+    created = _parse_created_at(created_at)
+    now = _utcnow()
+
+    # Existing file objects currently linked to this request (by FileObject id)
+    existing_by_fo: Dict[str, PrintShopRequestFile] = {}
+    for pf in list(getattr(row, "files", None) or []):
+        existing_by_fo[str(pf.file_object_id)] = pf
+
+    parsed_items: List[Dict[str, Any]] = []
+    for idx, raw in enumerate(raw_items):
+        if not isinstance(raw, dict):
+            raise HTTPException(status_code=400, detail=f"Invalid item at index {idx}")
+        fields = _parse_item_fields(raw, idx)
+
+        keep_raw = raw.get("keep_file_ids") or []
+        if not isinstance(keep_raw, list):
+            raise HTTPException(status_code=400, detail=f"Invalid keep_file_ids on item {idx + 1}")
+        keep_ids: List[str] = []
+        for kid in keep_raw:
+            kid_s = str(kid or "").strip()
+            if not kid_s:
+                continue
+            if kid_s not in existing_by_fo:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unknown keep_file_id on item {idx + 1}",
+                )
+            keep_ids.append(kid_s)
+
+        uploads = form.getlist(f"artwork_{idx}")
+        file_uploads: List[UploadFile] = []
+        for u in uploads:
+            if hasattr(u, "read") and hasattr(u, "filename"):
+                file_uploads.append(u)  # type: ignore[arg-type]
+
+        if len(keep_ids) + len(file_uploads) > MAX_ARTWORK_FILES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Too many files on item {idx + 1} (max {MAX_ARTWORK_FILES})",
+            )
+
+        kept_files: List[Tuple[FileObject, str]] = []
+        for kid in keep_ids:
+            pf = existing_by_fo[kid]
+            fo = pf.file_object
+            if not fo:
+                fo = db.query(FileObject).filter(FileObject.id == pf.file_object_id).first()
+            if not fo:
+                raise HTTPException(status_code=400, detail=f"Missing file for keep_file_id on item {idx + 1}")
+            kept_files.append((fo, pf.original_name or "artwork"))
+
+        new_files: List[Tuple[FileObject, str]] = []
+        for upload in file_uploads:
+            content, content_type, original_name = await _read_artwork(upload)
+            fo = _store_artwork(
+                content=content,
+                content_type=content_type,
+                original_name=original_name,
+                created_by=user.id,
+                db=db,
+            )
+            new_files.append((fo, original_name))
+
+        parsed_items.append({**fields, "files": kept_files + new_files})
+
+    # Clear FK before deleting file links that may be referenced by artwork_file_id
+    row.artwork_file_id = None
+    db.flush()
+
+    for pf in list(row.files):
+        db.delete(pf)
+    db.flush()
+    for item in list(row.items):
+        db.delete(item)
+    db.flush()
+
+    first = parsed_items[0]
+    primary_fo = first["files"][0][0] if first["files"] else None
+    _sync_request_header_from_items(
+        row,
+        first=first,
+        item_count=len(parsed_items),
+        primary_file_id=primary_fo.id if primary_fo else None,
+    )
+    row.requester_name = name
+    row.requester_email = email
+    row.due_date = due
+    row.notes = notes_s
+    if created is not None:
+        row.created_at = created
+    row.updated_at = now
+    row.status_changed_by = user.id
+
+    for idx, parsed in enumerate(parsed_items):
+        item = PrintShopRequestItem(
+            request_id=row.id,
+            sort_index=idx,
+            product_type=parsed["product_type"],
+            title=parsed["title"],
+            description=parsed["description"],
+            quantity=parsed["quantity"],
+            width=parsed["width"],
+            height=parsed["height"],
+            unit=parsed["unit"],
+            created_at=now,
+        )
+        db.add(item)
+        db.flush()
+        for fidx, (fo, original_name) in enumerate(parsed["files"]):
+            db.add(
+                PrintShopRequestFile(
+                    request_id=row.id,
+                    item_id=item.id,
+                    file_object_id=fo.id,
+                    original_name=original_name,
+                    sort_index=fidx,
+                    created_at=now,
+                )
+            )
+
+    db.commit()
+    row = _get_row(db, request_id)
     return _serialize(row, include_internal=True)
 
 
