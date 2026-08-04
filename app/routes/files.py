@@ -1023,6 +1023,21 @@ def preview(
         return {"preview_url": url, "expires_in": 300}
 
 
+def _pil_image_for_png_thumbnail(im):
+    """Preserve alpha when generating PNG thumbnails (avoid black matte on transparent PNGs)."""
+    if im.mode == "RGBA":
+        return im
+    if im.mode == "LA":
+        return im.convert("RGBA")
+    if im.mode == "P":
+        if "transparency" in im.info:
+            return im.convert("RGBA")
+        return im.convert("RGB")
+    if im.mode != "RGB":
+        return im.convert("RGB")
+    return im
+
+
 @router.get("/{file_id}/thumbnail")
 def thumbnail(
     file_id: str,
@@ -1180,9 +1195,7 @@ def thumbnail(
                 raise ValueError(f"Cannot identify image file (size: {len(file_content)} bytes, content_type: {content_type}, key: {original_name}): {open_err}")
         
         try:
-            # Convert to RGB (needed for HEIC and some other formats)
-            if im.mode != "RGB":
-                im = im.convert("RGB")
+            im = _pil_image_for_png_thumbnail(im)
             # Resize to width maintaining aspect
             target_w = max(80, min(1024, int(w or 200)))
             scale = target_w / float(im.width)

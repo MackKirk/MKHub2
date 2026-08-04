@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import type { DocumentTypePreset } from '@/components/ChooseDocumentTypeModal';
+import { getDocumentTypeCategories } from '@/lib/documentTypeGrouping';
 import type { DocElement, PageMargins } from '@/types/documentCreator';
 import { DocumentTypePageLayoutModal } from '@/components/DocumentTypePageLayoutModal';
 import OverlayPortal from '@/components/OverlayPortal';
@@ -146,6 +147,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
     queryKey: ['document-creator-document-types'],
     queryFn: () => api<DocumentTypePreset[]>('GET', '/document-creator/document-types'),
   });
+  const existingCategories = useMemo(() => getDocumentTypeCategories(documentTypes), [documentTypes]);
   const editing = editingId ? documentTypes.find((dt) => dt.id === editingId) : null;
 
   useEffect(() => {
@@ -586,11 +588,17 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                   type="text"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
+                  list="document-type-categories"
                   className="w-full px-3 py-2 rounded border border-gray-300 text-sm focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red"
                   placeholder="e.g. Commercial proposal, Contract"
                 />
+                <datalist id="document-type-categories">
+                  {existingCategories.map((cat) => (
+                    <option key={cat} value={cat} />
+                  ))}
+                </datalist>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Used to group templates when adding pages to a document (e.g. Commercial proposal).
+                  Used to group templates in the Create document modal and when adding pages to a document.
                 </p>
               </div>
               <div>

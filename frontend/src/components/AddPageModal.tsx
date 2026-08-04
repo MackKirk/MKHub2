@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
+import { groupDocumentTypesByCategory } from '@/lib/documentTypeGrouping';
 import type { DocumentPage } from '@/types/documentCreator';
 import OverlayPortal from '@/components/OverlayPortal';
 
@@ -69,21 +70,7 @@ export function AddPageModal({
     enabled: open,
   });
 
-  const byCategory = (() => {
-    const map = new Map<string, DocumentTypePreset[]>();
-    const uncategorized: DocumentTypePreset[] = [];
-    for (const dt of documentTypes) {
-      const cat = (dt.category || '').trim();
-      if (!cat) {
-        uncategorized.push(dt);
-      } else {
-        if (!map.has(cat)) map.set(cat, []);
-        map.get(cat)!.push(dt);
-      }
-    }
-    const categories = Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
-    return { categories, uncategorized };
-  })();
+  const byCategory = groupDocumentTypesByCategory(documentTypes);
 
   const handleSelectDocumentType = async (docTypeId: string) => {
     try {

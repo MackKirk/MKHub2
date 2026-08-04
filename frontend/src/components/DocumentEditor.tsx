@@ -43,6 +43,11 @@ import DocumentSelectionInspector from '@/components/document-editor/DocumentSel
 import { notifyTextEditBlocking, dismissTextEditBlockingToast } from '@/components/document-editor/notifyTextEditBlocking';
 import type { AlignKind } from '@/components/document-editor/DocumentSelectionRibbon';
 import {
+  imageFilesFromClipboardData,
+  isLikelyImageFile,
+  readImageFileDimensions,
+} from '@/utils/imageUploadHelpers';
+import {
   BlockIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -247,6 +252,8 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const redoRef = useRef<EditorSnapshot[]>([]);
   /** Internal clipboard: one or many elements (multi-select copy/paste). */
   const clipboardRef = useRef<DocElement[] | null>(null);
+  /** Set on Ctrl/Cmd+V so the paste handler can paste copied elements when no image is on the clipboard. */
+  const pasteShortcutRef = useRef(false);
 
   const newElementId = useCallback(() => {
     return `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -660,30 +667,13 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         return;
       }
       if (key === 'v') {
-        const buf = clipboardRef.current?.filter((el) => el.type !== 'block') ?? [];
-        if (buf.length === 0) return;
-        e.preventDefault();
-        pushHistory();
-        const clones: DocElement[] = buf.map((src) => ({
-          ...(JSON.parse(JSON.stringify(src)) as DocElement),
-          id: newElementId(),
-          x_pct: Math.min(100 - (src.width_pct ?? 0), (src.x_pct ?? 0) + 1),
-          y_pct: Math.min(100 - (src.height_pct ?? 0), (src.y_pct ?? 0) + 1),
-        }));
-        setPages((prev) => {
-          const next = [...prev];
-          const idx = stateRef.current.currentPageIndex;
-          if (!next[idx]) return prev;
-          const els = next[idx].elements ?? [];
-          next[idx] = { ...next[idx], elements: [...els, ...clones] };
-          return next;
-        });
-        setSelectedElementIds(clones.map((c) => c.id));
+        if (!readOnly) pasteShortcutRef.current = true;
+        return;
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo, redo, newElementId, pushHistory, selectedElementIds, textEditingElementId, notifyBlockedByTextEdit]);
+  }, [undo, redo, newElementId, pushHistory, selectedElementIds, textEditingElementId, notifyBlockedByTextEdit, readOnly]);
 
   const currentPage = pages[currentPageIndex];
   const currentTemplateId = currentPage?.template_id ?? null;
@@ -1074,15 +1064,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     handleAddElement(createImagePlaceholder());
   }, [handleAddElement]);
 
-
-  const handleAddImage = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
-    e.target.value = '';
-    try {
+  const uploadDocumentImageFile = useCallback(
+    async (file: File): Promise<string> => {
       const up: any = await api('POST', '/files/upload', {
         original_name: file.name,
-        content_type: file.type,
+        content_type: file.type || 'application/octet-stream',
         client_id: null,
         project_id: null,
         employee_id: null,
@@ -1090,7 +1076,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       });
       const res = await fetch(up.upload_url, {
         method: 'PUT',
-        headers: { 'Content-Type': file.type, 'x-ms-blob-type': 'BlockBlob' },
+        headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
         body: file,
       });
       if (!res.ok) throw new Error('Upload failed');
@@ -1098,48 +1084,174 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         key: up.key,
         size_bytes: file.size,
         checksum_sha256: 'na',
-        content_type: file.type,
+        content_type: file.type || 'application/octet-stream',
       });
-      handleAddElement(createImageElement(conf.id));
-      toast.success('Image added.');
-    } catch (err) {
-      toast.error('Failed to upload image.');
-    }
-  }, [handleAddElement]);
+      return conf.id as string;
+    },
+    [isTemplate],
+  );
+
+  const buildImageElement = useCallback(
+    async (
+      file: File,
+      fileId: string,
+      position?: { x_pct: number; y_pct: number },
+      offsetIndex = 0,
+    ): Promise<DocElement> => {
+      let iw = 0;
+      let ih = 0;
+      try {
+        const dims = await readImageFileDimensions(file);
+        iw = dims.width;
+        ih = dims.height;
+      } catch {
+        /* use defaults */
+      }
+
+      const base = createImageElement(fileId);
+      let el: DocElement = base;
+      if (iw > 0 && ih > 0) {
+        const { width_pct, height_pct } = sizeImageElementFrameForIntrinsicAspect(30, iw, ih);
+        el = { ...base, width_pct, height_pct, imageFit: 'fill' };
+      }
+
+      const w = el.width_pct ?? 40;
+      const h = el.height_pct ?? 25;
+      if (position) {
+        const cx = position.x_pct + offsetIndex * 1.5;
+        const cy = position.y_pct + offsetIndex * 1.5;
+        el = {
+          ...el,
+          x_pct: Math.max(0, Math.min(100 - w, cx - w / 2)),
+          y_pct: Math.max(0, Math.min(100 - h, cy - h / 2)),
+        };
+      } else {
+        const ox = 10 + offsetIndex * 1.5;
+        const oy = 30 + offsetIndex * 1.5;
+        el = {
+          ...el,
+          x_pct: Math.min(100 - w, ox),
+          y_pct: Math.min(100 - h, oy),
+        };
+      }
+      return el;
+    },
+    [],
+  );
+
+  const insertImagesFromFiles = useCallback(
+    async (
+      files: File[],
+      opts?: { x_pct?: number; y_pct?: number; pageIndex?: number },
+    ) => {
+      if (textEditingElementId) {
+        notifyBlockedByTextEdit();
+        return;
+      }
+      const valid = files.filter(isLikelyImageFile);
+      if (!valid.length) {
+        toast.error('No supported image found.');
+        return;
+      }
+      const pageIndex = opts?.pageIndex ?? stateRef.current.currentPageIndex;
+      const position =
+        opts?.x_pct != null && opts?.y_pct != null ? { x_pct: opts.x_pct, y_pct: opts.y_pct } : undefined;
+      try {
+        const newElements: DocElement[] = [];
+        for (let i = 0; i < valid.length; i++) {
+          const file = valid[i];
+          const fileId = await uploadDocumentImageFile(file);
+          const el = await buildImageElement(file, fileId, position, i);
+          newElements.push(el);
+        }
+        pushHistory();
+        updateElementsAtPageIndex(pageIndex, (prev) => [...prev, ...newElements]);
+        setCurrentPageIndex(pageIndex);
+        setSelectedElementIds(newElements.map((el) => el.id));
+        toast.success(valid.length === 1 ? 'Image added.' : `${valid.length} images added.`);
+      } catch {
+        toast.error('Failed to upload image.');
+      }
+    },
+    [
+      textEditingElementId,
+      pushHistory,
+      uploadDocumentImageFile,
+      buildImageElement,
+      updateElementsAtPageIndex,
+    ],
+  );
+
+  const pasteInternalElements = useCallback(() => {
+    const buf = clipboardRef.current?.filter((el) => el.type !== 'block') ?? [];
+    if (buf.length === 0) return;
+    pushHistory();
+    const clones: DocElement[] = buf.map((src) => ({
+      ...(JSON.parse(JSON.stringify(src)) as DocElement),
+      id: newElementId(),
+      x_pct: Math.min(100 - (src.width_pct ?? 0), (src.x_pct ?? 0) + 1),
+      y_pct: Math.min(100 - (src.height_pct ?? 0), (src.y_pct ?? 0) + 1),
+    }));
+    setPages((prev) => {
+      const next = [...prev];
+      const idx = stateRef.current.currentPageIndex;
+      if (!next[idx]) return prev;
+      const els = next[idx].elements ?? [];
+      next[idx] = { ...next[idx], elements: [...els, ...clones] };
+      return next;
+    });
+    setSelectedElementIds(clones.map((c) => c.id));
+  }, [newElementId, pushHistory]);
+
+  useEffect(() => {
+    if (readOnly) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName?.toLowerCase();
+      const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select';
+      if (isTyping) return;
+      if ((t?.isContentEditable ?? false) && textEditingElementId) return;
+
+      const images = imageFilesFromClipboardData(e.clipboardData);
+      if (images.length) {
+        e.preventDefault();
+        pasteShortcutRef.current = false;
+        void insertImagesFromFiles(images);
+        return;
+      }
+
+      if (!pasteShortcutRef.current) return;
+      pasteShortcutRef.current = false;
+      const buf = clipboardRef.current?.filter((el) => el.type !== 'block') ?? [];
+      if (buf.length === 0) return;
+      e.preventDefault();
+      pasteInternalElements();
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [readOnly, textEditingElementId, insertImagesFromFiles, pasteInternalElements]);
+
+  const handleAddImage = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !isLikelyImageFile(file)) return;
+    e.target.value = '';
+    await insertImagesFromFiles([file]);
+  }, [insertImagesFromFiles]);
 
   const handleReplaceImageAtPage = useCallback(
     async (pageIndex: number, elementId: string, file: File) => {
       try {
-        const up: any = await api('POST', '/files/upload', {
-          original_name: file.name,
-          content_type: file.type,
-          client_id: null,
-          project_id: null,
-          employee_id: null,
-          category_id: isTemplate ? 'document-creator-template' : 'document-creator',
-        });
-        const res = await fetch(up.upload_url, {
-          method: 'PUT',
-          headers: { 'Content-Type': file.type, 'x-ms-blob-type': 'BlockBlob' },
-          body: file,
-        });
-        if (!res.ok) throw new Error('Upload failed');
-        const conf: any = await api('POST', '/files/confirm', {
-          key: up.key,
-          size_bytes: file.size,
-          checksum_sha256: 'na',
-          content_type: file.type,
-        });
+        const confId = await uploadDocumentImageFile(file);
         pushHistory();
         updateElementsAtPageIndex(pageIndex, (prev) =>
-          prev.map((e) => (e.id === elementId ? { ...e, content: conf.id } : e))
+          prev.map((e) => (e.id === elementId ? { ...e, content: confId } : e))
         );
         toast.success('Image updated.');
       } catch {
         toast.error('Failed to upload image.');
       }
     },
-    [pushHistory, updateElementsAtPageIndex, isTemplate]
+    [pushHistory, updateElementsAtPageIndex, uploadDocumentImageFile]
   );
 
   const handleReplaceImage = useCallback(
@@ -1553,6 +1665,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                       readOnly ? undefined : (id, file) => handleReplaceImageAtPage(pageIndex, id, file)
                     }
                     onReplaceImageClick={readOnly ? undefined : (projectId ? openImagePickerForElement : undefined)}
+                    onInsertImages={
+                      readOnly
+                        ? undefined
+                        : (files, position) => insertImagesFromFiles(files, { ...position, pageIndex })
+                    }
                   />
                 </section>
               );
@@ -1586,6 +1703,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
             onRemoveElement={readOnly ? undefined : handleRemoveElement}
             onReplaceImage={readOnly ? undefined : handleReplaceImage}
             onReplaceImageClick={readOnly ? undefined : (projectId ? openImagePickerForElement : undefined)}
+            onInsertImages={readOnly ? undefined : insertImagesFromFiles}
           />
         )}
         {!readOnly && layersPanelCollapsed && (

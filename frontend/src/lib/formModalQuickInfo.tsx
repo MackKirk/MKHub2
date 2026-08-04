@@ -1522,8 +1522,8 @@ export const projectDocumentsChooseTypeQuickInfo = formModalQuickInfo({
   ),
   howToUse: (
     <>
-      Pick {uiLabel('Blank (single page)')} for one empty page, or choose a named template to pre-fill pages and
-      backgrounds from {uiLabel('Document Types')} settings.
+      Pick {uiLabel('Blank (single page)')} for one empty page, or search and filter by category to find a named
+      template from {uiLabel('Document Types')} settings.
     </>
   ),
   behavior: (

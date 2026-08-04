@@ -1,6 +1,8 @@
 import { withFileAccessToken } from '@/lib/api';
-import { useRef, useState, useCallback, useEffect, useLayoutEffect, Fragment, type RefObject } from 'react';
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, Fragment, type RefObject, type DragEvent } from 'react';
 import type { DocElement, RichTextRun } from '@/types/documentCreator';
+import { resolveImageFilesFromDataTransfer } from '@/utils/imageUploadHelpers';
+import toast from 'react-hot-toast';
 import { ElementOptionsPopover } from '@/components/ElementOptionsPopover';
 import {
   editorCanvasScrollAreaClass,
@@ -67,6 +69,11 @@ type DocumentPreviewProps = {
    */
   editingElementId?: string | null;
   onEditingElementIdChange?: (elementId: string | null) => void;
+  /** Drop or paste images onto the canvas (upload handled by parent). */
+  onInsertImages?: (
+    files: File[],
+    position?: { x_pct: number; y_pct: number },
+  ) => void | Promise<void>;
 };
 
 const A4_ASPECT = 210 / 297;
@@ -1739,10 +1746,13 @@ export default function DocumentPreview({
   onTextEditingChange,
   editingElementId: controlledEditingElementId,
   onEditingElementIdChange,
+  onInsertImages,
 }: DocumentPreviewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasWidthPx, setCanvasWidthPx] = useState<number>(REFERENCE_CANVAS_WIDTH_PX);
+  const [imageDropActive, setImageDropActive] = useState(false);
+  const imageDropDepthRef = useRef(0);
   const panRef = useRef<{ active: boolean; startX: number; startY: number; startLeft: number; startTop: number }>({
     active: false,
     startX: 0,
@@ -2127,6 +2137,68 @@ export default function DocumentPreview({
     ? 'flex w-full min-w-0 flex-shrink-0 flex-col'
     : 'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.04]';
 
+  const clientPointToCanvasPct = useCallback((clientX: number, clientY: number) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return null;
+    const x_pct = ((clientX - rect.left) / rect.width) * 100;
+    const y_pct = ((clientY - rect.top) / rect.height) * 100;
+    return {
+      x_pct: Math.max(0, Math.min(100, x_pct)),
+      y_pct: Math.max(0, Math.min(100, y_pct)),
+    };
+  }, []);
+
+  const handleImageDragEnter = useCallback(
+    (e: DragEvent) => {
+      if (!onInsertImages) return;
+      e.preventDefault();
+      e.stopPropagation();
+      imageDropDepthRef.current += 1;
+      setImageDropActive(true);
+    },
+    [onInsertImages],
+  );
+
+  const handleImageDragLeave = useCallback((e: DragEvent) => {
+    if (!onInsertImages) return;
+    e.preventDefault();
+    e.stopPropagation();
+    imageDropDepthRef.current -= 1;
+    if (imageDropDepthRef.current <= 0) {
+      imageDropDepthRef.current = 0;
+      setImageDropActive(false);
+    }
+  }, [onInsertImages]);
+
+  const handleImageDragOver = useCallback(
+    (e: DragEvent) => {
+      if (!onInsertImages) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'copy';
+    },
+    [onInsertImages],
+  );
+
+  const handleImageDrop = useCallback(
+    async (e: DragEvent) => {
+      if (!onInsertImages) return;
+      e.preventDefault();
+      e.stopPropagation();
+      imageDropDepthRef.current = 0;
+      setImageDropActive(false);
+      if (embedded) onPageInteraction?.();
+      const position = clientPointToCanvasPct(e.clientX, e.clientY) ?? undefined;
+      const files = await resolveImageFilesFromDataTransfer(e.dataTransfer);
+      if (!files.length) {
+        toast.error('Could not use this image. Try saving the file, or copy and paste (Ctrl+V).');
+        return;
+      }
+      await onInsertImages(files, position);
+    },
+    [onInsertImages, embedded, onPageInteraction, clientPointToCanvasPct],
+  );
+
   return (
     <div className={outerChromeClass}>
       {!embedded && (
@@ -2197,13 +2269,19 @@ export default function DocumentPreview({
       >
         <div
           ref={canvasRef}
-          className="relative flex-shrink-0 select-none overflow-visible rounded-xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.12),0_4px_16px_-4px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,1)] ring-1 ring-slate-900/[0.06]"
+          className={`relative flex-shrink-0 select-none overflow-visible rounded-xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.12),0_4px_16px_-4px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,1)] ring-1 ring-slate-900/[0.06] ${
+            imageDropActive ? 'ring-2 ring-brand-red/45' : ''
+          }`}
           style={{
             aspectRatio: `${A4_ASPECT}`,
             width: `${Math.max(0.25, zoom) * 100}%`,
             minWidth: 280 * zoom,
             maxWidth: 1200 * zoom,
           }}
+          onDragEnter={handleImageDragEnter}
+          onDragLeave={handleImageDragLeave}
+          onDragOver={handleImageDragOver}
+          onDrop={handleImageDrop}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               if (embedded) onPageInteraction?.();
@@ -2215,6 +2293,13 @@ export default function DocumentPreview({
             }
           }}
         >
+          {imageDropActive && (
+            <div className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center rounded-xl border-2 border-dashed border-brand-red/50 bg-brand-red/[0.06]">
+              <span className="rounded-md bg-white/95 px-3 py-1.5 text-xs font-semibold text-brand-red shadow-sm">
+                Drop image here
+              </span>
+            </div>
+          )}
           {backgroundUrl && (
             <img
               src={backgroundUrl}
