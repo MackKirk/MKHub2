@@ -16,11 +16,9 @@ import {
   AppButton,
   AppFormModal,
   AppInput,
-  AppQuickFilterRow,
-  uiBorders,
+  AppSelect,
   uiCx,
   uiLayout,
-  uiRadius,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
@@ -46,6 +44,11 @@ type BackgroundTemplate = {
   default_elements?: DocElement[];
   margins?: PageMargins | null;
 };
+
+const GRID_THUMB_WIDTH_PX = 72;
+const GRID_CARD_CLASS =
+  'rounded-lg border border-gray-200 hover:border-brand-red hover:bg-brand-red/5 transition-colors overflow-hidden flex flex-col items-stretch text-left';
+const GRID_CLASS = 'grid grid-cols-3 sm:grid-cols-4 gap-2.5';
 
 function previewPagesFromDocumentType(
   documentType: DocumentTypePreset,
@@ -93,46 +96,86 @@ function CategorySectionHeader({
   );
 }
 
-function DocumentTypeOptionButton({
-  dt,
+function DocumentTypeGridCard({
+  name,
+  subtitle,
+  pages,
   templates,
-  optionClass,
-  designSystem,
-  onSelect,
-  onClose,
+  onClick,
 }: {
-  dt: DocumentTypePreset;
+  name: string;
+  subtitle: string;
+  pages: DocumentPage[];
   templates: BackgroundTemplate[];
-  optionClass: string;
-  designSystem?: boolean;
-  onSelect: (documentTypeId: string | null) => void;
-  onClose: () => void;
+  onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={() => {
-        onSelect(dt.id);
-        onClose();
-      }}
-      className={optionClass}
-    >
-      <DocumentPagePreviewThumbnails
-        pages={previewPagesFromDocumentType(dt, templates)}
-        templates={templates}
-        maxPages={4}
-      />
-      <div className="min-w-0 flex-1">
-        <span className={designSystem ? uiTypography.sectionTitle : 'font-medium text-gray-900'}>{dt.name}</span>
-        <span
-          className={
-            designSystem ? uiCx(uiTypography.helper, 'mt-0.5 block') : 'text-xs text-gray-500 block mt-0.5'
-          }
-        >
-          {dt.description || `${(dt.page_templates || []).length} page(s)`}
-        </span>
+    <button type="button" onClick={onClick} className={GRID_CARD_CLASS} title={name}>
+      <div className="w-full bg-gray-50 flex items-center justify-center py-3 px-1.5 min-h-[110px]">
+        <DocumentPagePreviewThumbnails
+          pages={pages}
+          templates={templates}
+          maxPages={1}
+          thumbWidthPx={GRID_THUMB_WIDTH_PX}
+        />
+      </div>
+      <div className="px-1.5 pb-1.5 pt-0.5 min-w-0">
+        <span className="text-xs font-medium text-gray-900 truncate block leading-tight">{name}</span>
+        <span className="text-[10px] text-gray-500 truncate block leading-tight mt-0.5">{subtitle}</span>
       </div>
     </button>
+  );
+}
+
+function BlankGridCard({ onClick }: { onClick: () => void }) {
+  return (
+    <DocumentTypeGridCard
+      name="Blank (single page)"
+      subtitle="No background, one empty page"
+      pages={[]}
+      templates={[]}
+      onClick={onClick}
+    />
+  );
+}
+
+function TemplateGrid({
+  documentTypes,
+  templates,
+  onSelect,
+  onClose,
+  showBlank = false,
+}: {
+  documentTypes: DocumentTypePreset[];
+  templates: BackgroundTemplate[];
+  onSelect: (documentTypeId: string | null) => void;
+  onClose: () => void;
+  showBlank?: boolean;
+}) {
+  return (
+    <div className={GRID_CLASS}>
+      {showBlank && (
+        <BlankGridCard
+          onClick={() => {
+            onSelect(null);
+            onClose();
+          }}
+        />
+      )}
+      {documentTypes.map((dt) => (
+        <DocumentTypeGridCard
+          key={dt.id}
+          name={dt.name}
+          subtitle={dt.description || `${(dt.page_templates || []).length} page(s)`}
+          pages={previewPagesFromDocumentType(dt, templates)}
+          templates={templates}
+          onClick={() => {
+            onSelect(dt.id);
+            onClose();
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -154,16 +197,6 @@ function DocumentTypeOptions({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<'all' | string>('all');
 
-  const optionClass = designSystem
-    ? uiCx(
-        'flex w-full items-center gap-3 text-left transition-colors',
-        uiRadius.control,
-        uiBorders.subtle,
-        uiSpacing.cardPadding,
-        'hover:border-brand-red/50 hover:bg-gray-50',
-      )
-    : 'flex w-full items-center gap-3 text-left p-3 rounded-lg border border-gray-200 hover:border-brand-red/50 hover:bg-gray-50 transition-colors';
-
   const categories = useMemo(() => getDocumentTypeCategories(documentTypes), [documentTypes]);
   const hasUncategorized = useMemo(
     () => documentTypes.some((dt) => !(dt.category || '').trim()),
@@ -180,36 +213,26 @@ function DocumentTypeOptions({
     [filteredTypes],
   );
 
-  const showQuickFilters = categories.length > 0 || hasUncategorized;
+  const showCategorySelect = categories.length > 0 || hasUncategorized;
 
-  const quickFilterSegments = useMemo(() => {
-    const segments = [
-      {
-        key: 'all',
-        label: 'All',
-        active: activeCategory === 'all',
-        count: documentTypes.length,
-        onClick: () => setActiveCategory('all'),
-      },
+  const categoryOptions = useMemo(() => {
+    const options = [
+      { value: 'all', label: `All categories (${documentTypes.length})` },
       ...categories.map((cat) => ({
-        key: cat,
-        label: cat,
-        active: activeCategory === cat,
-        count: documentTypes.filter((dt) => (dt.category || '').trim() === cat).length,
-        onClick: () => setActiveCategory(cat),
+        value: cat,
+        label: `${cat} (${documentTypes.filter((dt) => (dt.category || '').trim() === cat).length})`,
       })),
     ];
     if (hasUncategorized) {
-      segments.push({
-        key: UNCATEGORIZED_CATEGORY_KEY,
-        label: 'Other',
-        active: activeCategory === UNCATEGORIZED_CATEGORY_KEY,
-        count: documentTypes.filter((dt) => !(dt.category || '').trim()).length,
-        onClick: () => setActiveCategory(UNCATEGORIZED_CATEGORY_KEY),
+      options.push({
+        value: UNCATEGORIZED_CATEGORY_KEY,
+        label: `Other (${documentTypes.filter((dt) => !(dt.category || '').trim()).length})`,
       });
     }
-    return segments;
-  }, [activeCategory, categories, documentTypes, hasUncategorized]);
+    return options;
+  }, [categories, documentTypes, hasUncategorized]);
+
+  const showSectionHeaders = activeCategory === 'all';
 
   if (isLoading) {
     return designSystem ? (
@@ -221,89 +244,89 @@ function DocumentTypeOptions({
 
   return (
     <div className={designSystem ? uiSpacing.sectionStack : 'space-y-4'}>
-      <div className={designSystem ? undefined : 'space-y-3'}>
-        <AppInput
-          placeholder="Search templates..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          leftIcon={<Search className="h-4 w-4" />}
-          aria-label="Search templates"
-        />
-        {showQuickFilters && <AppQuickFilterRow segments={quickFilterSegments} className="!mt-0 !border-t-0 !pt-0" />}
+      <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+        <div className="min-w-0 flex-1">
+          <AppInput
+            label="Search"
+            placeholder="Search templates..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            leftIcon={<Search className="h-4 w-4" />}
+            aria-label="Search templates"
+          />
+        </div>
+        {showCategorySelect && (
+          <div className="w-full sm:w-[220px] shrink-0">
+            <AppSelect
+              label="Category"
+              value={activeCategory}
+              onChange={(e) => setActiveCategory(e.target.value)}
+              options={categoryOptions}
+              searchable={categoryOptions.length > 6}
+            />
+          </div>
+        )}
       </div>
 
-      <button
-        type="button"
-        onClick={() => {
-          onSelect(null);
-          onClose();
-        }}
-        className={optionClass}
-      >
-        <DocumentPagePreviewThumbnails pages={[]} templates={templates} maxPages={1} />
-        <div className="min-w-0 flex-1">
-          <span className={designSystem ? uiTypography.sectionTitle : 'font-medium text-gray-900'}>
-            Blank (single page)
-          </span>
-          <span
+      {filteredTypes.length === 0 ? (
+        <div className={designSystem ? uiSpacing.sectionStack : 'space-y-4'}>
+          <TemplateGrid
+            documentTypes={[]}
+            templates={templates}
+            onSelect={onSelect}
+            onClose={onClose}
+            showBlank
+          />
+          <p
             className={
-              designSystem ? uiCx(uiTypography.helper, 'mt-0.5 block') : 'text-xs text-gray-500 block mt-0.5'
+              designSystem
+                ? uiCx(uiTypography.helper, 'py-2 text-center')
+                : 'text-sm text-gray-500 py-2 text-center'
             }
           >
-            No background, one empty page
-          </span>
+            No templates match your search.
+          </p>
         </div>
-      </button>
-
-      {filteredTypes.length === 0 ? (
-        <p
-          className={
-            designSystem
-              ? uiCx(uiTypography.helper, 'py-4 text-center')
-              : 'text-sm text-gray-500 py-4 text-center'
-          }
-        >
-          No templates match your search.
-        </p>
-      ) : (
+      ) : showSectionHeaders ? (
         <div className={designSystem ? uiSpacing.sectionStack : 'space-y-6'}>
+          <TemplateGrid
+            documentTypes={[]}
+            templates={templates}
+            onSelect={onSelect}
+            onClose={onClose}
+            showBlank
+          />
           {groupedCategories.map(([categoryName, list]) => (
             <div key={categoryName}>
               <CategorySectionHeader title={categoryName} designSystem={designSystem} />
-              <div className={designSystem ? uiSpacing.sectionStack : 'space-y-2'}>
-                {list.map((dt) => (
-                  <DocumentTypeOptionButton
-                    key={dt.id}
-                    dt={dt}
-                    templates={templates}
-                    optionClass={optionClass}
-                    designSystem={designSystem}
-                    onSelect={onSelect}
-                    onClose={onClose}
-                  />
-                ))}
-              </div>
+              <TemplateGrid
+                documentTypes={list}
+                templates={templates}
+                onSelect={onSelect}
+                onClose={onClose}
+              />
             </div>
           ))}
           {uncategorized.length > 0 && (
             <div>
               <CategorySectionHeader title="Other" designSystem={designSystem} />
-              <div className={designSystem ? uiSpacing.sectionStack : 'space-y-2'}>
-                {uncategorized.map((dt) => (
-                  <DocumentTypeOptionButton
-                    key={dt.id}
-                    dt={dt}
-                    templates={templates}
-                    optionClass={optionClass}
-                    designSystem={designSystem}
-                    onSelect={onSelect}
-                    onClose={onClose}
-                  />
-                ))}
-              </div>
+              <TemplateGrid
+                documentTypes={uncategorized}
+                templates={templates}
+                onSelect={onSelect}
+                onClose={onClose}
+              />
             </div>
           )}
         </div>
+      ) : (
+        <TemplateGrid
+          documentTypes={filteredTypes}
+          templates={templates}
+          onSelect={onSelect}
+          onClose={onClose}
+          showBlank
+        />
       )}
     </div>
   );

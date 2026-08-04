@@ -1522,7 +1522,7 @@ export const projectDocumentsChooseTypeQuickInfo = formModalQuickInfo({
   ),
   howToUse: (
     <>
-      Pick {uiLabel('Blank (single page)')} for one empty page, or search and filter by category to find a named
+      Pick {uiLabel('Blank (single page)')} for one empty page, or use search and the category dropdown to find a named
       template from {uiLabel('Document Types')} settings.
     </>
   ),

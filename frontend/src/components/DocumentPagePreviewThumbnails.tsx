@@ -2,9 +2,8 @@ import { withFileAccessToken } from '@/lib/api';
 import type { DocumentPage, DocElement } from '@/types/documentCreator';
 
 const A4_ASPECT = 210 / 297;
-const THUMB_WIDTH_PX = 48;
+const DEFAULT_THUMB_WIDTH_PX = 48;
 const REFERENCE_CANVAS_WIDTH_PX = 910;
-const scale = THUMB_WIDTH_PX / REFERENCE_CANVAS_WIDTH_PX;
 
 type Template = { id: string; name?: string; background_file_id?: string };
 
@@ -13,14 +12,25 @@ type DocumentPagePreviewThumbnailsProps = {
   templates: Template[];
   /** Max number of page thumbnails to show. Default 4. */
   maxPages?: number;
+  /** Width of each page thumbnail in pixels. Default 48. */
+  thumbWidthPx?: number;
 };
 
-function MiniPageThumb({ page, backgroundUrl }: { page: DocumentPage; backgroundUrl: string | null }) {
+function MiniPageThumb({
+  page,
+  backgroundUrl,
+  thumbWidthPx,
+}: {
+  page: DocumentPage;
+  backgroundUrl: string | null;
+  thumbWidthPx: number;
+}) {
+  const scale = thumbWidthPx / REFERENCE_CANVAS_WIDTH_PX;
   const elements = page.elements ?? [];
   return (
     <div
       className="relative flex-shrink-0 rounded border border-gray-200 overflow-hidden bg-white shadow-sm"
-      style={{ width: THUMB_WIDTH_PX, aspectRatio: `${A4_ASPECT}` }}
+      style={{ width: thumbWidthPx, aspectRatio: `${A4_ASPECT}` }}
     >
       <div className="absolute inset-0 w-full h-full">
         {backgroundUrl ? (
@@ -112,6 +122,7 @@ export function DocumentPagePreviewThumbnails({
   pages,
   templates,
   maxPages = 4,
+  thumbWidthPx = DEFAULT_THUMB_WIDTH_PX,
 }: DocumentPagePreviewThumbnailsProps) {
   const safePages = Array.isArray(pages) ? pages : [];
   const toShow = safePages.slice(0, maxPages);
@@ -119,7 +130,7 @@ export function DocumentPagePreviewThumbnails({
     return (
       <div
         className="flex-shrink-0 rounded border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400 text-[10px]"
-        style={{ width: THUMB_WIDTH_PX, aspectRatio: `${A4_ASPECT}` }}
+        style={{ width: thumbWidthPx, aspectRatio: `${A4_ASPECT}` }}
       >
         —
       </div>
@@ -132,8 +143,17 @@ export function DocumentPagePreviewThumbnails({
         const backgroundUrl = template?.background_file_id
           ? withFileAccessToken(`/files/${template.background_file_id}/thumbnail?w=120`)
           : null;
-        return <MiniPageThumb key={i} page={page as DocumentPage} backgroundUrl={backgroundUrl} />;
+        return (
+          <MiniPageThumb
+            key={i}
+            page={page as DocumentPage}
+            backgroundUrl={backgroundUrl}
+            thumbWidthPx={thumbWidthPx}
+          />
+        );
       })}
     </div>
   );
 }
+
+export { A4_ASPECT };
