@@ -4,7 +4,7 @@ import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { DocumentCreatorModal } from '@/components/DocumentCreatorModal';
-import { ChooseDocumentTypeModal } from '@/components/ChooseDocumentTypeModal';
+import { ChooseDocumentTypeModal, type DocumentCreationSelection } from '@/components/ChooseDocumentTypeModal';
 import { DocumentPagePreviewThumbnails } from '@/components/DocumentPagePreviewThumbnails';
 import DocumentEditor, { type DocumentEditorHandle } from '@/components/DocumentEditor';
 import { ExpandIcon } from '@/components/document-editor/documentEditorIcons';
@@ -164,17 +164,19 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
     [],
   );
 
-  const handleCreateNew = async (documentTypeId: string | null) => {
+  const handleCreateNew = async (selection: DocumentCreationSelection) => {
     setIsCreating(true);
     try {
       const payload: {
         title: string;
         project_id: string;
         document_type_id?: string;
-        pages?: { template_id: null; elements: never[] }[];
+        pages?: { template_id: string | null; elements: never[] }[];
       } = { title: 'Untitled document', project_id: projectId };
-      if (documentTypeId) {
-        payload.document_type_id = documentTypeId;
+      if (selection.kind === 'preset') {
+        payload.document_type_id = selection.documentTypeId;
+      } else if (selection.kind === 'background') {
+        payload.pages = [{ template_id: selection.templateId, elements: [] }];
       } else {
         payload.pages = [{ template_id: null, elements: [] }];
       }
@@ -440,9 +442,9 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
           open={showChooseTypeModal}
           onClose={() => setShowChooseTypeModal(false)}
           designSystem={designSystem}
-          onSelect={(documentTypeId) => {
+          onSelect={(selection) => {
             setShowChooseTypeModal(false);
-            handleCreateNew(documentTypeId);
+            handleCreateNew(selection);
           }}
         />
         <DocumentCreatorModal
@@ -487,9 +489,9 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
         open={showChooseTypeModal}
         onClose={() => setShowChooseTypeModal(false)}
         designSystem={designSystem}
-        onSelect={(documentTypeId) => {
+        onSelect={(selection) => {
           setShowChooseTypeModal(false);
-          handleCreateNew(documentTypeId);
+          handleCreateNew(selection);
         }}
       />
 

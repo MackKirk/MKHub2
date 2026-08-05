@@ -1,334 +1,133 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search } from 'lucide-react';
 import { api } from '@/lib/api';
-import {
-  filterDocumentTypes,
-  getDocumentTypeCategories,
-  groupDocumentTypesByCategory,
-  UNCATEGORIZED_CATEGORY_KEY,
-} from '@/lib/documentTypeGrouping';
+import { BackgroundPagePicker } from '@/components/BackgroundPagePicker';
 import OverlayPortal from '@/components/OverlayPortal';
-import { DocumentPagePreviewThumbnails } from '@/components/DocumentPagePreviewThumbnails';
-import { projectDocumentsChooseTypeQuickInfo } from '@/lib/formModalQuickInfo';
-import type { DocElement, DocumentPage, PageMargins } from '@/types/documentCreator';
 import {
-  AppButton,
-  AppFormModal,
-  AppInput,
-  AppSelect,
-  uiCx,
-  uiLayout,
-  uiSpacing,
-  uiTypography,
-} from '@/components/ui';
+  DocumentTypePicker,
+  type BackgroundTemplate,
+  type DocumentTypePreset,
+} from '@/components/DocumentTypePicker';
+import { projectDocumentsChooseTypeQuickInfo } from '@/lib/formModalQuickInfo';
+import { AppButton, AppFormModal, uiCx, uiLayout } from '@/components/ui';
 
-export type DocumentTypePreset = {
-  id: string;
-  name: string;
-  description?: string | null;
-  category?: string | null;
-  page_templates: {
-    template_id: string;
-    label?: string;
-    margins?: PageMargins | null;
-    elements?: DocElement[];
-  }[];
-  created_at?: string | null;
-};
+export type { DocumentTypePreset };
 
-type BackgroundTemplate = {
-  id: string;
-  name?: string;
-  background_file_id?: string;
-  default_elements?: DocElement[];
-  margins?: PageMargins | null;
-};
-
-const GRID_THUMB_WIDTH_PX = 72;
-const GRID_CARD_CLASS =
-  'rounded-lg border border-gray-200 hover:border-brand-red hover:bg-brand-red/5 transition-colors overflow-hidden flex flex-col items-stretch text-left';
-const GRID_CLASS = 'grid grid-cols-3 sm:grid-cols-4 gap-2.5';
-
-function previewPagesFromDocumentType(
-  documentType: DocumentTypePreset,
-  templates: BackgroundTemplate[],
-): DocumentPage[] {
-  return (documentType.page_templates || []).map((entry) => {
-    const template = templates.find((t) => t.id === entry.template_id);
-    const elements =
-      Array.isArray(entry.elements) && entry.elements.length > 0
-        ? entry.elements
-        : template?.default_elements ?? [];
-    return {
-      template_id: entry.template_id ?? null,
-      margins: entry.margins ?? template?.margins ?? null,
-      elements,
-    };
-  });
-}
+export type DocumentCreationSelection =
+  | { kind: 'blank' }
+  | { kind: 'preset'; documentTypeId: string }
+  | { kind: 'background'; templateId: string };
 
 type ChooseDocumentTypeModalProps = {
   open: boolean;
   onClose: () => void;
-  /** Called with null for "Blank", or document type id when user picks a preset */
-  onSelect: (documentTypeId: string | null) => void;
+  onSelect: (selection: DocumentCreationSelection) => void;
   designSystem?: boolean;
 };
 
-function CategorySectionHeader({
-  title,
-  designSystem,
-}: {
-  title: string;
-  designSystem?: boolean;
-}) {
+function TemplateIcon({ className }: { className?: string }) {
   return (
-    <h3
-      className={
-        designSystem
-          ? uiCx(uiTypography.overline, 'mb-2')
-          : 'text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2'
-      }
-    >
-      {title}
-    </h3>
+    <svg className={className ?? 'w-5 h-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+    </svg>
   );
 }
 
-function DocumentTypeGridCard({
-  name,
-  subtitle,
-  pages,
-  templates,
-  onClick,
-}: {
-  name: string;
-  subtitle: string;
-  pages: DocumentPage[];
-  templates: BackgroundTemplate[];
-  onClick: () => void;
-}) {
+function ImageIcon({ className }: { className?: string }) {
   return (
-    <button type="button" onClick={onClick} className={GRID_CARD_CLASS} title={name}>
-      <div className="w-full bg-gray-50 flex items-center justify-center py-3 px-1.5 min-h-[110px]">
-        <DocumentPagePreviewThumbnails
-          pages={pages}
-          templates={templates}
-          maxPages={1}
-          thumbWidthPx={GRID_THUMB_WIDTH_PX}
-        />
-      </div>
-      <div className="px-1.5 pb-1.5 pt-0.5 min-w-0">
-        <span className="text-xs font-medium text-gray-900 truncate block leading-tight">{name}</span>
-        <span className="text-[10px] text-gray-500 truncate block leading-tight mt-0.5">{subtitle}</span>
-      </div>
-    </button>
+    <svg className={className ?? 'w-5 h-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 15l-5-5L5 21" />
+    </svg>
   );
 }
 
-function BlankGridCard({ onClick }: { onClick: () => void }) {
-  return (
-    <DocumentTypeGridCard
-      name="Blank (single page)"
-      subtitle="No background, one empty page"
-      pages={[]}
-      templates={[]}
-      onClick={onClick}
-    />
-  );
-}
-
-function TemplateGrid({
-  documentTypes,
-  templates,
-  onSelect,
-  onClose,
-  showBlank = false,
+function DocumentCreationPickerTabs({
+  tab,
+  onTabChange,
 }: {
-  documentTypes: DocumentTypePreset[];
-  templates: BackgroundTemplate[];
-  onSelect: (documentTypeId: string | null) => void;
-  onClose: () => void;
-  showBlank?: boolean;
+  tab: 'template' | 'background';
+  onTabChange: (tab: 'template' | 'background') => void;
 }) {
   return (
-    <div className={GRID_CLASS}>
-      {showBlank && (
-        <BlankGridCard
-          onClick={() => {
-            onSelect(null);
-            onClose();
-          }}
-        />
-      )}
-      {documentTypes.map((dt) => (
-        <DocumentTypeGridCard
-          key={dt.id}
-          name={dt.name}
-          subtitle={dt.description || `${(dt.page_templates || []).length} page(s)`}
-          pages={previewPagesFromDocumentType(dt, templates)}
-          templates={templates}
-          onClick={() => {
-            onSelect(dt.id);
-            onClose();
-          }}
-        />
-      ))}
+    <div className="flex border-b border-gray-200 -mt-1 mb-4">
+      <button
+        type="button"
+        onClick={() => onTabChange('template')}
+        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+          tab === 'template'
+            ? 'border-brand-red text-brand-red'
+            : 'border-transparent text-gray-600 hover:text-gray-900'
+        }`}
+      >
+        <TemplateIcon className="w-4 h-4" />
+        From template
+      </button>
+      <button
+        type="button"
+        onClick={() => onTabChange('background')}
+        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+          tab === 'background'
+            ? 'border-brand-red text-brand-red'
+            : 'border-transparent text-gray-600 hover:text-gray-900'
+        }`}
+      >
+        <ImageIcon className="w-4 h-4" />
+        From background
+      </button>
     </div>
   );
 }
 
-function DocumentTypeOptions({
+function DocumentCreationPickerBody({
+  tab,
   documentTypes,
-  templates,
+  backgroundTemplates,
   isLoading,
-  onSelect,
-  onClose,
+  onSelectPreset,
+  onSelectBackground,
   designSystem,
 }: {
+  tab: 'template' | 'background';
   documentTypes: DocumentTypePreset[];
-  templates: BackgroundTemplate[];
+  backgroundTemplates: BackgroundTemplate[];
   isLoading: boolean;
-  onSelect: (documentTypeId: string | null) => void;
-  onClose: () => void;
+  onSelectPreset: (documentTypeId: string | null) => void;
+  onSelectBackground: (templateId: string | null) => void;
   designSystem?: boolean;
 }) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState<'all' | string>('all');
-
-  const categories = useMemo(() => getDocumentTypeCategories(documentTypes), [documentTypes]);
-  const hasUncategorized = useMemo(
-    () => documentTypes.some((dt) => !(dt.category || '').trim()),
-    [documentTypes],
-  );
-
-  const filteredTypes = useMemo(
-    () => filterDocumentTypes(documentTypes, { query: searchQuery, category: activeCategory }),
-    [documentTypes, searchQuery, activeCategory],
-  );
-
-  const { categories: groupedCategories, uncategorized } = useMemo(
-    () => groupDocumentTypesByCategory(filteredTypes),
-    [filteredTypes],
-  );
-
-  const showCategorySelect = categories.length > 0 || hasUncategorized;
-
-  const categoryOptions = useMemo(() => {
-    const options = [
-      { value: 'all', label: `All categories (${documentTypes.length})` },
-      ...categories.map((cat) => ({
-        value: cat,
-        label: `${cat} (${documentTypes.filter((dt) => (dt.category || '').trim() === cat).length})`,
-      })),
-    ];
-    if (hasUncategorized) {
-      options.push({
-        value: UNCATEGORIZED_CATEGORY_KEY,
-        label: `Other (${documentTypes.filter((dt) => !(dt.category || '').trim()).length})`,
-      });
+  if (tab === 'template') {
+    if (documentTypes.length === 0 && !isLoading) {
+      return (
+        <p className="text-sm text-gray-500 py-8 text-center">
+          No document templates yet. Use &quot;From background&quot; to start with a single page, or create templates in
+          Document templates.
+        </p>
+      );
     }
-    return options;
-  }, [categories, documentTypes, hasUncategorized]);
-
-  const showSectionHeaders = activeCategory === 'all';
-
-  if (isLoading) {
-    return designSystem ? (
-      <p className={uiCx(uiTypography.helper, 'py-6 text-center')}>Loading...</p>
-    ) : (
-      <div className="text-sm text-gray-500 py-6 text-center">Loading...</div>
+    return (
+      <DocumentTypePicker
+        documentTypes={documentTypes}
+        backgroundTemplates={backgroundTemplates}
+        isLoading={isLoading}
+        onSelect={onSelectPreset}
+        designSystem={designSystem}
+      />
     );
   }
 
   return (
-    <div className={designSystem ? uiSpacing.sectionStack : 'space-y-4'}>
-      <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
-        <div className="min-w-0 flex-1">
-          <AppInput
-            label="Search"
-            placeholder="Search templates..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            leftIcon={<Search className="h-4 w-4" />}
-            aria-label="Search templates"
-          />
-        </div>
-        {showCategorySelect && (
-          <div className="w-full sm:w-[220px] shrink-0">
-            <AppSelect
-              label="Category"
-              value={activeCategory}
-              onChange={(e) => setActiveCategory(e.target.value)}
-              options={categoryOptions}
-              searchable={categoryOptions.length > 6}
-            />
-          </div>
-        )}
-      </div>
-
-      {filteredTypes.length === 0 ? (
-        <div className={designSystem ? uiSpacing.sectionStack : 'space-y-4'}>
-          <TemplateGrid
-            documentTypes={[]}
-            templates={templates}
-            onSelect={onSelect}
-            onClose={onClose}
-            showBlank
-          />
-          <p
-            className={
-              designSystem
-                ? uiCx(uiTypography.helper, 'py-2 text-center')
-                : 'text-sm text-gray-500 py-2 text-center'
-            }
-          >
-            No templates match your search.
-          </p>
-        </div>
-      ) : showSectionHeaders ? (
-        <div className={designSystem ? uiSpacing.sectionStack : 'space-y-6'}>
-          <TemplateGrid
-            documentTypes={[]}
-            templates={templates}
-            onSelect={onSelect}
-            onClose={onClose}
-            showBlank
-          />
-          {groupedCategories.map(([categoryName, list]) => (
-            <div key={categoryName}>
-              <CategorySectionHeader title={categoryName} designSystem={designSystem} />
-              <TemplateGrid
-                documentTypes={list}
-                templates={templates}
-                onSelect={onSelect}
-                onClose={onClose}
-              />
-            </div>
-          ))}
-          {uncategorized.length > 0 && (
-            <div>
-              <CategorySectionHeader title="Other" designSystem={designSystem} />
-              <TemplateGrid
-                documentTypes={uncategorized}
-                templates={templates}
-                onSelect={onSelect}
-                onClose={onClose}
-              />
-            </div>
-          )}
-        </div>
-      ) : (
-        <TemplateGrid
-          documentTypes={filteredTypes}
-          templates={templates}
-          onSelect={onSelect}
-          onClose={onClose}
-          showBlank
-        />
-      )}
-    </div>
+    <BackgroundPagePicker
+      templates={backgroundTemplates.map((t) => ({
+        id: t.id,
+        name: t.name || 'Untitled',
+        description: undefined,
+        background_file_id: t.background_file_id,
+      }))}
+      onSelect={onSelectBackground}
+      designSystem={designSystem}
+    />
   );
 }
 
@@ -338,6 +137,8 @@ export function ChooseDocumentTypeModal({
   onSelect,
   designSystem = false,
 }: ChooseDocumentTypeModalProps) {
+  const [tab, setTab] = useState<'template' | 'background'>('template');
+
   const { data: documentTypes = [], isLoading } = useQuery({
     queryKey: ['document-creator-document-types'],
     queryFn: () => api<DocumentTypePreset[]>('GET', '/document-creator/document-types'),
@@ -350,7 +151,32 @@ export function ChooseDocumentTypeModal({
     enabled: open,
   });
 
+  const handleSelectPreset = (documentTypeId: string | null) => {
+    onSelect(documentTypeId ? { kind: 'preset', documentTypeId } : { kind: 'blank' });
+    onClose();
+  };
+
+  const handleSelectBackground = (templateId: string | null) => {
+    onSelect(templateId ? { kind: 'background', templateId } : { kind: 'blank' });
+    onClose();
+  };
+
   if (!open) return null;
+
+  const pickerBody = (
+    <>
+      <DocumentCreationPickerTabs tab={tab} onTabChange={setTab} />
+      <DocumentCreationPickerBody
+        tab={tab}
+        documentTypes={documentTypes}
+        backgroundTemplates={templates}
+        isLoading={isLoading}
+        onSelectPreset={handleSelectPreset}
+        onSelectBackground={handleSelectBackground}
+        designSystem={designSystem}
+      />
+    </>
+  );
 
   if (designSystem) {
     return (
@@ -358,7 +184,7 @@ export function ChooseDocumentTypeModal({
         open
         onClose={onClose}
         title="Create document"
-        description="Choose a document template or start blank."
+        description="Choose a document template, background, or start blank."
         quickInfo={projectDocumentsChooseTypeQuickInfo}
         formWidth="wide"
         footer={
@@ -369,14 +195,7 @@ export function ChooseDocumentTypeModal({
           </div>
         }
       >
-        <DocumentTypeOptions
-          documentTypes={documentTypes}
-          templates={templates}
-          isLoading={isLoading}
-          onSelect={onSelect}
-          onClose={onClose}
-          designSystem
-        />
+        {pickerBody}
       </AppFormModal>
     );
   }
@@ -387,17 +206,9 @@ export function ChooseDocumentTypeModal({
         <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col">
           <div className="p-4 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900">Create document</h2>
-            <p className="text-sm text-gray-500 mt-0.5">Choose a document template or start blank.</p>
+            <p className="text-sm text-gray-500 mt-0.5">Choose a document template, background, or start blank.</p>
           </div>
-          <div className="p-4 overflow-y-auto flex-1">
-            <DocumentTypeOptions
-              documentTypes={documentTypes}
-              templates={templates}
-              isLoading={isLoading}
-              onSelect={onSelect}
-              onClose={onClose}
-            />
-          </div>
+          <div className="p-4 overflow-y-auto flex-1">{pickerBody}</div>
           <div className="p-4 border-t border-gray-200 flex justify-end">
             <button
               type="button"

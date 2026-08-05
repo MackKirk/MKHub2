@@ -1516,14 +1516,15 @@ export const projectFilesMoveCategoryQuickInfo = formModalQuickInfo({
 export const projectDocumentsChooseTypeQuickInfo = formModalQuickInfo({
   purpose: (
     <>
-      Start a new document for this {uiLabel('Opportunity')} — either from a company template (multi-page layouts) or
-      as a single blank page.
+      Start a new document for this {uiLabel('Opportunity')} — from a company template (multi-page layouts), a single
+      page background, or a blank page.
     </>
   ),
   howToUse: (
     <>
-      Pick {uiLabel('Blank (single page)')} for one empty page, or use search and the category dropdown to find a named
-      template from {uiLabel('Document Types')} settings.
+      Use {uiLabel('From template')} for multi-page presets, {uiLabel('From background')} for a single page with a
+      background image, or pick {uiLabel('Blank (single page)')}. Search and the category dropdown help find templates
+      quickly.
     </>
   ),
   behavior: (

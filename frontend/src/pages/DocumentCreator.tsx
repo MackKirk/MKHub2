@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import DocumentEditor from '@/components/DocumentEditor';
-import { ChooseDocumentTypeModal } from '@/components/ChooseDocumentTypeModal';
+import { ChooseDocumentTypeModal, type DocumentCreationSelection } from '@/components/ChooseDocumentTypeModal';
 
 type UserDocument = {
   id: string;
@@ -89,18 +89,20 @@ export default function DocumentCreator() {
   );
 
   const handleCreateNewDocument = useCallback(
-    async (documentTypeId: string | null) => {
+    async (selection: DocumentCreationSelection) => {
       setIsSaving(true);
       try {
         const payload: {
           title: string;
           document_type_id?: string;
-          pages?: { template_id: null; elements: never[] }[];
+          pages?: { template_id: string | null; elements: never[] }[];
         } = {
           title: 'Untitled document',
         };
-        if (documentTypeId) {
-          payload.document_type_id = documentTypeId;
+        if (selection.kind === 'preset') {
+          payload.document_type_id = selection.documentTypeId;
+        } else if (selection.kind === 'background') {
+          payload.pages = [{ template_id: selection.templateId, elements: [] }];
         } else {
           payload.pages = [{ template_id: null, elements: [] }];
         }
@@ -229,9 +231,9 @@ export default function DocumentCreator() {
         <ChooseDocumentTypeModal
           open={showChooseTypeModal}
           onClose={() => setShowChooseTypeModal(false)}
-          onSelect={(documentTypeId) => {
+          onSelect={(selection) => {
             setShowChooseTypeModal(false);
-            handleCreateNewDocument(documentTypeId);
+            handleCreateNewDocument(selection);
           }}
         />
       </div>

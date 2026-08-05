@@ -1,32 +1,28 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, withFileAccessToken } from '@/lib/api';
-import { groupDocumentTypesByCategory } from '@/lib/documentTypeGrouping';
+import { api } from '@/lib/api';
+import { BackgroundPagePicker } from '@/components/BackgroundPagePicker';
+import {
+  DocumentTypePicker,
+  type BackgroundTemplate,
+  type DocumentTypePreset,
+} from '@/components/DocumentTypePicker';
 import type { DocumentPage } from '@/types/documentCreator';
-import OverlayPortal from '@/components/OverlayPortal';
+import { AppButton, AppFormModal, uiCx, uiLayout } from '@/components/ui';
 
-export type DocumentTypePreset = {
-  id: string;
-  name: string;
-  description?: string | null;
-  category?: string | null;
-  page_templates: { template_id: string; label?: string }[];
-  created_at?: string | null;
-};
+export type { DocumentTypePreset };
 
-type BackgroundTemplate = {
+type BackgroundTemplateProp = {
   id: string;
   name: string;
   description?: string;
   background_file_id?: string;
 };
 
-const A4_ASPECT = 210 / 297;
-
 type AddPageModalProps = {
   open: boolean;
   /** Backgrounds (DocumentTemplate) for "From background" tab */
-  templates: BackgroundTemplate[];
+  templates: BackgroundTemplateProp[];
   onClose: () => void;
   /** Add a single page with this background template id (or null for blank) */
   onAddPage: (templateId: string | null) => void;
@@ -70,12 +66,24 @@ export function AddPageModal({
     enabled: open,
   });
 
-  const byCategory = groupDocumentTypesByCategory(documentTypes);
+  const { data: backgroundTemplates = [] } = useQuery({
+    queryKey: ['document-creator-templates'],
+    queryFn: () => api<BackgroundTemplate[]>('GET', '/document-creator/templates'),
+    enabled: open && tab === 'template',
+  });
 
-  const handleSelectDocumentType = async (docTypeId: string) => {
+  const handleSelectDocumentType = async (docTypeId: string | null) => {
+    if (docTypeId === null) {
+      onAddPage(null);
+      onClose();
+      return;
+    }
     try {
       const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
-      const pages = await api<DocumentPage[]>('GET', `/document-creator/document-types/${docTypeId}/expand-pages${qs}`);
+      const pages = await api<DocumentPage[]>(
+        'GET',
+        `/document-creator/document-types/${docTypeId}/expand-pages${qs}`,
+      );
       if (pages && pages.length > 0) {
         onAddPages(pages);
         onClose();
@@ -97,166 +105,64 @@ export function AddPageModal({
   if (!open) return null;
 
   return (
-    <OverlayPortal><div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-      onClick={onClose}
+    <AppFormModal
+      open
+      onClose={onClose}
+      title="Add page(s)"
+      description="Add pages from a document template or a single background."
+      formWidth="wide"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+          <AppButton variant="secondary" size="sm" type="button" onClick={onClose}>
+            Cancel
+          </AppButton>
+        </div>
+      }
     >
-      <div
-        className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Add page(s)</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded text-gray-500 hover:bg-gray-100"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="flex border-b border-gray-200">
-          <button
-            type="button"
-            onClick={() => setTab('template')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              tab === 'template'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <TemplateIcon className="w-4 h-4" />
-            From template
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('background')}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              tab === 'background'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <ImageIcon className="w-4 h-4" />
-            From background
-          </button>
-        </div>
-
-        <div className="p-4 overflow-y-auto flex-1 min-h-0">
-          {tab === 'template' && (
-            <>
-              <p className="text-sm text-gray-500 mb-3">
-                Add one or more pages from a document template (e.g. Commercial proposal). Templates are grouped by category.
-              </p>
-              {loadingTypes ? (
-                <div className="text-sm text-gray-500 py-8 text-center">Loading templates…</div>
-              ) : documentTypes.length === 0 ? (
-                <div className="text-sm text-gray-500 py-8 text-center">
-                  No document templates yet. Use &quot;From background&quot; to add a single page, or create templates in Document templates.
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {byCategory.categories.map(([categoryName, list]) => (
-                    <div key={categoryName}>
-                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                        {categoryName}
-                      </h3>
-                      <div className="space-y-1">
-                        {list.map((dt) => (
-                          <button
-                            key={dt.id}
-                            type="button"
-                            onClick={() => handleSelectDocumentType(dt.id)}
-                            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-gray-200 hover:border-brand-red hover:bg-brand-red/5 text-left transition-colors"
-                          >
-                            <span className="font-medium text-gray-900">{dt.name}</span>
-                            <span className="text-xs text-gray-500">
-                              {(dt.page_templates || []).length} page(s)
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  {byCategory.uncategorized.length > 0 && (
-                    <div>
-                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Other</h3>
-                      <div className="space-y-1">
-                        {byCategory.uncategorized.map((dt) => (
-                          <button
-                            key={dt.id}
-                            type="button"
-                            onClick={() => handleSelectDocumentType(dt.id)}
-                            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-gray-200 hover:border-brand-red hover:bg-brand-red/5 text-left transition-colors"
-                          >
-                            <span className="font-medium text-gray-900">{dt.name}</span>
-                            <span className="text-xs text-gray-500">
-                              {(dt.page_templates || []).length} page(s)
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-
-          {tab === 'background' && (
-            <>
-              <p className="text-sm text-gray-500 mb-3">
-                Add one page with a background image. Choose blank for an empty page.
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleSelectBackground(null)}
-                  className="rounded-xl border-2 border-gray-200 hover:border-brand-red hover:bg-brand-red/5 transition-colors overflow-hidden flex flex-col items-center text-left"
-                >
-                  <div
-                    className="w-full bg-gray-100 flex items-center justify-center text-gray-500 text-sm"
-                    style={{ aspectRatio: `${A4_ASPECT}` }}
-                  >
-                    Blank
-                  </div>
-                  <span className="w-full p-2 text-sm font-medium text-gray-900">Blank (A4)</span>
-                </button>
-                {templates.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => handleSelectBackground(t.id)}
-                    className="rounded-xl border-2 border-gray-200 hover:border-brand-red hover:bg-brand-red/5 transition-colors overflow-hidden flex flex-col items-center text-left"
-                  >
-                    <div
-                      className="w-full bg-gray-100 relative"
-                      style={{ aspectRatio: `${A4_ASPECT}` }}
-                    >
-                      {t.background_file_id ? (
-                        <img
-                          src={withFileAccessToken(`/files/${t.background_file_id}/thumbnail?w=200`)}
-                          alt=""
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-xs">
-                          No image
-                        </div>
-                      )}
-                    </div>
-                    <span className="w-full p-2 text-sm font-medium text-gray-900 truncate" title={t.name}>
-                      {t.name}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+      <div className="flex border-b border-gray-200 -mt-1 mb-4">
+        <button
+          type="button"
+          onClick={() => setTab('template')}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'template'
+              ? 'border-brand-red text-brand-red'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <TemplateIcon className="w-4 h-4" />
+          From template
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('background')}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'background'
+              ? 'border-brand-red text-brand-red'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <ImageIcon className="w-4 h-4" />
+          From background
+        </button>
       </div>
-    </div></OverlayPortal>
+
+      {tab === 'template' ? (
+        documentTypes.length === 0 && !loadingTypes ? (
+          <p className="text-sm text-gray-500 py-8 text-center">
+            No document templates yet. Use &quot;From background&quot; to add a single page, or create templates in
+            Document templates.
+          </p>
+        ) : (
+          <DocumentTypePicker
+            documentTypes={documentTypes}
+            backgroundTemplates={backgroundTemplates}
+            isLoading={loadingTypes}
+            onSelect={handleSelectDocumentType}
+          />
+        )
+      ) : (
+        <BackgroundPagePicker templates={templates} onSelect={handleSelectBackground} />
+      )}
+    </AppFormModal>
   );
 }
