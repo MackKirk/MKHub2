@@ -13,6 +13,8 @@ import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import ClothSizeSelect from '@/components/ClothSizeSelect';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { PREDEFINED_JOBS } from '@/constants/predefinedJobs';
+import { resolveAttendanceEventJobLabel } from '@/lib/attendanceJobLabels';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import UserLoans from '@/components/UserLoans';
 import { UserReportsSection } from '@/components/users/UserReportsTabEnhanced';
@@ -2628,14 +2630,6 @@ const formatBreak = (breakMinutes?: number | null) => {
   return `${m}m`;
 };
 
-const PREDEFINED_JOBS = [
-  { id: '0', code: '0', name: 'No Project Assigned' },
-  { id: '37', code: '37', name: 'Repairs' },
-  { id: '47', code: '47', name: 'Shop' },
-  { id: '53', code: '53', name: 'YPK Developments' },
-  { id: '136', code: '136', name: 'Stat Holiday' },
-];
-
 type Attendance = {
   id: string;
   worker_id: string;
@@ -2910,10 +2904,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
   const { sortBy, sortDir, setSort } = useLocalAppListSort<TimesheetSortColumn>('clock_in', 'desc');
 
   const eventJobLabel = useCallback(
-    (event: AttendanceEvent) =>
-      event.job_name ||
-      event.project_name ||
-      (event.job_type ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown' : 'No Project'),
+    (event: AttendanceEvent) => resolveAttendanceEventJobLabel(event, jobOptions),
     [jobOptions],
   );
 

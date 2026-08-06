@@ -22,6 +22,12 @@ from ..models.models import (
     SubcontractorWorker,
     SubcontractorCompany,
 )
+from ..services.attendance_job_labels import (
+    collect_project_ids_from_job_types,
+    load_projects_by_id,
+    parse_job_type_from_reason_text,
+    resolve_job_label,
+)
 from ..services.standard_file_categories import ensure_standard_file_categories
 from ..services.training_matrix_slots import (
     ensure_training_matrix_slots,
@@ -997,14 +1003,6 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
 
 # Attendance Management Endpoints
 
-PREDEFINED_JOBS_DICT = {
-    "0": "No Project Assigned",
-    "37": "Repairs",
-    "47": "Shop",
-    "53": "YPK Developments",
-    "136": "Stat Holiday",
-}
-
 
 def _format_project_address_line(proj) -> Optional[str]:
     if not proj:
@@ -1348,6 +1346,17 @@ def list_attendances(
             project_ids = [str(s.project_id) for s in shifts_dict.values() if s.project_id]
             if project_ids:
                 projects_dict = {str(p.id): p for p in db.query(Project).filter(Project.id.in_(project_ids)).all()}
+
+        direct_job_types = [
+            parse_job_type_from_reason_text(att.reason_text)
+            for att in attendances
+            if not att.shift_id and att.reason_text
+        ]
+        direct_project_ids = collect_project_ids_from_job_types(
+            [jt for jt in direct_job_types if jt]
+        )
+        if direct_project_ids:
+            projects_dict.update(load_projects_by_id(db, direct_project_ids))
         
         result = []
         logger.info(f"Processing {len(attendances)} attendances...")
@@ -1378,11 +1387,16 @@ def list_attendances(
                         project = projects_dict[str(shift.project_id)]
                         project_name = project.name
                 elif att.reason_text and att.reason_text.startswith("JOB_TYPE:"):
-                    # Direct attendance - extract job_type from reason_text
-                    parts = att.reason_text.split("|")
-                    job_marker = parts[0]
-                    job_type = job_marker.replace("JOB_TYPE:", "")
-                    job_name = PREDEFINED_JOBS_DICT.get(job_type, project_name or "Unknown")
+                    job_type = parse_job_type_from_reason_text(att.reason_text)
+                    if job_type:
+                        job_name, resolved_project_name = resolve_job_label(
+                            db,
+                            job_type,
+                            project_name=project_name,
+                            projects_by_id=projects_dict,
+                        )
+                        if resolved_project_name:
+                            project_name = resolved_project_name
                 
                 # Calculate hours - NEW MODEL: clock_in_time and clock_out_time are in the same record
                 hours_worked = None
@@ -1578,10 +1592,9 @@ def get_attendance(
                 if project:
                     project_name = project.name
     elif attendance.reason_text and attendance.reason_text.startswith("JOB_TYPE:"):
-        parts = attendance.reason_text.split("|")
-        job_marker = parts[0]
-        job_type = job_marker.replace("JOB_TYPE:", "")
-        job_name = PREDEFINED_JOBS_DICT.get(job_type, "Unknown")
+        job_type = parse_job_type_from_reason_text(attendance.reason_text)
+        if job_type:
+            job_name, project_name = resolve_job_label(db, job_type, project_name=project_name)
     
     # Determine type for backward compatibility
     att_type = None

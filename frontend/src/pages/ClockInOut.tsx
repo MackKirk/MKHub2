@@ -24,6 +24,11 @@ import {
   uiTypography,
 } from '@/components/ui';
 import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { useResolvedJobLabel } from '@/hooks/useResolvedJobLabel';
+import {
+  parseJobTypeFromReasonText,
+  resolveDirectAttendanceJobLabel,
+} from '@/lib/attendanceJobLabels';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -75,6 +80,8 @@ type Attendance = {
   time_selected_utc?: string | null; // For backward compatibility
   reason_text?: string;
   job_type?: string; // Extracted job_type from backend (for direct attendance)
+  job_name?: string | null;
+  project_name?: string | null;
   break_minutes?: number | null; // Break time in minutes
 };
 
@@ -114,15 +121,6 @@ type WeeklySummary = {
   total_break_minutes?: number;
   total_break_formatted?: string;
 };
-
-// Predefined job options
-const PREDEFINED_JOBS = [
-  { id: '0', code: '0', name: 'No Project Assigned' },
-  { id: '37', code: '37', name: 'Repairs' },
-  { id: '47', code: '47', name: 'Shop' },
-  { id: '53', code: '53', name: 'YPK Developments' },
-  { id: '136', code: '136', name: 'Stat Holiday' },
-];
 
 export default function ClockInOut() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -425,26 +423,21 @@ export default function ClockInOut() {
   // Get the job type from the open clock-in (for direct attendance, it's stored in reason_text)
   const clockInJobType = useMemo(() => {
     if (!openClockIn) return null;
-    
-    // For direct attendance (no shift), extract job_type from reason_text
-    // Format: "JOB_TYPE:{job_type}|{reason}" or just "JOB_TYPE:{job_type}"
+
     if (!openClockIn.shift_id) {
-      if (openClockIn.job_type) {
-        return openClockIn.job_type;
-      }
-      if (openClockIn.reason_text) {
-        const reason = openClockIn.reason_text;
-        if (reason.startsWith("JOB_TYPE:")) {
-          const parts = reason.split("|");
-          const job_marker = parts[0];
-          return job_marker.replace("JOB_TYPE:", "");
-        }
-      }
+      return openClockIn.job_type || parseJobTypeFromReasonText(openClockIn.reason_text);
     }
-    
-    // For scheduled attendance, get from shift
+
     return selectedDateShift?.job_name || null;
   }, [openClockIn, selectedDateShift]);
+
+  const clockInJobName = useResolvedJobLabel(clockInJobType, {
+    apiJobName: openClockIn?.job_name,
+    shiftProject:
+      openClockIn?.shift_id && project
+        ? { id: project.id, name: project.name, code: project.code }
+        : null,
+  });
   
   // (kept previously) hasCompleteAttendanceForDate / hasMultipleShifts no longer gate clock-in enablement
 
@@ -551,74 +544,13 @@ export default function ClockInOut() {
     queryFn: () => api<Project[]>('GET', '/projects'),
   });
 
-  // Combine predefined jobs with projects
-  const jobOptions = useMemo(() => {
-    const projectJobs = (projects || []).map(p => ({
-      id: p.id,
-      code: p.code || p.id,
-      name: p.name,
-    }));
-    return [...PREDEFINED_JOBS, ...projectJobs];
+  const projectsById = useMemo(() => {
+    const map: Record<string, { id: string; name: string; code?: string }> = {};
+    for (const p of projects || []) {
+      map[p.id] = { id: p.id, name: p.name, code: p.code };
+    }
+    return map;
   }, [projects]);
-
-  // Get the job name for display from the open clock-in
-  const clockInJobName = useMemo(() => {
-    if (!openClockIn || !clockInJobType) return null;
-    
-    // If it's a scheduled shift, use project name
-    if (openClockIn.shift_id && project) {
-      return project.name || project.code || 'Unknown Project';
-    }
-    
-    // For direct attendance, find job in jobOptions
-    const jobOption = jobOptions.find(j => j.id === clockInJobType);
-    if (jobOption) {
-      return `${jobOption.code} - ${jobOption.name}`;
-    }
-    
-    return clockInJobType;
-  }, [openClockIn, clockInJobType, project, jobOptions]);
-
-  // Get the job type from complete attendance
-  const completeAttendanceJobType = useMemo(() => {
-    if (!completeAttendanceToday) return null;
-    
-    // For direct attendance (no shift), extract job_type from reason_text
-    if (!completeAttendanceToday.shift_id) {
-      if (completeAttendanceToday.job_type) {
-        return completeAttendanceToday.job_type;
-      }
-      if (completeAttendanceToday.reason_text) {
-        const reason = completeAttendanceToday.reason_text;
-        if (reason.startsWith("JOB_TYPE:")) {
-          const parts = reason.split("|");
-          const job_marker = parts[0];
-          return job_marker.replace("JOB_TYPE:", "");
-        }
-      }
-    }
-    
-    // For scheduled attendance, get from shift
-    return selectedDateShift?.job_name || null;
-  }, [completeAttendanceToday, selectedDateShift]);
-
-  // Get the job name for display from complete attendance
-  const completeAttendanceJobName = useMemo(() => {
-    if (!completeAttendanceToday || !completeAttendanceJobType) return null;
-    
-    // If it's a scheduled shift, use project name
-    if (completeAttendanceToday.shift_id && project) {
-      return project.name || project.code || 'Unknown Project';
-    }
-    
-    // For direct attendance, find job in jobOptions
-    const jobOption = jobOptions.find(j => j.id === completeAttendanceJobType);
-    if (jobOption) {
-      return `${jobOption.code} - ${jobOption.name}`;
-    }
-    
-    return completeAttendanceJobType;
-  }, [completeAttendanceToday, completeAttendanceJobType, project, jobOptions]);
 
   // Auto-open modal when coming from Schedule page
   useEffect(() => {
@@ -956,7 +888,7 @@ export default function ClockInOut() {
       <AppPageHeader
         title="Clock In / Out"
         subtitle="Track your work hours and manage your attendance"
-        icon={<Clock className="h-4 w-4" />}
+        icon={<Clock className="h-4 w-4" />}
       />
 
       <div className="grid grid-cols-[1.5fr_1fr] items-stretch gap-2">
@@ -1064,26 +996,16 @@ export default function ClockInOut() {
                   const isOpen = !attendance.clock_out_time;
                   const isComplete = attendance.clock_in_time && attendance.clock_out_time;
                   
-                  // Get job name for this attendance
-                  let attendanceJobName: string | null = null;
-                  if (attendance.shift_id) {
-                    // Get shift for this attendance
-                    const attendanceShift = shiftsMap.get(attendance.shift_id);
-                    if (attendanceShift) {
-                      attendanceJobName = attendanceShift.project_name || 'Unknown Project';
-                    }
-                  } else if (attendance.reason_text) {
-                    const reason = attendance.reason_text;
-                    if (reason.startsWith("JOB_TYPE:")) {
-                      const parts = reason.split("|");
-                      const job_marker = parts[0];
-                      const jobType = job_marker.replace("JOB_TYPE:", "");
-                      const jobOption = jobOptions.find(j => j.id === jobType);
-                      if (jobOption) {
-                        attendanceJobName = `${jobOption.code} - ${jobOption.name}`;
-                      }
-                    }
-                  }
+                  const attendanceShift = attendance.shift_id ? shiftsMap.get(attendance.shift_id) : undefined;
+                  const attendanceJobName = resolveDirectAttendanceJobLabel(attendance, {
+                    shiftProject: attendanceShift?.project_name
+                      ? {
+                          id: attendanceShift.project_id,
+                          name: attendanceShift.project_name,
+                        }
+                      : null,
+                    projectsById,
+                  });
                   
                   return (
                     <div key={attendance.id || index} className={`${index > 0 ? 'pt-4 border-t border-gray-200/40' : ''}`}>
@@ -1366,7 +1288,7 @@ export default function ClockInOut() {
                             )}
                             {day.job_name && (
                               <div className="text-xs text-gray-500 truncate">
-                                {day.job_type || ''} - {day.job_name}
+                                {day.job_name}
                               </div>
                             )}
                           </div>

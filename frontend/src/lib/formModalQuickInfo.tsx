@@ -1917,7 +1917,7 @@ export const inviteUserFieldHints = {
   departments:
     'Department\n\nInternal division(s) assigned when the employee completes registration. At least one is required.',
   documents_to_sign:
-    'Documents to sign\n\nOptional onboarding PDFs to include for this hire. Only active documents from Onboarding Admin are listed.',
+    'Documents to sign\n\nOptional. Leave empty to assign all active onboarding documents (per Onboarding Admin). Select specific documents to assign only those for this hire.',
   needs_email: 'Email account\n\nCheck if IT should provision a company email account for this person.',
   needs_business_card: 'Business cards\n\nCheck if business cards should be ordered before their start date.',
   needs_phone: 'Phone\n\nCheck if a company phone or mobile line should be assigned.',

@@ -323,7 +323,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
                   ? undefined
                   : activeDocumentOptions.length === 0
                     ? 'No active onboarding documents. Add or activate documents in Onboarding Admin.'
-                    : 'Only active documents from Onboarding Admin are listed.'
+                    : 'Leave empty to assign all active documents. Select specific documents to assign only those for signing.'
               }
             />
           </div>

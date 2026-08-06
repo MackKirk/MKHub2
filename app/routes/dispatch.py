@@ -25,6 +25,12 @@ from ..services.time_rules import (
     local_to_utc, utc_to_local, combine_date_time
 )
 from ..services.audit import create_audit_log, compute_diff
+from ..services.attendance_job_labels import (
+    collect_project_ids_from_job_types,
+    load_projects_by_id,
+    parse_job_type_from_reason_text,
+    resolve_job_label,
+)
 from ..services.notifications import send_shift_notification, send_attendance_notification
 from ..services.permissions import (
     is_admin, is_supervisor, is_worker,
@@ -2143,15 +2149,6 @@ def create_direct_attendance(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-# Predefined jobs dict for mapping
-PREDEFINED_JOBS_DICT = {
-    "0": "No Project Assigned",
-    "37": "Repairs",
-    "47": "Shop",
-    "53": "YPK Developments",
-    "136": "Stat Holiday",
-}
-
 @router.get("/attendance/direct/{date}")
 def get_direct_attendances_for_date(
     date: str,
@@ -2194,15 +2191,23 @@ def get_direct_attendances_for_date(
         func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).asc()
     ).all()
     
+    job_types = [parse_job_type_from_reason_text(att.reason_text) for att in attendances]
+    projects_by_id = load_projects_by_id(
+        db,
+        collect_project_ids_from_job_types([jt for jt in job_types if jt]),
+    )
+
     result = []
     for att in attendances:
-        # Extract job_type from reason_text
-        job_type = None
-        reason = att.reason_text or ""
-        if reason.startswith("JOB_TYPE:"):
-            parts = reason.split("|")
-            job_marker = parts[0]
-            job_type = job_marker.replace("JOB_TYPE:", "")
+        job_type = parse_job_type_from_reason_text(att.reason_text)
+        job_name = None
+        project_name = None
+        if job_type:
+            job_name, project_name = resolve_job_label(
+                db,
+                job_type,
+                projects_by_id=projects_by_id,
+            )
         
         # Determine type based on which fields are filled
         # For backward compatibility, return "in" if clock_in exists, "out" if only clock_out exists
@@ -2229,6 +2234,8 @@ def get_direct_attendances_for_date(
             "status": att.status,
             "source": att.source,
             "job_type": job_type,
+            "job_name": job_name,
+            "project_name": project_name,
             "reason_text": att.reason_text,  # Include reason_text so frontend can extract job_type
             "break_minutes": att.break_minutes,  # Include break time
         })
@@ -2356,6 +2363,16 @@ def get_weekly_attendance_summary(
                     worker_name = name
         worker_names_map[worker_id] = worker_name
     
+    direct_job_types = [
+        parse_job_type_from_reason_text(att.reason_text)
+        for att in attendances
+        if not att.shift_id and att.reason_text
+    ]
+    projects_by_id = load_projects_by_id(
+        db,
+        collect_project_ids_from_job_types([jt for jt in direct_job_types if jt]),
+    )
+
     # Group attendances by date and worker - each attendance is already a complete event
     daily_entries = {}
     
@@ -2415,13 +2432,15 @@ def get_weekly_attendance_summary(
                     if project:
                         project_name = project.name
         else:
-            # Direct attendance (no shift) - extract job_type from reason_text
-            # Format: "JOB_TYPE:{job_type}|{reason}" or just "JOB_TYPE:{job_type}"
-            reason = attendance.reason_text or ""
-            if reason.startswith("JOB_TYPE:"):
-                parts = reason.split("|")
-                job_marker = parts[0]
-                job_type = job_marker.replace("JOB_TYPE:", "")
+            job_type = parse_job_type_from_reason_text(attendance.reason_text)
+            if job_type:
+                _, resolved_project_name = resolve_job_label(
+                    db,
+                    job_type,
+                    projects_by_id=projects_by_id,
+                )
+                if resolved_project_name:
+                    project_name = resolved_project_name
         
         # Extract HOURS_WORKED from reason_text if present
         hours_worked = None
@@ -2552,7 +2571,12 @@ def get_weekly_attendance_summary(
                 # Determine job name
                 job_name = "Unknown"
                 if event["job_type"]:
-                    job_name = PREDEFINED_JOBS_DICT.get(event["job_type"], event["project_name"] or "Unknown")
+                    job_name, _ = resolve_job_label(
+                        db,
+                        event["job_type"],
+                        project_name=event.get("project_name"),
+                        projects_by_id=projects_by_id,
+                    )
                 elif event["project_name"]:
                     job_name = event["project_name"]
                 
@@ -2581,7 +2605,12 @@ def get_weekly_attendance_summary(
                 # Open event (clock-in without clock-out)
                 job_name = "Unknown"
                 if event["job_type"]:
-                    job_name = PREDEFINED_JOBS_DICT.get(event["job_type"], event["project_name"] or "Unknown")
+                    job_name, _ = resolve_job_label(
+                        db,
+                        event["job_type"],
+                        project_name=event.get("project_name"),
+                        projects_by_id=projects_by_id,
+                    )
                 elif event["project_name"]:
                     job_name = event["project_name"]
                 

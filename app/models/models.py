@@ -123,6 +123,7 @@ class Invite(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of division UUIDs as strings
+    document_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of onboarding base document UUIDs as strings; null = all active docs
 
 
 class RefreshToken(Base):
@@ -1219,6 +1220,7 @@ class EmployeeProfile(Base):
     cloth_size: Mapped[Optional[str]] = mapped_column(String(50))
     cloth_sizes_custom: Mapped[Optional[list]] = mapped_column(JSON)
     project_division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of project division/subdivision UUIDs (from project_divisions SettingList)
+    onboarding_document_ids: Mapped[Optional[list]] = mapped_column(JSON)  # From invite: null = all active docs; list = only those base document IDs
 
     # Sistema / Auditoria
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))

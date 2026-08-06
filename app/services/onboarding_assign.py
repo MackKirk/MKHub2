@@ -1,6 +1,6 @@
 """Apply onboarding base documents to users; HR Documents folder helper."""
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -21,6 +21,63 @@ from .onboarding_delivery import compute_available_at, hire_anchor_start, item_i
 from .profile_complete import is_profile_complete
 
 SYSTEM_ONBOARDING_PACKAGE_NAME = "HR Onboarding"
+
+
+def normalize_invite_document_ids(db: Session, document_ids: Optional[List[str]]) -> Optional[List[str]]:
+    """
+    Normalize invite document selection.
+    Returns None when empty (assign all active docs) or a deduped list of valid base document UUID strings.
+    Raises ValueError when IDs were provided but none are valid.
+    """
+    if not document_ids:
+        return None
+    seen: set[str] = set()
+    requested: List[str] = []
+    for raw in document_ids:
+        s = str(raw).strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        requested.append(s)
+    if not requested:
+        return None
+
+    parsed_ids: List[UUID] = []
+    for s in requested:
+        try:
+            parsed_ids.append(UUID(s))
+        except Exception:
+            continue
+    if not parsed_ids:
+        raise ValueError("No valid onboarding documents in selection")
+
+    valid_rows = (
+        db.query(OnboardingBaseDocument.id)
+        .filter(
+            OnboardingBaseDocument.id.in_(parsed_ids),
+            OnboardingBaseDocument.employee_visible.isnot(False),
+        )
+        .all()
+    )
+    valid_ids = [str(row[0]) for row in valid_rows]
+    if not valid_ids:
+        raise ValueError("No valid onboarding documents in selection")
+    return valid_ids
+
+
+def resolve_onboarding_document_filter(db: Session, subject_user_id: UUID) -> Optional[Set[str]]:
+    """
+    Return None to assign all active base documents, or a set of allowed base document ID strings.
+    """
+    ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == subject_user_id).first()
+    if not ep:
+        return None
+    raw = getattr(ep, "onboarding_document_ids", None)
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        return None
+    return {str(x) for x in raw if x}
 
 
 def get_or_create_system_package(db: Session) -> OnboardingPackage:
@@ -120,8 +177,11 @@ def apply_onboarding_after_profile_complete(db: Session, subject_user_id: UUID) 
     base_docs = (
         db.query(OnboardingBaseDocument).order_by(OnboardingBaseDocument.sort_order.asc(), OnboardingBaseDocument.name.asc()).all()
     )
+    allowed_doc_ids = resolve_onboarding_document_filter(db, subject_user_id)
 
     for bd in base_docs:
+        if allowed_doc_ids is not None and str(bd.id) not in allowed_doc_ids:
+            continue
         if not getattr(bd, "employee_visible", True):
             continue
         assignee_type = (getattr(bd, "assignee_type", None) or "employee").lower()

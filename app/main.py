@@ -1032,6 +1032,25 @@ def create_app() -> FastAPI:
                                 text(f"ALTER TABLE employee_profiles ADD COLUMN {_col} {_ddl}")
                             )
 
+                    for _tbl, _col, _ddl in (
+                        ("employee_profiles", "onboarding_document_ids", "JSON NULL"),
+                        ("invites", "document_ids", "JSON NULL"),
+                    ):
+                        rows = db.execute(
+                            text(
+                                f"""
+                                SELECT 1
+                                FROM information_schema.columns
+                                WHERE table_name = '{_tbl}'
+                                  AND column_name = '{_col}'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not rows:
+                            db.execute(text(f"ALTER TABLE {_tbl} ADD COLUMN {_col} {_ddl}"))
+                            print(f"[startup] Added {_tbl}.{_col}")
+
                     db.commit()
 
                     # Check for project_division_percentages column in projects

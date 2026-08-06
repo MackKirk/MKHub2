@@ -120,6 +120,13 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
     elif req.division_id:
         # Legacy: support single division_id for backward compatibility
         division_ids_list = [req.division_id]
+
+    try:
+        from ..services.onboarding_assign import normalize_invite_document_ids
+
+        document_ids_list = normalize_invite_document_ids(db, req.document_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
     inv = Invite(
         email_personal=req.email_personal,
@@ -128,6 +135,7 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
         created_by=user.id,
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         division_ids=division_ids_list,
+        document_ids=document_ids_list,
     )
     db.add(inv)
     db.commit()
@@ -907,13 +915,19 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
                 data["first_name"] = payload.first_name
             if payload.last_name:
                 data["last_name"] = payload.last_name
+            data["onboarding_document_ids"] = inv.document_ids
             for field, value in data.items():
                 setattr(ep, field, value)
             db.add(ep)
             db.commit()
         else:
             # Create minimal profile with names
-            ep = EmployeeProfile(user_id=user.id, first_name=payload.first_name, last_name=payload.last_name)
+            ep = EmployeeProfile(
+                user_id=user.id,
+                first_name=payload.first_name,
+                last_name=payload.last_name,
+                onboarding_document_ids=inv.document_ids,
+            )
             db.add(ep)
             db.commit()
     except Exception as e:

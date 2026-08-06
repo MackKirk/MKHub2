@@ -44,6 +44,8 @@ import {
   sortListByAppColumn,
   useLocalAppListSort,
 } from '@/components/ui';
+import { PREDEFINED_JOBS } from '@/constants/predefinedJobs';
+import { resolveAttendanceEventJobLabel } from '@/lib/attendanceJobLabels';
 
 
 type Attendance = {
@@ -143,14 +145,6 @@ type Project = {
   code?: string;
   name: string;
 };
-
-const PREDEFINED_JOBS = [
-  { id: '0', code: '0', name: 'No Project Assigned' },
-  { id: '37', code: '37', name: 'Repairs' },
-  { id: '47', code: '47', name: 'Shop' },
-  { id: '53', code: '53', name: 'YPK Developments' },
-  { id: '136', code: '136', name: 'Stat Holiday' },
-];
 
 const toLocalInputValue = (iso?: string | null) => {
   if (!iso) return '';
@@ -552,12 +546,7 @@ export default function Attendance() {
   }, [subcontractorCompanies]);
 
   const eventJobLabel = useCallback(
-    (event: AttendanceEvent) =>
-      event.shift_id
-        ? event.project_name || event.job_name || 'No Project'
-        : event.job_name ||
-          event.project_name ||
-          (event.job_type ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown' : 'No Project'),
+    (event: AttendanceEvent) => resolveAttendanceEventJobLabel(event, jobOptions),
     [jobOptions],
   );
 
@@ -1631,13 +1620,7 @@ export default function Attendance() {
                       <DetailField label="Company">—</DetailField>
                       <DetailField label="Record type">Internal</DetailField>
                       <DetailField label="Job / project">
-                        {viewingEvent.shift_id
-                          ? viewingEvent.project_name || viewingEvent.job_name || 'No Project'
-                          : viewingEvent.job_name ||
-                            viewingEvent.project_name ||
-                            (viewingEvent.job_type
-                              ? jobOptions.find((j) => j.id === viewingEvent.job_type)?.name || 'Unknown'
-                              : 'No Project')}
+                        {eventJobLabel(viewingEvent)}
                       </DetailField>
                       <DetailField label="Project address">{viewingEvent.project_address || '—'}</DetailField>
                       <DetailField label="Status">
