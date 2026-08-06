@@ -1,5 +1,7 @@
 FROM node:20-slim as frontend
 WORKDIR /work/frontend
+ARG VITE_GOOGLE_MAPS_API_KEY
+ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 # Install deps first for better caching
 COPY frontend/package.json ./
 # If a lockfile is added later, COPY it too for repeatable builds
