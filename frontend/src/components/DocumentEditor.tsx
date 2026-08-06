@@ -1916,29 +1916,13 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           targetHeight={imagePickerTargetSize.height}
           allowEdit={true}
           exportScale={2}
+          preserveTransparency={true}
           onConfirm={async (blob, meta?: ImagePickerConfirmMeta) => {
             try {
-              const name = `doc-img-${Date.now()}.jpg`;
-              const up: any = await api('POST', '/files/upload', {
-                original_name: name,
-                content_type: 'image/jpeg',
-                client_id: null,
-                project_id: null,
-                employee_id: null,
-                category_id: 'document-creator',
-              });
-              const res = await fetch(up.upload_url, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' },
-                body: blob,
-              });
-              if (!res.ok) throw new Error('Upload failed');
-              const conf: any = await api('POST', '/files/confirm', {
-                key: up.key,
-                size_bytes: blob.size,
-                checksum_sha256: 'na',
-                content_type: 'image/jpeg',
-              });
+              const mime = meta?.mimeType || blob.type || 'image/jpeg';
+              const ext = mime === 'image/png' ? 'png' : 'jpg';
+              const file = new File([blob], `doc-img-${Date.now()}.${ext}`, { type: mime });
+              const fileId = await uploadDocumentImageFile(file);
               const iw = meta?.intrinsicWidth;
               const ih = meta?.intrinsicHeight;
               const replaceId = imagePickerReplaceElementId;
@@ -1946,11 +1930,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                 pushHistory();
                 handleUpdateElement(replaceId, (el) => {
                   if (el.type !== 'image') {
-                    return { ...el, content: conf.id };
+                    return { ...el, content: fileId };
                   }
                   const next: DocElement = {
                     ...el,
-                    content: conf.id,
+                    content: fileId,
                     imageFit: 'fill',
                   };
                   if (iw && ih && iw > 0 && ih > 0) {
@@ -1961,23 +1945,15 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                 });
                 toast.success('Image updated.');
               } else {
-                const base = createImageElement(conf.id);
-                const sized =
-                  iw && ih && iw > 0 && ih > 0
-                    ? {
-                        ...base,
-                        ...sizeImageElementFrameForIntrinsicAspect(base.width_pct ?? 40, iw, ih),
-                        imageFit: 'fill' as const,
-                      }
-                    : base;
-                handleAddElement(sized);
+                const el = await buildImageElement(file, fileId);
+                handleAddElement(el);
                 toast.success('Image added.');
               }
               setImagePickerOpen(false);
               setImagePickerReplaceElementId(null);
               setImagePickerFileObjectId(undefined);
               setImagePickerOpenEditorOnOpen(false);
-            } catch (err) {
+            } catch {
               toast.error('Failed to upload image.');
             }
           }}

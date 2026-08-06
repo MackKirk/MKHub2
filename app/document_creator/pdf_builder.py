@@ -24,7 +24,7 @@ from ..config import settings
 from ..storage.provider import StorageProvider
 from ..storage.local_provider import LocalStorageProvider
 from ..storage.blob_provider import BlobStorageProvider
-from ..proposals.pdf_image_optimizer import pil_image_to_jpeg_bytes_for_document_pdf
+from ..proposals.pdf_image_optimizer import pil_image_to_raster_bytes_for_document_pdf
 
 
 # In the editor, fontSize is stored in reference CSS px and preview scales it by
@@ -35,6 +35,27 @@ TEXT_INNER_PADDING_PX = 4.0
 CSS_NORMAL_LINE_HEIGHT = 1.2
 
 _FONTS_MAP: Optional[dict] = None
+
+
+def _draw_raster_image_on_canvas(
+    c: canvas.Canvas,
+    pil_im,
+    display_width_pt: float,
+    display_height_pt: float,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+) -> None:
+    """Draw a PIL image on the PDF canvas, preserving PNG alpha when present."""
+    from reportlab.lib.utils import ImageReader
+
+    raster_bytes, has_alpha = pil_image_to_raster_bytes_for_document_pdf(
+        pil_im, display_width_pt, display_height_pt
+    )
+    reader = ImageReader(io.BytesIO(raster_bytes))
+    draw_kwargs = {"mask": "auto"} if has_alpha else {}
+    c.drawImage(reader, x, y, width=width, height=height, **draw_kwargs)
 
 
 def _font_ascent_descent(font_name: str, font_size: float) -> tuple[float, float]:
@@ -919,15 +940,11 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                 img_bytes = _read_file_bytes(db, template.background_file_id)
                 if img_bytes:
                     try:
-                        from reportlab.lib.utils import ImageReader
                         from PIL import Image as PILImage
                         pil_im = PILImage.open(io.BytesIO(img_bytes))
-                        jpeg_bytes = pil_image_to_jpeg_bytes_for_document_pdf(
-                            pil_im, page_width, page_height
+                        _draw_raster_image_on_canvas(
+                            c, pil_im, page_width, page_height, 0, 0, page_width, page_height
                         )
-                        img_buf = io.BytesIO(jpeg_bytes)
-                        reader = ImageReader(img_buf)
-                        c.drawImage(reader, 0, 0, width=page_width, height=page_height)
                     except Exception:
                         pass
 
@@ -986,7 +1003,6 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                             if fid:
                                 img_bytes = _read_file_bytes(db, fid)
                                 if img_bytes:
-                                    from reportlab.lib.utils import ImageReader
                                     from PIL import Image as PILImage
                                     pil_im = PILImage.open(io.BytesIO(img_bytes))
                                     img_w, img_h = pil_im.size
@@ -1006,15 +1022,10 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                                         dw = img_w * scale
                                         dh = img_h * scale
 
-                                    jpeg_bytes = pil_image_to_jpeg_bytes_for_document_pdf(pil_im, dw, dh)
-                                    img_buf = io.BytesIO(jpeg_bytes)
-                                    img_buf.seek(0)
-                                    reader = ImageReader(img_buf)
-
                                     if fit == "fill":
-                                        c.drawImage(reader, x, y, width=w, height=h)
+                                        _draw_raster_image_on_canvas(c, pil_im, w, h, x, y, w, h)
                                     elif not img_w or not img_h or w <= 0 or h <= 0:
-                                        c.drawImage(reader, x, y, width=w, height=h)
+                                        _draw_raster_image_on_canvas(c, pil_im, w, h, x, y, w, h)
                                     else:
                                         dx = (w - dw) * ax
                                         dy = (h - dh) * (1.0 - ay)
@@ -1025,10 +1036,14 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                                             p.rect(x, y, w, h)
                                             c.saveState()
                                             c.clipPath(p, stroke=0, fill=0)
-                                            c.drawImage(reader, draw_x, draw_y, width=dw, height=dh)
+                                            _draw_raster_image_on_canvas(
+                                                c, pil_im, dw, dh, draw_x, draw_y, dw, dh
+                                            )
                                             c.restoreState()
                                         else:
-                                            c.drawImage(reader, draw_x, draw_y, width=dw, height=dh)
+                                            _draw_raster_image_on_canvas(
+                                                c, pil_im, dw, dh, draw_x, draw_y, dw, dh
+                                            )
                         except Exception:
                             pass
             else:

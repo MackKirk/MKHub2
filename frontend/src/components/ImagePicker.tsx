@@ -27,6 +27,14 @@ type LibraryFile = { id:string, file_object_id:string, is_image?:boolean, conten
 
 const FILE_INPUT_ACCEPT = 'image/*,.heic,.heif,image/heic,image/heif';
 
+/** PNG/GIF/WebP may carry an alpha channel (used when preserveTransparency is on). */
+function fileContentMayHaveAlpha(fileOrType: { type?: string; name?: string } | string): boolean {
+  const ct = typeof fileOrType === 'string' ? fileOrType : (fileOrType.type || '');
+  const name = typeof fileOrType === 'string' ? '' : (fileOrType.name || '');
+  if (ct === 'image/png' || ct === 'image/gif' || ct === 'image/webp') return true;
+  return /\.(png|gif|webp)$/i.test(name);
+}
+
 function pickImageFileFromList(files: FileList | null): File | null {
   if (!files?.length) return null;
   for (let i = 0; i < files.length; i++) {
@@ -111,6 +119,7 @@ export type ImagePickerConfirmMeta = {
   intrinsicWidth?: number;
   intrinsicHeight?: number;
   orientation?: ProposalSectionImageOrientation;
+  mimeType?: string;
 };
 
 export default function ImagePicker({
@@ -133,6 +142,7 @@ export default function ImagePicker({
   overlayClassName,
   allowOrientationToggle = false,
   initialOrientation = 'landscape',
+  preserveTransparency = false,
 }:{
   isOpen:boolean,
   onClose:()=>void,
@@ -151,6 +161,8 @@ export default function ImagePicker({
   overlayClassName?: string,
   allowOrientationToggle?: boolean,
   initialOrientation?: ProposalSectionImageOrientation,
+  /** When true, PNG/GIF/WebP exports keep alpha (document creator). Default false for proposals. */
+  preserveTransparency?: boolean,
 }){
   const progressOverlayClassName =
     overlayClassName === uiModalLayer.nestedPicker
@@ -189,6 +201,7 @@ export default function ImagePicker({
   const [showImageEditor, setShowImageEditor] = useState<boolean>(false);
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
   const [isSavingFromEditor, setIsSavingFromEditor] = useState<boolean>(false);
+  const [sourceMayHaveAlpha, setSourceMayHaveAlpha] = useState(false);
 
   // crop state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -203,7 +216,7 @@ export default function ImagePicker({
 
   useEffect(()=>{
     if(!isOpen){
-      setImg(null); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setTab('upload');
+      setImg(null); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setSourceMayHaveAlpha(false); setTab('upload');
       setGalleryDialogOpen(false);
       setOrientation('landscape');
       setLibraryLoaded(false); setFilesOriginals([]); setFilesDerived([]);
@@ -428,6 +441,7 @@ export default function ImagePicker({
 
 
   const loadFromFile = async (file: File)=>{
+    setSourceMayHaveAlpha(fileContentMayHaveAlpha(file));
     const lower = (file.name||'').toLowerCase();
     const isHeic = lower.endsWith('.heic') || lower.endsWith('.heif') || String(file.type||'').includes('heic') || String(file.type||'').includes('heif');
     // Determine correct content type for HEIC files
@@ -621,7 +635,10 @@ export default function ImagePicker({
     }
   };
 
-  const loadFromFileObject = async (fileObjectId:string)=>{
+  const loadFromFileObject = async (fileObjectId:string, contentType?: string)=>{
+    if (contentType) {
+      setSourceMayHaveAlpha(fileContentMayHaveAlpha(contentType));
+    }
     try{
       // Revoke any previous blob URL when loading from library
       if (blobUrlRef.current) {
@@ -735,13 +752,19 @@ export default function ImagePicker({
       canvas.width = outW;
       canvas.height = outH;
       const ctx = canvas.getContext('2d')!;
-      
-      // White behind JPEG (edges); crop excludes letterbox margins when zoom < 1
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const exportPng = preserveTransparency && sourceMayHaveAlpha;
+      if (!exportPng) {
+        // White behind JPEG (edges); crop excludes letterbox margins when zoom < 1
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
 
       ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, canvas.width, canvas.height);
-      
+
+      const exportMime = exportPng ? 'image/png' : 'image/jpeg';
+      const exportQuality = exportPng ? undefined : 0.95;
+
       await new Promise<void>((resolve, reject) => {
         canvas.toBlob((b)=>{
           if(b){
@@ -750,6 +773,7 @@ export default function ImagePicker({
                 originalFileObjectId,
                 intrinsicWidth: outW,
                 intrinsicHeight: outH,
+                mimeType: exportMime,
                 ...(allowOrientationToggle ? { orientation } : {}),
               });
               resolve();
@@ -759,7 +783,7 @@ export default function ImagePicker({
           } else {
             reject(new Error('Failed to create blob'));
           }
-        }, 'image/jpeg', 0.95);
+        }, exportMime, exportQuality);
       });
     } catch (e: any) {
       console.error('Failed to confirm image:', e);
@@ -795,9 +819,10 @@ export default function ImagePicker({
         return;
       }
 
-      // Convert PNG blob to JPG if needed (ImageEditor saves as PNG)
+      // Convert PNG blob to JPG unless document creator needs transparency preserved
       let imageBlob = blob;
-      if (blob.type === 'image/png') {
+      const keepPng = preserveTransparency && blob.type === 'image/png';
+      if (blob.type === 'image/png' && !keepPng) {
         const image = new Image();
         const imageUrl = URL.createObjectURL(blob);
         await new Promise<void>((resolve, reject) => {
@@ -830,6 +855,9 @@ export default function ImagePicker({
           image.src = imageUrl;
         });
       }
+      if (keepPng) {
+        setSourceMayHaveAlpha(true);
+      }
 
       const imageUrl = URL.createObjectURL(imageBlob);
       const image = new Image();
@@ -849,11 +877,13 @@ export default function ImagePicker({
         image.src = imageUrl;
       });
 
-      const uniqueName = `edited_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+      const editedMime = imageBlob.type || (keepPng ? 'image/png' : 'image/jpeg');
+      const editedExt = editedMime === 'image/png' ? 'png' : 'jpg';
+      const uniqueName = `edited_${Date.now()}_${Math.random().toString(36).slice(2)}.${editedExt}`;
       const formData = new FormData();
       formData.append('file', imageBlob, uniqueName);
       formData.append('original_name', uniqueName);
-      formData.append('content_type', 'image/jpeg');
+      formData.append('content_type', editedMime);
       formData.append('project_id', projectId || '');
       formData.append('client_id', clientId || '');
       formData.append('employee_id', '');
@@ -1184,7 +1214,8 @@ export default function ImagePicker({
               <div className="p-4">
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <p className={`${editorCaptionClass} min-w-0 flex-1`}>
-                    Slot target: {effectiveWidth} × {effectiveHeight}px · JPEG export{' '}
+                    Slot target: {effectiveWidth} × {effectiveHeight}px ·{' '}
+                    {preserveTransparency && sourceMayHaveAlpha ? 'PNG' : 'JPEG'} export{' '}
                     {tightExportDimensions
                       ? `${tightExportDimensions.outW} × ${tightExportDimensions.outH}px (visible image only)`
                       : `${exportDimensions.outW} × ${exportDimensions.outH}px`}
@@ -1363,7 +1394,8 @@ export default function ImagePicker({
           filesDerived={filesDerived}
           onReload={() => loadLibrary(true)}
           onSelect={(fileObjectId) => {
-            void loadFromFileObject(fileObjectId);
+            const lib = [...filesOriginals, ...filesDerived].find((f) => f.file_object_id === fileObjectId);
+            void loadFromFileObject(fileObjectId, lib?.content_type);
             setGalleryDialogOpen(false);
           }}
         />

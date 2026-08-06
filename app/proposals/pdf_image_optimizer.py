@@ -148,6 +148,90 @@ def optimize_image_bytes(image_bytes: bytes, preset: str = "section") -> bytes:
         return image_bytes
 
 
+def _pil_has_alpha(img: Image.Image) -> bool:
+    if img.mode in ("RGBA", "LA"):
+        return True
+    if img.mode == "P" and "transparency" in img.info:
+        return True
+    return False
+
+
+def _resize_pil_for_document_pdf_display(
+    img: Image.Image,
+    display_width_pt: float,
+    display_height_pt: float,
+) -> Image.Image:
+    """Downscale a PIL image to match on-page draw size at document PDF raster DPI."""
+    work = img
+    ow, oh = work.size
+    if not settings.pdf_image_optimize_enabled:
+        return work
+    dpi = float(settings.pdf_document_raster_dpi)
+    cap = int(settings.pdf_document_raster_max_side_px)
+    oversample = 1.12
+    dw_pt = max(1.0, float(display_width_pt))
+    dh_pt = max(1.0, float(display_height_pt))
+    max_w = max(1, int(round(dw_pt * dpi * oversample / 72.0)))
+    max_h = max(1, int(round(dh_pt * dpi * oversample / 72.0)))
+    if max_w > cap or max_h > cap:
+        s = min(cap / max_w, cap / max_h, 1.0)
+        max_w = max(1, int(max_w * s))
+        max_h = max(1, int(max_h * s))
+    if ow > max_w or oh > max_h:
+        scale = min(max_w / ow, max_h / oh)
+        nw = max(1, int(ow * scale))
+        nh = max(1, int(oh * scale))
+        work = work.resize((nw, nh), Image.Resampling.LANCZOS)
+    return work
+
+
+def pil_image_to_raster_bytes_for_document_pdf(
+    img: Image.Image,
+    display_width_pt: float,
+    display_height_pt: float,
+) -> tuple[bytes, bool]:
+    """
+    Encode a PIL image for document-creator PDF embedding.
+
+    Returns (image_bytes, has_alpha). When has_alpha is True the bytes are PNG
+    and ReportLab should use mask='auto'. Opaque images stay JPEG for size.
+    """
+    if _pil_has_alpha(img):
+        work = img.convert("RGBA") if img.mode != "RGBA" else img.copy()
+        work = _resize_pil_for_document_pdf_display(work, display_width_pt, display_height_pt)
+        output = io.BytesIO()
+        work.save(output, format="PNG", optimize=True)
+        return output.getvalue(), True
+
+    work = img
+    if work.mode in ("RGBA", "LA", "P"):
+        base = work.convert("RGBA") if work.mode == "P" else work
+        rgb_img = Image.new("RGB", base.size, (255, 255, 255))
+        if base.mode in ("RGBA", "LA"):
+            rgb_img.paste(base, mask=base.split()[-1])
+        else:
+            rgb_img.paste(base)
+        work = rgb_img
+    elif work.mode != "RGB":
+        work = work.convert("RGB")
+
+    work = _resize_pil_for_document_pdf_display(work, display_width_pt, display_height_pt)
+
+    quality = int(settings.pdf_document_jpeg_quality) if settings.pdf_image_optimize_enabled else 90
+    quality = max(40, min(95, quality))
+
+    output = io.BytesIO()
+    work.save(
+        output,
+        format="JPEG",
+        quality=quality,
+        optimize=True,
+        progressive=True,
+        subsampling=2,
+    )
+    return output.getvalue(), False
+
+
 def pil_image_to_jpeg_bytes_for_document_pdf(
     img: Image.Image,
     display_width_pt: float,
@@ -164,50 +248,10 @@ def pil_image_to_jpeg_bytes_for_document_pdf(
     When optimization is disabled, still converts to RGB and saves as JPEG at
     quality 90 (legacy behavior) without resizing.
     """
-    work = img
-    if work.mode in ("RGBA", "LA", "P"):
-        base = work.convert("RGBA") if work.mode == "P" else work
-        rgb_img = Image.new("RGB", base.size, (255, 255, 255))
-        if base.mode in ("RGBA", "LA"):
-            rgb_img.paste(base, mask=base.split()[-1])
-        else:
-            rgb_img.paste(base)
-        work = rgb_img
-    elif work.mode != "RGB":
-        work = work.convert("RGB")
-
-    ow, oh = work.size
-    if settings.pdf_image_optimize_enabled:
-        dpi = float(settings.pdf_document_raster_dpi)
-        cap = int(settings.pdf_document_raster_max_side_px)
-        oversample = 1.12
-        dw_pt = max(1.0, float(display_width_pt))
-        dh_pt = max(1.0, float(display_height_pt))
-        max_w = max(1, int(round(dw_pt * dpi * oversample / 72.0)))
-        max_h = max(1, int(round(dh_pt * dpi * oversample / 72.0)))
-        if max_w > cap or max_h > cap:
-            s = min(cap / max_w, cap / max_h, 1.0)
-            max_w = max(1, int(max_w * s))
-            max_h = max(1, int(max_h * s))
-        if ow > max_w or oh > max_h:
-            scale = min(max_w / ow, max_h / oh)
-            nw = max(1, int(ow * scale))
-            nh = max(1, int(oh * scale))
-            work = work.resize((nw, nh), Image.Resampling.LANCZOS)
-
-    quality = int(settings.pdf_document_jpeg_quality) if settings.pdf_image_optimize_enabled else 90
-    quality = max(40, min(95, quality))
-
-    output = io.BytesIO()
-    work.save(
-        output,
-        format="JPEG",
-        quality=quality,
-        optimize=True,
-        progressive=True,
-        subsampling=2,
+    raster_bytes, _has_alpha = pil_image_to_raster_bytes_for_document_pdf(
+        img, display_width_pt, display_height_pt
     )
-    return output.getvalue()
+    return raster_bytes
 
 
 def optimize_image_file(input_path: str, output_path: str, preset: str = "section") -> bool:
