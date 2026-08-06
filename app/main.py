@@ -1260,6 +1260,45 @@ def create_app() -> FastAPI:
                         print(f"[startup] leak investigation columns (non-critical): {e}")
                         db.rollback()
 
+                    # Project geocoding metadata columns
+                    try:
+                        geocoding_cols = [
+                            ("geocoded_address", "VARCHAR(500) NULL"),
+                            ("geocoding_status", "VARCHAR(20) NULL"),
+                            ("geocoded_at", "TIMESTAMPTZ NULL"),
+                            ("geocoding_error", "VARCHAR(500) NULL"),
+                        ]
+                        for col, col_type in geocoding_cols:
+                            rows = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_name = 'projects' AND column_name = :col LIMIT 1
+                                    """
+                                ),
+                                {"col": col},
+                            ).fetchall()
+                            if not rows:
+                                db.execute(text(f"ALTER TABLE projects ADD COLUMN {col} {col_type}"))
+                                db.commit()
+                                print(f"[startup] Added projects.{col}")
+                        try:
+                            db.execute(
+                                text(
+                                    """
+                                    CREATE INDEX IF NOT EXISTS ix_projects_lat_lng
+                                    ON projects (lat, lng)
+                                    WHERE lat IS NOT NULL AND lng IS NOT NULL AND deleted_at IS NULL
+                                    """
+                                )
+                            )
+                            db.commit()
+                        except Exception:
+                            db.rollback()
+                    except Exception as e:
+                        print(f"[startup] project geocoding columns (non-critical): {e}")
+                        db.rollback()
+
                     # Project + client billing snapshot columns
                     try:
                         client_billing_cols = [

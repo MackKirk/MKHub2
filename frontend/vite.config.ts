@@ -119,6 +119,7 @@ export default defineConfig({
             if (id.includes('react-dom') || id.includes('/react/')) return 'vendor-react';
             if (id.includes('react-router') || id.includes('react-router-dom')) return 'vendor-router';
             if (id.includes('@tanstack/react-query')) return 'vendor-query';
+            if (id.includes('@googlemaps') || id.includes('google.maps')) return 'vendor-google-maps';
             if (id.includes('framer-motion')) return 'vendor-motion';
             // Do NOT split react-grid-layout: it extends React.Component and can run before React is ready in another chunk
           }

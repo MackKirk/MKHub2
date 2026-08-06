@@ -858,6 +858,15 @@ def create_site(client_id: str, payload: ClientSiteCreate, db: Session = Depends
                 db.commit()
     except Exception:
         db.rollback()
+    try:
+        from ..services.project_geocoding_service import (
+            is_valid_coordinate,
+            schedule_geocoding_for_site_projects,
+        )
+        if not is_valid_coordinate(row.site_lat, row.site_lng):
+            schedule_geocoding_for_site_projects(db, str(row.id))
+    except Exception:
+        pass
     return row
 
 
@@ -976,6 +985,21 @@ def update_site(client_id: str, site_id: str, payload: dict, db: Session = Depen
                     
                     if updated_shifts_count > 0:
                         db.commit()
+
+    try:
+        from ..services.project_geocoding_service import schedule_geocoding_for_site_projects
+        address_keys = {
+            "site_address_line1",
+            "site_address_line2",
+            "site_city",
+            "site_province",
+            "site_postal_code",
+            "site_country",
+        }
+        if any(k in payload for k in address_keys) and not coordinates_changed:
+            schedule_geocoding_for_site_projects(db, str(site_id))
+    except Exception:
+        pass
     
     return {"status": "ok"}
 

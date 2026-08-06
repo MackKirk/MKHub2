@@ -1,12 +1,12 @@
-import { useQuery, useQueries } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueries } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import toast from 'react-hot-toast';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { FolderKanban, LayoutGrid, List, Search, SlidersHorizontal } from 'lucide-react';
+import { FolderKanban, LayoutGrid, List, MapPin, Search, SlidersHorizontal } from 'lucide-react';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
@@ -23,6 +23,8 @@ import {
   effectiveListPageLimit,
   listPageSizeSelectOptions,
   parseListPageLimit,
+  resolveInitialListViewMode,
+  type ProjectViewMode,
 } from '@/lib/listPagination';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
 import {
@@ -128,6 +130,9 @@ export const PROJECT_LIST_GRID_CLASS = SHOW_PROJECT_LIST_SHORTCUTS
   : 'grid-cols-[8fr_5fr_3fr_3fr_4fr_3fr_3fr_3fr]';
 
 export const PROJECT_LIST_MIN_WIDTH = 'min-w-[960px]';
+
+const ProjectMapView = lazy(() => import('@/features/projects/components/map/ProjectMapView'));
+const ProjectMapLoading = lazy(() => import('@/features/projects/components/map/ProjectMapLoading').then((m) => ({ default: m.ProjectMapLoading })));
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
 // Base pricing Value: sum of approved items (value × qty), without PST/GST
@@ -457,24 +462,20 @@ export default function Projects(){
   const [animationComplete, setAnimationComplete] = useState(false);
   
   // View mode state with persistence
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
-    // Check URL param first
-    const urlView = searchParams.get('view');
-    if (urlView === 'list' || urlView === 'cards') {
-      return urlView;
-    }
-    // Then check localStorage
-    const saved = localStorage.getItem('projects-view-mode');
-    return (saved === 'list' || saved === 'cards') ? saved : 'list';
-  });
+  const [viewMode, setViewMode] = useState<ProjectViewMode>(() =>
+    resolveInitialListViewMode(searchParams.get('view'), 'projects-view-mode'),
+  );
   
-  // Sync viewMode with URL and localStorage (only when view mode changes — avoid re-writing URL on sort/filter updates).
   useEffect(() => {
     setSearchParams((prev) => {
       const params = new URLSearchParams(prev);
       if (viewMode === 'list') {
         if (params.get('view') === 'list') return prev;
         params.set('view', 'list');
+      } else if (viewMode === 'map') {
+        if (params.get('view') === 'map') return prev;
+        params.set('view', 'map');
+        params.delete('limit');
       } else {
         if (!params.has('view') && !params.has('limit')) return prev;
         params.delete('view');
@@ -482,7 +483,9 @@ export default function Projects(){
       }
       return params;
     }, { replace: true });
-    localStorage.setItem('projects-view-mode', viewMode);
+    if (viewMode === 'list' || viewMode === 'cards') {
+      localStorage.setItem('projects-view-mode', viewMode);
+    }
   }, [viewMode, setSearchParams]);
   
   // Convert current URL params to rules for modal
@@ -527,7 +530,8 @@ export default function Projects(){
   
   const { data, isLoading, isFetching, refetch } = useQuery({ 
     queryKey:['projects', businessLine, qs], 
-    queryFn: ()=> api<{ items: Project[]; total: number; page: number; limit: number } | Project[]>('GET', `/projects/business/projects${qs}`)
+    queryFn: ()=> api<{ items: Project[]; total: number; page: number; limit: number } | Project[]>('GET', `/projects/business/projects${qs}`),
+    enabled: viewMode !== 'map',
   });
   
   // Load project divisions in parallel (shared across all cards, no individual loading)
@@ -542,7 +546,7 @@ export default function Projects(){
   );
   
   // Show loading until list API returns (divisions load in parallel for icons)
-  const isInitialLoading = isLoading && !data;
+  const isInitialLoading = viewMode !== 'map' && isLoading && !data;
   
   // Track when animation completes to remove inline styles for hover to work
   useEffect(() => {
@@ -769,7 +773,7 @@ export default function Projects(){
         'GET',
         `/projects/business/projects/tab-counts?${quickFilterCountBaseParams.toString()}`,
       ),
-    enabled: !!data,
+    placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
 
@@ -847,6 +851,7 @@ export default function Projects(){
                 onClick={() => setViewMode('list')}
                 title="List view"
                 aria-label="List view"
+                aria-pressed={viewMode === 'list'}
               >
                 <List className="h-4 w-4" />
               </AppButton>
@@ -858,8 +863,21 @@ export default function Projects(){
                 onClick={() => setViewMode('cards')}
                 title="Card view"
                 aria-label="Card view"
+                aria-pressed={viewMode === 'cards'}
               >
                 <LayoutGrid className="h-4 w-4" />
+              </AppButton>
+              <AppButton
+                type="button"
+                variant={viewMode === 'map' ? 'primary' : 'secondary'}
+                size="sm"
+                className="!rounded-none !border-l-0 !px-2.5"
+                onClick={() => setViewMode('map')}
+                title="Map view"
+                aria-label="Map view"
+                aria-pressed={viewMode === 'map'}
+              >
+                <MapPin className="h-4 w-4" />
               </AppButton>
             </div>
             <div className="min-w-0 flex-1">
@@ -940,7 +958,15 @@ export default function Projects(){
 
         <LoadingOverlay isLoading={isInitialLoading} text="Loading projects...">
           <AppCard className={uiCx(uiShadows.card, listCardAnimClass)} bodyClassName={uiSpacing.cardPadding}>
-        {viewMode === 'cards' ? (
+        {viewMode === 'map' ? (
+          <Suspense fallback={<ProjectMapLoading />}>
+            <ProjectMapView
+              searchParams={searchParams}
+              businessLine={businessLine}
+              detailBasePath={projectBasePath}
+            />
+          </Suspense>
+        ) : viewMode === 'cards' ? (
           <div className={uiCx('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3', listCardAnimClass)}>
             {isLoading && !arr.length ? (
               <>
@@ -1001,14 +1027,14 @@ export default function Projects(){
             ) : null}
           </div>
         )}
-        {!isInitialLoading && arr.length === 0 && (
+        {!isInitialLoading && viewMode !== 'map' && arr.length === 0 && (
           <AppEmptyState
             className="py-8"
             title="No projects found"
             description="No projects found matching your criteria."
           />
         )}
-        {!isInitialLoading && totalCount > 0 && (
+        {!isInitialLoading && viewMode !== 'map' && totalCount > 0 && (
           <div className={uiCx(uiLayout.actionsRow, 'mt-4 flex-wrap justify-between gap-3 border-t border-gray-200 pt-4')}>
             <p className={uiTypography.helper}>
               Page {currentPage} of {totalPages} ({totalCount} total)

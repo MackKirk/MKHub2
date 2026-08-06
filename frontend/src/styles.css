@@ -47,7 +47,47 @@ body{font-family:theme(fontFamily.sans);background:#f6f7f9}
   border-color: rgb(229 231 235) !important; /* border-gray-200 */
 }
 
-/* Filter Builder Modal Animation */
+/* Google Maps InfoWindow — map popup */
+.gm-style-iw-c {
+  width: auto !important;
+  max-width: 320px !important;
+  max-height: none !important;
+  padding-top: 0 !important;
+}
+.gm-style-iw-d {
+  overflow: visible !important;
+  display: block !important;
+  width: auto !important;
+  max-width: min(320px, calc(100vw - 48px)) !important;
+  max-height: none !important;
+  height: auto !important;
+  padding: 8px 4px 4px !important;
+}
+/* Close button: same row as title, smaller */
+.gm-style-iw-chr {
+  position: absolute !important;
+  top: 6px !important;
+  right: 4px !important;
+  height: 20px !important;
+  width: 20px !important;
+  padding: 0 !important;
+}
+.gm-style-iw-chr button {
+  width: 20px !important;
+  height: 20px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.gm-style-iw-chr span {
+  width: 14px !important;
+  height: 14px !important;
+  margin: 3px !important;
+}
+.gm-style-iw-chr span[style*="mask-image"] {
+  width: 14px !important;
+  height: 14px !important;
+}
+
 @keyframes fadeInSlideUp {
   from {
     opacity: 0;

@@ -186,6 +186,10 @@ class Project(Base):
     address_country: Mapped[Optional[str]] = mapped_column(String(100))
     lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))  # Latitude for geofence
     lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))  # Longitude for geofence
+    geocoded_address: Mapped[Optional[str]] = mapped_column(String(500))
+    geocoding_status: Mapped[Optional[str]] = mapped_column(String(20))  # pending|success|failed|manual
+    geocoded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    geocoding_error: Mapped[Optional[str]] = mapped_column(String(500))
     timezone: Mapped[Optional[str]] = mapped_column(String(100), default="America/Vancouver")  # Project timezone
     status: Mapped[Optional[str]] = mapped_column(String(50))  # Project status
     division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # Legacy: kept for backward compatibility

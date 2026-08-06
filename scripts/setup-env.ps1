@@ -129,6 +129,7 @@ Write-Host "Configuracoes aplicadas:" -ForegroundColor Cyan
 Write-Host "  - DATABASE_URL: PostgreSQL do Render (externa)" -ForegroundColor White
 Write-Host "  - JWT_SECRET: Gerado automaticamente" -ForegroundColor White
 Write-Host "  - GOOGLE_PLACES_API_KEY: Configurada (se fornecida)" -ForegroundColor White
+Write-Host "  - VITE_GOOGLE_MAPS_API_KEY: Configure em frontend/.env para Map View (build-time)" -ForegroundColor White
 Write-Host ""
 Write-Host "Voce pode editar o .env para ajustar outras variaveis se necessario." -ForegroundColor Yellow
 Write-Host ""

@@ -1,11 +1,11 @@
-﻿import { useQuery } from '@tanstack/react-query';
+﻿import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef, lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import toast from 'react-hot-toast';
 import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, LayoutGrid, List, Plus, Search, SlidersHorizontal } from 'lucide-react';
+import { LayoutDashboard, LayoutGrid, List, MapPin, Plus, Search, SlidersHorizontal } from 'lucide-react';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
@@ -28,6 +28,8 @@ import {
   effectiveListPageLimit,
   listPageSizeSelectOptions,
   parseListPageLimit,
+  resolveInitialListViewMode,
+  type ProjectViewMode,
 } from '@/lib/listPagination';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
@@ -68,6 +70,7 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
+import { OPPORTUNITY_MAP_LABELS } from '@/features/projects/lib/mapViewLabels';
 
 /** Same avatar as AppUserSelect list rows (`AppUserAvatar` sm = 24px, gray placeholder). */
 function UserAvatar({
@@ -144,6 +147,9 @@ export const OPPORTUNITY_LIST_GRID_CLASS = SHOW_OPPORTUNITY_LIST_SHORTCUTS
 
 export const OPPORTUNITY_LIST_MIN_WIDTH = 'min-w-[960px]';
 
+const ProjectMapView = lazy(() => import('@/features/projects/components/map/ProjectMapView'));
+const ProjectMapLoading = lazy(() => import('@/features/projects/components/map/ProjectMapLoading').then((m) => ({ default: m.ProjectMapLoading })));
+
 export default function Opportunities() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -161,30 +167,31 @@ export default function Opportunities() {
   const [animationComplete, setAnimationComplete] = useState(false);
   
   // View mode state with persistence
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
-    // Check URL param first
-    const urlView = searchParams.get('view');
-    if (urlView === 'list' || urlView === 'cards') {
-      return urlView;
-    }
-    // Then check localStorage
-    const viewKey = 'opportunities-view-mode';
-    const saved = localStorage.getItem(viewKey);
-    return (saved === 'list' || saved === 'cards') ? saved : 'list';
-  });
+  const [viewMode, setViewMode] = useState<ProjectViewMode>(() =>
+    resolveInitialListViewMode(searchParams.get('view'), 'opportunities-view-mode'),
+  );
   
-  // Sync viewMode with URL and localStorage
   useEffect(() => {
-    const params = new URLSearchParams(searchParams);
-    if (viewMode === 'list') {
-      params.set('view', 'list');
-    } else {
-      params.delete('view');
-      params.delete('limit');
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (viewMode === 'list') {
+        if (params.get('view') === 'list') return prev;
+        params.set('view', 'list');
+      } else if (viewMode === 'map') {
+        if (params.get('view') === 'map') return prev;
+        params.set('view', 'map');
+        params.delete('limit');
+      } else {
+        if (!params.has('view') && !params.has('limit')) return prev;
+        params.delete('view');
+        params.delete('limit');
+      }
+      return params;
+    }, { replace: true });
+    if (viewMode === 'list' || viewMode === 'cards') {
+      localStorage.setItem('opportunities-view-mode', viewMode);
     }
-    setSearchParams(params, { replace: true });
-    localStorage.setItem('opportunities-view-mode', viewMode);
-  }, [viewMode, searchParams, setSearchParams]);
+  }, [viewMode, setSearchParams]);
   
   // Get current date formatted (same as Dashboard)
   
@@ -232,7 +239,8 @@ export default function Opportunities() {
   const listEndpoint = '/projects/business/opportunities';
   const { data, isLoading, refetch } = useQuery({ 
     queryKey: ['opportunities', businessLine, qs],
-    queryFn: ()=> api<{ items: Opportunity[]; total: number; page: number; limit: number } | Opportunity[]>('GET', `${listEndpoint}${qs}`)
+    queryFn: ()=> api<{ items: Opportunity[]; total: number; page: number; limit: number } | Opportunity[]>('GET', `${listEndpoint}${qs}`),
+    enabled: viewMode !== 'map',
   });
   
   // Load project divisions in parallel
@@ -247,7 +255,7 @@ export default function Opportunities() {
   );
   
   // Show loading until list API returns (divisions load in parallel for icons)
-  const isInitialLoading = isLoading && !data;
+  const isInitialLoading = viewMode !== 'map' && isLoading && !data;
   
   // Track when animation completes to remove inline styles for hover to work
   useEffect(() => {
@@ -403,7 +411,7 @@ export default function Opportunities() {
         'GET',
         `/projects/business/opportunities/tab-counts?${quickFilterCountBaseParams.toString()}`,
       ),
-    enabled: !!data,
+    placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
 
@@ -566,6 +574,7 @@ export default function Opportunities() {
                 onClick={() => setViewMode('list')}
                 title="List view"
                 aria-label="List view"
+                aria-pressed={viewMode === 'list'}
               >
                 <List className="h-4 w-4" />
               </AppButton>
@@ -577,8 +586,21 @@ export default function Opportunities() {
                 onClick={() => setViewMode('cards')}
                 title="Card view"
                 aria-label="Card view"
+                aria-pressed={viewMode === 'cards'}
               >
                 <LayoutGrid className="h-4 w-4" />
+              </AppButton>
+              <AppButton
+                type="button"
+                variant={viewMode === 'map' ? 'primary' : 'secondary'}
+                size="sm"
+                className="!rounded-none !border-l-0 !px-2.5"
+                onClick={() => setViewMode('map')}
+                title="Map view"
+                aria-label="Map view"
+                aria-pressed={viewMode === 'map'}
+              >
+                <MapPin className="h-4 w-4" />
               </AppButton>
             </div>
             <div className="min-w-0 flex-1">
@@ -659,7 +681,17 @@ export default function Opportunities() {
 
         <LoadingOverlay isLoading={isInitialLoading} text="Loading opportunities...">
           <AppCard className={uiCx(uiShadows.card, listCardAnimClass)} bodyClassName={uiSpacing.cardPadding}>
-        {viewMode === 'cards' ? (
+        {viewMode === 'map' ? (
+          <Suspense fallback={<ProjectMapLoading />}>
+            <ProjectMapView
+              searchParams={searchParams}
+              businessLine={businessLine}
+              detailBasePath={opportunityBasePath}
+              listKind="opportunities"
+              labels={OPPORTUNITY_MAP_LABELS}
+            />
+          </Suspense>
+        ) : viewMode === 'cards' ? (
           <div className={uiCx('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3', listCardAnimClass)}>
             {hasEditPermission && (
               <Link
@@ -760,14 +792,14 @@ export default function Opportunities() {
             ))}
           </AppSortableEntityList>
         )}
-        {!isInitialLoading && arr.length === 0 && (
+        {!isInitialLoading && viewMode !== 'map' && arr.length === 0 && (
           <AppEmptyState
             className="py-8"
             title="No opportunities found"
             description="No opportunities found matching your criteria."
           />
         )}
-        {!isInitialLoading && totalCount > 0 && (
+        {!isInitialLoading && viewMode !== 'map' && totalCount > 0 && (
           <div className={uiCx(uiLayout.actionsRow, 'mt-4 flex-wrap justify-between gap-3 border-t border-gray-200 pt-4')}>
             <p className={uiTypography.helper}>
               Page {currentPage} of {totalPages} ({totalCount} total)

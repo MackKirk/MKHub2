@@ -1220,6 +1220,20 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
         import logging
         logging.getLogger(__name__).warning("Failed to create R&M Pictures default folders: %s", e)
 
+    try:
+        from ..services.project_geocoding_service import (
+            is_valid_coordinate,
+            maybe_schedule_geocoding_after_project_save,
+            mark_manual_geocoding,
+        )
+        if is_valid_coordinate(proj.lat, proj.lng):
+            mark_manual_geocoding(proj)
+            db.commit()
+        else:
+            maybe_schedule_geocoding_after_project_save(db, proj, payload)
+    except Exception:
+        pass
+
     return {"id": str(proj.id)}
 
 
@@ -1725,6 +1739,21 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
             flag_modified(p, "division_onsite_leads")
 
     db.commit()
+
+    try:
+        from ..services.project_geocoding_service import maybe_schedule_geocoding_after_project_save
+        maybe_schedule_geocoding_after_project_save(
+            db,
+            p,
+            payload,
+            before_address={
+                "address": before_state.get("address"),
+                "site_id": before_state.get("site_id"),
+            },
+            coordinates_changed=coordinates_changed,
+        )
+    except Exception:
+        pass
     
     # If project name changed, update the associated folder name
     if name_changed and new_name:
@@ -7705,6 +7734,138 @@ def business_projects(
         result.append(project_dict)
     
     return {"items": result, "total": total_count, "page": page, "limit": limit}
+
+
+@router.get("/business/projects/map-points")
+def business_projects_map_points(
+    division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
+    subdivision_id: Optional[str] = None,
+    status: Optional[str] = None,
+    status_not: Optional[str] = None,
+    q: Optional[str] = None,
+    min_value: Optional[float] = None,
+    client_id: Optional[str] = None,
+    client_id_not: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
+    estimator_id: Optional[str] = None,
+    estimator_id_not: Optional[str] = None,
+    eta_start: Optional[str] = None,
+    eta_end: Optional[str] = None,
+    value_min: Optional[int] = None,
+    value_max: Optional[int] = None,
+    business_line: Optional[str] = None,
+    related_to_me: Optional[bool] = False,
+    north: Optional[float] = None,
+    south: Optional[float] = None,
+    east: Optional[float] = None,
+    west: Optional[float] = None,
+    zoom: Optional[float] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Lightweight map markers for projects list — same filters/permissions as business_projects."""
+    from ..services.project_list_filters import filters_from_query_params
+    from ..services.project_map_service import get_project_map_points
+
+    filters = filters_from_query_params(
+        division_id=division_id,
+        division_id_not=division_id_not,
+        subdivision_id=subdivision_id,
+        status=status,
+        status_not=status_not,
+        q=q,
+        min_value=min_value,
+        client_id=client_id,
+        client_id_not=client_id_not,
+        date_start=date_start,
+        date_end=date_end,
+        estimator_id=estimator_id,
+        estimator_id_not=estimator_id_not,
+        eta_start=eta_start,
+        eta_end=eta_end,
+        value_min=value_min,
+        value_max=value_max,
+        related_to_me=related_to_me,
+    )
+    return get_project_map_points(
+        db,
+        user,
+        business_line,
+        filters,
+        is_bidding=False,
+        north=north,
+        south=south,
+        east=east,
+        west=west,
+        zoom=zoom,
+    )
+
+
+@router.get("/business/opportunities/map-points")
+def business_opportunities_map_points(
+    division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
+    subdivision_id: Optional[str] = None,
+    status: Optional[str] = None,
+    status_not: Optional[str] = None,
+    q: Optional[str] = None,
+    client_id: Optional[str] = None,
+    client_id_not: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
+    estimator_id: Optional[str] = None,
+    estimator_id_not: Optional[str] = None,
+    eta_start: Optional[str] = None,
+    eta_end: Optional[str] = None,
+    value_min: Optional[int] = None,
+    value_max: Optional[int] = None,
+    business_line: Optional[str] = None,
+    related_to_me: Optional[bool] = False,
+    north: Optional[float] = None,
+    south: Optional[float] = None,
+    east: Optional[float] = None,
+    west: Optional[float] = None,
+    zoom: Optional[float] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Lightweight map markers for opportunities list — same filters/permissions as business_opportunities."""
+    from ..services.project_list_filters import filters_from_query_params
+    from ..services.project_map_service import get_project_map_points
+
+    filters = filters_from_query_params(
+        division_id=division_id,
+        division_id_not=division_id_not,
+        subdivision_id=subdivision_id,
+        status=status,
+        status_not=status_not,
+        q=q,
+        client_id=client_id,
+        client_id_not=client_id_not,
+        date_start=date_start,
+        date_end=date_end,
+        estimator_id=estimator_id,
+        estimator_id_not=estimator_id_not,
+        eta_start=eta_start,
+        eta_end=eta_end,
+        value_min=value_min,
+        value_max=value_max,
+        related_to_me=related_to_me,
+    )
+    return get_project_map_points(
+        db,
+        user,
+        business_line,
+        filters,
+        is_bidding=True,
+        north=north,
+        south=south,
+        east=east,
+        west=west,
+        zoom=zoom,
+    )
 
 
 @router.get("/business/projects/tab-counts")

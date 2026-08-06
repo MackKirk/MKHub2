@@ -41,6 +41,8 @@ var/storage/
 .env
 .env.local
 .env.*.local
+frontend/.env
+frontend/.env.local
 SECRETS.md
 
 # OS files
