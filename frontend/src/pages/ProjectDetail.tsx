@@ -7432,7 +7432,7 @@ function AuditLogEntry({ log }: { log: any }) {
       const parts = rest.split('__');
       const label = parts[0].replace(/_/g, ' ');
       if (parts.length > 1) {
-        const sub = parts[1] === 'label' ? 'Name' : parts[1] === 'value' ? 'Value' : parts[1] === 'quantity' ? 'Qty' : parts[1] === 'approved' ? 'Approved' : parts[1] === 'pst' ? 'PST' : parts[1] === 'gst' ? 'GST' : parts[1] === 'area_value' ? 'Area' : parts[1] === 'area_unit' ? 'Area unit' : parts[1].replace(/_/g, ' ');
+        const sub = parts[1] === 'label' ? 'Name' : parts[1] === 'value' ? 'Value' : parts[1] === 'quantity' ? 'Qty' : parts[1] === 'approved' ? 'Approved' : parts[1] === 'pst' ? 'PST' : parts[1] === 'gst' ? 'GST' : parts[1] === 'show_unit_price_in_pdf' ? 'Unit price in PDF' : parts[1] === 'area_value' ? 'Area' : parts[1] === 'area_unit' ? 'Area unit' : parts[1].replace(/_/g, ' ');
         return `${label} — ${sub}`;
       }
       return label;

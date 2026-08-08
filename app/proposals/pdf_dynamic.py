@@ -158,6 +158,86 @@ def wrap_text(text, font_name, font_size, max_width):
     return lines if lines else [""]
 
 
+def _pricing_qty_label(quantity):
+    if quantity == int(quantity):
+        return f"Qty {int(quantity)}"
+    return f"Qty {quantity:.2f}"
+
+
+def _pricing_meta_width(quantity, unit_price, show_qty, show_unit, font_name="Montserrat-Bold", font_size=11.5, ea_size=8):
+    """Width of compact qty / unit meta drawn on the right."""
+    width = 0
+    if show_qty:
+        width += stringWidth(_pricing_qty_label(quantity), font_name, font_size)
+    if show_unit:
+        if show_qty:
+            width += stringWidth(" ", font_name, font_size)
+        width += stringWidth(f"(${unit_price:,.2f}", font_name, font_size)
+        width += stringWidth("/ea", font_name, ea_size)
+        width += stringWidth(")", font_name, font_size)
+    return width
+
+
+def _draw_pricing_meta(c, right_x, y, quantity, unit_price, show_qty, show_unit, font_name="Montserrat-Bold", font_size=11.5, ea_size=8, color=colors.grey):
+    """Draw right-aligned meta like: Qty 5 ($100.00/ea) with smaller /ea."""
+    if not show_qty and not show_unit:
+        return
+    c.setFillColor(color)
+    x = right_x
+    if show_unit:
+        close_w = stringWidth(")", font_name, font_size)
+        ea_w = stringWidth("/ea", font_name, ea_size)
+        price_open = f"(${unit_price:,.2f}"
+        price_open_w = stringWidth(price_open, font_name, font_size)
+        c.setFont(font_name, font_size)
+        c.drawRightString(x, y, ")")
+        x -= close_w
+        c.setFont(font_name, ea_size)
+        c.drawRightString(x, y + 1.5, "/ea")
+        x -= ea_w
+        c.setFont(font_name, font_size)
+        c.drawRightString(x, y, price_open)
+        x -= price_open_w
+        if show_qty:
+            qty = _pricing_qty_label(quantity) + " "
+            c.drawRightString(x, y, qty)
+    else:
+        c.setFont(font_name, font_size)
+        c.drawRightString(x, y, _pricing_qty_label(quantity))
+
+
+def _pricing_right_reserve(additional_costs, show_qty, font_name="Montserrat-Bold", font_size=11.5, ea_size=8):
+    """Space needed on the right for qty/unit meta + line total."""
+    gap = 14
+    max_total_w = stringWidth("$0.00", font_name, font_size)
+    max_meta_w = 0
+    for cost in additional_costs or []:
+        try:
+            quantity_raw = cost.get("quantity", 1)
+            quantity = float(quantity_raw) if quantity_raw is not None else 1.0
+        except (ValueError, TypeError):
+            quantity = 1.0
+        try:
+            unit_price = float(cost.get("value", 0) or 0)
+        except (ValueError, TypeError):
+            unit_price = 0.0
+        line_total = unit_price * quantity
+        max_total_w = max(max_total_w, stringWidth(f"${line_total:,.2f}", font_name, font_size))
+        meta_w = _pricing_meta_width(
+            quantity,
+            unit_price,
+            show_qty=show_qty,
+            show_unit=bool(cost.get("show_unit_price_in_pdf")),
+            font_name=font_name,
+            font_size=font_size,
+            ea_size=ea_size,
+        )
+        max_meta_w = max(max_meta_w, meta_w)
+    if max_meta_w:
+        return max_meta_w + gap + max_total_w + 8
+    return max_total_w + 8
+
+
 def draw_wrapped_text_right_aligned(c, text, right_x, y, max_width, font="Montserrat-Bold", size=11.5, color=colors.grey):
     """Draw text right-aligned with line wrapping and justification. Each line is justified, except the last which is right-aligned."""
     c.setFont(font, size)
@@ -259,22 +339,29 @@ class PricingTable(Flowable):
             image_width = 40  # Image width in points
             image_space = (image_width + 8) if has_images else 0  # 8 points spacing
             
+            # Row chrome: padding + hairline separator under each pricing line
+            # Keep generous gaps so ascenders/descenders don't collide with separators
+            row_pad_top = 16
+            row_pad_bottom = 14
+            row_separator = 4
+            
             # Calculate height considering wrapped text for each cost item
-            # Reserve space for quantity and total on right (about 150px width if showing Qty, otherwise less)
-            # Also reserve space for images (if not bidding)
-            max_label_width = (A4[0] - 80) - 150 - image_space if show_qty else (A4[0] - 80) - 80 - image_space
+            # Reserve space for qty/unit meta + total on the right (measured)
             font_name = "Montserrat-Bold"
             font_size = 11.5
+            right_reserve = _pricing_right_reserve(additional_costs, show_qty, font_name, font_size)
+            max_label_width = (A4[0] - 80) - right_reserve - image_space
             additional_height = 0
             for cost in additional_costs:
                 label = cost.get("label", "")
                 wrapped_lines = wrap_text(label, font_name, font_size, max_label_width)
-                # Each line takes 16px, with 2px spacing between lines
-                item_height = len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
+                # Distance from first baseline to last baseline (matches draw())
+                n_lines = max(1, len(wrapped_lines))
+                content_span = (n_lines - 1) * 18  # 16px line + 2px gap
                 # Only ensure minimum height to accommodate image if images are shown
                 if has_images:
-                    item_height = max(item_height, image_width + 4)  # Add small padding
-                additional_height += item_height
+                    content_span = max(content_span, image_width)
+                additional_height += row_pad_top + content_span + row_pad_bottom + row_separator
             
             # Add height for PST and GST lines if they should be shown
             pst_gst_height = 0
@@ -384,13 +471,20 @@ class PricingTable(Flowable):
             
             # Store the text start position for PST/GST alignment (available in outer scope)
             text_start_x = x_left + image_space if has_images else x_left
+            row_pad_top = 16
+            row_pad_bottom = 14
             
             if additional_costs:
-                max_label_width = width - 150 - image_space if show_qty else width - 80 - image_space
                 font_name = "Montserrat-Bold"
                 font_size = 11.5
+                ea_size = 8
+                right_reserve = _pricing_right_reserve(additional_costs, show_qty, font_name, font_size, ea_size)
+                max_label_width = width - right_reserve - image_space
                 
                 for cost in additional_costs:
+                    y -= row_pad_top
+                    row_top_y = y
+
                     c.setFont(font_name, font_size)
                     c.setFillColor(colors.black)
                     label = cost.get("label", "")
@@ -410,15 +504,7 @@ class PricingTable(Flowable):
                     # Calculate line total (price × quantity)
                     line_total = unit_price * quantity
                     line_total_str = f"${line_total:,.2f}"
-                    
-                    # Format quantity string if this is a quotation or opportunity
-                    quantity_str = None
-                    if show_qty:
-                        # Format quantity: show as integer if whole number, otherwise show decimal
-                        if quantity == int(quantity):
-                            quantity_str = f"Qty: {int(quantity)}"
-                        else:
-                            quantity_str = f"Qty: {quantity:.2f}"
+                    show_unit = bool(cost.get("show_unit_price_in_pdf"))
                     
                     # Draw product image - use placeholder if no image (but NOT for opportunities or projects)
                     image_path = cost.get("image_path")
@@ -471,6 +557,8 @@ class PricingTable(Flowable):
                         line_y = image_center_y - (16 / 2)  # Center first line with image center
                     else:
                         line_y = y
+
+                    values_y = line_y
                     
                     # Draw each line of the label
                     for i, line in enumerate(wrapped_lines):
@@ -478,24 +566,36 @@ class PricingTable(Flowable):
                         if i < len(wrapped_lines) - 1:
                             line_y -= 16 + 2  # 16px line height + 2px spacing
                     
-                    # Draw quantity and line total aligned to the right, on the last line of the label
+                    # Qty + optional unit ($100.00/ea with smaller /ea), then line total
                     c.setFont(font_name, font_size)
                     c.setFillColor(colors.grey)
+                    c.drawRightString(x_right, values_y, line_total_str)
+                    if show_qty or show_unit:
+                        total_w = stringWidth(line_total_str, font_name, font_size)
+                        _draw_pricing_meta(
+                            c,
+                            x_right - total_w - 14,
+                            values_y,
+                            quantity,
+                            unit_price,
+                            show_qty=show_qty,
+                            show_unit=show_unit,
+                            font_name=font_name,
+                            font_size=font_size,
+                            ea_size=ea_size,
+                        )
                     
-                    # Draw quantity first (slightly to the left) if showing Qty (quote or opportunity)
-                    if show_qty and quantity_str:
-                        quantity_x = x_right - 100
-                        c.drawRightString(quantity_x, line_y, quantity_str)
-                    
-                    # Draw line total at the right edge
-                    c.drawRightString(x_right, line_y, line_total_str)
-                    
-                    # Move y down by the total height of this item (all lines)
-                    # Ensure minimum height to accommodate image (only if not bidding or project)
-                    item_height = len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
+                    # Anchor separator to the actual bottom of drawn content
+                    content_bottom = min(line_y, values_y)
                     if final_image_path and not (is_bidding or is_project):
-                        item_height = max(item_height, image_width + 4)  # Add small padding
-                    y -= item_height
+                        content_bottom = min(content_bottom, row_top_y - image_width)
+                    y = content_bottom - row_pad_bottom
+
+                    # Hairline separator under each pricing row
+                    c.setStrokeColor(colors.HexColor("#d0d0d0"))
+                    c.setLineWidth(0.6)
+                    c.line(x_left, y, x_right, y)
+                    y -= 4
                 
                 # Add spacing before PST/GST equivalent to spacing between items
                 # This spacing is typically the same as the item_height calculation

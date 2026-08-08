@@ -76,6 +76,7 @@ const PROPOSAL_FIELD_HINTS = {
   termsText: 'Terms text\n\nContract terms printed at the end of the proposal PDF.',
   pst: 'PST\n\nInclude PST for this line in totals and the PDF when enabled.',
   gst: 'GST\n\nInclude GST for this line in totals and the PDF when enabled.',
+  showUnitPriceInPdf: 'Unit price in PDF\n\nWhen on, the unit price for this line is shown in the generated PDF alongside quantity and total.',
   showTotalInPdf: 'Show total in PDF\n\nWhen off, the proposal total is hidden in the generated PDF.',
   contactName: 'Name\n\nContact name saved on the client record.',
   contactRole: 'Role/Title\n\nJob title on contact lists and documents.',
@@ -188,6 +189,7 @@ export type PricingItem = {
   quantity?: string;
   pst?: boolean;
   gst?: boolean;
+  show_unit_price_in_pdf?: boolean;
   division_id?: string;
   area_value?: number;
   area_unit?: AreaUnit;
@@ -783,6 +785,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         quantity: c.quantity || '1',
         pst: c.pst === true,
         gst: c.gst === true,
+        show_unit_price_in_pdf: c.show_unit_price_in_pdf === true,
         division_id: c.division_id || null,
         approved: c.approved !== false,
         ...(c.area_value != null && c.area_value > 0 && c.area_unit ? { area_value: c.area_value, area_unit: c.area_unit } : {})
@@ -911,6 +914,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         quantity: c.quantity || '1',
         pst: c.pst === true || c.pst === 'true' || c.pst === 1,
         gst: c.gst === true || c.gst === 'true' || c.gst === 1,
+        show_unit_price_in_pdf: c.show_unit_price_in_pdf === true || c.show_unit_price_in_pdf === 'true' || c.show_unit_price_in_pdf === 1,
         division_id: c.division_id ? String(c.division_id) : undefined,
         area_value: c.area_value != null && c.area_value !== '' ? Number(c.area_value) : undefined,
         area_unit: (c.area_unit === 'sqft' || c.area_unit === 'm2' || c.area_unit === 'sqs') ? c.area_unit : undefined,
@@ -1368,7 +1372,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
         additional_costs: itemsToSave.map(c=> {
-          const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null, approved: c.approved !== false };
+          const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, show_unit_price_in_pdf: c.show_unit_price_in_pdf === true, division_id: c.division_id || null, approved: c.approved !== false };
           if (c.area_value != null && c.area_value > 0 && c.area_unit) {
             return { ...base, area_value: c.area_value, area_unit: c.area_unit };
           }
@@ -1542,7 +1546,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
         additional_costs: pricingItemsRef.current.map(c=> {
-          const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null, approved: c.approved !== false };
+          const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, show_unit_price_in_pdf: c.show_unit_price_in_pdf === true, division_id: c.division_id || null, approved: c.approved !== false };
           if (c.area_value != null && c.area_value > 0 && c.area_unit) {
             return { ...base, area_value: c.area_value, area_unit: c.area_unit };
           }
@@ -1708,7 +1712,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       form.append('terms_text', terms||'');
       form.append('pst_rate', String(pstRate));
       form.append('gst_rate', String(gstRate));
-      form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true }))));
+      form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, show_unit_price_in_pdf: c.show_unit_price_in_pdf === true }))));
       form.append('optional_services', JSON.stringify(optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') }))));
       form.append('sections', JSON.stringify(sanitizeSections(sections)));
       if (coverFoId) form.append('cover_file_object_id', coverFoId);
@@ -3142,6 +3146,17 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           }
                           disabled={rowDisabled}
                         />
+                        <ProposalInlineCheckbox
+                          label="Unit"
+                          fieldHint={PROPOSAL_FIELD_HINTS.showUnitPriceInPdf}
+                          checked={c.show_unit_price_in_pdf === true}
+                          onChange={(checked) =>
+                            setPricingItems((arr) =>
+                              arr.map((x, j) => (j === i ? { ...x, show_unit_price_in_pdf: checked } : x)),
+                            )
+                          }
+                          disabled={rowDisabled}
+                        />
                       </>
                     ) : (
                       <>
@@ -3172,6 +3187,23 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                             disabled={rowDisabled}
                           />
                           <span className="whitespace-nowrap text-gray-700">GST</span>
+                        </label>
+                        <label
+                          className={`flex flex-shrink-0 items-center gap-1 text-xs ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                          title="Show unit price in PDF"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={c.show_unit_price_in_pdf === true}
+                            onChange={(e) =>
+                              setPricingItems((arr) =>
+                                arr.map((x, j) => (j === i ? { ...x, show_unit_price_in_pdf: e.target.checked } : x)),
+                              )
+                            }
+                            className={rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                            disabled={rowDisabled}
+                          />
+                          <span className="whitespace-nowrap text-gray-700">Unit</span>
                         </label>
                       </>
                     )}
