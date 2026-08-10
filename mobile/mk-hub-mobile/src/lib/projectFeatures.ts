@@ -1,36 +1,91 @@
 import { isAdminRole } from "./permissions";
 
+/** Sections that count as useful project access (Overview alone does not). */
+export const PROJECT_SECTION_FEATURES = [
+  "reports",
+  "workload",
+  "timesheet",
+  "files",
+  "documents",
+  "proposal",
+  "costs",
+  "warranties",
+  "orders",
+  "safety"
+] as const;
+
+export type ProjectSectionFeature = (typeof PROJECT_SECTION_FEATURES)[number];
+
+function hasLineFeature(
+  permissions: Set<string>,
+  feature: string,
+  action: "read" | "write"
+): boolean {
+  const suffixes =
+    action === "read"
+      ? ([`${feature}:read`, `${feature}:write`] as const)
+      : ([`${feature}:write`] as const);
+  for (const suffix of suffixes) {
+    if (
+      permissions.has(`business:construction:projects:${suffix}`) ||
+      permissions.has(`business:rm:projects:${suffix}`) ||
+      permissions.has(`business:projects:${suffix}`)
+    ) {
+      return true;
+    }
+  }
+  if (feature === "costs") {
+    for (const suffix of action === "read"
+      ? (["estimate:read", "estimate:write"] as const)
+      : (["estimate:write"] as const)) {
+      if (
+        permissions.has(`business:construction:projects:${suffix}`) ||
+        permissions.has(`business:rm:projects:${suffix}`) ||
+        permissions.has(`business:projects:${suffix}`)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function hasProjectSectionRead(
+  permissions: Set<string>,
+  roles: string[],
+  feature: ProjectSectionFeature
+): boolean {
+  if (isAdminRole(roles)) return true;
+  return hasLineFeature(permissions, feature, "read");
+}
+
+/** True if the user can open project detail (at least one section/tab). */
+export function hasAnyProjectSectionPermission(
+  permissions: Set<string>,
+  roles: string[]
+): boolean {
+  if (isAdminRole(roles)) return true;
+  return PROJECT_SECTION_FEATURES.some((feature) =>
+    hasProjectSectionRead(permissions, roles, feature)
+  );
+}
+
 export function hasProjectFeatureRead(
   permissions: Set<string>,
   roles: string[],
-  feature: "documents" | "proposal" | "pricing" | "safety"
+  feature: "documents" | "proposal" | "pricing" | "safety" | "files" | "reports"
 ): boolean {
   if (isAdminRole(roles)) return true;
-  switch (feature) {
-    case "documents":
-      return (
-        permissions.has("business:projects:documents:read") ||
-        permissions.has("documents:read") ||
-        permissions.has("documents:write") ||
-        permissions.has("documents:delete") ||
-        permissions.has("documents:move")
-      );
-    case "proposal":
-    case "pricing":
-      return (
-        permissions.has("business:construction:projects:read") ||
-        permissions.has("business:rm:projects:read") ||
-        permissions.has("business:projects:read")
-      );
-    case "safety":
-      return (
-        permissions.has("business:projects:safety:read") ||
-        permissions.has("business:construction:projects:safety:read") ||
-        permissions.has("business:rm:projects:safety:read")
-      );
-    default:
-      return false;
+  if (feature === "pricing" || feature === "proposal") {
+    return hasProjectSectionRead(permissions, roles, "proposal");
   }
+  if (feature === "files") {
+    return hasProjectSectionRead(permissions, roles, "files");
+  }
+  if (feature === "reports") {
+    return hasProjectSectionRead(permissions, roles, "reports");
+  }
+  return hasProjectSectionRead(permissions, roles, feature);
 }
 
 export function hasProjectFeatureWrite(
@@ -39,11 +94,7 @@ export function hasProjectFeatureWrite(
   feature: "safety"
 ): boolean {
   if (isAdminRole(roles)) return true;
-  return (
-    permissions.has("business:projects:safety:write") ||
-    permissions.has("business:construction:projects:safety:write") ||
-    permissions.has("business:rm:projects:safety:write")
-  );
+  return hasLineFeature(permissions, "safety", "write");
 }
 
 export interface ProposalPricingItem {

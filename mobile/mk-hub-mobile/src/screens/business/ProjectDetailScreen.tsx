@@ -28,7 +28,11 @@ import { MKProjectFilesSection } from "../../components/MKProjectFilesSection";
 import { MKProjectDocumentsSection } from "../../components/MKProjectDocumentsSection";
 import { MKProjectPricingSection } from "../../components/MKProjectPricingSection";
 import { MKProjectSafetySection } from "../../components/MKProjectSafetySection";
-import { hasProjectFeatureRead, hasProjectFeatureWrite } from "../../lib/projectFeatures";
+import {
+  hasAnyProjectSectionPermission,
+  hasProjectFeatureRead,
+  hasProjectFeatureWrite
+} from "../../lib/projectFeatures";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, toApiError } from "../../services/api";
 import { useAuth } from "../../hooks/useAuth";
@@ -127,6 +131,8 @@ export const ProjectDetailScreen: React.FC = () => {
   );
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
 
   const [reports, setReports] = useState<ProjectReport[]>([]);
   const [reportCategories, setReportCategories] = useState<ReportCategory[]>([]);
@@ -147,25 +153,21 @@ export const ProjectDetailScreen: React.FC = () => {
   const loadCoreData = useCallback(async () => {
     try {
       setLoading(true);
+      setAccessDenied(false);
+      setAccessDeniedMessage("");
       setLoadingOverviewExtras(true);
-      const [
-        projectDetail,
-        reportItems,
-        fileItems,
-        fileCats,
-        events,
-        members,
-        shifts
-      ] = await Promise.all([
-        getProjectDetail(projectId),
-        getProjectReports(projectId),
-        getProjectFiles(projectId),
-        getProjectFileCategories(),
-        getProjectEvents(projectId).catch(() => []),
-        getProjectMembers(projectId).catch(() => []),
-        getProjectShifts(projectId).catch(() => [])
-      ]);
+      const projectDetail = await getProjectDetail(projectId);
       setProject(projectDetail);
+
+      const [reportItems, fileItems, fileCats, events, members, shifts] =
+        await Promise.all([
+          getProjectReports(projectId).catch(() => []),
+          getProjectFiles(projectId).catch(() => []),
+          getProjectFileCategories().catch(() => []),
+          getProjectEvents(projectId).catch(() => []),
+          getProjectMembers(projectId).catch(() => []),
+          getProjectShifts(projectId).catch(() => [])
+        ]);
       setReports(reportItems);
       setFiles(fileItems);
       setFileCategories(fileCats);
@@ -174,7 +176,14 @@ export const ProjectDetailScreen: React.FC = () => {
       setScheduledWorkerIds(extractScheduledWorkerIds(shifts));
     } catch (err) {
       const apiError = toApiError(err);
-      Alert.alert("Could not load project", apiError.message);
+      const msg = apiError.message || "";
+      if (/no project section permissions|forbidden/i.test(msg)) {
+        setAccessDenied(true);
+        setAccessDeniedMessage(msg);
+        setProject(null);
+      } else {
+        Alert.alert("Could not load project", msg);
+      }
     } finally {
       setLoading(false);
       setLoadingOverviewExtras(false);
@@ -237,11 +246,23 @@ export const ProjectDetailScreen: React.FC = () => {
   const displayedProject = project ?? initialProject;
   const isBidding = displayedProject.is_bidding === true;
   const permissionsSet = useMemo(() => new Set(permissions), [permissions]);
+  const canOpenSections = hasAnyProjectSectionPermission(permissionsSet, roles);
+  const blockedByPermissions = accessDenied || (!loading && !canOpenSections);
 
   const visibleTabs = useMemo(() => {
     return ALL_TABS.filter((tab) => {
+      if (tab.key === "overview") return true;
       if (tab.key === "safety" && isBidding) return false;
+      if (tab.key === "notes" && !hasProjectFeatureRead(permissionsSet, roles, "reports")) {
+        return false;
+      }
+      if (tab.key === "files" && !hasProjectFeatureRead(permissionsSet, roles, "files")) {
+        return false;
+      }
       if (tab.key === "documents" && !hasProjectFeatureRead(permissionsSet, roles, "documents")) {
+        return false;
+      }
+      if (tab.key === "pricing" && !hasProjectFeatureRead(permissionsSet, roles, "pricing")) {
         return false;
       }
       if (tab.key === "safety" && !hasProjectFeatureRead(permissionsSet, roles, "safety")) {
@@ -347,13 +368,40 @@ export const ProjectDetailScreen: React.FC = () => {
     }
   };
 
-  if (loading && project === null) {
+  if (loading && project === null && !blockedByPermissions) {
     return (
       <ScreenLayout title="Project" scroll={false}>
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading project detail...</Text>
         </View>
+      </ScreenLayout>
+    );
+  }
+
+  if (blockedByPermissions) {
+    const noSection =
+      /no project section permissions/i.test(accessDeniedMessage) || !canOpenSections;
+    return (
+      <ScreenLayout scroll={false} contentStyle={styles.screenContent}>
+        <MKPageHeader
+          title="Access denied"
+          subtitle="You cannot open this project"
+          onBack={() => navigation.goBack()}
+          onMenu={openMenu}
+        />
+        <MKCard style={styles.sectionCard} elevated>
+          <Text style={styles.sectionTitle}>
+            {noSection
+              ? "You are related to this project but have no section permissions."
+              : "You do not have permission to view this project."}
+          </Text>
+          <Text style={styles.bodyText}>
+            Being on a shift does not grant project access. Ask an admin to grant
+            at least one section (Files, Reports, etc.), or add you under Project
+            access if you should open this project.
+          </Text>
+        </MKCard>
       </ScreenLayout>
     );
   }

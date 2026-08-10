@@ -292,6 +292,9 @@ export default function ProjectTeamCard({
     teamMembers.length > 0 ? (
       <div className="border-t border-gray-100 pt-4">
         <div className="mb-3 text-sm font-semibold text-gray-900">Scheduled workers</div>
+        <p className="mb-3 text-xs text-gray-500">
+          On the schedule only — not project access unless added above.
+        </p>
         {useDesignSystem ? (
           <div className={uiCx(uiBorders.subtle, uiRadius.control, uiColors.surface, 'divide-y overflow-hidden')}>
             {teamMembers.map((member: any) => (
@@ -315,7 +318,7 @@ export default function ProjectTeamCard({
       <AppCard className={uiCx('flex h-full min-h-0 flex-col', className)}>
         <AppSectionHeader
           title="Project Team"
-          description="Members with project access and workers scheduled on shifts."
+          description="Project access members can open this project. Scheduled workers appear from shifts only — that does not grant project access."
           {...appSectionPresetProps('team')}
           action={addPeopleControl}
         />

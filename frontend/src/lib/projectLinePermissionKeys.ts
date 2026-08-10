@@ -72,6 +72,33 @@ export function hasAnyLineSafetyPermission(
   );
 }
 
+/** Tabs/sections that count as useful project access (Overview alone does not). */
+export const PROJECT_SECTION_FEATURES = [
+  'reports',
+  'workload',
+  'timesheet',
+  'files',
+  'documents',
+  'proposal',
+  'costs',
+  'warranties',
+  'orders',
+  'safety',
+] as const;
+
+/** True if the user can open project detail (at least one section/tab permission). */
+export function hasAnyProjectSectionPermission(
+  permissions: Set<string> | Record<string, boolean>,
+  businessLine: string | undefined | null,
+  isAdmin = false,
+  pathname?: string
+): boolean {
+  if (isAdmin) return true;
+  return PROJECT_SECTION_FEATURES.some((feature) =>
+    hasProjectFeaturePermission(permissions, businessLine, feature, false, pathname)
+  );
+}
+
 /** View tab/section: line read or line write (write implies read). */
 export function hasProjectFeaturePermission(
   permissions: Set<string> | Record<string, boolean>,

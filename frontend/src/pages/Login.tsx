@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { resolvePostAuthDestination } from '@/lib/profileCompleteness';
 import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import LoginAppDownloadHint from '@/components/LoginAppDownloadHint';
 import {
   AppButton,
   AppFormModal,
@@ -150,6 +151,7 @@ export default function Login() {
               </AppButton>
             </div>
           </form>
+          <LoginAppDownloadHint />
           <div className="mt-6 text-center text-xs text-gray-500">
             <a href="/privacy-policy" className="font-medium underline decoration-gray-300 underline-offset-4 hover:text-brand-red">
               Privacy Policy

@@ -113,37 +113,44 @@ export function hasPermission(
     return (
       has ||
       permissions.has("fleet:read") ||
+      permissions.has("fleet:dashboard:read") ||
       permissions.has("fleet:vehicles:read") ||
       permissions.has("fleet:vehicles:write") ||
-      permissions.has("fleet:equipment:read") ||
-      permissions.has("fleet:equipment:write") ||
-      permissions.has("equipment:read")
+      permissions.has("fleet:work_orders:read") ||
+      permissions.has("fleet:work_orders:write") ||
+      permissions.has("fleet:inspections:read") ||
+      permissions.has("fleet:inspections:write") ||
+      permissions.has("work_orders:read") ||
+      permissions.has("inspections:read")
     );
   }
+  if (requiredPermission === "fleet:dashboard:read") {
+    return has || permissions.has("fleet:read");
+  }
   if (requiredPermission === "fleet:vehicles:read") {
-    return has || permissions.has("fleet:access") || permissions.has("fleet:read");
+    return has || permissions.has("fleet:vehicles:write") || permissions.has("fleet:read");
   }
   if (requiredPermission === "fleet:equipment:read") {
     return (
       has ||
       permissions.has("equipment:read") ||
-      permissions.has("fleet:access") ||
-      permissions.has("fleet:read")
+      permissions.has("fleet:equipment:write") ||
+      permissions.has("equipment:write")
     );
   }
   if (requiredPermission === "equipment:read") {
     return (
       has ||
       permissions.has("fleet:equipment:read") ||
-      permissions.has("fleet:access") ||
-      permissions.has("fleet:read")
+      permissions.has("fleet:equipment:write") ||
+      permissions.has("equipment:write")
     );
   }
   if (requiredPermission === "company_cards:read") {
     return has || permissions.has("company_cards:write");
   }
   if (requiredPermission === "company_cards:write") {
-    return has || permissions.has("company_cards:read");
+    return has;
   }
   if (requiredPermission === "company_assets:access") {
     return (
@@ -165,23 +172,23 @@ export function hasPermission(
     return (
       has ||
       permissions.has("work_orders:write") ||
-      permissions.has("fleet:access") ||
-      permissions.has("fleet:read")
+      permissions.has("fleet:work_orders:read") ||
+      permissions.has("fleet:work_orders:write")
     );
   }
   if (requiredPermission === "work_orders:write") {
-    return has || permissions.has("work_orders:read");
+    return has || permissions.has("fleet:work_orders:write");
   }
   if (requiredPermission === "inspections:read") {
     return (
       has ||
       permissions.has("inspections:write") ||
-      permissions.has("fleet:access") ||
-      permissions.has("fleet:read")
+      permissions.has("fleet:inspections:read") ||
+      permissions.has("fleet:inspections:write")
     );
   }
   if (requiredPermission === "inspections:write") {
-    return has || permissions.has("inspections:read");
+    return has || permissions.has("fleet:inspections:write");
   }
   if (requiredPermission === "fleet:shop:access") {
     return (
@@ -192,6 +199,29 @@ export function hasPermission(
   }
 
   return has;
+}
+
+/** Strict customer tab visibility — own tab view/write only (matches web canViewCustomerTab). */
+export function canViewCustomerTab(
+  permissions: Set<string>,
+  roles: readonly string[] | null | undefined,
+  tab: string
+): boolean {
+  if (isAdminRole(roles)) return true;
+  return (
+    permissions.has(`business:customers:${tab}:read`) ||
+    permissions.has(`business:customers:${tab}:write`)
+  );
+}
+
+/** Strict customer tab edit — own tab write only (matches web canEditCustomerTab). */
+export function canEditCustomerTab(
+  permissions: Set<string>,
+  roles: readonly string[] | null | undefined,
+  tab: string
+): boolean {
+  if (isAdminRole(roles)) return true;
+  return permissions.has(`business:customers:${tab}:write`);
 }
 
 export { BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS };

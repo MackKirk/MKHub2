@@ -51,13 +51,16 @@ export const MKProjectTeamSection: React.FC<MKProjectTeamSectionProps> = ({
     <MKCard style={styles.card} elevated>
       <Text style={styles.title}>Project Team</Text>
       <Text style={styles.subtitle}>
-        Members with project access and workers scheduled on shifts.
+        Project access members can open this project. Scheduled workers are on
+        shifts only — that does not grant project access.
       </Text>
+
+      <Text style={styles.sectionLabel}>Project access</Text>
 
       {loading ? (
         <Text style={styles.empty}>Loading team...</Text>
       ) : members.length === 0 ? (
-        <Text style={styles.empty}>No team members yet.</Text>
+        <Text style={styles.empty}>No project access members yet.</Text>
       ) : (
         <View style={styles.memberList}>
           {members.map((member) => (
@@ -82,6 +85,9 @@ export const MKProjectTeamSection: React.FC<MKProjectTeamSectionProps> = ({
         <>
           <View style={styles.divider} />
           <Text style={styles.sectionLabel}>Scheduled workers</Text>
+          <Text style={styles.sectionHint}>
+            On the schedule only — not project access unless added above.
+          </Text>
           <View style={styles.chipRow}>
             {scheduledWorkers.map((worker) => (
               <View key={worker.id} style={styles.chip}>
@@ -165,6 +171,11 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.6,
     fontFamily: typography.button.fontFamily,
+    marginBottom: spacing.sm
+  },
+  sectionHint: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
     marginBottom: spacing.sm
   },
   chipRow: {

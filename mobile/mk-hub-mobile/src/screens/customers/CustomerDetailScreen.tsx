@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,7 +18,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/useAuth";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
-import { hasPermission } from "../../lib/permissions";
+import { canEditCustomerTab, canViewCustomerTab } from "../../lib/permissions";
 import { customerDisplayName, formatCustomerStatus } from "../../lib/customerUi";
 import { CustomerContactFormModal } from "../../components/customers/CustomerContactFormModal";
 import { CustomerFormModal } from "../../components/customers/CustomerFormModal";
@@ -106,21 +106,25 @@ export const CustomerDetailScreen: React.FC = () => {
   const [editingContact, setEditingContact] = useState<CustomerContact | null>(null);
   const [editingSite, setEditingSite] = useState<CustomerSite | null>(null);
 
-  const canEditGeneral = hasPermission(
-    permissionsSet,
-    roles,
-    "business:customers:general:write"
+  const canEditGeneral = canEditCustomerTab(permissionsSet, roles, "general");
+  const canEditContacts = canEditCustomerTab(permissionsSet, roles, "contacts");
+  const canEditSites = canEditCustomerTab(permissionsSet, roles, "sites");
+
+  const availableTabs = useMemo(
+    () =>
+      CUSTOMER_TABS.filter((tab) =>
+        canViewCustomerTab(permissionsSet, roles, tab.key)
+      ),
+    [permissionsSet, roles]
   );
-  const canEditContacts = hasPermission(
-    permissionsSet,
-    roles,
-    "business:customers:contacts:write"
-  );
-  const canEditSites = hasPermission(
-    permissionsSet,
-    roles,
-    "business:customers:sites:write"
-  );
+
+  // Keep active tab within what the user can see
+  useEffect(() => {
+    if (availableTabs.length === 0) return;
+    if (!availableTabs.some((t) => t.key === activeTab)) {
+      setActiveTab(availableTabs[0].key);
+    }
+  }, [availableTabs, activeTab]);
 
   const loadCustomer = useCallback(async () => {
     const data = await getCustomer(route.params.customerId);
@@ -374,7 +378,7 @@ export const CustomerDetailScreen: React.FC = () => {
       </ScrollView>
 
       <MKCustomerDetailTabBar
-        tabs={CUSTOMER_TABS}
+        tabs={availableTabs}
         activeKey={activeTab}
         onChange={setActiveTab}
         style={styles.bottomTabBar}
