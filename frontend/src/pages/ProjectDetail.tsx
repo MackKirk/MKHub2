@@ -50,6 +50,7 @@ import OverlayPortal from '@/components/OverlayPortal';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import { projectHasLeakInvestigationDivision } from '@/lib/leakInvestigation';
 import {
+  hasAnyProjectSectionPermission,
   hasProjectFeaturePermission,
   hasProjectFeatureReadPermission,
   hasProjectFeatureWritePermission,
@@ -1084,7 +1085,7 @@ export default function ProjectDetail(){
     signOnlySafetySession && safetyInspectionFromUrl
       ? (['project', id, 'sign', safetyInspectionFromUrl] as const)
       : (['project', id] as const);
-  const { data:proj, isLoading } = useQuery({
+  const { data:proj, isLoading, isError, error: projectQueryError } = useQuery({
     queryKey: projectQueryKey,
     queryFn: () =>
       api<Project>(
@@ -1094,6 +1095,7 @@ export default function ProjectDetail(){
           : `/projects/${id}`
       ),
     enabled: !!id,
+    retry: false,
   });
   const isOpportunityStyleTabs = !!proj?.is_bidding;
   const isOpportunityDetailRoute =
@@ -1173,7 +1175,16 @@ export default function ProjectDetail(){
     isAdmin,
     location.pathname
   );
-  
+
+  const canOpenProjectSections =
+    signOnlySafetySession ||
+    me === undefined ||
+    hasAnyProjectSectionPermission(permissions, projectBusinessLine, isAdmin, location.pathname);
+
+  const projectAccessBlocked =
+    !signOnlySafetySession &&
+    (isError || (me !== undefined && !canOpenProjectSections));
+   
   // Helper to check if user has permission for a tab
   const hasTabPermission = useMemo(() => {
     const bl = projectBusinessLine;
@@ -1735,6 +1746,57 @@ export default function ProjectDetail(){
   }, [isOpportunityDetailRoute, proj, hasEditPermission]);
 
   const PageShell = useDesignSystem ? 'main' : 'div';
+
+  if (!isLoading && projectAccessBlocked) {
+    const deniedDetail =
+      projectQueryError instanceof Error ? projectQueryError.message : '';
+    const noSection =
+      /no project section permissions/i.test(deniedDetail) || !canOpenProjectSections;
+    return (
+      <PageShell
+        className={uiCx(
+          useDesignSystem && 'w-full min-w-0 min-h-full bg-gray-50',
+          uiSpacing.pageStack,
+        )}
+      >
+        {useDesignSystem ? (
+          <AppPageHeader
+            title="Access denied"
+            subtitle="You cannot open this project"
+            icon={
+              isProjectDetailRoute ? (
+                <FolderKanban className="h-4 w-4" />
+              ) : (
+                <Briefcase className="h-4 w-4" />
+              )
+            }
+            onBack={handlePageBack}
+          />
+        ) : null}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-950">
+          <p className="font-medium">
+            {noSection
+              ? 'You are related to this project but have no section permissions.'
+              : 'You do not have permission to view this project.'}
+          </p>
+          <p className="mt-2 text-amber-900/80">
+            Being on a shift does not grant project access. Ask an admin to grant at least one
+            section (Files, Reports, Workload, etc.), or add you under Project access if you
+            should open this project.
+          </p>
+          {!useDesignSystem ? (
+            <button
+              type="button"
+              onClick={handlePageBack}
+              className="mt-4 text-sm font-medium text-[#7f1010] hover:underline"
+            >
+              Go back
+            </button>
+          ) : null}
+        </div>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell

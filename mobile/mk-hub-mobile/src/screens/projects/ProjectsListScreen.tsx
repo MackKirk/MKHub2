@@ -180,6 +180,8 @@ export const ProjectsListScreen: React.FC = () => {
         setTotal(result.total);
       } catch (err) {
         console.error("[ProjectsList]", toApiError(err).message);
+        setItems([]);
+        setTotal(0);
       } finally {
         setLoading(false);
         setRefreshing(false);

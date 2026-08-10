@@ -57,6 +57,12 @@ export const HUB_MENU_CATEGORIES: HubMenuCategory[] = [
         target: { type: "tab", screen: "Tasks" }
       },
       {
+        id: "community",
+        label: "Community",
+        icon: "chatbubbles-outline",
+        target: { type: "tab", screen: "Community" }
+      },
+      {
         id: "upload",
         label: "Upload to Project",
         icon: "camera-outline",
@@ -135,19 +141,6 @@ export const HUB_MENU_CATEGORIES: HubMenuCategory[] = [
             title: "R&M Projects"
           }
         }
-      }
-    ]
-  },
-  {
-    id: "hr",
-    label: "Human Resources",
-    icon: "people-outline",
-    items: [
-      {
-        id: "community",
-        label: "Community",
-        icon: "chatbubbles-outline",
-        target: { type: "tab", screen: "Community" }
       }
     ]
   },

@@ -64,9 +64,12 @@ from ..services.business_line import (
 from ..services.rm_pictures_folders import ensure_rm_pictures_default_folders
 from ..services.project_visibility import (
     can_manage_project_members,
+    can_view_all_projects_in_line,
+    filter_projects_with_section_access,
     is_project_visible_to_user,
     project_related_to_user_clause,
     project_visibility_clause_for_user,
+    user_has_any_project_section_permission,
 )
 from sqlalchemy import or_, and_, cast, String, Date
 
@@ -392,12 +395,45 @@ def _business_project_order_parts(
     return (Project.created_at.desc(),)
 
 
+def _user_is_related_to_project(db: Session, user: User, project: Project) -> bool:
+    """ACL/legacy related (ignores section permissions)."""
+    if can_view_all_projects_in_line(user, getattr(project, "business_line", None)):
+        return True
+    if getattr(project, "created_by_user_id", None) == user.id:
+        return True
+    rel = (
+        db.query(ProjectMember.id)
+        .filter(ProjectMember.project_id == project.id, ProjectMember.user_id == user.id)
+        .first()
+    )
+    if rel:
+        return True
+    user_id_str = str(user.id)
+    legacy_strings = (
+        str(getattr(project, "estimator_ids", None) or ""),
+        str(getattr(project, "division_onsite_leads", None) or ""),
+    )
+    return bool(
+        getattr(project, "estimator_id", None) == user.id
+        or getattr(project, "project_admin_id", None) == user.id
+        or getattr(project, "onsite_lead_id", None) == user.id
+        or any(user_id_str in raw for raw in legacy_strings)
+    )
+
+
 def _assert_project_line_read(user: User, proj: Project) -> None:
     if not can_access_business_line(user, getattr(proj, "business_line", None)):
         raise HTTPException(status_code=403, detail="Forbidden")
     db = object_session(proj)
-    if db is not None and not is_project_visible_to_user(db, user, proj):
+    if db is None:
         raise HTTPException(status_code=403, detail="Forbidden")
+    if not _user_is_related_to_project(db, user, proj):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not user_has_any_project_section_permission(user, proj):
+        raise HTTPException(
+            status_code=403,
+            detail="No project section permissions",
+        )
 
 
 def _assert_project_line_write(user: User, proj: Project) -> None:
@@ -406,11 +442,7 @@ def _assert_project_line_write(user: User, proj: Project) -> None:
 
 
 def _assert_project_visible(user: User, proj: Project) -> None:
-    if not can_access_business_line(user, getattr(proj, "business_line", None)):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    db = object_session(proj)
-    if db is not None and not is_project_visible_to_user(db, user, proj):
-        raise HTTPException(status_code=403, detail="Forbidden")
+    _assert_project_line_read(user, proj)
 
 
 def _assert_project_reports_read(user: User, proj: Project) -> None:
@@ -941,6 +973,42 @@ def _dashboard_business_line_clause(user: User, business_line: Optional[str]):
     return and_(base_clause, project_visibility_clause_for_user(user))
 
 
+def _paginate_projects_with_section_access(
+    user: User,
+    query,
+    order_parts,
+    page: int,
+    limit: int,
+    business_line: Optional[str] = None,
+):
+    """
+    Apply section-permission gate after ACL SQL, then paginate.
+
+    Related-only users (no read:all): load matching rows, filter, paginate in memory
+    (set is small). read:all users: SQL offset/limit then drop rows without sections.
+    """
+    offset = (page - 1) * limit
+    related_only = True
+    if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
+        related_only = False
+    elif business_line:
+        related_only = not can_view_all_projects_in_line(user, business_line)
+    else:
+        related_only = not (
+            can_view_all_projects_in_line(user, BUSINESS_LINE_CONSTRUCTION)
+            or can_view_all_projects_in_line(user, BUSINESS_LINE_REPAIRS_MAINTENANCE)
+        )
+
+    if related_only:
+        rows = query.order_by(*order_parts).all()
+        filtered = filter_projects_with_section_access(user, rows)
+        return filtered[offset : offset + limit], len(filtered)
+
+    total = query.count()
+    rows = query.order_by(*order_parts).offset(offset).limit(limit).all()
+    return filter_projects_with_section_access(user, rows), total
+
+
 def calculate_proposal_grand_total(proposal_data: dict) -> float:
     """
     Project/list Value from proposal pricing: sum of (value * quantity) for approved
@@ -1282,9 +1350,10 @@ def list_projects(
     # Never return soft-deleted projects (belt-and-suspenders after ORM fetch).
     rows = [
         p
-        for p in query.order_by(Project.created_at.desc()).limit(100).all()
+        for p in query.order_by(Project.created_at.desc()).limit(200).all()
         if getattr(p, "deleted_at", None) is None
     ]
+    rows = filter_projects_with_section_access(user, rows)[:100]
     return [
         {
             "id": str(p.id),
@@ -6961,11 +7030,12 @@ def _paginate_and_serialize_business_opportunity_style(
     sort_dir: str,
     *,
     list_kind: str,
+    business_line: Optional[str] = None,
 ):
-    total = query.count()
-    offset = (page - 1) * limit
     order_parts = _business_project_order_parts(sort, sort_dir, opportunities=True, db=db)
-    projects = query.order_by(*order_parts).offset(offset).limit(limit).all()
+    projects, total = _paginate_projects_with_section_access(
+        user, query, order_parts, page, limit, business_line=business_line
+    )
 
     # Build cover_image_url for cards (same source priority as General Information)
     project_ids = [p.id for p in projects]
@@ -7114,7 +7184,9 @@ def business_opportunities(
         eta_start, eta_end, value_min, value_max, q,
     )
     return _paginate_and_serialize_business_opportunity_style(
-        db, user, query, page, limit, sort, sort_dir, list_kind="opportunity",
+        db, user, query, page, limit, sort, sort_dir,
+        list_kind="opportunity",
+        business_line=business_line,
     )
 
 
@@ -7229,7 +7301,9 @@ def business_leak_investigations(
         q,
     )
     return _paginate_and_serialize_business_opportunity_style(
-        db, user, query, page, limit, sort, sort_dir, list_kind="leak",
+        db, user, query, page, limit, sort, sort_dir,
+        list_kind="leak",
+        business_line=business_line,
     )
 
 
@@ -7532,7 +7606,14 @@ def business_projects(
     offset = (page - 1) * limit
     # Get projects first (before value filtering if needed)
     order_parts = _business_project_order_parts(sort, sort_dir, opportunities=False, db=db)
-    projects = query.order_by(*order_parts).offset(offset).limit(limit * 2 if min_value else limit).all()
+    if min_value is not None:
+        # Legacy min_value path still over-fetches; section-gate after.
+        projects = query.order_by(*order_parts).offset(offset).limit(limit * 2).all()
+        projects = filter_projects_with_section_access(user, projects)
+    else:
+        projects, total_count = _paginate_projects_with_section_access(
+            user, query, order_parts, page, limit, business_line=business_line
+        )
     
     # Filter by minimum value (considering Grand Total from estimates)
     if min_value is not None:

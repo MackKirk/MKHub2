@@ -6,7 +6,11 @@ from typing import Optional
 from sqlalchemy import String, cast, exists, literal, or_, select
 from sqlalchemy.orm import Session
 
-from ..auth.security import _has_permission, can_access_business_line
+from ..auth.security import (
+    _has_permission,
+    _has_project_feature_permission,
+    can_access_business_line,
+)
 from ..models.models import Project, ProjectMember, User
 from .business_line import (
     BUSINESS_LINE_CONSTRUCTION,
@@ -14,9 +18,64 @@ from .business_line import (
     normalize_business_line,
 )
 
+# Tabs/sections that count as "can usefully open this project" (Overview alone does not).
+PROJECT_SECTION_FEATURES: tuple[str, ...] = (
+    "reports",
+    "workload",
+    "timesheet",
+    "files",
+    "documents",
+    "proposal",
+    "costs",
+    "warranties",
+    "orders",
+    "safety",
+)
+
 
 def _is_admin(user: User) -> bool:
     return any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles)
+
+
+def _legacy_section_read(user: User, feature: str) -> bool:
+    """Match frontend hasLegacyProjectFeaturePermission for read (write implies read)."""
+    if feature == "costs":
+        return bool(
+            _has_permission(user, "business:projects:costs:read")
+            or _has_permission(user, "business:projects:costs:write")
+            or _has_permission(user, "business:projects:estimate:read")
+            or _has_permission(user, "business:projects:estimate:write")
+        )
+    return bool(
+        _has_permission(user, f"business:projects:{feature}:read")
+        or _has_permission(user, f"business:projects:{feature}:write")
+    )
+
+
+def user_has_any_project_section_permission(user: User, project: Project) -> bool:
+    """
+    True when the user may open the project detail UI.
+
+    Membership / estimator / onsite lead / read:all only grant *candidate* visibility.
+    Listing and opening require at least one section/tab permission (files, reports, …).
+    Shift assignment never grants this.
+    """
+    if _is_admin(user):
+        return True
+    line = getattr(project, "business_line", None)
+    for feature in PROJECT_SECTION_FEATURES:
+        if _has_project_feature_permission(user, line, feature, "read"):
+            return True
+        if _legacy_section_read(user, feature):
+            return True
+    return False
+
+
+def filter_projects_with_section_access(user: User, projects: list) -> list:
+    """Drop projects the user cannot open (no section/tab permissions)."""
+    if _is_admin(user):
+        return list(projects)
+    return [p for p in projects if user_has_any_project_section_permission(user, p)]
 
 
 def can_view_all_projects_in_line(user: User, line: Optional[str]) -> bool:
@@ -91,31 +150,42 @@ def project_visibility_clause_for_user(user: User):
 
 
 def is_project_visible_to_user(db: Session, user: User, project: Project) -> bool:
-    """Detail-level visibility check matching project_visibility_clause_for_user semantics."""
+    """
+    Detail + list semantics: line access, related/read:all, AND at least one section tab.
+
+    Being a project member (or estimator/onsite lead) is not enough without section permissions.
+    """
     if _is_admin(user):
         return True
     if not can_access_business_line(user, getattr(project, "business_line", None)):
         return False
+
+    related_or_all = False
     if can_view_all_projects_in_line(user, getattr(project, "business_line", None)):
-        return True
-    if getattr(project, "created_by_user_id", None) == user.id:
-        return True
-    rel = (
-        db.query(ProjectMember.id)
-        .filter(ProjectMember.project_id == project.id, ProjectMember.user_id == user.id)
-        .first()
-    )
-    if rel:
-        return True
-    # rollout safety: preserve existing "related to me" behavior while ACL is being populated
-    user_id_str = str(user.id)
-    legacy_strings = (
-        str(getattr(project, "estimator_ids", None) or ""),
-        str(getattr(project, "division_onsite_leads", None) or ""),
-    )
-    return bool(
-        getattr(project, "estimator_id", None) == user.id
-        or getattr(project, "project_admin_id", None) == user.id
-        or getattr(project, "onsite_lead_id", None) == user.id
-        or any(user_id_str in raw for raw in legacy_strings)
-    )
+        related_or_all = True
+    elif getattr(project, "created_by_user_id", None) == user.id:
+        related_or_all = True
+    else:
+        rel = (
+            db.query(ProjectMember.id)
+            .filter(ProjectMember.project_id == project.id, ProjectMember.user_id == user.id)
+            .first()
+        )
+        if rel:
+            related_or_all = True
+        else:
+            user_id_str = str(user.id)
+            legacy_strings = (
+                str(getattr(project, "estimator_ids", None) or ""),
+                str(getattr(project, "division_onsite_leads", None) or ""),
+            )
+            related_or_all = bool(
+                getattr(project, "estimator_id", None) == user.id
+                or getattr(project, "project_admin_id", None) == user.id
+                or getattr(project, "onsite_lead_id", None) == user.id
+                or any(user_id_str in raw for raw in legacy_strings)
+            )
+
+    if not related_or_all:
+        return False
+    return user_has_any_project_section_permission(user, project)
