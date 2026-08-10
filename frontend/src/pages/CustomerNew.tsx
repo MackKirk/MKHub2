@@ -9,6 +9,7 @@ import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import OverlayPortal from '@/components/OverlayPortal';
+import { formatContactPhoneDisplay, formatPhoneExtension } from '@/lib/contactPhoto';
 
 export default function CustomerNew(){
   const confirm = useConfirm();
@@ -34,6 +35,7 @@ export default function CustomerNew(){
   const [cName, setCName] = useState('');
   const [cEmail, setCEmail] = useState('');
   const [cPhone, setCPhone] = useState('');
+  const [cPhoneExtension, setCPhoneExtension] = useState('');
   const [cRole, setCRole] = useState('');
   const [cDept, setCDept] = useState('');
   const [cPrimary, setCPrimary] = useState<'true'|'false'>('false');
@@ -473,7 +475,7 @@ export default function CustomerNew(){
                   <div className="flex-1">
                     <div className="font-semibold flex items-center gap-2">{c.name||'(No name)'} {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}</div>
                     <div className="text-gray-600">{c.role_title||''} {c.department? `· ${c.department}`:''}</div>
-                    <div className="text-gray-700 mt-1">{[c.email, c.phone].filter(Boolean).join(' · ')||'-'}</div>
+                    <div className="text-gray-700 mt-1">{[c.email, formatContactPhoneDisplay(c.phone, c.phone_extension)].filter(Boolean).join(' · ')||'-'}</div>
                   </div>
                   <div className="flex-shrink-0">
                     <div className="space-x-2">
@@ -545,7 +547,7 @@ export default function CustomerNew(){
                   if (contacts.length){
                     for (const c of contacts){
                       try{ 
-                        const contactPayload:any = { name: c.name||'Contact', email: c.email||null, phone: c.phone||null, role_title: c.role_title||null, department: c.department||null, is_primary: !!c.is_primary };
+                        const contactPayload:any = { name: c.name||'Contact', email: c.email||null, phone: c.phone||null, phone_extension: c.phone_extension||null, role_title: c.role_title||null, department: c.department||null, is_primary: !!c.is_primary };
                         const contactCreated:any = await api('POST', `/clients/${encodeURIComponent(created.id)}/contacts`, contactPayload);
                         // Upload photo if it exists
                         if (c.photo_blob && contactCreated?.id){
@@ -615,16 +617,22 @@ export default function CustomerNew(){
                   <label className="text-xs text-gray-600">Phone</label>
                   <input className="border rounded px-3 py-2 w-full" value={cPhone} onChange={e=>setCPhone(formatPhone(e.target.value))} />
                 </div>
-                <div>
-                  <label className="text-xs text-gray-600">Primary</label>
-                  <select className="border rounded px-3 py-2 w-full" value={cPrimary} onChange={e=>setCPrimary(e.target.value as any)}>
-                    <option value="false">No</option>
-                    <option value="true">Yes</option>
-                  </select>
+                <div className="flex gap-2">
+                  <div className="min-w-0 flex-1">
+                    <label className="text-xs text-gray-600">Ext.</label>
+                    <input className="border rounded px-3 py-2 w-full" value={cPhoneExtension} onChange={e=>setCPhoneExtension(formatPhoneExtension(e.target.value))} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <label className="text-xs text-gray-600">Primary</label>
+                    <select className="border rounded px-3 py-2 w-full" value={cPrimary} onChange={e=>setCPrimary(e.target.value as any)}>
+                      <option value="false">No</option>
+                      <option value="true">Yes</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="col-span-2 text-right">
                   <button onClick={()=>{
-                    const norm:any = { name: cName, email: cEmail, phone: cPhone, role_title: cRole, department: cDept, is_primary: cPrimary==='true' };
+                    const norm:any = { name: cName, email: cEmail, phone: cPhone, phone_extension: cPhoneExtension || null, role_title: cRole, department: cDept, is_primary: cPrimary==='true' };
                     if (cPhotoBlob) {
                       norm.photo_blob = cPhotoBlob;
                       norm.photo_preview = cPhotoPreview;
@@ -635,7 +643,7 @@ export default function CustomerNew(){
                       updated.push(norm);
                       return updated;
                     });
-                    setCName(''); setCEmail(''); setCPhone(''); setCRole(''); setCDept(''); setCPrimary('false'); setCPhotoBlob(null); setCPhotoPreview(''); setContactModalOpen(false);
+                    setCName(''); setCEmail(''); setCPhone(''); setCPhoneExtension(''); setCRole(''); setCDept(''); setCPrimary('false'); setCPhotoBlob(null); setCPhotoPreview(''); setContactModalOpen(false);
                   }} className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold">Add</button>
                 </div>
               </div>

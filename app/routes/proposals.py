@@ -740,9 +740,12 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
                     name = s.get("service", "Service")
                     price = s.get("price", 0)
                     try:
-                        create_changes[f"service__{name}"] = f"${float(price):,.2f}"
+                        summary = f"${float(price):,.2f}"
                     except (ValueError, TypeError):
-                        create_changes[f"service__{name}"] = str(price)
+                        summary = str(price)
+                    if s.get("approved") is False:
+                        summary += " (Not approved)"
+                    create_changes[f"service__{name}"] = summary
             secs = new_data.get("sections") or []
             for s in secs:
                 if isinstance(s, dict):

@@ -57,12 +57,22 @@ import {
   isAdminRole,
   resolveProjectBusinessLine,
 } from '@/lib/projectLinePermissionKeys';
+import {
+  getProjectDivisionLabel,
+  getProjectDivisionMainLabel,
+} from '@/lib/projectListRowUtils';
 import { filterStatusesForOpportunity, filterStatusesForProject } from '@/lib/projectStatusVisibility';
 import { isHiddenReportCategory, isHiddenReportNote } from '@/lib/reportCategories';
 import { formatReportListSubtitle, reportHasStatusBadges } from '@/lib/reportNotes';
 import { ReportStatusChangeBadges } from '@/components/ReportStatusChangeBadges';
 import { buildReportCategorySelectGroups } from '@/lib/reportCategorySelectGroups';
 import { employeeHasSalesOrEstimatingDepartment, mapEmployeeToAppUserSelect } from '@/lib/clientUi';
+import {
+  employeesDirectoryQueryKey,
+  employeesEstimatorPickerQueryKey,
+  fetchEmployeesDirectory,
+  fetchEstimatorPickerEmployees,
+} from '@/lib/employeesQuery';
 import {
   editProjectDivisionsQuickInfo,
   opportunityEditEstimatorsQuickInfo,
@@ -777,6 +787,112 @@ function DivisionTooltip({ label, percentage, icon }: { label: string; percentag
   );
 }
 
+function OnSiteLeadsHeroDisplay({
+  leads,
+  employees,
+  projectDivisions,
+}: {
+  leads: Record<string, string>;
+  employees?: any[];
+  projectDivisions?: any[];
+}) {
+  const leadIds = useMemo(() => {
+    const ids = new Set<string>();
+    Object.values(leads).forEach((leadId) => {
+      if (leadId) ids.add(String(leadId));
+    });
+    return Array.from(ids);
+  }, [leads]);
+
+  const employeesById = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const emp of employees || []) {
+      if (emp?.id) map.set(String(emp.id), emp);
+    }
+    return map;
+  }, [employees]);
+
+  const missingIds = useMemo(
+    () => leadIds.filter((id) => !employeesById.has(id)),
+    [leadIds, employeesById],
+  );
+
+  const directoryQueries = useQueries({
+    queries: missingIds.map((id) => ({
+      queryKey: ['employee-directory-card', id],
+      queryFn: () => api<any>('GET', `/employees/${encodeURIComponent(id)}/directory-card`),
+      enabled: !!id,
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+
+  const employeeLookup = useMemo(() => {
+    const map = new Map<string, any>(employeesById);
+    missingIds.forEach((id, idx) => {
+      const data = directoryQueries[idx]?.data;
+      if (data) map.set(id, data);
+    });
+    return map;
+  }, [employeesById, missingIds, directoryQueries]);
+
+  const uniqueLeads = useMemo(() => {
+    const leadMap = new Map<string, { employee: any; divisions: string[] }>();
+    Object.entries(leads).forEach(([divId, leadId]) => {
+      if (!leadId) return;
+      const emp = employeeLookup.get(String(leadId));
+      if (!emp) return;
+
+      const employeeId = String(leadId);
+      const divisionLabel = getProjectDivisionLabel(divId, projectDivisions);
+
+      if (leadMap.has(employeeId)) {
+        leadMap.get(employeeId)!.divisions.push(divisionLabel);
+      } else {
+        leadMap.set(employeeId, { employee: emp, divisions: [divisionLabel] });
+      }
+    });
+    return Array.from(leadMap.values());
+  }, [leads, employeeLookup, projectDivisions]);
+
+  const isResolving =
+    leadIds.length > 0 &&
+    uniqueLeads.length === 0 &&
+    missingIds.some((id, idx) => directoryQueries[idx]?.isLoading || directoryQueries[idx]?.isFetching);
+
+  if (uniqueLeads.length === 0) {
+    if (isResolving) return <div className="text-xs text-gray-400">Loading…</div>;
+    return <div className="text-xs text-gray-400">—</div>;
+  }
+
+  if (uniqueLeads.length === 1) {
+    const { employee, divisions } = uniqueLeads[0];
+    return (
+      <div className="flex items-center gap-2">
+        <LeadTooltip employee={employee} divisions={divisions}>
+          <div className="relative group/lead">
+            <UserAvatar user={employee} size="w-6 h-6" showTooltip={false} />
+          </div>
+        </LeadTooltip>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(employee)}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {uniqueLeads.map(({ employee, divisions }) => (
+        <LeadTooltip key={employee.id} employee={employee} divisions={divisions}>
+          <div className="relative group/lead">
+            <UserAvatar user={employee} size="w-6 h-6" showTooltip={false} />
+          </div>
+        </LeadTooltip>
+      ))}
+    </div>
+  );
+}
+
 // Tooltip component for on-site leads with multiple divisions - uses fixed positioning to appear above footer
 function LeadTooltip({ employee, divisions, children }: { employee: any; divisions: string[]; children: React.ReactElement }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1131,7 +1247,10 @@ export default function ProjectDetail(){
     );
     return { ...base, crew_material_list: mapped.length > 0 ? mapped : null };
   }, [proj, costsEstimateDetail]);
-  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
+  const { data:employees } = useQuery({
+    queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
+    queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),
+  });
   // Live pricing items (from ProposalForm) to update division percentages instantly without reload.
   const [livePricingItems, setLivePricingItems] = useState<any[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -2220,7 +2339,7 @@ export default function ProjectDetail(){
                             </button>
                           )}
                         </div>
-                        <div className="text-sm font-medium">{proj?.date_awarded ? proj.date_awarded.slice(0, 10) : '—'}</div>
+                        <div className="text-xs font-semibold text-gray-900">{proj?.date_awarded ? proj.date_awarded.slice(0, 10) : '—'}</div>
                       </div>
                     )}
 
@@ -2241,7 +2360,7 @@ export default function ProjectDetail(){
                             </button>
                           )}
                         </div>
-                        <div className="text-sm font-medium">{proj?.date_start ? proj.date_start.slice(0, 10) : '—'}</div>
+                        <div className="text-xs font-semibold text-gray-900">{proj?.date_start ? proj.date_start.slice(0, 10) : '—'}</div>
                       </div>
                     )}
 
@@ -2262,7 +2381,7 @@ export default function ProjectDetail(){
                             </button>
                           )}
                         </div>
-                        <div className="text-sm font-medium">{proj?.date_eta ? proj.date_eta.slice(0, 10) : '—'}</div>
+                        <div className="text-xs font-semibold text-gray-900">{proj?.date_eta ? proj.date_eta.slice(0, 10) : '—'}</div>
                       </div>
                     )}
                   </div>
@@ -2422,79 +2541,11 @@ export default function ProjectDetail(){
                             </button>
                           )}
                         </div>
-                        {(() => {
-                          const leads = proj?.division_onsite_leads || {};
-                          
-                          // Helper function to get division label
-                          const getDivisionLabel = (divId: string): string => {
-                            if (!projectDivisions) return divId;
-                            for (const d of projectDivisions) {
-                              if (String(d.id) === String(divId)) return d.label || divId;
-                              for (const sub of (d.subdivisions || [])) {
-                                if (String(sub.id) === String(divId)) return `${d.label} - ${sub.label}`;
-                              }
-                            }
-                            return divId;
-                          };
-
-                          // Group leads by employee ID and collect all their divisions
-                          const leadMap = new Map<string, { employee: any; divisions: string[] }>();
-                          
-                          Object.entries(leads).forEach(([divId, leadId]) => {
-                            if (!leadId) return;
-                            const emp = employees?.find((e: any) => String(e.id) === String(leadId));
-                            if (!emp) return;
-                            
-                            const employeeId = String(leadId);
-                            const divisionLabel = getDivisionLabel(divId);
-                            
-                            if (leadMap.has(employeeId)) {
-                              // Employee already exists, add division to their list
-                              leadMap.get(employeeId)!.divisions.push(divisionLabel);
-                            } else {
-                              // New employee
-                              leadMap.set(employeeId, {
-                                employee: emp,
-                                divisions: [divisionLabel]
-                              });
-                            }
-                          });
-
-                          const uniqueLeads = Array.from(leadMap.values());
-                          
-                          if (uniqueLeads.length === 0) {
-                            return <div className="text-xs text-gray-400">—</div>;
-                          }
-                          
-                          if (uniqueLeads.length === 1) {
-                            const { employee, divisions } = uniqueLeads[0];
-                            return (
-                              <div className="flex items-center gap-2">
-                                <LeadTooltip employee={employee} divisions={divisions}>
-                                  <div className="relative group/lead">
-                                    <UserAvatar user={employee} size="w-6 h-6" showTooltip={false} />
-                                  </div>
-                                </LeadTooltip>
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(employee)}</div>
-                                </div>
-                              </div>
-                            );
-                          }
-                          
-                          // Multiple leads - show only avatars (one per unique employee)
-                          return (
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {uniqueLeads.map(({ employee, divisions }) => (
-                                <LeadTooltip key={employee.id} employee={employee} divisions={divisions}>
-                                  <div className="relative group/lead">
-                                    <UserAvatar user={employee} size="w-6 h-6" showTooltip={false} />
-                                  </div>
-                                </LeadTooltip>
-                              ))}
-                            </div>
-                          );
-                        })()}
+                        <OnSiteLeadsHeroDisplay
+                          leads={proj?.division_onsite_leads || {}}
+                          employees={employees}
+                          projectDivisions={projectDivisions}
+                        />
                       </div>
                     )}
 
@@ -3320,7 +3371,6 @@ export default function ProjectDetail(){
           originalDivisions={Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []}
           divisionLeads={proj?.division_onsite_leads || {}}
           projectDivisions={projectDivisions||[]}
-          employees={employees||[]}
           canEdit={hasEditPermission}
           onClose={() => setShowOnSiteLeadsModal(false)}
           onUpdate={async (updatedLeads) => {
@@ -3547,7 +3597,6 @@ export default function ProjectDetail(){
         <EditEstimatorModal
           projectId={String(id)}
           currentEstimatorIds={proj?.estimator_ids || (proj?.estimator_id ? [proj.estimator_id] : [])}
-          employees={employees||[]}
           designSystem={useDesignSystem}
           onClose={() => setEditEstimatorModal(false)}
           onSave={async () => {
@@ -3685,7 +3734,7 @@ export default function ProjectDetail(){
           projectId={String(id)}
           proj={proj}
           employees={employees || []}
-          projectDivisions={projectDivisionsForPicker || []}
+          projectDivisions={projectDivisions || []}
           settings={settings || {}}
           designSystem={useDesignSystem}
           onClose={() => setShowConvertModal(false)}
@@ -5270,6 +5319,7 @@ function ConvertToProjectModal({
   const [dateStart, setDateStart] = useState<string>((proj?.date_start || '').toString().slice(0, 10));
   const [leadSource, setLeadSource] = useState<string>(proj?.lead_source || '');
   const [pricingApprovals, setPricingApprovals] = useState<boolean[]>([]);
+  const [optionalServiceApprovals, setOptionalServiceApprovals] = useState<boolean[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
@@ -5323,33 +5373,33 @@ function ConvertToProjectModal({
     return Array.isArray(ac) ? ac : [];
   }, [proposalData]);
 
+  const optionalServices = useMemo(() => {
+    const d = proposalData?.data || proposalData || {};
+    const os = d.optional_services;
+    return Array.isArray(os) ? os : [];
+  }, [proposalData]);
+
   useEffect(() => {
     if (additionalCosts.length > 0 && pricingApprovals.length !== additionalCosts.length) {
       setPricingApprovals(additionalCosts.map(() => true));
     }
   }, [additionalCosts.length]);
 
-  const getDivisionLabel = useCallback((divId: string) => {
-    if (!projectDivisions?.length) return divId;
-    for (const d of projectDivisions) {
-      if (String(d.id) === String(divId)) return d.label || divId;
-      for (const sub of d.subdivisions || []) {
-        if (String(sub.id) === String(divId)) return `${d.label} - ${sub.label}`;
-      }
+  useEffect(() => {
+    if (optionalServices.length > 0 && optionalServiceApprovals.length !== optionalServices.length) {
+      setOptionalServiceApprovals(optionalServices.map(() => true));
     }
-    return divId;
-  }, [projectDivisions]);
+  }, [optionalServices.length]);
 
-  const getDivisionMainLabel = useCallback((divId: string) => {
-    if (!projectDivisions?.length) return divId;
-    for (const d of projectDivisions) {
-      if (String(d.id) === String(divId)) return d.label || divId;
-      for (const sub of d.subdivisions || []) {
-        if (String(sub.id) === String(divId)) return d.label || divId;
-      }
-    }
-    return divId;
-  }, [projectDivisions]);
+  const getDivisionLabel = useCallback(
+    (divId: string) => getProjectDivisionLabel(divId, projectDivisions),
+    [projectDivisions],
+  );
+
+  const getDivisionMainLabel = useCallback(
+    (divId: string) => getProjectDivisionMainLabel(divId, projectDivisions),
+    [projectDivisions],
+  );
 
   const updateSearchQuery = useCallback((key: string, query: string) => {
     setSearchQueries(prev => ({ ...prev, [key]: query }));
@@ -5433,6 +5483,7 @@ function ConvertToProjectModal({
         date_start: dateStart || null,
         lead_source: leadSource || null,
         pricing_item_approvals: additionalCosts.length > 0 ? pricingApprovals.slice(0, additionalCosts.length) : [],
+        optional_service_approvals: optionalServices.length > 0 ? optionalServiceApprovals.slice(0, optionalServices.length) : [],
       };
       if (relatedAwardOptions.length > 0) {
         body.awarded_related_client_ids = relatedAwardOptions
@@ -5469,6 +5520,14 @@ function ConvertToProjectModal({
 
   const handlePricingApprovalChange = useCallback((index: number, approved: boolean) => {
     setPricingApprovals((prev) => {
+      const next = [...prev];
+      if (index < next.length) next[index] = approved;
+      return next;
+    });
+  }, []);
+
+  const handleOptionalServiceApprovalChange = useCallback((index: number, approved: boolean) => {
+    setOptionalServiceApprovals((prev) => {
       const next = [...prev];
       if (index < next.length) next[index] = approved;
       return next;
@@ -5523,6 +5582,9 @@ function ConvertToProjectModal({
           additionalCosts={additionalCosts}
           pricingApprovals={pricingApprovals}
           onPricingApprovalChange={handlePricingApprovalChange}
+          optionalServices={optionalServices}
+          optionalServiceApprovals={optionalServiceApprovals}
+          onOptionalServiceApprovalChange={handleOptionalServiceApprovalChange}
           getDivisionLabel={getDivisionLabel}
           getDivisionMainLabel={getDivisionMainLabel}
         />
@@ -5958,6 +6020,56 @@ function ConvertToProjectModal({
                 </div>
               </div>
             )}
+
+            {optionalServices.length > 0 && (
+              <div className="md:col-span-2">
+                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-2">Optional Services – Approve items for project</label>
+                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                  {optionalServices.map((item: any, i: number) => {
+                    const label = item.service ?? '—';
+                    const price = Number(item.price ?? 0);
+                    const approved = i < optionalServiceApprovals.length ? optionalServiceApprovals[i] : true;
+                    return (
+                      <div key={i} className="flex items-center gap-3 px-3 py-2 bg-white hover:bg-gray-50">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium truncate">{label}</span>
+                            <span className="text-gray-400">–</span>
+                            <span className="text-sm font-semibold text-gray-900">${price.toLocaleString('en-CA', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setOptionalServiceApprovals(prev => { const n = [...prev]; if (i < n.length) n[i] = true; return n; })}
+                            title="Approved"
+                            className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 transition-all ${
+                              approved ? 'bg-green-100 text-green-700 border-green-400 scale-105 shadow-md' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
+                            }`}
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOptionalServiceApprovals(prev => { const n = [...prev]; if (i < n.length) n[i] = false; return n; })}
+                            title="Not Approved"
+                            className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 transition-all ${
+                              !approved ? 'bg-red-100 text-red-700 border-red-400 scale-105 shadow-md' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
+                            }`}
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl">
@@ -6028,7 +6140,10 @@ function ReportsTabEnhanced({
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>(''); // Empty string = all categories
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
-  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any>('GET','/employees?limit=5000') });
+  const { data:employees } = useQuery({
+    queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
+    queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),
+  });
   
   // Check permissions for reports (using local scope variables)
   const { data: meReports } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
@@ -7732,7 +7847,6 @@ function OnSiteLeadsModal({
   originalDivisions,
   divisionLeads,
   projectDivisions,
-  employees,
   canEdit,
   onClose,
   onUpdate,
@@ -7740,7 +7854,6 @@ function OnSiteLeadsModal({
   originalDivisions: string[];
   divisionLeads: Record<string, string>;
   projectDivisions: any[];
-  employees: any[];
   canEdit: boolean;
   onClose: () => void;
   onUpdate: (updatedLeads: Record<string, string>) => Promise<void>;
@@ -7752,34 +7865,13 @@ function OnSiteLeadsModal({
     setLocalLeads(divisionLeads);
   }, [divisionLeads]);
 
-  const employeeUserOptions = useMemo(
-    () => (employees || []).map((e: any) => mapEmployeeToAppUserSelect(e)),
-    [employees],
-  );
-
   const getDivisionLabel = useCallback(
-    (divId: string) => {
-      for (const div of projectDivisions || []) {
-        if (String(div.id) === String(divId)) return div.label || divId;
-        for (const sub of div.subdivisions || []) {
-          if (String(sub.id) === String(divId)) return `${div.label} - ${sub.label}`;
-        }
-      }
-      return divId;
-    },
+    (divId: string) => getProjectDivisionLabel(divId, projectDivisions),
     [projectDivisions],
   );
 
   const getDivisionMainLabel = useCallback(
-    (divId: string) => {
-      for (const div of projectDivisions || []) {
-        if (String(div.id) === String(divId)) return div.label || '';
-        for (const sub of div.subdivisions || []) {
-          if (String(sub.id) === String(divId)) return div.label || '';
-        }
-      }
-      return '';
-    },
+    (divId: string) => getProjectDivisionMainLabel(divId, projectDivisions),
     [projectDivisions],
   );
 
@@ -7844,7 +7936,6 @@ function OnSiteLeadsModal({
               </div>
               <AppUserSelect
                 mode="single"
-                users={employeeUserOptions}
                 value={localLeads[divId] || ''}
                 onChange={(userId) => handleLeadChange(divId, userId)}
                 placeholder="Search user…"
@@ -8435,7 +8526,10 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
   const [projectDivs, setProjectDivs] = useState<string[]>(Array.isArray(proj?.project_division_ids)? proj.project_division_ids : []);
   const statuses = (settings?.project_statuses||[]) as any[];
   const divisions = (settings?.divisions||[]) as any[];
-  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
+  const { data:employees } = useQuery({
+    queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
+    queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),
+  });
   const { data:projectDivisions } = useQuery({ queryKey:PROJECT_DIVISIONS_QUERY_KEY, queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const projectBusinessLine = useMemo(
     () => resolveProjectBusinessLine(proj?.business_line, location.pathname),
@@ -9456,10 +9550,9 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave, onSi
 }
 
 // Edit Estimator Modal Component
-function EditEstimatorModal({ projectId, currentEstimatorIds, employees, designSystem, onClose, onSave }: {
+function EditEstimatorModal({ projectId, currentEstimatorIds, designSystem, onClose, onSave }: {
   projectId: string;
   currentEstimatorIds: string[];
-  employees: any[];
   designSystem?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
@@ -9467,6 +9560,13 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, designS
   const [estimatorIds, setEstimatorIds] = useState<string[]>(currentEstimatorIds);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const { data: employeesData, isLoading: employeesLoading } = useQuery({
+    queryKey: employeesEstimatorPickerQueryKey,
+    queryFn: fetchEstimatorPickerEmployees,
+    staleTime: 60_000,
+  });
+  const employees = employeesData || [];
 
   useEffect(() => {
     setEstimatorIds(currentEstimatorIds);
@@ -9554,7 +9654,7 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, designS
           value={estimatorIds.map(String)}
           onChange={(ids) => setEstimatorIds(ids)}
           placeholder="Search estimators…"
-          emptyMessage="No employees in Sales / Estimating."
+          emptyMessage={employeesLoading ? 'Loading employees…' : 'No employees in Sales / Estimating.'}
           fieldHint="Estimators\n\nTeam members responsible for estimating this opportunity. Select one or more."
         />
       </AppFormModal>
@@ -9606,7 +9706,9 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, designS
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {filteredEmployees.length === 0 ? (
                 <div className="text-sm text-gray-500 text-center py-4">
-                  {employeesInEstimatingDept.length === 0
+                  {employeesLoading
+                    ? 'Loading employees…'
+                    : employeesInEstimatingDept.length === 0
                     ? 'No employees in Sales / Estimating department.'
                     : 'No employees found matching your search.'}
                 </div>

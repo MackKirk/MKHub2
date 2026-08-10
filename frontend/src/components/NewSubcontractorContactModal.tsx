@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { formatContactPhone, formatPhoneExtension } from '@/lib/contactPhoto';
 import toast from 'react-hot-toast';
 import {
   AppButton,
@@ -23,6 +24,7 @@ export default function NewSubcontractorContactModal({ open, onClose, companyId,
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneExtension, setPhoneExtension] = useState('');
   const [primary, setPrimary] = useState('false');
   const [role, setRole] = useState('');
   const [dept, setDept] = useState('');
@@ -38,20 +40,13 @@ export default function NewSubcontractorContactModal({ open, onClose, companyId,
     setName('');
     setEmail('');
     setPhone('');
+    setPhoneExtension('');
     setPrimary('false');
     setRole('');
     setDept('');
   }, [open, companyId]);
 
-  const formatPhone = (v: string) => {
-    const d = String(v || '')
-      .replace(/\D+/g, '')
-      .slice(0, 11);
-    if (d.length <= 3) return d;
-    if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
-    if (d.length <= 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-    return `+${d.slice(0, 1)} (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 11)}`;
-  };
+  const formatPhone = formatContactPhone;
 
   const title = companyName?.trim() ? `New contact — ${companyName.trim()}` : 'New contact';
 
@@ -66,6 +61,7 @@ export default function NewSubcontractorContactModal({ open, onClose, companyId,
         name: name.trim(),
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
+        phone_extension: phoneExtension.trim() || undefined,
         role_title: role.trim() || undefined,
         department: dept.trim() || undefined,
         is_primary: primary === 'true',
@@ -143,17 +139,28 @@ export default function NewSubcontractorContactModal({ open, onClose, companyId,
           disabled={isCreating}
           fieldHint="Phone\n\nDirect phone number for this contact."
         />
-        <AppSelect
-          label="Primary"
-          value={primary}
-          onChange={(e) => setPrimary(e.target.value)}
-          options={[
-            { value: 'false', label: 'No' },
-            { value: 'true', label: 'Yes' },
-          ]}
-          disabled={isCreating}
-          fieldHint="Primary\n\nPrimary contact receives default communication."
-        />
+        <div className="flex min-w-0 gap-2">
+          <AppInput
+            className="min-w-0 flex-1"
+            label="Ext."
+            value={phoneExtension}
+            onChange={(e) => setPhoneExtension(formatPhoneExtension(e.target.value))}
+            disabled={isCreating}
+            fieldHint="Ext.\n\nPhone extension (optional)."
+          />
+          <AppSelect
+            className="min-w-0 flex-1"
+            label="Primary"
+            value={primary}
+            onChange={(e) => setPrimary(e.target.value)}
+            options={[
+              { value: 'false', label: 'No' },
+              { value: 'true', label: 'Yes' },
+            ]}
+            disabled={isCreating}
+            fieldHint="Primary\n\nPrimary contact receives default communication."
+          />
+        </div>
       </div>
     </AppFormModal>
   );

@@ -81,6 +81,7 @@ export interface CustomerContact {
   department?: string | null;
   email?: string | null;
   phone?: string | null;
+  phone_extension?: string | null;
   mobile_phone?: string | null;
   is_primary?: boolean | null;
   sort_index?: number | null;
@@ -94,6 +95,7 @@ export type CustomerContactPayload = {
   department?: string | null;
   email?: string | null;
   phone?: string | null;
+  phone_extension?: string | null;
   mobile_phone?: string | null;
   is_primary?: boolean;
   notes?: string | null;

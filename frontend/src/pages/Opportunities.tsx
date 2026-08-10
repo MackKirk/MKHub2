@@ -12,7 +12,8 @@ import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea'
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig, FilterOperator } from '@/components/FilterBuilder/types';
-import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
+import { employeeHasSalesOrEstimatingDepartment, mapEmployeeToAppUserSelect } from '@/lib/clientUi';
+import { employeesDirectoryQueryKey, fetchEmployeesDirectory } from '@/lib/employeesQuery';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import {
@@ -313,25 +314,17 @@ export default function Opportunities() {
   });
 
   // Get employees for estimator filter
-  const { data: employeesData } = useQuery({ 
-    queryKey:['employees-for-filter'], 
-    queryFn: ()=> api<any[]>('GET','/employees'), 
-    staleTime: 300_000
+  const { data: employeesData } = useQuery({
+    queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
+    queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),
+    staleTime: 300_000,
   });
   const employees = employeesData || [];
 
-  // Only users with "Sales / Estimating" department for estimator filter dropdown
-  const ESTIMATOR_DEPARTMENT = 'Sales / Estimating';
-  const employeesInEstimatingDept = useMemo(() => {
-    const target = ESTIMATOR_DEPARTMENT.toLowerCase();
-    return (employees || []).filter((emp: any) => {
-      if (Array.isArray(emp.divisions) && emp.divisions.length > 0) {
-        return emp.divisions.some((d: any) => String(d?.label || '').trim().toLowerCase() === target);
-      }
-      const dept = String((emp.department || emp.division || '')).trim();
-      return dept.toLowerCase().includes(target);
-    });
-  }, [employees]);
+  const employeesInEstimatingDept = useMemo(
+    () => employees.filter(employeeHasSalesOrEstimatingDepartment),
+    [employees],
+  );
 
   // Check permissions
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });

@@ -78,11 +78,12 @@ class SupplierContactBase(BaseModel):
     name: str
     email: Optional[str] = None
     phone: Optional[str] = None
+    phone_extension: Optional[str] = None
     title: Optional[str] = None
     notes: Optional[str] = None
     image_base64: Optional[str] = None
 
-    @field_validator("email", "phone", mode="before")
+    @field_validator("email", "phone", "phone_extension", mode="before")
     @classmethod
     def empty_to_none(cls, v):
         if v is None:

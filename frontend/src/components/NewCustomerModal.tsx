@@ -6,11 +6,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { formatContactPhoneDisplay, formatPhoneExtension } from '@/lib/contactPhoto';
 import { Link } from 'react-router-dom';
 import {
   employeeHasSalesOrEstimatingDepartment,
   mapEmployeeToAppUserSelect,
 } from '@/lib/clientUi';
+import { employeesDirectoryQueryKey, fetchEmployeesDirectory } from '@/lib/employeesQuery';
 import {
   AppButton,
   AppControlLabelRow,
@@ -105,7 +107,10 @@ export default function NewCustomerModal({
   const confirm = useConfirm();
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => api<any>('GET', '/settings') });
   const types = (settings?.client_types || []) as any[];
-  const { data: employees } = useQuery({ queryKey: ['employees'], queryFn: () => api<any[]>('GET', '/employees') });
+  const { data: employees } = useQuery({
+    queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
+    queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),
+  });
   const leadSources = (settings?.lead_sources || []) as any[];
   const initialName = String(initialDisplayName || '').trim();
   const [form, setForm] = useState<any>(() => ({
@@ -134,6 +139,7 @@ export default function NewCustomerModal({
   const [cName, setCName] = useState('');
   const [cEmail, setCEmail] = useState('');
   const [cPhone, setCPhone] = useState('');
+  const [cPhoneExtension, setCPhoneExtension] = useState('');
   const [cRole, setCRole] = useState('');
   const [cDept, setCDept] = useState('');
   const [cPrimary, setCPrimary] = useState<'true' | 'false'>('false');
@@ -518,6 +524,7 @@ export default function NewCustomerModal({
                         name: c.name || 'Contact',
                         email: c.email || null,
                         phone: c.phone || null,
+                        phone_extension: c.phone_extension || null,
                         role_title: c.role_title || null,
                         department: c.department || null,
                         is_primary: !!c.is_primary,
@@ -817,7 +824,9 @@ export default function NewCustomerModal({
                       <div className={uiTypography.helper}>
                         {c.role_title || ''} {c.department ? `· ${c.department}` : ''}
                       </div>
-                      <div className={uiCx(uiTypography.body, 'mt-1')}>{[c.email, c.phone].filter(Boolean).join(' · ') || '-'}</div>
+                      <div className={uiCx(uiTypography.body, 'mt-1')}>
+                        {[c.email, formatContactPhoneDisplay(c.phone, c.phone_extension)].filter(Boolean).join(' · ') || '-'}
+                      </div>
                     </div>
                     <div className={uiCx(uiLayout.actionsRow, 'shrink-0')}>
                       {!c.is_primary && (
@@ -879,6 +888,7 @@ export default function NewCustomerModal({
                   name: cName,
                   email: cEmail,
                   phone: cPhone,
+                  phone_extension: cPhoneExtension || null,
                   role_title: cRole,
                   department: cDept,
                   is_primary: cPrimary === 'true',
@@ -898,6 +908,7 @@ export default function NewCustomerModal({
                 setCName('');
                 setCEmail('');
                 setCPhone('');
+                setCPhoneExtension('');
                 setCRole('');
                 setCDept('');
                 setCPrimary('false');
@@ -965,16 +976,26 @@ export default function NewCustomerModal({
               onChange={(e) => setCPhone(formatPhone(e.target.value))}
               fieldHint="Phone\n\nDirect phone number for this contact."
             />
-            <AppSelect
-              label="Primary"
-              value={cPrimary}
-              onChange={(e) => setCPrimary(e.target.value as 'true' | 'false')}
-              options={[
-                { value: 'false', label: 'No' },
-                { value: 'true', label: 'Yes' },
-              ]}
-              fieldHint="Primary\n\nPrimary contact receives default communication for this customer."
-            />
+            <div className="flex min-w-0 gap-2">
+              <AppInput
+                className="min-w-0 flex-1"
+                label="Ext."
+                value={cPhoneExtension}
+                onChange={(e) => setCPhoneExtension(formatPhoneExtension(e.target.value))}
+                fieldHint="Ext.\n\nPhone extension (optional)."
+              />
+              <AppSelect
+                className="min-w-0 flex-1"
+                label="Primary"
+                value={cPrimary}
+                onChange={(e) => setCPrimary(e.target.value as 'true' | 'false')}
+                options={[
+                  { value: 'false', label: 'No' },
+                  { value: 'true', label: 'Yes' },
+                ]}
+                fieldHint="Primary\n\nPrimary contact receives default communication for this customer."
+              />
+            </div>
           </div>
         </div>
       </AppFormModal>

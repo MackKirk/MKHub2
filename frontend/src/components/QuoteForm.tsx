@@ -267,6 +267,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     setNewContactName('');
     setNewContactEmail('');
     setNewContactPhone('');
+    setNewContactPhoneExtension('');
     setNewContactRole('');
     setNewContactDept('');
     setNewContactPrimary('false');
@@ -321,6 +322,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         name: newContactName,
         email: newContactEmail,
         phone: newContactPhone,
+        phone_extension: newContactPhoneExtension || null,
         role_title: newContactRole,
         department: newContactDept,
         is_primary: willBePrimary,
@@ -382,6 +384,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   const [newContactName, setNewContactName] = useState('');
   const [newContactEmail, setNewContactEmail] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
+  const [newContactPhoneExtension, setNewContactPhoneExtension] = useState('');
   const [newContactRole, setNewContactRole] = useState('');
   const [newContactDept, setNewContactDept] = useState('');
   const [newContactPrimary, setNewContactPrimary] = useState('false');
@@ -2885,6 +2888,12 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                 value={newContactPhone}
                 onChange={(e) => setNewContactPhone(formatPhone(e.target.value))}
                 fieldHint={QUOTE_FIELD_HINTS.contactPhone}
+              />
+              <AppInput
+                label="Ext."
+                value={newContactPhoneExtension}
+                onChange={(e) => setNewContactPhoneExtension(e.target.value.replace(/\D+/g, '').slice(0, 10))}
+                fieldHint="Ext.\n\nPhone extension (optional)."
               />
               <AppCheckbox
                 className="col-span-2"

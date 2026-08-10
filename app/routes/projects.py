@@ -5596,7 +5596,7 @@ def convert_to_project(
     payload: Optional[dict] = Body(None),
     user=Depends(get_current_user),
 ):
-    """Convert a bidding to an active project. Sets date_awarded to conversion day (UTC). Optional body: project_admin_id, division_onsite_leads, date_eta, date_start, lead_source, pricing_item_approvals, awarded_related_client_ids (subset of related_client_ids; may be empty). Legacy awarded_related_client_id (single) is still accepted."""
+    """Convert a bidding to an active project. Sets date_awarded to conversion day (UTC). Optional body: project_admin_id, division_onsite_leads, date_eta, date_start, lead_source, pricing_item_approvals, optional_service_approvals, awarded_related_client_ids (subset of related_client_ids; may be empty). Legacy awarded_related_client_id (single) is still accepted."""
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
@@ -5669,9 +5669,11 @@ def convert_to_project(
         if payload.get("lead_source") is not None:
             p.lead_source = str(payload["lead_source"]) if payload["lead_source"] else None
 
-        # Update proposal additional_costs with approved flags and recalc project_division_ids
+        # Update proposal additional_costs / optional_services with approved flags
         pricing_item_approvals = payload.get("pricing_item_approvals")
-        if isinstance(pricing_item_approvals, list):
+        optional_service_approvals = payload.get("optional_service_approvals")
+        needs_proposal_update = isinstance(pricing_item_approvals, list) or isinstance(optional_service_approvals, list)
+        if needs_proposal_update:
             proposal = db.query(Proposal).filter(
                 Proposal.project_id == project_id,
                 Proposal.is_change_order == False,
@@ -5679,25 +5681,44 @@ def convert_to_project(
             ).order_by(Proposal.created_at.asc()).first()
             if proposal and proposal.data is not None:
                 raw_data = proposal.data or {}
-                additional_costs = list(raw_data.get("additional_costs") or [])
-                if isinstance(additional_costs, list):
-                    # Build new additional_costs with approved flags (deep copy to ensure clean persist)
-                    updated_costs = []
-                    for i, item in enumerate(additional_costs):
-                        if isinstance(item, dict):
-                            approved = pricing_item_approvals[i] if i < len(pricing_item_approvals) else True
-                            new_item = copy.deepcopy(item)
-                            new_item["approved"] = bool(approved)
-                            updated_costs.append(new_item)
-                        else:
-                            updated_costs.append(copy.deepcopy(item) if item is not None else {})
-                    data = copy.deepcopy(dict(raw_data))
-                    data["additional_costs"] = updated_costs
+                data = copy.deepcopy(dict(raw_data))
+                updated_costs = None
+
+                if isinstance(pricing_item_approvals, list):
+                    additional_costs = list(raw_data.get("additional_costs") or [])
+                    if isinstance(additional_costs, list):
+                        updated_costs = []
+                        for i, item in enumerate(additional_costs):
+                            if isinstance(item, dict):
+                                approved = pricing_item_approvals[i] if i < len(pricing_item_approvals) else True
+                                new_item = copy.deepcopy(item)
+                                new_item["approved"] = bool(approved)
+                                updated_costs.append(new_item)
+                            else:
+                                updated_costs.append(copy.deepcopy(item) if item is not None else {})
+                        data["additional_costs"] = updated_costs
+
+                if isinstance(optional_service_approvals, list):
+                    optional_services = list(raw_data.get("optional_services") or [])
+                    if isinstance(optional_services, list):
+                        updated_services = []
+                        for i, item in enumerate(optional_services):
+                            if isinstance(item, dict):
+                                approved = optional_service_approvals[i] if i < len(optional_service_approvals) else True
+                                new_item = copy.deepcopy(item)
+                                new_item["approved"] = bool(approved)
+                                updated_services.append(new_item)
+                            else:
+                                updated_services.append(copy.deepcopy(item) if item is not None else {})
+                        data["optional_services"] = updated_services
+
+                if updated_costs is not None or isinstance(optional_service_approvals, list):
                     proposal.data = data
                     flag_modified(proposal, "data")
                     proposal_updated = True
                     proposal_id_for_audit = str(proposal.id)
 
+                if updated_costs is not None:
                     # Keep only divisions that have at least one approved item
                     current_division_ids = list(getattr(p, "project_division_ids", None) or [])
                     approved_division_ids = set()
@@ -5806,6 +5827,11 @@ def convert_to_project(
                 }
             )
         if proposal_updated and proposal_id_for_audit:
+            conversion_changes: dict = {}
+            if isinstance((payload or {}).get("pricing_item_approvals"), list):
+                conversion_changes["additional_costs_approved"] = True
+            if isinstance((payload or {}).get("optional_service_approvals"), list):
+                conversion_changes["optional_services_approved"] = True
             create_audit_log(
                 db=db,
                 entity_type="proposal",
@@ -5814,7 +5840,7 @@ def convert_to_project(
                 actor_id=str(user.id) if user else None,
                 actor_role="user",
                 source="api",
-                changes_json={"additional_costs_approved": True},
+                changes_json=conversion_changes or {"additional_costs_approved": True},
                 context={
                     "project_id": str(p.id),
                     "source": "conversion",

@@ -10,6 +10,28 @@ export function formatContactPhone(v: string) {
   return `+${d.slice(0, 1)} (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 11)}`;
 }
 
+export function formatPhoneExtension(v: string) {
+  return String(v || '')
+    .replace(/\D+/g, '')
+    .slice(0, 10);
+}
+
+export function formatContactPhoneDisplay(phone?: string | null, extension?: string | null) {
+  const formattedPhone = phone?.trim() || '';
+  const ext = formatPhoneExtension(extension || '');
+  if (!formattedPhone) return ext ? `ext. ${ext}` : '';
+  if (!ext) return formattedPhone;
+  return `${formattedPhone} ext. ${ext}`;
+}
+
+export function buildContactTelHref(phone?: string | null, extension?: string | null) {
+  const digits = String(phone || '').replace(/\D+/g, '');
+  if (!digits) return '';
+  const ext = formatPhoneExtension(extension || '');
+  if (!ext) return `tel:${digits}`;
+  return `tel:${digits};ext=${ext}`;
+}
+
 export async function uploadContactPhoto(clientId: string, contactId: string, blob: Blob) {
   const up: any = await api('POST', '/files/upload', {
     project_id: null,

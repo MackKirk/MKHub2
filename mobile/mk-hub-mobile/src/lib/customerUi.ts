@@ -48,3 +48,15 @@ export function formatSiteAddress(site: Pick<CustomerSite, "site_address_line1" 
     .filter((part) => String(part || "").trim())
     .join(" - ");
 }
+
+export function formatPhoneExtension(value?: string | null): string {
+  return String(value || "").replace(/\D+/g, "").slice(0, 10);
+}
+
+export function formatContactPhoneDisplay(phone?: string | null, extension?: string | null): string {
+  const formattedPhone = String(phone || "").trim();
+  const ext = formatPhoneExtension(extension);
+  if (!formattedPhone) return ext ? `ext. ${ext}` : "";
+  if (!ext) return formattedPhone;
+  return `${formattedPhone} ext. ${ext}`;
+}

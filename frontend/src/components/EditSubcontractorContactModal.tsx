@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { formatContactPhone } from '@/lib/contactPhoto';
+import { formatContactPhone, formatPhoneExtension } from '@/lib/contactPhoto';
 import {
   AppButton,
   AppControlLabelRow,
@@ -24,6 +24,7 @@ export type SubcontractorContactRecord = {
   name?: string;
   email?: string;
   phone?: string;
+  phone_extension?: string;
   role_title?: string;
   department?: string;
   is_primary?: boolean;
@@ -68,6 +69,7 @@ export default function EditSubcontractorContactModal({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneExtension, setPhoneExtension] = useState('');
   const [primary, setPrimary] = useState<'true' | 'false'>('false');
   const [role, setRole] = useState('');
   const [dept, setDept] = useState('');
@@ -86,6 +88,7 @@ export default function EditSubcontractorContactModal({
     setName(contact.name || '');
     setEmail(contact.email || '');
     setPhone(contact.phone || '');
+    setPhoneExtension(contact.phone_extension || '');
     setPrimary(contact.is_primary ? 'true' : 'false');
     setRole(contact.role_title || '');
     setDept(contact.department || '');
@@ -112,6 +115,7 @@ export default function EditSubcontractorContactModal({
         name: name.trim(),
         email,
         phone,
+        phone_extension: phoneExtension || null,
         role_title: role,
         department: dept,
         is_primary: primary === 'true',
@@ -244,17 +248,27 @@ export default function EditSubcontractorContactModal({
               onChange={(e) => setPhone(formatContactPhone(e.target.value))}
               disabled={isSaving}
             />
-            <AppSelect
-              label="Primary"
-              value={primary}
-              onChange={(e) => setPrimary(e.target.value as 'true' | 'false')}
-              options={[
-                { value: 'false', label: 'No' },
-                { value: 'true', label: 'Yes' },
-              ]}
-              disabled={isSaving}
-              fieldHint="Primary\n\nPrimary contact receives default communication for this company."
-            />
+            <div className="flex min-w-0 gap-2">
+              <AppInput
+                className="min-w-0 flex-1"
+                label="Ext."
+                value={phoneExtension}
+                onChange={(e) => setPhoneExtension(formatPhoneExtension(e.target.value))}
+                disabled={isSaving}
+              />
+              <AppSelect
+                className="min-w-0 flex-1"
+                label="Primary"
+                value={primary}
+                onChange={(e) => setPrimary(e.target.value as 'true' | 'false')}
+                options={[
+                  { value: 'false', label: 'No' },
+                  { value: 'true', label: 'Yes' },
+                ]}
+                disabled={isSaving}
+                fieldHint="Primary\n\nPrimary contact receives default communication for this company."
+              />
+            </div>
           </div>
         </div>
       </AppFormModal>

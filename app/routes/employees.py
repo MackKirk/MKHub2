@@ -2,6 +2,7 @@ import uuid
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import asc, func, nullslast
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional, List, Dict, Any
 
@@ -87,6 +88,8 @@ def _employee_directory_payload(u: User, ep: Optional[EmployeeProfile], division
 def list_employees(
     q: Optional[str] = None,
     limit: int = 200,
+    active_only: bool = False,
+    sort: str = "recent",
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
@@ -94,10 +97,20 @@ def list_employees(
     max_limit = 5000
     effective_limit = min(max(1, limit), max_limit)
     query = db.query(User, EmployeeProfile).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+    if active_only:
+        query = query.filter(User.is_active == True)  # noqa: E712
     if q:
         like = f"%{q}%"
         query = query.filter((User.username.ilike(like)) | (EmployeeProfile.first_name.ilike(like)) | (EmployeeProfile.last_name.ilike(like)) | (EmployeeProfile.preferred_name.ilike(like)))
-    rows = query.order_by(User.created_at.desc()).limit(effective_limit).all()
+    if sort == "name":
+        query = query.order_by(
+            nullslast(asc(func.lower(func.coalesce(EmployeeProfile.first_name, "")))),
+            nullslast(asc(func.lower(func.coalesce(EmployeeProfile.last_name, "")))),
+            asc(func.lower(func.coalesce(User.username, ""))),
+        )
+    else:
+        query = query.order_by(User.created_at.desc())
+    rows = query.limit(effective_limit).all()
 
     # Load divisions in one batch query to avoid N+1 and heavy joinedload
     user_ids = [u.id for u, _ in rows]

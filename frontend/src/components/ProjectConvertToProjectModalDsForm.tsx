@@ -28,6 +28,11 @@ type AdditionalCostRow = {
   division_id?: string;
 };
 
+type OptionalServiceRow = {
+  service?: string;
+  price?: number;
+};
+
 function ConvertBinaryChoice({
   value,
   onYes,
@@ -101,6 +106,9 @@ export type ProjectConvertToProjectModalDsFormProps = {
   additionalCosts: AdditionalCostRow[];
   pricingApprovals: boolean[];
   onPricingApprovalChange: (index: number, approved: boolean) => void;
+  optionalServices: OptionalServiceRow[];
+  optionalServiceApprovals: boolean[];
+  onOptionalServiceApprovalChange: (index: number, approved: boolean) => void;
   getDivisionLabel: (divId: string) => string;
   getDivisionMainLabel: (divId: string) => string;
 };
@@ -126,6 +134,9 @@ export function ProjectConvertToProjectModalDsForm({
   additionalCosts,
   pricingApprovals,
   onPricingApprovalChange,
+  optionalServices,
+  optionalServiceApprovals,
+  onOptionalServiceApprovalChange,
   getDivisionLabel,
   getDivisionMainLabel,
 }: ProjectConvertToProjectModalDsFormProps) {
@@ -297,6 +308,47 @@ export function ProjectConvertToProjectModalDsForm({
                     noTitle="Not approved"
                     onYes={() => onPricingApprovalChange(i, true)}
                     onNo={() => onPricingApprovalChange(i, false)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {optionalServices.length > 0 ? (
+        <div className={uiSpacing.sectionStack}>
+          <div>
+            <p className={uiTypography.overline}>Optional Services – approve items for project</p>
+            <p className={uiCx(uiTypography.helper, 'mt-1')}>
+              Choose which optional services carry into the active project.
+            </p>
+          </div>
+          <div className={uiCx(uiBorders.subtle, uiRadius.control, uiColors.surface, 'max-h-48 divide-y overflow-y-auto')}>
+            {optionalServices.map((item, i) => {
+              const label = item.service ?? '—';
+              const price = Number(item.price ?? 0);
+              const approved = i < optionalServiceApprovals.length ? optionalServiceApprovals[i] : true;
+              return (
+                <div
+                  key={i}
+                  className={uiCx('flex items-center gap-3 px-3 py-2.5', uiColors.surface, 'hover:bg-gray-50')}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={uiCx(uiTypography.body, 'truncate font-medium')}>{label}</span>
+                      <span className="text-gray-400">–</span>
+                      <span className={uiCx(uiTypography.body, 'font-semibold text-gray-900')}>
+                        ${price.toLocaleString('en-CA', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                  <ConvertBinaryChoice
+                    value={approved}
+                    yesTitle="Approved"
+                    noTitle="Not approved"
+                    onYes={() => onOptionalServiceApprovalChange(i, true)}
+                    onNo={() => onOptionalServiceApprovalChange(i, false)}
                   />
                 </div>
               );

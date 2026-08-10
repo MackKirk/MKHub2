@@ -24,6 +24,7 @@ import {
   uiTypography,
 } from '@/components/ui';
 import { inventoryContactFormQuickInfo } from '@/lib/formModalQuickInfo';
+import { buildContactTelHref, formatContactPhoneDisplay, formatPhoneExtension } from '@/lib/contactPhoto';
 
 const EM_DASH = '\u2014';
 
@@ -32,6 +33,7 @@ export type SupplierContactRecord = {
   name?: string;
   email?: string;
   phone?: string;
+  phone_extension?: string;
   title?: string;
   notes?: string;
   image_base64?: string;
@@ -65,6 +67,7 @@ export default function SupplierContactsCard({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneExtension, setPhoneExtension] = useState('');
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -74,6 +77,7 @@ export default function SupplierContactsCard({
     setName('');
     setEmail('');
     setPhone('');
+    setPhoneExtension('');
     setTitle('');
     setNotes('');
   };
@@ -96,6 +100,7 @@ export default function SupplierContactsCard({
     setName(c.name || '');
     setEmail(c.email || '');
     setPhone(c.phone || '');
+    setPhoneExtension(c.phone_extension || '');
     setTitle(c.title || '');
     setNotes(c.notes || '');
     setModalOpen(true);
@@ -117,6 +122,7 @@ export default function SupplierContactsCard({
           name: name.trim(),
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
+          phone_extension: phoneExtension.trim() || undefined,
           title: title.trim() || undefined,
           notes: notes.trim() || undefined,
           supplier_id: supplierId,
@@ -127,6 +133,7 @@ export default function SupplierContactsCard({
           name: name.trim(),
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
+          phone_extension: phoneExtension.trim() || undefined,
           title: title.trim() || undefined,
           notes: notes.trim() || undefined,
           supplier_id: supplierId,
@@ -235,13 +242,13 @@ export default function SupplierContactsCard({
                       <span className="truncate">{c.email}</span>
                     </a>
                   ) : null}
-                  {c.phone ? (
+                  {(c.phone || c.phone_extension) ? (
                     <a
-                      href={`tel:${c.phone}`}
+                      href={buildContactTelHref(c.phone, c.phone_extension)}
                       className="inline-flex min-w-0 items-center gap-1 text-gray-600 hover:text-brand-red"
                     >
                       <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
-                      <span>{c.phone}</span>
+                      <span>{formatContactPhoneDisplay(c.phone, c.phone_extension)}</span>
                     </a>
                   ) : null}
                 </div>
@@ -345,14 +352,26 @@ export default function SupplierContactsCard({
             placeholder="Enter email address"
             fieldHint="Email\n\nWork email for this contact."
           />
-          <AppInput
-            label="Phone"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            disabled={isSaving}
-            placeholder="Enter phone number"
-            fieldHint="Phone\n\nDirect phone number."
-          />
+          <div className="flex min-w-0 gap-2 md:col-span-2">
+            <AppInput
+              className="min-w-0 flex-1"
+              label="Phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              disabled={isSaving}
+              placeholder="Enter phone number"
+              fieldHint="Phone\n\nDirect phone number."
+            />
+            <AppInput
+              className="w-24 shrink-0"
+              label="Ext."
+              value={phoneExtension}
+              onChange={(e) => setPhoneExtension(formatPhoneExtension(e.target.value))}
+              disabled={isSaving}
+              placeholder="Ext."
+              fieldHint="Ext.\n\nPhone extension (optional)."
+            />
+          </div>
           <AppTextarea
             className="md:col-span-2"
             label="Notes"

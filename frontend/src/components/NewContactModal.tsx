@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { formatContactPhone, uploadContactPhoto } from '@/lib/contactPhoto';
+import { formatContactPhone, formatPhoneExtension, uploadContactPhoto } from '@/lib/contactPhoto';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import {
@@ -44,6 +44,7 @@ export default function NewContactModal({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneExtension, setPhoneExtension] = useState('');
   const [primary, setPrimary] = useState<'true' | 'false'>('false');
   const [role, setRole] = useState('');
   const [dept, setDept] = useState('');
@@ -62,6 +63,7 @@ export default function NewContactModal({
     setName(String(initialName || '').trim());
     setEmail('');
     setPhone('');
+    setPhoneExtension('');
     setPrimary('false');
     setRole('');
     setDept('');
@@ -86,6 +88,7 @@ export default function NewContactModal({
         name: name.trim(),
         email,
         phone,
+        phone_extension: phoneExtension || null,
         role_title: role,
         department: dept,
         is_primary: primary === 'true',
@@ -210,17 +213,28 @@ export default function NewContactModal({
               disabled={isCreatingContact}
               fieldHint="Phone\n\nDirect phone number for this contact."
             />
-            <AppSelect
-              label="Primary"
-              value={primary}
-              onChange={(e) => setPrimary(e.target.value as 'true' | 'false')}
-              options={[
-                { value: 'false', label: 'No' },
-                { value: 'true', label: 'Yes' },
-              ]}
-              disabled={isCreatingContact}
-              fieldHint="Primary\n\nPrimary contact receives default communication for this customer."
-            />
+            <div className="flex min-w-0 gap-2">
+              <AppInput
+                className="min-w-0 flex-1"
+                label="Ext."
+                value={phoneExtension}
+                onChange={(e) => setPhoneExtension(formatPhoneExtension(e.target.value))}
+                disabled={isCreatingContact}
+                fieldHint="Ext.\n\nPhone extension (optional)."
+              />
+              <AppSelect
+                className="min-w-0 flex-1"
+                label="Primary"
+                value={primary}
+                onChange={(e) => setPrimary(e.target.value as 'true' | 'false')}
+                options={[
+                  { value: 'false', label: 'No' },
+                  { value: 'true', label: 'Yes' },
+                ]}
+                disabled={isCreatingContact}
+                fieldHint="Primary\n\nPrimary contact receives default communication for this customer."
+              />
+            </div>
           </div>
         </div>
       </AppFormModal>

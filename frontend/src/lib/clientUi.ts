@@ -17,8 +17,8 @@ export function employeeHasSalesOrEstimatingDepartment(emp: {
   department?: string | null;
   division?: string | null;
 }): boolean {
-  if (Array.isArray(emp.divisions) && emp.divisions.length > 0) {
-    return emp.divisions.some((d) => isSalesOrEstimatingDeptLabel(String(d?.label || '')));
+  if (Array.isArray(emp.divisions) && emp.divisions.some((d) => isSalesOrEstimatingDeptLabel(String(d?.label || '')))) {
+    return true;
   }
   return isSalesOrEstimatingDeptLabel(String(emp.department || emp.division || ''));
 }

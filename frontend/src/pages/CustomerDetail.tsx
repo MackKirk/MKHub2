@@ -23,6 +23,7 @@ import EditCustomerGeneralModal, {
   type CustomerGeneralEditSection,
 } from '@/components/EditCustomerGeneralModal';
 import { SITE_CARD_COVER_CROP, uploadSiteCover } from '@/lib/siteCover';
+import { buildContactTelHref, formatContactPhoneDisplay } from '@/lib/contactPhoto';
 import {
   AppBadge,
   AppButton,
@@ -1656,6 +1657,7 @@ function ContactsCard({ id, hasEditPermission, clientDisplayName }: { id: string
       name: c.name,
       email: c.email,
       phone: c.phone,
+      phone_extension: c.phone_extension,
       role_title: c.role_title,
       department: c.department,
       is_primary: c.is_primary,
@@ -1763,13 +1765,13 @@ function ContactsCard({ id, hasEditPermission, clientDisplayName }: { id: string
                       <span className="truncate">{c.email}</span>
                     </a>
                   ) : null}
-                  {c.phone ? (
+                  {(c.phone || c.phone_extension) ? (
                     <a
-                      href={`tel:${c.phone}`}
+                      href={buildContactTelHref(c.phone, c.phone_extension)}
                       className="inline-flex min-w-0 items-center gap-1 text-gray-600 hover:text-brand-red"
                     >
                       <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
-                      <span>{c.phone}</span>
+                      <span>{formatContactPhoneDisplay(c.phone, c.phone_extension)}</span>
                     </a>
                   ) : null}
                 </div>

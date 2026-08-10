@@ -31,7 +31,8 @@ import {
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import { findCommercialServiceDivisionId, findLeakInvestigationDivisionId } from '@/lib/leakInvestigation';
-import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
+import { employeeHasSalesOrEstimatingDepartment, mapEmployeeToAppUserSelect } from '@/lib/clientUi';
+import { employeesDirectoryQueryKey, fetchEmployeesDirectory } from '@/lib/employeesQuery';
 import { filterStatusesForProject } from '@/lib/projectStatusVisibility';
 import { canEditCustomerRecord } from '@/lib/customerPermissions';
 import {
@@ -163,20 +164,15 @@ export default function ProjectNew(){
       });
     }
   }, [wantsLeakDivision, leakDivisionId, commercialServiceDivisionId]);
-  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
+  const { data:employees } = useQuery({
+    queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
+    queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),
+  });
 
-  const ESTIMATOR_DEPARTMENT = 'Sales / Estimating';
-  const employeesInEstimatingDept = useMemo(() => {
-    const list = employees || [];
-    const target = ESTIMATOR_DEPARTMENT.toLowerCase();
-    return list.filter((emp: any) => {
-      if (Array.isArray(emp.divisions) && emp.divisions.length > 0) {
-        return emp.divisions.some((d: any) => String(d?.label || '').trim().toLowerCase() === target);
-      }
-      const dept = String((emp.department || emp.division || '')).trim();
-      return dept.toLowerCase().includes(target);
-    });
-  }, [employees]);
+  const employeesInEstimatingDept = useMemo(
+    () => (employees || []).filter(employeeHasSalesOrEstimatingDepartment),
+    [employees],
+  );
 
   const limitEstimatorListToSalesDept = isBidding || isCreatingLeakInvestigation;
 

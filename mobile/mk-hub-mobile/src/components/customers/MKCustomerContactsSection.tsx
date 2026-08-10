@@ -9,6 +9,7 @@ import { radius } from "../../theme/radius";
 import { spacing } from "../../theme/spacing";
 import { typography } from "../../theme/typography";
 import type { CustomerContact } from "../../types/customers";
+import { formatContactPhoneDisplay } from "../../lib/customerUi";
 
 interface MKCustomerContactsSectionProps {
   contacts: CustomerContact[];
@@ -65,7 +66,7 @@ export const MKCustomerContactsSection: React.FC<MKCustomerContactsSectionProps>
           </View>
 
           <ContactLine icon="mail-outline" value={contact.email} />
-          <ContactLine icon="call-outline" value={contact.phone} />
+          <ContactLine icon="call-outline" value={formatContactPhoneDisplay(contact.phone, contact.phone_extension)} />
           <ContactLine icon="phone-portrait-outline" value={contact.mobile_phone} />
           {contact.notes ? <Text style={styles.notes}>{contact.notes}</Text> : null}
 

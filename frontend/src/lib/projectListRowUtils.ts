@@ -63,6 +63,29 @@ export function getProjectListHeroAddress(project: ProjectListAddressFields): st
   });
 }
 
+export function getProjectDivisionLabel(divId: string, projectDivisions?: any[]): string {
+  if (!projectDivisions?.length) return 'Unknown division';
+  for (const d of projectDivisions) {
+    if (String(d.id) === String(divId)) return d.label || 'Unknown division';
+    for (const sub of d.subdivisions || []) {
+      if (String(sub.id) === String(divId)) return `${d.label} - ${sub.label}`;
+    }
+  }
+  return 'Unknown division';
+}
+
+/** Parent division label for icons (subdivisions use their parent's icon). */
+export function getProjectDivisionMainLabel(divId: string, projectDivisions?: any[]): string {
+  if (!projectDivisions?.length) return '';
+  for (const d of projectDivisions) {
+    if (String(d.id) === String(divId)) return d.label || '';
+    for (const sub of d.subdivisions || []) {
+      if (String(sub.id) === String(divId)) return d.label || '';
+    }
+  }
+  return '';
+}
+
 export function resolveProjectDivisionIcons(
   projectDivIds: string[] | undefined,
   projectDivisions?: any[],

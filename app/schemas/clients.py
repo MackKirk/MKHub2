@@ -77,6 +77,7 @@ class ClientContactBase(BaseModel):
     department: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
+    phone_extension: Optional[str] = None
     mobile_phone: Optional[str] = None
     is_primary: Optional[bool] = False
     sort_index: Optional[int] = 0

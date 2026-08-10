@@ -16,6 +16,7 @@ import { radius, shadows } from "../../theme/radius";
 import { spacing } from "../../theme/spacing";
 import { typography } from "../../theme/typography";
 import type { CustomerContact, CustomerContactPayload } from "../../types/customers";
+import { formatContactPhoneDisplay, formatPhoneExtension } from "../../lib/customerUi";
 
 interface CustomerContactFormModalProps {
   visible: boolean;
@@ -39,6 +40,7 @@ export const CustomerContactFormModal: React.FC<CustomerContactFormModalProps> =
   const [department, setDepartment] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneExtension, setPhoneExtension] = useState("");
   const [mobilePhone, setMobilePhone] = useState("");
   const [notes, setNotes] = useState("");
   const [primary, setPrimary] = useState(false);
@@ -50,6 +52,7 @@ export const CustomerContactFormModal: React.FC<CustomerContactFormModalProps> =
     setDepartment(contact?.department ?? "");
     setEmail(contact?.email ?? "");
     setPhone(contact?.phone ?? "");
+    setPhoneExtension(contact?.phone_extension ?? "");
     setMobilePhone(contact?.mobile_phone ?? "");
     setNotes(contact?.notes ?? "");
     setPrimary(Boolean(contact?.is_primary));
@@ -66,6 +69,7 @@ export const CustomerContactFormModal: React.FC<CustomerContactFormModalProps> =
       department: clean(department),
       email: clean(email),
       phone: clean(phone),
+      phone_extension: clean(formatPhoneExtension(phoneExtension)) || null,
       mobile_phone: clean(mobilePhone),
       notes: clean(notes),
       is_primary: primary
@@ -89,9 +93,16 @@ export const CustomerContactFormModal: React.FC<CustomerContactFormModalProps> =
             </View>
             <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" />
             <View style={styles.row}>
-              <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" style={styles.rowField} />
-              <Field label="Mobile" value={mobilePhone} onChangeText={setMobilePhone} keyboardType="phone-pad" style={styles.rowField} />
+              <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" style={styles.phoneField} />
+              <Field
+                label="Ext."
+                value={phoneExtension}
+                onChangeText={(value) => setPhoneExtension(formatPhoneExtension(value))}
+                keyboardType="number-pad"
+                style={styles.extField}
+              />
             </View>
+            <Field label="Mobile" value={mobilePhone} onChangeText={setMobilePhone} keyboardType="phone-pad" />
             <TouchableOpacity style={styles.toggleRow} onPress={() => setPrimary((prev) => !prev)}>
               <Text style={styles.toggleLabel}>Primary contact</Text>
               <View style={[styles.toggle, primary && styles.toggleActive]}>
@@ -124,7 +135,7 @@ function Field({
   value: string;
   onChangeText: (value: string) => void;
   style?: object;
-  keyboardType?: "default" | "email-address" | "phone-pad";
+  keyboardType?: "default" | "email-address" | "phone-pad" | "number-pad";
   multiline?: boolean;
 }) {
   return (
@@ -183,6 +194,13 @@ const styles = StyleSheet.create({
   },
   rowField: {
     flex: 1
+  },
+  phoneField: {
+    flex: 2
+  },
+  extField: {
+    flex: 1,
+    minWidth: 72
   },
   field: {
     gap: spacing.xs
