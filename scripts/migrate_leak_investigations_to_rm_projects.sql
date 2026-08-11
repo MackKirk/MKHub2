@@ -24,8 +24,20 @@ BEGIN
     JOIN setting_items si ON si.list_id = sl.id
     WHERE sl.name = 'project_divisions'
       AND si.label = 'Leak Investigations'
-      AND si.parent_id IS NULL
+      AND si.parent_id IS NOT NULL
+    ORDER BY si.sort_index ASC
     LIMIT 1;
+
+    IF leak_div_id IS NULL THEN
+        -- Legacy fallback: top-level Leak Investigations (pre-2026)
+        SELECT si.id INTO leak_div_id
+        FROM setting_lists sl
+        JOIN setting_items si ON si.list_id = sl.id
+        WHERE sl.name = 'project_divisions'
+          AND si.label = 'Leak Investigations'
+          AND si.parent_id IS NULL
+        LIMIT 1;
+    END IF;
 
     IF leak_div_id IS NULL THEN
         RAISE EXCEPTION 'Leak Investigations division not found in setting_items';

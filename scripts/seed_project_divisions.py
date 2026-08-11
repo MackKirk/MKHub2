@@ -34,38 +34,38 @@ PROJECT_DIVISIONS = {
     "Green Roofing": [],  # No subdivisions
 }
 
-# Repairs & Maintenance — exclusive divisions (subdivisions only on Commercial Service & Roof Assessments)
-RM_SUBDIVISIONS = [
-    "EPDM Repairs",
-    "SBS Repairs",
-    "Gutter Repairs",
-    "Metal Roof Repairs",
-    "TPO Repairs",
-    "Waterproofing Repairs",
-    "Parkade Repairs",
-    "Bi-Annual Spring Roof Maintenance",
-    "Bi-Annual Fall Roof Maintenance",
-    "Roof Maintenance",
-    "Penetration Installation",
-    "Skylight Replacement",
-    "Roof Repairs and Maintenance",
-]
-
-COMMERCIAL_SERVICE_ONLY_SUBDIVISIONS = [
-    "Sheet Metal Repairs",
-    "Shingle Roof Repairs",
-    "Spring Roof Maintenance",
-    "Fall Roof Maintenance",
-]
-
-ROOF_ASSESSMENTS_ONLY_SUBDIVISIONS = [
-    "Roof Inspection",
-]
-
+# R&M — four exclusive parents (each subdivision belongs to exactly one parent)
 RM_PROJECT_DIVISIONS = {
-    "Commercial Service": ["Leak Investigations", *RM_SUBDIVISIONS, *COMMERCIAL_SERVICE_ONLY_SUBDIVISIONS],
-    "Roof Assessments": [*RM_SUBDIVISIONS, *ROOF_ASSESSMENTS_ONLY_SUBDIVISIONS],
-    "Warranty Repairs": [],
+    "Roof Maintenance": [
+        "Bi-Annual Roof Maintenance",
+        "Annual Roof Maintenance",
+        "Gutter Cleaning",
+        "Penetration Installation",
+        "General Roof Maintenance",
+    ],
+    "Roof Repairs": [
+        "EPDM Repairs",
+        "Gutter Repairs",
+        "Skylight Replacement",
+        "Metal Roof Repairs",
+        "Parkade Repairs",
+        "SBS Repairs",
+        "TPO Repairs",
+        "Waterproofing Repairs",
+        "Concrete Repairs",
+        "Sheet Metal Repairs",
+        "Shingle Roof Repairs",
+    ],
+    "Warranty Repairs": [
+        "Mack Kirk 5 Year Repairs",
+        "RCABC Guarantee Repairs",
+        "Manufacturer Repairs",
+    ],
+    "Roof Assessments": [
+        "Cut Tests",
+        "Leak Investigations",
+        "Roof Life Opinion Report",
+    ],
 }
 
 

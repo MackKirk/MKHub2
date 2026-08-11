@@ -1,4 +1,4 @@
-"""Leak investigation helpers — R&M projects with Leak Investigations subdivision under Commercial Service."""
+"""Leak investigation helpers — R&M projects with Leak Investigations under Roof Assessments."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from ..models.models import Project, SettingItem, SettingList
 
 LEAK_INVESTIGATION_DIVISION_LABEL = "Leak Investigations"
+ROOF_ASSESSMENTS_DIVISION_LABEL = "Roof Assessments"
+# Legacy parent (pre-v2 migration); still checked as fallback when resolving UUID
 COMMERCIAL_SERVICE_DIVISION_LABEL = "Commercial Service"
 
 
@@ -18,23 +20,36 @@ def get_leak_investigation_division_id(db: Session) -> Optional[uuid.UUID]:
     if not divisions_list:
         return None
 
-    commercial_service = (
-        db.query(SettingItem)
-        .filter(
-            SettingItem.list_id == divisions_list.id,
-            SettingItem.parent_id.is_(None),
-            SettingItem.label == COMMERCIAL_SERVICE_DIVISION_LABEL,
+    for parent_label in (ROOF_ASSESSMENTS_DIVISION_LABEL, COMMERCIAL_SERVICE_DIVISION_LABEL):
+        parent = (
+            db.query(SettingItem)
+            .filter(
+                SettingItem.list_id == divisions_list.id,
+                SettingItem.parent_id.is_(None),
+                SettingItem.label == parent_label,
+            )
+            .first()
         )
-        .first()
-    )
-    if not commercial_service:
-        return None
+        if not parent:
+            continue
+        row = (
+            db.query(SettingItem)
+            .filter(
+                SettingItem.list_id == divisions_list.id,
+                SettingItem.parent_id == parent.id,
+                SettingItem.label == LEAK_INVESTIGATION_DIVISION_LABEL,
+            )
+            .first()
+        )
+        if row:
+            return row.id
 
+    # Last resort: any Leak Investigations subdivision
     row = (
         db.query(SettingItem)
         .filter(
             SettingItem.list_id == divisions_list.id,
-            SettingItem.parent_id == commercial_service.id,
+            SettingItem.parent_id.isnot(None),
             SettingItem.label == LEAK_INVESTIGATION_DIVISION_LABEL,
         )
         .first()

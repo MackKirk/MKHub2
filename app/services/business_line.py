@@ -14,12 +14,19 @@ BUSINESS_LINE_REPAIRS_MAINTENANCE = "repairs_maintenance"
 VALID_BUSINESS_LINES = frozenset({BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS_MAINTENANCE})
 
 LEGACY_RM_DIVISION_LABEL = "Repairs & Maintenance"
+# Legacy Commercial Service kept for backfill of pre-migration rows
+LEGACY_COMMERCIAL_SERVICE_LABEL = "Commercial Service"
 RM_PROJECT_DIVISION_LABELS = frozenset({
-    "Commercial Service",
-    "Roof Assessments",
+    "Roof Maintenance",
+    "Roof Repairs",
     "Warranty Repairs",
+    "Roof Assessments",
 })
-RM_DIVISION_LABELS = frozenset({LEGACY_RM_DIVISION_LABEL, *RM_PROJECT_DIVISION_LABELS})
+RM_DIVISION_LABELS = frozenset({
+    LEGACY_RM_DIVISION_LABEL,
+    LEGACY_COMMERCIAL_SERVICE_LABEL,
+    *RM_PROJECT_DIVISION_LABELS,
+})
 
 
 def normalize_business_line(raw: Optional[str]) -> str:

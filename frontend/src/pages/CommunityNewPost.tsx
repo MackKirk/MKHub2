@@ -22,11 +22,11 @@ import {
   AppButton,
   AppCard,
   AppCheckbox,
-  AppCheckboxControl,
   AppControlLabelRow,
   AppInput,
   AppPageHeader,
   AppSelect,
+  AppUserSelect,
   uiBorders,
   uiColors,
   uiCx,
@@ -72,8 +72,6 @@ function isAllowedCommunityAttachment(file: File): boolean {
 
 type PublishMode = 'now' | 'scheduled' | 'draft';
 
-type AudienceEmployee = { id: string; name: string };
-
 type AudienceTargetType = 'all' | 'divisions' | 'users' | 'groups';
 
 const MAX_AUDIENCE_EMPLOYEES = 400;
@@ -86,7 +84,7 @@ type CommunityPostFormBaseline = {
   attachments: CommunityPostLocalAttachment[];
   targetType: AudienceTargetType;
   selectedDivisions: string[];
-  selectedAudienceUsers: AudienceEmployee[];
+  selectedAudienceUserIds: string[];
   selectedCommunityGroupIds: string[];
   publishMode: PublishMode;
   scheduledAt: string;
@@ -101,7 +99,7 @@ const NEW_POST_FORM_BASELINE: CommunityPostFormBaseline = {
   attachments: [],
   targetType: 'all',
   selectedDivisions: [],
-  selectedAudienceUsers: [],
+  selectedAudienceUserIds: [],
   selectedCommunityGroupIds: [],
   publishMode: 'now',
   scheduledAt: '',
@@ -111,9 +109,7 @@ const NEW_POST_FORM_BASELINE: CommunityPostFormBaseline = {
 function serializeCommunityPostFormBaseline(b: CommunityPostFormBaseline): string {
   const divs = [...b.selectedDivisions].map(String).sort();
   const groups = [...b.selectedCommunityGroupIds].map(String).sort();
-  const users = [...b.selectedAudienceUsers]
-    .map((u) => ({ id: u.id, name: u.name }))
-    .sort((a, c) => a.id.localeCompare(c.id));
+  const users = [...b.selectedAudienceUserIds].map(String).sort((a, c) => a.localeCompare(c));
   const atts = [...b.attachments]
     .map((a) => ({ fileId: a.fileId, name: a.name }))
     .sort((a, c) => a.fileId.localeCompare(c.fileId));
@@ -182,8 +178,10 @@ function deriveBaselineFromExistingPost(existingPost: Record<string, unknown>): 
         name: 'Employee',
       }))
     : [];
-  const selectedAudienceUsers =
-    fromPreview.length > 0 ? fromPreview.filter((x) => x.id) : fromIds.filter((x) => x.id);
+  const selectedAudienceUserIds =
+    fromPreview.length > 0
+      ? fromPreview.filter((x) => x.id).map((x) => x.id)
+      : fromIds.filter((x) => x.id).map((x) => x.id);
 
   let publishMode: PublishMode = 'now';
   let scheduledAt = '';
@@ -206,7 +204,7 @@ function deriveBaselineFromExistingPost(existingPost: Record<string, unknown>): 
     attachments,
     targetType,
     selectedDivisions,
-    selectedAudienceUsers,
+    selectedAudienceUserIds,
     selectedCommunityGroupIds: [],
     publishMode,
     scheduledAt,
@@ -240,12 +238,8 @@ export default function CommunityNewPost() {
   const [attachments, setAttachments] = useState<CommunityPostLocalAttachment[]>([]);
   const [targetType, setTargetType] = useState<AudienceTargetType>('all');
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
-  const [selectedAudienceUsers, setSelectedAudienceUsers] = useState<AudienceEmployee[]>([]);
+  const [selectedAudienceUserIds, setSelectedAudienceUserIds] = useState<string[]>([]);
   const [selectedCommunityGroupIds, setSelectedCommunityGroupIds] = useState<string[]>([]);
-  const [employeeSearchInput, setEmployeeSearchInput] = useState('');
-  const [debouncedEmployeeQ, setDebouncedEmployeeQ] = useState('');
-  const [employeeAudienceOpen, setEmployeeAudienceOpen] = useState(false);
-  const employeeAudienceRef = useRef<HTMLDivElement>(null);
   const [publishMode, setPublishMode] = useState<PublishMode>('now');
   const [scheduledAt, setScheduledAt] = useState('');
   const [relatedArea, setRelatedArea] = useState('general');
@@ -291,51 +285,6 @@ export default function CommunityNewPost() {
     return n;
   }, [targetType, selectedCommunityGroupIds, communityGroups]);
 
-  useEffect(() => {
-    if (!employeeAudienceOpen) return;
-    const q = employeeSearchInput.trim();
-    const delay = q.length === 0 ? 0 : 300;
-    const t = setTimeout(() => setDebouncedEmployeeQ(q), delay);
-    return () => clearTimeout(t);
-  }, [employeeSearchInput, employeeAudienceOpen]);
-
-  useEffect(() => {
-    if (targetType !== 'users') {
-      setEmployeeAudienceOpen(false);
-    }
-  }, [targetType]);
-
-  useEffect(() => {
-    if (!employeeAudienceOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      if (employeeAudienceRef.current && !employeeAudienceRef.current.contains(e.target as Node)) {
-        setEmployeeAudienceOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [employeeAudienceOpen]);
-
-  const { data: employeeSearchRows = [] } = useQuery({
-    queryKey: ['employees-audience', debouncedEmployeeQ],
-    queryFn: () => {
-      const q = debouncedEmployeeQ.trim();
-      if (q.length >= 2) {
-        return api<any[]>('GET', `/employees?q=${encodeURIComponent(q)}`);
-      }
-      return api<any[]>('GET', '/employees');
-    },
-    enabled: employeeAudienceOpen,
-  });
-
-  const employeesSortedAlphabetically = useMemo(() => {
-    const rows = Array.isArray(employeeSearchRows) ? [...employeeSearchRows] : [];
-    const sortKey = (r: { name?: string; username?: string }) =>
-      String(r.name || r.username || '').trim().toLocaleLowerCase();
-    rows.sort((a, b) => sortKey(a).localeCompare(sortKey(b), undefined, { sensitivity: 'base' }));
-    return rows;
-  }, [employeeSearchRows]);
-
   const { data: existingPost, isLoading: loadingExisting } = useQuery({
     queryKey: ['community-post-one', postId],
     queryFn: () => api<any>('GET', `/community/posts/${postId}`),
@@ -358,7 +307,7 @@ export default function CommunityNewPost() {
     setAttachments(b.attachments);
     setTargetType(b.targetType);
     setSelectedDivisions(b.selectedDivisions);
-    setSelectedAudienceUsers(b.selectedAudienceUsers);
+    setSelectedAudienceUserIds(b.selectedAudienceUserIds);
     setSelectedCommunityGroupIds(b.selectedCommunityGroupIds);
     setPublishMode(b.publishMode);
     setScheduledAt(b.scheduledAt);
@@ -417,7 +366,7 @@ export default function CommunityNewPost() {
         mentions: extractMentionsFromEditor(editorRef.current),
       };
       if (targetType === 'users') {
-        base.target_user_ids = selectedAudienceUsers.map((u) => u.id);
+        base.target_user_ids = selectedAudienceUserIds;
       } else if (targetType === 'groups') {
         base.target_community_group_ids = [...selectedCommunityGroupIds];
       }
@@ -449,7 +398,7 @@ export default function CommunityNewPost() {
       attachments,
       targetType,
       selectedDivisions,
-      selectedAudienceUsers,
+      selectedAudienceUserIds,
       selectedCommunityGroupIds,
       relatedArea,
       publishMode,
@@ -465,7 +414,7 @@ export default function CommunityNewPost() {
       if (targetType === 'divisions' && selectedDivisions.length === 0) {
         return { ok: false as const, message: 'Select at least one division' };
       }
-      if (targetType === 'users' && selectedAudienceUsers.length === 0) {
+      if (targetType === 'users' && selectedAudienceUserIds.length === 0) {
         return { ok: false as const, message: 'Select at least one employee' };
       }
       if (targetType === 'groups' && selectedCommunityGroupIds.length === 0) {
@@ -479,7 +428,7 @@ export default function CommunityNewPost() {
       }
       return { ok: true as const };
     },
-    [title, content, targetType, selectedDivisions, selectedAudienceUsers, selectedCommunityGroupIds, isEdit, publishMode, scheduledAt],
+    [title, content, targetType, selectedDivisions, selectedAudienceUserIds, selectedCommunityGroupIds, isEdit, publishMode, scheduledAt],
   );
 
   const submitPayload = (opts?: { publishModeOverride?: PublishMode }) => {
@@ -588,20 +537,9 @@ export default function CommunityNewPost() {
     );
   };
 
-  const toggleAudienceUserRow = (row: { id: string; name?: string; username?: string }) => {
-    const id = String(row.id);
-    const name = String(row.name || row.username || 'Employee');
-    setSelectedAudienceUsers((prev) => {
-      if (prev.some((p) => p.id === id)) {
-        return prev.filter((p) => p.id !== id);
-      }
-      if (prev.length >= MAX_AUDIENCE_EMPLOYEES) return prev;
-      return [...prev, { id, name }];
-    });
-  };
-
-  const removeAudienceUser = (id: string) => {
-    setSelectedAudienceUsers((prev) => prev.filter((u) => u.id !== id));
+  const handleAudienceUserIdsChange = (ids: string[]) => {
+    if (ids.length > MAX_AUDIENCE_EMPLOYEES) return;
+    setSelectedAudienceUserIds(ids);
   };
 
   const busy = createPostMutation.isPending || patchPostMutation.isPending;
@@ -616,7 +554,7 @@ export default function CommunityNewPost() {
         attachments,
         targetType,
         selectedDivisions,
-        selectedAudienceUsers,
+        selectedAudienceUserIds,
         selectedCommunityGroupIds,
         publishMode,
         scheduledAt,
@@ -630,7 +568,7 @@ export default function CommunityNewPost() {
       attachments,
       targetType,
       selectedDivisions,
-      selectedAudienceUsers,
+      selectedAudienceUserIds,
       selectedCommunityGroupIds,
       publishMode,
       scheduledAt,
@@ -655,7 +593,7 @@ export default function CommunityNewPost() {
     setAttachments(b.attachments);
     setTargetType(b.targetType);
     setSelectedDivisions(b.selectedDivisions);
-    setSelectedAudienceUsers(b.selectedAudienceUsers);
+    setSelectedAudienceUserIds(b.selectedAudienceUserIds);
     setSelectedCommunityGroupIds(b.selectedCommunityGroupIds);
     setPublishMode(b.publishMode);
     setScheduledAt(b.scheduledAt);
@@ -688,9 +626,9 @@ export default function CommunityNewPost() {
     targetType === 'all'
       ? 'All employees'
       : targetType === 'users'
-        ? selectedAudienceUsers.length === 0
+        ? selectedAudienceUserIds.length === 0
           ? 'No employees selected yet'
-          : `${selectedAudienceUsers.length} employee${selectedAudienceUsers.length === 1 ? '' : 's'}`
+          : `${selectedAudienceUserIds.length} employee${selectedAudienceUserIds.length === 1 ? '' : 's'}`
         : targetType === 'groups'
           ? selectedCommunityGroupIds.length === 0
             ? 'No community groups selected yet'
@@ -704,7 +642,7 @@ export default function CommunityNewPost() {
             : `${selectedDivisions.length} division${selectedDivisions.length === 1 ? '' : 's'}`;
 
   const divisionError = triedSubmit && targetType === 'divisions' && selectedDivisions.length === 0;
-  const usersAudienceError = triedSubmit && targetType === 'users' && selectedAudienceUsers.length === 0;
+  const usersAudienceError = triedSubmit && targetType === 'users' && selectedAudienceUserIds.length === 0;
   const groupsAudienceError = triedSubmit && targetType === 'groups' && selectedCommunityGroupIds.length === 0;
   const scheduleError =
     triedSubmit &&
@@ -740,7 +678,7 @@ export default function CommunityNewPost() {
     !title.trim() ||
     isCommunityEditorHtmlEmpty(content) ||
     (targetType === 'divisions' && selectedDivisions.length === 0) ||
-    (targetType === 'users' && selectedAudienceUsers.length === 0) ||
+    (targetType === 'users' && selectedAudienceUserIds.length === 0) ||
     (targetType === 'groups' && selectedCommunityGroupIds.length === 0) ||
     (!isEdit && publishMode === 'scheduled' && !scheduledAt) ||
     (isEdit && publishMode === 'scheduled' && !scheduledAt && showPublicationControls);
@@ -968,7 +906,7 @@ export default function CommunityNewPost() {
               onChange={() => {
                 setTargetType('all');
                 setSelectedDivisions([]);
-                setSelectedAudienceUsers([]);
+                setSelectedAudienceUserIds([]);
                 setSelectedCommunityGroupIds([]);
               }}
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
@@ -985,7 +923,7 @@ export default function CommunityNewPost() {
               checked={targetType === 'divisions'}
               onChange={() => {
                 setTargetType('divisions');
-                setSelectedAudienceUsers([]);
+                setSelectedAudienceUserIds([]);
                 setSelectedCommunityGroupIds([]);
               }}
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
@@ -1020,7 +958,7 @@ export default function CommunityNewPost() {
               onChange={() => {
                 setTargetType('groups');
                 setSelectedDivisions([]);
-                setSelectedAudienceUsers([]);
+                setSelectedAudienceUserIds([]);
               }}
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
             />
@@ -1085,133 +1023,16 @@ export default function CommunityNewPost() {
           <div
             className={`rounded-lg border p-3 ${usersAudienceError ? 'border-red-300 bg-red-50/20' : 'border-gray-100 bg-gray-50/80'}`}
           >
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-              <span className="text-xs font-medium text-gray-600">Employees</span>
-              {selectedAudienceUsers.length > 0 && (
-                <AppButton type="button" variant="ghost" size="sm" onClick={() => setSelectedAudienceUsers([])}>
-                  Clear all
-                </AppButton>
-              )}
-            </div>
-
-            <div className="relative" ref={employeeAudienceRef}>
-              <button
-                type="button"
-                id="audience-employee-dropdown-trigger"
-                aria-expanded={employeeAudienceOpen}
-                aria-haspopup="listbox"
-                aria-controls="audience-employee-dropdown-panel"
-                onClick={() => {
-                  setEmployeeAudienceOpen((o) => {
-                    if (!o) setDebouncedEmployeeQ(employeeSearchInput.trim());
-                    return !o;
-                  });
-                }}
-                className="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm shadow-sm hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-red/30 focus:border-brand-red"
-              >
-                <span className={selectedAudienceUsers.length === 0 ? 'text-gray-500' : 'text-gray-900 font-medium'}>
-                  {selectedAudienceUsers.length === 0
-                    ? 'Select employees…'
-                    : `${selectedAudienceUsers.length} selected`}
-                </span>
-                <svg
-                  className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${employeeAudienceOpen ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-
-              {employeeAudienceOpen && (
-                <div
-                  id="audience-employee-dropdown-panel"
-                  role="listbox"
-                  aria-multiselectable="true"
-                  className="absolute left-0 right-0 top-full z-40 mt-1 rounded-lg border border-gray-200 bg-white shadow-lg ring-1 ring-black/5"
-                >
-                  <div className="border-b border-gray-100 p-2">
-                    <AppInput
-                      id="audience-employee-search"
-                      type="search"
-                      value={employeeSearchInput}
-                      onChange={(e) => setEmployeeSearchInput(e.target.value)}
-                      placeholder="Search by name…"
-                      autoComplete="off"
-                      aria-label="Search employees"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </div>
-                  <ul className="max-h-56 overflow-y-auto py-1">
-                    {employeesSortedAlphabetically.length === 0 ? (
-                      <li className="px-3 py-3 text-xs text-gray-500">No employees found.</li>
-                    ) : (
-                      employeesSortedAlphabetically.slice(0, 200).map((row: { id: string; name?: string; username?: string }) => {
-                        const id = String(row.id);
-                        const label = String(row.name || row.username || 'Employee');
-                        const checked = selectedAudienceUsers.some((s) => s.id === id);
-                        const atCap = selectedAudienceUsers.length >= MAX_AUDIENCE_EMPLOYEES && !checked;
-                        return (
-                          <li key={id} role="option" aria-selected={checked}>
-                            <label
-                              className={`flex cursor-pointer items-center gap-3 px-3 py-2 text-sm ${
-                                atCap ? 'cursor-not-allowed opacity-50' : 'hover:bg-gray-50'
-                              }`}
-                            >
-                              <AppCheckboxControl
-                                checked={checked}
-                                disabled={atCap}
-                                onChange={() => toggleAudienceUserRow(row)}
-                                aria-label={`Select ${label}`}
-                              />
-                              <span className="min-w-0 flex-1">
-                                <span className="font-medium text-gray-900">{label}</span>
-                                {row.username && row.name ? (
-                                  <span className={uiCx(uiTypography.helper, 'block truncate')}>{row.username}</span>
-                                ) : null}
-                              </span>
-                            </label>
-                          </li>
-                        );
-                      })
-                    )}
-                  </ul>
-                  <div className="flex justify-end border-t border-gray-100 px-2 py-2">
-                    <AppButton type="button" variant="primary" size="sm" onClick={() => setEmployeeAudienceOpen(false)}>
-                      Done
-                    </AppButton>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {selectedAudienceUsers.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {selectedAudienceUsers.map((u) => (
-                  <span
-                    key={u.id}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white pl-2.5 pr-1 py-1 text-xs font-medium text-gray-800"
-                  >
-                    <span className="max-w-[10rem] truncate" title={u.name}>
-                      {u.name}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeAudienceUser(u.id)}
-                      className="rounded-full p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-                      aria-label={`Remove ${u.name}`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            <p className="text-[11px] text-gray-500 mt-2">
-              Open the list, search, tick several people, then Done. Up to {MAX_AUDIENCE_EMPLOYEES} recipients.
-            </p>
+            <AppUserSelect
+              mode="multiple"
+              id="audience-employee-select"
+              label="Employees"
+              value={selectedAudienceUserIds}
+              onChange={handleAudienceUserIdsChange}
+              placeholder="Search by name…"
+              helperText={`Search and select employees. Up to ${MAX_AUDIENCE_EMPLOYEES} recipients.`}
+              showSelectedChips
+            />
             {usersAudienceError && <p className="text-xs text-red-600 mt-2">Select at least one employee.</p>}
           </div>
         )}
@@ -1347,7 +1168,7 @@ export default function CommunityNewPost() {
         attachments={attachments}
         targetType={targetType}
         divisionCount={selectedDivisions.length}
-        selectedEmployeeCount={selectedAudienceUsers.length}
+        selectedEmployeeCount={selectedAudienceUserIds.length}
         selectedGroupCount={selectedCommunityGroupIds.length}
         groupAudienceHint={
           targetType === 'groups' && approxGroupAudienceMembers > 0

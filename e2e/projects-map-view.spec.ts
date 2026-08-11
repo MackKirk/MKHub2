@@ -71,7 +71,7 @@ test.describe('Projects Map View', () => {
               latitude: 49.28,
               longitude: -123.12,
               status: 'finished',
-              division_names: ['Commercial Service'],
+              division_names: ['Roof Maintenance'],
               project_admin: { id: 'u1', name: 'Admin' },
               start_date: '2026-01-01',
               end_date: '2026-01-02',

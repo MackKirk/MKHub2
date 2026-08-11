@@ -30,7 +30,7 @@ import {
 } from '@/components/ui';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
-import { findCommercialServiceDivisionId, findLeakInvestigationDivisionId } from '@/lib/leakInvestigation';
+import { findRoofAssessmentsDivisionId, findLeakInvestigationDivisionId } from '@/lib/leakInvestigation';
 import { employeeHasSalesOrEstimatingDepartment, mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { employeesDirectoryQueryKey, fetchEmployeesDirectory } from '@/lib/employeesQuery';
 import { filterStatusesForProject } from '@/lib/projectStatusVisibility';
@@ -141,8 +141,8 @@ export default function ProjectNew(){
     () => findLeakInvestigationDivisionId(divisionsForPicker),
     [divisionsForPicker]
   );
-  const commercialServiceDivisionId = useMemo(
-    () => findCommercialServiceDivisionId(divisionsForPicker),
+  const roofAssessmentsDivisionId = useMemo(
+    () => findRoofAssessmentsDivisionId(divisionsForPicker),
     [divisionsForPicker]
   );
   const startedAsOpportunity = initialIsBidding && !wantsLeakDivision;
@@ -156,14 +156,14 @@ export default function ProjectNew(){
     setProjectDivisionIds((prev) =>
       prev.includes(leakDivisionId) ? prev : [...prev, leakDivisionId]
     );
-    if (commercialServiceDivisionId) {
+    if (roofAssessmentsDivisionId) {
       setNewOppExpandedDivisions((prev) => {
         const next = new Set(prev);
-        next.add(commercialServiceDivisionId);
+        next.add(roofAssessmentsDivisionId);
         return next;
       });
     }
-  }, [wantsLeakDivision, leakDivisionId, commercialServiceDivisionId]);
+  }, [wantsLeakDivision, leakDivisionId, roofAssessmentsDivisionId]);
   const { data:employees } = useQuery({
     queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
     queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),

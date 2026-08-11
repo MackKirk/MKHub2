@@ -2,7 +2,7 @@
 Run data migration steps for Construction vs Repairs & Maintenance (business_line).
 
 Order is safe for production:
-0. migrate_rm_project_divisions_2026 — reparent Leak Investigations, migrate PM, seed R&M tree
+0. migrate_rm_project_divisions_2026_v2 — 4-parent R&M tree (renames/merges/reparents + seed)
 1. seed_project_divisions — upsert divisions/subdivisions by label; preserves existing SettingItem ids.
 2. seed_business_permissions — upsert PermissionDefinition by key; preserves existing ids.
 3. migrate_business_line_permissions — copy legacy business:projects:* flags into line-specific keys on roles/users.
@@ -36,9 +36,12 @@ def _load_script_module(name: str, filename: str):
 
 
 def main():
-    print("=== 1/4 migrate_rm_project_divisions_2026 (R&M tree restructure) ===")
-    rm = _load_script_module("migrate_rm_project_divisions_2026_impl", "migrate_rm_project_divisions_2026.py")
-    rm.migrate_rm_project_divisions_2026(do_commit=True)
+    print("=== 1/4 migrate_rm_project_divisions_2026_v2 (R&M 4-parent tree) ===")
+    rm = _load_script_module(
+        "migrate_rm_project_divisions_2026_v2_impl",
+        "migrate_rm_project_divisions_2026_v2.py",
+    )
+    rm.migrate_rm_project_divisions_2026_v2(do_commit=True, dry_run=False)
     print("\n=== 2/4 seed_project_divisions (ids preserved) ===")
     pd = _load_script_module("seed_project_divisions_impl", "seed_project_divisions.py")
     bp = _load_script_module("seed_business_permissions_impl", "seed_business_permissions.py")
