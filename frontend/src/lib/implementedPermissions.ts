@@ -139,6 +139,8 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'fleet:equipment:history:read',
   'company_cards:read',
   'company_cards:write',
+  'fuel_cards:read',
+  'fuel_cards:write',
   'inventory:suppliers:read',
   'inventory:suppliers:write',
   'inventory:suppliers:overview:read',

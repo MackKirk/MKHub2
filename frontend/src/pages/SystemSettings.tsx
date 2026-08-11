@@ -385,7 +385,7 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
           id: 'company_assets',
           name: 'company_assets',
           label: 'Company Assets',
-          description: 'Equipment and corporate cards.',
+          description: 'Equipment, corporate cards, and fuel cards.',
           permissions: filterCompanyAssetsAreaPermissions(cat.permissions || []),
         });
       } else if (cat.name === 'documents') {

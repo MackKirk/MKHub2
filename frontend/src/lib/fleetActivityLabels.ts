@@ -459,6 +459,48 @@ function companyCreditCardAssignmentLines(action: string, changes: Record<string
   return `Custody · ${action}`;
 }
 
+const FUEL_CARD_FIELD_LABELS: Record<string, string> = {
+  card_number: 'Card #',
+  pin: 'PIN #',
+  date_issued: 'Date issued',
+  status: 'Status',
+  notes: 'Notes',
+};
+
+function fuelCardLines(action: string, changes: Record<string, unknown>, ctx: Record<string, unknown>): string {
+  const act = action.toUpperCase();
+  const after = (changes.after as Record<string, unknown>) || {};
+  const before = (changes.before as Record<string, unknown>) || {};
+  const cf = Array.isArray(ctx.changed_fields) ? (ctx.changed_fields as string[]) : undefined;
+
+  if (act === 'CREATE') {
+    const cardNumber = after.card_number ? String(after.card_number) : '';
+    return cardNumber ? `Fuel card created · ${cardNumber}` : 'Fuel card created';
+  }
+  if (act === 'UPDATE') {
+    const fieldLabels = diffChangedFieldLabels(FUEL_CARD_FIELD_LABELS, before, after, cf);
+    const phrase = joinFieldLabelsForUpdatePhrase(fieldLabels);
+    return phrase ? `Fuel card ${phrase} updated` : 'Fuel card updated';
+  }
+  if (act === 'DELETE') {
+    return 'Fuel card removed';
+  }
+  return `Fuel card · ${action}`;
+}
+
+function fuelCardAssignmentLines(action: string, changes: Record<string, unknown>): string {
+  const act = action.toUpperCase();
+  const name = (changes.assigned_to_name as string) || '';
+  const ret = changes.returned === true;
+  if (act === 'CREATE') {
+    return name ? `Custody assigned · ${name}` : 'Custody assigned';
+  }
+  if (act === 'UPDATE' && ret) {
+    return name ? `Custody return recorded · ${name}` : 'Custody return recorded';
+  }
+  return `Custody · ${action}`;
+}
+
 /** Audit-backed activity row (fleet asset history tab). */
 export type FleetHistoryAuditItem = {
   source: string;
@@ -552,6 +594,7 @@ export function fleetHistoryChangeDetailEligible(item: FleetHistoryAuditItem): b
     'work_order_file',
     'asset_assignment',
     'company_credit_card',
+    'fuel_card',
   ]);
   if (!allowed.has(et)) return false;
 
@@ -635,6 +678,12 @@ export function buildFleetHistoryListSummary(item: FleetHistoryAuditItem): strin
       if (action === 'DELETE') return 'Corporate card removed';
       return 'Corporate card updated';
     }
+    case 'fuel_card': {
+      const action = (item.audit_action || '').toUpperCase();
+      if (action === 'CREATE') return 'Fuel card created';
+      if (action === 'DELETE') return 'Fuel card removed';
+      return 'Fuel card updated';
+    }
     default:
       return `${formatFleetAuditEntityTitle(item.entity_type)} updated`;
   }
@@ -678,6 +727,10 @@ export function buildFleetHistoryDescription(item: FleetHistoryAuditItem): strin
         return companyCreditCardLines(action, changes, ctx);
       case 'company_credit_card_assignment':
         return companyCreditCardAssignmentLines(action, changes);
+      case 'fuel_card':
+        return fuelCardLines(action, changes, ctx);
+      case 'fuel_card_assignment':
+        return fuelCardAssignmentLines(action, changes);
       default:
         return `${(item.entity_type || 'Record').replace(/_/g, ' ')} · ${action}`;
     }
@@ -718,6 +771,8 @@ export function formatFleetAuditEntityTitle(entityType: string | null | undefine
     asset_assignment: 'Assignment',
     company_credit_card: 'Corporate card',
     company_credit_card_assignment: 'Custody',
+    fuel_card: 'Fuel card',
+    fuel_card_assignment: 'Custody',
   };
   return map[t] || (entityType || 'Record').replace(/_/g, ' ');
 }
@@ -749,6 +804,13 @@ function labelForFleetAuditField(entityType: string, fieldKey: string): string {
     company_credit_card: COMPANY_CREDIT_CARD_FIELD_LABELS,
     company_credit_card_assignment: {
       company_credit_card_id: 'Corporate card',
+      assigned_to_user_id: 'Assigned user',
+      assigned_to_name: 'Assigned to',
+      returned: 'Return completed',
+    },
+    fuel_card: FUEL_CARD_FIELD_LABELS,
+    fuel_card_assignment: {
+      fuel_card_id: 'Fuel card',
       assigned_to_user_id: 'Assigned user',
       assigned_to_name: 'Assigned to',
       returned: 'Return completed',

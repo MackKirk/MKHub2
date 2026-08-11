@@ -1,5 +1,5 @@
 """
-Company Assets permissions — equipment and corporate cards (separate from Fleet in the UI).
+Company Assets permissions — equipment, corporate cards, and fuel cards (separate from Fleet in the UI).
 Equipment API keys remain fleet:equipment:* for backward compatibility.
 """
 import sys
@@ -38,13 +38,13 @@ def seed_company_assets_permissions():
         if category:
             print("Category 'company_assets' already exists, updating...")
             category.label = "Company Assets"
-            category.description = "Equipment and corporate cards under Company Assets."
+            category.description = "Equipment, corporate cards, and fuel cards under Company Assets."
             category.is_active = True
         else:
             category = PermissionCategory(
                 name="company_assets",
                 label="Company Assets",
-                description="Equipment and corporate cards under Company Assets.",
+                description="Equipment, corporate cards, and fuel cards under Company Assets.",
                 sort_index=4,
             )
             db.add(category)
@@ -111,6 +111,18 @@ def seed_company_assets_permissions():
                 "label": "Corporate Cards (edit)",
                 "description": "Create and edit corporate credit cards",
                 "sort_index": 21,
+            },
+            {
+                "key": "fuel_cards:read",
+                "label": "Fuel Cards",
+                "description": "View company fuel cards",
+                "sort_index": 30,
+            },
+            {
+                "key": "fuel_cards:write",
+                "label": "Fuel Cards (edit)",
+                "description": "Create and edit company fuel cards",
+                "sort_index": 31,
             },
         ]
 

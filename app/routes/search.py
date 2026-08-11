@@ -17,6 +17,7 @@ from ..models.models import (
     Equipment,
     WorkOrder,
     CompanyCreditCard,
+    FuelCard,
 )
 from ..services.business_line import (
     BUSINESS_LINE_CONSTRUCTION,
@@ -369,6 +370,41 @@ def global_search(
                 )
             if items:
                 sections.append({"id": "company_credit_cards", "label": "Corporate cards", "items": items})
+        except Exception:
+            pass
+
+    # ----- Fuel cards -----
+    if _has_permission(user, "fuel_cards:read"):
+        try:
+            rows = (
+                db.query(FuelCard)
+                .filter(
+                    or_(
+                        FuelCard.card_number.ilike(like),
+                        FuelCard.notes.ilike(like),
+                    )
+                )
+                .order_by(FuelCard.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            items = []
+            for c in rows:
+                cid = str(c.id)
+                title = (getattr(c, "card_number", None) or "").strip() or cid
+                issued = getattr(c, "date_issued", None)
+                subtitle = f"Issued {issued.isoformat()}" if issued is not None else None
+                items.append(
+                    {
+                        "type": "fuel_card",
+                        "id": cid,
+                        "title": title,
+                        "subtitle": subtitle,
+                        "href": f"/company-assets/fuel-cards/{cid}",
+                    }
+                )
+            if items:
+                sections.append({"id": "fuel_cards", "label": "Fuel cards", "items": items})
         except Exception:
             pass
 

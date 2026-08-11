@@ -47,6 +47,7 @@ const backendProxyPrefixes = [
   '/fleet',
   '/form-custom-lists',
   '/form-templates',
+  '/fuel-cards',
   '/integrations',
   '/inventory',
   '/notifications',

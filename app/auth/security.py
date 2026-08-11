@@ -421,6 +421,8 @@ def _company_assets_area_unlocked(perm_map: dict) -> bool:
         or is_granted_perm_value(perm_map.get("fleet:equipment:write"))
         or is_granted_perm_value(perm_map.get("company_cards:read"))
         or is_granted_perm_value(perm_map.get("company_cards:write"))
+        or is_granted_perm_value(perm_map.get("fuel_cards:read"))
+        or is_granted_perm_value(perm_map.get("fuel_cards:write"))
     )
 
 
@@ -543,6 +545,13 @@ def _perm_matches_map(perm_map: dict, perm: str) -> bool:
         )
     if perm == "company_cards:write":
         return bool(is_granted_perm_value(perm_map.get("company_cards:write")))
+    if perm == "fuel_cards:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("fuel_cards:read"))
+            or is_granted_perm_value(perm_map.get("fuel_cards:write"))
+        )
+    if perm == "fuel_cards:write":
+        return bool(is_granted_perm_value(perm_map.get("fuel_cards:write")))
     # Work orders & inspections — granular keys with limited legacy aliases
     if perm == "work_orders:read":
         return bool(
@@ -664,6 +673,8 @@ def _has_permission(user: User, perm: str) -> bool:
                 elif area == 'equipment' and perm in ('equipment:read', 'equipment:write'):
                     pass
                 elif area == 'company_cards' and perm in ('company_cards:read', 'company_cards:write'):
+                    pass
+                elif area == 'fuel_cards' and perm in ('fuel_cards:read', 'fuel_cards:write'):
                     pass
                 # No work_orders:access / inspections:access in product; rules are in _perm_matches_map
                 elif area == 'work_orders':
@@ -1024,6 +1035,16 @@ def has_company_cards_list_permission(user: User) -> bool:
 
 def has_company_cards_write_permission(user: User) -> bool:
     return _has_permission(user, "company_cards:write")
+
+
+def has_fuel_cards_list_permission(user: User) -> bool:
+    return _has_permission(user, "fuel_cards:read") or _has_permission(
+        user, "fuel_cards:write"
+    )
+
+
+def has_fuel_cards_write_permission(user: User) -> bool:
+    return _has_permission(user, "fuel_cards:write")
 
 
 SUPPLIER_TAB_KEYS: tuple[str, ...] = ("overview", "contacts", "products")

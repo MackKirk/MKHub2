@@ -89,6 +89,9 @@ import EquipmentDetail from './pages/EquipmentDetail';
 import CompanyCreditCardsList from './pages/CompanyCreditCardsList';
 import CompanyCreditCardNew from './pages/CompanyCreditCardNew';
 import CompanyCreditCardDetail from './pages/CompanyCreditCardDetail';
+import FuelCardsList from './pages/FuelCardsList';
+import FuelCardNew from './pages/FuelCardNew';
+import FuelCardDetail from './pages/FuelCardDetail';
 import WorkOrders from './pages/WorkOrders';
 import WorkOrderNew from './pages/WorkOrderNew';
 import Inspections from './pages/Inspections';
@@ -259,6 +262,9 @@ export default function App(){
           <Route path="/company-assets/credit-cards" element={<AppShell><CompanyCreditCardsList/></AppShell>} />
           <Route path="/company-assets/credit-cards/new" element={<AppShell><CompanyCreditCardNew/></AppShell>} />
           <Route path="/company-assets/credit-cards/:id" element={<AppShell><CompanyCreditCardDetail/></AppShell>} />
+          <Route path="/company-assets/fuel-cards" element={<AppShell><FuelCardsList/></AppShell>} />
+          <Route path="/company-assets/fuel-cards/new" element={<AppShell><FuelCardNew/></AppShell>} />
+          <Route path="/company-assets/fuel-cards/:id" element={<AppShell><FuelCardDetail/></AppShell>} />
           <Route path="/fleet/equipment" element={<Navigate to="/company-assets/equipment" replace />} />
           <Route path="/fleet/equipment/new" element={<Navigate to="/company-assets/equipment/new" replace />} />
           <Route path="/fleet/equipment/:id" element={<LegacyFleetEquipmentDetailRedirect />} />

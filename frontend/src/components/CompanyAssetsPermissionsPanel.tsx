@@ -2,6 +2,7 @@ import { EntityPermissionsGrid } from '@/components/EntityPermissionsGrid';
 import {
   buildCorporateCardsPermissionRows,
   buildEquipmentPermissionRows,
+  buildFuelCardsPermissionRows,
   getCompanyAssetsAccessLevel,
   type CompanyAssetsAccessLevel,
 } from '@/lib/companyAssetsPermissions';
@@ -25,6 +26,7 @@ export function CompanyAssetsPermissionsPanel({
 }) {
   const equipmentPerms = areaPerms.filter((p) => p.key.startsWith('fleet:equipment:'));
   const cardsPerms = areaPerms.filter((p) => p.key.startsWith('company_cards:'));
+  const fuelCardsPerms = areaPerms.filter((p) => p.key.startsWith('fuel_cards:'));
 
   return (
     <div className="space-y-4">
@@ -40,6 +42,15 @@ export function CompanyAssetsPermissionsPanel({
       <EntityPermissionsGrid
         title="Corporate Cards"
         rows={buildCorporateCardsPermissionRows(cardsPerms)}
+        permissions={permissions}
+        canEdit={canEdit}
+        getAccessLevel={getCompanyAssetsAccessLevel}
+        onAccessLevelChange={onAccessLevelChange}
+      />
+
+      <EntityPermissionsGrid
+        title="Fuel Cards"
+        rows={buildFuelCardsPermissionRows(fuelCardsPerms)}
         permissions={permissions}
         canEdit={canEdit}
         getAccessLevel={getCompanyAssetsAccessLevel}
