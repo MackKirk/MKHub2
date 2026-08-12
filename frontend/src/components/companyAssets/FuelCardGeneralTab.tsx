@@ -18,7 +18,8 @@ const EM_DASH = '\u2014';
 type CardRecord = {
   card_number: string;
   pin: string;
-  date_issued: string;
+  date_issued?: string | null;
+  crew?: string | null;
   status: string;
   notes?: string | null;
 };
@@ -34,7 +35,8 @@ function ReadOnlyField({ label, value }: { label: ReactNode; value?: ReactNode }
   );
 }
 
-function formatDateIssued(dateIssued: string): string {
+function formatDateIssued(dateIssued?: string | null): string {
+  if (!dateIssued) return EM_DASH;
   const d = parseApiDateForDisplay(dateIssued);
   return d ? formatDateLocal(d) : EM_DASH;
 }
@@ -51,7 +53,7 @@ export function FuelCardGeneralTab({ card, canEdit = true, onEditSection }: Prop
       <AppCard>
         <AppSectionHeader
           title="Card record"
-          description="Card #, PIN #, and date issued for this fuel card."
+          description="Card #, PIN #, crew, and date issued for this fuel card."
           {...appSectionPresetProps('basicInformation')}
           action={
             canEdit ? (
@@ -62,6 +64,7 @@ export function FuelCardGeneralTab({ card, canEdit = true, onEditSection }: Prop
         <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
           <ReadOnlyField label="Card #" value={<span className="font-mono tracking-wider">{card.card_number}</span>} />
           <ReadOnlyField label="PIN #" value={<span className="font-mono tracking-widest">{card.pin}</span>} />
+          <ReadOnlyField label="Crew" value={card.crew} />
           <ReadOnlyField label="Date card issued" value={formatDateIssued(card.date_issued)} />
           <div className="space-y-1">
             <div className={uiTypography.controlLabel}>Status</div>

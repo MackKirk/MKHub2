@@ -8,6 +8,8 @@ import { HomeStackNavigator } from "../stacks/HomeStack";
 import { ClockScreen } from "../../screens/clock/ClockScreen";
 import { TasksScreen } from "../../screens/tasks/TasksScreen";
 import { CommunityScreen } from "../../screens/community/CommunityScreen";
+import { useTasksBadge } from "../../hooks/useTasksBadge";
+import { useCommunityBadge } from "../../hooks/useCommunityBadge";
 import { colors } from "../../theme/colors";
 import { typography } from "../../theme/typography";
 import type { AppTabParamList } from "../types";
@@ -19,8 +21,26 @@ const tabLabelStyle = {
   fontFamily: typography.buttonSmall.fontFamily
 };
 
+function badgeValue(count: number): string | number | undefined {
+  if (count <= 0) return undefined;
+  return count > 99 ? "99+" : count;
+}
+
+const badgeStyle = {
+  backgroundColor: colors.primary,
+  color: "#fff",
+  fontSize: 10,
+  fontFamily: typography.buttonSmall.fontFamily,
+  minWidth: 18,
+  height: 18,
+  lineHeight: 18,
+  borderRadius: 9
+};
+
 export const AppTabs: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { openCount: tasksOpenCount } = useTasksBadge();
+  const { unreadCount: communityUnreadCount } = useCommunityBadge();
 
   return (
     <Tab.Navigator
@@ -94,7 +114,9 @@ export const AppTabs: React.FC = () => {
           tabBarLabel: "Tasks",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="checkmark-done" size={size ?? 24} color={color} />
-          )
+          ),
+          tabBarBadge: badgeValue(tasksOpenCount),
+          tabBarBadgeStyle: badgeStyle
         }}
       />
       <Tab.Screen
@@ -104,7 +126,9 @@ export const AppTabs: React.FC = () => {
           tabBarLabel: "Community",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people" size={size ?? 24} color={color} />
-          )
+          ),
+          tabBarBadge: badgeValue(communityUnreadCount),
+          tabBarBadgeStyle: badgeStyle
         }}
       />
     </Tab.Navigator>

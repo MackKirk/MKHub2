@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import { FUEL_CARD_FIELD_HINTS as H } from '@/lib/fuelCardFieldHints';
-import { getTodayLocal } from '@/lib/dateUtils';
 import {
   AppButton,
   AppFormModal,
@@ -19,7 +18,8 @@ type CardRecord = {
   id: string;
   card_number: string;
   pin: string;
-  date_issued: string;
+  date_issued?: string | null;
+  crew?: string | null;
   status: string;
   notes?: string | null;
 };
@@ -60,7 +60,8 @@ export default function EditFuelCardModal({ open, section, onClose, card, onSave
     setForm({
       card_number: item.card_number || '',
       pin: item.pin || '',
-      date_issued: item.date_issued || getTodayLocal(),
+      date_issued: item.date_issued || '',
+      crew: item.crew || '',
       status: item.status || 'active',
       notes: item.notes || '',
     });
@@ -97,7 +98,8 @@ export default function EditFuelCardModal({ open, section, onClose, card, onSave
         return {
           card_number: form.card_number.trim(),
           pin: form.pin.trim(),
-          date_issued: form.date_issued,
+          date_issued: form.date_issued.trim() || null,
+          crew: form.crew.trim() || null,
           status: form.status,
         };
       case 'notes':
@@ -116,10 +118,6 @@ export default function EditFuelCardModal({ open, section, onClose, card, onSave
       }
       if (!form.pin.trim()) {
         toast.error('PIN # is required');
-        return;
-      }
-      if (!form.date_issued.trim()) {
-        toast.error('Date card issued is required');
         return;
       }
     }
@@ -184,6 +182,14 @@ export default function EditFuelCardModal({ open, section, onClose, card, onSave
             onChange={(e) => setField('date_issued', e.target.value)}
             disabled={isSaving}
             fieldHint={H.date_issued}
+          />
+          <AppInput
+            label="Crew"
+            value={form.crew}
+            onChange={(e) => setField('crew', e.target.value)}
+            placeholder="e.g. Metal, Flat, Repairs"
+            disabled={isSaving}
+            fieldHint={H.crew}
           />
           <AppSelect
             label="Status"

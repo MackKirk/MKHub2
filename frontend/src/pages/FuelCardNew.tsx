@@ -12,6 +12,7 @@ function buildInitialForm(): FuelCardNewFormValues {
     card_number: '',
     pin: '',
     date_issued: getTodayLocal(),
+    crew: '',
     notes: '',
   };
 }
@@ -39,7 +40,8 @@ export function FuelCardNewForm({
       api<{ id: string }>('POST', '/fuel-cards', {
         card_number: form.card_number.trim(),
         pin: form.pin.trim(),
-        date_issued: form.date_issued,
+        date_issued: form.date_issued.trim() || undefined,
+        crew: form.crew.trim() || undefined,
         status: 'active',
         notes: form.notes.trim() || undefined,
       }),
@@ -50,8 +52,7 @@ export function FuelCardNewForm({
     onError: (e: { message?: string }) => toast.error(e?.message || 'Failed to create'),
   });
 
-  const canSubmit =
-    form.card_number.trim().length > 0 && form.pin.trim().length > 0 && form.date_issued.trim().length > 0;
+  const canSubmit = form.card_number.trim().length > 0 && form.pin.trim().length > 0;
 
   useEffect(() => {
     onValidationChange?.(canSubmit, createMutation.isPending);
@@ -64,10 +65,6 @@ export function FuelCardNewForm({
     }
     if (!form.pin.trim()) {
       toast.error('PIN # is required');
-      return;
-    }
-    if (!form.date_issued.trim()) {
-      toast.error('Date card issued is required');
       return;
     }
     createMutation.mutate();

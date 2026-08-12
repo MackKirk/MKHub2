@@ -463,6 +463,7 @@ const FUEL_CARD_FIELD_LABELS: Record<string, string> = {
   card_number: 'Card #',
   pin: 'PIN #',
   date_issued: 'Date issued',
+  crew: 'Crew',
   status: 'Status',
   notes: 'Notes',
 };

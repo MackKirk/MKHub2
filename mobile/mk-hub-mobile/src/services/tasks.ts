@@ -9,7 +9,20 @@ import type { TaskGroupedResponse, TaskItem } from "../types/tasks";
 
 export const getMyTasks = async (): Promise<TaskGroupedResponse> => {
   const response = await api.get<TaskGroupedResponse>("/tasks");
-  return response.data;
+  return (
+    response.data ?? {
+      accepted: [],
+      in_progress: [],
+      done: []
+    }
+  );
+};
+
+export const countOpenTasks = (
+  grouped: TaskGroupedResponse | null | undefined
+): number => {
+  if (!grouped) return 0;
+  return (grouped.accepted?.length ?? 0) + (grouped.in_progress?.length ?? 0);
 };
 
 export const getTask = async (taskId: string): Promise<TaskItem> => {
@@ -26,5 +39,3 @@ export const concludeTask = async (taskId: string): Promise<TaskItem> => {
   const response = await api.post<TaskItem>(`/tasks/${taskId}/conclude`);
   return response.data;
 };
-
-

@@ -1,18 +1,23 @@
 import { api } from "./api";
-import type { TodayShiftInfo, ShiftAttendanceResponse, ShiftSummary } from "../types/shifts";
-
-// Shift and attendance integration using dispatch router:
-// - GET /dispatch/shifts?date_range=YYYY-MM-DD,YYYY-MM-DD
-// - GET /dispatch/shifts/{shift_id}/attendance
-// - POST /dispatch/attendance
+import { formatDateLocal } from "../lib/dateUtils";
+import type {
+  AttendanceGpsPayload,
+  ClockDayState,
+  ShiftAttendanceResponse,
+  ShiftSummary,
+  TodayShiftInfo,
+  WeeklySummary
+} from "../types/shifts";
 
 export const getShifts = async (
-  dateRange: string
+  dateRange: string,
+  opts?: { workerId?: string; status?: string }
 ): Promise<ShiftSummary[]> => {
-  const response = await api.get<ShiftSummary[]>("/dispatch/shifts", {
-    params: { date_range: dateRange }
-  });
-  return response.data;
+  const params: Record<string, string> = { date_range: dateRange };
+  if (opts?.workerId) params.worker_id = opts.workerId;
+  if (opts?.status) params.status = opts.status;
+  const response = await api.get<ShiftSummary[]>("/dispatch/shifts", { params });
+  return response.data ?? [];
 };
 
 export const getShiftAttendance = async (
@@ -21,25 +26,231 @@ export const getShiftAttendance = async (
   const response = await api.get<ShiftAttendanceResponse[]>(
     `/dispatch/shifts/${shiftId}/attendance`
   );
+  return response.data ?? [];
+};
+
+export const getDirectAttendances = async (
+  date: string
+): Promise<ShiftAttendanceResponse[]> => {
+  try {
+    const response = await api.get<ShiftAttendanceResponse[]>(
+      `/dispatch/attendance/direct/${date}`
+    );
+    return response.data ?? [];
+  } catch {
+    return [];
+  }
+};
+
+export const getWeeklyAttendanceSummary = async (
+  weekStart: string,
+  workerId?: string
+): Promise<WeeklySummary> => {
+  const params: Record<string, string> = { week_start: weekStart };
+  if (workerId) params.worker_id = workerId;
+  const response = await api.get<WeeklySummary>(
+    "/dispatch/attendance/weekly-summary",
+    { params }
+  );
   return response.data;
 };
 
-export const getTodayShiftAndAttendance = async (): Promise<TodayShiftInfo | null> => {
-  const today = new Date().toISOString().slice(0, 10);
-  const shifts = await getShifts(`${today},${today}`);
-  const firstShift = shifts[0];
-  if (!firstShift) {
-    return null;
+function isHoursWorked(a: ShiftAttendanceResponse): boolean {
+  return !!a.reason_text && a.reason_text.includes("HOURS_WORKED:");
+}
+
+export function getJobTypeFromAttendance(
+  a: ShiftAttendanceResponse
+): string | null {
+  if (a.job_type) return a.job_type;
+  if (a.reason_text?.startsWith("JOB_TYPE:")) {
+    const part = a.reason_text.split("|")[0] ?? "";
+    return part.replace("JOB_TYPE:", "") || null;
   }
-  const attendance = await getShiftAttendance(firstShift.id);
-  const current = attendance[attendance.length - 1] ?? null;
+  return null;
+}
+
+function findOpenAttendance(
+  attendances: ShiftAttendanceResponse[]
+): ShiftAttendanceResponse | null {
+  const events = attendances
+    .filter((a) => !!(a.clock_in_time || a.clock_out_time))
+    .map((a) => ({
+      a,
+      tMs: new Date((a.clock_in_time || a.clock_out_time)!).getTime()
+    }))
+    .sort((x, y) => x.tMs - y.tMs);
+
+  const openStack: ShiftAttendanceResponse[] = [];
+  for (const { a } of events) {
+    if (isHoursWorked(a)) continue;
+    if (a.clock_in_time && a.clock_out_time) continue;
+    if (a.clock_in_time && !a.clock_out_time) {
+      openStack.push(a);
+      continue;
+    }
+    if (a.clock_out_time && !a.clock_in_time && openStack.length) {
+      openStack.pop();
+    }
+  }
+  return openStack.length ? openStack[openStack.length - 1] : null;
+}
+
+function findNextPendingShift(
+  scheduledShifts: ShiftSummary[],
+  attendances: ShiftAttendanceResponse[]
+): ShiftSummary | null {
+  const completedByShift = new Map<string, boolean>();
+  for (const a of attendances) {
+    if (!a.shift_id) continue;
+    if (a.clock_in_time && a.clock_out_time) {
+      completedByShift.set(a.shift_id, true);
+    }
+  }
+  for (const s of scheduledShifts) {
+    if (!completedByShift.get(s.id)) return s;
+  }
+  return null;
+}
+
+/** Local time rounded down to 5 minutes. */
+export function buildRoundedTimeHHMM(now = new Date()): string {
+  const hours = now.getHours();
+  const minutes = Math.floor(now.getMinutes() / 5) * 5;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+export function buildTimeSelectedLocal(
+  date: string,
+  timeHHMM?: string,
+  now = new Date()
+): string {
+  const time = timeHHMM && timeHHMM.includes(":") ? timeHHMM : buildRoundedTimeHHMM(now);
+  return `${date}T${time}:00`;
+}
+
+export function getWeekStartSunday(from = new Date()): Date {
+  const d = new Date(from);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+export function addDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  return formatDateLocal(dt);
+}
+
+export function formatTime12h(timeStr: string | null | undefined): string {
+  if (!timeStr || timeStr === "--:--" || timeStr === "-") return timeStr || "--:--";
+  const parts = timeStr.split(":");
+  if (parts.length < 2) return timeStr;
+  const hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  if (Number.isNaN(hours)) return timeStr;
+  const period = hours >= 12 ? "PM" : "AM";
+  const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  return `${hours12}:${minutes} ${period}`;
+}
+
+export function formatClockTimestamp(iso: string | null | undefined): string {
+  if (!iso) return "--:--";
+  return new Date(iso).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  });
+}
+
+export function formatShortDate(dateStr: string): string {
+  const date = new Date(`${dateStr}T00:00:00`);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+export function formatMinutesLabel(totalMinutes: number): string {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return m > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${h}h`;
+}
+
+export const getClockStateForDate = async (
+  date: string,
+  workerId?: string
+): Promise<ClockDayState> => {
+  const dateRange = `${date},${date}`;
+  const workerOpts = workerId ? { workerId } : undefined;
+
+  const [allShifts, scheduledRaw] = await Promise.all([
+    getShifts(dateRange, workerOpts),
+    getShifts(dateRange, { ...workerOpts, status: "scheduled" })
+  ]);
+
+  const scheduledShifts = scheduledRaw.filter((s) => s.status === "scheduled");
+  const attendances: ShiftAttendanceResponse[] = [];
+
+  await Promise.all(
+    allShifts.map(async (shift) => {
+      try {
+        const rows = await getShiftAttendance(shift.id);
+        attendances.push(...rows);
+      } catch {
+        // ignore
+      }
+    })
+  );
+
+  const direct = await getDirectAttendances(date);
+  attendances.push(...direct);
+
+  const openAttendance = findOpenAttendance(attendances);
+  const openShift = openAttendance?.shift_id
+    ? allShifts.find((s) => s.id === openAttendance.shift_id) ?? null
+    : null;
+
+  const completeAttendances = attendances
+    .filter((a) => a.clock_in_time && a.clock_out_time && !isHoursWorked(a))
+    .sort((a, b) => {
+      const aT = new Date(a.clock_in_time || "").getTime();
+      const bT = new Date(b.clock_in_time || "").getTime();
+      return aT - bT;
+    });
 
   return {
-    shift: firstShift,
+    date,
+    shifts: scheduledShifts,
+    allShifts,
+    attendances,
+    openAttendance,
+    openShift,
+    nextPendingShift: findNextPendingShift(scheduledShifts, attendances),
+    completeAttendances
+  };
+};
+
+export const getTodayClockState = async (
+  workerId?: string
+): Promise<ClockDayState> => {
+  return getClockStateForDate(formatDateLocal(new Date()), workerId);
+};
+
+export const getTodayShiftAndAttendance = async (): Promise<TodayShiftInfo | null> => {
+  const state = await getTodayClockState();
+  const shift = state.nextPendingShift ?? state.shifts[0];
+  if (!shift) return null;
+  const rows = state.attendances.filter((a) => a.shift_id === shift.id);
+  const current =
+    state.openAttendance?.shift_id === shift.id
+      ? state.openAttendance
+      : rows[rows.length - 1] ?? null;
+
+  return {
+    shift,
     currentAttendance: current,
     project: {
-      id: firstShift.project_id,
-      name: firstShift.project_name ?? ""
+      id: shift.project_id,
+      name: shift.project_name ?? ""
     }
   };
 };
@@ -48,12 +259,49 @@ export interface PostAttendancePayload {
   shift_id: string;
   type: "in" | "out";
   time_selected_local: string;
+  manual_break_minutes?: number;
+  gps?: AttendanceGpsPayload;
+}
+
+export interface PostDirectAttendancePayload {
+  type: "in" | "out";
+  time_selected_local: string;
+  job_type: string;
+  manual_break_minutes?: number;
+  gps?: AttendanceGpsPayload;
 }
 
 export const postAttendance = async (
   payload: PostAttendancePayload
-): Promise<void> => {
-  await api.post("/dispatch/attendance", payload);
+): Promise<{ status?: string }> => {
+  const response = await api.post<{ status?: string }>(
+    "/dispatch/attendance",
+    payload
+  );
+  return response.data ?? {};
 };
 
+export const postDirectAttendance = async (
+  payload: PostDirectAttendancePayload
+): Promise<{ status?: string }> => {
+  const response = await api.post<{ status?: string }>(
+    "/dispatch/attendance/direct",
+    payload
+  );
+  return response.data ?? {};
+};
 
+export function resolveAttendanceJobLabel(
+  attendance: ShiftAttendanceResponse,
+  shifts: ShiftSummary[],
+  fallbackJobType?: string | null
+): string | null {
+  if (attendance.shift_id) {
+    const shift = shifts.find((s) => s.id === attendance.shift_id);
+    if (shift?.project_name) return shift.project_name;
+  }
+  const jobType = fallbackJobType ?? getJobTypeFromAttendance(attendance);
+  if (!jobType) return null;
+  // Caller can enrich with predefined/project names
+  return jobType;
+}

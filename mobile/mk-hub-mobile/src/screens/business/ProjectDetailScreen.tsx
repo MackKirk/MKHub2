@@ -245,34 +245,59 @@ export const ProjectDetailScreen: React.FC = () => {
 
   const displayedProject = project ?? initialProject;
   const isBidding = displayedProject.is_bidding === true;
+  const businessLine = displayedProject.business_line ?? null;
   const permissionsSet = useMemo(() => new Set(permissions), [permissions]);
-  const canOpenSections = hasAnyProjectSectionPermission(permissionsSet, roles);
+  const canOpenSections = hasAnyProjectSectionPermission(
+    permissionsSet,
+    roles,
+    businessLine
+  );
   const blockedByPermissions = accessDenied || (!loading && !canOpenSections);
 
   const visibleTabs = useMemo(() => {
     return ALL_TABS.filter((tab) => {
       if (tab.key === "overview") return true;
       if (tab.key === "safety" && isBidding) return false;
-      if (tab.key === "notes" && !hasProjectFeatureRead(permissionsSet, roles, "reports")) {
+      if (
+        tab.key === "notes" &&
+        !hasProjectFeatureRead(permissionsSet, roles, "reports", businessLine)
+      ) {
         return false;
       }
-      if (tab.key === "files" && !hasProjectFeatureRead(permissionsSet, roles, "files")) {
+      if (
+        tab.key === "files" &&
+        !hasProjectFeatureRead(permissionsSet, roles, "files", businessLine)
+      ) {
         return false;
       }
-      if (tab.key === "documents" && !hasProjectFeatureRead(permissionsSet, roles, "documents")) {
+      if (
+        tab.key === "documents" &&
+        !hasProjectFeatureRead(permissionsSet, roles, "documents", businessLine)
+      ) {
         return false;
       }
-      if (tab.key === "pricing" && !hasProjectFeatureRead(permissionsSet, roles, "pricing")) {
+      if (
+        tab.key === "pricing" &&
+        !hasProjectFeatureRead(permissionsSet, roles, "pricing", businessLine)
+      ) {
         return false;
       }
-      if (tab.key === "safety" && !hasProjectFeatureRead(permissionsSet, roles, "safety")) {
+      if (
+        tab.key === "safety" &&
+        !hasProjectFeatureRead(permissionsSet, roles, "safety", businessLine)
+      ) {
         return false;
       }
       return true;
     });
-  }, [isBidding, permissionsSet, roles]);
+  }, [businessLine, isBidding, permissionsSet, roles]);
 
-  const canWriteSafety = hasProjectFeatureWrite(permissionsSet, roles, "safety");
+  const canWriteSafety = hasProjectFeatureWrite(
+    permissionsSet,
+    roles,
+    "safety",
+    businessLine
+  );
 
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.key === activeTab)) {
@@ -412,7 +437,10 @@ export const ProjectDetailScreen: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: bottomTabHeight + spacing.lg }
+          {
+            paddingBottom:
+              (visibleTabs.length > 0 ? bottomTabHeight : 0) + spacing.lg
+          }
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -434,12 +462,14 @@ export const ProjectDetailScreen: React.FC = () => {
         {renderTabContent()}
       </ScrollView>
 
-      <MKProjectDetailTabBar
-        tabs={visibleTabs}
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        style={styles.bottomTabBar}
-      />
+      {visibleTabs.length > 0 ? (
+        <MKProjectDetailTabBar
+          tabs={visibleTabs}
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          style={styles.bottomTabBar}
+        />
+      ) : null}
 
     </ScreenLayout>
   );

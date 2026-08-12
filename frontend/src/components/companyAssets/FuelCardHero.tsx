@@ -21,6 +21,7 @@ import {
   uiBorders,
   uiCx,
   uiRadius,
+  uiTypography,
 } from '@/components/ui';
 
 const fleetHeroAssignButtonClass =
@@ -40,7 +41,8 @@ const HERO_EXPAND_BASE_MS = 1400;
 const HERO_COLLAPSE_MS = 650;
 const FLEET_HERO_COLLAPSED_PX = 72;
 
-function formatDateIssued(dateIssued: string): string {
+function formatDateIssued(dateIssued?: string | null): string {
+  if (!dateIssued) return '\u2014';
   const d = parseApiDateForDisplay(dateIssued);
   return d ? formatDateLocal(d) : '\u2014';
 }
@@ -64,7 +66,8 @@ export function FuelCardHeroVisual({ cardNumber }: { cardNumber: string }) {
 type HeroCard = {
   card_number: string;
   pin: string;
-  date_issued: string;
+  date_issued?: string | null;
+  crew?: string | null;
   status: string;
 };
 
@@ -73,7 +76,10 @@ export function buildFuelCardHeroHeading(card: HeroCard): {
   subtitleLine: string | null;
 } {
   const primaryTitle = card.card_number?.trim() || 'Fuel card';
-  const subtitleLine = card.date_issued ? `Issued ${formatDateIssued(card.date_issued)}` : null;
+  const parts: string[] = [];
+  if (card.crew?.trim()) parts.push(card.crew.trim());
+  if (card.date_issued) parts.push(`Issued ${formatDateIssued(card.date_issued)}`);
+  const subtitleLine = parts.length > 0 ? parts.join(' \u00b7 ') : null;
   return { primaryTitle, subtitleLine };
 }
 
@@ -82,6 +88,7 @@ type FuelCardHeroBodyProps = {
   subtitleLine: string | null;
   card: HeroCard;
   isInCustody: boolean;
+  assignedToName?: string | null;
   canAssign: boolean;
   onAssign: () => void;
   onReturn: () => void;
@@ -93,6 +100,7 @@ function FuelCardHeroBody({
   subtitleLine,
   card,
   isInCustody,
+  assignedToName,
   canAssign,
   onAssign,
   onReturn,
@@ -121,6 +129,9 @@ function FuelCardHeroBody({
               <FleetHeroStat label="PIN #">
                 <div className={uiCx(fleetHeroValueClass, 'font-mono tracking-widest')}>{card.pin}</div>
               </FleetHeroStat>
+              <FleetHeroStat label="Crew">
+                <div className={fleetHeroValueClass}>{card.crew?.trim() || '\u2014'}</div>
+              </FleetHeroStat>
               <FleetHeroStat label="Date issued">
                 <div className={fleetHeroValueClass}>{formatDateIssued(card.date_issued)}</div>
               </FleetHeroStat>
@@ -130,9 +141,14 @@ function FuelCardHeroBody({
                 </AppBadge>
               </FleetHeroStat>
               <FleetHeroStat label="Custody">
-                <AppBadge variant={getFuelCardCustodyBadgeVariant(isInCustody)} className="!normal-case">
-                  {isInCustody ? 'In custody' : 'Available'}
-                </AppBadge>
+                <div className="space-y-0.5">
+                  <AppBadge variant={getFuelCardCustodyBadgeVariant(isInCustody)} className="!normal-case">
+                    {isInCustody ? 'Assigned' : 'Available'}
+                  </AppBadge>
+                  {isInCustody && assignedToName?.trim() ? (
+                    <div className={uiCx(uiTypography.helper, 'truncate')}>{assignedToName.trim()}</div>
+                  ) : null}
+                </div>
               </FleetHeroStat>
             </div>
           </div>
@@ -150,7 +166,7 @@ function FuelCardHeroBody({
               )
             ) : (
               <div className={uiCx(fleetHeroValueMutedClass, 'px-2 text-center text-xs')}>
-                {card.status !== 'active' ? 'Not active' : '—'}
+                {card.status !== 'active' ? 'Not active' : '\u2014'}
               </div>
             )}
             {collapseToggle ? <div className="flex w-full justify-end">{collapseToggle}</div> : null}
@@ -186,6 +202,7 @@ export function FuelCardHero({ isCollapsed = false, onToggleCollapsed, ...bodyPr
     bodyProps.subtitleLine,
     bodyProps.card,
     bodyProps.isInCustody,
+    bodyProps.assignedToName,
     bodyProps.canAssign,
   ]);
 
@@ -262,6 +279,9 @@ export function FuelCardHero({ isCollapsed = false, onToggleCollapsed, ...bodyPr
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm font-bold text-gray-900">{bodyProps.primaryTitle}</h3>
+              {bodyProps.assignedToName?.trim() ? (
+                <p className="mt-0.5 truncate text-xs text-gray-600">{bodyProps.assignedToName.trim()}</p>
+              ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-4 pr-8">
               <AppBadge variant={getFuelCardStatusBadgeVariant(bodyProps.card.status)} className="!normal-case">
@@ -296,19 +316,16 @@ export function FuelCardHeroSkeleton() {
           <div className="w-48 shrink-0">
             <div className={uiCx('h-36 w-48 bg-gray-100', uiRadius.card, uiBorders.subtle)} />
           </div>
-          <div className="min-w-0 flex-1 lg:flex lg:items-center lg:justify-between lg:gap-4">
-            <div className="min-w-0 flex-1 space-y-4">
-              <div className="space-y-2">
-                <div className="h-4 w-48 rounded bg-gray-100" />
-                <div className="h-3 w-64 rounded bg-gray-100" />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="h-10 rounded bg-gray-100" />
-                ))}
-              </div>
+          <div className="min-w-0 flex-1 space-y-4">
+            <div className="space-y-2">
+              <div className="h-4 w-48 rounded bg-gray-100" />
+              <div className="h-3 w-64 rounded bg-gray-100" />
             </div>
-            <div className="h-24 w-24 shrink-0 rounded-xl bg-gray-100" />
+            <div className="grid grid-cols-3 gap-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-10 rounded bg-gray-100" />
+              ))}
+            </div>
           </div>
         </div>
       </div>

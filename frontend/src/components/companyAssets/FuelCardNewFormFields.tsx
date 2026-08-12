@@ -1,10 +1,11 @@
 import { FUEL_CARD_FIELD_HINTS as H } from '@/lib/fuelCardFieldHints';
-import { AppInput, AppTextarea, uiSpacing } from '@/components/ui';
+import { AppInput, AppTextarea, uiLayout, uiSpacing } from '@/components/ui';
 
 export type FuelCardNewFormValues = {
   card_number: string;
   pin: string;
   date_issued: string;
+  crew: string;
   notes: string;
 };
 
@@ -30,28 +31,37 @@ export function FuelCardNewFormFields({ formId, values, disabled, onChange, onSu
         label="Card # *"
         value={values.card_number}
         onChange={(e) => onChange('card_number', e.target.value)}
-        placeholder="e.g. 6006 1234 5678 9012"
+        placeholder="e.g. 21"
         className="font-mono tracking-wider"
         required
         disabled={disabled}
         fieldHint={H.card_number}
       />
+      <div className={uiLayout.sectionGrid2}>
+        <AppInput
+          label="PIN # *"
+          value={values.pin}
+          onChange={(e) => onChange('pin', e.target.value)}
+          placeholder="0000"
+          className="font-mono tracking-widest"
+          required
+          disabled={disabled}
+          fieldHint={H.pin}
+        />
+        <AppInput
+          label="Crew"
+          value={values.crew}
+          onChange={(e) => onChange('crew', e.target.value)}
+          placeholder="e.g. Metal, Flat, Repairs"
+          disabled={disabled}
+          fieldHint={H.crew}
+        />
+      </div>
       <AppInput
-        label="PIN # *"
-        value={values.pin}
-        onChange={(e) => onChange('pin', e.target.value)}
-        placeholder="0000"
-        className="font-mono tracking-widest"
-        required
-        disabled={disabled}
-        fieldHint={H.pin}
-      />
-      <AppInput
-        label="Date card issued *"
+        label="Date card issued"
         type="date"
         value={values.date_issued}
         onChange={(e) => onChange('date_issued', e.target.value)}
-        required
         disabled={disabled}
         fieldHint={H.date_issued}
       />

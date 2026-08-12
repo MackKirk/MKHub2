@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, cast, BigInteger, case
 from sqlalchemy.orm import Session
 
 from ..auth.security import (
@@ -31,14 +31,58 @@ from ..services.task_service import get_user_display
 router = APIRouter(prefix="/fuel-cards", tags=["fuel-cards"])
 
 
+def _attachment_ids_for_json(ids: Optional[list]) -> Optional[list[str]]:
+    if not ids:
+        return None
+    out: list[str] = []
+    for x in ids:
+        if x is None:
+            continue
+        out.append(str(x) if isinstance(x, uuid.UUID) else str(x))
+    return out if out else None
+
+
+def _assignment_to_response(db: Session, a: FuelCardAssignment) -> FuelCardAssignmentResponse:
+    return FuelCardAssignmentResponse(
+        id=a.id,
+        fuel_card_id=a.fuel_card_id,
+        assigned_to_user_id=a.assigned_to_user_id,
+        assigned_at=a.assigned_at,
+        returned_at=a.returned_at,
+        returned_to_user_id=a.returned_to_user_id,
+        notes=a.notes,
+        notes_in=getattr(a, "notes_in", None),
+        reason_out=getattr(a, "reason_out", None),
+        reason_in=getattr(a, "reason_in", None),
+        attachments_out=getattr(a, "attachments_out", None),
+        attachments_in=getattr(a, "attachments_in", None),
+        is_active=a.is_active,
+        created_by=a.created_by,
+        created_at=a.created_at,
+        assigned_to_name=get_user_display(db, a.assigned_to_user_id),
+    )
+
+
+def _card_number_numeric_expr():
+    """Sort Card # by numeric value so 11 comes before 0100 (not lexicographic)."""
+    # Strip non-digits then cast; non-numeric rows sort last.
+    digits_only = func.nullif(func.regexp_replace(FuelCard.card_number, r"[^0-9]", "", "g"), "")
+    return case((digits_only.isnot(None), cast(digits_only, BigInteger)), else_=None)
+
+
 def _card_order(sort: Optional[str], direction: str):
     is_asc = (direction or "asc").lower() == "asc"
-    if sort == "card_number":
-        return FuelCard.card_number.asc() if is_asc else FuelCard.card_number.desc()
+    if sort == "card_number" or not sort:
+        num = _card_number_numeric_expr()
+        primary = num.asc().nulls_last() if is_asc else num.desc().nulls_last()
+        secondary = FuelCard.card_number.asc() if is_asc else FuelCard.card_number.desc()
+        return (primary, secondary)
     if sort == "status":
         return FuelCard.status.asc() if is_asc else FuelCard.status.desc()
     if sort == "date_issued":
         return FuelCard.date_issued.asc() if is_asc else FuelCard.date_issued.desc()
+    if sort == "crew":
+        return FuelCard.crew.asc() if is_asc else FuelCard.crew.desc()
     return FuelCard.created_at.desc()
 
 
@@ -66,6 +110,7 @@ def list_fuel_cards(
         q = q.filter(
             or_(
                 FuelCard.card_number.ilike(term),
+                FuelCard.crew.ilike(term),
                 FuelCard.notes.ilike(term),
             )
         )
@@ -81,7 +126,10 @@ def list_fuel_cards(
             q = q.filter(~FuelCard.id.in_(active_ids))
 
     order_clause = _card_order(sort, dir or "asc")
-    q = q.order_by(order_clause)
+    if isinstance(order_clause, tuple):
+        q = q.order_by(*order_clause)
+    else:
+        q = q.order_by(order_clause)
 
     total = q.count()
     cards = q.offset(offset).limit(limit).all()
@@ -236,24 +284,7 @@ def list_card_assignments(
         .order_by(FuelCardAssignment.assigned_at.desc())
         .all()
     )
-    out: List[FuelCardAssignmentResponse] = []
-    for a in rows:
-        out.append(
-            FuelCardAssignmentResponse(
-                id=a.id,
-                fuel_card_id=a.fuel_card_id,
-                assigned_to_user_id=a.assigned_to_user_id,
-                assigned_at=a.assigned_at,
-                returned_at=a.returned_at,
-                returned_to_user_id=a.returned_to_user_id,
-                notes=a.notes,
-                is_active=a.is_active,
-                created_by=a.created_by,
-                created_at=a.created_at,
-                assigned_to_name=get_user_display(db, a.assigned_to_user_id),
-            )
-        )
-    return out
+    return [_assignment_to_response(db, a) for a in rows]
 
 
 @router.get("/{card_id}/history")
@@ -419,11 +450,15 @@ def assign_fuel_card(
         o.returned_at = now
         o.returned_to_user_id = user.id
 
+    reason = (payload.reason or "").strip() or None
+    notes = (payload.notes or "").strip() or None
     new_a = FuelCardAssignment(
         fuel_card_id=card_id,
         assigned_to_user_id=payload.assigned_to_user_id,
         assigned_at=now,
-        notes=payload.notes,
+        notes=notes,
+        reason_out=reason,
+        attachments_out=_attachment_ids_for_json(payload.attachment_ids),
         is_active=True,
         created_by=user.id,
     )
@@ -443,23 +478,12 @@ def assign_fuel_card(
             "fuel_card_id": str(card_id),
             "assigned_to_user_id": str(payload.assigned_to_user_id),
             "assigned_to_name": assignee_name,
+            "reason_out": reason,
         },
         context={"fuel_card_id": str(card_id)},
     )
 
-    return FuelCardAssignmentResponse(
-        id=new_a.id,
-        fuel_card_id=new_a.fuel_card_id,
-        assigned_to_user_id=new_a.assigned_to_user_id,
-        assigned_at=new_a.assigned_at,
-        returned_at=new_a.returned_at,
-        returned_to_user_id=new_a.returned_to_user_id,
-        notes=new_a.notes,
-        is_active=new_a.is_active,
-        created_by=new_a.created_by,
-        created_at=new_a.created_at,
-        assigned_to_name=get_user_display(db, new_a.assigned_to_user_id),
-    )
+    return _assignment_to_response(db, new_a)
 
 
 @router.post("/{card_id}/return", response_model=FuelCardAssignmentResponse)
@@ -491,9 +515,11 @@ def return_fuel_card(
     active.is_active = False
     active.returned_at = now
     active.returned_to_user_id = user.id
-    if payload.notes:
-        prefix = "\n" if active.notes else ""
-        active.notes = (active.notes or "") + prefix + "Return: " + payload.notes.strip()
+    reason = (payload.reason or "").strip() or None
+    notes_in = (payload.notes or "").strip() or None
+    active.reason_in = reason
+    active.notes_in = notes_in
+    active.attachments_in = _attachment_ids_for_json(payload.attachment_ids)
 
     db.commit()
     db.refresh(active)
@@ -510,20 +536,9 @@ def return_fuel_card(
             "fuel_card_id": str(card_id),
             "returned": True,
             "assigned_to_name": assignee_name,
+            "reason_in": reason,
         },
         context={"fuel_card_id": str(card_id)},
     )
 
-    return FuelCardAssignmentResponse(
-        id=active.id,
-        fuel_card_id=active.fuel_card_id,
-        assigned_to_user_id=active.assigned_to_user_id,
-        assigned_at=active.assigned_at,
-        returned_at=active.returned_at,
-        returned_to_user_id=active.returned_to_user_id,
-        notes=active.notes,
-        is_active=active.is_active,
-        created_by=active.created_by,
-        created_at=active.created_at,
-        assigned_to_name=get_user_display(db, active.assigned_to_user_id),
-    )
+    return _assignment_to_response(db, active)
