@@ -1053,6 +1053,8 @@ def thumbnail(
         raise HTTPException(status_code=404, detail="File not found")
     assert_can_read_file_object(user, db, fo)
 
+    target_w = max(80, min(1024, int(w or 200)))
+
     # Get the appropriate storage provider for this specific file
     storage = get_storage_for_file(fo)
     
@@ -1197,14 +1199,17 @@ def thumbnail(
         try:
             im = _pil_image_for_png_thumbnail(im)
             # Resize to width maintaining aspect
-            target_w = max(80, min(1024, int(w or 200)))
             scale = target_w / float(im.width)
             target_h = int(im.height * scale)
             im = im.resize((target_w, max(1, target_h)), PILImage.Resampling.LANCZOS)
             out = io.BytesIO()
             im.save(out, format="PNG", optimize=True)
-            out.seek(0)
-            return Response(content=out.read(), media_type="image/png")
+            png_bytes = out.getvalue()
+            return Response(
+                content=png_bytes,
+                media_type="image/png",
+                headers={"Cache-Control": "private, max-age=86400"},
+            )
         finally:
             im.close()
     except HTTPException:

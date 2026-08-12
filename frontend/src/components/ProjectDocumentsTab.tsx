@@ -30,6 +30,8 @@ type UserDocument = {
   id: string;
   title: string;
   project_id?: string | null;
+  /** Present on list summary responses; full GET always has complete pages. */
+  page_count?: number;
   pages?: DocumentPage[] | unknown[];
   created_at?: string;
   updated_at?: string | null;
@@ -216,7 +218,19 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
     }
   };
 
+  const prefetchDocument = useCallback(
+    (docId: string) => {
+      void queryClient.prefetchQuery({
+        queryKey: ['document-creator-doc', docId],
+        queryFn: () => api<UserDocument>('GET', `/document-creator/documents/${docId}`),
+        staleTime: 30_000,
+      });
+    },
+    [queryClient],
+  );
+
   const handleEdit = (doc: UserDocument) => {
+    prefetchDocument(doc.id);
     setModalDocumentId(doc.id);
     setShowModal(true);
   };
@@ -285,7 +299,12 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
       : 'flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 hover:border-gray-300';
 
     return (
-      <li key={doc.id} className={rowShellClass}>
+      <li
+        key={doc.id}
+        className={rowShellClass}
+        onMouseEnter={() => prefetchDocument(doc.id)}
+        onFocusCapture={() => prefetchDocument(doc.id)}
+      >
         <button
           type="button"
           onClick={() => handleEdit(doc)}

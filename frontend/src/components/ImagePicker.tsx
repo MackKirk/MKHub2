@@ -146,7 +146,7 @@ export default function ImagePicker({
 }:{
   isOpen:boolean,
   onClose:()=>void,
-  onConfirm: (blob: Blob, meta?: ImagePickerConfirmMeta) => void,
+  onConfirm: (blob: Blob, meta?: ImagePickerConfirmMeta) => void | Promise<void>,
   targetWidth:number,
   targetHeight:number,
   allowEdit?:boolean,
@@ -213,6 +213,8 @@ export default function ImagePicker({
   const blobUrlRef = useRef<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const dropDepthRef = useRef(0);
+  /** Ensures openEditorOnOpen only auto-opens once per picker session (not after Save updates img). */
+  const autoOpenedEditorRef = useRef(false);
 
   useEffect(()=>{
     if(!isOpen){
@@ -220,6 +222,8 @@ export default function ImagePicker({
       setGalleryDialogOpen(false);
       setOrientation('landscape');
       setLibraryLoaded(false); setFilesOriginals([]); setFilesDerived([]);
+      autoOpenedEditorRef.current = false;
+      setShowImageEditor(false);
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
@@ -295,6 +299,7 @@ export default function ImagePicker({
     // Handle paste event (works with Ctrl+V, Cmd+V, or right-click paste)
     const onPaste = async (e: ClipboardEvent) => {
       e.preventDefault();
+      e.stopImmediatePropagation();
       const items = e.clipboardData?.items;
       if (!items) {
         // Try Clipboard API as fallback
@@ -339,11 +344,11 @@ export default function ImagePicker({
     };
     
     window.addEventListener('keydown', onKey);
-    window.addEventListener('paste', onPaste);
+    window.addEventListener('paste', onPaste, true);
     
     return () => {
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('paste', onPaste);
+      window.removeEventListener('paste', onPaste, true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, onClose]); // loadFromFile is stable, no need to include
@@ -501,7 +506,7 @@ export default function ImagePicker({
             setProgressMessage('');
           };
           image.crossOrigin = 'anonymous';
-          image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024&cb=${Date.now()}`);
+          image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
           return;
         }
         
@@ -557,7 +562,7 @@ export default function ImagePicker({
               setProgressMessage('');
             };
             img2.crossOrigin = 'anonymous';
-            img2.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024&cb=${Date.now()}`);
+            img2.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
           }).catch((e:any)=>{
             toast.error('Failed to load image');
             setIsLoading(false); 
@@ -624,7 +629,7 @@ export default function ImagePicker({
         setProgressMessage('');
       };
       image.crossOrigin = 'anonymous';
-      image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024&cb=${Date.now()}`);
+      image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
     }catch(e: any){ 
       console.error('Upload failed:', e);
       const errorMsg = e?.message || e?.response?.data?.detail || 'Upload failed';
@@ -653,7 +658,7 @@ export default function ImagePicker({
       image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
       image.crossOrigin = 'anonymous';
       // Use thumbnail endpoint to ensure browser-compatible PNG (works for HEIC too)
-      image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024&cb=${Date.now()}`);
+      image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
     }catch(e){ toast.error('Failed to open image'); }
   };
 
@@ -668,6 +673,8 @@ export default function ImagePicker({
     if (!isOpen) return;
     if (!openEditorOnOpen) return;
     if (!img) return;
+    if (autoOpenedEditorRef.current) return;
+    autoOpenedEditorRef.current = true;
     setShowImageEditor(true);
   }, [isOpen, openEditorOnOpen, img]);
 
@@ -766,10 +773,10 @@ export default function ImagePicker({
       const exportQuality = exportPng ? undefined : 0.95;
 
       await new Promise<void>((resolve, reject) => {
-        canvas.toBlob((b)=>{
+        canvas.toBlob(async (b)=>{
           if(b){
             try {
-              onConfirm(b, {
+              await onConfirm(b, {
                 originalFileObjectId,
                 intrinsicWidth: outW,
                 intrinsicHeight: outH,
@@ -816,6 +823,7 @@ export default function ImagePicker({
     try {
       if (!clientId && !projectId) {
         toast.error('Client or project context required');
+        setIsSavingFromEditor(false);
         return;
       }
 
@@ -877,6 +885,11 @@ export default function ImagePicker({
         image.src = imageUrl;
       });
 
+      // Unblock picker UI immediately — upload continues in background for gallery id.
+      toast.success('Image edited');
+      setShowImageEditor(false);
+      setIsSavingFromEditor(false);
+
       const editedMime = imageBlob.type || (keepPng ? 'image/png' : 'image/jpeg');
       const editedExt = editedMime === 'image/png' ? 'png' : 'jpg';
       const uniqueName = `edited_${Date.now()}_${Math.random().toString(36).slice(2)}.${editedExt}`;
@@ -889,31 +902,36 @@ export default function ImagePicker({
       formData.append('employee_id', '');
       formData.append('category_id', projectId ? 'document-creator' : 'proposal-upload');
 
-      const conf: any = await api('POST', '/files/upload-proxy', formData);
-      const fileObjectId = conf.id;
-
-      if (clientId) {
+      void (async () => {
         try {
-          await api('POST', `/clients/${encodeURIComponent(String(clientId))}/files?file_object_id=${encodeURIComponent(fileObjectId)}&category=${encodeURIComponent('proposal-upload')}&original_name=${encodeURIComponent(uniqueName)}`);
-          try {
-            loadLibrary(false);
-          } catch (_e) {}
-        } catch (attachError) {
-          console.error('Failed to attach edited image to client library:', attachError);
+          const conf: any = await api('POST', '/files/upload-proxy', formData);
+          const fileObjectId = conf.id;
+
+          if (clientId) {
+            try {
+              await api('POST', `/clients/${encodeURIComponent(String(clientId))}/files?file_object_id=${encodeURIComponent(fileObjectId)}&category=${encodeURIComponent('proposal-upload')}&original_name=${encodeURIComponent(uniqueName)}`);
+              try {
+                loadLibrary(false);
+              } catch (_e) {}
+            } catch (attachError) {
+              console.error('Failed to attach edited image to client library:', attachError);
+            }
+          } else if (projectId) {
+            try {
+              loadLibrary(true);
+            } catch (_e) {}
+          }
+
+          setOriginalFileObjectId(fileObjectId);
+        } catch (uploadErr) {
+          console.error('Background upload of edited image failed:', uploadErr);
+          // Picker already shows the blob; Confirm will re-upload the export.
         }
-      } else if (projectId) {
-        try {
-          loadLibrary(true);
-        } catch (_e) {}
-      }
-
-      setOriginalFileObjectId(fileObjectId);
-      toast.success('Image edited and saved');
-      setShowImageEditor(false);
+      })();
+      return;
     } catch (e: any) {
       console.error('Failed to save edited image:', e);
       toast.error('Failed to save edited image');
-    } finally {
       setIsSavingFromEditor(false);
     }
   };
@@ -1343,8 +1361,14 @@ export default function ImagePicker({
                       type="button"
                       disabled={!img || isLoading || isConfirming}
                       onClick={confirm}
-                      className={`${editorTransitionInteractive} h-9 shrink-0 rounded-md bg-brand-red px-4 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
+                      className={`${editorTransitionInteractive} inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-brand-red px-4 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
                     >
+                      {isConfirming && (
+                        <span
+                          className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/35 border-t-white"
+                          aria-hidden
+                        />
+                      )}
                       {isConfirming ? 'Processing…' : 'Confirm'}
                     </button>
                   </div>
@@ -1355,7 +1379,7 @@ export default function ImagePicker({
         </div>
       </div>
     </OverlayPortal>
-      {showProgress && (
+      {(showProgress || isConfirming) && (
         <OverlayPortal>
         <div
           className={uiCx(
@@ -1365,7 +1389,9 @@ export default function ImagePicker({
         >
           <div className="w-[360px] max-w-[90vw] rounded-xl border border-slate-200/90 bg-white px-6 py-5 text-center shadow-2xl ring-1 ring-slate-900/[0.06]">
             <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand-red" />
-            <div className="text-sm text-slate-600">{progressMessage || 'Processing…'}</div>
+            <div className="text-sm text-slate-600">
+              {isConfirming ? 'Processing…' : progressMessage || 'Processing…'}
+            </div>
           </div>
         </div>
         </OverlayPortal>

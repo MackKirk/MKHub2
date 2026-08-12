@@ -1,5 +1,5 @@
 import { withFileAccessToken } from '@/lib/api';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
 import {
   editorSidePanelBodyClass,
@@ -74,7 +74,7 @@ function lineMarker(style: LineListStyle | undefined, ordinal: number): string {
   return '';
 }
 
-function PageThumbnail({
+const PageThumbnail = memo(function PageThumbnail({
   page,
   templates,
   backgroundUrl,
@@ -264,7 +264,7 @@ function PageThumbnail({
       </div>
     </button>
   );
-}
+});
 
 export default function DocumentPagesStrip({
   pages,

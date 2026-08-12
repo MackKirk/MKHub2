@@ -21,6 +21,7 @@ import {
   createBlockElement,
   sizeImageElementFrameForIntrinsicAspect,
 } from '@/types/documentCreator';
+import { readDocumentCreatorClipboard, writeDocumentCreatorClipboard } from '@/utils/documentCreatorClipboard';
 import OverlayPortal from '@/components/OverlayPortal';
 import DocumentEditorRibbon from '@/components/document-editor/DocumentEditorRibbon';
 import {
@@ -77,6 +78,7 @@ type UserDocument = {
   title: string;
   document_type_id?: string;
   project_id?: string | null;
+  page_count?: number;
   pages?: DocumentPage[];
   created_at?: string;
   updated_at?: string | null;
@@ -188,6 +190,20 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const [imagePickerFileObjectId, setImagePickerFileObjectId] = useState<string | undefined>(undefined);
   /** When true, picker opens directly in ImageEditor. */
   const [imagePickerOpenEditorOnOpen, setImagePickerOpenEditorOnOpen] = useState(false);
+  /** Stable replace target captured when picker opens (survives async upload). */
+  const imagePickerReplaceRef = useRef<{
+    elementId: string;
+    pageIndex: number;
+    /** Keep placeholder/slot frame size (do not reflow to intrinsic aspect). */
+    preserveFrame: boolean;
+  } | null>(null);
+  /** Prevents double onConfirm while upload is in flight. */
+  const imagePickerConfirmLockRef = useRef(false);
+  /** Synced for window paste listener so picker owns Ctrl+V while open. */
+  const imagePickerOpenRef = useRef(false);
+  /** True while canvas drag/resize is in progress (skip autosave dirtiness + freeze pages strip). */
+  const canvasGestureActiveRef = useRef(false);
+  const [frozenStripPages, setFrozenStripPages] = useState<DocumentPage[] | null>(null);
   const [canvasWidthPxForExport, setCanvasWidthPxForExport] = useState<number>(910);
   /** Vertical scroll container when multiple pages are stacked (`DocumentPreview` embedded). */
   const canvasScrollRef = useRef<HTMLDivElement>(null);
@@ -313,6 +329,23 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     queryKey: ['document-creator-doc', id],
     queryFn: () => api<UserDocument>('GET', `/document-creator/documents/${id}`),
     enabled: !!id,
+    placeholderData: () => {
+      if (!id) return undefined;
+      const cached = queryClient.getQueryData<UserDocument>(['document-creator-doc', id]);
+      if (cached && Array.isArray(cached.pages)) return cached;
+
+      const listKeys: Array<unknown[]> = [['document-creator-documents']];
+      if (projectId) listKeys.push(['document-creator-documents', projectId]);
+      for (const key of listKeys) {
+        const list = queryClient.getQueryData<UserDocument[]>(key);
+        const item = list?.find((d) => d.id === id);
+        if (!item || !Array.isArray(item.pages)) continue;
+        const pageCount = item.page_count ?? item.pages.length;
+        // Only seed when list payload includes every page (summary truncates after 4).
+        if (pageCount <= item.pages.length) return item;
+      }
+      return undefined;
+    },
   });
 
   const persistDocument = useCallback(
@@ -474,8 +507,22 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
 
   useEffect(() => {
     if (!isDocHydrated || isTemplate || readOnly) return;
+    if (canvasGestureActiveRef.current) return;
     notifyEdited();
   }, [title, pages, isDocHydrated, isTemplate, readOnly, notifyEdited]);
+
+  const handleCanvasGestureChange = useCallback(
+    (active: boolean) => {
+      canvasGestureActiveRef.current = active;
+      if (active) {
+        setFrozenStripPages(stateRef.current.pages);
+      } else {
+        setFrozenStripPages(null);
+        if (!isTemplate && !readOnly && isDocHydrated) notifyEdited();
+      }
+    },
+    [isTemplate, readOnly, isDocHydrated, notifyEdited],
+  );
 
   useImperativeHandle(
     ref,
@@ -635,12 +682,17 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         redo();
         return;
       }
-      // Copy/Paste/Duplicate for elements (multi-select supported; blocks excluded)
-      const toCopy = selectedEls.filter((el) => el.type !== 'block');
+      // Copy/Paste/Duplicate for elements (multi-select supported)
+      // Document mode excludes blocks; template mode allows them.
+      const toCopy = isTemplate
+        ? selectedEls
+        : selectedEls.filter((el) => el.type !== 'block');
       if (key === 'c') {
         if (toCopy.length > 0) {
           e.preventDefault();
-          clipboardRef.current = toCopy.map((el) => JSON.parse(JSON.stringify(el)) as DocElement);
+          const clones = toCopy.map((el) => JSON.parse(JSON.stringify(el)) as DocElement);
+          clipboardRef.current = clones;
+          writeDocumentCreatorClipboard(clones);
           toast.success(toCopy.length === 1 ? 'Copied.' : `Copied ${toCopy.length} elements.`);
         }
         return;
@@ -673,7 +725,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo, redo, newElementId, pushHistory, selectedElementIds, textEditingElementId, notifyBlockedByTextEdit, readOnly]);
+  }, [undo, redo, newElementId, pushHistory, selectedElementIds, textEditingElementId, notifyBlockedByTextEdit, readOnly, isTemplate]);
 
   const currentPage = pages[currentPageIndex];
   const currentTemplateId = currentPage?.template_id ?? null;
@@ -837,6 +889,59 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       return next;
     });
   }, []);
+
+  const findPageIndexForElement = useCallback((elementId: string): number | null => {
+    const pgs = stateRef.current.pages;
+    for (let i = 0; i < pgs.length; i++) {
+      if ((pgs[i].elements ?? []).some((e) => e.id === elementId)) return i;
+    }
+    return null;
+  }, []);
+
+  const closeImagePicker = useCallback(() => {
+    imagePickerReplaceRef.current = null;
+    imagePickerOpenRef.current = false;
+    setImagePickerOpen(false);
+    setImagePickerReplaceElementId(null);
+    setImagePickerFileObjectId(undefined);
+    setImagePickerOpenEditorOnOpen(false);
+  }, []);
+
+  const applyImageToElement = useCallback(
+    (
+      pageIndex: number,
+      elementId: string,
+      fileId: string,
+      meta?: { intrinsicWidth?: number; intrinsicHeight?: number; preserveFrame?: boolean },
+    ) => {
+      pushHistory();
+      updateElementsAtPageIndex(pageIndex, (prev) =>
+        prev.map((el) => {
+          if (el.id !== elementId) return el;
+          if (el.type !== 'image') return { ...el, content: fileId };
+          // Image area / slot: fill content only; never change frame geometry.
+          if (!el.content || meta?.preserveFrame) {
+            return { ...el, content: fileId, imageFit: 'fill' };
+          }
+          const next: DocElement = { ...el, content: fileId, imageFit: 'fill' };
+          const iw = meta?.intrinsicWidth;
+          const ih = meta?.intrinsicHeight;
+          if (iw && ih && iw > 0 && ih > 0) {
+            const { width_pct, height_pct } = sizeImageElementFrameForIntrinsicAspect(
+              el.width_pct ?? 40,
+              iw,
+              ih,
+            );
+            return { ...next, width_pct, height_pct };
+          }
+          return next;
+        }),
+      );
+      setCurrentPageIndex(pageIndex);
+      setSelectedElementIds([elementId]);
+    },
+    [pushHistory, updateElementsAtPageIndex],
+  );
 
   const moveElement = useCallback(
     (fromIndex: number, toIndex: number) => {
@@ -1144,6 +1249,8 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       files: File[],
       opts?: { x_pct?: number; y_pct?: number; pageIndex?: number },
     ) => {
+      // ImagePicker owns paste/upload while open — do not mutate the document yet.
+      if (imagePickerOpenRef.current) return;
       if (textEditingElementId) {
         notifyBlockedByTextEdit();
         return;
@@ -1157,6 +1264,31 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       const position =
         opts?.x_pct != null && opts?.y_pct != null ? { x_pct: opts.x_pct, y_pct: opts.y_pct } : undefined;
       try {
+        if (valid.length === 1 && stateRef.current.selectedElementIds.length === 1) {
+          const selId = stateRef.current.selectedElementIds[0];
+          const allElements = stateRef.current.pages.flatMap((p) => p.elements ?? []);
+          const selEl = allElements.find((e) => e.id === selId);
+          if (selEl?.type === 'image' && !selEl.content) {
+            const file = valid[0];
+            const fileId = await uploadDocumentImageFile(file);
+            let iw = 0;
+            let ih = 0;
+            try {
+              const dims = await readImageFileDimensions(file);
+              iw = dims.width;
+              ih = dims.height;
+            } catch {
+              /* use defaults */
+            }
+            const targetPageIndex = findPageIndexForElement(selId) ?? pageIndex;
+            applyImageToElement(targetPageIndex, selId, fileId, {
+              intrinsicWidth: iw > 0 ? iw : undefined,
+              intrinsicHeight: ih > 0 ? ih : undefined,
+            });
+            toast.success('Image updated.');
+            return;
+          }
+        }
         const newElements: DocElement[] = [];
         for (let i = 0; i < valid.length; i++) {
           const file = valid[i];
@@ -1175,22 +1307,29 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     },
     [
       textEditingElementId,
+      notifyBlockedByTextEdit,
       pushHistory,
       uploadDocumentImageFile,
       buildImageElement,
       updateElementsAtPageIndex,
+      findPageIndexForElement,
+      applyImageToElement,
     ],
   );
 
   const pasteInternalElements = useCallback(() => {
-    const buf = clipboardRef.current?.filter((el) => el.type !== 'block') ?? [];
+    const raw = readDocumentCreatorClipboard(clipboardRef.current);
+    const buf = isTemplate ? raw : raw.filter((el) => el.type !== 'block');
     if (buf.length === 0) return;
     pushHistory();
     const clones: DocElement[] = buf.map((src) => ({
       ...(JSON.parse(JSON.stringify(src)) as DocElement),
       id: newElementId(),
-      x_pct: Math.min(100 - (src.width_pct ?? 0), (src.x_pct ?? 0) + 1),
-      y_pct: Math.min(100 - (src.height_pct ?? 0), (src.y_pct ?? 0) + 1),
+      // Same geometry across documents/templates (no offset).
+      x_pct: src.x_pct ?? 0,
+      y_pct: src.y_pct ?? 0,
+      width_pct: src.width_pct,
+      height_pct: src.height_pct,
     }));
     setPages((prev) => {
       const next = [...prev];
@@ -1201,11 +1340,13 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       return next;
     });
     setSelectedElementIds(clones.map((c) => c.id));
-  }, [newElementId, pushHistory]);
+  }, [newElementId, pushHistory, isTemplate]);
 
   useEffect(() => {
     if (readOnly) return;
     const onPaste = (e: ClipboardEvent) => {
+      // Let ImagePicker handle Ctrl+V while the dialog is open.
+      if (imagePickerOpenRef.current) return;
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName?.toLowerCase();
       const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select';
@@ -1222,14 +1363,15 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
 
       if (!pasteShortcutRef.current) return;
       pasteShortcutRef.current = false;
-      const buf = clipboardRef.current?.filter((el) => el.type !== 'block') ?? [];
+      const raw = readDocumentCreatorClipboard(clipboardRef.current);
+      const buf = isTemplate ? raw : raw.filter((el) => el.type !== 'block');
       if (buf.length === 0) return;
       e.preventDefault();
       pasteInternalElements();
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [readOnly, textEditingElementId, insertImagesFromFiles, pasteInternalElements]);
+  }, [readOnly, textEditingElementId, insertImagesFromFiles, pasteInternalElements, isTemplate]);
 
   const handleAddImage = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1261,21 +1403,38 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     [currentPageIndex, handleReplaceImageAtPage]
   );
 
-  const openImagePickerForElement = useCallback((elementId: string) => {
-    const el = elements.find((x) => x.id === elementId);
-    setImagePickerReplaceElementId(elementId);
-    setImagePickerFileObjectId(el?.type === 'image' && el.content ? el.content : undefined);
-    setImagePickerOpenEditorOnOpen(false);
-    setImagePickerOpen(true);
-  }, [elements]);
+  const openImagePickerForElement = useCallback(
+    (elementId: string, pageIndex?: number) => {
+      const allElements = stateRef.current.pages.flatMap((p) => p.elements ?? []);
+      const el = allElements.find((x) => x.id === elementId);
+      const idx = pageIndex ?? findPageIndexForElement(elementId) ?? stateRef.current.currentPageIndex;
+      // Always keep the existing slot/frame when replacing (empty Image area or filled image).
+      const preserveFrame = el?.type === 'image';
+      imagePickerReplaceRef.current = { elementId, pageIndex: idx, preserveFrame };
+      imagePickerOpenRef.current = true;
+      setImagePickerReplaceElementId(elementId);
+      setImagePickerFileObjectId(el?.type === 'image' && el.content ? el.content : undefined);
+      setImagePickerOpenEditorOnOpen(false);
+      setImagePickerOpen(true);
+    },
+    [findPageIndexForElement],
+  );
 
-  const openImageEditorForElement = useCallback((elementId: string) => {
-    const el = elements.find((x) => x.id === elementId);
-    setImagePickerReplaceElementId(elementId);
-    setImagePickerFileObjectId(el?.type === 'image' && el.content ? el.content : undefined);
-    setImagePickerOpenEditorOnOpen(true);
-    setImagePickerOpen(true);
-  }, [elements]);
+  const openImageEditorForElement = useCallback(
+    (elementId: string, pageIndex?: number) => {
+      const allElements = stateRef.current.pages.flatMap((p) => p.elements ?? []);
+      const el = allElements.find((x) => x.id === elementId);
+      const idx = pageIndex ?? findPageIndexForElement(elementId) ?? stateRef.current.currentPageIndex;
+      const preserveFrame = el?.type === 'image';
+      imagePickerReplaceRef.current = { elementId, pageIndex: idx, preserveFrame };
+      imagePickerOpenRef.current = true;
+      setImagePickerReplaceElementId(elementId);
+      setImagePickerFileObjectId(el?.type === 'image' && el.content ? el.content : undefined);
+      setImagePickerOpenEditorOnOpen(true);
+      setImagePickerOpen(true);
+    },
+    [findPageIndexForElement],
+  );
 
   const handleExportPdf = useCallback(async () => {
     if (!id) return;
@@ -1493,12 +1652,21 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         onAddText={handleAddText}
         onAddImage={() => {
           if (projectId) {
+            if (
+              selectedElementIds.length === 1 &&
+              selectedElement?.type === 'image' &&
+              !selectedElement.content
+            ) {
+              openImagePickerForElement(selectedElement.id);
+              return;
+            }
+            imagePickerReplaceRef.current = null;
+            imagePickerOpenRef.current = true;
             setImagePickerReplaceElementId(null);
             setImagePickerFileObjectId(undefined);
             setImagePickerOpenEditorOnOpen(false);
             setImagePickerOpen(true);
-          }
-          else fileInputRef.current?.click();
+          } else fileInputRef.current?.click();
         }}
         onAddImagePlaceholder={handleAddImagePlaceholder}
         showBlock={!!isTemplate}
@@ -1525,14 +1693,47 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
               }
               onEditImageClick={projectId ? openImageEditorForElement : undefined}
               onAlignSelected={handleAlignSelected}
+              onSendBackward={
+                selectedElement
+                  ? () => {
+                      const idx = elements.findIndex((e) => e.id === selectedElement.id);
+                      if (idx >= 0) moveBackward(idx);
+                    }
+                  : undefined
+              }
+              onBringForward={
+                selectedElement
+                  ? () => {
+                      const idx = elements.findIndex((e) => e.id === selectedElement.id);
+                      if (idx >= 0) moveForward(idx);
+                    }
+                  : undefined
+              }
+              onSendToBack={
+                selectedElement
+                  ? () => {
+                      const idx = elements.findIndex((e) => e.id === selectedElement.id);
+                      if (idx >= 0) sendToBack(idx);
+                    }
+                  : undefined
+              }
+              onBringToFront={
+                selectedElement
+                  ? () => {
+                      const idx = elements.findIndex((e) => e.id === selectedElement.id);
+                      if (idx >= 0) bringToFront(idx);
+                    }
+                  : undefined
+              }
             />
           ) : undefined
         }
         inspectorPanel={
           !readOnly ? (
             <DocumentSelectionInspector
-              element={selectedElement && selectedElement.type !== 'block' ? selectedElement : null}
+              element={selectedElement}
               onUpdate={handleUpdateElementWithHistory}
+              margins={effectiveMargins}
             />
           ) : undefined
         }
@@ -1591,7 +1792,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       )}
       <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden ${editorSurfaceWorkspaceClass}`}>
         <DocumentPagesStrip
-          pages={pages}
+          pages={frozenStripPages ?? pages}
           templates={templates}
           currentPageIndex={currentPageIndex}
           onPageSelect={handlePageSelect}
@@ -1625,6 +1826,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                 ...page.margins,
               };
               const elsForPage = page.elements ?? [];
+              const mountInteractivePreview = Math.abs(pageIndex - currentPageIndex) <= 1;
               return (
                 <section
                   key={pageIndex}
@@ -1632,6 +1834,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                   data-page-index={pageIndex}
                   className="box-border flex w-full shrink-0 flex-col items-center justify-center py-6"
                 >
+                  {mountInteractivePreview ? (
                   <DocumentPreview
                     embedded
                     embedScrollParentRef={canvasScrollRef}
@@ -1660,6 +1863,10 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                     onUpdateElement={
                       readOnly ? undefined : (id, u) => handleUpdateElementAtPage(pageIndex, id, u)
                     }
+                    onBatchUpdateElements={
+                      readOnly ? undefined : (updater) => updateElementsAtPageIndex(pageIndex, updater)
+                    }
+                    onGestureChange={readOnly ? undefined : handleCanvasGestureChange}
                     onRemoveElement={readOnly ? undefined : (id) => handleRemoveElementAtPage(pageIndex, id)}
                     onReplaceImage={
                       readOnly ? undefined : (id, file) => handleReplaceImageAtPage(pageIndex, id, file)
@@ -1671,6 +1878,13 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                         : (files, position) => insertImagesFromFiles(files, { ...position, pageIndex })
                     }
                   />
+                  ) : (
+                    <div
+                      className="pointer-events-none w-full max-w-[910px] rounded-xl border border-slate-200/80 bg-slate-100/80 shadow-sm"
+                      style={{ aspectRatio: '210 / 297' }}
+                      aria-hidden
+                    />
+                  )}
                 </section>
               );
             })}
@@ -1700,6 +1914,12 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
             }}
             selectedElementIds={selectedElementIds}
             onUpdateElement={readOnly ? undefined : handleUpdateElement}
+            onBatchUpdateElements={
+              readOnly
+                ? undefined
+                : (updater) => updateElementsAtPageIndex(currentPageIndex, updater)
+            }
+            onGestureChange={readOnly ? undefined : handleCanvasGestureChange}
             onRemoveElement={readOnly ? undefined : handleRemoveElement}
             onReplaceImage={readOnly ? undefined : handleReplaceImage}
             onReplaceImageClick={readOnly ? undefined : (projectId ? openImagePickerForElement : undefined)}
@@ -1903,12 +2123,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       {!isTemplate && projectId && imagePickerOpen && (
         <ImagePicker
           isOpen={true}
-          onClose={() => {
-            setImagePickerOpen(false);
-            setImagePickerReplaceElementId(null);
-            setImagePickerFileObjectId(undefined);
-            setImagePickerOpenEditorOnOpen(false);
-          }}
+          onClose={closeImagePicker}
           projectId={projectId}
           fileObjectId={imagePickerFileObjectId}
           openEditorOnOpen={imagePickerOpenEditorOnOpen}
@@ -1918,30 +2133,32 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           exportScale={2}
           preserveTransparency={true}
           onConfirm={async (blob, meta?: ImagePickerConfirmMeta) => {
+            if (imagePickerConfirmLockRef.current) return;
+            imagePickerConfirmLockRef.current = true;
+            const replaceTarget = imagePickerReplaceRef.current;
             try {
               const mime = meta?.mimeType || blob.type || 'image/jpeg';
               const ext = mime === 'image/png' ? 'png' : 'jpg';
               const file = new File([blob], `doc-img-${Date.now()}.${ext}`, { type: mime });
               const fileId = await uploadDocumentImageFile(file);
-              const iw = meta?.intrinsicWidth;
-              const ih = meta?.intrinsicHeight;
-              const replaceId = imagePickerReplaceElementId;
-              if (replaceId) {
-                pushHistory();
-                handleUpdateElement(replaceId, (el) => {
-                  if (el.type !== 'image') {
-                    return { ...el, content: fileId };
-                  }
-                  const next: DocElement = {
-                    ...el,
-                    content: fileId,
-                    imageFit: 'fill',
-                  };
-                  if (iw && ih && iw > 0 && ih > 0) {
-                    const { width_pct, height_pct } = sizeImageElementFrameForIntrinsicAspect(el.width_pct ?? 40, iw, ih);
-                    return { ...next, width_pct, height_pct };
-                  }
-                  return next;
+
+              // Prefetch thumbnail so the canvas paints promptly after the picker closes.
+              try {
+                await new Promise<void>((resolve) => {
+                  const img = new Image();
+                  img.onload = () => resolve();
+                  img.onerror = () => resolve();
+                  img.src = withFileAccessToken(`/files/${fileId}/thumbnail?w=900`);
+                });
+              } catch {
+                /* ignore prefetch errors */
+              }
+
+              if (replaceTarget) {
+                applyImageToElement(replaceTarget.pageIndex, replaceTarget.elementId, fileId, {
+                  intrinsicWidth: meta?.intrinsicWidth,
+                  intrinsicHeight: meta?.intrinsicHeight,
+                  preserveFrame: replaceTarget.preserveFrame,
                 });
                 toast.success('Image updated.');
               } else {
@@ -1949,12 +2166,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                 handleAddElement(el);
                 toast.success('Image added.');
               }
-              setImagePickerOpen(false);
-              setImagePickerReplaceElementId(null);
-              setImagePickerFileObjectId(undefined);
-              setImagePickerOpenEditorOnOpen(false);
+              closeImagePicker();
             } catch {
               toast.error('Failed to upload image.');
+            } finally {
+              imagePickerConfirmLockRef.current = false;
             }
           }}
         />

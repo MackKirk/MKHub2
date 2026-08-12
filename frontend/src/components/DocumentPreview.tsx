@@ -18,6 +18,10 @@ import {
 } from '@/components/document-editor/documentProtectedVisuals';
 import { PinIcon } from '@/components/document-editor/documentEditorIcons';
 import { notifyTextEditBlocking } from '@/components/document-editor/notifyTextEditBlocking';
+import {
+  DOCUMENT_MIN_SIZE_PCT,
+  DOCUMENT_REF_WIDTH_PX,
+} from '@/utils/documentElementGeometry';
 
 export type TemplateMargins = {
   left_pct?: number;
@@ -74,15 +78,19 @@ type DocumentPreviewProps = {
     files: File[],
     position?: { x_pct: number; y_pct: number },
   ) => void | Promise<void>;
+  /** Batch-update many elements in one parent state write (preferred on gesture end). */
+  onBatchUpdateElements?: (updater: (els: DocElement[]) => DocElement[]) => void;
+  /** Fired when a canvas drag/resize gesture starts or ends (for autosave/strip isolation). */
+  onGestureChange?: (active: boolean) => void;
 };
 
 const A4_ASPECT = 210 / 297;
-const MIN_SIZE_PCT = 2;
+const MIN_SIZE_PCT = DOCUMENT_MIN_SIZE_PCT;
 
 // Reference width used to keep font sizing stable across window sizes.
 // Font sizes are stored in "reference px" and scaled by (canvasWidth / REFERENCE_CANVAS_WIDTH_PX).
-const REFERENCE_CANVAS_WIDTH_PX = 910;
-const DOCUMENT_PREVIEW_IMAGE_WIDTH_PX = 1600;
+const REFERENCE_CANVAS_WIDTH_PX = DOCUMENT_REF_WIDTH_PX;
+const DOCUMENT_PREVIEW_IMAGE_WIDTH_PX = 900;
 
 /** Ribbon strip below toolbar — keep focus in inline text editor when using formatting controls. */
 const DOCUMENT_EDITOR_FORMATTING_SELECTOR = '[data-document-editor-formatting]';
@@ -1472,6 +1480,29 @@ function overlapsAnyBlock(
   );
 }
 
+/** Resolve drag against blocks per-axis so contact on one side does not freeze the free axis. */
+function resolveMoveAgainstBlocks(
+  desiredX: number,
+  desiredY: number,
+  w: number,
+  h: number,
+  blocks: DocElement[],
+  excludeId: string | undefined,
+  currentX: number,
+  currentY: number,
+): { x_pct: number; y_pct: number } {
+  if (!overlapsAnyBlock(desiredX, desiredY, w, h, blocks, excludeId)) {
+    return { x_pct: desiredX, y_pct: desiredY };
+  }
+  if (!overlapsAnyBlock(currentX, desiredY, w, h, blocks, excludeId)) {
+    return { x_pct: currentX, y_pct: desiredY };
+  }
+  if (!overlapsAnyBlock(desiredX, currentY, w, h, blocks, excludeId)) {
+    return { x_pct: desiredX, y_pct: currentY };
+  }
+  return { x_pct: currentX, y_pct: currentY };
+}
+
 // --- Snap guides (alignment lines when dragging) ---
 const SNAP_THRESHOLD_PCT = 2.5;
 /** Only consider alignment to elements in the same "band" (vertical band for vertical lines, horizontal for horizontal). */
@@ -1599,6 +1630,62 @@ function computeSnap(
   return { dx: outDx, dy: outDy, guides };
 }
 
+function isCornerResizeHandle(handle: ResizeHandle): boolean {
+  return handle === 'nw' || handle === 'ne' || handle === 'sw' || handle === 'se';
+}
+
+/** Proportional corner resize anchored on the opposite corner; preserves startW/startH aspect. */
+function applyProportionalCornerResize(
+  handle: ResizeHandle,
+  dx: number,
+  dy: number,
+  startX: number,
+  startY: number,
+  startW: number,
+  startH: number,
+): { x: number; y: number; w: number; h: number } {
+  const aspect = startW / Math.max(0.0001, startH);
+  const right = startX + startW;
+  const bottom = startY + startH;
+
+  let w: number;
+  let h: number;
+  // Prefer the axis with the larger relative change so the cursor stays near the handle.
+  const fromW = Math.abs(dx);
+  const fromH = Math.abs(dy) * aspect;
+  if (fromW >= fromH) {
+    w = handle === 'nw' || handle === 'sw' ? startW - dx : startW + dx;
+    h = w / aspect;
+  } else {
+    h = handle === 'nw' || handle === 'ne' ? startH - dy : startH + dy;
+    w = h * aspect;
+  }
+
+  let x = startX;
+  let y = startY;
+  switch (handle) {
+    case 'se':
+      x = startX;
+      y = startY;
+      break;
+    case 'sw':
+      x = right - w;
+      y = startY;
+      break;
+    case 'ne':
+      x = startX;
+      y = bottom - h;
+      break;
+    case 'nw':
+      x = right - w;
+      y = bottom - h;
+      break;
+    default:
+      break;
+  }
+  return { x, y, w, h };
+}
+
 function applyResize(
   handle: ResizeHandle,
   dx: number,
@@ -1607,7 +1694,8 @@ function applyResize(
   startY: number,
   startW: number,
   startH: number,
-  margins?: TemplateMargins | null
+  margins?: TemplateMargins | null,
+  keepAspect = false,
 ): { x_pct: number; y_pct: number; width_pct: number; height_pct: number } {
   const L = margins?.left_pct ?? 0;
   const R = margins?.right_pct ?? 0;
@@ -1619,44 +1707,81 @@ function applyResize(
     y = startY,
     w = startW,
     h = startH;
-  switch (handle) {
-    case 'se':
-      w = startW + dx;
-      h = startH + dy;
-      break;
-    case 'sw':
-      x = startX + dx;
-      w = startW - dx;
-      h = startH + dy;
-      break;
-    case 'ne':
-      w = startW + dx;
-      y = startY + dy;
-      h = startH - dy;
-      break;
-    case 'nw':
-      x = startX + dx;
-      w = startW - dx;
-      y = startY + dy;
-      h = startH - dy;
-      break;
-    case 'e':
-      w = startW + dx;
-      break;
-    case 'w':
-      x = startX + dx;
-      w = startW - dx;
-      break;
-    case 's':
-      h = startH + dy;
-      break;
-    case 'n':
-      y = startY + dy;
-      h = startH - dy;
-      break;
+  if (keepAspect && isCornerResizeHandle(handle)) {
+    ({ x, y, w, h } = applyProportionalCornerResize(handle, dx, dy, startX, startY, startW, startH));
+  } else {
+    switch (handle) {
+      case 'se':
+        w = startW + dx;
+        h = startH + dy;
+        break;
+      case 'sw':
+        x = startX + dx;
+        w = startW - dx;
+        h = startH + dy;
+        break;
+      case 'ne':
+        w = startW + dx;
+        y = startY + dy;
+        h = startH - dy;
+        break;
+      case 'nw':
+        x = startX + dx;
+        w = startW - dx;
+        y = startY + dy;
+        h = startH - dy;
+        break;
+      case 'e':
+        w = startW + dx;
+        break;
+      case 'w':
+        x = startX + dx;
+        w = startW - dx;
+        break;
+      case 's':
+        h = startH + dy;
+        break;
+      case 'n':
+        y = startY + dy;
+        h = startH - dy;
+        break;
+    }
   }
   w = Math.max(MIN_SIZE_PCT, Math.min(maxW, w));
   h = Math.max(MIN_SIZE_PCT, Math.min(maxH, h));
+  if (keepAspect && isCornerResizeHandle(handle)) {
+    const aspect = startW / Math.max(0.0001, startH);
+    // Re-fit after clamp so aspect stays locked to the opposite corner.
+    const right = startX + startW;
+    const bottom = startY + startH;
+    if (w / h > aspect) {
+      w = h * aspect;
+    } else {
+      h = w / aspect;
+    }
+    w = Math.max(MIN_SIZE_PCT, Math.min(maxW, w));
+    h = Math.max(MIN_SIZE_PCT, Math.min(maxH, h));
+    switch (handle) {
+      case 'se':
+        x = startX;
+        y = startY;
+        break;
+      case 'sw':
+        x = right - w;
+        y = startY;
+        break;
+      case 'ne':
+        x = startX;
+        y = bottom - h;
+        break;
+      case 'nw':
+        x = right - w;
+        y = bottom - h;
+        break;
+      default:
+        break;
+    }
+  }
   const b = contentBounds(margins, w, h);
   x = Math.max(b.minX, Math.min(b.maxX, x));
   y = Math.max(b.minY, Math.min(b.maxY, y));
@@ -1670,7 +1795,8 @@ function applyResizeBlock(
   startX: number,
   startY: number,
   startW: number,
-  startH: number
+  startH: number,
+  keepAspect = false,
 ): { x_pct: number; y_pct: number; width_pct: number; height_pct: number } {
   const maxW = 100;
   const maxH = 100;
@@ -1678,44 +1804,80 @@ function applyResizeBlock(
     y = startY,
     w = startW,
     h = startH;
-  switch (handle) {
-    case 'se':
-      w = startW + dx;
-      h = startH + dy;
-      break;
-    case 'sw':
-      x = startX + dx;
-      w = startW - dx;
-      h = startH + dy;
-      break;
-    case 'ne':
-      w = startW + dx;
-      y = startY + dy;
-      h = startH - dy;
-      break;
-    case 'nw':
-      x = startX + dx;
-      w = startW - dx;
-      y = startY + dy;
-      h = startH - dy;
-      break;
-    case 'e':
-      w = startW + dx;
-      break;
-    case 'w':
-      x = startX + dx;
-      w = startW - dx;
-      break;
-    case 's':
-      h = startH + dy;
-      break;
-    case 'n':
-      y = startY + dy;
-      h = startH - dy;
-      break;
+  if (keepAspect && isCornerResizeHandle(handle)) {
+    ({ x, y, w, h } = applyProportionalCornerResize(handle, dx, dy, startX, startY, startW, startH));
+  } else {
+    switch (handle) {
+      case 'se':
+        w = startW + dx;
+        h = startH + dy;
+        break;
+      case 'sw':
+        x = startX + dx;
+        w = startW - dx;
+        h = startH + dy;
+        break;
+      case 'ne':
+        w = startW + dx;
+        y = startY + dy;
+        h = startH - dy;
+        break;
+      case 'nw':
+        x = startX + dx;
+        w = startW - dx;
+        y = startY + dy;
+        h = startH - dy;
+        break;
+      case 'e':
+        w = startW + dx;
+        break;
+      case 'w':
+        x = startX + dx;
+        w = startW - dx;
+        break;
+      case 's':
+        h = startH + dy;
+        break;
+      case 'n':
+        y = startY + dy;
+        h = startH - dy;
+        break;
+    }
   }
   w = Math.max(MIN_SIZE_PCT, Math.min(maxW, w));
   h = Math.max(MIN_SIZE_PCT, Math.min(maxH, h));
+  if (keepAspect && isCornerResizeHandle(handle)) {
+    const aspect = startW / Math.max(0.0001, startH);
+    const right = startX + startW;
+    const bottom = startY + startH;
+    if (w / h > aspect) {
+      w = h * aspect;
+    } else {
+      h = w / aspect;
+    }
+    w = Math.max(MIN_SIZE_PCT, Math.min(maxW, w));
+    h = Math.max(MIN_SIZE_PCT, Math.min(maxH, h));
+    switch (handle) {
+      case 'se':
+        x = startX;
+        y = startY;
+        break;
+      case 'sw':
+        x = right - w;
+        y = startY;
+        break;
+      case 'ne':
+        x = startX;
+        y = bottom - h;
+        break;
+      case 'nw':
+        x = right - w;
+        y = bottom - h;
+        break;
+      default:
+        break;
+    }
+  }
   const b = contentBoundsBlock(w, h);
   x = Math.max(b.minX, Math.min(b.maxX, x));
   y = Math.max(b.minY, Math.min(b.maxY, y));
@@ -1747,6 +1909,8 @@ export default function DocumentPreview({
   editingElementId: controlledEditingElementId,
   onEditingElementIdChange,
   onInsertImages,
+  onBatchUpdateElements,
+  onGestureChange,
 }: DocumentPreviewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -1764,10 +1928,14 @@ export default function DocumentPreview({
   const dragRef = useRef<{
     movingIds: string[];
     startPositions: Record<string, { x_pct: number; y_pct: number }>;
+    /** Last accepted live positions during gesture (axis-resolved). */
+    livePositions: Record<string, { x_pct: number; y_pct: number }>;
     startX: number;
     startY: number;
     hasMoved: boolean;
     historyPushed: boolean;
+    /** Set on element pointerup when gesture was a click (select). */
+    selectOnClickId?: string | null;
   } | null>(null);
   const resizeRef = useRef<{
     elementId: string;
@@ -1779,7 +1947,35 @@ export default function DocumentPreview({
     startW_pct: number;
     startH_pct: number;
     hasResized: boolean;
+    live: { x_pct: number; y_pct: number; width_pct: number; height_pct: number } | null;
   } | null>(null);
+  const elementsRef = useRef(elements);
+  elementsRef.current = elements;
+  const marginsRef = useRef(margins);
+  marginsRef.current = margins;
+  const onUpdateElementRef = useRef(onUpdateElement);
+  onUpdateElementRef.current = onUpdateElement;
+  const onBatchUpdateElementsRef = useRef(onBatchUpdateElements);
+  onBatchUpdateElementsRef.current = onBatchUpdateElements;
+  const onBeginUserActionRef = useRef(onBeginUserAction);
+  onBeginUserActionRef.current = onBeginUserAction;
+  const onGestureChangeRef = useRef(onGestureChange);
+  onGestureChangeRef.current = onGestureChange;
+  const dragGuideLinesRef = useRef<{ v: number[]; h: number[] } | null>(null);
+  /** Live geometry during drag/resize so React re-renders (guides) do not snap back to committed props. */
+  const [gestureGeom, setGestureGeom] = useState<
+    Record<string, { x_pct: number; y_pct: number; width_pct?: number; height_pct?: number }>
+  >({});
+  const gestureGeomRafRef = useRef(0);
+  const publishGestureGeom = useCallback(
+    (next: Record<string, { x_pct: number; y_pct: number; width_pct?: number; height_pct?: number }>) => {
+      cancelAnimationFrame(gestureGeomRafRef.current);
+      gestureGeomRafRef.current = requestAnimationFrame(() => {
+        setGestureGeom(next);
+      });
+    },
+    [],
+  );
   const [uncontrolledEditingElementId, setUncontrolledEditingElementId] = useState<string | null>(null);
   const isEditingControlled = onEditingElementIdChange != null;
   const editingElementId = isEditingControlled
@@ -1794,6 +1990,35 @@ export default function DocumentPreview({
   );
   /** Guide lines shown during drag when snapping to other elements/margins */
   const [dragGuideLines, setDragGuideLines] = useState<{ v: number[]; h: number[] } | null>(null);
+
+  const applyElementBoxToDom = useCallback(
+    (elementId: string, box: { x_pct: number; y_pct: number; width_pct?: number; height_pct?: number }) => {
+      const node = canvasRef.current?.querySelector(
+        `[data-doc-el-id="${elementId}"]`,
+      ) as HTMLElement | null;
+      if (!node) return;
+      node.style.left = `${box.x_pct}%`;
+      node.style.top = `${box.y_pct}%`;
+      if (box.width_pct != null) node.style.width = `${box.width_pct}%`;
+      if (box.height_pct != null) node.style.height = `${box.height_pct}%`;
+    },
+    [],
+  );
+
+  const setGuidesIfChanged = useCallback((next: { v: number[]; h: number[] } | null) => {
+    const prev = dragGuideLinesRef.current;
+    const same =
+      prev === next ||
+      (!!prev &&
+        !!next &&
+        prev.v.length === next.v.length &&
+        prev.h.length === next.h.length &&
+        prev.v.every((n, i) => n === next.v[i]) &&
+        prev.h.every((n, i) => n === next.h[i]));
+    if (same) return;
+    dragGuideLinesRef.current = next;
+    setDragGuideLines(next);
+  }, []);
 
   useEffect(() => {
     onTextEditingChange?.(editingElementId);
@@ -1922,6 +2147,7 @@ export default function DocumentPreview({
       dragRef.current = {
         movingIds,
         startPositions,
+        livePositions: { ...startPositions },
         startX: e.clientX,
         startY: e.clientY,
         hasMoved: false,
@@ -1954,17 +2180,100 @@ export default function DocumentPreview({
         startW_pct: el.width_pct ?? 80,
         startH_pct: el.height_pct ?? 8,
         hasResized: false,
+        live: null,
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
     [lockBlockElements, onPageInteraction, isOtherElementWhileEditing, notifyBlockedByTextEdit],
   );
 
-  const handlePointerMove = useCallback(
-    (e: React.PointerEvent) => {
+  const onElementClickRef = useRef(onElementClick);
+  onElementClickRef.current = onElementClick;
+
+  const commitDragGesture = useCallback(() => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const selectId = !drag.hasMoved ? drag.selectOnClickId ?? null : null;
+    if (drag.hasMoved && Object.keys(drag.livePositions).length > 0) {
+      const patches = drag.livePositions;
+      const batch = onBatchUpdateElementsRef.current;
+      const single = onUpdateElementRef.current;
+      if (batch) {
+        batch((prev) =>
+          prev.map((el) => {
+            const p = patches[el.id];
+            return p ? { ...el, x_pct: p.x_pct, y_pct: p.y_pct } : el;
+          }),
+        );
+      } else if (single) {
+        Object.entries(patches).forEach(([id, p]) => {
+          single(id, (el) => ({ ...el, x_pct: p.x_pct, y_pct: p.y_pct }));
+        });
+      }
+      onGestureChangeRef.current?.(false);
+    } else if (drag.historyPushed) {
+      onGestureChangeRef.current?.(false);
+    }
+    dragRef.current = null;
+    setGuidesIfChanged(null);
+    setGestureGeom({});
+    if (selectId) onElementClickRef.current?.(selectId);
+  }, [setGuidesIfChanged]);
+
+  const commitResizeGesture = useCallback(() => {
+    const resize = resizeRef.current;
+    if (!resize) return;
+    if (resize.hasResized && resize.live) {
+      const next = resize.live;
+      const batch = onBatchUpdateElementsRef.current;
+      const single = onUpdateElementRef.current;
+      if (batch) {
+        batch((prev) =>
+          prev.map((el) => (el.id === resize.elementId ? { ...el, ...next } : el)),
+        );
+      } else if (single) {
+        single(resize.elementId, (el) => ({ ...el, ...next }));
+      }
+    }
+    if (resize.hasResized) onGestureChangeRef.current?.(false);
+    resizeRef.current = null;
+    setGestureGeom({});
+  }, []);
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent, el: DocElement) => {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
       const drag = dragRef.current;
-      if (!drag || !canvasRef.current || !onUpdateElement) return;
-      if (drag.movingIds.length === 0) return;
+      if (isOtherElementWhileEditing(el.id)) {
+        dragRef.current = null;
+        return;
+      }
+      if (drag && !drag.hasMoved && (drag.movingIds.includes(el.id) || drag.movingIds.length === 0)) {
+        drag.selectOnClickId = el.id;
+      }
+      // Document pointerup commits; if it already ran, commit here as fallback.
+      if (dragRef.current) commitDragGesture();
+    },
+    [isOtherElementWhileEditing, commitDragGesture],
+  );
+
+  const handleResizePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      if (resizeRef.current) commitResizeGesture();
+    },
+    [commitResizeGesture],
+  );
+
+  useEffect(() => {
+    if (!onUpdateElement && !onBatchUpdateElements) return;
+
+    const processDragMove = (e: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag || !canvasRef.current) return false;
+      if (drag.movingIds.length === 0) return true;
+      const elementsNow = elementsRef.current;
+      const marginsNow = marginsRef.current;
       const rect = canvasRef.current.getBoundingClientRect();
       let dx = ((e.clientX - drag.startX) / rect.width) * 100;
       let dy = ((e.clientY - drag.startY) / rect.height) * 100;
@@ -1972,127 +2281,136 @@ export default function DocumentPreview({
         if (Math.abs(dx) > Math.abs(dy)) dy = 0;
         else dx = 0;
       }
-      const bbox = getGroupBbox(drag.movingIds, drag.startPositions, elements, dx, dy);
-      const { vertical: refV, horizontal: refH } = getReferenceLines(elements, drag.movingIds, margins, bbox);
+      const bbox = getGroupBbox(drag.movingIds, drag.startPositions, elementsNow, dx, dy);
+      const { vertical: refV, horizontal: refH } = getReferenceLines(
+        elementsNow,
+        drag.movingIds,
+        marginsNow,
+        bbox,
+      );
       const snapped = computeSnap(bbox, refV, refH, dx, dy);
-      // Show guide lines when close to alignment, but do not snap (use raw dx, dy)
       const hasGuides = snapped.guides.v.length > 0 || snapped.guides.h.length > 0;
-      setDragGuideLines(hasGuides ? snapped.guides : null);
+      setGuidesIfChanged(hasGuides ? snapped.guides : null);
       const movedEnough = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
-      if (!drag.historyPushed && !movedEnough) return;
+      if (!drag.historyPushed && !movedEnough) return true;
       if (movedEnough) {
         if (!drag.historyPushed) {
-          onBeginUserAction?.();
+          onBeginUserActionRef.current?.();
           drag.historyPushed = true;
+          onGestureChangeRef.current?.(true);
         }
         drag.hasMoved = true;
       }
-      const blocks = elements.filter((x) => x.type === 'block');
+      const blocks = elementsNow.filter((x) => x.type === 'block');
       drag.movingIds.forEach((elementId) => {
-        const el = elements.find((x) => x.id === elementId);
+        const el = elementsNow.find((x) => x.id === elementId);
         if (!el) return;
         const pos = drag.startPositions[elementId];
         if (!pos) return;
         const isBlock = el.type === 'block';
         const w = el.width_pct ?? 80;
         const h = el.height_pct ?? 8;
-        const b = isBlock ? contentBoundsBlock(w, h) : contentBounds(margins, w, h);
-        const newX_pct = Math.max(b.minX, Math.min(b.maxX, pos.x_pct + dx));
-        const newY_pct = Math.max(b.minY, Math.min(b.maxY, pos.y_pct + dy));
-        if (!isBlock && overlapsAnyBlock(newX_pct, newY_pct, w, h, blocks, elementId)) return;
-        onUpdateElement(elementId, (prev) => ({ ...prev, x_pct: newX_pct, y_pct: newY_pct }));
+        const b = isBlock ? contentBoundsBlock(w, h) : contentBounds(marginsNow, w, h);
+        const desiredX = Math.max(b.minX, Math.min(b.maxX, pos.x_pct + dx));
+        const desiredY = Math.max(b.minY, Math.min(b.maxY, pos.y_pct + dy));
+        const current = drag.livePositions[elementId] ?? pos;
+        const resolved = isBlock
+          ? { x_pct: desiredX, y_pct: desiredY }
+          : resolveMoveAgainstBlocks(
+              desiredX,
+              desiredY,
+              w,
+              h,
+              blocks,
+              elementId,
+              current.x_pct,
+              current.y_pct,
+            );
+        drag.livePositions[elementId] = resolved;
+        applyElementBoxToDom(elementId, resolved);
       });
-    },
-    [onUpdateElement, onBeginUserAction, margins, elements]
-  );
+      publishGestureGeom({ ...drag.livePositions });
+      return true;
+    };
 
-  const handlePointerUp = useCallback(
-    (e: React.PointerEvent, el: DocElement) => {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      const drag = dragRef.current;
-      dragRef.current = null;
-      setDragGuideLines(null);
-      if (isOtherElementWhileEditing(el.id)) return;
-      // Select on click: drag of this id, or locked / position-locked (movingIds empty — no drag)
-      if (drag && !drag.hasMoved && (drag.movingIds.includes(el.id) || drag.movingIds.length === 0)) {
-        onElementClick?.(el.id, e);
-      }
-    },
-    [onElementClick, isOtherElementWhileEditing],
-  );
-
-  const handleResizePointerUp = useCallback((e: React.PointerEvent) => {
-    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    resizeRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    if (!onUpdateElement) return;
-    const onDocMove = (e: PointerEvent) => {
-      const drag = dragRef.current;
-      if (drag && canvasRef.current) {
-        if (drag.movingIds.length === 0) return;
-        const rect = canvasRef.current.getBoundingClientRect();
-        let dx = ((e.clientX - drag.startX) / rect.width) * 100;
-        let dy = ((e.clientY - drag.startY) / rect.height) * 100;
-        if (e.shiftKey) {
-          if (Math.abs(dx) > Math.abs(dy)) dy = 0;
-          else dx = 0;
-        }
-        const bbox = getGroupBbox(drag.movingIds, drag.startPositions, elements, dx, dy);
-        const { vertical: refV, horizontal: refH } = getReferenceLines(elements, drag.movingIds, margins, bbox);
-        const snapped = computeSnap(bbox, refV, refH, dx, dy);
-        const hasGuides = snapped.guides.v.length > 0 || snapped.guides.h.length > 0;
-        setDragGuideLines(hasGuides ? snapped.guides : null);
-        const movedEnough = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
-        if (!drag.historyPushed && !movedEnough) return;
-        if (movedEnough) {
-          if (!drag.historyPushed) {
-            onBeginUserAction?.();
-            drag.historyPushed = true;
-          }
-          drag.hasMoved = true;
-        }
-        const blocks = elements.filter((x) => x.type === 'block');
-        drag.movingIds.forEach((elementId) => {
-          const el = elements.find((x) => x.id === elementId);
-          if (!el) return;
-          const pos = drag.startPositions[elementId];
-          if (!pos) return;
-          const isBlock = el.type === 'block';
-          const w = el.width_pct ?? 80;
-          const h = el.height_pct ?? 8;
-          const b = isBlock ? contentBoundsBlock(w, h) : contentBounds(margins, w, h);
-          const newX_pct = Math.max(b.minX, Math.min(b.maxX, pos.x_pct + dx));
-          const newY_pct = Math.max(b.minY, Math.min(b.maxY, pos.y_pct + dy));
-          if (!isBlock && overlapsAnyBlock(newX_pct, newY_pct, w, h, blocks, elementId)) return;
-          onUpdateElement(elementId, (prev) => ({ ...prev, x_pct: newX_pct, y_pct: newY_pct }));
-        });
-        return;
-      }
+    const processResizeMove = (e: PointerEvent) => {
       const resize = resizeRef.current;
-      if (resize && canvasRef.current) {
-        const el = elements.find((x) => x.id === resize.elementId);
-        const blocks = elements.filter((x) => x.type === 'block');
-        const isBlock = el?.type === 'block';
-        const rect = canvasRef.current.getBoundingClientRect();
-        const dx = ((e.clientX - resize.startX) / rect.width) * 100;
-        const dy = ((e.clientY - resize.startY) / rect.height) * 100;
-        if (!resize.hasResized && (Math.abs(dx) > 0.2 || Math.abs(dy) > 0.2)) {
-          onBeginUserAction?.();
-          resize.hasResized = true;
-        }
-        const next = isBlock
-          ? applyResizeBlock(resize.handle, dx, dy, resize.startX_pct, resize.startY_pct, resize.startW_pct, resize.startH_pct)
-          : applyResize(resize.handle, dx, dy, resize.startX_pct, resize.startY_pct, resize.startW_pct, resize.startH_pct, margins);
-        if (!isBlock && overlapsAnyBlock(next.x_pct, next.y_pct, next.width_pct, next.height_pct, blocks, resize.elementId)) return;
-        onUpdateElement(resize.elementId, (el) => ({ ...el, ...next }));
+      if (!resize || !canvasRef.current) return false;
+      const elementsNow = elementsRef.current;
+      const marginsNow = marginsRef.current;
+      const el = elementsNow.find((x) => x.id === resize.elementId);
+      const blocks = elementsNow.filter((x) => x.type === 'block');
+      const isBlock = el?.type === 'block';
+      const rect = canvasRef.current.getBoundingClientRect();
+      const dx = ((e.clientX - resize.startX) / rect.width) * 100;
+      const dy = ((e.clientY - resize.startY) / rect.height) * 100;
+      if (!resize.hasResized && (Math.abs(dx) > 0.2 || Math.abs(dy) > 0.2)) {
+        onBeginUserActionRef.current?.();
+        resize.hasResized = true;
+        onGestureChangeRef.current?.(true);
       }
+      const keepAspect = (e.ctrlKey || e.metaKey) && isCornerResizeHandle(resize.handle);
+      const next = isBlock
+        ? applyResizeBlock(
+            resize.handle,
+            dx,
+            dy,
+            resize.startX_pct,
+            resize.startY_pct,
+            resize.startW_pct,
+            resize.startH_pct,
+            keepAspect,
+          )
+        : applyResize(
+            resize.handle,
+            dx,
+            dy,
+            resize.startX_pct,
+            resize.startY_pct,
+            resize.startW_pct,
+            resize.startH_pct,
+            marginsNow,
+            keepAspect,
+          );
+      if (
+        !isBlock &&
+        overlapsAnyBlock(next.x_pct, next.y_pct, next.width_pct, next.height_pct, blocks, resize.elementId)
+      ) {
+        // Keep last accepted live box (slide along blocked edges by testing axis-separated sizes from start).
+        const cur = resize.live ?? {
+          x_pct: resize.startX_pct,
+          y_pct: resize.startY_pct,
+          width_pct: resize.startW_pct,
+          height_pct: resize.startH_pct,
+        };
+        const tryY = { ...next, x_pct: cur.x_pct, width_pct: cur.width_pct };
+        const tryX = { ...next, y_pct: cur.y_pct, height_pct: cur.height_pct };
+        if (!overlapsAnyBlock(tryY.x_pct, tryY.y_pct, tryY.width_pct, tryY.height_pct, blocks, resize.elementId)) {
+          resize.live = tryY;
+          applyElementBoxToDom(resize.elementId, tryY);
+          publishGestureGeom({ [resize.elementId]: tryY });
+        } else if (
+          !overlapsAnyBlock(tryX.x_pct, tryX.y_pct, tryX.width_pct, tryX.height_pct, blocks, resize.elementId)
+        ) {
+          resize.live = tryX;
+          applyElementBoxToDom(resize.elementId, tryX);
+          publishGestureGeom({ [resize.elementId]: tryX });
+        }
+        return true;
+      }
+      resize.live = next;
+      applyElementBoxToDom(resize.elementId, next);
+      publishGestureGeom({ [resize.elementId]: next });
+      return true;
+    };
+
+    const onDocMove = (e: PointerEvent) => {
+      if (processDragMove(e)) return;
+      processResizeMove(e);
     };
     const onDocUp = () => {
-      dragRef.current = null;
-      resizeRef.current = null;
-      setDragGuideLines(null);
+      if (dragRef.current) commitDragGesture();
+      else if (resizeRef.current) commitResizeGesture();
     };
     document.addEventListener('pointermove', onDocMove);
     document.addEventListener('pointerup', onDocUp);
@@ -2102,7 +2420,15 @@ export default function DocumentPreview({
       document.removeEventListener('pointerup', onDocUp);
       document.removeEventListener('pointercancel', onDocUp);
     };
-  }, [onUpdateElement, onBeginUserAction, margins, elements]);
+  }, [
+    onUpdateElement,
+    onBatchUpdateElements,
+    applyElementBoxToDom,
+    setGuidesIfChanged,
+    commitDragGesture,
+    commitResizeGesture,
+    publishGestureGeom,
+  ]);
 
   const startTextEdit = useCallback(
     (el: DocElement, e?: React.MouseEvent) => {
@@ -2353,10 +2679,11 @@ export default function DocumentPreview({
           )}
           {elements.map((el) => {
             if (el.type === 'block' && !blockAreasVisible) return null;
-            const x = (el.x_pct ?? 10) / 100;
-            const y = (el.y_pct ?? 20) / 100;
-            const w = (el.width_pct ?? 80) / 100;
-            const h = (el.height_pct ?? 8) / 100;
+            const live = gestureGeom[el.id];
+            const x = (live?.x_pct ?? el.x_pct ?? 10) / 100;
+            const y = (live?.y_pct ?? el.y_pct ?? 20) / 100;
+            const w = (live?.width_pct ?? el.width_pct ?? 80) / 100;
+            const h = (live?.height_pct ?? el.height_pct ?? 8) / 100;
             const isSelected = selectedElementIds.includes(el.id);
             const isEditing = editingElementId === el.id && el.type === 'text' && !el.locked;
             const isBlock = el.type === 'block';
@@ -2433,10 +2760,10 @@ export default function DocumentPreview({
                 </div>
               )}
               <div
+                data-doc-el-id={el.id}
                 {...(el.type === 'text' ? { [DOCUMENT_TEXT_ELEMENT_ATTR]: el.id } : {})}
                 data-inline-text-editor={isEditing && el.type === 'text' ? el.id : undefined}
                 onPointerDown={(e) => handlePointerDown(e, el)}
-                onPointerMove={handlePointerMove}
                 onPointerUp={(e) => handlePointerUp(e, el)}
                 onPointerLeave={(e) => {
                   if (dragRef.current?.movingIds.includes(el.id)) {
@@ -2583,8 +2910,11 @@ export default function DocumentPreview({
                 ) : (
                   el.content && (
                     <img
-                      src={withFileAccessToken(`/files/${el.content}/thumbnail?w=${DOCUMENT_PREVIEW_IMAGE_WIDTH_PX}`)}
+                      src={withFileAccessToken(
+                        `/files/${el.content}/thumbnail?w=${DOCUMENT_PREVIEW_IMAGE_WIDTH_PX}`,
+                      )}
                       alt=""
+                      decoding="async"
                       className="w-full h-full pointer-events-none"
                       style={{
                         objectFit: el.imageFit ?? 'contain',

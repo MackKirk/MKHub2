@@ -11,6 +11,7 @@ type UserDocument = {
   id: string;
   title: string;
   document_type_id?: string;
+  page_count?: number;
   pages?: unknown[];
   created_at?: string;
   updated_at?: string | null;
@@ -180,7 +181,21 @@ export default function DocumentCreator() {
                   {documents.map((d) => (
                     <div
                       key={d.id}
-                      onClick={() => navigate(`/documents/create/${d.id}`)}
+                      onClick={() => {
+                        void queryClient.prefetchQuery({
+                          queryKey: ['document-creator-doc', d.id],
+                          queryFn: () => api<UserDocument>('GET', `/document-creator/documents/${d.id}`),
+                          staleTime: 30_000,
+                        });
+                        navigate(`/documents/create/${d.id}`);
+                      }}
+                      onMouseEnter={() => {
+                        void queryClient.prefetchQuery({
+                          queryKey: ['document-creator-doc', d.id],
+                          queryFn: () => api<UserDocument>('GET', `/document-creator/documents/${d.id}`),
+                          staleTime: 30_000,
+                        });
+                      }}
                       className="group grid grid-cols-[1fr_8rem_6rem] gap-2 sm:gap-4 items-center px-4 py-2.5 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors"
                     >
                       <div className="min-w-0 flex items-center gap-3">

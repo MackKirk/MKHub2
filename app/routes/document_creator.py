@@ -96,6 +96,25 @@ def _doc_to_out(d: UserDocument) -> dict:
     }
 
 
+_LIST_PREVIEW_PAGE_LIMIT = 4
+
+
+def _doc_to_summary(d: UserDocument) -> dict:
+    """Slim list payload: metadata + at most the first N pages for list thumbnails."""
+    pages = d.pages if isinstance(d.pages, list) else []
+    return {
+        "id": str(d.id),
+        "title": d.title,
+        "document_type_id": str(d.document_type_id) if d.document_type_id else None,
+        "project_id": str(d.project_id) if d.project_id else None,
+        "page_count": len(pages),
+        "pages": pages[:_LIST_PREVIEW_PAGE_LIMIT],
+        "created_by": str(d.created_by) if d.created_by else None,
+        "created_at": d.created_at.isoformat() if d.created_at else None,
+        "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+    }
+
+
 def _clone_elements_with_new_ids(elements: Optional[list], prefix: str) -> list:
     """Clone default_elements and assign new ids so they are unique per page."""
     if not elements or not isinstance(elements, list):
@@ -594,7 +613,7 @@ def list_documents(
     docs = q.order_by(
         UserDocument.updated_at.desc().nullslast(), UserDocument.created_at.desc()
     ).all()
-    return [_doc_to_out(d) for d in docs]
+    return [_doc_to_summary(d) for d in docs]
 
 
 @router.post("/documents", response_model=dict)

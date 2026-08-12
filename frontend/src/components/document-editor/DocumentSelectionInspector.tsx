@@ -24,9 +24,125 @@ import {
   editorSegmentedSegmentSelectedClass,
   editorToolbarMicroLabelClass,
 } from '@/components/document-editor/documentEditorRibbonPrimitives';
+import {
+  clampGeometryPct,
+  geometryPctToPx,
+  pxToPctH,
+  pxToPctW,
+  pxToPctX,
+  pxToPctY,
+  type PageMarginsPct,
+} from '@/utils/documentElementGeometry';
 
 function Cluster({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={`${editorContextToolbarGroupClass} ${className ?? ''}`}>{children}</div>;
+}
+
+const geometryPxInputClass =
+  'h-8 w-[3.75rem] rounded-md border border-slate-200/90 bg-white px-1.5 text-[11px] font-medium tabular-nums text-slate-800 shadow-sm focus:border-brand-red/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400';
+
+function GeometryPxInput({
+  label,
+  valuePx,
+  disabled,
+  onCommit,
+}: {
+  label: string;
+  valuePx: number;
+  disabled?: boolean;
+  onCommit: (nextPx: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => String(Math.round(valuePx)));
+  useEffect(() => {
+    setDraft(String(Math.round(valuePx)));
+  }, [valuePx]);
+
+  const commit = () => {
+    const n = Number(draft);
+    if (!Number.isFinite(n)) {
+      setDraft(String(Math.round(valuePx)));
+      return;
+    }
+    onCommit(n);
+  };
+
+  return (
+    <label className="inline-flex items-center gap-1">
+      <span className={editorToolbarMicroLabelClass}>{label}</span>
+      <input
+        type="number"
+        step={1}
+        disabled={disabled}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            (e.currentTarget as HTMLInputElement).blur();
+          }
+        }}
+        className={geometryPxInputClass}
+        title={`${label} (px)`}
+        aria-label={`${label} in pixels`}
+      />
+    </label>
+  );
+}
+
+function ElementGeometryCluster({
+  element,
+  margins,
+  onUpdate,
+}: {
+  element: DocElement;
+  margins?: PageMarginsPct | null;
+  onUpdate: (id: string, updater: (el: DocElement) => DocElement) => void;
+}) {
+  const locked = !!element.locked;
+  const positionLocked = locked || !!element.lockPosition;
+  const px = geometryPctToPx({
+    x_pct: element.x_pct ?? 0,
+    y_pct: element.y_pct ?? 0,
+    width_pct: element.width_pct ?? 10,
+    height_pct: element.height_pct ?? 10,
+  });
+
+  const applyField = (field: 'x' | 'y' | 'width' | 'height', nextPx: number) => {
+    onUpdate(element.id, (el) => {
+      const cur = {
+        x_pct: el.x_pct ?? 0,
+        y_pct: el.y_pct ?? 0,
+        width_pct: el.width_pct ?? 10,
+        height_pct: el.height_pct ?? 10,
+      };
+      const next = clampGeometryPct(
+        {
+          x_pct: field === 'x' ? pxToPctX(nextPx) : cur.x_pct,
+          y_pct: field === 'y' ? pxToPctY(nextPx) : cur.y_pct,
+          width_pct: field === 'width' ? pxToPctW(nextPx) : cur.width_pct,
+          height_pct: field === 'height' ? pxToPctH(nextPx) : cur.height_pct,
+        },
+        { margins, isBlock: el.type === 'block' },
+      );
+      return { ...el, ...next };
+    });
+  };
+
+  return (
+    <>
+      <Cluster className="gap-1.5">
+        <span className={editorToolbarMicroLabelClass}>Pos</span>
+        <GeometryPxInput label="X" valuePx={px.x} disabled={positionLocked} onCommit={(n) => applyField('x', n)} />
+        <GeometryPxInput label="Y" valuePx={px.y} disabled={positionLocked} onCommit={(n) => applyField('y', n)} />
+      </Cluster>
+      <Cluster className="gap-1.5">
+        <span className={editorToolbarMicroLabelClass}>Size</span>
+        <GeometryPxInput label="W" valuePx={px.width} disabled={locked} onCommit={(n) => applyField('width', n)} />
+        <GeometryPxInput label="H" valuePx={px.height} disabled={locked} onCommit={(n) => applyField('height', n)} />
+      </Cluster>
+    </>
+  );
 }
 
 type LineListStyle = Exclude<NonNullable<DocElement['listStyle']>, 'none'>;
@@ -208,9 +324,11 @@ function useSelectionFormatState(elementId: string | null): RunFormat | null {
 export default function DocumentSelectionInspector({
   element,
   onUpdate,
+  margins,
 }: {
   element: DocElement | null;
   onUpdate: (id: string, updater: (el: DocElement) => DocElement) => void;
+  margins?: PageMarginsPct | null;
 }) {
   const selFmt = useSelectionFormatState(element?.id ?? null);
   const isEditing = element ? !!activeInlineEditorRoot(element.id) : false;
@@ -220,8 +338,19 @@ export default function DocumentSelectionInspector({
   const id = element.id;
   const isText = element.type === 'text';
   const isImage = element.type === 'image';
+  const isBlock = element.type === 'block';
   const isLocked = !!element.locked;
   const hasImage = isImage && !!element.content;
+
+  const geometryRow = (
+    <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
+      <ElementGeometryCluster element={element} margins={margins} onUpdate={onUpdate} />
+    </div>
+  );
+
+  if (isBlock) {
+    return geometryRow;
+  }
 
   if (isText && !isLocked) {
     // When editing: read bold/italic/color/size/font from selection; else from element.
@@ -247,6 +376,8 @@ export default function DocumentSelectionInspector({
       : (element.textAlign ?? 'left');
 
     return (
+      <>
+        {geometryRow}
       <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
         <Cluster className="gap-2">
           <span className={editorToolbarMicroLabelClass}>Preset</span>
@@ -488,11 +619,14 @@ export default function DocumentSelectionInspector({
           </div>
         </Cluster>
       </div>
+      </>
     );
   }
 
   if (isImage && hasImage && !isLocked) {
     return (
+      <>
+        {geometryRow}
       <div className={editorContextToolbarRowClass}>
         <Cluster className="gap-2">
           <span className={editorToolbarMicroLabelClass}>Fit</span>
@@ -523,24 +657,36 @@ export default function DocumentSelectionInspector({
           />
         </Cluster>
       </div>
+      </>
     );
   }
 
   if (isText && isLocked) {
     return (
+      <>
+        {geometryRow}
       <p className="basis-full rounded-md border border-amber-200/80 bg-amber-50/90 px-2.5 py-1.5 text-[11px] text-amber-900">
         Unlock the text element to edit formatting.
       </p>
+      </>
     );
   }
 
   if (isImage && (!hasImage || isLocked)) {
     return (
+      <>
+        {geometryRow}
       <p className="basis-full rounded-md border border-slate-200/90 bg-slate-50/80 px-2.5 py-1.5 text-[11px] text-slate-600">
         {isLocked ? 'Unlock the image to adjust fit and position.' : 'Add an image to adjust fit and position.'}
       </p>
+      </>
     );
   }
 
-  return <p className="py-0.5 text-[11px] text-slate-600">No formatting options for this selection.</p>;
+  return (
+    <>
+      {geometryRow}
+      <p className="py-0.5 text-[11px] text-slate-600">No formatting options for this selection.</p>
+    </>
+  );
 }
