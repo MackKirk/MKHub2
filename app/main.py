@@ -55,6 +55,7 @@ from .routes.employee_management import router as employee_management_router
 from .routes.permissions import router as permissions_router
 from .routes.fleet import router as fleet_router
 from .routes.company_credit_cards import router as company_credit_cards_router
+from .routes.fuel_cards import router as fuel_cards_router
 from .routes.safety import router as safety_router
 from .routes.form_templates import router as form_templates_router
 from .routes.form_custom_lists import router as form_custom_lists_router
@@ -265,6 +266,7 @@ def create_app() -> FastAPI:
     app.include_router(permissions_router)
     app.include_router(fleet_router)
     app.include_router(company_credit_cards_router)
+    app.include_router(fuel_cards_router)
     app.include_router(safety_router)
     app.include_router(form_custom_lists_router)
     app.include_router(form_templates_router)
@@ -2274,6 +2276,30 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created company_credit_cards tables")
 
+                    # Fuel card inventory
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'fuel_cards'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import FuelCard, FuelCardAssignment
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[
+                                FuelCard.__table__,
+                                FuelCardAssignment.__table__,
+                            ],
+                        )
+                        db.commit()
+                        print("[startup] Created fuel_cards tables")
+
                     # HR Offboarding
                     rows_ob = db.execute(
                         text(
@@ -2741,6 +2767,15 @@ def create_app() -> FastAPI:
                     from scripts.seed_permissions import seed_permissions
                     seed_permissions()
                     print("✅ Permissions seeded successfully on startup")
+                # Keep Company Assets (equipment / corporate / fuel cards) definitions current
+                try:
+                    import sys
+                    import os
+                    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    from scripts.seed_company_assets_permissions import seed_company_assets_permissions
+                    seed_company_assets_permissions()
+                except Exception as e:
+                    print(f"⚠️  Could not seed company assets permissions on startup: {e}")
             except Exception as e:
                 print(f"⚠️  Could not seed permissions on startup: {e}")
             finally:

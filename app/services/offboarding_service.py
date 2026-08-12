@@ -21,6 +21,8 @@ from ..models.models import (
     Equipment,
     EquipmentCheckout,
     FleetAsset,
+    FuelCard,
+    FuelCardAssignment,
     OffboardingActivityLog,
     OffboardingAssetLink,
     OffboardingCase,
@@ -390,6 +392,30 @@ def _collect_asset_link_candidates(db: Session, user_id: uuid.UUID) -> List[dict
             }
         )
 
+    fuel_assignments = (
+        db.query(FuelCardAssignment, FuelCard)
+        .join(FuelCard, FuelCardAssignment.fuel_card_id == FuelCard.id)
+        .filter(
+            FuelCardAssignment.assigned_to_user_id == user_id,
+            FuelCardAssignment.is_active.is_(True),
+        )
+        .all()
+    )
+    for fa, fcard in fuel_assignments:
+        label = (fcard.card_number if fcard else None) or "Fuel card"
+        out.append(
+            {
+                "source_type": "fuel_card_assignment",
+                "source_id": fa.id,
+                "asset_name_snapshot": label,
+                "asset_type_snapshot": "Fuel card",
+                "assigned_at_snapshot": fa.assigned_at,
+                "status_at_case_creation": "assigned",
+                "fleet_asset_id": None,
+                "equipment_id": None,
+            }
+        )
+
     return out
 
 
@@ -457,6 +483,14 @@ def resolve_asset_link_live_status(db: Session, link: OffboardingAssetLink) -> T
         if not ca:
             return "Unknown", "returned"
         if ca.is_active and ca.returned_at is None:
+            return "Assigned", "pending_return"
+        return "Returned", "returned"
+
+    if st == "fuel_card_assignment":
+        fa = db.query(FuelCardAssignment).filter(FuelCardAssignment.id == sid).first()
+        if not fa:
+            return "Unknown", "returned"
+        if fa.is_active and fa.returned_at is None:
             return "Assigned", "pending_return"
         return "Returned", "returned"
 

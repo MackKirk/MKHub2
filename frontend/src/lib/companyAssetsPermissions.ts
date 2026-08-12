@@ -6,6 +6,8 @@ export const EQUIPMENT_MAIN_READ = 'fleet:equipment:read';
 export const EQUIPMENT_MAIN_WRITE = 'fleet:equipment:write';
 export const CORPORATE_CARDS_READ = 'company_cards:read';
 export const CORPORATE_CARDS_WRITE = 'company_cards:write';
+export const FUEL_CARDS_READ = 'fuel_cards:read';
+export const FUEL_CARDS_WRITE = 'fuel_cards:write';
 
 export const EQUIPMENT_TABS = ['general', 'work_orders', 'history'] as const;
 export type EquipmentTab = (typeof EQUIPMENT_TABS)[number];
@@ -60,6 +62,18 @@ export function canEditCorporateCards(isAdmin: boolean, permissions: Set<string>
   return hasPerm(permissions, CORPORATE_CARDS_WRITE);
 }
 
+/** List fuel cards and open card records. */
+export function canAccessFuelCardsList(isAdmin: boolean, permissions: Set<string>): boolean {
+  if (isAdmin) return true;
+  return hasPerm(permissions, FUEL_CARDS_READ) || hasPerm(permissions, FUEL_CARDS_WRITE);
+}
+
+/** Create/edit/assign fuel cards (`Edit` on Fuel Cards). */
+export function canEditFuelCards(isAdmin: boolean, permissions: Set<string>): boolean {
+  if (isAdmin) return true;
+  return hasPerm(permissions, FUEL_CARDS_WRITE);
+}
+
 const equipmentScoped = createScopedEntityPermissions('fleet:equipment', {
   mainRead: EQUIPMENT_MAIN_READ,
   mainWrite: EQUIPMENT_MAIN_WRITE,
@@ -70,6 +84,12 @@ const equipmentScoped = createScopedEntityPermissions('fleet:equipment', {
 const corporateCardsScoped = createScopedEntityPermissions('company_cards', {
   mainRead: CORPORATE_CARDS_READ,
   mainWrite: CORPORATE_CARDS_WRITE,
+  tabs: [],
+});
+
+const fuelCardsScoped = createScopedEntityPermissions('fuel_cards', {
+  mainRead: FUEL_CARDS_READ,
+  mainWrite: FUEL_CARDS_WRITE,
   tabs: [],
 });
 
@@ -85,6 +105,11 @@ export const getCorporateCardsAccessLevel = corporateCardsScoped.getAccessLevel;
 export const applyCorporateCardsAccessLevel = corporateCardsScoped.applyAccessLevel;
 export const applyCorporateCardsAccessLevelToKeySet = corporateCardsScoped.applyAccessLevelToKeySet;
 
+export const buildFuelCardsPermissionRows = fuelCardsScoped.buildPermissionRows;
+export const getFuelCardsAccessLevel = fuelCardsScoped.getAccessLevel;
+export const applyFuelCardsAccessLevel = fuelCardsScoped.applyAccessLevel;
+export const applyFuelCardsAccessLevelToKeySet = fuelCardsScoped.applyAccessLevelToKeySet;
+
 export function applyCompanyAssetsAccessLevel(
   permissions: Record<string, boolean>,
   readKey: string,
@@ -96,6 +121,9 @@ export function applyCompanyAssetsAccessLevel(
   }
   if (readKey.startsWith('company_cards:')) {
     return applyCorporateCardsAccessLevel(permissions, readKey, writeKey, level);
+  }
+  if (readKey.startsWith('fuel_cards:')) {
+    return applyFuelCardsAccessLevel(permissions, readKey, writeKey, level);
   }
   return permissions;
 }
@@ -110,6 +138,9 @@ export function getCompanyAssetsAccessLevel(
   }
   if (readKey.startsWith('company_cards:')) {
     return getCorporateCardsAccessLevel(permissions, readKey, writeKey);
+  }
+  if (readKey.startsWith('fuel_cards:')) {
+    return getFuelCardsAccessLevel(permissions, readKey, writeKey);
   }
   return 'blocked';
 }
@@ -134,21 +165,21 @@ export function applyCompanyAssetsAccessLevelToKeySet(
   return syncCompanyAssetsAccessInKeySet(out);
 }
 
-/** True when any Equipment or Corporate Cards permission is granted. */
+/** True when any Equipment, Corporate Cards, or Fuel Cards permission is granted. */
 export function hasAnyCompanyAssetsChildPermission(
   permissions: Record<string, boolean> | Set<string>,
 ): boolean {
   const has = (key: string) =>
     permissions instanceof Set ? permissions.has(key) : !!permissions[key];
+  const isChildKey = (k: string) =>
+    k.startsWith('fleet:equipment:') || k.startsWith('company_cards:') || k.startsWith('fuel_cards:');
   if (permissions instanceof Set) {
     for (const k of permissions) {
-      if (k.startsWith('fleet:equipment:') || k.startsWith('company_cards:')) return true;
+      if (isChildKey(k)) return true;
     }
     return false;
   }
-  return Object.keys(permissions).some(
-    (k) => (k.startsWith('fleet:equipment:') || k.startsWith('company_cards:')) && has(k),
-  );
+  return Object.keys(permissions).some((k) => isChildKey(k) && has(k));
 }
 
 /** Keep `company_assets:access` in sync with child Equipment/Cards grants (implicit area gate). */
@@ -169,6 +200,9 @@ export function syncCompanyAssetsAccessInKeySet(selectedKeys: Set<string>): Set<
 
 export function filterCompanyAssetsAreaPermissions(areaPerms: { key: string }[]): { key: string }[] {
   return areaPerms.filter(
-    (p) => p.key.startsWith('fleet:equipment:') || p.key.startsWith('company_cards:'),
+    (p) =>
+      p.key.startsWith('fleet:equipment:') ||
+      p.key.startsWith('company_cards:') ||
+      p.key.startsWith('fuel_cards:'),
   );
 }

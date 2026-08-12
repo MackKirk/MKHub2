@@ -62,6 +62,8 @@ const PROPOSAL_FIELD_HINTS = {
   primaryPhone: 'Primary Contact Phone\n\nPrinted on the proposal; editable after selecting a contact.',
   primaryEmail: 'Primary Contact Email\n\nPrinted on the proposal; editable after selecting a contact.',
   otherNotes: 'Other Notes\n\nShort note on the cover (max 250 characters).',
+  showPictureKeyInPdf:
+    'Show Picture Key in PDF\n\nWhen on, the Picture Key legend (red / yellow / green) is printed below Other Notes on the proposal PDF.',
   frontCover: 'Front Cover Image\n\nMain cover photo. Cropped to 566×537 px in the PDF.',
   insideCover: 'Inside Cover Image\n\nInside cover page image. Cropped to 540×340 px in the PDF.',
   sectionTitle: 'Section title\n\nHeading for this section in the generated PDF.',
@@ -92,6 +94,12 @@ const PROPOSAL_FIELD_HINTS = {
 /** Matches AppInput control height for aligned pricing / optional-service rows. */
 const PROPOSAL_INLINE_CONTROL_H = 'h-8';
 const PROPOSAL_INLINE_LABEL_ROW = 'mb-1 h-3.5 shrink-0';
+
+const PICTURE_KEY_ITEMS = [
+  { emoji: '🔴', text: 'Requires immediate attention.' },
+  { emoji: '🟡', text: 'Immediate attention recommended.' },
+  { emoji: '🟢', text: 'Requires no attention.' },
+] as const;
 
 function ProposalInlineLabelRow({ label, fieldHint }: { label: string; fieldHint?: string }) {
   return (
@@ -423,6 +431,7 @@ export default function ProposalForm({
   const [primary, setPrimary] = useState<{ name?:string, phone?:string, email?:string }>({});
   const [typeOfProject, setTypeOfProject] = useState<string>('');
   const [otherNotes, setOtherNotes] = useState<string>('');
+  const [showPictureKeyInPdf, setShowPictureKeyInPdf] = useState<boolean>(false);
   const [projectDescription, setProjectDescription] = useState<string>('');
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
   const [pricingItems, setPricingItems] = useState<PricingItem[]>([]);
@@ -865,6 +874,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         primary,
         typeOfProject,
         otherNotes,
+        showPictureKeyInPdf,
         projectDescription,
         additionalNotes,
         // Prefer refs so in-flight / stale save callbacks fingerprint the latest pricing state
@@ -904,6 +914,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     setPrimary({ name: d.primary_contact_name, phone: d.primary_contact_phone, email: d.primary_contact_email });
     setTypeOfProject(String(d.type_of_project||''));
     setOtherNotes(String(d.other_notes||''));
+    setShowPictureKeyInPdf(d.show_picture_key_in_pdf === true || d.show_picture_key_in_pdf === 'true' || d.show_picture_key_in_pdf === 1);
     setProjectDescription(String(d.project_description||''));
     setAdditionalNotes(String(d.additional_project_notes||''));
     // Load pricing items from bid_price and additional_costs (legacy support)
@@ -999,7 +1010,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     if (!isReady) return false;
     const fp = computeFingerprint();
     return fp !== lastSavedHash;
-  }, [isReady, lastSavedHash, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
+  }, [isReady, lastSavedHash, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, showPictureKeyInPdf, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
   
   // Sync selected contact when contacts are loaded or createdFor changes (only on initial load)
   useEffect(() => {
@@ -1299,7 +1310,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       // Update lastAutoSaveRef when proposal is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
     }
-      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
+      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, showPictureKeyInPdf, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
 
   const handleSave = useCallback(async()=>{
     const allowAdminApprovalSave = isAdmin && saveTriggeredByApprovalChangeRef.current;
@@ -1373,6 +1384,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         primary_contact_email: primary.email||null,
         type_of_project: typeOfProject||null,
         other_notes: otherNotes||null,
+        show_picture_key_in_pdf: showPictureKeyInPdf,
         project_description: projectDescription||null,
         additional_project_notes: additionalNotes||null,
         bid_price: 0, // Legacy field
@@ -1438,7 +1450,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         saveInFlightRef.current = null;
       }
     }
-  }, [disabled, isAdmin, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting, grandTotal, project?.code, showOnlyPricing]);
+  }, [disabled, isAdmin, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, showPictureKeyInPdf, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting, grandTotal, project?.code, showOnlyPricing]);
 
   // When approval flags change (not approved / re-approve), save immediately so project_division_ids and overview update
   useEffect(() => {
@@ -1547,6 +1559,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         primary_contact_email: primary.email||null,
         type_of_project: typeOfProject||null,
         other_notes: otherNotes||null,
+        show_picture_key_in_pdf: showPictureKeyInPdf,
         project_description: projectDescription||null,
         additional_project_notes: additionalNotes||null,
         bid_price: 0, // Legacy field
@@ -1596,7 +1609,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     } finally {
       isAutoSavingRef.current = false;
     }
-    }, [clientId, projectId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, totalNum, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting, showOnlyPricing, lastSavedHash]);
+    }, [clientId, projectId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, showPictureKeyInPdf, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, totalNum, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting, showOnlyPricing, lastSavedHash]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
@@ -1618,7 +1631,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-    }, [isReady, clientId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, terms, sections, coverFoId, page2FoId, autoSave]);
+    }, [isReady, clientId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, showPictureKeyInPdf, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, terms, sections, coverFoId, page2FoId, autoSave]);
 
   // Periodic auto-save (every 30 seconds) - disabled for Pricing tab (showOnlyPricing)
   useEffect(() => {
@@ -1710,6 +1723,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       form.append('primary_contact_email', primary.email||'');
       form.append('type_of_project', typeOfProject||'');
       form.append('other_notes', otherNotes||'');
+      form.append('show_picture_key_in_pdf', String(showPictureKeyInPdf));
       form.append('additional_project_notes', additionalNotes||'');
       form.append('bid_price', String(0)); // Legacy field
       form.append('total', String(grandTotal));
@@ -2165,6 +2179,47 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       </div>
                     </>
                   )}
+                </div>
+                <div>
+                  {designSystem ? (
+                    <AppControlLabelRow
+                      label="Picture Key"
+                      fieldHint={<AppFieldHint hint={PROPOSAL_FIELD_HINTS.showPictureKeyInPdf} />}
+                    />
+                  ) : (
+                    <div className={dsFieldLabelClass ?? 'text-xs font-medium text-gray-600 mb-1.5'}>Picture Key</div>
+                  )}
+                  <div className={uiCx('space-y-1 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs text-gray-700', disabled && 'opacity-70')}>
+                    {PICTURE_KEY_ITEMS.map((item) => (
+                      <div key={item.emoji} className="flex items-start gap-1.5">
+                        <span aria-hidden="true">{item.emoji}</span>
+                        <span>- {item.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2">
+                    {designSystem ? (
+                      <AppCheckbox
+                        label="Show Picture Key in PDF"
+                        checked={showPictureKeyInPdf}
+                        onChange={(checked) => setShowPictureKeyInPdf(checked)}
+                        disabled={disabled}
+                        fieldHint={PROPOSAL_FIELD_HINTS.showPictureKeyInPdf}
+                        className="text-xs"
+                      />
+                    ) : (
+                      <label className={`flex items-center gap-1 text-xs text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                        <input
+                          type="checkbox"
+                          checked={showPictureKeyInPdf}
+                          onChange={(e) => setShowPictureKeyInPdf(e.target.checked)}
+                          className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                          disabled={disabled}
+                        />
+                        <span>Show Picture Key in PDF</span>
+                      </label>
+                    )}
+                  </div>
                 </div>
               </div>
               {/* Card 2 - Right Column (Covers only) */}

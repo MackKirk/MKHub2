@@ -487,7 +487,9 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       }
       if (
         newValue &&
-        (key.startsWith('fleet:equipment:') || key.startsWith('company_cards:')) &&
+        (key.startsWith('fleet:equipment:') ||
+          key.startsWith('company_cards:') ||
+          key.startsWith('fuel_cards:')) &&
         key !== COMPANY_ASSETS_ACCESS
       ) {
         newPerms[COMPANY_ASSETS_ACCESS] = true;
@@ -510,7 +512,11 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
           });
         } else if (key === COMPANY_ASSETS_ACCESS) {
           Object.keys(newPerms).forEach((k) => {
-            if (k.startsWith('fleet:equipment:') || k.startsWith('company_cards:')) {
+            if (
+              k.startsWith('fleet:equipment:') ||
+              k.startsWith('company_cards:') ||
+              k.startsWith('fuel_cards:')
+            ) {
               newPerms[k] = false;
             }
           });
@@ -1123,7 +1129,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                     name: 'company_assets',
                     label: 'Company Assets',
                     id: 'company_assets',
-                    description: 'Equipment and corporate cards.',
+                    description: 'Equipment, corporate cards, and fuel cards.',
                   },
                   permissions: filterCompanyAssetsAreaPermissions(cat.permissions),
                 });

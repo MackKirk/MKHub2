@@ -198,3 +198,15 @@ def snapshot_company_credit_card(card: Any) -> Dict[str, Any]:
         "expiry_year": getattr(card, "expiry_year", None),
         "status": getattr(card, "status", None),
     }
+
+
+def snapshot_fuel_card(card: Any) -> Dict[str, Any]:
+    """Audit snapshot for fuel cards — mask PIN."""
+    issued = getattr(card, "date_issued", None)
+    return {
+        "card_number": getattr(card, "card_number", None),
+        "pin": "***" if getattr(card, "pin", None) else None,
+        "date_issued": issued.isoformat() if issued is not None and hasattr(issued, "isoformat") else issued,
+        "status": getattr(card, "status", None),
+        "notes": getattr(card, "notes", None),
+    }

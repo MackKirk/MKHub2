@@ -444,6 +444,7 @@ def build_page2(c, data):
     # Check if Project Details section should be shown
     type_of_project = data.get("type_of_project", "").strip()
     other_notes = data.get("other_notes", "").strip()
+    show_picture_key = bool(data.get("show_picture_key_in_pdf"))
     
     # Only show Project Details section if at least one field has content
     if type_of_project or other_notes:
@@ -482,6 +483,29 @@ def build_page2(c, data):
             # Add spacing between fields (only if not the last field)
             if i < len(details_fields) - 1:
                 y -= 20
+
+    if show_picture_key:
+        y -= 20
+        c.setFont("Montserrat-Bold", 11.5)
+        c.setFillColor(colors.HexColor("#d62028"))
+        c.drawString(40, y, "Picture Key")
+        y -= 22
+
+        picture_key_items = [
+            ("#e53935", "Requires immediate attention."),
+            ("#f9a825", "Immediate attention recommended."),
+            ("#43a047", "Requires no attention."),
+        ]
+        for color_hex, label in picture_key_items:
+            circle_r = 4.5
+            circle_x = 40 + circle_r
+            circle_y = y + 2.5
+            c.setFillColor(colors.HexColor(color_hex))
+            c.circle(circle_x, circle_y, circle_r, stroke=0, fill=1)
+            c.setFillColor(colors.black)
+            c.setFont("Montserrat-Bold", 11)
+            c.drawString(circle_x + circle_r + 8, y, f"- {label}")
+            y -= 18
 
     page2_img = data.get("page2_image")
     if page2_img and os.path.exists(page2_img):

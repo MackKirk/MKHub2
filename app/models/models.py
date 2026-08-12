@@ -3257,6 +3257,59 @@ class CompanyCreditCardAssignment(Base):
     )
 
 
+class FuelCard(Base):
+    """Company fuel cards — card number, PIN, and issue date; assign custody to employees."""
+
+    __tablename__ = "fuel_cards"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    card_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    pin: Mapped[str] = mapped_column(String(50), nullable=False)
+    date_issued: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(50), default="active", nullable=False, index=True)  # active|cancelled|replaced|lost
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    assignments = relationship(
+        "FuelCardAssignment",
+        back_populates="fuel_card",
+        cascade="all, delete-orphan",
+        order_by="FuelCardAssignment.assigned_at.desc()",
+    )
+
+    __table_args__ = (Index("idx_fuel_cards_status_issued", "status", "date_issued"),)
+
+
+class FuelCardAssignment(Base):
+    """Custody history for fuel cards (who holds the physical card)."""
+
+    __tablename__ = "fuel_card_assignments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    fuel_card_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("fuel_cards.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    assigned_to_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    returned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    returned_to_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    fuel_card = relationship("FuelCard", back_populates="assignments")
+    assigned_to_user = relationship("User", foreign_keys=[assigned_to_user_id])
+    returned_to_user = relationship("User", foreign_keys=[returned_to_user_id])
+
+    __table_args__ = (
+        Index("idx_fuel_card_assignment_active", "fuel_card_id", "is_active"),
+        Index("idx_fuel_assignment_user_active", "assigned_to_user_id", "is_active"),
+    )
+
+
 # =====================
 # HR Offboarding
 # =====================

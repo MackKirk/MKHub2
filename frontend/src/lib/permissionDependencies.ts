@@ -257,6 +257,9 @@ export function canEnablePermission(
   if (permKey === 'company_cards:write') {
     return has('company_cards:read');
   }
+  if (permKey === 'fuel_cards:write') {
+    return has('fuel_cards:read');
+  }
   if (permKey === 'fleet:work_orders:write') {
     return has('fleet:work_orders:read');
   }
@@ -381,7 +384,11 @@ export function applyPermissionUncheckCascade(
   } else if (uncheckedKey === 'company_assets:access') {
     // Access is implicit — clearing it only clears children when toggled programmatically.
     Object.keys(newPerms).forEach((k) => {
-      if (k.startsWith('fleet:equipment:') || k.startsWith('company_cards:')) {
+      if (
+        k.startsWith('fleet:equipment:') ||
+        k.startsWith('company_cards:') ||
+        k.startsWith('fuel_cards:')
+      ) {
         newPerms[k] = false;
       }
     });
@@ -428,6 +435,8 @@ export function applyPermissionUncheckCascade(
     });
   } else if (uncheckedKey === 'company_cards:read') {
     newPerms['company_cards:write'] = false;
+  } else if (uncheckedKey === 'fuel_cards:read') {
+    newPerms['fuel_cards:write'] = false;
   } else if (
     uncheckedKey.startsWith('fleet:vehicles:') &&
     uncheckedKey.endsWith(':read') &&
@@ -625,11 +634,15 @@ export function applyPermissionUncheckCascade(
   if (
     uncheckedKey === 'company_assets:access' ||
     uncheckedKey.startsWith('fleet:equipment:') ||
-    uncheckedKey.startsWith('company_cards:')
+    uncheckedKey.startsWith('company_cards:') ||
+    uncheckedKey.startsWith('fuel_cards:')
   ) {
     const hasChild = Object.keys(newPerms).some(
       (k) =>
-        (k.startsWith('fleet:equipment:') || k.startsWith('company_cards:')) && !!newPerms[k],
+        (k.startsWith('fleet:equipment:') ||
+          k.startsWith('company_cards:') ||
+          k.startsWith('fuel_cards:')) &&
+        !!newPerms[k],
     );
     newPerms['company_assets:access'] = hasChild;
   }

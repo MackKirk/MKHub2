@@ -376,6 +376,7 @@ const PROPOSAL_FIELD_LABELS: Record<string, string> = {
   show_total_in_pdf: 'Show total in PDF',
   show_pst_in_pdf: 'Show PST in PDF',
   show_gst_in_pdf: 'Show GST in PDF',
+  show_picture_key_in_pdf: 'Show Picture Key in PDF',
   pst_rate: 'PST rate',
   gst_rate: 'GST rate',
   area_display_unit: 'Area unit',

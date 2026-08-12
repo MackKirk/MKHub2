@@ -13,7 +13,7 @@ const sections = [
     title: '2. Information we collect',
     body: [
       'Account and profile information, such as your name, username, email address, phone number, role, permissions, emergency contact details where applicable, and employment or contractor profile details entered into MK Hub.',
-      'Operational data, such as customers, contacts, sites, projects, opportunities, proposals, quotes, tasks, schedules, work orders, inspections, safety forms, training records, fleet assignments, equipment records, corporate card records, notes, comments, and activity history.',
+      'Operational data, such as customers, contacts, sites, projects, opportunities, proposals, quotes, tasks, schedules, work orders, inspections, safety forms, training records, fleet assignments, equipment records, corporate card records, fuel card records, notes, comments, and activity history.',
       'Files and media, such as documents, photos, signatures, inspection images, uploaded attachments, generated PDFs, and other content submitted through the platform.',
       'Time, attendance, and location-related information, such as clock entries, schedule information, dispatch data, and location data when a feature requires location access and you permit it on your device.',
       'Device and usage information, such as IP address, browser or device type, operating system, app version, log-in events, audit logs, crash or diagnostic information, and security-related activity.',

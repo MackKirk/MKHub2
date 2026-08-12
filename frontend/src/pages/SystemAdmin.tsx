@@ -197,6 +197,8 @@ function entityHref(entityType: string, entityId: string): string | null {
       return `/fleet/inspections/${id}`;
     case 'company_credit_card':
       return `/company-assets/credit-cards/${id}`;
+    case 'fuel_card':
+      return `/company-assets/fuel-cards/${id}`;
     case 'quote':
       return `/quotes/${id}`;
     default:

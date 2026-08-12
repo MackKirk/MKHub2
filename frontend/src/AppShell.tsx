@@ -208,6 +208,17 @@ const IconCreditCard = () => (
   </svg>
 );
 
+const IconFuelPump = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 21V6a2 2 0 012-2h6a2 2 0 012 2v15M4 21h10M4 11h10m4 3v-6l3 3m-3 3h1a2 2 0 002-2v-3.5a1.5 1.5 0 00-.44-1.06L18 5"
+    />
+  </svg>
+);
+
 const IconUsersGroup = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -490,6 +501,9 @@ export default function AppShell({ children }: PropsWithChildren){
     if (requiredPermission === 'company_cards:read') {
       return has || permissionsSet.has('company_cards:write');
     }
+    if (requiredPermission === 'fuel_cards:read') {
+      return has || permissionsSet.has('fuel_cards:write');
+    }
     if (requiredPermission === 'documents:read') {
       return (
         has ||
@@ -662,6 +676,7 @@ export default function AppShell({ children }: PropsWithChildren){
       items: [
         { id: 'equipment', label: 'Equipment', path: '/company-assets/equipment', icon: <IconWrench />, requiredPermission: 'fleet:equipment:read' },
         { id: 'corporate-cards', label: 'Corporate Cards', path: '/company-assets/credit-cards', icon: <IconCreditCard />, requiredPermission: 'company_cards:read' },
+        { id: 'fuel-cards', label: 'Fuel Cards', path: '/company-assets/fuel-cards', icon: <IconFuelPump />, requiredPermission: 'fuel_cards:read' },
       ]
     },
     {
@@ -803,6 +818,7 @@ export default function AppShell({ children }: PropsWithChildren){
         return hasPermission('fleet:access') || hasPermission('fleet:read');
       }
       if (item.type === 'company_credit_card') return hasPermission('company_cards:read');
+      if (item.type === 'fuel_card') return hasPermission('fuel_cards:read');
       // Unknown types: default allow (backend should still enforce on data fetch)
       return true;
     };
@@ -1056,6 +1072,7 @@ export default function AppShell({ children }: PropsWithChildren){
     if (category.id === 'company-assets') {
       if (hasPermission('fleet:equipment:read')) return '/company-assets/equipment';
       if (hasPermission('company_cards:read')) return '/company-assets/credit-cards';
+      if (hasPermission('fuel_cards:read')) return '/company-assets/fuel-cards';
       const first = category.items.find((it) => hasPermission(it.requiredPermission));
       return first?.path || '/company-assets/equipment';
     }
