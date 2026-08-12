@@ -180,6 +180,7 @@ def compute_proposal_diff(old_data: Dict, new_data: Dict, source: Optional[str] 
         'type_of_project', 'other_notes', 'project_description',
         'additional_project_notes', 'terms_text', 'total',
         'show_total_in_pdf', 'show_pst_in_pdf', 'show_gst_in_pdf',
+        'show_picture_key_in_pdf',
         'pst_rate', 'gst_rate', 'area_display_unit',
     ]
 
@@ -637,7 +638,7 @@ def _resolve_proposal_field_value(db: Session, field: str, val: Any) -> Optional
                  'primary_contact_email', 'date', 'other_notes', 'project_description',
                  'additional_project_notes', 'terms_text'):
         return str(val) if val else "—"
-    if field in ('is_new', 'soft_delete', 'restored', 'show_total_in_pdf', 'show_pst_in_pdf', 'show_gst_in_pdf'):
+    if field in ('is_new', 'soft_delete', 'restored', 'show_total_in_pdf', 'show_pst_in_pdf', 'show_gst_in_pdf', 'show_picture_key_in_pdf'):
         if isinstance(val, bool):
             return "Yes" if val else "No"
         return str(val)
