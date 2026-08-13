@@ -38,6 +38,15 @@ export const markPostViewed = async (postId: string): Promise<void> => {
   await api.post(`/community/posts/${postId}/mark-viewed`);
 };
 
+export const confirmPostRead = async (
+  postId: string
+): Promise<{ status: string; confirmed_at?: string }> => {
+  const response = await api.post<{ status: string; confirmed_at?: string }>(
+    `/community/posts/${postId}/confirm-read`
+  );
+  return response.data;
+};
+
 export const togglePostLike = async (postId: string): Promise<{
   status: "liked" | "unliked";
   likes_count: number;

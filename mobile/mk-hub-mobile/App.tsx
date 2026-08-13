@@ -9,6 +9,8 @@ import {
   Montserrat_700Bold
 } from "@expo-google-fonts/montserrat";
 import { AuthProvider } from "./src/hooks/useAuth";
+import { TasksProvider } from "./src/hooks/useTasksBadge";
+import { CommunityBadgeProvider } from "./src/hooks/useCommunityBadge";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import {
   HubMenuProvider,
@@ -33,12 +35,16 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <NavigationContainer ref={navigationRef}>
-          <HubMenuProvider>
-            <StatusBar barStyle="dark-content" />
-            <RootNavigator />
-          </HubMenuProvider>
-        </NavigationContainer>
+        <TasksProvider>
+          <CommunityBadgeProvider>
+            <NavigationContainer ref={navigationRef}>
+              <HubMenuProvider>
+                <StatusBar barStyle="dark-content" />
+                <RootNavigator />
+              </HubMenuProvider>
+            </NavigationContainer>
+          </CommunityBadgeProvider>
+        </TasksProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

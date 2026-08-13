@@ -13,6 +13,266 @@
 -->
 
 <<<RELEASE>>>
+id: 2026-08-13-1
+date: 2026-08-13
+title: Update 1.1.043 - Week 33
+
+### New
+- Fuel cards under Company Assets, with assign and return custody.
+- Picture Key on proposals (optional legend on the PDF).
+- Phone extension on contacts.
+
+### Improved
+- Fuel card custody: crew, reasons, and attachments.
+- Mobile clock and tasks screens.
+- Project access now follows section permissions.
+
+### Fixed
+- Orange line under images removed from proposal PDFs.
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-08-07-1
+date: 2026-08-07
+title: Update 1.1.042 - Week 32
+
+### New
+- Option to show unit price on proposal PDF pricing lines.
+- Map / address lookup when setting a project location.
+
+### Improved
+- Document Creator: page backgrounds, types, and image handling.
+- Onboarding documents and attendance.
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-07-31-1
+date: 2026-07-31
+title: Update 1.1.041 - Week 31
+
+### New
+- Project warranties.
+
+### Improved
+- Print shop requests can be edited after create (including date).
+- Document editing and images.
+
+### Fixed
+- Print shop supply files open and download correctly.
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-07-24-1
+date: 2026-07-24
+title: Update 1.1.040 - Week 30
+
+### New
+- Print shop requests.
+- Project number on projects.
+- Calendar on the Hub home.
+
+### Improved
+- Asset lists in System Settings.
+- Navigation and page layout.
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-07-17-1
+date: 2026-07-17
+title: Update 1.1.039 - Week 29
+
+### New
+- Preview PDF and Office files without downloading.
+- User activity log with export.
+
+### Improved
+- Project files layout and file notes.
+- Fleet and work order permissions.
+- Estimates and product handling.
+- Proposal totals.
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-07-10-1
+date: 2026-07-10
+title: Update 1.1.038 - Week 28
+
+### New
+- More detailed permissions for inventory, fleet, company assets, and HR.
+
+### Improved
+- Offboarding: hub access and delete cases.
+- Project reports and status.
+- Files: grid and list view.
+- Reviews import and cycle display.
+
+### Fixed
+- Review cycle scope and supervisor counts.
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-07-03-1
+date: 2026-07-03
+title: Update 1.1.037 - Week 27
+
+### New
+- Field brief on projects.
+- Notes on clock-in shifts.
+
+### Improved
+- Project address and division sorting.
+- Billing snapshot on projects and clients.
+- File notes on project files.
+- Mobile app store listing.
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-06-26-1
+date: 2026-06-26
+title: Update 1.1.036 - Week 26
+
+### New
+- HR offboarding.
+
+### Improved
+- Business lines and project divisions.
+- Certificates and PDF generation.
+- Company files tab.
+- Customer permissions.
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-06-12-1
+date: 2026-06-12
+title: Update 1.1.035 - Week 24
+
+### New
+- Permits on the employee profile.
+
+### Improved
+- Company files: recycle bin for client documents.
+- Who can open client files.
+- Equipment status and fleet.
+- Education records on the profile.
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-06-05-1
+date: 2026-06-05
+title: Update 1.1.034 - Week 23
+
+### New
+- Company credit cards: assign and return.
+- Fleet asset compliance.
+
+### Improved
+- Document Creator: sticky toolbar and inline editing.
+- Project document and safety permissions.
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-05-29-1
+date: 2026-05-29
+title: Update 1.1.033 - Week 22
+
+### New
+- Customer insights.
+- Company locations.
+
+### Improved
+- Edit customer, contact, and site in cleaner forms.
+- Search inside filters.
+- Timesheets and user reports (sort and delete).
+- Suppliers.
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-05-22-1
+date: 2026-05-22
+title: Update 1.1.031 - Week 21
+
+### New
+- Project members and who can see a project.
+- Report category permissions on projects.
+
+### Improved
+- Clock in/out job selection.
+- Community and schedule.
+- Subcontractor companies.
+- Customer permissions.
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
+id: 2026-05-15-1
+date: 2026-05-15
+title: Update 1.1.030 - Week 20
+
+### New
+- Subcontractor companies.
+
+### Improved
+- Document Creator: fill project info automatically.
+- Training and attendance.
+- Import older reviews on employee profiles.
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
 id: 2026-05-07-1
 date: 2026-05-07
 title: Update 1.1.029

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -21,7 +21,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
 import { useAuth } from "../../hooks/useAuth";
-import { hasPermission, isAdminRole } from "../../lib/permissions";
+import { canViewFleetWorkOrderTab, hasPermission, isAdminRole } from "../../lib/permissions";
 import { MANUAL_WORK_ORDER_STATUS_TRANSITIONS, WORK_ORDER_STATUS_LABELS } from "../../lib/fleetLabels";
 import { resolveFileUrl } from "../../lib/fileUrls";
 import { getFleetInspection } from "../../services/fleetInspections";
@@ -89,6 +89,14 @@ export const FleetWorkOrderDetailScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const bottomTabHeight = fleetWorkOrderDetailTabBarHeight(insets.bottom);
 
+  const visibleTabs = useMemo(
+    () =>
+      WO_TABS.filter((tab) =>
+        canViewFleetWorkOrderTab(permissionsSet, roles, tab.key)
+      ),
+    [permissionsSet, roles]
+  );
+
   const [activeTab, setActiveTab] = useState<WorkOrderDetailTabKey>(
     route.params.initialTab ?? "general"
   );
@@ -113,6 +121,13 @@ export const FleetWorkOrderDetailScreen: React.FC = () => {
   const [reopenReason, setReopenReason] = useState("");
   const [descriptionEditing, setDescriptionEditing] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
+
+  useEffect(() => {
+    if (visibleTabs.length === 0) return;
+    if (!visibleTabs.some((t) => t.key === activeTab)) {
+      setActiveTab(visibleTabs[0].key);
+    }
+  }, [visibleTabs, activeTab]);
 
   const loadWorkOrder = useCallback(async () => {
     const order = await getWorkOrder(route.params.workOrderId);
@@ -414,7 +429,10 @@ export const FleetWorkOrderDetailScreen: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: bottomTabHeight + spacing.lg }
+          {
+            paddingBottom:
+              (visibleTabs.length > 0 ? bottomTabHeight : 0) + spacing.lg
+          }
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -444,17 +462,27 @@ export const FleetWorkOrderDetailScreen: React.FC = () => {
               onReopen={() => setShowReopenModal(true)}
               onEditStatus={() => setShowStatusModal(true)}
             />
-            <View style={styles.tabContent}>{renderTabContent()}</View>
+            <View style={styles.tabContent}>
+              {visibleTabs.length > 0 ? (
+                renderTabContent()
+              ) : (
+                <Text style={styles.emptyHint}>
+                  You do not have permission to view any sections of this work order.
+                </Text>
+              )}
+            </View>
           </>
         ) : null}
       </ScrollView>
 
-      <MKFleetWorkOrderDetailTabBar
-        tabs={WO_TABS}
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        style={styles.bottomTabBar}
-      />
+      {visibleTabs.length > 0 ? (
+        <MKFleetWorkOrderDetailTabBar
+          tabs={visibleTabs}
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          style={styles.bottomTabBar}
+        />
+      ) : null}
 
       <FleetWorkOrderServiceModal
         visible={showCheckIn}
@@ -603,6 +631,10 @@ const styles = StyleSheet.create({
   },
   tabContent: {
     marginTop: spacing.md
+  },
+  emptyHint: {
+    ...typography.body,
+    color: colors.textMuted
   },
   bottomTabBar: {
     marginHorizontal: -spacing.xl

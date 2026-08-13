@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import { withFileAccessToken } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { formatFleetHistoryPerformedBy } from '@/lib/fleetHistoryActor';
 import {
@@ -15,6 +17,11 @@ type AssignmentRow = {
   assigned_at: string;
   returned_at?: string | null;
   notes?: string | null;
+  notes_in?: string | null;
+  reason_out?: string | null;
+  reason_in?: string | null;
+  attachments_out?: string[] | null;
+  attachments_in?: string[] | null;
 };
 
 type Props = {
@@ -34,6 +41,28 @@ function ReadOnlyDetailField({ label, value }: { label: string; value: string })
   );
 }
 
+function AttachmentThumbs({ ids }: { ids: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {ids.map((id) => (
+        <a
+          key={id}
+          href={withFileAccessToken(`/files/${encodeURIComponent(id)}/download`)}
+          target="_blank"
+          rel="noreferrer"
+          className="block"
+        >
+          <img
+            src={withFileAccessToken(`/files/${encodeURIComponent(id)}/thumbnail?w=200`)}
+            alt=""
+            className="h-20 w-20 rounded-lg border border-gray-200 object-cover"
+          />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export default function FuelCardCustodyLogDetailModal({
   open,
   assignment,
@@ -41,6 +70,13 @@ export default function FuelCardCustodyLogDetailModal({
   performedBy,
   onClose,
 }: Props) {
+  const reason = logType === 'assignment' ? assignment.reason_out : assignment.reason_in;
+  const notes = logType === 'assignment' ? assignment.notes : assignment.notes_in;
+  const attachments = useMemo(() => {
+    const raw = logType === 'assignment' ? assignment.attachments_out : assignment.attachments_in;
+    return Array.isArray(raw) ? raw.filter(Boolean) : [];
+  }, [assignment.attachments_in, assignment.attachments_out, logType]);
+
   return (
     <AppFormModal
       open={open}
@@ -70,8 +106,13 @@ export default function FuelCardCustodyLogDetailModal({
             value={formatDateLocal(new Date(assignment.returned_at))}
           />
         ) : null}
-        {assignment.notes?.trim() ? (
-          <ReadOnlyDetailField label="Notes" value={assignment.notes.trim()} />
+        {reason?.trim() ? <ReadOnlyDetailField label="Reason" value={reason.trim()} /> : null}
+        {notes?.trim() ? <ReadOnlyDetailField label="Notes" value={notes.trim()} /> : null}
+        {attachments.length > 0 ? (
+          <div className="space-y-1">
+            <div className={uiTypography.controlLabel}>Attachments</div>
+            <AttachmentThumbs ids={attachments} />
+          </div>
         ) : null}
       </div>
     </AppFormModal>

@@ -32,7 +32,8 @@ type CardRow = {
   id: string;
   card_number: string;
   pin: string;
-  date_issued: string;
+  date_issued?: string | null;
+  crew?: string | null;
   status: string;
   notes?: string | null;
   assigned_to_name?: string | null;
@@ -46,7 +47,7 @@ type ListResponse = {
   total_pages: number;
 };
 
-type SortColumn = 'card_number' | 'date_issued' | 'status';
+type SortColumn = 'card_number' | 'date_issued' | 'crew' | 'status';
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'All statuses' },
@@ -56,7 +57,8 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'lost', label: 'Lost' },
 ];
 
-function formatDateIssued(dateIssued: string): string {
+function formatDateIssued(dateIssued?: string | null): string {
+  if (!dateIssued) return '\u2014';
   const d = parseApiDateForDisplay(dateIssued);
   return d ? formatDateLocal(d) : '\u2014';
 }
@@ -70,7 +72,7 @@ function SortHeader({
 }: {
   label: string;
   column: SortColumn;
-  sortBy: SortColumn | null;
+  sortBy: SortColumn;
   sortDir: 'asc' | 'desc';
   onSort: (column: SortColumn) => void;
 }) {
@@ -103,10 +105,10 @@ export default function FuelCardsList() {
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
   const limit = 25;
 
-  const validSorts: SortColumn[] = ['card_number', 'date_issued', 'status'];
+  const validSorts: SortColumn[] = ['card_number', 'date_issued', 'crew', 'status'];
   const rawSort = searchParams.get('sort');
-  const sortBy: SortColumn | null =
-    rawSort && validSorts.includes(rawSort as SortColumn) ? (rawSort as SortColumn) : null;
+  const sortBy: SortColumn =
+    rawSort && validSorts.includes(rawSort as SortColumn) ? (rawSort as SortColumn) : 'card_number';
   const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
 
   const setListSort = (column: SortColumn) => {
@@ -138,10 +140,8 @@ export default function FuelCardsList() {
     const p = new URLSearchParams();
     p.set('page', String(page));
     p.set('limit', String(limit));
-    if (sortBy) {
-      p.set('sort', sortBy);
-      p.set('dir', sortDir);
-    }
+    p.set('sort', sortBy);
+    p.set('dir', sortDir);
     if (search.trim()) p.set('search', search.trim());
     if (statusParam) p.set('status', statusParam);
     return p.toString();
@@ -179,7 +179,7 @@ export default function FuelCardsList() {
     <div className={uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <AppPageHeader
         title="Fuel cards"
-        subtitle="Card #, PIN #, and issue date — assign custody like equipment"
+        subtitle="Card #, PIN #, crew, and issue date — assign custody like equipment"
         icon={<Fuel className="h-4 w-4" />}
       />
 
@@ -187,7 +187,7 @@ export default function FuelCardsList() {
         <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-end gap-3')}>
           <div className="min-w-0 flex-1">
             <AppInput
-              placeholder="Search card # or notes…"
+              placeholder="Search card #, crew, or notes…"
               value={search}
               onChange={(e) => setSearchFilter(e.target.value)}
               leftIcon={<Search className="h-4 w-4" />}
@@ -255,6 +255,13 @@ export default function FuelCardsList() {
                             sortDir={sortDir}
                             onSort={setListSort}
                           />
+                          <SortHeader
+                            label="Crew"
+                            column="crew"
+                            sortBy={sortBy}
+                            sortDir={sortDir}
+                            onSort={setListSort}
+                          />
                           <th className={uiCx(uiTypography.controlLabel, 'px-3 py-2 text-left')} scope="col">
                             Custody
                           </th>
@@ -281,6 +288,9 @@ export default function FuelCardsList() {
                               </td>
                               <td className={uiCx(uiTypography.body, 'px-3 py-3 align-top text-gray-700')}>
                                 {formatDateIssued(row.date_issued)}
+                              </td>
+                              <td className={uiCx(uiTypography.body, 'px-3 py-3 align-top text-gray-700')}>
+                                {row.crew?.trim() || '\u2014'}
                               </td>
                               <td className="min-w-0 px-3 py-3 align-top">
                                 <div className="flex min-w-0 flex-col gap-0.5">

@@ -3271,7 +3271,8 @@ class FuelCard(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     card_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     pin: Mapped[str] = mapped_column(String(50), nullable=False)
-    date_issued: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    date_issued: Mapped[Optional[date]] = mapped_column(Date, index=True)
+    crew: Mapped[Optional[str]] = mapped_column(String(100), index=True)  # division/crew the card belongs to
     status: Mapped[str] = mapped_column(String(50), default="active", nullable=False, index=True)  # active|cancelled|replaced|lost
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -3301,7 +3302,12 @@ class FuelCardAssignment(Base):
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     returned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     returned_to_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
-    notes: Mapped[Optional[str]] = mapped_column(Text)
+    notes: Mapped[Optional[str]] = mapped_column(Text)  # assign notes (notes_out)
+    notes_in: Mapped[Optional[str]] = mapped_column(Text)  # return notes
+    reason_out: Mapped[Optional[str]] = mapped_column(String(255))
+    reason_in: Mapped[Optional[str]] = mapped_column(String(255))
+    attachments_out: Mapped[Optional[list]] = mapped_column(JSON)  # file_object_ids at assign
+    attachments_in: Mapped[Optional[list]] = mapped_column(JSON)  # file_object_ids at return
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

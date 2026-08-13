@@ -6,8 +6,12 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
-import FuelCardAssignCustodyModal from '@/components/companyAssets/FuelCardAssignCustodyModal';
-import FuelCardReturnCustodyModal from '@/components/companyAssets/FuelCardReturnCustodyModal';
+import FuelCardAssignCustodyModal, {
+  type FuelCardAssignCustodyPayload,
+} from '@/components/companyAssets/FuelCardAssignCustodyModal';
+import FuelCardReturnCustodyModal, {
+  type FuelCardReturnCustodyPayload,
+} from '@/components/companyAssets/FuelCardReturnCustodyModal';
 import FuelCardCustodyLogDetailModal from '@/components/companyAssets/FuelCardCustodyLogDetailModal';
 import { FuelCardCustodyTab } from '@/components/companyAssets/FuelCardCustodyTab';
 import { FuelCardGeneralTab } from '@/components/companyAssets/FuelCardGeneralTab';
@@ -38,7 +42,8 @@ type CardDto = {
   id: string;
   card_number: string;
   pin: string;
-  date_issued: string;
+  date_issued?: string | null;
+  crew?: string | null;
   status: string;
   notes?: string | null;
 };
@@ -50,6 +55,11 @@ type AssignmentRow = {
   returned_at?: string | null;
   assigned_to_name?: string | null;
   notes?: string | null;
+  notes_in?: string | null;
+  reason_out?: string | null;
+  reason_in?: string | null;
+  attachments_out?: string[] | null;
+  attachments_in?: string[] | null;
   is_active: boolean;
 };
 
@@ -122,12 +132,20 @@ export default function FuelCardDetail() {
         assigned_at: a.assigned_at,
         returned_at: a.returned_at ?? undefined,
         notes_out: a.notes ?? undefined,
+        notes_in: a.notes_in ?? undefined,
       })),
     [assignments],
   );
 
   const invalidateHistory = () => {
     qc.invalidateQueries({ queryKey: ['fuel-card-history', id] });
+  };
+
+  const invalidateCustody = () => {
+    qc.invalidateQueries({ queryKey: ['fuel-card-assignments', id] });
+    qc.invalidateQueries({ queryKey: ['fuel-cards'] });
+    qc.invalidateQueries({ queryKey: ['fuel-card', id] });
+    invalidateHistory();
   };
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
@@ -138,30 +156,21 @@ export default function FuelCardDetail() {
   const activeAssignment = useMemo(() => assignments.find((a) => a.is_active), [assignments]);
 
   const assignMutation = useMutation({
-    mutationFn: (payload: { assigned_to_user_id: string; notes?: string }) =>
-      api('POST', `/fuel-cards/${id}/assign`, payload),
+    mutationFn: (payload: FuelCardAssignCustodyPayload) => api('POST', `/fuel-cards/${id}/assign`, payload),
     onSuccess: () => {
       toast.success('Assigned');
       setShowAssign(false);
-      qc.invalidateQueries({ queryKey: ['fuel-card-assignments', id] });
-      qc.invalidateQueries({ queryKey: ['fuel-cards'] });
-      qc.invalidateQueries({ queryKey: ['fuel-card', id] });
-      invalidateHistory();
+      invalidateCustody();
     },
     onError: (e: any) => toast.error(e?.message || 'Assign failed'),
   });
 
   const returnMutation = useMutation({
-    mutationFn: (notes?: string) =>
-      api('POST', `/fuel-cards/${id}/return`, {
-        notes: notes || undefined,
-      }),
+    mutationFn: (payload: FuelCardReturnCustodyPayload) => api('POST', `/fuel-cards/${id}/return`, payload),
     onSuccess: () => {
       toast.success('Return recorded');
       setShowReturn(false);
-      qc.invalidateQueries({ queryKey: ['fuel-card-assignments', id] });
-      qc.invalidateQueries({ queryKey: ['fuel-cards'] });
-      invalidateHistory();
+      invalidateCustody();
     },
     onError: (e: any) => toast.error(e?.message || 'Return failed'),
   });
@@ -175,6 +184,9 @@ export default function FuelCardDetail() {
     },
     onError: (e: any) => toast.error(e?.message || 'Delete failed'),
   });
+
+  const isInCustody = !!activeAssignment;
+  const canAssign = canEdit && (isInCustody || (!!card && card.status === 'active'));
 
   const pageShellClass = uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50');
 
@@ -243,8 +255,6 @@ export default function FuelCardDetail() {
   }
 
   const { primaryTitle, subtitleLine } = buildFuelCardHeroHeading(card);
-  const isInCustody = !!activeAssignment;
-  const canAssign = canEdit && (isInCustody || card.status === 'active');
 
   return (
     <div className={pageShellClass}>
@@ -263,7 +273,8 @@ export default function FuelCardDetail() {
           subtitleLine={subtitleLine}
           card={card}
           isInCustody={isInCustody}
-          canAssign={canAssign}
+          assignedToName={activeAssignment?.assigned_to_name}
+          canAssign={!!canAssign}
           isCollapsed={isHeroCollapsed}
           onToggleCollapsed={() => setIsHeroCollapsed((v) => !v)}
           onAssign={() => setShowAssign(true)}
@@ -296,7 +307,7 @@ export default function FuelCardDetail() {
             historyItems={historyItems}
             assignments={historyAssignments}
             assignmentAuditEntityType="fuel_card_assignment"
-            activityDescription="Custody assign/return events, edits to this card, and other audit entries (newest first)."
+            activityDescription="Custody changes, edits to this card, and other audit entries (newest first)."
             onOpenAssignmentDetail={(assignment, logType, performedBy) => {
               const row = assignments.find((a) => a.id === assignment.id);
               if (!row) return;
@@ -320,8 +331,9 @@ export default function FuelCardDetail() {
       <FuelCardReturnCustodyModal
         open={canEdit && showReturn}
         cardLabel={card.card_number}
+        assignedToName={activeAssignment?.assigned_to_name}
         onClose={() => setShowReturn(false)}
-        onConfirm={(notes) => returnMutation.mutate(notes)}
+        onConfirm={(data) => returnMutation.mutate(data)}
         isPending={returnMutation.isPending}
       />
 

@@ -23,9 +23,11 @@ import { MKCard } from "../../components/MKCard";
 import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
+import { useCommunityBadge } from "../../hooks/useCommunityBadge";
 import {
   getCommunityPosts,
   markPostViewed,
+  confirmPostRead,
   togglePostLike,
   getPostComments,
   createPostComment
@@ -69,6 +71,7 @@ function fileUrlWithAccessToken(relativePath: string): string {
 
 export const CommunityScreen: React.FC = () => {
   const { openMenu } = useHubMenu();
+  const { refreshUnread, markOneReadLocally } = useCommunityBadge();
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
@@ -77,6 +80,7 @@ export const CommunityScreen: React.FC = () => {
   const [commentText, setCommentText] = useState("");
   const [loadingComments, setLoadingComments] = useState(false);
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [confirmingRead, setConfirmingRead] = useState(false);
 
   const communitySummary = useMemo(() => {
     const unreadCount = posts.filter((post) => post.is_unread).length;
@@ -89,6 +93,7 @@ export const CommunityScreen: React.FC = () => {
       setLoading(true);
       const data = await getCommunityPosts(filter);
       setPosts(data);
+      void refreshUnread();
     } catch (err) {
       const apiError = toApiError(err);
       Alert.alert("Could not load posts", apiError.message);
@@ -106,10 +111,10 @@ export const CommunityScreen: React.FC = () => {
     if (post.is_unread) {
       try {
         await markPostViewed(post.id);
-        // Update local state
         setPosts((prev) =>
           prev.map((p) => (p.id === post.id ? { ...p, is_unread: false } : p))
         );
+        markOneReadLocally();
       } catch (err) {
         // Silent fail
       }
@@ -126,6 +131,23 @@ export const CommunityScreen: React.FC = () => {
       // Silent fail
     } finally {
       setLoadingComments(false);
+    }
+  };
+
+  const handleConfirmRead = async (post: CommunityPost) => {
+    if (!post.requires_read_confirmation || post.user_has_confirmed) return;
+    try {
+      setConfirmingRead(true);
+      await confirmPostRead(post.id);
+      const updated = { ...post, user_has_confirmed: true };
+      setPosts((prev) => prev.map((p) => (p.id === post.id ? updated : p)));
+      if (selectedPost?.id === post.id) {
+        setSelectedPost(updated);
+      }
+    } catch (err) {
+      Alert.alert("Could not confirm read", toApiError(err).message);
+    } finally {
+      setConfirmingRead(false);
     }
   };
 
@@ -249,6 +271,30 @@ export const CommunityScreen: React.FC = () => {
             ))}
           </View>
         )}
+
+        {item.requires_read_confirmation ? (
+          <View
+            style={[
+              styles.confirmHint,
+              item.user_has_confirmed
+                ? styles.confirmHintDone
+                : styles.confirmHintPending
+            ]}
+          >
+            <Text
+              style={[
+                styles.confirmHintText,
+                item.user_has_confirmed
+                  ? styles.confirmHintTextDone
+                  : styles.confirmHintTextPending
+              ]}
+            >
+              {item.user_has_confirmed
+                ? "Read confirmed"
+                : "Confirmation required"}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.postFooter}>
           <TouchableOpacity
@@ -393,6 +439,34 @@ export const CommunityScreen: React.FC = () => {
                   </Text>
                 </TouchableOpacity>
               </View>
+
+              {selectedPost.requires_read_confirmation ? (
+                <View style={styles.confirmBlock}>
+                  {selectedPost.user_has_confirmed ? (
+                    <View style={styles.confirmDoneBadge}>
+                      <Text style={styles.confirmDoneText}>
+                        ✓ Read confirmed
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={styles.confirmPrompt}>
+                        This post requires you to confirm that you have read it.
+                      </Text>
+                      <MKButton
+                        title={
+                          confirmingRead
+                            ? "Confirming…"
+                            : "Confirm I have read this"
+                        }
+                        onPress={() => handleConfirmRead(selectedPost)}
+                        loading={confirmingRead}
+                        disabled={confirmingRead}
+                      />
+                    </>
+                  )}
+                </View>
+              ) : null}
 
               <View style={styles.commentsSection}>
                 <Text style={styles.commentsTitle}>Comments ({comments.length})</Text>
@@ -717,6 +791,55 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: colors.border,
     marginBottom: spacing.lg
+  },
+  confirmBlock: {
+    marginBottom: spacing.lg,
+    gap: spacing.sm
+  },
+  confirmPrompt: {
+    ...typography.bodySmall,
+    color: colors.textBody
+  },
+  confirmDoneBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    backgroundColor: "#ecfdf5",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  confirmDoneText: {
+    ...typography.bodySmall,
+    color: "#15803d",
+    fontFamily: typography.button.fontFamily
+  },
+  confirmHint: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    marginBottom: spacing.sm
+  },
+  confirmHintPending: {
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fecaca"
+  },
+  confirmHintDone: {
+    backgroundColor: "#ecfdf5",
+    borderWidth: 1,
+    borderColor: "#bbf7d0"
+  },
+  confirmHintText: {
+    fontSize: 11,
+    fontFamily: typography.button.fontFamily
+  },
+  confirmHintTextPending: {
+    color: colors.primary
+  },
+  confirmHintTextDone: {
+    color: "#15803d"
   },
   modalActionButton: {
     flexDirection: "row",

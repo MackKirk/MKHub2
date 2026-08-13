@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { FuelCardAssignmentAttachmentsPicker } from '@/components/companyAssets/FuelCardAssignmentAttachmentsPicker';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { FUEL_CARD_FIELD_HINTS as H } from '@/lib/fuelCardFieldHints';
 import { formModalQuickInfo, uiLabel } from '@/lib/formModalQuickInfo';
 import {
   AppButton,
   AppFormModal,
+  AppInput,
   AppTextarea,
   AppUserSelect,
   uiCx,
@@ -20,7 +22,8 @@ const ASSIGN_CUSTODY_QUICK_INFO = formModalQuickInfo({
   purpose: <>Record who is taking physical custody of this fuel card.</>,
   howToUse: (
     <>
-      Select {uiLabel('Employee')}, add optional {uiLabel('Notes')} if helpful, then confirm the assignment.
+      Select {uiLabel('Employee')}. Optionally add {uiLabel('Reason')}, {uiLabel('Notes')}, and attachments, then
+      confirm the assignment.
     </>
   ),
   actions: (
@@ -30,11 +33,18 @@ const ASSIGN_CUSTODY_QUICK_INFO = formModalQuickInfo({
   ),
 });
 
+export type FuelCardAssignCustodyPayload = {
+  assigned_to_user_id: string;
+  notes?: string;
+  reason?: string;
+  attachment_ids?: string[];
+};
+
 export type FuelCardAssignCustodyModalProps = {
   open: boolean;
   cardLabel?: string;
   onClose: () => void;
-  onAssign: (data: { assigned_to_user_id: string; notes?: string }) => void;
+  onAssign: (data: FuelCardAssignCustodyPayload) => void;
   isPending?: boolean;
 };
 
@@ -46,7 +56,10 @@ export default function FuelCardAssignCustodyModal({
   isPending = false,
 }: FuelCardAssignCustodyModalProps) {
   const [assignUserId, setAssignUserId] = useState('');
+  const [reason, setReason] = useState('');
   const [assignNotes, setAssignNotes] = useState('');
+  const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
@@ -62,29 +75,33 @@ export default function FuelCardAssignCustodyModal({
   useEffect(() => {
     if (!open) return;
     setAssignUserId('');
+    setReason('');
     setAssignNotes('');
+    setAttachmentIds([]);
+    setUploading(false);
   }, [open]);
 
-  const title = cardLabel?.trim() ? `Assign custody — ${cardLabel.trim()}` : 'Assign custody';
+  const title = cardLabel?.trim() ? `Assign — ${cardLabel.trim()}` : 'Assign';
+  const busy = isPending || uploading;
 
   return (
     <AppFormModal
       open={open}
       onClose={onClose}
       title={title}
-      description="The employee who will physically hold this fuel card."
+      description="Who will physically hold this fuel card."
       formWidth="comfortable"
       quickInfo={ASSIGN_CUSTODY_QUICK_INFO}
       footer={
         <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-          <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={isPending}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </AppButton>
           <AppButton
             type="submit"
             form={FORM_ID}
             size="sm"
-            disabled={!assignUserId || isPending}
+            disabled={!assignUserId || busy}
             loading={isPending}
           >
             {isPending ? 'Assigning…' : 'Assign'}
@@ -97,10 +114,12 @@ export default function FuelCardAssignCustodyModal({
         className={uiSpacing.sectionStack}
         onSubmit={(e) => {
           e.preventDefault();
-          if (!assignUserId) return;
+          if (!assignUserId || busy) return;
           onAssign({
             assigned_to_user_id: assignUserId,
             notes: assignNotes.trim() || undefined,
+            reason: reason.trim() || undefined,
+            attachment_ids: attachmentIds.length ? attachmentIds : undefined,
           });
         }}
       >
@@ -111,16 +130,32 @@ export default function FuelCardAssignCustodyModal({
           value={assignUserId}
           onChange={(userId) => setAssignUserId(userId ?? '')}
           placeholder="Search or select user…"
-          disabled={isPending}
+          disabled={busy}
           fieldHint={H.assign_employee}
+        />
+        <AppInput
+          label="Reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          disabled={busy}
+          placeholder="Optional"
+          fieldHint={H.assign_reason}
         />
         <AppTextarea
           label="Notes"
           value={assignNotes}
           onChange={(e) => setAssignNotes(e.target.value)}
           rows={2}
-          disabled={isPending}
+          disabled={busy}
           fieldHint={H.assign_notes}
+        />
+        <FuelCardAssignmentAttachmentsPicker
+          label="Attachments"
+          fileIds={attachmentIds}
+          onFileIdsChange={setAttachmentIds}
+          onUploadingChange={setUploading}
+          disabled={busy}
+          fieldHint={H.assign_attachments}
         />
       </form>
     </AppFormModal>

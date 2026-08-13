@@ -2299,6 +2299,20 @@ def create_app() -> FastAPI:
                         )
                         db.commit()
                         print("[startup] Created fuel_cards tables")
+                    else:
+                        # Ensure newer fuel card columns exist
+                        try:
+                            db.execute(text("ALTER TABLE fuel_cards ADD COLUMN IF NOT EXISTS crew VARCHAR(100)"))
+                            db.execute(text("ALTER TABLE fuel_cards ALTER COLUMN date_issued DROP NOT NULL"))
+                            db.execute(text("ALTER TABLE fuel_card_assignments ADD COLUMN IF NOT EXISTS notes_in TEXT"))
+                            db.execute(text("ALTER TABLE fuel_card_assignments ADD COLUMN IF NOT EXISTS reason_out VARCHAR(255)"))
+                            db.execute(text("ALTER TABLE fuel_card_assignments ADD COLUMN IF NOT EXISTS reason_in VARCHAR(255)"))
+                            db.execute(text("ALTER TABLE fuel_card_assignments ADD COLUMN IF NOT EXISTS attachments_out JSONB"))
+                            db.execute(text("ALTER TABLE fuel_card_assignments ADD COLUMN IF NOT EXISTS attachments_in JSONB"))
+                            db.commit()
+                        except Exception as e:
+                            db.rollback()
+                            print(f"[startup] fuel_cards column migrate (non-critical): {e}")
 
                     # HR Offboarding
                     rows_ob = db.execute(

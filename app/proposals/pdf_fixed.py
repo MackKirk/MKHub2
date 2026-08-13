@@ -494,7 +494,7 @@ def build_page2(c, data):
         picture_key_items = [
             ("#e53935", "Requires immediate attention."),
             ("#f9a825", "Immediate attention recommended."),
-            ("#43a047", "Requires no attention."),
+            ("#43a047", "Currently Requires no attention."),
         ]
         for color_hex, label in picture_key_items:
             circle_r = 4.5

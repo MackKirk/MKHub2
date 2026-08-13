@@ -17,6 +17,9 @@ type AssignmentRow = {
   returned_at?: string | null;
   assigned_to_name?: string | null;
   notes?: string | null;
+  notes_in?: string | null;
+  reason_out?: string | null;
+  reason_in?: string | null;
   is_active: boolean;
 };
 
@@ -28,20 +31,28 @@ type Props = {
 export function FuelCardCustodyTab({ activeAssignment, assignments }: Props) {
   return (
     <div className={uiSpacing.sectionStack}>
-      {activeAssignment ? (
-        <AppCard>
-          <AppSectionHeader
-            title="Current custody"
-            {...appSectionPresetProps('employment')}
-          />
-          <p className={uiCx(uiTypography.sectionTitle, 'text-gray-900')}>
-            {activeAssignment.assigned_to_name || activeAssignment.assigned_to_user_id}
-          </p>
-          <p className={uiCx(uiTypography.helper, 'mt-1')}>
-            Assigned {new Date(activeAssignment.assigned_at).toLocaleString()}
-          </p>
-        </AppCard>
-      ) : null}
+      <AppCard>
+        <AppSectionHeader
+          title="Current custody"
+          description="Who currently holds this fuel card. Use Assign or Return on the hero to update custody."
+          {...appSectionPresetProps('employment')}
+        />
+        {activeAssignment ? (
+          <>
+            <p className={uiCx(uiTypography.sectionTitle, 'mt-4 text-gray-900')}>
+              {activeAssignment.assigned_to_name || activeAssignment.assigned_to_user_id}
+            </p>
+            <p className={uiCx(uiTypography.helper, 'mt-1')}>
+              Assigned {new Date(activeAssignment.assigned_at).toLocaleString()}
+            </p>
+            {activeAssignment.reason_out?.trim() ? (
+              <p className={uiCx(uiTypography.helper, 'mt-1')}>Reason: {activeAssignment.reason_out.trim()}</p>
+            ) : null}
+          </>
+        ) : (
+          <p className={uiCx(uiTypography.helper, 'mt-4')}>Available — not assigned to anyone.</p>
+        )}
+      </AppCard>
 
       <AppCard bodyClassName="!p-0">
         <div className={uiSpacing.cardPadding}>
@@ -79,8 +90,17 @@ export function FuelCardCustodyTab({ activeAssignment, assignments }: Props) {
                       ? ` · Returned ${new Date(a.returned_at).toLocaleString()}`
                       : ' · Still active'}
                   </p>
-                  {a.notes ? (
-                    <p className={uiCx(uiTypography.body, 'mt-2 whitespace-pre-wrap text-gray-600')}>{a.notes}</p>
+                  {a.reason_out?.trim() ? (
+                    <p className={uiCx(uiTypography.helper, 'mt-1')}>Assign reason: {a.reason_out.trim()}</p>
+                  ) : null}
+                  {a.notes?.trim() ? (
+                    <p className={uiCx(uiTypography.body, 'mt-2 whitespace-pre-wrap text-gray-600')}>{a.notes.trim()}</p>
+                  ) : null}
+                  {a.reason_in?.trim() ? (
+                    <p className={uiCx(uiTypography.helper, 'mt-1')}>Return reason: {a.reason_in.trim()}</p>
+                  ) : null}
+                  {a.notes_in?.trim() ? (
+                    <p className={uiCx(uiTypography.body, 'mt-1 whitespace-pre-wrap text-gray-600')}>{a.notes_in.trim()}</p>
                   ) : null}
                 </div>
                 <AppBadge variant={a.is_active ? 'info' : 'neutral'} className="shrink-0 !normal-case">

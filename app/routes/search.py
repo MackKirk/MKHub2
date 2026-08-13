@@ -381,6 +381,7 @@ def global_search(
                 .filter(
                     or_(
                         FuelCard.card_number.ilike(like),
+                        FuelCard.crew.ilike(like),
                         FuelCard.notes.ilike(like),
                     )
                 )

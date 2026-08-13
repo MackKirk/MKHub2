@@ -197,6 +197,12 @@ export function hasPermission(
       hasPermission(permissions, roles, "fleet:vehicles:read")
     );
   }
+  if (requiredPermission === "hr:timesheet:unrestricted_clock") {
+    return has || permissions.has("timesheet:unrestricted_clock");
+  }
+  if (requiredPermission === "timesheet:unrestricted_clock") {
+    return has || permissions.has("hr:timesheet:unrestricted_clock");
+  }
 
   return has;
 }
@@ -222,6 +228,40 @@ export function canEditCustomerTab(
 ): boolean {
   if (isAdminRole(roles)) return true;
   return permissions.has(`business:customers:${tab}:write`);
+}
+
+/** Map mobile fleet asset tab keys → permission segment (web uses work_orders / history). */
+function fleetAssetPermTab(tab: string): string {
+  if (tab === "work-orders") return "work_orders";
+  if (tab === "logs") return "history";
+  return tab;
+}
+
+/** Strict fleet asset tab visibility (matches web canViewFleetAssetTab). */
+export function canViewFleetAssetTab(
+  permissions: Set<string>,
+  roles: readonly string[] | null | undefined,
+  tab: string
+): boolean {
+  if (isAdminRole(roles)) return true;
+  const permTab = fleetAssetPermTab(tab);
+  return (
+    permissions.has(`fleet:vehicles:${permTab}:read`) ||
+    permissions.has(`fleet:vehicles:${permTab}:write`)
+  );
+}
+
+/** Strict fleet work-order tab visibility (matches web canViewFleetWorkOrderTab). */
+export function canViewFleetWorkOrderTab(
+  permissions: Set<string>,
+  roles: readonly string[] | null | undefined,
+  tab: string
+): boolean {
+  if (isAdminRole(roles)) return true;
+  return (
+    permissions.has(`fleet:work_orders:${tab}:read`) ||
+    permissions.has(`fleet:work_orders:${tab}:write`)
+  );
 }
 
 export { BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS };

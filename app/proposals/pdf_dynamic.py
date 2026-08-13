@@ -768,18 +768,6 @@ def build_dynamic_pages(data, output_path):
     user_style_centered = ParagraphStyle("UserGreyCentered", parent=styles["Normal"],
         fontName="Montserrat-Bold", fontSize=9.5, leading=14, textColor=colors.grey, alignment=1)  # 1 = TA_CENTER
 
-    class YellowLine2(Flowable):
-        def __init__(self, width=20, height=2):
-            super().__init__()
-            self.width = width
-            self.height = height
-
-        def draw(self):
-            c = self.canv
-            c.setStrokeColor(colors.HexColor("#FFB200"))
-            c.setLineWidth(2)
-            c.line(0, 0, self.width, 0)
-
     frame_width = A4[0] - 70  # Must match Frame width defined later
 
     story = []
@@ -1054,13 +1042,10 @@ def build_dynamic_pages(data, output_path):
                         if orientation == "portrait":
                             img_w = SECTION_IMAGE_PDF_PORTRAIT_W
                             img_h = SECTION_IMAGE_PDF_PORTRAIT_H
-                            line_w = img_w
                         else:
                             img_w = SECTION_IMAGE_PDF_LANDSCAPE_W
                             img_h = SECTION_IMAGE_PDF_LANDSCAPE_H
-                            line_w = img_w
                         flow.append(Image(tmp_path, width=img_w, height=img_h))
-                        flow.append(YellowLine2(width=line_w))
                     except Exception:
                         pass
                     # Note: optimized_path is now in temp_images list and will be cleaned up at end of PDF generation

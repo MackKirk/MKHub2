@@ -12,7 +12,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
 import { useAuth } from "../../hooks/useAuth";
-import { hasPermission } from "../../lib/permissions";
+import { canViewFleetAssetTab, hasPermission } from "../../lib/permissions";
 import { buildFleetAssetSubtitle, buildFleetAssetTitle } from "../../lib/fleetAssetUi";
 import { MKPageHeader } from "../../components/MKPageHeader";
 import { MKButton } from "../../components/MKButton";
@@ -90,6 +90,16 @@ export const FleetAssetDetailScreen: React.FC = () => {
     ? hasPermission(permissionsSet, roles, "fleet:write")
     : hasPermission(permissionsSet, roles, "equipment:write");
 
+  const visibleTabs = useMemo(
+    () =>
+      isFleetAsset
+        ? FLEET_TABS.filter((tab) =>
+            canViewFleetAssetTab(permissionsSet, roles, tab.key)
+          )
+        : [],
+    [isFleetAsset, permissionsSet, roles]
+  );
+
   const [activeTab, setActiveTab] = useState<FleetAssetDetailTabKey>(initialTab ?? "general");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -104,6 +114,13 @@ export const FleetAssetDetailScreen: React.FC = () => {
   const loadedTabsRef = useRef<Set<FleetAssetDetailTabKey>>(new Set());
   const [showAssign, setShowAssign] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
+
+  useEffect(() => {
+    if (visibleTabs.length === 0) return;
+    if (!visibleTabs.some((t) => t.key === activeTab)) {
+      setActiveTab(visibleTabs[0].key);
+    }
+  }, [visibleTabs, activeTab]);
 
   const screenTitle = useMemo(() => {
     if (routeTitle) return routeTitle;
@@ -329,7 +346,12 @@ export const FleetAssetDetailScreen: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: isFleetAsset ? bottomTabHeight + spacing.lg : spacing.xxl }
+          {
+            paddingBottom:
+              isFleetAsset && visibleTabs.length > 0
+                ? bottomTabHeight + spacing.lg
+                : spacing.xxl
+          }
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -348,16 +370,24 @@ export const FleetAssetDetailScreen: React.FC = () => {
               token={token}
               variant={activeTab === "general" ? "full" : "compact"}
             />
-            <View style={styles.tabContent}>{renderFleetTabContent()}</View>
+            {visibleTabs.length > 0 ? (
+              <View style={styles.tabContent}>{renderFleetTabContent()}</View>
+            ) : (
+              <View style={styles.tabContent}>
+                <Text style={styles.loadingText}>
+                  You do not have permission to view any sections of this asset.
+                </Text>
+              </View>
+            )}
           </>
         ) : (
           renderEquipmentFallback()
         )}
       </ScrollView>
 
-      {isFleetAsset ? (
+      {isFleetAsset && visibleTabs.length > 0 ? (
         <MKFleetAssetDetailTabBar
-          tabs={FLEET_TABS}
+          tabs={visibleTabs}
           activeKey={activeTab}
           onChange={setActiveTab}
           style={styles.bottomTabBar}

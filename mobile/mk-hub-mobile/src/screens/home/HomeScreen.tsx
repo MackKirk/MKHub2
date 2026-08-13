@@ -14,6 +14,8 @@ import type { CompositeNavigationProp } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../../hooks/useAuth";
+import { useCommunityBadge } from "../../hooks/useCommunityBadge";
+import { useTasksBadge } from "../../hooks/useTasksBadge";
 import { hasPermission } from "../../lib/permissions";
 import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
 import { MKCard } from "../../components/MKCard";
@@ -39,6 +41,7 @@ interface QuickAction {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   accentColor: string;
+  badgeCount?: number;
   onPress: () => void;
 }
 
@@ -65,11 +68,12 @@ export const HomeScreen: React.FC = () => {
   const { user, permissions, roles } = useAuth();
   const navigation = useNavigation<HomeNav>();
   const { openMenu } = useHubMenu();
+  const { unreadCount, setUnreadCount } = useCommunityBadge();
+  const { openCount: tasksOpenCount, refreshTasks } = useTasksBadge();
 
   const permissionsSet = useMemo(() => new Set(permissions), [permissions]);
 
   const [novidades, setNovidades] = useState<CommunityPost[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [loadingNovidades, setLoadingNovidades] = useState(false);
 
   const firstName =
@@ -262,12 +266,14 @@ export const HomeScreen: React.FC = () => {
         label: "Tasks",
         icon: "checkmark-circle-outline",
         accentColor: "#7c3aed",
+        badgeCount: tasksOpenCount,
         onPress: () => navigation.navigate("Tasks")
       },
       {
         label: "Community",
         icon: "chatbubbles-outline",
         accentColor: colors.primary,
+        badgeCount: unreadCount,
         onPress: () => navigation.navigate("Community")
       }
     ];
@@ -293,13 +299,14 @@ export const HomeScreen: React.FC = () => {
     });
 
     return actions;
-  }, [goStack, navigation, permissionsSet, roles]);
+  }, [goStack, navigation, permissionsSet, roles, tasksOpenCount, unreadCount]);
 
   const loadNovidades = useCallback(async () => {
     try {
       setLoadingNovidades(true);
       const unread = await getCommunityPosts("unread");
-      setUnreadCount(unread.length);
+      const count = Array.isArray(unread) ? unread.length : 0;
+      setUnreadCount(count);
       setNovidades(unread.slice(0, NOVIDADES_PREVIEW_LIMIT));
     } catch {
       setNovidades([]);
@@ -307,12 +314,13 @@ export const HomeScreen: React.FC = () => {
     } finally {
       setLoadingNovidades(false);
     }
-  }, []);
+  }, [setUnreadCount]);
 
   useFocusEffect(
     useCallback(() => {
       loadNovidades();
-    }, [loadNovidades])
+      void refreshTasks();
+    }, [loadNovidades, refreshTasks])
   );
 
   const renderQuickAction = (item: QuickAction) => (
@@ -324,7 +332,16 @@ export const HomeScreen: React.FC = () => {
     >
       <View style={[styles.cardAccent, { backgroundColor: item.accentColor }]} />
       <View style={styles.shortcutCompactBody}>
-        <Ionicons name={item.icon} size={30} color={item.accentColor} />
+        <View style={styles.shortcutIconWrap}>
+          <Ionicons name={item.icon} size={30} color={item.accentColor} />
+          {item.badgeCount && item.badgeCount > 0 ? (
+            <View style={styles.quickBadge}>
+              <Text style={styles.quickBadgeText}>
+                {item.badgeCount > 99 ? "99+" : item.badgeCount}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <Text style={styles.shortcutLine1Compact} numberOfLines={1}>
           {item.label}
         </Text>
@@ -545,6 +562,31 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.xs,
     gap: spacing.xs
+  },
+  shortcutIconWrap: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  quickBadge: {
+    position: "absolute",
+    top: -6,
+    right: -12,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: colors.card
+  },
+  quickBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    lineHeight: 12,
+    fontFamily: typography.button.fontFamily
   },
   shortcutLine1Compact: {
     textTransform: "none",

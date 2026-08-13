@@ -207,6 +207,7 @@ def snapshot_fuel_card(card: Any) -> Dict[str, Any]:
         "card_number": getattr(card, "card_number", None),
         "pin": "***" if getattr(card, "pin", None) else None,
         "date_issued": issued.isoformat() if issued is not None and hasattr(issued, "isoformat") else issued,
+        "crew": getattr(card, "crew", None),
         "status": getattr(card, "status", None),
         "notes": getattr(card, "notes", None),
     }

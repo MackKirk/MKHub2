@@ -1,144 +1,241 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Pressable,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
+import { radius } from "../../theme/radius";
+import { MKBadge } from "../../components/MKBadge";
 import { MKCard } from "../../components/MKCard";
 import { MKButton } from "../../components/MKButton";
 import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
+import { useTasksBadge } from "../../hooks/useTasksBadge";
 import { typography } from "../../theme/typography";
-import { getMyTasks, startTask, concludeTask } from "../../services/tasks";
+import { concludeTask, startTask } from "../../services/tasks";
 import { toApiError } from "../../services/api";
 import type { TaskGroupedResponse, TaskItem } from "../../types/tasks";
+import type { ProjectStatusBadgeVariant } from "../../lib/projectUi";
 
-type SectionKey = "accepted" | "in_progress" | "done";
+type FilterKey = "open" | "accepted" | "in_progress" | "done" | "all";
 
-interface Section {
-  key: SectionKey;
-  title: string;
-  data: TaskItem[];
+type ListRow =
+  | { type: "header"; key: string; title: string; count: number }
+  | { type: "task"; key: string; task: TaskItem };
+
+const FILTERS: Array<{ key: FilterKey; label: string }> = [
+  { key: "open", label: "Open" },
+  { key: "accepted", label: "To Do" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "done", label: "Done" },
+  { key: "all", label: "All" }
+];
+
+function statusBadgeVariant(status: string): ProjectStatusBadgeVariant {
+  if (status === "accepted") return "warning";
+  if (status === "in_progress") return "info";
+  if (status === "done") return "success";
+  return "neutral";
+}
+
+function statusLabel(status: string): string {
+  if (status === "accepted") return "To Do";
+  if (status === "in_progress") return "In Progress";
+  if (status === "done") return "Done";
+  return status.replace("_", " ");
+}
+
+function applyTaskUpdate(
+  grouped: TaskGroupedResponse,
+  updated: TaskItem
+): TaskGroupedResponse {
+  const next: TaskGroupedResponse = {
+    accepted: [],
+    in_progress: [],
+    done: []
+  };
+  const all = [
+    ...(grouped.accepted ?? []),
+    ...(grouped.in_progress ?? []),
+    ...(grouped.done ?? [])
+  ];
+  let found = false;
+  for (const task of all) {
+    const value = task.id === updated.id ? updated : task;
+    if (task.id === updated.id) found = true;
+    const bucket = value.status as keyof TaskGroupedResponse;
+    if (!next[bucket]) next[bucket] = [];
+    next[bucket].push(value);
+  }
+  if (!found) {
+    const bucket = updated.status as keyof TaskGroupedResponse;
+    if (!next[bucket]) next[bucket] = [];
+    next[bucket].push(updated);
+  }
+  return next;
 }
 
 export const TasksScreen: React.FC = () => {
   const { openMenu } = useHubMenu();
-  const [sections, setSections] = useState<Section[]>([]);
-  const [loading, setLoading] = useState(false);
+  const {
+    grouped,
+    openCount,
+    acceptedCount,
+    inProgressCount,
+    loading,
+    refreshTasks,
+    setGroupedFromLocal
+  } = useTasksBadge();
+  const [filter, setFilter] = useState<FilterKey>("open");
+  const [refreshing, setRefreshing] = useState(false);
+  const [actingId, setActingId] = useState<string | null>(null);
 
-  const taskSummary = useMemo(() => {
-    const openCount = sections
-      .flatMap((section) => section.data)
-      .filter((task) => task.status !== "done").length;
-    if (openCount === 0) return "No open tasks";
-    return openCount === 1 ? "1 open task" : `${openCount} open tasks`;
-  }, [sections]);
+  useFocusEffect(
+    useCallback(() => {
+      void refreshTasks();
+    }, [refreshTasks])
+  );
 
-  const loadTasks = async () => {
-    try {
-      setLoading(true);
-      const grouped = await getMyTasks();
-      setSections(toSections(grouped));
-    } catch (err) {
-      const apiError = toApiError(err);
-      Alert.alert("Could not load tasks", apiError.message);
-    } finally {
-      setLoading(false);
-    }
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refreshTasks();
+    setRefreshing(false);
   };
-
-  useEffect(() => {
-    loadTasks();
-  }, []);
 
   const handleQuickAction = async (task: TaskItem) => {
     try {
+      setActingId(task.id);
       let updated: TaskItem | null = null;
       if (task.status === "accepted" && task.permissions.can_start) {
         updated = await startTask(task.id);
       } else if (task.status === "in_progress" && task.permissions.can_conclude) {
         updated = await concludeTask(task.id);
       }
-      if (updated) {
-        setSections((prev) =>
-          toSections(applyTaskUpdate(prev, updated))
-        );
+      if (updated && grouped) {
+        setGroupedFromLocal(applyTaskUpdate(grouped, updated));
+      } else {
+        await refreshTasks();
       }
     } catch (err) {
-      const apiError = toApiError(err);
-      Alert.alert("Could not update task", apiError.message);
+      Alert.alert("Could not update task", toApiError(err).message);
+    } finally {
+      setActingId(null);
     }
   };
 
-  const getStatusColors = (status: string): [string, string] => {
-    switch (status) {
-      case "accepted":
-        return ["#FFB020", "#FF9800"];
-      case "in_progress":
-        return ["#4A90E2", "#357ABD"];
-      case "done":
-        return ["#50C878", "#3FAF6B"];
-      default:
-        return ["#E0E0E0", "#C0C0C0"];
+  const listRows = useMemo((): ListRow[] => {
+    const data = grouped ?? { accepted: [], in_progress: [], done: [] };
+    if (filter === "accepted") {
+      return buildRows([
+        { key: "accepted", title: "To Do", data: data.accepted ?? [] }
+      ]);
     }
-  };
+    if (filter === "in_progress") {
+      return buildRows([
+        {
+          key: "in_progress",
+          title: "In Progress",
+          data: data.in_progress ?? []
+        }
+      ]);
+    }
+    if (filter === "done") {
+      return buildRows([{ key: "done", title: "Done", data: data.done ?? [] }]);
+    }
+    if (filter === "open") {
+      return buildRows([
+        { key: "accepted", title: "To Do", data: data.accepted ?? [] },
+        {
+          key: "in_progress",
+          title: "In Progress",
+          data: data.in_progress ?? []
+        }
+      ]);
+    }
+    return buildRows([
+      { key: "accepted", title: "To Do", data: data.accepted ?? [] },
+      {
+        key: "in_progress",
+        title: "In Progress",
+        data: data.in_progress ?? []
+      },
+      { key: "done", title: "Done", data: data.done ?? [] }
+    ]);
+  }, [grouped, filter]);
 
-  const renderTask = ({ item }: { item: TaskItem }) => {
+  const subtitle = useMemo(() => {
+    if (openCount === 0) return "No open tasks";
+    const parts: string[] = [];
+    if (acceptedCount > 0) parts.push(`${acceptedCount} to do`);
+    if (inProgressCount > 0) parts.push(`${inProgressCount} in progress`);
+    return parts.join(" · ");
+  }, [openCount, acceptedCount, inProgressCount]);
+
+  const renderTask = (task: TaskItem) => {
     const actionLabel =
-      item.status === "accepted"
-        ? item.permissions.can_start
-          ? "Start"
-          : ""
-        : item.status === "in_progress"
-        ? item.permissions.can_conclude
+      task.status === "accepted" && task.permissions.can_start
+        ? "Start"
+        : task.status === "in_progress" && task.permissions.can_conclude
           ? "Mark Done"
-          : ""
-        : "";
-
-    const statusColors = getStatusColors(item.status);
+          : "";
 
     return (
       <MKCard style={styles.taskCard}>
         <View style={styles.taskHeader}>
-          <Text style={styles.taskTitle}>{item.title}</Text>
-          <LinearGradient
-            colors={statusColors}
-            style={styles.statusBadge}
-          >
-            <Text style={styles.statusText}>{item.status.replace("_", " ")}</Text>
-          </LinearGradient>
+          <Text style={styles.taskTitle}>{task.title}</Text>
+          <MKBadge variant={statusBadgeVariant(task.status)}>
+            {statusLabel(task.status)}
+          </MKBadge>
         </View>
 
-        {item.project?.name ? (
-          <View style={styles.taskMetaRow}>
-            <Text style={styles.taskMetaIcon}>📁</Text>
-            <Text style={styles.taskMeta}>{item.project.name}</Text>
-          </View>
+        {task.description ? (
+          <Text style={styles.taskDescription} numberOfLines={2}>
+            {task.description}
+          </Text>
         ) : null}
 
-        {item.due_date ? (
-          <View style={styles.taskMetaRow}>
-            <Text style={styles.taskMetaIcon}>📅</Text>
-            <Text style={styles.taskMeta}>
-              Due {new Date(item.due_date).toLocaleDateString()}
-            </Text>
-          </View>
-        ) : null}
+        <View style={styles.metaBlock}>
+          {task.project?.name ? (
+            <View style={styles.metaRow}>
+              <Ionicons name="folder-outline" size={14} color={colors.textMuted} />
+              <Text style={styles.metaText} numberOfLines={1}>
+                {task.project.name}
+              </Text>
+            </View>
+          ) : null}
+          {task.due_date ? (
+            <View style={styles.metaRow}>
+              <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
+              <Text style={styles.metaText}>
+                Due {new Date(task.due_date).toLocaleDateString()}
+              </Text>
+            </View>
+          ) : null}
+          {task.priority ? (
+            <View style={styles.metaRow}>
+              <Ionicons name="flag-outline" size={14} color={colors.textMuted} />
+              <Text style={styles.metaText}>{task.priority}</Text>
+            </View>
+          ) : null}
+        </View>
 
         {actionLabel ? (
           <View style={styles.taskAction}>
             <MKButton
               title={actionLabel}
-              onPress={() => handleQuickAction(item)}
-              variant="secondary"
+              onPress={() => handleQuickAction(task)}
+              loading={actingId === task.id}
+              disabled={actingId === task.id}
+              variant={task.status === "in_progress" ? "primary" : "secondary"}
               style={styles.actionButton}
             />
           </View>
@@ -151,31 +248,89 @@ export const TasksScreen: React.FC = () => {
     <ScreenLayout scroll={false}>
       <MKHomeStyleHeader
         title="Tasks"
-        subtitle={taskSummary}
+        subtitle={subtitle}
         onLeftPress={openMenu}
       />
-      {loading && sections.length === 0 ? (
+
+      <View style={styles.summaryRow}>
+        <SummaryPill
+          label="To Do"
+          count={acceptedCount}
+          tone="warning"
+          active={filter === "accepted"}
+          onPress={() => setFilter("accepted")}
+        />
+        <SummaryPill
+          label="In Progress"
+          count={inProgressCount}
+          tone="info"
+          active={filter === "in_progress"}
+          onPress={() => setFilter("in_progress")}
+        />
+        <SummaryPill
+          label="Open"
+          count={openCount}
+          tone="danger"
+          active={filter === "open"}
+          onPress={() => setFilter("open")}
+        />
+      </View>
+
+      <View style={styles.filterRow}>
+        {FILTERS.map((f) => {
+          const active = filter === f.key;
+          return (
+            <Pressable
+              key={f.key}
+              onPress={() => setFilter(f.key)}
+              style={[styles.filterChip, active && styles.filterChipActive]}
+            >
+              <Text
+                style={[styles.filterChipText, active && styles.filterChipTextActive]}
+              >
+                {f.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {loading && !grouped ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading tasks...</Text>
+          <Text style={styles.loadingText}>Loading tasks…</Text>
         </View>
       ) : (
         <FlatList
-          data={sections.flatMap((s) =>
-            s.data.map((task) => ({ section: s.key, task }))
-          )}
-          keyExtractor={(row) => row.task.id}
-          refreshing={loading}
-          onRefresh={loadTasks}
-          renderItem={({ item }) => renderTask({ item: item.task })}
+          data={listRows}
+          keyExtractor={(row) => row.key}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
           contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => {
+            if (item.type === "header") {
+              return (
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>{item.title}</Text>
+                  <Text style={styles.sectionCount}>{item.count}</Text>
+                </View>
+              );
+            }
+            return renderTask(item.task);
+          }}
           ListEmptyComponent={
             !loading ? (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyIcon}>✅</Text>
-                <Text style={styles.empty}>No tasks assigned.</Text>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={56}
+                  color={colors.textMuted}
+                />
+                <Text style={styles.empty}>No tasks here</Text>
                 <Text style={styles.emptySubtext}>
-                  All caught up! Check back later for new tasks.
+                  {filter === "open" || filter === "accepted" || filter === "in_progress"
+                    ? "You're all caught up on open work."
+                    : "Nothing to show for this filter."}
                 </Text>
               </View>
             ) : null
@@ -186,33 +341,102 @@ export const TasksScreen: React.FC = () => {
   );
 };
 
-const toSections = (grouped: TaskGroupedResponse | Section[]): Section[] => {
-  if (Array.isArray(grouped)) {
-    return grouped;
-  }
-  return [
-    { key: "accepted", title: "To Do", data: grouped.accepted ?? [] },
-    { key: "in_progress", title: "In Progress", data: grouped.in_progress ?? [] },
-    { key: "done", title: "Done", data: grouped.done ?? [] }
-  ];
-};
-
-const applyTaskUpdate = (sections: Section[], updated: TaskItem): TaskGroupedResponse => {
-  const out: TaskGroupedResponse = { accepted: [], in_progress: [], done: [] };
-  sections.forEach((section) => {
-    section.data.forEach((task) => {
-      const value = task.id === updated.id ? updated : task;
-      const key = value.status as SectionKey;
-      if (!out[key]) {
-        out[key] = [];
-      }
-      out[key].push(value);
+function buildRows(
+  sections: Array<{ key: string; title: string; data: TaskItem[] }>
+): ListRow[] {
+  const rows: ListRow[] = [];
+  for (const section of sections) {
+    if (section.data.length === 0) continue;
+    rows.push({
+      type: "header",
+      key: `header-${section.key}`,
+      title: section.title,
+      count: section.data.length
     });
-  });
-  return out;
+    for (const task of section.data) {
+      rows.push({ type: "task", key: task.id, task });
+    }
+  }
+  return rows;
+}
+
+const SummaryPill: React.FC<{
+  label: string;
+  count: number;
+  tone: "warning" | "info" | "danger";
+  active: boolean;
+  onPress: () => void;
+}> = ({ label, count, tone, active, onPress }) => {
+  const toneColor =
+    tone === "warning" ? "#a16207" : tone === "info" ? "#1d4ed8" : colors.primary;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.summaryPill, active && styles.summaryPillActive]}
+    >
+      <Text style={[styles.summaryCount, { color: toneColor }]}>{count}</Text>
+      <Text style={styles.summaryLabel}>{label}</Text>
+    </Pressable>
+  );
 };
 
 const styles = StyleSheet.create({
+  summaryRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginBottom: spacing.md
+  },
+  summaryPill: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.card,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    alignItems: "center",
+    gap: 2
+  },
+  summaryPillActive: {
+    borderColor: colors.primary,
+    backgroundColor: "#fef2f2"
+  },
+  summaryCount: {
+    fontFamily: typography.title.fontFamily,
+    fontSize: 22,
+    lineHeight: 28
+  },
+  summaryLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textTransform: "uppercase"
+  },
+  filterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginBottom: spacing.md
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.card
+  },
+  filterChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary
+  },
+  filterChipText: {
+    ...typography.caption,
+    color: colors.textBody,
+    fontFamily: typography.button.fontFamily
+  },
+  filterChipTextActive: {
+    color: "#fff"
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -224,49 +448,60 @@ const styles = StyleSheet.create({
     color: colors.textMuted
   },
   listContent: {
-    paddingBottom: spacing.xxl
+    paddingBottom: spacing.xxl,
+    flexGrow: 1
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm
+  },
+  sectionTitle: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    fontFamily: typography.button.fontFamily,
+    letterSpacing: 0.6
+  },
+  sectionCount: {
+    ...typography.caption,
+    color: colors.textMuted
   },
   taskCard: {
-    marginBottom: spacing.md
+    marginBottom: spacing.md,
+    gap: spacing.sm
   },
   taskHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: spacing.md
+    gap: spacing.sm
   },
   taskTitle: {
     flex: 1,
-    ...typography.subtitle,
-    marginRight: spacing.sm
+    ...typography.subtitle
   },
-  statusBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 12
+  taskDescription: {
+    ...typography.bodySmall,
+    color: colors.textBody
   },
-  statusText: {
-    fontSize: 11,
-    color: "#ffffff",
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5
+  metaBlock: {
+    gap: spacing.xs
   },
-  taskMetaRow: {
+  metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: spacing.xs
+    gap: spacing.xs
   },
-  taskMetaIcon: {
-    fontSize: 14,
-    marginRight: spacing.xs
-  },
-  taskMeta: {
+  metaText: {
     ...typography.bodySmall,
-    color: colors.textMuted
+    color: colors.textMuted,
+    flex: 1
   },
   taskAction: {
-    marginTop: spacing.md
+    marginTop: spacing.xs
   },
   actionButton: {
     paddingVertical: spacing.sm
@@ -274,15 +509,11 @@ const styles = StyleSheet.create({
   emptyContainer: {
     alignItems: "center",
     paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.xl
-  },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: spacing.md
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm
   },
   empty: {
     ...typography.subtitle,
-    marginBottom: spacing.xs,
     textAlign: "center"
   },
   emptySubtext: {
@@ -291,5 +522,3 @@ const styles = StyleSheet.create({
     textAlign: "center"
   }
 });
-
-

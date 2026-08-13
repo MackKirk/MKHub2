@@ -22,11 +22,14 @@ import {
   CommonActions
 } from "@react-navigation/native";
 import { useAuth } from "../hooks/useAuth";
+import { useTasksBadge } from "../hooks/useTasksBadge";
+import { useCommunityBadge } from "../hooks/useCommunityBadge";
 import { hasPermission } from "../lib/permissions";
 import { HUB_MENU_CATEGORIES, type HubMenuItem } from "./hubMenu";
 import { spacing } from "../theme/spacing";
 import { typography } from "../theme/typography";
 import { radius } from "../theme/radius";
+import { colors } from "../theme/colors";
 import type { NavigatorScreenParams } from "@react-navigation/native";
 import type { RootStackParamList } from "./types";
 
@@ -63,6 +66,8 @@ export const HubMenuProvider: React.FC<{ children: React.ReactNode }> = ({
   const [visible, setVisible] = useState(false);
   const slide = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const { permissions, roles, user } = useAuth();
+  const { openCount: tasksOpenCount } = useTasksBadge();
+  const { unreadCount: communityUnreadCount } = useCommunityBadge();
   const permissionsSet = useMemo(() => new Set(permissions), [permissions]);
 
   const openMenu = useCallback(() => {
@@ -188,6 +193,22 @@ export const HubMenuProvider: React.FC<{ children: React.ReactNode }> = ({
                           color="#e5e7eb"
                         />
                         <Text style={styles.itemLabel}>{item.label}</Text>
+                        {item.id === "tasks" && tasksOpenCount > 0 ? (
+                          <View style={styles.menuBadge}>
+                            <Text style={styles.menuBadgeText}>
+                              {tasksOpenCount > 99 ? "99+" : tasksOpenCount}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {item.id === "community" && communityUnreadCount > 0 ? (
+                          <View style={styles.menuBadge}>
+                            <Text style={styles.menuBadgeText}>
+                              {communityUnreadCount > 99
+                                ? "99+"
+                                : communityUnreadCount}
+                            </Text>
+                          </View>
+                        ) : null}
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -260,6 +281,22 @@ const styles = StyleSheet.create({
   },
   itemLabel: {
     ...typography.bodySmall,
-    color: "#f3f4f6"
+    color: "#f3f4f6",
+    flex: 1
+  },
+  menuBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  menuBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontFamily: typography.button.fontFamily,
+    lineHeight: 14
   }
 });

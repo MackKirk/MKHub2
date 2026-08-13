@@ -345,7 +345,10 @@ export const CustomerDetailScreen: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: bottomTabHeight + spacing.lg }
+          {
+            paddingBottom:
+              (availableTabs.length > 0 ? bottomTabHeight : 0) + spacing.lg
+          }
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -377,12 +380,14 @@ export const CustomerDetailScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      <MKCustomerDetailTabBar
-        tabs={availableTabs}
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        style={styles.bottomTabBar}
-      />
+      {availableTabs.length > 0 ? (
+        <MKCustomerDetailTabBar
+          tabs={availableTabs}
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          style={styles.bottomTabBar}
+        />
+      ) : null}
 
       <CustomerFormModal
         visible={customerFormOpen}

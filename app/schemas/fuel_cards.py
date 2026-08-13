@@ -11,7 +11,8 @@ STATUS_VALUES = frozenset({"active", "cancelled", "replaced", "lost"})
 class FuelCardBase(BaseModel):
     card_number: str = Field(..., min_length=1, max_length=100)
     pin: str = Field(..., min_length=1, max_length=50)
-    date_issued: date
+    date_issued: Optional[date] = None
+    crew: Optional[str] = Field(None, max_length=100)
     status: str = "active"
     notes: Optional[str] = None
 
@@ -31,6 +32,14 @@ class FuelCardBase(BaseModel):
             raise ValueError("pin is required")
         return s
 
+    @field_validator("crew")
+    @classmethod
+    def crew_ok(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        s = v.strip()
+        return s or None
+
     @field_validator("status")
     @classmethod
     def status_ok(cls, v: str) -> str:
@@ -48,6 +57,7 @@ class FuelCardUpdate(BaseModel):
     card_number: Optional[str] = Field(None, min_length=1, max_length=100)
     pin: Optional[str] = Field(None, min_length=1, max_length=50)
     date_issued: Optional[date] = None
+    crew: Optional[str] = Field(None, max_length=100)
     status: Optional[str] = None
     notes: Optional[str] = None
 
@@ -70,6 +80,14 @@ class FuelCardUpdate(BaseModel):
         if not s:
             raise ValueError("pin cannot be empty")
         return s
+
+    @field_validator("crew")
+    @classmethod
+    def crew_ok_opt(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        s = v.strip()
+        return s or None
 
     @field_validator("status")
     @classmethod
@@ -110,10 +128,14 @@ class FuelCardListResponse(BaseModel):
 class FuelCardAssignmentCreate(BaseModel):
     assigned_to_user_id: uuid.UUID
     notes: Optional[str] = None
+    reason: Optional[str] = None
+    attachment_ids: Optional[List[uuid.UUID]] = None
 
 
 class FuelCardAssignmentReturn(BaseModel):
     notes: Optional[str] = None
+    reason: Optional[str] = None
+    attachment_ids: Optional[List[uuid.UUID]] = None
 
 
 class FuelCardAssignmentResponse(BaseModel):
@@ -124,6 +146,11 @@ class FuelCardAssignmentResponse(BaseModel):
     returned_at: Optional[datetime] = None
     returned_to_user_id: Optional[uuid.UUID] = None
     notes: Optional[str] = None
+    notes_in: Optional[str] = None
+    reason_out: Optional[str] = None
+    reason_in: Optional[str] = None
+    attachments_out: Optional[List[str]] = None
+    attachments_in: Optional[List[str]] = None
     is_active: bool
     created_by: Optional[uuid.UUID] = None
     created_at: datetime

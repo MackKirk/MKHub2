@@ -4,19 +4,19 @@ import "dotenv/config";
 const defineConfig = (): ExpoConfig => ({
   name: "MK Hub Mobile",
   slug: "mk-hub-mobile",
-  version: "1.0.0",
+  version: "1.0.1",
   icon: "./assets/icon.png",
   orientation: "portrait",
   userInterfaceStyle: "light",
   ios: {
     bundleIdentifier: "com.mkhub.m54",
-    buildNumber: "2",
+    buildNumber: "3",
     icon: "./assets/icon.png",
     supportsTablet: false
   },
   android: {
     package: "com.mkhub.m54",
-    versionCode: 2,
+    versionCode: 3,
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#FFFFFF"

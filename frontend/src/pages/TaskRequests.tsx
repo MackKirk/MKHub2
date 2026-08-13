@@ -286,7 +286,8 @@ export default function TaskRequestsPage() {
       <AppPageHeader
         title="Requests"
         subtitle="Conversations that may become tasks"
-        icon={<FileText className="h-4 w-4" />}
+        icon={<FileText className="h-4 w-4" />}
+
       />
 
       <div className="grid min-h-[calc(100vh-220px)] min-w-0 grid-cols-[4fr_6fr] items-stretch gap-2">
