@@ -3,6 +3,7 @@ Document Creator API: templates, user documents CRUD, export to PDF.
 """
 import copy
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from ..db import get_db
-from ..models.models import DocumentTemplate, DocumentType, UserDocument, User, FileObject, Project, Client
+from ..models.models import DocumentTemplate, DocumentType, UserDocument, User, FileObject, Project, Client, EmployeeProfile
 from ..auth.security import get_current_user, require_permissions
 
 
@@ -51,24 +52,102 @@ class DocumentUpdate(BaseModel):
     title: Optional[str] = None
     project_id: Optional[str] = None  # set to "" to unlink from project
     pages: Optional[List[dict]] = None
+    # ISO timestamp from last GET/PATCH; required when changing title or pages (unless doc has never been saved).
+    expected_updated_at: Optional[str] = None
+    # Editor session that holds the soft lock; required with content changes when a lock is active.
+    edit_lock_session_id: Optional[str] = None
 
 
-class DocumentOut(BaseModel):
-    id: str
-    title: str
-    document_type_id: Optional[str]
-    project_id: Optional[str]
-    pages: Optional[list]
-    created_by: Optional[str]
-    created_at: str
-    updated_at: Optional[str]
-
-    class Config:
-        from_attributes = True
+class DocumentEditLockBody(BaseModel):
+    session_id: str
 
 
 class ExportPdfOptions(BaseModel):
     canvas_width_px: Optional[float] = None
+
+
+EDIT_LOCK_LEASE_SECONDS = 300
+
+
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if value is None or value == "":
+        return None
+    s = value.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _datetimes_equal(a: Optional[datetime], b: Optional[datetime]) -> bool:
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return False
+    a_utc = a.astimezone(timezone.utc) if a.tzinfo else a.replace(tzinfo=timezone.utc)
+    b_utc = b.astimezone(timezone.utc) if b.tzinfo else b.replace(tzinfo=timezone.utc)
+    # Compare at millisecond precision (JS / Postgres ISO differences).
+    return int(a_utc.timestamp() * 1000) == int(b_utc.timestamp() * 1000)
+
+
+def _edit_lock_active(doc: UserDocument, now: Optional[datetime] = None) -> bool:
+    expires = getattr(doc, "edit_lock_expires_at", None)
+    if not expires or not getattr(doc, "edit_lock_session_id", None):
+        return False
+    now = now or datetime.now(timezone.utc)
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    return expires > now
+
+
+def _holder_display_name(db: Session, user_id: Optional[uuid.UUID]) -> Optional[str]:
+    """Human-readable lock holder: preferred/legal name from employee profile, else username."""
+    if not user_id:
+        return None
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        return None
+    ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
+    if ep:
+        pref = (ep.preferred_name or "").strip()
+        ln = (ep.last_name or "").strip()
+        if pref:
+            return f"{pref} {ln}".strip() if ln else pref
+        fn = (ep.first_name or "").strip()
+        if fn or ln:
+            return f"{fn} {ln}".strip()
+    return (u.username or "").strip() or (u.email_personal or "").strip() or str(u.id)
+
+
+def _edit_lock_payload(doc: UserDocument, db: Session, now: Optional[datetime] = None) -> dict:
+    now = now or datetime.now(timezone.utc)
+    active = _edit_lock_active(doc, now)
+    expires = getattr(doc, "edit_lock_expires_at", None)
+    return {
+        "active": active,
+        "user_id": str(doc.edit_lock_user_id) if active and doc.edit_lock_user_id else None,
+        "user_name": _holder_display_name(db, doc.edit_lock_user_id) if active else None,
+        "session_id": doc.edit_lock_session_id if active else None,
+        "expires_at": expires.isoformat() if active and expires else None,
+    }
+
+
+def _clear_edit_lock(doc: UserDocument) -> None:
+    doc.edit_lock_user_id = None
+    doc.edit_lock_session_id = None
+    doc.edit_lock_expires_at = None
+
+
+def _grant_edit_lock(doc: UserDocument, user: User, session_id: str, now: Optional[datetime] = None) -> None:
+    now = now or datetime.now(timezone.utc)
+    doc.edit_lock_user_id = user.id
+    doc.edit_lock_session_id = session_id[:64]
+    doc.edit_lock_expires_at = now + timedelta(seconds=EDIT_LOCK_LEASE_SECONDS)
 
 
 def _template_to_out(t: DocumentTemplate) -> dict:
@@ -83,8 +162,8 @@ def _template_to_out(t: DocumentTemplate) -> dict:
     }
 
 
-def _doc_to_out(d: UserDocument) -> dict:
-    return {
+def _doc_to_out(d: UserDocument, db: Optional[Session] = None) -> dict:
+    out = {
         "id": str(d.id),
         "title": d.title,
         "document_type_id": str(d.document_type_id) if d.document_type_id else None,
@@ -94,6 +173,21 @@ def _doc_to_out(d: UserDocument) -> dict:
         "created_at": d.created_at.isoformat() if d.created_at else None,
         "updated_at": d.updated_at.isoformat() if d.updated_at else None,
     }
+    if db is not None:
+        out["edit_lock"] = _edit_lock_payload(d, db)
+    else:
+        # Lightweight (list/summary paths): lock state without user lookup name.
+        now = datetime.now(timezone.utc)
+        active = _edit_lock_active(d, now)
+        expires = getattr(d, "edit_lock_expires_at", None)
+        out["edit_lock"] = {
+            "active": active,
+            "user_id": str(d.edit_lock_user_id) if active and d.edit_lock_user_id else None,
+            "user_name": None,
+            "session_id": d.edit_lock_session_id if active else None,
+            "expires_at": expires.isoformat() if active and expires else None,
+        }
+    return out
 
 
 _LIST_PREVIEW_PAGE_LIMIT = 4
@@ -722,7 +816,114 @@ def get_document(
         raise HTTPException(status_code=404, detail="Document not found")
     if not _can_access_document(user, doc, db, require_write=False):
         raise HTTPException(status_code=403, detail="Forbidden")
-    return _doc_to_out(doc)
+    return _doc_to_out(doc, db)
+
+
+@router.post("/documents/{document_id}/edit-lock", response_model=dict)
+def acquire_document_edit_lock(
+    document_id: str,
+    body: DocumentEditLockBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+):
+    """Acquire or renew an exclusive edit lock for this session."""
+    session_id = (body.session_id or "").strip()
+    if not session_id or len(session_id) > 64:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+    try:
+        did = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document id")
+    doc = db.query(UserDocument).filter(UserDocument.id == did).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not _can_access_document(user, doc, db, require_write=True):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    now = datetime.now(timezone.utc)
+    if _edit_lock_active(doc, now) and doc.edit_lock_session_id != session_id:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "document_in_use",
+                "message": "This document is already open for editing elsewhere.",
+                "holder_name": _holder_display_name(db, doc.edit_lock_user_id),
+                "expires_at": doc.edit_lock_expires_at.isoformat() if doc.edit_lock_expires_at else None,
+            },
+        )
+
+    _grant_edit_lock(doc, user, session_id, now)
+    db.commit()
+    db.refresh(doc)
+    return {"ok": True, "edit_lock": _edit_lock_payload(doc, db, now)}
+
+
+@router.post("/documents/{document_id}/edit-lock/heartbeat", response_model=dict)
+def heartbeat_document_edit_lock(
+    document_id: str,
+    body: DocumentEditLockBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+):
+    """Renew edit lock lease for the holding session."""
+    session_id = (body.session_id or "").strip()
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+    try:
+        did = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document id")
+    doc = db.query(UserDocument).filter(UserDocument.id == did).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not _can_access_document(user, doc, db, require_write=True):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    now = datetime.now(timezone.utc)
+    if not _edit_lock_active(doc, now) or doc.edit_lock_session_id != session_id:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "document_lock_lost",
+                "message": "Edit lock is no longer held by this session.",
+                "edit_lock": _edit_lock_payload(doc, db, now),
+            },
+        )
+
+    _grant_edit_lock(doc, user, session_id, now)
+    db.commit()
+    db.refresh(doc)
+    return {"ok": True, "edit_lock": _edit_lock_payload(doc, db, now)}
+
+
+@router.delete("/documents/{document_id}/edit-lock", response_model=dict)
+def release_document_edit_lock(
+    document_id: str,
+    session_id: str = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+):
+    """Release edit lock if held by this session."""
+    session_id = (session_id or "").strip()
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+    try:
+        did = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document id")
+    doc = db.query(UserDocument).filter(UserDocument.id == did).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not _can_access_document(user, doc, db, require_write=True):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    if doc.edit_lock_session_id == session_id:
+        _clear_edit_lock(doc)
+        db.commit()
+    return {"ok": True}
 
 
 @router.patch("/documents/{document_id}", response_model=dict)
@@ -743,17 +944,57 @@ def update_document(
         raise HTTPException(status_code=404, detail="Document not found")
     if not _can_access_document(user, doc, db, require_write=True):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    content_changing = body.title is not None or body.pages is not None
+    if content_changing:
+        now = datetime.now(timezone.utc)
+        if _edit_lock_active(doc, now):
+            session_id = (body.edit_lock_session_id or "").strip()
+            if not session_id or session_id != doc.edit_lock_session_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "document_in_use",
+                        "message": "This document is already open for editing elsewhere.",
+                        "holder_name": _holder_display_name(db, doc.edit_lock_user_id),
+                        "expires_at": doc.edit_lock_expires_at.isoformat() if doc.edit_lock_expires_at else None,
+                    },
+                )
+
+        if body.expected_updated_at is None and doc.updated_at is not None:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "expected_updated_at_required",
+                    "message": "expected_updated_at is required when updating title or pages.",
+                },
+            )
+        raw_expected = (body.expected_updated_at or "").strip()
+        expected = _parse_iso_datetime(raw_expected) if raw_expected else None
+        if raw_expected and expected is None:
+            raise HTTPException(status_code=400, detail="Invalid expected_updated_at")
+        # Null/empty expected only matches null DB updated_at (brand-new docs).
+        if not _datetimes_equal(doc.updated_at, expected):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "document_version_conflict",
+                    "message": "This document was changed elsewhere. Your local changes were not saved over the latest version.",
+                    "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
+                },
+            )
+
     if body.title is not None:
         doc.title = body.title
     if body.project_id is not None:
         doc.project_id = uuid.UUID(body.project_id) if body.project_id else None
     if body.pages is not None:
         doc.pages = body.pages
-    from datetime import datetime, timezone
-    doc.updated_at = datetime.now(timezone.utc)
+    if content_changing or body.project_id is not None:
+        doc.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(doc)
-    return _doc_to_out(doc)
+    return _doc_to_out(doc, db)
 
 
 @router.delete("/documents/{document_id}")

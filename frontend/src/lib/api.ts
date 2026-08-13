@@ -1,5 +1,41 @@
 export type HttpMethod = 'GET'|'POST'|'PUT'|'PATCH'|'DELETE';
 
+export class ApiError extends Error {
+  status: number;
+  detail: unknown;
+
+  constructor(status: number, message: string, detail?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+export function getApiErrorCode(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  const d = err.detail;
+  if (d && typeof d === 'object' && !Array.isArray(d) && 'code' in d) {
+    return String((d as { code: unknown }).code);
+  }
+  return null;
+}
+
+/** Detect OCC / soft-lock save conflicts, including fallback when detail is a plain string. */
+export function isDocumentConcurrencyError(err: unknown): boolean {
+  const code = getApiErrorCode(err);
+  if (
+    code === 'document_version_conflict' ||
+    code === 'document_in_use' ||
+    code === 'expected_updated_at_required' ||
+    (typeof code === 'string' && code.startsWith('expected_updated_at'))
+  ) {
+    return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return /expected_updated_at/i.test(msg) || /document_version_conflict|document_in_use/i.test(msg);
+}
+
 export function formatApiErrorDetail(detail: unknown): string {
   if (detail == null) return '';
   if (typeof detail === 'string') return detail;
@@ -20,8 +56,10 @@ export function formatApiErrorDetail(detail: unknown): string {
       .join('; ');
   }
   if (typeof detail === 'object') {
+    if ('message' in detail && (detail as { message: unknown }).message != null) {
+      return String((detail as { message: unknown }).message);
+    }
     if ('msg' in detail) return String((detail as { msg: unknown }).msg);
-    if ('message' in detail) return String((detail as { message: unknown }).message);
     try {
       return JSON.stringify(detail);
     } catch {
@@ -90,10 +128,12 @@ export async function api<T=any>(
     // FastAPI returns errors in {detail: "message"} format
     // Try to get the error message from the response
     let errorMessage = `HTTP ${r.status}: ${r.statusText}`;
+    let detail: unknown = undefined;
     try {
       const contentType = r.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const err = await r.json();
+        detail = err.detail !== undefined ? err.detail : err;
         errorMessage =
           formatApiErrorDetail(err.detail) || err.message || err.error || errorMessage;
       } else {
@@ -104,6 +144,7 @@ export async function api<T=any>(
           if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
             try {
               const parsed = JSON.parse(text);
+              detail = parsed.detail !== undefined ? parsed.detail : parsed;
               errorMessage =
                 formatApiErrorDetail(parsed.detail) || parsed.message || parsed.error || text;
             } catch {
@@ -118,7 +159,7 @@ export async function api<T=any>(
       // If all else fails, use the default message
       console.error('Error parsing error response:', e);
     }
-    throw new Error(errorMessage);
+    throw new ApiError(r.status, errorMessage, detail);
   }
   const ct = r.headers.get('Content-Type')||'';
   if (ct.includes('application/json')) return await r.json();

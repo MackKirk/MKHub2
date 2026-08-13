@@ -43,6 +43,14 @@ export type DocumentEditorRibbonProps = {
   canUndo: boolean;
   canRedo: boolean;
   readOnly: boolean;
+  /**
+   * When false, hide the "View only" badge/blur even if `readOnly` is true
+   * (e.g. while the edit lock is still being acquired — "Opening document…").
+   * Defaults to `readOnly`.
+   */
+  showViewOnlyBadge?: boolean;
+  /** When set, shown under the "View only" badge (e.g. "This document is being edited by <name>"). */
+  viewOnlyNotice?: string | null;
   onAddText: () => void;
   onAddImage: () => void;
   onAddImagePlaceholder: () => void;
@@ -132,6 +140,8 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     canUndo,
     canRedo,
     readOnly,
+    showViewOnlyBadge,
+    viewOnlyNotice,
     onAddText,
     onAddImage,
     onAddImagePlaceholder,
@@ -269,6 +279,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
   };
 
   const displayTitle = title.trim() || 'Untitled document';
+  const viewOnlyBadge = showViewOnlyBadge ?? readOnly;
 
   return (
     <RibbonShell>
@@ -332,6 +343,15 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
           </div>
         </RibbonGroup>
 
+        <div className="flex min-w-0 flex-1 flex-nowrap items-end gap-0">
+        {/* flex-1 so the view-only overlay centers across the free space between Document and Export */}
+        <div className="relative flex min-w-0 flex-1 flex-nowrap items-end gap-0">
+        <div
+          className={`flex min-w-0 flex-nowrap items-end gap-0 ${
+            viewOnlyBadge ? 'pointer-events-none select-none blur-[3px] opacity-60' : ''
+          }`}
+          aria-hidden={viewOnlyBadge || undefined}
+        >
         <RibbonGroup label="Clipboard">
           <RibbonLargeButton icon={<UndoIcon />} label="Undo" onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" />
           <RibbonLargeButton icon={<RedoIcon />} label="Redo" onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y)" />
@@ -494,6 +514,21 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
           </RibbonGroup>
         )}
 
+        </div>
+        {viewOnlyBadge && (
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 px-2 text-center">
+            <span className="rounded-full bg-slate-900/80 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-lg">
+              View only
+            </span>
+            {viewOnlyNotice && (
+              <span className="max-w-[min(70vw,420px)] rounded-full bg-slate-900/70 px-2.5 py-0.5 text-center text-[11px] font-medium leading-snug text-white/90 shadow">
+                {viewOnlyNotice}
+              </span>
+            )}
+          </div>
+        )}
+        </div>
+        {/* Export / save status / extra actions stay outside the view-only blur — Export PDF works while viewing. */}
         {(showExportPdf || saveStatus || extraActions) && (
           <div className="ml-auto flex shrink-0 items-end gap-2 border-l border-slate-200/75 pl-2 sm:pl-2.5">
             {(showExportPdf || saveStatus) && (
@@ -514,6 +549,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
             {extraActions ? <div className="flex shrink-0 items-end pb-2.5 pr-1">{extraActions}</div> : null}
           </div>
         )}
+        </div>
       </div>
       {selectionPanel || inspectorPanel ? (
         <div
@@ -524,9 +560,12 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
         >
           {selectionPanel ? <div className="shrink-0">{selectionPanel}</div> : null}
           {selectionPanel && inspectorPanel ? (
-            <div className="h-6 w-px shrink-0 self-center bg-gradient-to-b from-transparent via-slate-300/80 to-transparent" aria-hidden />
+            // Match editorContextToolbarRowClass divide-x + group px (Done/Delete separators).
+            <div className="h-8 w-px shrink-0 self-center bg-slate-300/85" aria-hidden />
           ) : null}
-          {inspectorPanel ? <div className="shrink-0 min-w-0">{inspectorPanel}</div> : null}
+          {inspectorPanel ? (
+            <div className="min-w-0 shrink-0 pl-2.5 sm:pl-3">{inspectorPanel}</div>
+          ) : null}
         </div>
       ) : null}
     </RibbonShell>

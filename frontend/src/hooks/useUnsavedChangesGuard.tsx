@@ -6,12 +6,13 @@ import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 /**
  * Hook to guard against navigation when there are unsaved changes
  * @param hasUnsavedChanges - Function or value that indicates if there are unsaved changes
- * @param onSave - Optional function to call when user chooses to save before leaving
+ * @param onSave - Optional function to call when user chooses to save before leaving.
+ *   If it returns `false`, navigation is aborted. Void/undefined is treated as success.
  * @param onDiscard - Optional function to call when user chooses to discard changes
  */
 export function useUnsavedChangesGuard(
   hasUnsavedChanges: boolean | (() => boolean),
-  onSave?: () => Promise<void>,
+  onSave?: () => Promise<boolean | void>,
   onDiscard?: () => void | Promise<void>
 ) {
   const navigate = useNavigate();
@@ -81,7 +82,8 @@ export function useUnsavedChangesGuard(
 
       if (result === 'confirm') {
         if (onSaveRef.current) {
-          await onSaveRef.current();
+          const ok = await onSaveRef.current();
+          if (ok === false) return;
         }
         window.location.reload();
       } else if (result === 'discard') {
@@ -131,7 +133,8 @@ export function useUnsavedChangesGuard(
       
       if (result === 'confirm') {
         if (onSaveRef.current) {
-          await onSaveRef.current();
+          const ok = await onSaveRef.current();
+          if (ok === false) return;
         }
         navigate(href);
       } else if (result === 'discard') {
@@ -167,7 +170,8 @@ export function useUnsavedChangesGuard(
       
         if (result === 'confirm') {
           if (onSaveRef.current) {
-            await onSaveRef.current();
+            const ok = await onSaveRef.current();
+            if (ok === false) return;
           }
           window.history.back();
         } else if (result === 'discard') {
