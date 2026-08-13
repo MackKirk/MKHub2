@@ -229,6 +229,17 @@ type AnnotationItem = {
 
 type AnnotationBounds = { x: number; y: number; w: number; h: number };
 
+const TEXT_BOX_PADDING = 4;
+
+/** Smallest text box that still shows one line and a few typed characters. */
+function minTextBoxSize(fontPx: number): { w: number; h: number } {
+  const fs = Math.max(8, fontPx || 16);
+  return {
+    w: Math.ceil(TEXT_BOX_PADDING * 2 + fs * 3.2),
+    h: Math.ceil(TEXT_BOX_PADDING * 2 + fs * 1.45),
+  };
+}
+
 /** Visual size of resize handles — smaller on tiny boxes so content stays visible. */
 function getHandleVisualSize(bb: AnnotationBounds): number {
   const base = 6;
@@ -389,6 +400,8 @@ type ImageEditorProps = {
   targetHeight?: number;
   editorScaleFactor?: number;
   overlayClassName?: string;
+  /** When set (e.g. from ImagePicker), outer dialog matches this size; canvas scales to fit. */
+  matchDialogSize?: { width: number; height: number } | null;
 };
 
 export default function ImageEditor({
@@ -402,6 +415,7 @@ export default function ImageEditor({
   targetHeight,
   editorScaleFactor = 2.5,
   overlayClassName,
+  matchDialogSize = null,
 }: ImageEditorProps) {
   const [mode, setMode] = useState<'pan' | 'rect' | 'arrow' | 'text' | 'circle' | 'draw' | 'polygon' | 'select' | 'delete'>('select');
   const [img, setImg] = useState<HTMLImageElement | null>(null);
@@ -809,11 +823,26 @@ export default function ImageEditor({
     
     const imgWidth = img.naturalWidth;
     const imgHeight = img.naturalHeight;
-    
-    // If targetWidth and targetHeight are provided, use them as a bounding box
-    // but preserve the image's own aspect ratio to avoid white letterbox borders
-    if (targetWidth && targetHeight) {
-      const imgAspect = imgWidth / imgHeight;
+    const imgAspect = imgWidth / Math.max(1, imgHeight);
+    const sidebarWithGap = 240; // tools column (matches ImagePicker upload/gallery width)
+    const headerHeight = 56;
+    const chromePadding = 120; // content padding + caption + controls under image
+
+    if (matchDialogSize && matchDialogSize.width > 0 && matchDialogSize.height > 0) {
+      // Fit canvas into the left pane of a dialog that matches the picker size.
+      const availW = Math.max(160, matchDialogSize.width - sidebarWithGap - 32);
+      const availH = Math.max(160, matchDialogSize.height - headerHeight - chromePadding);
+      const availAspect = availW / availH;
+      if (imgAspect > availAspect) {
+        canvasWidth = availW;
+        canvasHeight = availW / imgAspect;
+      } else {
+        canvasHeight = availH;
+        canvasWidth = availH * imgAspect;
+      }
+    } else if (targetWidth && targetHeight) {
+      // If targetWidth and targetHeight are provided, use them as a bounding box
+      // but preserve the image's own aspect ratio to avoid white letterbox borders
       const targetAspect = targetWidth / targetHeight;
       if (imgAspect > targetAspect) {
         canvasWidth = targetWidth;
@@ -825,12 +854,10 @@ export default function ImageEditor({
     } else {
       // Calculate maximum size that fits in viewport while maintaining aspect ratio
       // Account for sidebar (224px) + gap (16px) + padding (32px) + modal padding (32px) + margin
-      const sidebarWithGap = 496; // dual tool columns (~30rem) + gap
       const totalPadding = 64; // p-4 on modal content (16px * 2) + modal padding (16px * 2)
       const maxWidth = Math.min(imgWidth, window.innerWidth - sidebarWithGap - totalPadding - 40);
       const maxHeight = Math.min(imgHeight, window.innerHeight - 200);
       
-      const imgAspect = imgWidth / imgHeight;
       const maxAspect = maxWidth / maxHeight;
       
       // Scale to fit while maintaining aspect ratio
@@ -887,7 +914,7 @@ export default function ImageEditor({
     setScale(fitScale);
     setOffsetX(0);
     setOffsetY(0);
-  }, [img, isOpen, targetWidth, targetHeight, editorScaleFactor]);
+  }, [img, isOpen, targetWidth, targetHeight, editorScaleFactor, matchDialogSize]);
 
   // Clamp translation - allow movement within canvas when zoom < 1, or ensure coverage when zoom >= 1
   const clampOffset = useCallback((x: number, y: number, s?: number): { x: number; y: number } => {
@@ -1131,7 +1158,7 @@ export default function ImageEditor({
       } else if (it.type === 'text') {
         const itemFontSize = it.fontSize || fontSize;
         ctx.font = `${itemFontSize}px Montserrat`;
-        const padding = 4;
+        const padding = TEXT_BOX_PADDING;
         
         // Draw text area border:
         // - while actively editing the text
@@ -2297,8 +2324,9 @@ export default function ImageEditor({
         const dy = Math.abs(y - drawing.y);
         const minSize = 5;
         if (dx < minSize && dy < minSize) return;
-        const nextW = Math.max(50, Math.abs(x - drawing.x));
-        const nextH = Math.max(20, Math.abs(y - drawing.y));
+        const textMin = minTextBoxSize(drawing.fontSize || fontSize);
+        const nextW = Math.max(textMin.w, Math.abs(x - drawing.x));
+        const nextH = Math.max(textMin.h, Math.abs(y - drawing.y));
         if (!drawing.w || drawing.w <= 1) {
           const newItem = { ...drawing, w: nextW, h: nextH };
           itemsRef.current = [...itemsRef.current.filter(it => it && it.id && it.id !== drawnId), newItem];
@@ -2477,16 +2505,23 @@ export default function ImageEditor({
             const { handle, startW, startH } = resizeState;
             const origX = item.x;
             const origY = item.y;
+            const textMin = minTextBoxSize(it.fontSize || fontSize);
             
             let newW = startW!;
             let newH = startH!;
             let newX = origX;
             let newY = origY;
             
-            if (handle.includes('e')) { newW = Math.max(50, startW! + dx); }
-            if (handle.includes('w')) { newW = Math.max(50, startW! - dx); newX = origX + dx; }
-            if (handle.includes('s')) { newH = Math.max(20, startH! + dy); }
-            if (handle.includes('n')) { newH = Math.max(20, startH! - dy); newY = origY + dy; }
+            if (handle.includes('e')) { newW = Math.max(textMin.w, startW! + dx); }
+            if (handle.includes('w')) {
+              newW = Math.max(textMin.w, startW! - dx);
+              newX = origX + (startW! - newW);
+            }
+            if (handle.includes('s')) { newH = Math.max(textMin.h, startH! + dy); }
+            if (handle.includes('n')) {
+              newH = Math.max(textMin.h, startH! - dy);
+              newY = origY + (startH! - newH);
+            }
             
             return { ...it, x: newX, y: newY, w: newW, h: newH };
           }
@@ -2615,6 +2650,7 @@ export default function ImageEditor({
 
         if (created && textItem) {
           // Normalize top-left + positive size
+          const textMin = minTextBoxSize(textItem.fontSize || fontSize);
           let newX = textItem.x;
           let newY = textItem.y;
           let newW = textItem.w || w;
@@ -2627,6 +2663,8 @@ export default function ImageEditor({
             newY = textItem.y + (textItem.h || 0);
             newH = Math.abs(textItem.h || 0);
           }
+          newW = Math.max(textMin.w, newW);
+          newH = Math.max(textMin.h, newH);
 
           itemsRef.current = itemsRef.current.map(it =>
             it.id === drawnId
@@ -3171,14 +3209,26 @@ export default function ImageEditor({
 
   if (!isOpen) return null;
 
-  // Calculate modal size based on canvas dimensions
+  // Calculate modal size based on canvas dimensions (or match the picker dialog when requested)
   const canvasWidth = canvasDimensions.width || canvasRef.current?.width || 0;
   const canvasHeight = canvasDimensions.height || canvasRef.current?.height || 0;
-  const sidebarWidth = 496; // dual-column tools panel (~30rem) + gap
+  const sidebarWidth = 240; // matches ImagePicker upload/gallery column
   const padding = 32; // p-4 = 16px * 2
   const headerHeight = 60; // approximate header height
-  const modalWidth = isLoading ? 800 : (canvasWidth > 0 ? canvasWidth + sidebarWidth + padding : 1200);
-  const modalHeight = isLoading ? 600 : (canvasHeight > 0 ? Math.max(canvasHeight, 400) + headerHeight + padding : 700);
+  const matchedW = matchDialogSize && matchDialogSize.width > 0 ? matchDialogSize.width : null;
+  const matchedH = matchDialogSize && matchDialogSize.height > 0 ? matchDialogSize.height : null;
+  const modalWidth = matchedW
+    ?? (isLoading ? 800 : (canvasWidth > 0 ? canvasWidth + sidebarWidth + padding : 1200));
+  const modalHeight = matchedH
+    ?? (isLoading ? 600 : (canvasHeight > 0 ? Math.max(canvasHeight, 400) + headerHeight + padding + 88 : 700));
+  const clampedModalWidth = Math.min(modalWidth, typeof window !== 'undefined' ? window.innerWidth - 32 : modalWidth);
+  const clampedModalHeight = Math.min(modalHeight, typeof window !== 'undefined' ? window.innerHeight - 32 : modalHeight);
+  const progressOverlayClassName =
+    overlayClassName === uiModalLayer.nestedEditor
+      ? 'z-[225]'
+      : overlayClassName === uiModalLayer.nestedPicker
+        ? uiModalLayer.nestedPickerBusy
+        : 'z-[60]';
 
   return (
     <>
@@ -3196,9 +3246,11 @@ export default function ImageEditor({
           aria-labelledby="image-editor-title"
           className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-slate-900/[0.06]"
           style={{
-            width: isLoading ? '800px' : `${Math.min(modalWidth, window.innerWidth - 32)}px`,
-            maxWidth: 'min(95vw, calc(100vw - 2rem))',
-            maxHeight: '95vh',
+            width: `${clampedModalWidth}px`,
+            ...(matchedH
+              ? { height: `${clampedModalHeight}px`, maxHeight: `${clampedModalHeight}px` }
+              : { maxHeight: '95vh' }),
+            maxWidth: 'min(98vw, calc(100vw - 2rem))',
           }}
         >
           <div className="flex shrink-0 items-center justify-between border-b border-slate-200/85 bg-gradient-to-b from-white to-slate-50/90 px-4 py-3">
@@ -3218,34 +3270,32 @@ export default function ImageEditor({
           </div>
 
           <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-            {/* Row never scrolls horizontally as a whole — sidebar stays visible; only the canvas pane scrolls if needed. */}
             <div ref={containerRef} className="isolate flex min-h-0 min-w-0 flex-1 gap-0 overflow-hidden">
-              <div className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain bg-slate-50/80 p-4 [scrollbar-gutter:stable]">
-                {!isLoading && !loadError && canvasWidth > 0 && canvasHeight > 0 && (
-                  <p className={`${editorCaptionClass} mb-3`}>
-                    Editing area: {canvasWidth} × {canvasHeight}px
-                  </p>
-                )}
-                <div
-                  className="relative inline-block"
-                  style={
-                    isLoading
-                      ? { height: '500px', width: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }
-                      : undefined
-                  }
-                >
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-50/80">
+                <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable]">
+                <div className="inline-flex max-w-full flex-col">
+                {(() => {
+                  const frameW =
+                    canvasWidth > 0
+                      ? canvasWidth
+                      : matchDialogSize
+                        ? Math.max(200, Math.round(matchDialogSize.width - sidebarWidth - 32))
+                        : 480;
+                  const frameH =
+                    canvasHeight > 0
+                      ? canvasHeight
+                      : matchDialogSize
+                        ? Math.max(200, Math.round(matchDialogSize.height - headerHeight - 120))
+                        : 360;
+                  return (
+                <>
+                <div className="relative inline-block">
                   <div
                     className="flex-shrink-0"
-                    style={{ width: canvasWidth > 0 ? `${canvasWidth}px` : 'auto', maxWidth: canvasWidth > 0 ? `${canvasWidth}px` : 'none' }}
+                    style={{ width: `${frameW}px`, maxWidth: `${frameW}px` }}
                   >
-                {isLoading && (
-                  <div className="text-center">
-                    <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand-red" />
-                    <div className="text-sm text-slate-600">Loading image…</div>
-                  </div>
-                )}
                 {loadError && !isLoading && (
-                  <div className="absolute inset-0 flex items-center justify-center p-4">
+                  <div className="flex items-center justify-center p-8">
                     <div className="text-center">
                       <div className="mb-2 font-semibold text-red-700">Error</div>
                       <div className="mb-4 max-w-md text-sm text-slate-600">{loadError}</div>
@@ -3259,18 +3309,21 @@ export default function ImageEditor({
                     </div>
                   </div>
                 )}
-                {!isLoading && !loadError && (
+                {!loadError && (
                   <div
                     className="inline-block rounded-md border-2 border-slate-500 bg-slate-200/95 p-px shadow-[0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/10"
                     title="Editing area — same frame style as Image picker"
                   >
-                    <div className="relative overflow-hidden rounded-[3px] bg-slate-200">
+                    <div
+                      className="relative overflow-hidden rounded-[3px] bg-slate-200"
+                      style={canvasWidth <= 0 ? { width: frameW, height: frameH } : undefined}
+                    >
                     <canvas
                       ref={canvasRef}
                       className="block"
                       style={{ 
                         cursor: ((mode === 'pan' || mode === 'select') && !textEditingRef.current) ? (draggingRef.current ? 'grabbing' : 'grab') : 'default',
-                        display: 'block',
+                        display: canvasWidth > 0 ? 'block' : 'none',
                         pointerEvents: textEditingRef.current ? 'none' : 'auto',
                         touchAction: 'none'
                       }}
@@ -3283,6 +3336,7 @@ export default function ImageEditor({
                       className="absolute left-0 top-0"
                       tabIndex={0}
                       style={{ 
+                        display: canvasWidth > 0 ? 'block' : 'none',
                         cursor: (mode === 'select' || mode === 'delete')
                           ? 'default'
                           : mode === 'draw'
@@ -3383,6 +3437,11 @@ export default function ImageEditor({
                         }
                       }}
                     />
+                    {(isLoading || canvasWidth <= 0) && (
+                      <div className="absolute inset-0 z-[1] grid place-items-center bg-slate-200 text-sm text-slate-600">
+                        Loading image…
+                      </div>
+                    )}
                     <div
                       className="pointer-events-none absolute inset-0 z-[2] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.22)]"
                       aria-hidden
@@ -3392,53 +3451,77 @@ export default function ImageEditor({
                 )}
                   </div>
                 </div>
-              </div>
+                </>
+                  );
+                })()}
+                </div>
+                </div>
 
-              <aside
-                className={`relative z-[1] box-border flex h-full min-h-0 w-[30rem] min-w-[30rem] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-l border-slate-200/90 bg-white/95 px-3 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.95)] ring-1 ring-slate-900/[0.04] [scrollbar-gutter:stable]`}
-              >
-                <div className="grid min-h-0 flex-1 grid-cols-2 gap-x-3 gap-y-3 content-start">
-                  <div className="flex min-w-0 flex-col gap-3">
-                <span className={`${editorGroupLabelClass} block`}>Image controls</span>
-                <div>
-                  <label className="mb-1 block text-[11px] font-medium text-slate-600">Rotation</label>
-                  <div className="flex gap-1.5">
+                <div className="w-full shrink-0 border-t border-slate-200/80 bg-slate-50/80 px-4 pb-4 pt-3">
+                  <p className={`${editorCaptionClass} mb-2 text-center text-slate-500`}>
+                    {canvasWidth > 0 && canvasHeight > 0
+                      ? `Editing area: ${canvasWidth} × ${canvasHeight}px`
+                      : 'Editing area'}
+                  </p>
+                  <div className="flex w-full flex-nowrap items-center gap-2">
+                    <div className="custom-slider-container mb-0 min-w-0 flex-1">
+                      <span className="flex w-11 shrink-0 text-xs font-medium text-slate-700">Zoom</span>
+                      <input
+                        type="range"
+                        min="0.1"
+                        max="3"
+                        step="0.01"
+                        disabled={isLoading || !img}
+                        value={scale}
+                        onChange={e => setScale(parseFloat(e.target.value))}
+                        className="custom-slider"
+                        style={{
+                          background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((scale - 0.1) / (3 - 0.1)) * 100}%, #e5e7eb ${((scale - 0.1) / (3 - 0.1)) * 100}%, #e5e7eb 100%)`
+                        }}
+                      />
+                      <div className="custom-slider-value">{scale.toFixed(2)}×</div>
+                    </div>
                     <button
                       type="button"
+                      disabled={isLoading || !img}
                       onClick={() => setAngle((prev) => (prev + 270) % 360)}
-                      className={`${selectionToolButtonGhostClass} flex-1 justify-center py-2 text-xs font-semibold`}
+                      className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-xs font-semibold disabled:opacity-50`}
                     >
                       ⟲ Left
                     </button>
                     <button
                       type="button"
+                      disabled={isLoading || !img}
                       onClick={() => setAngle((prev) => (prev + 90) % 360)}
-                      className={`${selectionToolButtonGhostClass} flex-1 justify-center py-2 text-xs font-semibold`}
+                      className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-xs font-semibold disabled:opacity-50`}
                     >
                       ⟳ Right
                     </button>
+                    <button
+                      type="button"
+                      disabled={isLoading || !img}
+                      onClick={handleReset}
+                      className={`${selectionToolButtonGhostClass} h-9 shrink-0 px-3 text-xs font-semibold disabled:opacity-50`}
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      disabled={isLoading || isSaving || !img}
+                      className={`${editorTransitionInteractive} inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-brand-red px-4 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
+                    >
+                      {isSaving ? 'Saving…' : 'Save'}
+                    </button>
                   </div>
                 </div>
-                <div className="mt-2">
-                  <div className="custom-slider-container mb-1">
-                    <span className="flex w-11 shrink-0 text-xs font-medium text-slate-700">Zoom</span>
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="3"
-                      step="0.01"
-                      value={scale}
-                      onChange={e => setScale(parseFloat(e.target.value))}
-                      className="custom-slider"
-                      style={{
-                        background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((scale - 0.1) / (3 - 0.1)) * 100}%, #e5e7eb ${((scale - 0.1) / (3 - 0.1)) * 100}%, #e5e7eb 100%)`
-                      }}
-                    />
-                    <div className="custom-slider-value">{scale.toFixed(2)}×</div>
-                  </div>
-                </div>
+              </div>
 
-              <div className="border-t border-slate-200/80 pt-3">
+              <aside
+                className="relative z-[1] box-border flex h-full min-h-0 w-[240px] min-w-[240px] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-l border-slate-200/90 bg-white/95 px-3 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.95)] ring-1 ring-slate-900/[0.04] [scrollbar-gutter:stable]"
+              >
+                <div className="flex min-h-0 flex-1 flex-col gap-3 content-start">
+              <div>
                 <span className={`${editorGroupLabelClass} mb-2 block`}>Tools</span>
                 <div className="grid grid-cols-4 gap-1.5">
                   <button onClick={() => {
@@ -3577,10 +3660,8 @@ export default function ImageEditor({
                   </>
                 )}
               </div>
-                  </div>
 
-                  <div className="flex min-w-0 flex-col gap-3 border-l border-slate-200/80 pl-3">
-                    <div>
+                    <div className="border-t border-slate-200/80 pt-3">
                       <span className={`${editorGroupLabelClass} mb-2 block`}>Shape fill</span>
                       <div className="mb-1 flex min-w-0 items-center gap-2">
                         <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Color</span>
@@ -3671,27 +3752,6 @@ export default function ImageEditor({
                         </>
                       )}
                     </div>
-                  </div>
-
-                  <div className="col-span-2 border-t border-slate-200/80 pt-3">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleReset}
-                        className={`${selectionToolButtonGhostClass} h-9 flex-1 justify-center text-xs font-semibold`}
-                      >
-                        Reset
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className={`${editorTransitionInteractive} flex h-9 flex-1 items-center justify-center rounded-md bg-brand-red px-3 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
-                      >
-                        {isSaving ? 'Saving…' : 'Save'}
-                      </button>
-                    </div>
-                  </div>
                 </div>
             </aside>
             </div>
@@ -3699,6 +3759,23 @@ export default function ImageEditor({
         </div>
       </div>
       </OverlayPortal>
+      {(isLoading || isSaving) && (
+        <OverlayPortal>
+          <div
+            className={uiCx(
+              'fixed inset-0 flex items-center justify-center bg-black/45 p-4',
+              progressOverlayClassName,
+            )}
+          >
+            <div className="w-[360px] max-w-[90vw] rounded-xl border border-slate-200/90 bg-white px-6 py-5 text-center shadow-2xl ring-1 ring-slate-900/[0.06]">
+              <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand-red" />
+              <div className="text-sm text-slate-600">
+                {isSaving ? 'Saving…' : 'Loading image…'}
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      )}
     </>
   );
 }

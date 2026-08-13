@@ -1,13 +1,14 @@
 import { useState, useRef, useCallback, useLayoutEffect, forwardRef, useImperativeHandle } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { DocumentCreatorModal } from '@/components/DocumentCreatorModal';
 import { ChooseDocumentTypeModal, type DocumentCreationSelection } from '@/components/ChooseDocumentTypeModal';
 import { DocumentPagePreviewThumbnails } from '@/components/DocumentPagePreviewThumbnails';
 import DocumentEditor, { type DocumentEditorHandle } from '@/components/DocumentEditor';
-import { ExpandIcon } from '@/components/document-editor/documentEditorIcons';
+import { ExpandIcon, CompressIcon } from '@/components/document-editor/documentEditorIcons';
+import { getOverlayRoot } from '@/lib/overlayRoot';
 import type { DocumentPage } from '@/types/documentCreator';
 import {
   AppButton,
@@ -139,6 +140,37 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
   const inlineEditorOpen = !!(showModal && modalDocumentId && !isExpanded);
   const { shellRef: inlineEditorShellRef, heightPx: inlineEditorHeightPx } =
     useInlineDocumentEditorHeight(inlineEditorOpen);
+  /**
+   * Portal target for the editor shell. IMPORTANT: React's portal reconciliation treats a change
+   * to the *container* as a brand-new portal — it unmounts and remounts everything inside (see
+   * `updatePortal` in the reconciler, which compares `containerInfo`). So we must NEVER pass a
+   * different DOM node into `createPortal()` across an expand/collapse toggle, or the
+   * `DocumentEditor` instance (and its edit-lock session) gets destroyed and recreated, which is
+   * exactly what re-triggers "opening document" / a false "document in use" conflict.
+   *
+   * Instead, `createPortal` always targets this single, stable, detached div (created once and
+   * never swapped). To move the editor between the inline slot and full screen, we physically
+   * reparent this same node with plain DOM calls in the layout effect below — React never sees
+   * its portal container change, so it never remounts the subtree.
+   */
+  const portalHostRef = useRef<HTMLDivElement | null>(null);
+  if (portalHostRef.current === null && typeof document !== 'undefined') {
+    portalHostRef.current = document.createElement('div');
+  }
+  /** Mount point kept in the normal document flow at the tab's position (inline, not expanded). */
+  const inlineAnchorRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const host = portalHostRef.current;
+    if (!host || !(showModal && modalDocumentId)) return;
+    const target = isExpanded ? getOverlayRoot() : inlineAnchorRef.current;
+    if (target && host.parentNode !== target) {
+      target.appendChild(host);
+    }
+    return () => {
+      host.parentNode?.removeChild(host);
+    };
+  }, [isExpanded, showModal, modalDocumentId]);
 
   const { data: documents = [], isLoading } = useQuery({
     queryKey: ['document-creator-documents', projectId],
@@ -406,8 +438,22 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
     </ul>
   );
 
-  // Inline editor (default when a document is open and not expanded)
-  if (showModal && modalDocumentId && !isExpanded) {
+  const chooseTypeModal = (
+    <ChooseDocumentTypeModal
+      open={showChooseTypeModal}
+      onClose={() => setShowChooseTypeModal(false)}
+      designSystem={designSystem}
+      onSelect={(selection) => {
+        setShowChooseTypeModal(false);
+        handleCreateNew(selection);
+      }}
+    />
+  );
+
+  // Editor open (inline or expanded) — a single DocumentEditor instance is kept mounted
+  // across the expand/compress toggle so its edit-lock session (and undo history, scroll
+  // position, selection) survives; only the wrapper's classes change.
+  if (showModal && modalDocumentId) {
     const expandButton = designSystem ? (
       <AppButton
         type="button"
@@ -430,51 +476,63 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
       </button>
     );
 
-    const editorShellClass = designSystem
+    const compressButton = designSystem ? (
+      <AppButton
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => setIsExpanded(false)}
+        title="Exit full screen"
+        className="!px-2"
+      >
+        <CompressIcon className="h-5 w-5" />
+      </AppButton>
+    ) : (
+      <button
+        type="button"
+        onClick={() => setIsExpanded(false)}
+        title="Exit full screen"
+        className="rounded-xl p-2 text-slate-600 transition-[color,background-color,transform] duration-200 ease-out hover:bg-slate-200/70 hover:text-slate-950 active:scale-[0.96] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
+      >
+        <CompressIcon className="w-5 h-5" />
+      </button>
+    );
+
+    const inlineEditorShellClass = designSystem
       ? uiCx(
-          uiRadius.card,
-          'rounded-t-none',
+          '!rounded-2xl',
           uiBorders.subtle,
           uiColors.surface,
-          'z-0 -mb-5 flex min-h-0 flex-col overflow-visible overscroll-contain',
+          'z-0 flex min-h-0 flex-col overflow-hidden overscroll-contain',
         )
-      : 'z-0 -mb-5 flex min-h-0 flex-col overflow-visible overscroll-contain rounded-b-xl border border-t-0 bg-white shadow-sm';
+      : 'z-0 flex min-h-0 flex-col overflow-hidden overscroll-contain rounded-xl border bg-white shadow-sm';
+    // Low z-index is fine here: this now portals into #overlay-root (already above app chrome),
+    // and must stay below the shared confirm dialog (uiModalLayer.confirm, z-[230]) so "document
+    // in use" / "newer version" prompts remain visible and clickable while full screen.
+    const expandedShellClass = 'fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-white';
 
-    return (
-      <>
-        <div
-          ref={inlineEditorShellRef}
-          className={editorShellClass}
-          style={{ height: inlineEditorHeightPx }}
-        >
-          <DocumentEditor
-            ref={documentEditorRef}
-            documentId={modalDocumentId}
-            projectId={projectId}
-            onClose={handleCloseModal}
-            readOnly={!canEditDocuments}
-            closeSlotBelow={expandButton}
-            stickyToolbar
-          />
-        </div>
-        <ChooseDocumentTypeModal
-          open={showChooseTypeModal}
-          onClose={() => setShowChooseTypeModal(false)}
-          designSystem={designSystem}
-          onSelect={(selection) => {
-            setShowChooseTypeModal(false);
-            handleCreateNew(selection);
-          }}
-        />
-        <DocumentCreatorModal
-          open={showModal && isExpanded}
+    const editorShell = (
+      <div
+        ref={inlineEditorShellRef}
+        className={isExpanded ? expandedShellClass : inlineEditorShellClass}
+        style={isExpanded ? undefined : { height: inlineEditorHeightPx }}
+      >
+        <DocumentEditor
+          ref={documentEditorRef}
           documentId={modalDocumentId}
           projectId={projectId}
           onClose={handleCloseModal}
           readOnly={!canEditDocuments}
-          onCompress={() => setIsExpanded(false)}
-          editorRef={documentEditorRef}
+          closeSlotBelow={isExpanded ? compressButton : expandButton}
+          stickyToolbar={!isExpanded}
         />
+      </div>
+    );
+    return (
+      <>
+        <div ref={inlineAnchorRef} className="w-full" />
+        {portalHostRef.current ? createPortal(editorShell, portalHostRef.current) : null}
+        {chooseTypeModal}
       </>
     );
   }
@@ -504,26 +562,7 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
         </div>
       )}
 
-      <ChooseDocumentTypeModal
-        open={showChooseTypeModal}
-        onClose={() => setShowChooseTypeModal(false)}
-        designSystem={designSystem}
-        onSelect={(selection) => {
-          setShowChooseTypeModal(false);
-          handleCreateNew(selection);
-        }}
-      />
-
-      {/* Full-screen mode (expanded) */}
-      <DocumentCreatorModal
-        open={showModal && isExpanded}
-        documentId={modalDocumentId}
-        projectId={projectId}
-        onClose={handleCloseModal}
-        readOnly={!canEditDocuments}
-        onCompress={() => setIsExpanded(false)}
-        editorRef={documentEditorRef}
-      />
+      {chooseTypeModal}
     </>
   );
 });

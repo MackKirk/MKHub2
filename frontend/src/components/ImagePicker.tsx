@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImageEditor from '@/components/ImageEditor';
@@ -12,6 +13,7 @@ import {
   editorSegmentedControlTrackClass,
   editorSegmentedSegmentIdleClass,
   editorSegmentedSegmentSelectedClass,
+  editorToolbarMicroLabelClass,
   editorTransitionInteractive,
   selectionToolButtonGhostClass,
 } from '@/components/document-editor/documentEditorRibbonPrimitives';
@@ -22,6 +24,25 @@ import {
   PROPOSAL_SECTION_IMAGE_PDF_PORTRAIT_HEIGHT,
   type ProposalSectionImageOrientation,
 } from '@/constants/proposalSectionImage';
+import {
+  aspectMismatchSignificant,
+  clampPanNorm,
+  cssBoxForRotatedLayout,
+  describeAspectRatio,
+  drawImageRotatedInRect,
+  layoutCoverBackground,
+  layoutImageInFrame,
+  normalizeRotation,
+  rotatedBoxSize,
+  type ImageFitMode,
+  type ImageRotationDeg,
+} from '@/utils/imagePickerFitGeometry';
+
+const FIT_MODE_OPTIONS: { id: ImageFitMode; label: string }[] = [
+  { id: 'cover', label: 'Fill area' },
+  { id: 'contain', label: 'Fit image' },
+  { id: 'background', label: 'Fit with background' },
+];
 
 type LibraryFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string };
 
@@ -143,6 +164,8 @@ export default function ImagePicker({
   allowOrientationToggle = false,
   initialOrientation = 'landscape',
   preserveTransparency = false,
+  /** Document Creator preserve-frame replace: Fill / Fit / Fit-with-background composition. */
+  enableFitModes = false,
 }:{
   isOpen:boolean,
   onClose:()=>void,
@@ -163,6 +186,7 @@ export default function ImagePicker({
   initialOrientation?: ProposalSectionImageOrientation,
   /** When true, PNG/GIF/WebP exports keep alpha (document creator). Default false for proposals. */
   preserveTransparency?: boolean,
+  enableFitModes?: boolean,
 }){
   const progressOverlayClassName =
     overlayClassName === uiModalLayer.nestedPicker
@@ -199,31 +223,39 @@ export default function ImagePicker({
   const [showProgress, setShowProgress] = useState<boolean>(false);
   const [progressMessage, setProgressMessage] = useState<string>("");
   const [showImageEditor, setShowImageEditor] = useState<boolean>(false);
+  const [editorMatchSize, setEditorMatchSize] = useState<{ width: number; height: number } | null>(null);
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
   const [isSavingFromEditor, setIsSavingFromEditor] = useState<boolean>(false);
   const [sourceMayHaveAlpha, setSourceMayHaveAlpha] = useState(false);
 
-  // crop state
+  // crop state — when enableFitModes, tx/ty store normalized pan (fraction of frame); otherwise CSS px
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
+  const [rotation, setRotation] = useState<ImageRotationDeg>(0);
+  const [fitMode, setFitMode] = useState<ImageFitMode>('contain');
   const dragging = useRef<{x:number, y:number, tx:number, ty:number}|null>(null);
   const [isPanning] = useState(true);
   const blobUrlRef = useRef<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const dropDepthRef = useRef(0);
   /** Ensures openEditorOnOpen only auto-opens once per picker session (not after Save updates img). */
   const autoOpenedEditorRef = useRef(false);
+  const zoomMin = enableFitModes ? 1 : 0.1;
+  const zoomMax = 6;
 
   useEffect(()=>{
     if(!isOpen){
-      setImg(null); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setSourceMayHaveAlpha(false); setTab('upload');
+      setImg(null); setZoom(1); setTx(0); setTy(0); setRotation(0); setFitMode('contain');
+      setOriginalFileObjectId(undefined); setSourceMayHaveAlpha(false); setTab('upload');
       setGalleryDialogOpen(false);
       setOrientation('landscape');
       setLibraryLoaded(false); setFilesOriginals([]); setFilesDerived([]);
       autoOpenedEditorRef.current = false;
       setShowImageEditor(false);
+      setEditorMatchSize(null);
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
@@ -383,7 +415,7 @@ export default function ImagePicker({
     }
   }, [tab, isOpen, hasLibrary, clientId, projectId, libraryLoaded, isLoadingLibrary]);
 
-  const landscapePreviewWidth = 360;
+  const landscapePreviewWidth = 700;
   const landscapePreviewHeight = useMemo(
     () => Math.round(landscapePreviewWidth * (targetHeight / targetWidth)),
     [targetWidth, targetHeight],
@@ -409,25 +441,94 @@ export default function ImagePicker({
     landscapePreviewHeight,
   ]);
 
+  const sourceBox = useMemo(() => {
+    if (!img) return { w: 1, h: 1 };
+    return rotatedBoxSize(img.naturalWidth, img.naturalHeight, rotation);
+  }, [img, rotation]);
+
   const coverScale = useMemo(()=>{
     if(!img) return 1;
-    return Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
-  }, [img, cw, ch]);
+    return Math.max(cw / sourceBox.w, ch / sourceBox.h);
+  }, [img, cw, ch, sourceBox]);
 
-  /** Export pixel size for current pan/zoom (tight crop — no letterbox margins in the file). */
+  const foregroundFitMode: ImageFitMode = fitMode === 'background' ? 'contain' : fitMode;
+
+  const fitPreviewLayout = useMemo(() => {
+    if (!enableFitModes || !img) return null;
+    return layoutImageInFrame({
+      frameW: cw,
+      frameH: ch,
+      imageW: sourceBox.w,
+      imageH: sourceBox.h,
+      mode: foregroundFitMode,
+      zoom,
+      panNormX: tx,
+      panNormY: ty,
+    });
+  }, [enableFitModes, img, cw, ch, sourceBox, foregroundFitMode, zoom, tx, ty]);
+
+  const fitPreviewFgCss = useMemo(() => {
+    if (!img || !fitPreviewLayout) return null;
+    return cssBoxForRotatedLayout(fitPreviewLayout, img.naturalWidth, img.naturalHeight, rotation);
+  }, [img, fitPreviewLayout, rotation]);
+
+  const fitPreviewBgLayout = useMemo(() => {
+    if (!enableFitModes || !img || fitMode !== 'background') return null;
+    return layoutCoverBackground({
+      frameW: cw,
+      frameH: ch,
+      imageW: sourceBox.w,
+      imageH: sourceBox.h,
+    });
+  }, [enableFitModes, img, cw, ch, fitMode, sourceBox]);
+
+  const fitPreviewBgCss = useMemo(() => {
+    if (!img || !fitPreviewBgLayout) return null;
+    return cssBoxForRotatedLayout(fitPreviewBgLayout, img.naturalWidth, img.naturalHeight, rotation);
+  }, [img, fitPreviewBgLayout, rotation]);
+
+  const targetAspectLabel = useMemo(
+    () => describeAspectRatio(effectiveWidth, effectiveHeight),
+    [effectiveWidth, effectiveHeight],
+  );
+
+  const showAspectHint = useMemo(() => {
+    if (!enableFitModes || !img) return false;
+    return aspectMismatchSignificant(
+      sourceBox.w,
+      sourceBox.h,
+      effectiveWidth,
+      effectiveHeight,
+    );
+  }, [enableFitModes, img, sourceBox, effectiveWidth, effectiveHeight]);
+
+  /** Export pixel size for current pan/zoom (tight crop — no letterbox margins in the file). Legacy path only. */
   const tightExportDimensions = useMemo(() => {
-    if (!img) return null;
+    if (enableFitModes || !img) return null;
     const scale = coverScale * zoom;
     const crop = computeTightCropNatural(img, tx, ty, cw, ch, scale);
     if (!crop) return null;
     return computeExportDimensions(crop.sw, crop.sh, exportScale, maxExportLongSide);
-  }, [img, tx, ty, cw, ch, coverScale, zoom, exportScale, maxExportLongSide]);
+  }, [enableFitModes, img, tx, ty, cw, ch, coverScale, zoom, exportScale, maxExportLongSide]);
 
   // clamp translation so image covers the frame (or allows movement within container when zoom < 1)
   const clamp = (nx:number, ny:number, nz:number)=>{
     if(!img) return { x: nx, y: ny };
-    const dw = img.naturalWidth * coverScale * nz;
-    const dh = img.naturalHeight * coverScale * nz;
+    if (enableFitModes) {
+      const clamped = clampPanNorm({
+        frameW: cw,
+        frameH: ch,
+        imageW: sourceBox.w,
+        imageH: sourceBox.h,
+        mode: foregroundFitMode,
+        zoom: nz,
+        panNormX: nx,
+        panNormY: ny,
+      });
+      return { x: clamped.panNormX, y: clamped.panNormY };
+    }
+    const dw = sourceBox.w * coverScale * nz;
+    const dh = sourceBox.h * coverScale * nz;
     // If zoom < 1, allow free placement within the frame.
     // Constrain so the image centre stays within the frame (at least half
     // of the image always visible), letting the user pan in any direction
@@ -442,6 +543,20 @@ export default function ImagePicker({
     const minX = cw - dw;
     const minY = ch - dh;
     return { x: Math.min(0, Math.max(minX, nx)), y: Math.min(0, Math.max(minY, ny)) };
+  };
+
+  const applyFitMode = (next: ImageFitMode) => {
+    setFitMode(next);
+    setZoom(1);
+    setTx(0);
+    setTy(0);
+  };
+
+  const rotateImage = (delta: 90 | -90) => {
+    setRotation((prev) => normalizeRotation(prev + delta));
+    setZoom(1);
+    setTx(0);
+    setTy(0);
   };
 
 
@@ -491,7 +606,8 @@ export default function ImagePicker({
             setImg(image); 
             setZoom(1); 
             setTx(0); 
-            setTy(0); 
+            setTy(0);
+            setRotation(0); 
             setOriginalFileObjectId(fileObjectId); 
             setIsLoading(false);
             setShowProgress(false);
@@ -523,7 +639,8 @@ export default function ImagePicker({
           setImg(image); 
           setZoom(1); 
           setTx(0); 
-          setTy(0); 
+          setTy(0);
+          setRotation(0); 
           setOriginalFileObjectId(undefined); 
           setIsLoading(false); 
           setShowProgress(false); 
@@ -549,7 +666,8 @@ export default function ImagePicker({
               setImg(img2); 
               setZoom(1); 
               setTx(0); 
-              setTy(0); 
+              setTy(0);
+              setRotation(0); 
               setOriginalFileObjectId(fileObjectId); 
               setIsLoading(false); 
               setShowProgress(false); 
@@ -614,7 +732,8 @@ export default function ImagePicker({
         setImg(image); 
         setZoom(1); 
         setTx(0); 
-        setTy(0); 
+        setTy(0);
+        setRotation(0); 
         setOriginalFileObjectId(fileObjectId); 
         setIsLoading(false);
         setShowProgress(false);
@@ -654,7 +773,7 @@ export default function ImagePicker({
       setIsLoading(true);
       setShowProgress(true);
       setProgressMessage('Loading image...');
-      image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
+      image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setRotation(0); setOriginalFileObjectId(fileObjectId); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
       image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
       image.crossOrigin = 'anonymous';
       // Use thumbnail endpoint to ensure browser-compatible PNG (works for HEIC too)
@@ -669,13 +788,27 @@ export default function ImagePicker({
     }
   }, [isOpen, fileObjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const openImageEditorFromPicker = () => {
+    const el = dialogRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setEditorMatchSize({
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+      });
+    } else {
+      setEditorMatchSize(null);
+    }
+    setShowImageEditor(true);
+  };
+
   useEffect(() => {
     if (!isOpen) return;
     if (!openEditorOnOpen) return;
     if (!img) return;
     if (autoOpenedEditorRef.current) return;
     autoOpenedEditorRef.current = true;
-    setShowImageEditor(true);
+    openImageEditorFromPicker();
   }, [isOpen, openEditorOnOpen, img]);
 
   // Use refs to access current values in event handler
@@ -699,10 +832,26 @@ export default function ImagePicker({
       const currentZoom = zoomRef.current;
       const currentTx = txRef.current;
       const currentTy = tyRef.current;
-      const nz = Math.min(6, Math.max(0.1, currentZoom * factor));
+      const nz = Math.min(zoomMax, Math.max(zoomMin, currentZoom * factor));
+      if (enableFitModes) {
+        const clamped = clampPanNorm({
+          frameW: cw,
+          frameH: ch,
+          imageW: sourceBox.w,
+          imageH: sourceBox.h,
+          mode: foregroundFitMode,
+          zoom: nz,
+          panNormX: currentTx,
+          panNormY: currentTy,
+        });
+        setZoom(nz);
+        setTx(clamped.panNormX);
+        setTy(clamped.panNormY);
+        return;
+      }
       // Recalculate clamp values using current img and coverScale
-      const dw = img.naturalWidth * coverScale * nz;
-      const dh = img.naturalHeight * coverScale * nz;
+      const dw = sourceBox.w * coverScale * nz;
+      const dh = sourceBox.h * coverScale * nz;
       const minX = cw - dw;
       const minY = ch - dh;
       const x = Math.min(0, Math.max(minX, currentTx));
@@ -717,7 +866,7 @@ export default function ImagePicker({
     return () => {
       container.removeEventListener('wheel', handleWheel);
     };
-  }, [isOpen, allowEdit, img, coverScale, cw, ch]);
+  }, [isOpen, allowEdit, img, coverScale, cw, ch, enableFitModes, foregroundFitMode, zoomMin, zoomMax, sourceBox]);
 
   const onPointerDown = (e: React.PointerEvent)=>{
     if(!allowEdit || !img || !isPanning) return;
@@ -732,6 +881,16 @@ export default function ImagePicker({
     const rect = (containerRef.current as HTMLDivElement).getBoundingClientRect();
     const dx = e.clientX - rect.left - dragging.current.x;
     const dy = e.clientY - rect.top - dragging.current.y;
+    if (enableFitModes) {
+      const { x, y } = clamp(
+        dragging.current.tx + dx / Math.max(1, cw),
+        dragging.current.ty + dy / Math.max(1, ch),
+        zoom,
+      );
+      setTx(x);
+      setTy(y);
+      return;
+    }
     const { x, y } = clamp(dragging.current.tx + dx, dragging.current.ty + dy, zoom);
     setTx(x); setTy(y);
   };
@@ -744,12 +903,6 @@ export default function ImagePicker({
     setIsConfirming(true);
     try {
       const canvas = document.createElement('canvas');
-      const scale = coverScale * zoom;
-      const crop = computeTightCropNatural(img, tx, ty, cw, ch, scale);
-      if (!crop) {
-        toast.error('No image visible in the frame — zoom in or center the image.');
-        return;
-      }
       const { outW, outH } = computeExportDimensions(
         effectiveWidth,
         effectiveHeight,
@@ -759,15 +912,100 @@ export default function ImagePicker({
       canvas.width = outW;
       canvas.height = outH;
       const ctx = canvas.getContext('2d')!;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       const exportPng = preserveTransparency && sourceMayHaveAlpha;
-      if (!exportPng) {
-        // White behind JPEG (edges); crop excludes letterbox margins when zoom < 1
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
 
-      ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, canvas.width, canvas.height);
+      if (enableFitModes) {
+        const fg = layoutImageInFrame({
+          frameW: outW,
+          frameH: outH,
+          imageW: sourceBox.w,
+          imageH: sourceBox.h,
+          mode: foregroundFitMode,
+          zoom,
+          panNormX: tx,
+          panNormY: ty,
+        });
+
+        if (fitMode === 'background') {
+          const bg = layoutCoverBackground({
+            frameW: outW,
+            frameH: outH,
+            imageW: sourceBox.w,
+            imageH: sourceBox.h,
+          });
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, outW, outH);
+          ctx.clip();
+          // Blur radius scales with export size so preview ≈ result.
+          const blurPx = Math.max(12, Math.round(Math.min(outW, outH) * 0.035));
+          ctx.filter = `blur(${blurPx}px) saturate(0.85) brightness(0.92)`;
+          drawImageRotatedInRect(ctx, img, img.naturalWidth, img.naturalHeight, bg, rotation);
+          ctx.filter = 'none';
+          ctx.restore();
+          drawImageRotatedInRect(ctx, img, img.naturalWidth, img.naturalHeight, fg, rotation);
+        } else if (fitMode === 'contain') {
+          if (!exportPng) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, outW, outH);
+          } else {
+            // Opaque white letterbox; preserve alpha inside the image rect.
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, outW, outH);
+          }
+          drawImageRotatedInRect(ctx, img, img.naturalWidth, img.naturalHeight, fg, rotation);
+        } else {
+          // Fill area (cover): clip to frame, no independent stretch.
+          if (!exportPng) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, outW, outH);
+          }
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, outW, outH);
+          ctx.clip();
+          drawImageRotatedInRect(ctx, img, img.naturalWidth, img.naturalHeight, fg, rotation);
+          ctx.restore();
+        }
+      } else if (rotation !== 0) {
+        const dw = sourceBox.w * coverScale * zoom;
+        const dh = sourceBox.h * coverScale * zoom;
+        const sx = outW / Math.max(1, cw);
+        const sy = outH / Math.max(1, ch);
+        if (!exportPng) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, outW, outH);
+        ctx.clip();
+        drawImageRotatedInRect(
+          ctx,
+          img,
+          img.naturalWidth,
+          img.naturalHeight,
+          { drawX: tx * sx, drawY: ty * sy, drawW: dw * sx, drawH: dh * sy, scale: coverScale * zoom },
+          rotation,
+        );
+        ctx.restore();
+      } else {
+        const scale = coverScale * zoom;
+        const crop = computeTightCropNatural(img, tx, ty, cw, ch, scale);
+        if (!crop) {
+          toast.error('No image visible in the frame — zoom in or center the image.');
+          return;
+        }
+        if (!exportPng) {
+          // White behind JPEG (edges); crop excludes letterbox margins when zoom < 1
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, canvas.width, canvas.height);
+      }
 
       const exportMime = exportPng ? 'image/png' : 'image/jpeg';
       const exportQuality = exportPng ? undefined : 0.95;
@@ -870,24 +1108,49 @@ export default function ImagePicker({
       const imageUrl = URL.createObjectURL(imageBlob);
       const image = new Image();
       await new Promise<void>((resolve, reject) => {
-        image.onload = () => {
-          if (blobUrlRef.current) {
-            URL.revokeObjectURL(blobUrlRef.current);
-          }
-          blobUrlRef.current = imageUrl;
-          setImg(image);
-          setZoom(1);
-          setTx(0);
-          setTy(0);
-          resolve();
-        };
+        image.onload = () => resolve();
         image.onerror = reject;
         image.src = imageUrl;
       });
+      if (typeof image.decode === 'function') {
+        try {
+          await image.decode();
+        } catch {
+          /* already loaded */
+        }
+      }
 
-      // Unblock picker UI immediately — upload continues in background for gallery id.
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+      }
+      blobUrlRef.current = imageUrl;
+      // Paint the picker preview while ImageEditor's saving overlay still covers it.
+      flushSync(() => {
+        setImg(image);
+        setZoom(1);
+        setTx(0);
+        setTy(0);
+        setRotation(0);
+      });
+
+      const previewImgs = containerRef.current
+        ? Array.from(containerRef.current.querySelectorAll('img'))
+        : [];
+      await Promise.all(
+        previewImgs.map((el) => {
+          if (el.complete && el.naturalWidth > 0) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            const done = () => resolve();
+            el.addEventListener('load', done, { once: true });
+            el.addEventListener('error', done, { once: true });
+          });
+        }),
+      );
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+
       toast.success('Image edited');
-      setShowImageEditor(false);
       setIsSavingFromEditor(false);
 
       const editedMime = imageBlob.type || (keepPng ? 'image/png' : 'image/jpeg');
@@ -1033,10 +1296,11 @@ export default function ImagePicker({
         )}
       >
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="image-picker-title"
-          className="flex max-h-[90vh] w-[900px] max-w-[95vw] flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-slate-900/[0.06]"
+          className="flex max-h-[94vh] w-fit max-w-[98vw] flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-slate-900/[0.06]"
         >
           <div className="flex shrink-0 items-center justify-between border-b border-slate-200/85 bg-gradient-to-b from-white to-slate-50/90 px-4 py-3">
             <h2 id="image-picker-title" className={`${editorPanelTitleClass} truncate`}>
@@ -1054,7 +1318,7 @@ export default function ImagePicker({
             </button>
           </div>
 
-          <div className="grid min-h-0 flex-1 grid-cols-3 gap-0 overflow-hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-[240px_auto] gap-0 overflow-hidden">
             <div className={`flex min-h-0 min-w-0 flex-col border-r border-slate-200/90 ${editorPanelAsideClass}`}>
               {hasLibrary ? (
                 <>
@@ -1228,17 +1492,10 @@ export default function ImagePicker({
               )}
             </div>
 
-            <div className="col-span-2 min-h-0 min-w-0 overflow-y-auto bg-slate-50/80">
-              <div className="p-4">
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <p className={`${editorCaptionClass} min-w-0 flex-1`}>
-                    Slot target: {effectiveWidth} × {effectiveHeight}px ·{' '}
-                    {preserveTransparency && sourceMayHaveAlpha ? 'PNG' : 'JPEG'} export{' '}
-                    {tightExportDimensions
-                      ? `${tightExportDimensions.outW} × ${tightExportDimensions.outH}px (visible image only)`
-                      : `${exportDimensions.outW} × ${exportDimensions.outH}px`}
-                  </p>
-                  {allowOrientationToggle && (
+            <div className="min-h-0 w-fit max-w-full overflow-y-auto bg-slate-50/80">
+              <div className="p-4" style={{ width: cw + 6 + 32 }}>
+                {allowOrientationToggle && (
+                  <div className="mb-3 flex justify-center">
                     <div className={`${editorSegmentedControlTrackClass} shrink-0`}>
                       <button
                         type="button"
@@ -1259,27 +1516,119 @@ export default function ImagePicker({
                         Portrait
                       </button>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+                {enableFitModes && showAspectHint && (
+                  <p className={`${editorCaptionClass} mb-2 text-center text-slate-500`}>
+                    This image has a different shape from the selected area. Choose how you want it to fit.
+                  </p>
+                )}
+                {enableFitModes && (
+                  <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
+                    <span className={editorToolbarMicroLabelClass}>Image fit</span>
+                    <div className={`${editorSegmentedControlTrackClass} min-w-0 flex-wrap`}>
+                      {FIT_MODE_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          disabled={!img || !allowEdit}
+                          onPointerDown={(e) => e.preventDefault()}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => applyFitMode(opt.id)}
+                          className={`flex h-full min-h-0 items-center justify-center px-2.5 text-[11px] font-semibold transition-[background-color,color,box-shadow] duration-150 disabled:opacity-50 ${
+                            fitMode === opt.id
+                              ? editorSegmentedSegmentSelectedClass
+                              : editorSegmentedSegmentIdleClass
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="inline-flex max-w-full flex-col">
                 <div
                   className="inline-block rounded-md border-2 border-slate-500 bg-slate-200/95 p-px shadow-[0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/10"
                   title="Exported crop area — outline matches target dimensions"
                 >
                   <div
                     ref={containerRef}
-                    className="relative overflow-hidden rounded-[3px] bg-slate-200"
+                    className="relative overflow-hidden rounded-[3px]"
                     style={{
                       width: cw,
                       height: ch,
                       userSelect: 'none',
                       cursor: img && isPanning ? (dragging.current ? 'grabbing' : 'grab') : 'default',
                       touchAction: 'none' as const,
+                      background:
+                        enableFitModes && fitMode === 'contain'
+                          ? '#ffffff'
+                          : 'rgb(226 232 240)', // slate-200
                     }}
                     onPointerDown={onPointerDown}
                     onPointerMove={onPointerMove}
                     onPointerUp={onPointerUp}
                   >
-                    {img && (
+                    {img && enableFitModes && fitPreviewLayout && fitPreviewFgCss && (
+                      <>
+                        {fitMode === 'background' && fitPreviewBgCss && (
+                          <img
+                            src={img.src}
+                            draggable={false}
+                            onDragStart={(e) => e.preventDefault()}
+                            alt=""
+                            aria-hidden
+                            style={{
+                              position: 'absolute',
+                              left: fitPreviewBgCss.left,
+                              top: fitPreviewBgCss.top,
+                              width: fitPreviewBgCss.width,
+                              height: fitPreviewBgCss.height,
+                              maxWidth: 'none',
+                              maxHeight: 'none',
+                              userSelect: 'none',
+                              zIndex: 0,
+                              filter: 'blur(14px) saturate(0.85) brightness(0.92)',
+                              transform:
+                                fitPreviewBgCss.transform === 'none'
+                                  ? 'scale(1.02)'
+                                  : `${fitPreviewBgCss.transform} scale(1.02)`,
+                              transformOrigin: 'center center',
+                            }}
+                          />
+                        )}
+                        <img
+                          src={img.src}
+                          draggable={false}
+                          onDragStart={(e) => e.preventDefault()}
+                          alt=""
+                          style={{
+                            position: 'absolute',
+                            left: fitPreviewFgCss.left,
+                            top: fitPreviewFgCss.top,
+                            width: fitPreviewFgCss.width,
+                            height: fitPreviewFgCss.height,
+                            maxWidth: 'none',
+                            maxHeight: 'none',
+                            userSelect: 'none',
+                            zIndex: 1,
+                            transform: fitPreviewFgCss.transform,
+                            transformOrigin: 'center center',
+                          }}
+                        />
+                      </>
+                    )}
+                    {img && !enableFitModes && (() => {
+                      const dw = sourceBox.w * coverScale * zoom;
+                      const dh = sourceBox.h * coverScale * zoom;
+                      const css = cssBoxForRotatedLayout(
+                        { drawX: tx, drawY: ty, drawW: dw, drawH: dh, scale: coverScale * zoom },
+                        img.naturalWidth,
+                        img.naturalHeight,
+                        rotation,
+                      );
+                      return (
                       <img
                         src={img.src}
                         draggable={false}
@@ -1287,17 +1636,20 @@ export default function ImagePicker({
                         alt=""
                         style={{
                           position: 'absolute',
-                          left: tx,
-                          top: ty,
-                          width: img.naturalWidth * coverScale * zoom,
-                          height: img.naturalHeight * coverScale * zoom,
+                          left: css.left,
+                          top: css.top,
+                          width: css.width,
+                          height: css.height,
                           maxWidth: 'none',
                           maxHeight: 'none',
                           userSelect: 'none',
                           zIndex: 1,
+                          transform: css.transform,
+                          transformOrigin: 'center center',
                         }}
                       />
-                    )}
+                      );
+                    })()}
                     {!img && (
                       <div className="grid h-full w-full place-items-center text-sm text-slate-600">
                         {isLoading ? 'Loading image…' : 'Select or upload an image'}
@@ -1309,18 +1661,37 @@ export default function ImagePicker({
                     />
                   </div>
                 </div>
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <div className="custom-slider-container min-w-0 flex-1" style={{ flex: 1 }}>
+                <p className={`${editorCaptionClass} mt-2 text-center text-slate-500`} style={{ width: cw + 6 }}>
+                  {enableFitModes ? (
+                    <>
+                      Target: {effectiveWidth} × {effectiveHeight} px
+                      {targetAspectLabel ? ` · ${targetAspectLabel}` : ''}
+                      {' · '}
+                      {preserveTransparency && sourceMayHaveAlpha ? 'PNG' : 'JPEG'}{' '}
+                      {exportDimensions.outW} × {exportDimensions.outH}px
+                    </>
+                  ) : (
+                    <>
+                      Slot target: {effectiveWidth} × {effectiveHeight}px ·{' '}
+                      {preserveTransparency && sourceMayHaveAlpha ? 'PNG' : 'JPEG'} export{' '}
+                      {tightExportDimensions
+                        ? `${tightExportDimensions.outW} × ${tightExportDimensions.outH}px (visible image only)`
+                        : `${exportDimensions.outW} × ${exportDimensions.outH}px`}
+                    </>
+                  )}
+                </p>
+                <div className="mt-3 flex w-full flex-nowrap items-center gap-2" style={{ width: cw + 6 }}>
+                  <div className="custom-slider-container mb-0 min-w-0 flex-1">
                     <span className="flex w-11 shrink-0 text-xs font-medium text-slate-700">Zoom</span>
                     <input
                       type="range"
-                      min={0.1}
-                      max={6}
+                      min={zoomMin}
+                      max={zoomMax}
                       step={0.01}
                       disabled={!img || !allowEdit}
                       value={zoom}
                       onChange={(e) => {
-                        const nz = Math.min(6, Math.max(0.1, parseFloat(e.target.value || '1')));
+                        const nz = Math.min(zoomMax, Math.max(zoomMin, parseFloat(e.target.value || '1')));
                         const { x, y } = clamp(tx, ty, nz);
                         setZoom(nz);
                         setTx(x);
@@ -1328,11 +1699,29 @@ export default function ImagePicker({
                       }}
                       className="custom-slider"
                       style={{
-                        background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((zoom - 0.1) / (6 - 0.1)) * 100}%, #e5e7eb ${((zoom - 0.1) / (6 - 0.1)) * 100}%, #e5e7eb 100%)`,
+                        background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((zoom - zoomMin) / (zoomMax - zoomMin)) * 100}%, #e5e7eb ${((zoom - zoomMin) / (zoomMax - zoomMin)) * 100}%, #e5e7eb 100%)`,
                       }}
                     />
                     <div className="custom-slider-value">{zoom.toFixed(2)}×</div>
                   </div>
+                  <button
+                    type="button"
+                    disabled={!img || !allowEdit}
+                    onClick={() => rotateImage(-90)}
+                    className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-xs font-semibold disabled:opacity-50`}
+                    title="Rotate left"
+                  >
+                    ⟲ Left
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!img || !allowEdit}
+                    onClick={() => rotateImage(90)}
+                    className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-xs font-semibold disabled:opacity-50`}
+                    title="Rotate right"
+                  >
+                    ⟳ Right
+                  </button>
                   <button
                     type="button"
                     disabled={!img || !allowEdit}
@@ -1341,37 +1730,37 @@ export default function ImagePicker({
                       setZoom(1);
                       setTx(x);
                       setTy(y);
+                      setRotation(0);
                     }}
                     className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-xs disabled:opacity-50`}
                   >
                     Reset
                   </button>
-                  <div className="ml-auto flex flex-wrap items-center gap-2">
-                    {!hideEditButton && (
-                      <button
-                        type="button"
-                        disabled={!img || isLoading || isSavingFromEditor}
-                        onClick={() => setShowImageEditor(true)}
-                        className={`${editorTransitionInteractive} h-9 shrink-0 rounded-md bg-slate-700 px-4 text-xs font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 disabled:opacity-50`}
-                      >
-                        Edit image
-                      </button>
-                    )}
+                  {!hideEditButton && (
                     <button
                       type="button"
-                      disabled={!img || isLoading || isConfirming}
-                      onClick={confirm}
-                      className={`${editorTransitionInteractive} inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-brand-red px-4 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
+                      disabled={!img || isLoading || isSavingFromEditor}
+                      onClick={openImageEditorFromPicker}
+                      className={`${editorTransitionInteractive} h-9 shrink-0 rounded-md bg-slate-700 px-4 text-xs font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 disabled:opacity-50`}
                     >
-                      {isConfirming && (
-                        <span
-                          className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/35 border-t-white"
-                          aria-hidden
-                        />
-                      )}
-                      {isConfirming ? 'Processing…' : 'Confirm'}
+                      Edit image
                     </button>
-                  </div>
+                  )}
+                  <button
+                    type="button"
+                    disabled={!img || isLoading || isConfirming}
+                    onClick={confirm}
+                    className={`${editorTransitionInteractive} inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-brand-red px-4 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
+                  >
+                    {isConfirming && (
+                      <span
+                        className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/35 border-t-white"
+                        aria-hidden
+                      />
+                    )}
+                    {isConfirming ? 'Processing…' : 'Confirm'}
+                  </button>
+                </div>
                 </div>
               </div>
             </div>
@@ -1408,6 +1797,7 @@ export default function ImagePicker({
           editorScaleFactor={editorScaleFactor}
           onSave={handleImageEditorSave}
           overlayClassName={editorOverlayClassName}
+          matchDialogSize={editorMatchSize}
         />
       )}
       {hasLibrary && tab === 'library' && (

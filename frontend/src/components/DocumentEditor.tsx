@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, getToken, withFileAccessToken } from '@/lib/api';
+import { api, getToken, withFileAccessToken, ApiError, getApiErrorCode, isDocumentConcurrencyError } from '@/lib/api';
 import { getOverlayRoot } from '@/lib/overlayRoot';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -153,7 +153,16 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const projectId = !isTemplate ? props.projectId : undefined;
   const onClose = props.onClose;
   const templateProps = isTemplate ? props : null;
-  const readOnly = !isTemplate && !!(props as DocumentEditorDocumentProps).readOnly;
+  const propReadOnly = !isTemplate && !!(props as DocumentEditorDocumentProps).readOnly;
+  const [lockForcedReadOnly, setLockForcedReadOnly] = useState(false);
+  const [lockBannerHolder, setLockBannerHolder] = useState<string | null>(null);
+  /** Soft-lock gate: writers start pending so UI stays read-only until acquire resolves. */
+  type EditLockStatus = 'idle' | 'pending' | 'granted' | 'denied';
+  const [editLockStatus, setEditLockStatus] = useState<EditLockStatus>(() =>
+    isTemplate || (!isTemplate && !!(props as DocumentEditorDocumentProps).readOnly) ? 'idle' : 'pending',
+  );
+  const readOnly =
+    propReadOnly || lockForcedReadOnly || editLockStatus === 'pending' || editLockStatus === 'denied';
   const extraActions = !isTemplate ? (props as DocumentEditorDocumentProps).extraActions : undefined;
   const closeSlotBelow = !isTemplate ? (props as DocumentEditorDocumentProps).closeSlotBelow : undefined;
   const stickyToolbar = !isTemplate && !!(props as DocumentEditorDocumentProps).stickyToolbar;
@@ -170,6 +179,30 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const serverDocHydratedForIdRef = useRef<string | null>(null);
   const [isDocHydrated, setIsDocHydrated] = useState(false);
   const id = documentId;
+  /** Soft-lock session id for this editor mount (exclusive editing). */
+  const editLockSessionIdRef = useRef<string>(
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `sess-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+  );
+  const holdsEditLockRef = useRef(false);
+  const expectedUpdatedAtRef = useRef<string | null>(null);
+  /** True after hydrate has set the OCC baseline (including intentional null for never-saved docs). */
+  const [versionBaselineReady, setVersionBaselineReady] = useState(false);
+  const suppressSaveRetryRef = useRef(false);
+  const versionConflictHandlingRef = useRef(false);
+  const lockAcquireNonceRef = useRef(0);
+  const [lockAcquireNonce, setLockAcquireNonce] = useState(0);
+  const [holdsEditLock, setHoldsEditLock] = useState(false);
+  const heartbeatFailCountRef = useRef(0);
+  const lockLostHandlingRef = useRef(false);
+  const lockMountGenRef = useRef(0);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const navigateBackRef = useRef(navigateBackToDocumentCreate);
+  navigateBackRef.current = navigateBackToDocumentCreate;
+  const confirmRef = useRef(confirm);
+  confirmRef.current = confirm;
 
   const [title, setTitle] = useState('New document');
   const [pages, setPages] = useState<DocumentPage[]>([defaultPage()]);
@@ -325,7 +358,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   });
   const templates = isTemplate && templateProps ? templateProps.templates : templatesFromApi;
 
-  const { data: doc } = useQuery({
+  const { data: doc, isPlaceholderData, isFetched } = useQuery({
     queryKey: ['document-creator-doc', id],
     queryFn: () => api<UserDocument>('GET', `/document-creator/documents/${id}`),
     enabled: !!id,
@@ -348,9 +381,64 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     },
   });
 
+  const leaveEditor = useCallback(() => {
+    const close = onCloseRef.current ?? navigateBackRef.current;
+    close();
+  }, []);
+
+  const handleNewerVersionConflict = useCallback(async () => {
+    if (versionConflictHandlingRef.current) return;
+    versionConflictHandlingRef.current = true;
+    suppressSaveRetryRef.current = true;
+    holdsEditLockRef.current = false;
+    setHoldsEditLock(false);
+    setLockForcedReadOnly(true);
+    setEditLockStatus('denied');
+
+    const result = await confirmRef.current({
+      title: 'Newer version available',
+      message:
+        'This document was updated in another session. Reload to see the latest version, or leave the editor.',
+      confirmText: 'Reload',
+      cancelText: 'Leave',
+    });
+
+    if (result === 'confirm') {
+      suppressSaveRetryRef.current = false;
+      versionConflictHandlingRef.current = false;
+      setLockForcedReadOnly(false);
+      setLockBannerHolder(null);
+      setEditLockStatus('pending');
+      serverDocHydratedForIdRef.current = null;
+      setIsDocHydrated(false);
+      setVersionBaselineReady(false);
+      if (id) {
+        queryClient.removeQueries({ queryKey: ['document-creator-doc', id] });
+        await queryClient.invalidateQueries({ queryKey: ['document-creator-doc', id] });
+      }
+      lockAcquireNonceRef.current += 1;
+      setLockAcquireNonce((n) => n + 1);
+    } else {
+      versionConflictHandlingRef.current = false;
+      leaveEditor();
+    }
+  }, [id, queryClient, leaveEditor]);
+
   const persistDocument = useCallback(
     async (snapshot: EditorSnapshot) => {
       if (!id) return;
+      if (!versionBaselineReady) {
+        const pending = new Error('VERSION_BASELINE_PENDING');
+        (pending as Error & { silent?: boolean }).silent = true;
+        throw pending;
+      }
+      // Prefer cache if ref was never set (placeholder race).
+      if (expectedUpdatedAtRef.current == null) {
+        const cached = queryClient.getQueryData<UserDocument>(['document-creator-doc', id]);
+        if (cached?.updated_at) {
+          expectedUpdatedAtRef.current = cached.updated_at;
+        }
+      }
       const payload = {
         title: snapshot.title,
         pages: snapshot.pages.map((p) => ({
@@ -358,20 +446,45 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           margins: p.margins ?? undefined,
           elements: p.elements ?? [],
         })),
+        expected_updated_at: expectedUpdatedAtRef.current,
+        edit_lock_session_id: holdsEditLockRef.current ? editLockSessionIdRef.current : undefined,
       };
       try {
-        await api('PATCH', `/document-creator/documents/${id}`, payload);
-        queryClient.invalidateQueries({ queryKey: ['document-creator-doc', id] });
+        const saved = await api<{
+          id: string;
+          title: string;
+          pages?: unknown;
+          updated_at?: string | null;
+          [key: string]: unknown;
+        }>('PATCH', `/document-creator/documents/${id}`, payload);
+        if (saved?.updated_at != null) {
+          expectedUpdatedAtRef.current = saved.updated_at;
+        } else if (saved?.updated_at === null) {
+          expectedUpdatedAtRef.current = null;
+        }
+        queryClient.setQueryData(['document-creator-doc', id], (prev: unknown) => {
+          if (prev && typeof prev === 'object') {
+            return { ...(prev as object), ...saved };
+          }
+          return saved;
+        });
         queryClient.invalidateQueries({ queryKey: ['document-creator-documents'] });
         if (projectId) {
           queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
         }
-      } catch (e: any) {
-        toast.error(e?.message || 'Failed to save.');
+      } catch (e: unknown) {
+        if (e instanceof Error && (e as Error & { silent?: boolean }).silent) {
+          throw e;
+        }
+        if (isDocumentConcurrencyError(e)) {
+          void handleNewerVersionConflict();
+          throw e;
+        }
+        toast.error(e instanceof Error ? e.message : 'Failed to save.');
         throw e;
       }
     },
-    [id, projectId, queryClient],
+    [id, projectId, queryClient, versionBaselineReady, handleNewerVersionConflict],
   );
 
   const {
@@ -383,18 +496,29 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   } = useDocumentAutoSave({
     documentId: id,
     readOnly: readOnly || isTemplate,
-    isHydrated: isDocHydrated,
+    isHydrated: isDocHydrated && versionBaselineReady,
     getSnapshot: () => ({
       title: stateRef.current.title,
       pages: stateRef.current.pages,
     }),
     save: persistDocument,
+    suppressRetryRef: suppressSaveRetryRef,
   });
 
   useEffect(() => {
     serverDocHydratedForIdRef.current = null;
     setIsDocHydrated(false);
-  }, [id]);
+    setVersionBaselineReady(false);
+    expectedUpdatedAtRef.current = null;
+    holdsEditLockRef.current = false;
+    suppressSaveRetryRef.current = false;
+    versionConflictHandlingRef.current = false;
+    lockLostHandlingRef.current = false;
+    setHoldsEditLock(false);
+    setLockForcedReadOnly(false);
+    setLockBannerHolder(null);
+    setEditLockStatus(isTemplate || propReadOnly ? 'idle' : 'pending');
+  }, [id, isTemplate, propReadOnly]);
 
   useEffect(() => {
     if (isTemplate && templateProps?.open) {
@@ -437,6 +561,9 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
 
     if (!Array.isArray(doc.pages)) return;
 
+    // Soft UI hydrate from list placeholder — do NOT arm OCC baseline or hydrate gate.
+    const armOccBaseline = !isPlaceholderData && isFetched;
+
     // Server returned no pages (new doc): still mark hydrated so autosave can run later; do not leave
     // `serverDocHydratedForIdRef` unset (that used to let debounced save PATCH a blank page over real data).
     if (doc.pages.length === 0) {
@@ -453,7 +580,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       undoRef.current = [];
       redoRef.current = [];
       bumpHistory();
-      serverDocHydratedForIdRef.current = id;
+      if (armOccBaseline) {
+        serverDocHydratedForIdRef.current = id;
+        expectedUpdatedAtRef.current = doc.updated_at ?? null;
+        setVersionBaselineReady(true);
+      }
       hydrateBaseline({ title: t, pages: emptyPages });
       setIsDocHydrated(true);
       return;
@@ -489,11 +620,28 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     undoRef.current = [];
     redoRef.current = [];
     bumpHistory();
-    serverDocHydratedForIdRef.current = id;
+    if (armOccBaseline) {
+      serverDocHydratedForIdRef.current = id;
+      expectedUpdatedAtRef.current = doc.updated_at ?? null;
+      setVersionBaselineReady(true);
+    }
     hydrateBaseline({ title: doc.title || 'New document', pages: converted });
     setIsDocHydrated(true);
     requestAnimationFrame(() => scrollCanvasToTop());
-  }, [doc, templates, id, bumpHistory, scrollCanvasToTop, hydrateBaseline]);
+  }, [doc, templates, id, bumpHistory, scrollCanvasToTop, hydrateBaseline, isPlaceholderData, isFetched]);
+
+  // If first hydrate lacked updated_at but a later fetch has it, adopt it for OCC.
+  useEffect(() => {
+    if (!isDocHydrated || !doc || doc.id !== id || isPlaceholderData) return;
+    if (doc.updated_at && expectedUpdatedAtRef.current == null) {
+      expectedUpdatedAtRef.current = doc.updated_at;
+    }
+    if (!versionBaselineReady && !isPlaceholderData && isFetched) {
+      expectedUpdatedAtRef.current = doc.updated_at ?? null;
+      setVersionBaselineReady(true);
+      serverDocHydratedForIdRef.current = id;
+    }
+  }, [doc, id, isDocHydrated, isPlaceholderData, isFetched, versionBaselineReady]);
 
   // Keep ref updated for history snapshots
   useEffect(() => {
@@ -533,32 +681,219 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     [hasUnsavedChanges, flushSave],
   );
 
+  const releaseEditLock = useCallback(
+    (opts?: { keepalive?: boolean }) => {
+      if (!id || !holdsEditLockRef.current) return;
+      const sessionId = editLockSessionIdRef.current;
+      holdsEditLockRef.current = false;
+      setHoldsEditLock(false);
+      const path = `/document-creator/documents/${id}/edit-lock?session_id=${encodeURIComponent(sessionId)}`;
+      if (opts?.keepalive) {
+        const token = getToken();
+        void fetch(path, {
+          method: 'DELETE',
+          headers: {
+            Accept: 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          keepalive: true,
+        }).catch(() => {});
+        return;
+      }
+      void api('DELETE', path).catch(() => {});
+    },
+    [id],
+  );
+
+  // Acquire exclusive edit lock when opening a writable document.
+  // UI stays read-only (editLockStatus=pending) until this resolves.
+  useEffect(() => {
+    if (isTemplate || !id || propReadOnly) {
+      setEditLockStatus('idle');
+      return;
+    }
+    setEditLockStatus('pending');
+    let cancelled = false;
+    const gen = ++lockMountGenRef.current;
+
+    (async () => {
+      try {
+        await api('POST', `/document-creator/documents/${id}/edit-lock`, {
+          session_id: editLockSessionIdRef.current,
+        });
+        if (cancelled) {
+          if (lockMountGenRef.current === gen) {
+            // No newer mount for this document has taken over — this really is
+            // the final owner tearing down; safe to release what we just acquired.
+            holdsEditLockRef.current = true;
+            releaseEditLock();
+          }
+          // else: a newer mount already owns the lock/session (StrictMode
+          // remount, or a fast "Reload" after a version conflict) — leave
+          // the shared lock/session state untouched.
+          return;
+        }
+        holdsEditLockRef.current = true;
+        setHoldsEditLock(true);
+        setLockForcedReadOnly(false);
+        setLockBannerHolder(null);
+        setEditLockStatus('granted');
+      } catch (e: unknown) {
+        if (cancelled) return;
+        const code = getApiErrorCode(e);
+        if (code === 'document_in_use' || (e instanceof ApiError && e.status === 409)) {
+          const detail =
+            e instanceof ApiError && e.detail && typeof e.detail === 'object'
+              ? (e.detail as { holder_name?: string | null })
+              : null;
+          const holder = detail?.holder_name?.trim() || null;
+          const msg = holder
+            ? `This document is already open for editing elsewhere (by ${holder}). You can view it read-only or leave.`
+            : 'This document is already open for editing elsewhere. You can view it read-only or leave.';
+          const result = await confirmRef.current({
+            title: 'Document in use',
+            message: msg,
+            confirmText: 'View only',
+            cancelText: 'Leave',
+          });
+          if (cancelled) return;
+          if (result === 'confirm') {
+            setLockForcedReadOnly(true);
+            setLockBannerHolder(holder || 'another session');
+            holdsEditLockRef.current = false;
+            setHoldsEditLock(false);
+            setEditLockStatus('denied');
+          } else {
+            setEditLockStatus('denied');
+            leaveEditor();
+          }
+          return;
+        }
+        toast.error(e instanceof Error ? e.message : 'Could not start editing session.');
+        setEditLockStatus('denied');
+        leaveEditor();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      const releaseGen = gen;
+      // Defer release to the next tick: React StrictMode's cleanup+remount cycle for this
+      // same component instance runs fully synchronously (cleanup, then the effect body again,
+      // bumping lockMountGenRef before yielding to the event loop) — so a 0ms timeout is enough
+      // to see the bumped generation and skip releasing a lock a StrictMode remount already owns.
+      // Keeping this short (rather than a longer artificial delay) avoids falsely reporting
+      // "document in use" to the same user/tab on a genuine close-then-reopen (or HMR remount),
+      // since any *different* component instance has its own independent generation counter.
+      window.setTimeout(() => {
+        if (lockMountGenRef.current !== releaseGen) return;
+        releaseEditLock();
+      }, 0);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally stable; callbacks via refs
+  }, [id, isTemplate, propReadOnly, lockAcquireNonce, releaseEditLock, leaveEditor]);
+
+  // Heartbeat while holding the edit lock.
+  useEffect(() => {
+    if (isTemplate || !id || !holdsEditLock) return;
+
+    const tick = async () => {
+      if (!holdsEditLockRef.current) return;
+      try {
+        await api('POST', `/document-creator/documents/${id}/edit-lock/heartbeat`, {
+          session_id: editLockSessionIdRef.current,
+        });
+        heartbeatFailCountRef.current = 0;
+      } catch (e: unknown) {
+        heartbeatFailCountRef.current += 1;
+        const code = getApiErrorCode(e);
+        if (code === 'document_lock_lost' || heartbeatFailCountRef.current >= 3) {
+          holdsEditLockRef.current = false;
+          setHoldsEditLock(false);
+          if (lockLostHandlingRef.current) return;
+          lockLostHandlingRef.current = true;
+          const result = await confirmRef.current({
+            title: 'Document in use',
+            message:
+              'Another session is now editing this document. You can continue view-only, or leave.',
+            confirmText: 'View only',
+            cancelText: 'Leave',
+          });
+          if (result === 'confirm') {
+            setLockForcedReadOnly(true);
+            setLockBannerHolder('another session');
+            setEditLockStatus('denied');
+            lockLostHandlingRef.current = false;
+          } else {
+            lockLostHandlingRef.current = false;
+            setEditLockStatus('denied');
+            leaveEditor();
+          }
+        }
+      }
+    };
+
+    void tick();
+    const interval = setInterval(() => {
+      void tick();
+    }, 45000);
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void tick();
+    };
+    const onPageHide = (e: PageTransitionEvent) => {
+      // Only release on real unload, not bfcache / tab switch.
+      if (!e.persisted) releaseEditLock({ keepalive: true });
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, [id, isTemplate, holdsEditLock, releaseEditLock, leaveEditor]);
+
   const enableNavigationGuard = !isTemplate && !readOnly && !!id;
   useUnsavedChangesGuard(
     enableNavigationGuard ? hasUnsavedChanges : false,
     enableNavigationGuard
       ? async () => {
-          await flushSave();
+          const ok = await flushSave();
+          if (ok) releaseEditLock();
+          return ok;
+        }
+      : undefined,
+    enableNavigationGuard
+      ? async () => {
+          releaseEditLock();
         }
       : undefined,
   );
 
   const handleCloseOrBack = useCallback(async () => {
-    const close = onClose ?? navigateBackToDocumentCreate;
-    if (isTemplate || readOnly || !id) {
+    const close = onCloseRef.current ?? navigateBackRef.current;
+    if (isTemplate || !id) {
+      close();
+      return;
+    }
+    if (readOnly) {
+      releaseEditLock();
       close();
       return;
     }
     if (!hasUnsavedChanges) {
+      releaseEditLock();
       close();
       return;
     }
     const saved = await flushSave();
     if (saved) {
+      releaseEditLock();
       close();
       return;
     }
-    const result = await confirm({
+    const result = await confirmRef.current({
       title: "Couldn't save document",
       message: 'Your changes could not be saved. What would you like to do?',
       confirmText: 'Retry',
@@ -568,20 +903,21 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     });
     if (result === 'confirm') {
       const retry = await flushSave();
-      if (retry) close();
+      if (retry) {
+        releaseEditLock();
+        close();
+      }
     } else if (result === 'discard') {
+      releaseEditLock();
       close();
     }
-  }, [
-    onClose,
-    navigateBackToDocumentCreate,
-    isTemplate,
-    readOnly,
-    id,
-    hasUnsavedChanges,
-    flushSave,
-    confirm,
-  ]);
+  }, [isTemplate, readOnly, id, hasUnsavedChanges, flushSave, releaseEditLock]);
+
+  useEffect(() => {
+    if (readOnly && textEditingElementId) {
+      setTextEditingElementId(null);
+    }
+  }, [readOnly, textEditingElementId]);
 
   const ribbonSaveStatus: DocumentSaveStatus | null =
     isTemplate || readOnly ? null : saveStatus;
@@ -589,6 +925,9 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   // Keyboard shortcuts: Delete, Arrow keys, Undo/Redo, Copy/Paste/Duplicate
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (readOnly || isTemplate) return;
+      // ImagePicker / ImageEditor own the keyboard while open — do not delete/move canvas elements underneath.
+      if (imagePickerOpenRef.current) return;
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName?.toLowerCase();
       const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || (t?.isContentEditable ?? false);
@@ -921,7 +1260,12 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           if (el.type !== 'image') return { ...el, content: fileId };
           // Image area / slot: fill content only; never change frame geometry.
           if (!el.content || meta?.preserveFrame) {
-            return { ...el, content: fileId, imageFit: 'fill' };
+            return {
+              ...el,
+              content: fileId,
+              imageFit: 'contain',
+              imagePosition: '50% 50%',
+            };
           }
           const next: DocElement = { ...el, content: fileId, imageFit: 'fill' };
           const iw = meta?.intrinsicWidth;
@@ -1614,7 +1958,14 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   );
 
   return (
-    <div className="flex flex-col h-full min-h-0 max-w-full">
+    <div className="relative flex flex-col h-full min-h-0 max-w-full">
+      {editLockStatus === 'pending' && !isTemplate && !propReadOnly ? (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm">
+            Opening document…
+          </div>
+        </div>
+      ) : null}
       <div
         className={
           stickyToolbar
@@ -1649,6 +2000,12 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         canUndo={undoRef.current.length > 0}
         canRedo={redoRef.current.length > 0}
         readOnly={readOnly}
+        showViewOnlyBadge={readOnly && editLockStatus !== 'pending'}
+        viewOnlyNotice={
+          lockForcedReadOnly && !propReadOnly
+            ? `This document is being edited by ${lockBannerHolder || 'another session'}`
+            : null
+        }
         onAddText={handleAddText}
         onAddImage={() => {
           if (projectId) {
@@ -2132,6 +2489,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           allowEdit={true}
           exportScale={2}
           preserveTransparency={true}
+          enableFitModes={Boolean(imagePickerReplaceElementId)}
           onConfirm={async (blob, meta?: ImagePickerConfirmMeta) => {
             if (imagePickerConfirmLockRef.current) return;
             imagePickerConfirmLockRef.current = true;

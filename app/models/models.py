@@ -956,6 +956,12 @@ class UserDocument(Base):
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Soft edit lock (exclusive editing lease; expired = free)
+    edit_lock_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    edit_lock_session_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    edit_lock_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # Legacy Employee model removed in favor of EmployeeProfile linked to User

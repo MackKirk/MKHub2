@@ -1912,6 +1912,8 @@ export default function DocumentPreview({
   onBatchUpdateElements,
   onGestureChange,
 }: DocumentPreviewProps) {
+  /** No mutation callbacks wired up (view-only mode) — hard-block selection, drag, resize, and hover affordances. */
+  const isViewOnly = !onUpdateElement && !onBatchUpdateElements;
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasWidthPx, setCanvasWidthPx] = useState<number>(REFERENCE_CANVAS_WIDTH_PX);
@@ -2117,6 +2119,10 @@ export default function DocumentPreview({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement) => {
       e.stopPropagation();
+      if (isViewOnly) {
+        onPageInteraction?.();
+        return;
+      }
       if (isOtherElementWhileEditing(el.id)) {
         notifyBlockedByTextEdit();
         return;
@@ -2155,12 +2161,13 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [lockBlockElements, selectedElementIds, elements, onPageInteraction, isOtherElementWhileEditing, editingElementId, notifyBlockedByTextEdit]
+    [isViewOnly, lockBlockElements, selectedElementIds, elements, onPageInteraction, isOtherElementWhileEditing, editingElementId, notifyBlockedByTextEdit]
   );
 
   const handleResizePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement, handle: ResizeHandle) => {
       e.stopPropagation();
+      if (isViewOnly) return;
       if (isOtherElementWhileEditing(el.id)) {
         notifyBlockedByTextEdit();
         return;
@@ -2184,7 +2191,7 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [lockBlockElements, onPageInteraction, isOtherElementWhileEditing, notifyBlockedByTextEdit],
+    [isViewOnly, lockBlockElements, onPageInteraction, isOtherElementWhileEditing, notifyBlockedByTextEdit],
   );
 
   const onElementClickRef = useRef(onElementClick);
@@ -2432,12 +2439,13 @@ export default function DocumentPreview({
 
   const startTextEdit = useCallback(
     (el: DocElement, e?: React.MouseEvent) => {
+      if (!onUpdateElement) return;
       if (el.locked || el.type !== 'text') return;
       if (editingElementId === el.id) return;
       setEditingElementId(el.id);
       onElementClick?.(el.id, e);
     },
-    [editingElementId, setEditingElementId, onElementClick],
+    [editingElementId, setEditingElementId, onElementClick, onUpdateElement],
   );
 
   const handleDoubleClick = useCallback(
@@ -2689,10 +2697,15 @@ export default function DocumentPreview({
             const isBlock = el.type === 'block';
             const isLocked = !!el.locked;
             const isPositionLocked = !!el.lockPosition;
-            const showHandles = isSelected && !isEditing && !(isBlock && lockBlockElements) && !isLocked && !isPositionLocked && selectedElementIds.length === 1;
+            const showHandles = !isViewOnly && isSelected && !isEditing && !(isBlock && lockBlockElements) && !isLocked && !isPositionLocked && selectedElementIds.length === 1;
             const isImagePlaceholder = el.type === 'image' && !el.content;
             const showTextEditButton =
-              el.type === 'text' && isSelected && !isEditing && !isLocked && selectedElementIds.length === 1;
+              !!onUpdateElement &&
+              el.type === 'text' &&
+              isSelected &&
+              !isEditing &&
+              !isLocked &&
+              selectedElementIds.length === 1;
             const textFloatingToolbarStyle: React.CSSProperties = {
               left: `${(x + w) * 100}%`,
               top: `${y * 100}%`,
@@ -2773,13 +2786,17 @@ export default function DocumentPreview({
                 onClick={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => handleDoubleClick(e, el)}
                 className={`absolute rounded-md border transition-[border-color,box-shadow] duration-200 ease-out ${
-                  isEditing ? 'cursor-text overflow-hidden' : isLocked ? 'cursor-pointer overflow-hidden' : isPositionLocked ? 'cursor-default overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
+                  isViewOnly
+                    ? 'cursor-default overflow-hidden'
+                    : isEditing ? 'cursor-text overflow-hidden' : isLocked ? 'cursor-pointer overflow-hidden' : isPositionLocked ? 'cursor-default overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
                 } ${
                   isEditing
                     ? 'z-[2] overflow-visible border-brand-red/55 shadow-[0_0_0_2px_rgba(220,38,38,0.32)] ring-2 ring-brand-red/50'
-                    : isSelected
+                    : isSelected && !isViewOnly
                       ? 'z-[1] overflow-visible border-brand-red/55 shadow-[0_0_0_2px_rgba(220,38,38,0.32)] ring-2 ring-brand-red/50'
-                      : 'overflow-hidden border-transparent hover:border-slate-300/70'
+                      : isViewOnly
+                        ? 'overflow-hidden border-transparent'
+                        : 'overflow-hidden border-transparent hover:border-slate-300/70'
                 }`}
                 style={{
                   left: `${x * 100}%`,

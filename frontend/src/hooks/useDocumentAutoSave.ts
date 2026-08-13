@@ -19,6 +19,8 @@ type UseDocumentAutoSaveOptions<T extends DocumentAutoSaveSnapshot> = {
   isHydrated: boolean;
   getSnapshot: () => T;
   save: (snapshot: T) => Promise<void>;
+  /** When true, failed saves will not auto-retry (e.g. version conflict). */
+  suppressRetryRef?: { current: boolean };
   debounceMs?: number;
   periodicMs?: number;
   minSaveIntervalMs?: number;
@@ -36,6 +38,7 @@ export function useDocumentAutoSave<T extends DocumentAutoSaveSnapshot>({
   isHydrated,
   getSnapshot,
   save,
+  suppressRetryRef,
   debounceMs = 1500,
   periodicMs = 30000,
   minSaveIntervalMs = 3000,
@@ -53,6 +56,8 @@ export function useDocumentAutoSave<T extends DocumentAutoSaveSnapshot>({
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const getSnapshotRef = useRef(getSnapshot);
   const saveRef = useRef(save);
+  const suppressRetryInnerRef = useRef(suppressRetryRef);
+  suppressRetryInnerRef.current = suppressRetryRef;
 
   const [saveStatus, setSaveStatus] = useState<DocumentSaveStatus>('hydrating');
   const [revision, setRevision] = useState(0);
@@ -155,7 +160,8 @@ export function useDocumentAutoSave<T extends DocumentAutoSaveSnapshot>({
           return true;
         } catch {
           setSaveStatus('save_failed');
-          if (!retryTimerRef.current) {
+          const suppress = !!suppressRetryInnerRef.current?.current;
+          if (!suppress && !retryTimerRef.current) {
             retryTimerRef.current = setTimeout(() => {
               retryTimerRef.current = null;
               void performSave({ force: true, silent: true });
