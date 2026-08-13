@@ -98,7 +98,7 @@ const PROPOSAL_INLINE_LABEL_ROW = 'mb-1 h-3.5 shrink-0';
 const PICTURE_KEY_ITEMS = [
   { emoji: '🔴', text: 'Requires immediate attention.' },
   { emoji: '🟡', text: 'Immediate attention recommended.' },
-  { emoji: '🟢', text: 'Current Requires no attention.' },
+  { emoji: '🟢', text: 'Currently Requires no attention.' },
 ] as const;
 
 function ProposalInlineLabelRow({ label, fieldHint }: { label: string; fieldHint?: string }) {
