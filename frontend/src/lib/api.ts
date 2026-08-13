@@ -81,10 +81,12 @@ export async function api<T=any>(
   }
   
   const r = await fetch(path, { method, headers: h, body: bodyData, signal });
-  if (r.status === 401) { 
-    localStorage.removeItem('user_token'); 
-    window.location.replace('/login'); 
-    throw new Error('Unauthorized'); 
+  const requestPath = path.split('?')[0];
+  const isLoginAttempt = method === 'POST' && (requestPath === '/auth/login' || requestPath.endsWith('/auth/login'));
+  if (r.status === 401 && !isLoginAttempt) {
+    localStorage.removeItem('user_token');
+    window.location.replace('/login');
+    throw new Error('Unauthorized');
   }
   if (!r.ok) { 
     // FastAPI returns errors in {detail: "message"} format

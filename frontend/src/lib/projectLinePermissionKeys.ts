@@ -160,6 +160,22 @@ export function hasProjectMembersWritePermission(
   return hasPerm(permissions, `${PROJECT_LINE_PREFIX[line]}:members:write`);
 }
 
+/**
+ * Create/update/delete project or opportunity (status, name, convert, etc.).
+ * Line-scoped main write, with legacy business:projects:write fallback.
+ */
+export function hasProjectLineWritePermission(
+  permissions: Set<string> | Record<string, boolean>,
+  businessLine: string | undefined | null,
+  isAdmin = false,
+  pathname?: string
+): boolean {
+  if (isAdmin) return true;
+  const line = projectLineFromBusinessLine(resolveProjectBusinessLine(businessLine, pathname));
+  if (hasPerm(permissions, `${PROJECT_LINE_PREFIX[line]}:write`)) return true;
+  return hasPerm(permissions, 'business:projects:write');
+}
+
 /** Create/edit/upload: line write only (view-only must not pass). */
 export function hasProjectFeatureWritePermission(
   permissions: Set<string> | Record<string, boolean>,
@@ -393,7 +409,8 @@ export function isLineMenuPermissionKey(key: string, line: ProjectLine): boolean
   const prefix = `${PROJECT_LINE_PREFIX[line]}:`;
   if (!key.startsWith(prefix)) return false;
   if (key.includes(':categories:')) return false;
-  // Hidden macro keys should not keep the sidebar section visible by themselves.
+  // Main list/create keys alone should not keep the sidebar section visible —
+  // need at least one section/tab grant (or View All / Members).
   if (key === `${PROJECT_LINE_PREFIX[line]}:read`) return false;
   if (key === `${PROJECT_LINE_PREFIX[line]}:write`) return false;
   return true;

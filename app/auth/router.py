@@ -1022,6 +1022,37 @@ The {settings.app_name} Team
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
+LOGIN_INVALID_CREDENTIALS = "Incorrect username or password."
+LOGIN_ACCOUNT_DEACTIVATED = (
+    "This account has been deactivated. Please contact your company administration."
+)
+
+
+def _user_login_is_deactivated(user: User) -> bool:
+    if not getattr(user, "is_active", True):
+        return True
+    status = str(getattr(user, "status", "") or "").strip().lower()
+    return status in ("inactive", "suspended")
+
+
+def _log_login_failure(db: Session, request: Request, reason: str, message: str) -> None:
+    try:
+        from ..services.system_log import write_system_log
+
+        write_system_log(
+            db,
+            "warning",
+            "auth",
+            message,
+            request_id=getattr(request.state, "request_id", None),
+            path=request.url.path,
+            method=request.method,
+            detail=reason,
+        )
+    except Exception:
+        pass
+
+
 @router.post("/login", response_model=TokenResponse)
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     id_lower = (req.identifier or "").strip().lower()
@@ -1031,43 +1062,20 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         | (func.lower(User.email_corporate) == id_lower)
     )
     user = q.first()
+    if user and _user_login_is_deactivated(user):
+        _log_login_failure(db, request, "user_inactive", "Login failed: user inactive")
+        raise HTTPException(status_code=403, detail=LOGIN_ACCOUNT_DEACTIVATED)
     if not user or not verify_password(req.password, user.password_hash):
-        try:
-            from ..services.system_log import write_system_log
-            reason = "user_not_found" if not user else "invalid_password"
-            write_system_log(
-                db,
-                "warning",
-                "auth",
-                "Login failed",
-                request_id=getattr(request.state, "request_id", None),
-                path=request.url.path,
-                method=request.method,
-                detail=reason,
-            )
-        except Exception:
-            pass
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        reason = "user_not_found" if not user else "invalid_password"
+        _log_login_failure(db, request, reason, "Login failed")
+        raise HTTPException(status_code=400, detail=LOGIN_INVALID_CREDENTIALS)
     from ..services.offboarding_service import enforce_due_revocation_for_user
 
     if enforce_due_revocation_for_user(db, user.id):
         db.refresh(user)
-    if not user.is_active:
-        try:
-            from ..services.system_log import write_system_log
-            write_system_log(
-                db,
-                "warning",
-                "auth",
-                "Login failed: user inactive",
-                request_id=getattr(request.state, "request_id", None),
-                path=request.url.path,
-                method=request.method,
-                detail="user_inactive",
-            )
-        except Exception:
-            pass
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if _user_login_is_deactivated(user):
+        _log_login_failure(db, request, "user_inactive", "Login failed: user inactive")
+        raise HTTPException(status_code=403, detail=LOGIN_ACCOUNT_DEACTIVATED)
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))
     user.last_login_at = datetime.now(timezone.utc)
@@ -2497,6 +2505,7 @@ def update_user(user_id: str, email_personal: Optional[str] = None, username: Op
         u.username = username
     if is_active is not None:
         u.is_active = bool(is_active)
+        u.status = "active" if u.is_active else "inactive"
         if not u.is_active:
             from ..services.refresh_tokens import clear_refresh_tokens_for_user
 
@@ -2931,6 +2940,36 @@ def _pick_explicit_matrix_record(records: List, matrix_id: str) -> Optional[obje
     )
 
 
+def _training_active_employee_clause(now: Optional[datetime] = None):
+    """Employees who belong on HR training views (matrix, schedule, etc.)."""
+    now = now or datetime.now(timezone.utc)
+    status_norm = func.lower(func.coalesce(User.status, "active"))
+    return and_(
+        User.is_active.is_(True),
+        status_norm.notin_(("inactive", "suspended")),
+        or_(
+            EmployeeProfile.user_id.is_(None),
+            EmployeeProfile.termination_date.is_(None),
+            EmployeeProfile.termination_date >= now,
+        ),
+    )
+
+
+def _training_employee_is_active(user: User, profile: Optional[EmployeeProfile], now: datetime) -> bool:
+    if not getattr(user, "is_active", True):
+        return False
+    status = str(getattr(user, "status", "") or "").strip().lower()
+    if status in ("inactive", "suspended"):
+        return False
+    if profile and profile.termination_date is not None:
+        term = profile.termination_date
+        if term.tzinfo is None:
+            term = term.replace(tzinfo=timezone.utc)
+        if term < now:
+            return False
+    return True
+
+
 def _training_hr_aggregate_can_view(user: User) -> bool:
     return (
         _has_permission(user, "training:dashboard:read")
@@ -3171,7 +3210,7 @@ def training_records_matrix_report(
     users_query = (
         db.query(User, EmployeeProfile)
         .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
-        .filter(User.is_active == True)  # noqa: E712
+        .filter(_training_active_employee_clause(now))
     )
     all_user_rows = users_query.all()
     user_ids: List[uuid.UUID] = [u.id for u, _ in all_user_rows]
@@ -3198,12 +3237,8 @@ def training_records_matrix_report(
 
     matrix_rows_out: List[dict] = []
     for u, prof in all_user_rows:
-        if prof and prof.termination_date is not None:
-            term = prof.termination_date
-            if term.tzinfo is None:
-                term = term.replace(tzinfo=timezone.utc)
-            if term < now:
-                continue
+        if not _training_employee_is_active(u, prof, now):
+            continue
 
         team = _team_label_for_profile(db, u.id, prof)
         name = _employee_display_name(prof, u)

@@ -3,31 +3,103 @@ import { api } from '@/lib/api';
 import { resolvePostAuthDestination } from '@/lib/profileCompleteness';
 import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import {
+  CalendarDays,
+  Clock,
+  Eye,
+  EyeOff,
+  FileText,
+  GraduationCap,
+  HardHat,
+  Lock,
+  LogIn,
+  Package,
+  Truck,
+  UserRound,
+  Users,
+} from 'lucide-react';
 import LoginAppDownloadHint from '@/components/LoginAppDownloadHint';
 import {
   AppButton,
+  AppCheckbox,
   AppFormModal,
   AppInput,
-  uiBorders,
-  uiColors,
   uiCx,
   uiLayout,
   uiRadius,
-  uiShadows,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
 
 const LOGO_SRC = '/ui/assets/login/logo-light.svg';
+const LOGIN_BG_SRC = '/ui/assets/login/background.jpg';
+
+const LOGIN_FEATURES = [
+  { label: 'Customers', Icon: Users },
+  { label: 'Proposals', Icon: FileText },
+  { label: 'Inventory', Icon: Package },
+  { label: 'Projects', Icon: HardHat },
+  { label: 'Clock in/out', Icon: Clock },
+  { label: 'Training', Icon: GraduationCap },
+  { label: 'Fleet', Icon: Truck },
+  { label: 'Time off', Icon: CalendarDays },
+] as const;
+const LOGIN_IDENTIFIER_KEY = 'mkhub-login-identifier';
+
+function readSavedIdentifier(): string {
+  try {
+    return (localStorage.getItem(LOGIN_IDENTIFIER_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function saveIdentifier(value: string) {
+  try {
+    const next = value.trim();
+    if (next) localStorage.setItem(LOGIN_IDENTIFIER_KEY, next);
+    else localStorage.removeItem(LOGIN_IDENTIFIER_KEY);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+const LOGIN_ERROR_CREDENTIALS = 'Incorrect username or password.';
+const LOGIN_ERROR_DEACTIVATED =
+  'This account has been deactivated. Please contact your company administration.';
+const LOGIN_ERROR_GENERIC = 'Login failed. Please try again.';
+
+function scrollFocusedFieldIntoView(target: EventTarget | null) {
+  const el = target instanceof HTMLElement ? target : null;
+  if (!el) return;
+  window.setTimeout(() => {
+    el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+  }, 350);
+}
+
+function loginErrorMessage(raw: unknown): string {
+  const message = String(raw || '').trim();
+  const lower = message.toLowerCase();
+  if (!message || lower === 'unauthorized' || lower === 'invalid credentials') {
+    return LOGIN_ERROR_CREDENTIALS;
+  }
+  if (lower.includes('deactivated') || lower.includes('not active') || lower.includes('inactive')) {
+    return LOGIN_ERROR_DEACTIVATED;
+  }
+  return message || LOGIN_ERROR_GENERIC;
+}
 
 export default function Login() {
-  const [identifier, setIdentifier] = useState('');
+  const [identifier, setIdentifier] = useState(readSavedIdentifier);
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [forgotIdentifier, setForgotIdentifier] = useState('');
   const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
+  const [fieldFocused, setFieldFocused] = useState(false);
   const nav = useNavigate();
   const loc = useLocation() as { state?: { from?: string } };
 
@@ -40,25 +112,36 @@ export default function Login() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (!identifier.trim() || !password) {
+      const empty = LOGIN_ERROR_CREDENTIALS;
+      setError(empty);
+      toast.error(empty);
+      return;
+    }
+    if (rememberMe) saveIdentifier(identifier);
+    else saveIdentifier('');
+    setLoggingIn(true);
     try {
       const j = await api<{ access_token: string }>('POST', '/auth/login', { identifier, password });
       if (j && j.access_token) {
         localStorage.setItem('user_token', j.access_token);
         const requested = loc.state?.from ? String(loc.state.from) : '/home';
-        setLoggingIn(true);
         try {
           const to = await resolvePostAuthDestination(requested);
           nav(to, { replace: true });
         } catch {
           nav(requested, { replace: true });
-        } finally {
-          setLoggingIn(false);
         }
       } else {
-        setError('Invalid credentials');
+        setError(LOGIN_ERROR_CREDENTIALS);
+        toast.error(LOGIN_ERROR_CREDENTIALS);
       }
     } catch (err: any) {
-      setError(err?.message || 'Login failed');
+      const next = loginErrorMessage(err?.message || err?.detail);
+      setError(next);
+      toast.error(next);
+    } finally {
+      setLoggingIn(false);
     }
   }
 
@@ -89,73 +172,154 @@ export default function Login() {
   };
 
   return (
-    <div
-      className={uiCx(
-        'relative flex min-h-screen items-center justify-center px-4 py-8',
-        "bg-[url('/ui/assets/login/background.jpg')] bg-cover bg-center bg-no-repeat",
-      )}
-    >
-      <div className="absolute inset-0 bg-black/40" aria-hidden />
-
-      <div
-        className={uiCx(
-          'relative z-10 grid w-full max-w-[1024px] grid-cols-1 overflow-hidden md:grid-cols-2',
-          uiRadius.card,
-          uiShadows.hero,
-          uiBorders.subtle,
-          uiColors.surface,
-        )}
-      >
-        <aside className="flex flex-col justify-between bg-gradient-to-br from-[#7f1010] to-[#a31414] p-9 text-white md:p-10">
-          <div>
-            <div className="flex items-center gap-3">
-              <img src={LOGO_SRC} alt="" className="h-10 w-auto object-contain md:h-11" />
-              <span className="text-xl font-bold tracking-tight text-white md:text-2xl">MKHub</span>
-            </div>
-            <h1 className="mt-8 text-3xl font-extrabold text-white md:text-4xl">Welcome back!</h1>
-            <p className="mt-3 max-w-[36ch] text-base text-white/90 md:text-lg">
-              Mack Kirk Operations Hub — customers, proposals, inventory, and projects in one secure place.
-            </p>
+    <div className="min-h-dvh bg-[#f7f4f3] md:h-dvh md:overflow-hidden">
+      <div className="flex min-h-dvh flex-col md:h-full md:flex-row">
+        <aside className="relative shrink-0 overflow-hidden bg-gradient-to-br from-[#7f1010] to-[#a31414] px-5 py-3.5 text-white md:flex md:w-[42%] md:flex-col md:items-center md:justify-center md:px-10 md:py-10 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          <div
+            className="pointer-events-none absolute inset-0 hidden bg-cover bg-center grayscale opacity-[0.28] mix-blend-luminosity md:block"
+            style={{ backgroundImage: "url('/ui/assets/login/panel-photo.jpg')" }}
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute inset-0 hidden bg-gradient-to-t from-[#5c0c0c]/70 via-transparent to-[#7f1010]/20 md:block"
+            aria-hidden
+          />
+          <div className="relative z-10 flex items-center md:hidden">
+            <img src={LOGO_SRC} alt="Mack Kirk" className="h-12 w-auto max-w-[70%] object-contain sm:h-14" />
+          </div>
+          <div className="relative z-10 hidden w-full max-w-sm flex-col items-center text-center md:flex">
+            <img
+              src={LOGO_SRC}
+              alt="Mack Kirk"
+              className="h-auto w-[min(100%,18rem)] object-contain lg:w-[min(100%,22rem)] xl:w-[min(100%,26rem)]"
+            />
+            <ul className="mt-8 grid w-full grid-cols-2 gap-x-4 gap-y-3 text-[11px] font-semibold uppercase tracking-wide text-white/80">
+              {LOGIN_FEATURES.map(({ label, Icon }) => (
+                <li key={label} className="flex items-center justify-center gap-1.5">
+                  <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  {label}
+                </li>
+              ))}
+            </ul>
           </div>
         </aside>
 
-        <section className={uiCx('flex flex-col justify-center p-6 md:px-10 md:py-12')}>
-          <h2 className="mb-4 text-xl font-semibold text-gray-900">Sign in</h2>
-          <form onSubmit={onSubmit} className="space-y-4">
+        <section className="relative flex flex-1 flex-col justify-start overflow-y-auto px-5 py-6 pb-[max(2.5rem,env(safe-area-inset-bottom))] md:justify-center md:px-12 md:py-10">
+          <div
+            className="pointer-events-none absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url('${LOGIN_BG_SRC}')` }}
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/70 via-white/45 to-[#f7f4f3]/55"
+            aria-hidden
+          />
+          <div className="relative z-10 mx-auto w-full max-w-sm">
+          <h2 className="text-xl font-semibold text-gray-900">MKHub Sign in</h2>
+          <p className={uiCx(uiTypography.helper, 'mt-1 mb-5')}>Enter your credentials to continue.</p>
+          <form
+            onSubmit={onSubmit}
+            className="space-y-4"
+            onFocusCapture={() => setFieldFocused(true)}
+            onBlurCapture={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) setFieldFocused(false);
+            }}
+          >
             <AppInput
-              placeholder="Email or username"
+              id="login-identifier"
+              name="username"
+              label="Email or username"
+              placeholder="you@company.com"
               value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
+              onChange={(e) => {
+                setIdentifier(e.target.value);
+                if (error) setError('');
+              }}
+              onBlur={() => {
+                if (rememberMe) saveIdentifier(identifier);
+              }}
               autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              onFocus={(e) => scrollFocusedFieldIntoView(e.target)}
+              leftIcon={<UserRound className="h-4 w-4" />}
             />
             <AppInput
-              type="password"
-              placeholder="Password"
+              id="login-password"
+              name="password"
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Enter your password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (error) setError('');
+              }}
               autoComplete="current-password"
-              error={error || undefined}
+              onFocus={(e) => scrollFocusedFieldIntoView(e.target)}
+              leftIcon={<Lock className="h-4 w-4" />}
+              rightIcon={
+                <button
+                  type="button"
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:text-gray-700"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              }
             />
-            <AppButton type="submit" className="w-full" disabled={loggingIn} loading={loggingIn}>
-              {loggingIn ? 'Signing in…' : 'Login'}
-            </AppButton>
-            <div className="text-center">
+            <div className={uiCx(uiLayout.actionsRow, 'justify-between gap-3')}>
+              <AppCheckbox
+                label="Remember me"
+                checked={rememberMe}
+                onChange={(checked) => {
+                  setRememberMe(checked);
+                  if (!checked) saveIdentifier('');
+                  else saveIdentifier(identifier);
+                }}
+              />
               <AppButton
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-auto px-0 py-0 text-gray-600 underline hover:bg-transparent hover:text-brand-red"
+                className="h-auto shrink-0 px-0 py-0 text-brand-red hover:bg-transparent hover:text-brand-red/80"
                 onClick={() => setForgotPasswordOpen(true)}
               >
-                Forgot your password? Click here
+                Forgot password?
               </AppButton>
             </div>
+            {error ? (
+              <div
+                className={uiCx(
+                  'border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800',
+                  uiRadius.control,
+                )}
+                role="alert"
+              >
+                {error}
+              </div>
+            ) : null}
+            <AppButton
+              type="submit"
+              className="w-full"
+              size="lg"
+              disabled={loggingIn}
+              loading={loggingIn}
+              leftIcon={<LogIn className="h-4 w-4" />}
+            >
+              {loggingIn ? 'Signing in…' : 'Sign in'}
+            </AppButton>
           </form>
-          <LoginAppDownloadHint />
-          <div className="mt-6 text-center text-xs text-gray-500">
+          <div className={fieldFocused ? 'hidden md:block' : undefined}>
+            <LoginAppDownloadHint />
+          </div>
+          <div className="mt-6 border-t border-gray-100 pt-4 text-center text-xs text-gray-500">
             <a href="/privacy-policy" className="font-medium underline decoration-gray-300 underline-offset-4 hover:text-brand-red">
               Privacy Policy
             </a>
+          </div>
           </div>
         </section>
       </div>

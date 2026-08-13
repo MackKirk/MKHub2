@@ -54,6 +54,7 @@ import {
   hasProjectFeaturePermission,
   hasProjectFeatureReadPermission,
   hasProjectFeatureWritePermission,
+  hasProjectLineWritePermission,
   hasProjectMembersWritePermission,
   isAdminRole,
   resolveProjectBusinessLine,
@@ -1298,7 +1299,12 @@ export default function ProjectDetail(){
     [projectDivisions, projectBusinessLine]
   );
   const isLeakInvestigation = projectHasLeakInvestigationDivision(proj, projectDivisionsForPicker);
-  const hasEditPermission = isAdmin || permissions.has('business:projects:write');
+  const hasEditPermission = hasProjectLineWritePermission(
+    permissions,
+    projectBusinessLine,
+    isAdmin,
+    location.pathname
+  );
   const canEditEstimate = hasProjectFeatureWritePermission(
     permissions,
     projectBusinessLine,

@@ -1,9 +1,16 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useMemo, useEffect } from 'react';
-import { LayoutGrid, List, Search, Star, Users as UsersIcon } from 'lucide-react';
+import { LayoutGrid, List, Search, SlidersHorizontal, Star, Users as UsersIcon } from 'lucide-react';
 import InviteUserModal from '@/components/InviteUserModal';
+import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
+import FilterChip from '@/components/FilterBuilder/FilterChip';
+import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
+import { employeesDirectoryQueryKey, fetchEmployeesDirectory } from '@/lib/employeesQuery';
+import { getUserDisplayName } from '@/lib/userDisplay';
+import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import toast from 'react-hot-toast';
 import {
   AppBadge,
@@ -15,6 +22,7 @@ import {
   AppListCreateItem,
   AppModal,
   AppPageHeader,
+  AppQuickFilterRow,
   AppSectionHeader,
   AppSortableEntityList,
   AppSortableEntityListFlatBody,
@@ -64,6 +72,126 @@ const USER_SORT_COLUMNS: UserSortColumn[] = ['user', 'job_title', 'email', 'stat
 /** Card grid uses 4 columns; reserve one slot for Invite User so rows stay full. */
 const USERS_PAGE_LIMIT = 24;
 
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+];
+
+const EMPLOYMENT_TYPE_FALLBACK = [
+  { value: 'Full-time', label: 'Full-time' },
+  { value: 'Hourly', label: 'Hourly' },
+  { value: 'Part-time', label: 'Part-time' },
+  { value: 'Salary', label: 'Salary' },
+];
+
+const USER_LIST_PRESERVED_KEYS = ['q', 'view', 'sort', 'dir'] as const;
+
+function formatRoleName(name: string): string {
+  return name.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function applyIsNotParam(params: URLSearchParams, rule: FilterRule, key: string) {
+  if (typeof rule.value !== 'string' || !rule.value) return;
+  if (rule.operator === 'is') params.set(key, rule.value);
+  else if (rule.operator === 'is_not') params.set(`${key}_not`, rule.value);
+}
+
+function pushIsNotRule(
+  rules: FilterRule[],
+  params: URLSearchParams,
+  field: string,
+  key: string,
+  idCounter: { n: number },
+) {
+  const value = params.get(key);
+  const valueNot = params.get(`${key}_not`);
+  if (value) rules.push({ id: `rule-${idCounter.n++}`, field, operator: 'is', value });
+  else if (valueNot) rules.push({ id: `rule-${idCounter.n++}`, field, operator: 'is_not', value: valueNot });
+}
+
+function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const rule of rules) {
+    if (!rule.value || (Array.isArray(rule.value) && (!rule.value[0] || !rule.value[1]))) continue;
+    switch (rule.field) {
+      case 'status':
+        applyIsNotParam(params, rule, 'status');
+        break;
+      case 'division':
+        applyIsNotParam(params, rule, 'division_id');
+        break;
+      case 'role':
+        applyIsNotParam(params, rule, 'role_id');
+        break;
+      case 'employment_type':
+        applyIsNotParam(params, rule, 'employment_type');
+        break;
+      case 'project_division':
+        applyIsNotParam(params, rule, 'project_division_id');
+        break;
+      case 'manager':
+        applyIsNotParam(params, rule, 'manager_id');
+        break;
+    }
+  }
+  return params;
+}
+
+function convertParamsToRules(params: URLSearchParams): FilterRule[] {
+  const rules: FilterRule[] = [];
+  const idCounter = { n: 1 };
+  pushIsNotRule(rules, params, 'status', 'status', idCounter);
+  pushIsNotRule(rules, params, 'division', 'division_id', idCounter);
+  pushIsNotRule(rules, params, 'role', 'role_id', idCounter);
+  pushIsNotRule(rules, params, 'employment_type', 'employment_type', idCounter);
+  pushIsNotRule(rules, params, 'project_division', 'project_division_id', idCounter);
+  pushIsNotRule(rules, params, 'manager', 'manager_id', idCounter);
+  return rules;
+}
+
+function copyPreservedListParams(from: URLSearchParams, to: URLSearchParams) {
+  for (const key of USER_LIST_PRESERVED_KEYS) {
+    const value = from.get(key);
+    if (value) to.set(key, value);
+  }
+  if (from.get('is_admin') === '1') to.set('is_admin', '1');
+}
+
+function buildUsersListSearchParams(
+  searchParams: URLSearchParams,
+  opts: { page: number; limit: number; sort: string; dir: string; q: string; omitQuickFilters?: boolean },
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (opts.q.trim()) params.set('q', opts.q.trim());
+  if (!opts.omitQuickFilters) {
+    const status = searchParams.get('status');
+    const statusNot = searchParams.get('status_not');
+    if (status) params.set('status', status);
+    if (statusNot) params.set('status_not', statusNot);
+    if (searchParams.get('is_admin') === '1') params.set('is_admin', '1');
+  }
+  for (const key of [
+    'division_id',
+    'division_id_not',
+    'role_id',
+    'role_id_not',
+    'employment_type',
+    'employment_type_not',
+    'project_division_id',
+    'project_division_id_not',
+    'manager_id',
+    'manager_id_not',
+  ]) {
+    const value = searchParams.get(key);
+    if (value) params.set(key, value);
+  }
+  params.set('page', String(opts.page));
+  params.set('limit', String(opts.limit));
+  params.set('sort', opts.sort);
+  params.set('dir', opts.dir);
+  return params;
+}
+
 export default function Users(){
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
@@ -74,6 +202,7 @@ export default function Users(){
   const [isSyncing, setIsSyncing] = useState(false);
   const [bambooSyncModal, setBambooSyncModal] = useState<'photos' | 'documents' | null>(null);
   const [bambooForceReplace, setBambooForceReplace] = useState(false);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
     const urlView = searchParams.get('view');
@@ -134,15 +263,19 @@ export default function Users(){
     return USERS_PAGE_LIMIT;
   }, [viewMode, canInviteUser]);
 
-  const queryParams = useMemo(() => {
-    const params = new URLSearchParams();
-    if (searchQuery.trim()) params.set('q', searchQuery.trim());
-    params.set('page', String(page));
-    params.set('limit', String(pageLimit));
-    params.set('sort', sortBy);
-    params.set('dir', sortDir);
-    return params.toString();
-  }, [page, pageLimit, searchQuery, sortBy, sortDir]);
+  const currentRules = useMemo(() => convertParamsToRules(searchParams), [searchParams]);
+
+  const queryParams = useMemo(
+    () =>
+      buildUsersListSearchParams(searchParams, {
+        page,
+        limit: pageLimit,
+        sort: sortBy,
+        dir: sortDir,
+        q: searchQuery,
+      }).toString(),
+    [page, pageLimit, searchQuery, searchParams, sortBy, sortDir],
+  );
 
   const { data, isLoading } = useQuery<UsersResponse>({
     queryKey: ['users', queryParams],
@@ -171,6 +304,235 @@ export default function Users(){
   const users = data?.items || [];
   const totalPages = data?.total_pages || 0;
   const total = data?.total || 0;
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api<any>('GET', '/settings'),
+    staleTime: 300_000,
+  });
+
+  const { data: rolesData } = useQuery({
+    queryKey: ['user-roles-all'],
+    queryFn: () => api<{ id: string; name: string }[]>('GET', '/users/roles/all'),
+    staleTime: 300_000,
+  });
+
+  const { data: projectDivisions } = useQuery({
+    queryKey: PROJECT_DIVISIONS_QUERY_KEY,
+    queryFn: () => api<any[]>('GET', '/settings/project-divisions'),
+    staleTime: 300_000,
+  });
+
+  const { data: employees } = useQuery({
+    queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
+    queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),
+    staleTime: 300_000,
+  });
+
+  const divisions = useMemo(
+    () => (Array.isArray(settings?.divisions) ? settings.divisions : []) as { id?: string; label?: string }[],
+    [settings],
+  );
+  const roles = useMemo(() => (Array.isArray(rolesData) ? rolesData : []), [rolesData]);
+  const employmentTypeOptions = useMemo(() => {
+    const fromSettings = Array.isArray(settings?.employment_types)
+      ? (settings.employment_types as { label?: string }[])
+          .map((et) => ({ value: String(et?.label || '').trim(), label: String(et?.label || '').trim() }))
+          .filter((et) => et.value)
+      : [];
+    return fromSettings.length > 0 ? fromSettings : EMPLOYMENT_TYPE_FALLBACK;
+  }, [settings]);
+
+  const filterFields: FieldConfig[] = useMemo(
+    () => [
+      {
+        id: 'status',
+        label: 'Status',
+        type: 'select',
+        operators: ['is', 'is_not'],
+        getOptions: () => STATUS_OPTIONS,
+      },
+      {
+        id: 'division',
+        label: 'Division',
+        type: 'select',
+        operators: ['is', 'is_not'],
+        getOptions: () =>
+          [...divisions]
+            .sort((a, b) => (a?.label || '').localeCompare(b?.label || '', undefined, { sensitivity: 'base' }))
+            .map((d) => ({ value: String(d?.id ?? ''), label: d?.label ?? String(d?.id ?? '') }))
+            .filter((d) => d.value),
+      },
+      {
+        id: 'role',
+        label: 'Role',
+        type: 'select',
+        operators: ['is', 'is_not'],
+        getOptions: () =>
+          roles.map((r) => ({ value: r.id, label: formatRoleName(r.name) })),
+      },
+      {
+        id: 'employment_type',
+        label: 'Employment type',
+        type: 'select',
+        operators: ['is', 'is_not'],
+        getOptions: () => employmentTypeOptions,
+      },
+      {
+        id: 'project_division',
+        label: 'Project division',
+        type: 'select',
+        operators: ['is', 'is_not'],
+        getGroupedOptions: () => {
+          const groups: Array<{ label: string; options: Array<{ value: string; label: string }> }> = [];
+          (projectDivisions || []).forEach((div: any) => {
+            const options: Array<{ value: string; label: string }> = [{ value: div.id, label: div.label }];
+            (div.subdivisions || []).forEach((sub: any) => {
+              options.push({ value: sub.id, label: sub.label });
+            });
+            groups.push({ label: div.label, options });
+          });
+          return groups;
+        },
+      },
+      {
+        id: 'manager',
+        label: 'Manager',
+        type: 'user',
+        operators: ['is', 'is_not'],
+        getUsers: () => (employees || []).map((emp: any) => mapEmployeeToAppUserSelect(emp)),
+      },
+    ],
+    [divisions, roles, employmentTypeOptions, projectDivisions, employees],
+  );
+
+  const handleApplyFilters = (rules: FilterRule[]) => {
+    const params = convertRulesToParams(rules);
+    copyPreservedListParams(searchParams, params);
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params);
+  };
+
+  const hasRuleFilters = currentRules.length > 0;
+  const hasActiveFilters = hasRuleFilters || searchParams.get('is_admin') === '1';
+
+  const toggleStatusQuickFilter = (statusValue: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (params.get('status') === statusValue) {
+      params.delete('status');
+    } else {
+      params.delete('status_not');
+      params.set('status', statusValue);
+    }
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params, { replace: true });
+  };
+
+  const toggleAdminsQuickFilter = () => {
+    const params = new URLSearchParams(searchParams);
+    if (params.get('is_admin') === '1') params.delete('is_admin');
+    else params.set('is_admin', '1');
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params, { replace: true });
+  };
+
+  const quickFilterSegments = useMemo(
+    () => [
+      {
+        key: 'active',
+        label: 'Active',
+        active: searchParams.get('status') === 'active',
+        onClick: () => toggleStatusQuickFilter('active'),
+      },
+      {
+        key: 'inactive',
+        label: 'Inactive',
+        active: searchParams.get('status') === 'inactive',
+        onClick: () => toggleStatusQuickFilter('inactive'),
+      },
+      {
+        key: 'admins',
+        label: 'Admins',
+        active: searchParams.get('is_admin') === '1',
+        onClick: toggleAdminsQuickFilter,
+      },
+    ],
+    [searchParams],
+  );
+
+  const quickFilterCountBaseQs = useMemo(
+    () =>
+      buildUsersListSearchParams(searchParams, {
+        page: 1,
+        limit: 1,
+        sort: sortBy,
+        dir: sortDir,
+        q: searchQuery,
+        omitQuickFilters: true,
+      }).toString(),
+    [searchParams, searchQuery, sortBy, sortDir],
+  );
+
+  const { data: tabCounts } = useQuery({
+    queryKey: ['users', 'tab-counts', quickFilterCountBaseQs],
+    queryFn: () => api<Record<string, number>>('GET', `/users/tab-counts?${quickFilterCountBaseQs}`),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+
+  const quickFilterSegmentsWithCounts = useMemo(
+    () =>
+      quickFilterSegments.map((segment) => ({
+        ...segment,
+        count: tabCounts?.[segment.key],
+      })),
+    [quickFilterSegments, tabCounts],
+  );
+
+  const formatRuleValue = (rule: FilterRule): string => {
+    const value = typeof rule.value === 'string' ? rule.value : String(rule.value);
+    if (rule.field === 'status') {
+      return STATUS_OPTIONS.find((o) => o.value === value)?.label || value;
+    }
+    if (rule.field === 'division') {
+      return divisions.find((d) => String(d?.id) === value)?.label || value;
+    }
+    if (rule.field === 'role') {
+      const role = roles.find((r) => r.id === value);
+      return role ? formatRoleName(role.name) : value;
+    }
+    if (rule.field === 'employment_type') return value;
+    if (rule.field === 'project_division') {
+      for (const div of projectDivisions || []) {
+        if (String(div.id) === value) return div.label;
+        for (const sub of div.subdivisions || []) {
+          if (String(sub.id) === value) return `${div.label} - ${sub.label}`;
+        }
+      }
+      return value;
+    }
+    if (rule.field === 'manager') {
+      const emp = (employees || []).find((e: any) => String(e.id) === value);
+      return emp ? getUserDisplayName(mapEmployeeToAppUserSelect(emp)) : value;
+    }
+    return value;
+  };
+
+  const getFieldLabel = (fieldId: string): string => {
+    return filterFields.find((f) => f.id === fieldId)?.label || fieldId;
+  };
+
+  const clearAllFilters = () => {
+    const params = new URLSearchParams();
+    copyPreservedListParams(searchParams, params);
+    params.delete('is_admin');
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params);
+  };
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
@@ -286,7 +648,7 @@ export default function Users(){
       <AppPageHeader
         title="Users"
         subtitle={subtitle}
-        icon={<UsersIcon className="h-4 w-4" />}
+        icon={<UsersIcon className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -324,8 +686,44 @@ export default function Users(){
               aria-label="Search users"
             />
           </div>
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<SlidersHorizontal className="h-4 w-4" />}
+            onClick={() => setIsFilterModalOpen(true)}
+          >
+            Filters
+          </AppButton>
+          {hasActiveFilters ? (
+            <AppButton type="button" variant="ghost" size="sm" onClick={clearAllFilters}>
+              Clear
+            </AppButton>
+          ) : null}
         </div>
+        <AppQuickFilterRow segments={quickFilterSegmentsWithCounts} />
       </AppCard>
+
+      {hasRuleFilters ? (
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
+          {currentRules.map((rule) => (
+            <FilterChip
+              key={rule.id}
+              rule={rule}
+              onRemove={() => {
+                const updatedRules = currentRules.filter((r) => r.id !== rule.id);
+                const params = convertRulesToParams(updatedRules);
+                copyPreservedListParams(searchParams, params);
+                params.set('page', '1');
+                setPage(1);
+                setSearchParams(params);
+              }}
+              getValueLabel={formatRuleValue}
+              getFieldLabel={getFieldLabel}
+            />
+          ))}
+        </div>
+      ) : null}
 
       <AppCard
         className={uiShadows.card}
@@ -394,7 +792,11 @@ export default function Users(){
               />
             ) : null}
             <AppEmptyState
-              title={searchQuery ? 'No users found matching your search.' : 'No users found.'}
+              title={
+                searchQuery || hasActiveFilters
+                  ? 'No users found matching your filters.'
+                  : 'No users found.'
+              }
               className="border-0 bg-transparent p-0 shadow-none"
             />
           </div>
@@ -534,6 +936,15 @@ export default function Users(){
       )}
 
       <InviteUserModal isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} />
+
+      <FilterBuilderModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        onApply={handleApplyFilters}
+        initialRules={currentRules}
+        fields={filterFields}
+        getFieldData={() => null}
+      />
 
       <AppModal
         open={!!bambooSyncModal}

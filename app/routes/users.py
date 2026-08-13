@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import update, or_, func as sa_func, func, literal
+from sqlalchemy import update, or_, exists, select, func as sa_func, func, literal, cast, String
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import Optional, List, Any, Tuple, Literal, Dict
@@ -28,6 +28,7 @@ from ..models.models import (
     SystemLog,
     AuditLog,
     user_divisions,
+    user_roles,
     SettingItem,
     TimeOffHistory,
     TimeOffRequest,
@@ -528,6 +529,137 @@ def _user_list_display_name_expr():
     return func.lower(func.coalesce(preferred, full_name, User.username, literal("")))
 
 
+def _parse_uuid_param(value: Optional[str]) -> Optional[uuid.UUID]:
+    if not value:
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        return None
+
+
+def _flag_param(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    return str(value).strip().lower() in ("1", "true", "yes")
+
+
+def _admin_role_exists_clause():
+    admin_role_ids = select(Role.id).where(func.lower(Role.name) == "admin")
+    return exists().where(
+        (user_roles.c.user_id == User.id)
+        & (user_roles.c.role_id.in_(admin_role_ids))
+    )
+
+
+def _user_has_division_clause(division_uuid: uuid.UUID):
+    return exists().where(
+        (user_divisions.c.user_id == User.id)
+        & (user_divisions.c.division_id == division_uuid)
+    )
+
+
+def _user_has_role_clause(role_uuid: uuid.UUID):
+    return exists().where(
+        (user_roles.c.user_id == User.id)
+        & (user_roles.c.role_id == role_uuid)
+    )
+
+
+def _apply_user_list_filters(
+    query,
+    *,
+    q: Optional[str] = None,
+    status: Optional[str] = None,
+    status_not: Optional[str] = None,
+    division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
+    role_id: Optional[str] = None,
+    role_id_not: Optional[str] = None,
+    employment_type: Optional[str] = None,
+    employment_type_not: Optional[str] = None,
+    project_division_id: Optional[str] = None,
+    project_division_id_not: Optional[str] = None,
+    manager_id: Optional[str] = None,
+    manager_id_not: Optional[str] = None,
+    is_admin: Optional[str] = None,
+):
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            (User.username.ilike(like))
+            | (User.email_personal.ilike(like))
+            | (EmployeeProfile.first_name.ilike(like))
+            | (EmployeeProfile.last_name.ilike(like))
+            | (EmployeeProfile.preferred_name.ilike(like))
+        )
+
+    status_val = (status or "").strip().lower()
+    status_not_val = (status_not or "").strip().lower()
+    if status_val == "active":
+        query = query.filter(User.is_active == True)  # noqa: E712
+    elif status_val == "inactive":
+        query = query.filter(User.is_active == False)  # noqa: E712
+    elif status_not_val == "active":
+        query = query.filter(User.is_active == False)  # noqa: E712
+    elif status_not_val == "inactive":
+        query = query.filter(User.is_active == True)  # noqa: E712
+
+    division_uuid = _parse_uuid_param(division_id)
+    if division_uuid:
+        query = query.filter(_user_has_division_clause(division_uuid))
+    division_not_uuid = _parse_uuid_param(division_id_not)
+    if division_not_uuid:
+        query = query.filter(~_user_has_division_clause(division_not_uuid))
+
+    role_uuid = _parse_uuid_param(role_id)
+    if role_uuid:
+        query = query.filter(_user_has_role_clause(role_uuid))
+    role_not_uuid = _parse_uuid_param(role_id_not)
+    if role_not_uuid:
+        query = query.filter(~_user_has_role_clause(role_not_uuid))
+
+    emp_type = (employment_type or "").strip()
+    if emp_type:
+        query = query.filter(func.lower(EmployeeProfile.employment_type) == emp_type.lower())
+    emp_type_not = (employment_type_not or "").strip()
+    if emp_type_not:
+        query = query.filter(
+            or_(
+                EmployeeProfile.employment_type.is_(None),
+                func.lower(EmployeeProfile.employment_type) != emp_type_not.lower(),
+            )
+        )
+
+    if project_division_id:
+        has_pdiv = cast(EmployeeProfile.project_division_ids, String).like(f"%{project_division_id}%")
+        query = query.filter(has_pdiv)
+    if project_division_id_not:
+        has_pdiv_not = cast(EmployeeProfile.project_division_ids, String).like(f"%{project_division_id_not}%")
+        query = query.filter(or_(EmployeeProfile.project_division_ids.is_(None), ~has_pdiv_not))
+
+    manager_uuid = _parse_uuid_param(manager_id)
+    if manager_uuid:
+        query = query.filter(EmployeeProfile.manager_user_id == manager_uuid)
+    manager_not_uuid = _parse_uuid_param(manager_id_not)
+    if manager_not_uuid:
+        query = query.filter(
+            or_(
+                EmployeeProfile.manager_user_id.is_(None),
+                EmployeeProfile.manager_user_id != manager_not_uuid,
+            )
+        )
+
+    if _flag_param(is_admin):
+        query = query.filter(_admin_role_exists_clause())
+
+    return query
+
+
+def _users_list_base_query(db: Session):
+    return db.query(User, EmployeeProfile).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+
+
 def _users_list_order_parts(sort: Optional[str], sort_dir: Optional[str]):
     asc = (sort_dir or "asc").lower() != "desc"
     s = (sort or "user").strip().lower()
@@ -566,6 +698,19 @@ def list_users(
     limit: int = 50,
     sort: Optional[str] = None,
     sort_dir: Optional[str] = Query("asc", alias="dir"),
+    status: Optional[str] = None,
+    status_not: Optional[str] = None,
+    division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
+    role_id: Optional[str] = None,
+    role_id_not: Optional[str] = None,
+    employment_type: Optional[str] = None,
+    employment_type_not: Optional[str] = None,
+    project_division_id: Optional[str] = None,
+    project_division_id_not: Optional[str] = None,
+    manager_id: Optional[str] = None,
+    manager_id_not: Optional[str] = None,
+    is_admin: Optional[str] = None,
     db: Session = Depends(get_db),
     _=Depends(require_permissions("hr:users:read", "users:read"))  # New HR permission or legacy
 ):
@@ -578,35 +723,80 @@ def list_users(
         limit: Number of items per page (default 50, max 2000)
         sort: Sort column (user, job_title, email, status)
         sort_dir: Sort direction (asc or desc), passed as query param `dir`
+        status: active | inactive
+        is_admin: 1/true to restrict to users with the admin role
     """
     # Ensure reasonable limits
     limit = min(max(1, limit), 2000)
     page = max(1, page)
     offset = (page - 1) * limit
-    
-    query = db.query(User, EmployeeProfile).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            (User.username.ilike(like)) | 
-            (User.email_personal.ilike(like)) | 
-            (EmployeeProfile.first_name.ilike(like)) | 
-            (EmployeeProfile.last_name.ilike(like)) | 
-            (EmployeeProfile.preferred_name.ilike(like))
-        )
-    
-    # Get total count for pagination
+
+    query = _apply_user_list_filters(
+        _users_list_base_query(db),
+        q=q,
+        status=status,
+        status_not=status_not,
+        division_id=division_id,
+        division_id_not=division_id_not,
+        role_id=role_id,
+        role_id_not=role_id_not,
+        employment_type=employment_type,
+        employment_type_not=employment_type_not,
+        project_division_id=project_division_id,
+        project_division_id_not=project_division_id_not,
+        manager_id=manager_id,
+        manager_id_not=manager_id_not,
+        is_admin=is_admin,
+    )
+
     total_count = query.count()
-    
     order_parts = _users_list_order_parts(sort, sort_dir)
     rows = query.order_by(*order_parts).offset(offset).limit(limit).all()
-    
+
     return {
         "items": [_user_to_dict(u, ep) for u, ep in rows],
         "total": total_count,
         "page": page,
         "limit": limit,
         "total_pages": (total_count + limit - 1) // limit if limit > 0 else 0
+    }
+
+
+@router.get("/tab-counts")
+def users_tab_counts(
+    q: Optional[str] = None,
+    division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
+    role_id: Optional[str] = None,
+    role_id_not: Optional[str] = None,
+    employment_type: Optional[str] = None,
+    employment_type_not: Optional[str] = None,
+    project_division_id: Optional[str] = None,
+    project_division_id_not: Optional[str] = None,
+    manager_id: Optional[str] = None,
+    manager_id_not: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("hr:users:read", "users:read")),
+):
+    """Quick-filter counts for the users list (omits Active / Inactive / Admins)."""
+    base = _apply_user_list_filters(
+        _users_list_base_query(db),
+        q=q,
+        division_id=division_id,
+        division_id_not=division_id_not,
+        role_id=role_id,
+        role_id_not=role_id_not,
+        employment_type=employment_type,
+        employment_type_not=employment_type_not,
+        project_division_id=project_division_id,
+        project_division_id_not=project_division_id_not,
+        manager_id=manager_id,
+        manager_id_not=manager_id_not,
+    )
+    return {
+        "active": base.filter(User.is_active == True).count(),  # noqa: E712
+        "inactive": base.filter(User.is_active == False).count(),  # noqa: E712
+        "admins": base.filter(_admin_role_exists_clause()).count(),
     }
 
 
@@ -956,6 +1146,7 @@ def update_user(
         touched_profile_audit = True
     if is_active is not None:
         u.is_active = bool(is_active)
+        u.status = "active" if u.is_active else "inactive"
         if not u.is_active:
             from ..services.refresh_tokens import clear_refresh_tokens_for_user
 

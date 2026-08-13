@@ -26,9 +26,17 @@ title: Update 1.1.043 - Week 33
 - Fuel card custody: crew, reasons, and attachments.
 - Mobile clock and tasks screens.
 - Project access now follows section permissions.
+- Users list: quick filters (Active, Inactive, Admins) and custom filters like Projects.
+- Training matrix hides inactive and terminated employees.
+- User permissions: Production and Repairs now show a top **Projects & Opportunities** row (View only / View · Edit) so create and edit can be set without relying on legacy keys.
 
 ### Fixed
+- Customer logo upload no longer shows a false error, and the new image appears without a page refresh.
 - Orange line under images removed from proposal PDFs.
+- Login shows an error for wrong credentials or a deactivated account.
+- Login screen layout (split panel, remember me, simpler copy).
+- Login on mobile: compact header so the form is not hidden by the keyboard.
+- Users with Repairs (or Production) edit permission can create opportunities and edit project status again; project detail no longer checks only the old shared write key.
 
 ### Known issues
 - (none this release)

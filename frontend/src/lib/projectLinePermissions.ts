@@ -101,12 +101,42 @@ export function resolveProjectLineMainReadKey(line: ProjectLine, areaPerms: Perm
   return findFirst(areaPerms, ['business:rm:projects:read'])?.key;
 }
 
+export function resolveProjectLineMainWriteKey(line: ProjectLine, areaPerms: PermDef[]): string | undefined {
+  if (line === 'construction') {
+    return findFirst(areaPerms, ['business:construction:projects:write'])?.key;
+  }
+  return findFirst(areaPerms, ['business:rm:projects:write'])?.key;
+}
+
+/** Drop redundant line suffix already shown by the grid section title. */
+function formatLinePermissionLabel(label: string): string {
+  return formatPermissionLabel(label)
+    .replace(/\s*\((?:Construction|Repairs\s*&\s*Maintenance)\)\s*$/i, '')
+    .trim();
+}
+
 export function buildProjectLinePermissionRows(
   line: ProjectLine,
   areaPerms: PermDef[]
 ): ProjectLinePermissionRow[] {
   const rows: ProjectLinePermissionRow[] = [];
   const prefix = linePrefix(line);
+
+  const mainRead = findFirst(areaPerms, [`${prefix}:read`]);
+  const mainWrite = findFirst(areaPerms, [`${prefix}:write`]);
+  if (mainRead && mainWrite) {
+    rows.push({
+      kind: 'pair',
+      id: mainRead.id,
+      label: formatLinePermissionLabel(mainRead.label),
+      description:
+        mainWrite.description ||
+        mainRead.description ||
+        'Create, update, and delete projects and opportunities for this business line',
+      readKey: mainRead.key,
+      writeKey: mainWrite.key,
+    });
+  }
 
   const subViews = areaPerms.filter(
     (p) => isLineSubReadKey(p.key, line) && !isHiddenProjectLinePermissionKey(p.key)
@@ -117,10 +147,11 @@ export function buildProjectLinePermissionRows(
     rows.push({
       kind: 'pair',
       id: viewPerm.id,
-      label: formatPermissionLabel(viewPerm.label),
+      label: formatLinePermissionLabel(viewPerm.label),
       description: viewPerm.description,
       readKey: viewPerm.key,
       writeKey,
+      indent: true,
       configKind: configKindForKey(viewPerm.key, line) ?? configKindForKey(writeKey, line),
     });
   }
@@ -130,9 +161,10 @@ export function buildProjectLinePermissionRows(
     rows.push({
       kind: 'readOnly',
       id: viewAll.id,
-      label: formatPermissionLabel(viewAll.label),
+      label: formatLinePermissionLabel(viewAll.label),
       description: viewAll.description,
       readKey: viewAll.key,
+      indent: true,
     });
   }
 
@@ -141,9 +173,10 @@ export function buildProjectLinePermissionRows(
     rows.push({
       kind: 'writeOnly',
       id: members.id,
-      label: formatPermissionLabel(members.label),
+      label: formatLinePermissionLabel(members.label),
       description: members.description,
       writeKey: members.key,
+      indent: true,
     });
   }
 

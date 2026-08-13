@@ -10,6 +10,7 @@ export type AppInputProps = {
   error?: ReactNode;
   inputClassName?: string;
   leftIcon?: ReactNode;
+  rightIcon?: ReactNode;
 } & InputHTMLAttributes<HTMLInputElement>;
 
 export function AppInput({
@@ -20,6 +21,7 @@ export function AppInput({
   className,
   inputClassName,
   leftIcon,
+  rightIcon,
   id,
   ...props
 }: AppInputProps) {
@@ -37,10 +39,14 @@ export function AppInput({
             uiRadius.control,
             uiBorders.input,
             leftIcon ? 'pl-8' : '',
+            rightIcon ? 'pr-9' : '',
             inputClassName,
           )}
           {...props}
         />
+        {rightIcon ? (
+          <span className="absolute inset-y-0 right-1.5 flex items-center text-gray-400">{rightIcon}</span>
+        ) : null}
       </span>
       {error ? <span className="block text-xs text-red-600">{error}</span> : helperText ? <span className={uiTypography.helper}>{helperText}</span> : null}
     </label>

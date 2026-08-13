@@ -247,15 +247,18 @@ export default function CustomerDetail(){
   }, [files]);
 
   const heroAvatarSrc = useMemo(() => {
+    if (clientLogoRec?.file_object_id) {
+      const bust = clientLogoRec.uploaded_at
+        ? `&t=${encodeURIComponent(String(clientLogoRec.uploaded_at))}`
+        : '';
+      return withFileAccessToken(`/files/${clientLogoRec.file_object_id}/thumbnail?w=800${bust}`);
+    }
     const logoUrl = (client as { logo_url?: string | null } | undefined)?.logo_url;
     if (logoUrl) {
       return withFileAccessTokenIfNeeded(logoUrl) || '/ui/assets/placeholders/customer.png';
     }
-    if (clientLogoRec?.file_object_id) {
-      return withFileAccessToken(`/files/${clientLogoRec.file_object_id}/thumbnail?w=800`);
-    }
     return '/ui/assets/placeholders/customer.png';
-  }, [client, clientLogoRec?.file_object_id]);
+  }, [client, clientLogoRec?.file_object_id, clientLogoRec?.uploaded_at]);
   const [generalEditSection, setGeneralEditSection] = useState<CustomerGeneralEditSection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projectPicker, setProjectPicker] = useState<{ open:boolean, projectId?:string }|null>(null);
@@ -399,7 +402,7 @@ export default function CustomerDetail(){
               <div className="w-48 shrink-0">
                 <div className={uiCx('group relative h-36 w-48 overflow-hidden', uiRadius.control, uiBorders.subtle)}>
                   <img
-                    key={clientLogoRec?.file_object_id ?? (client as { logo_url?: string })?.logo_url ?? 'placeholder'}
+                    key={clientLogoRec?.file_object_id ?? clientLogoRec?.uploaded_at ?? (client as { logo_url?: string })?.logo_url ?? 'placeholder'}
                     src={heroAvatarSrc}
                     className="h-full w-full object-cover"
                     alt=""
@@ -782,14 +785,16 @@ export default function CustomerDetail(){
           queryClient.invalidateQueries({ queryKey: ['clients'] });
         }}
       />
-      <ImagePicker isOpen={pickerOpen} onClose={()=>setPickerOpen(false)} clientId={String(id)} targetWidth={800} targetHeight={600} allowEdit={true} onConfirm={async(blob, original)=>{
+      <ImagePicker isOpen={pickerOpen} onClose={()=>setPickerOpen(false)} clientId={String(id)} targetWidth={800} targetHeight={600} allowEdit={true} onConfirm={async(blob)=>{
         try{
           const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'client-logo-derived', original_name: 'client-logo.jpg', content_type: 'image/jpeg' });
-          await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+          const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+          if (!putResp.ok) throw new Error(`Upload failed (${putResp.status})`);
           const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
           await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=client-logo-derived&original_name=client-logo.jpg`);
           toast.success('Logo updated');
-          location.reload();
+          await queryClient.invalidateQueries({ queryKey: ['clientFiles', id] });
+          await queryClient.invalidateQueries({ queryKey: ['clients'] });
         }catch(e){ toast.error('Failed to update logo'); }
         finally{ setPickerOpen(false); }
       }} />
@@ -797,11 +802,12 @@ export default function CustomerDetail(){
         <ImagePicker isOpen={true} onClose={()=>setProjectPicker(null)} clientId={String(id)} targetWidth={800} targetHeight={300} allowEdit={true} onConfirm={async(blob)=>{
           try{
             const up:any = await api('POST','/files/upload',{ project_id: projectPicker?.projectId||null, client_id:id, employee_id:null, category_id:'project-cover-derived', original_name:'project-cover.jpg', content_type:'image/jpeg' });
-            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+            const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+            if (!putResp.ok) throw new Error(`Upload failed (${putResp.status})`);
             const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
             await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=project-cover-derived&original_name=project-cover.jpg`);
             toast.success('Project cover updated');
-            location.reload();
+            await queryClient.invalidateQueries({ queryKey: ['clientFiles', id] });
           }catch(e){ toast.error('Failed to update project cover'); }
           finally{ setProjectPicker(null); }
         }} />

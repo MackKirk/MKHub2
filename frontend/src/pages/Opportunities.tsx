@@ -16,6 +16,7 @@ import { employeeHasSalesOrEstimatingDepartment, mapEmployeeToAppUserSelect } fr
 import { employeesDirectoryQueryKey, fetchEmployeesDirectory } from '@/lib/employeesQuery';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine, PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
+import { hasProjectLineWritePermission, isAdminRole } from '@/lib/projectLinePermissionKeys';
 import {
   buildOpportunityListSearchParams,
   convertParamsToRules,
@@ -328,12 +329,11 @@ export default function Opportunities() {
 
   // Check permissions
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const hasEditPermission =
-    (me?.roles || []).includes('admin') ||
-    (me?.permissions || []).includes('business:projects:write') ||
-    (businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE
-      ? (me?.permissions || []).includes('business:rm:projects:write')
-      : (me?.permissions || []).includes('business:construction:projects:write'));
+  const hasEditPermission = hasProjectLineWritePermission(
+    new Set(me?.permissions || []),
+    businessLine,
+    isAdminRole(me?.roles)
+  );
 
   const hasRuleFilters = currentRules.length > 0;
   const hasActiveFilters = useMemo(() => {
