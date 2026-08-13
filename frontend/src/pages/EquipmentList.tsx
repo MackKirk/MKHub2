@@ -466,7 +466,8 @@ export default function EquipmentList() {
       <AppPageHeader
         title="Equipment"
         subtitle="Manage tools and equipment"
-        icon={<Wrench className="h-4 w-4" />}
+        icon={<Wrench className="h-4 w-4" />}
+
       />
 
       <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>

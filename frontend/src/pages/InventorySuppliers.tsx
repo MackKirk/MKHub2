@@ -1021,7 +1021,8 @@ export default function InventorySuppliers() {
       <AppPageHeader
         title="Suppliers"
         subtitle="Manage vendors and contact information"
-        icon={<Truck className="h-4 w-4" />}
+        icon={<Truck className="h-4 w-4" />}
+
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

@@ -657,7 +657,8 @@ export default function FleetAssets() {
       <AppPageHeader
         title="Fleet Assets"
         subtitle="Manage fleet assets"
-        icon={<Truck className="h-4 w-4" />}
+        icon={<Truck className="h-4 w-4" />}
+
       />
 
       <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>
