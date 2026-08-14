@@ -13,9 +13,21 @@
 -->
 
 <<<RELEASE>>>
-id: 2026-08-13-1
-date: 2026-08-13
-title: Update 1.1.043 - Week 33
+id: 2026-08-14-1
+date: 2026-08-14
+title: Update 1.1.044 - Week 33
+
+### New
+- Project/opportunity Notes from email via Microsoft 365 (`notes@…` + Power Automate → Hub webhook) when subject has `MK-#####`.
+- Inbound email notes render as sanitized HTML (Outlook-like); manual notes stay plain text.
+
+### Improved
+
+### Fixed
+
+### Known issues
+
+===
 
 ### New
 - Fuel cards under Company Assets, with assign and return custody.
@@ -31,6 +43,7 @@ title: Update 1.1.043 - Week 33
 - User permissions: Production and Repairs now show a top **Projects & Opportunities** row (View only / View · Edit) so create and edit can be set without relying on legacy keys.
 
 ### Fixed
+- User Docs: Upload File modal (and file picker) now accept PDF and the same file types as drag-and-drop onto the list.
 - Customer logo upload no longer shows a false error, and the new image appears without a page refresh.
 - Orange line under images removed from proposal PDFs.
 - Login shows an error for wrong credentials or a deactivated account.

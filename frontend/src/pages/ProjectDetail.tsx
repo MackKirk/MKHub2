@@ -65,8 +65,9 @@ import {
 } from '@/lib/projectListRowUtils';
 import { filterStatusesForOpportunity, filterStatusesForProject } from '@/lib/projectStatusVisibility';
 import { isHiddenReportCategory, isHiddenReportNote } from '@/lib/reportCategories';
-import { formatReportListSubtitle, reportHasStatusBadges } from '@/lib/reportNotes';
+import { formatReportListSubtitle, isInboundEmailReport, reportHasStatusBadges } from '@/lib/reportNotes';
 import { ReportStatusChangeBadges } from '@/components/ReportStatusChangeBadges';
+import { ReportNoteBody } from '@/components/ReportNoteBody';
 import { buildReportCategorySelectGroups } from '@/lib/reportCategorySelectGroups';
 import { employeeHasSalesOrEstimatingDepartment, mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import {
@@ -6964,9 +6965,7 @@ function ReportsTabEnhanced({
                   })()}
                   
                   <div className="prose max-w-none">
-                    <div className="text-xs text-gray-800 whitespace-pre-wrap leading-relaxed">
-                      {selectedReport.description || 'No description provided.'}
-                    </div>
+                    <ReportNoteBody report={selectedReport} compact />
                   </div>
 
                   {/* Attachments */}
@@ -7109,6 +7108,7 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
     const attachments = report?.images?.attachments;
     return Array.isArray(attachments) ? attachments : [];
   }, [report]);
+  const isInboundEmail = isInboundEmailReport(report);
 
   const isCategoryListed = useCallback(
     (categoryId?: string | null) => {
@@ -7331,7 +7331,11 @@ function CreateReportModal({ projectId, reportCategories, isReadCategoryAllowed,
             value={desc}
             onChange={(e) => setDesc(e.target.value)}
             placeholder="Describe what happened, how the day went, or any events on site…"
-            fieldHint="Description\n\nMain body of the note. Describe what happened, decisions, or site activity. Required to create the note."
+            fieldHint={
+              isInboundEmail
+                ? 'Description\n\nPlain-text fallback for this email note (list preview / mobile). The viewing panel shows the original email HTML.'
+                : 'Description\n\nMain body of the note. Describe what happened, decisions, or site activity. Required to create the note.'
+            }
           />
           <ReportAttachmentAreaMultiple
             files={files}

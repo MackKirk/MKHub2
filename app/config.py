@@ -55,6 +55,27 @@ class Settings(BaseSettings):
     smtp_tls: bool = Field(default=True, alias="SMTP_TLS")
     mail_from: Optional[str] = Field(default=None, alias="MAIL_FROM")
 
+    # Inbound email (SendGrid Inbound Parse → project/opportunity Notes)
+    # Webhook is disabled when secret is empty. Pass secret via header X-Inbound-Email-Secret or ?secret=.
+    inbound_email_webhook_secret: Optional[str] = Field(default=None, alias="INBOUND_EMAIL_WEBHOOK_SECRET")
+    # Comma-separated recipient addresses that route to project Notes (e.g. notes@mackkirk.com).
+    inbound_email_notes_addresses: str = Field(
+        default="notes@mackkirk.com",
+        alias="INBOUND_EMAIL_NOTES_ADDRESSES",
+    )
+    # Comma-separated sender domains allowed to create notes.
+    inbound_email_allowed_domains: str = Field(
+        default="mackkirk.com,mackkirkroofing.com",
+        alias="INBOUND_EMAIL_ALLOWED_DOMAINS",
+    )
+    # report_categories value used for inbound notes (seed: client-communication-log).
+    inbound_email_notes_category_id: str = Field(
+        default="client-communication-log",
+        alias="INBOUND_EMAIL_NOTES_CATEGORY_ID",
+    )
+    inbound_email_max_attachments: int = Field(default=10, alias="INBOUND_EMAIL_MAX_ATTACHMENTS")
+    inbound_email_max_attachment_mb: int = Field(default=20, alias="INBOUND_EMAIL_MAX_ATTACHMENT_MB")
+
     # Feature flags
     feature_flags_json: str = Field(default="{}", alias="FEATURE_FLAGS")
 

@@ -4,7 +4,14 @@ import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { FileImagePreviewModal, FilePdfPreviewModal, FileOfficePreviewModal, useFileImageGallery } from '@/components/files';
+import {
+  FileImagePreviewModal,
+  FilePdfPreviewModal,
+  FileOfficePreviewModal,
+  FILE_LIBRARY_ACCEPT,
+  FILE_LIBRARY_UPLOAD_HINT,
+  useFileImageGallery,
+} from '@/components/files';
 import {
   projectFilesMoveCategoryQuickInfo,
   projectFilesNewFolderQuickInfo,
@@ -1011,6 +1018,7 @@ export default function UserDocumentsTabEnhanced({
         >
           <AppFileUpload
             mode="multiple"
+            accept={FILE_LIBRARY_ACCEPT}
             value={[]}
             onChange={() => {}}
             onFilesSelected={async (added) => {
@@ -1019,7 +1027,7 @@ export default function UserDocumentsTabEnhanced({
                 await uploadMultiple(added);
               }
             }}
-            fieldHint="Files\n\nPick one or more files to add to the current category and folder. You can also drag files onto the file list."
+            fieldHint={FILE_LIBRARY_UPLOAD_HINT}
           />
         </AppFormModal>
       )}

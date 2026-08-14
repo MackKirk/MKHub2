@@ -55,6 +55,16 @@ BAMBOOHR_API_KEY=sua-chave-api-aqui
 
 **Nota:** A chave da API deve ter permissões para ler dados de funcionários, treinamentos e documentos.
 
+#### Inbound email → Project Notes (Microsoft 365)
+```
+INBOUND_EMAIL_WEBHOOK_SECRET=long-random-string
+INBOUND_EMAIL_NOTES_ADDRESSES=notes@mackkirk.com
+INBOUND_EMAIL_ALLOWED_DOMAINS=mackkirk.com,mackkirkroofing.com
+```
+
+**Como configurar:** ver `docs/inbound-email-notes.md` (shared mailbox `notes@mackkirk.com` + Power Automate HTTP POST).  
+Outbound SMTP já é Office 365 (`smtp.office365.com` / `no-reply@mackkirk.com`) — **não** usar SendGrid.
+
 ## Compartilhamento com outros desenvolvedores
 
 **NUNCA compartilhe credenciais via git ou email não criptografado!**
