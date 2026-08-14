@@ -1,3 +1,12 @@
+export type ReportInboundEmailMeta = {
+  message_id?: string | null;
+  from_email?: string | null;
+  from_name?: string | null;
+  subject?: string | null;
+  /** Sanitized-ish HTML from inbound pipeline; always re-sanitize before render. */
+  body_html?: string | null;
+};
+
 export type ReportStatusChangeMeta = {
   from_label?: string;
   to_label?: string;
@@ -8,12 +17,32 @@ export type ReportStatusChangeMeta = {
 
 export type ReportNoteLike = {
   title?: string | null;
+  description?: string | null;
   images?: {
     attachments?: unknown[];
     status_change?: ReportStatusChangeMeta;
+    inbound_email?: ReportInboundEmailMeta | null;
   } | null;
   created_by_name?: string | null;
 };
+
+export function getInboundEmailMeta(
+  report: ReportNoteLike | null | undefined,
+): ReportInboundEmailMeta | null {
+  const meta = report?.images?.inbound_email;
+  if (!meta || typeof meta !== 'object') return null;
+  return meta;
+}
+
+export function isInboundEmailReport(report: ReportNoteLike | null | undefined): boolean {
+  return Boolean(getInboundEmailMeta(report));
+}
+
+/** HTML body for inbound notes only; empty if missing / not inbound. */
+export function getInboundEmailBodyHtml(report: ReportNoteLike | null | undefined): string {
+  const html = getInboundEmailMeta(report)?.body_html;
+  return typeof html === 'string' && html.trim() ? html.trim() : '';
+}
 
 export const STATUS_CHANGE_REPORT_TITLE = 'Status Change';
 

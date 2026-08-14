@@ -17,6 +17,7 @@ Notes/History entry is created on that project/opportunity.
 | Project match | First `MK-#####` in subject, else early body |
 | Category | `client-communication-log` by default |
 | Auth | Shared secret required; empty secret → 503 |
+| Display | Stores plain `description` + `images.inbound_email.body_html`. Web UI renders sanitized HTML for inbound notes only; manual notes stay plain text. Mobile uses plain text. |
 
 ## Endpoint (Hub)
 

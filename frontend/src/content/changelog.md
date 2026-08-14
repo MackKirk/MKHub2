@@ -19,6 +19,7 @@ title: Update 1.1.044 - Week 33
 
 ### New
 - Project/opportunity Notes from email via Microsoft 365 (`notes@…` + Power Automate → Hub webhook) when subject has `MK-#####`.
+- Inbound email notes render as sanitized HTML (Outlook-like); manual notes stay plain text.
 
 ### Improved
 

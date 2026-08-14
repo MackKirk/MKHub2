@@ -204,6 +204,23 @@ class TestProcessInboundNotes(unittest.TestCase):
         self.assertIn("Looks good", added.description)
         self.assertIn("──────── Email ────────", added.description)
         self.assertEqual(added.images["inbound_email"]["message_id"], "mid-1")
+        self.assertIn("mkhub-inbound-email", added.images["inbound_email"]["body_html"])
+        self.assertIn("Looks good", added.images["inbound_email"]["body_html"])
+
+    def test_build_note_html_prefers_email_html(self):
+        from app.services.inbound_email import build_note_html
+
+        html = build_note_html(
+            from_email="alex@mackkirk.com",
+            from_name="Alex",
+            subject="Hi MK-00497",
+            plain_body="plain",
+            html_body="<p>Hello <b>world</b><script>x()</script></p>",
+        )
+        self.assertIn("Hello", html)
+        self.assertIn("<b>world</b>", html)
+        self.assertNotIn("<script>", html)
+        self.assertIn("From:</strong> Alex", html)
 
     def test_build_note_description_format(self):
         from app.services.inbound_email import build_note_description
@@ -217,9 +234,80 @@ class TestProcessInboundNotes(unittest.TestCase):
         self.assertIn("──────── Email ────────", text)
         self.assertIn("From: Alex <alex@mackkirk.com>", text)
         self.assertIn("Subject: Re: MK-00497", text)
-        self.assertIn("───────────────────────", text)
-        self.assertIn("Original message", text)
+        self.assertIn("Hello", text)
+        self.assertIn("World", text)
         self.assertNotIn("\n\n\n\n", text)
+
+    def test_thread_separators_keep_signature(self):
+        from app.services.inbound_email import build_note_description
+
+        body = """Hey fernando how are ou ?
+
+
+Raphael Coelho
+
+SOFTWARE ENGINEER & DESIGNER
+
+E raphael@mackkirk.com
+
+O 604-258-7121 F 604-258-7122
+
+Emergency Leak Response 778-389-6458
+
+9552 198 St. Langley, BC V1M 3C8
+
+www.mackkirk.com
+
+From: Raphael Coelho <raphael@mackkirk.com>
+Sent: August 14, 2026 9:21 AM
+To: Fernando Rabelo Fernandes Junior <fernando@mackkirk.com>
+Cc: Notes <notes@mackkirk.com>
+Subject: Fw: Gas Cards
+
+Thank You
+
+Raphael Coelho
+
+SOFTWARE ENGINEER & DESIGNER
+
+E raphael@mackkirk.com
+
+www.mackkirk.com
+
+From: Krystle Gaudreau <krystle@mackkirk.com>
+Sent: August 11, 2026 1:17 PM
+To: Raphael Coelho <raphael@mackkirk.com>
+Subject: Re: Gas Cards
+
+CARD #
+Employee Name
+PIN #
+
+Krystle Gaudreau
+
+HEALTH & SAFETY COORDINATOR
+
+E krystle@mackkirk.com M 604-809-7492
+
+www.mackkirk.com
+"""
+        text = build_note_description(
+            from_email="raphael@mackkirk.com",
+            from_name="raphael@mackkirk.com",
+            subject="Fw: Gas Cards - MK-00364",
+            body=body,
+        )
+        self.assertIn("From: raphael@mackkirk.com\n", text)
+        self.assertIn("Hey fernando how are ou ?", text)
+        self.assertIn("SOFTWARE ENGINEER & DESIGNER", text)
+        self.assertIn("www.mackkirk.com", text)
+        self.assertIn("Thank You", text)
+        self.assertIn("HEALTH & SAFETY COORDINATOR", text)
+        self.assertIn("From: Raphael Coelho <raphael@mackkirk.com>", text)
+        self.assertIn("From: Krystle Gaudreau <krystle@mackkirk.com>", text)
+        self.assertIn("Sent: August 14, 2026 9:21 AM", text)
+        self.assertGreaterEqual(text.count("────────────────"), 4)
+        self.assertNotIn("\n\n\n", text)
 
 
 class TestFindProjectsByMkCodeFilter(unittest.TestCase):

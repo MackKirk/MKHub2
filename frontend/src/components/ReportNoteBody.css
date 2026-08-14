@@ -1,0 +1,49 @@
+/* Scoped styles for inbound-email HTML inside Notes (option 3). */
+.mkhub-inbound-email-root {
+  max-width: 100%;
+  overflow-x: auto;
+  color: #1f2937;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.mkhub-inbound-email-root--compact {
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.mkhub-inbound-email-root .mkhub-inbound-email-meta {
+  margin-bottom: 0.5rem;
+  color: #374151;
+}
+
+.mkhub-inbound-email-root .mkhub-inbound-email-meta strong {
+  font-weight: 600;
+  color: #111827;
+}
+
+.mkhub-inbound-email-root .mkhub-inbound-email-body {
+  margin-top: 0.5rem;
+}
+
+.mkhub-inbound-email-root img {
+  max-width: 100%;
+  height: auto;
+}
+
+.mkhub-inbound-email-root table {
+  max-width: 100%;
+  border-collapse: collapse;
+}
+
+.mkhub-inbound-email-root a {
+  color: #b91c1c;
+  text-decoration: underline;
+}
+
+.mkhub-inbound-email-root hr {
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+  margin: 0.75rem 0;
+}

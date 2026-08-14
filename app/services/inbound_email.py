@@ -147,6 +147,12 @@ def extract_mk_code(*texts: str) -> Optional[str]:
     return None
 
 
+_SEP = "────────────────"
+_OUTLOOK_THREAD_START = re.compile(
+    r"(?im)^(?=From:\s+.+\n(?:Sent|Date):\s+)"
+)
+
+
 def html_to_text(html: str) -> str:
     if not html:
         return ""
@@ -156,51 +162,99 @@ def html_to_text(html: str) -> str:
     text = re.sub(r"(?i)</div\s*>", "\n", text)
     text = re.sub(r"(?i)</li\s*>", "\n", text)
     text = re.sub(r"(?i)</tr\s*>", "\n", text)
-    text = re.sub(r"(?i)<hr\s*/?>", "\n────────────────\n", text)
+    text = re.sub(r"(?i)<hr\s*/?>", f"\n{_SEP}\n", text)
     text = re.sub(r"(?s)<[^>]+>", "", text)
     text = html_lib.unescape(text)
     text = text.replace("\u00a0", " ").replace("\u200b", "")
-    return normalize_email_body(text)
+    return format_email_thread_body(text)
 
 
-def normalize_email_body(body: str) -> str:
-    """Clean Outlook/forward noise so Notes (plain text) stay readable."""
+def _collapse_blank_lines(text: str) -> str:
+    text = "\n".join(re.sub(r"[ \t]+", " ", line).rstrip() for line in text.split("\n"))
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def split_outlook_thread(body: str) -> list[str]:
+    """Split on Outlook reply/forward headers (From + Sent/Date)."""
+    if not body:
+        return []
+    starts = [m.start() for m in _OUTLOOK_THREAD_START.finditer(body)]
+    if not starts:
+        return [body.strip()] if body.strip() else []
+    parts: list[str] = []
+    if starts[0] > 0:
+        preamble = body[: starts[0]].strip()
+        if preamble:
+            parts.append(preamble)
+    for i, start in enumerate(starts):
+        end = starts[i + 1] if i + 1 < len(starts) else len(body)
+        chunk = body[start:end].strip()
+        if chunk:
+            parts.append(chunk)
+    return parts
+
+
+def _format_outlook_header_block(segment: str) -> str:
+    """If segment starts with From/Sent/…, render a compact header + body."""
+    lines = segment.split("\n")
+    header_keys = ("from:", "sent:", "date:", "to:", "cc:", "subject:")
+    header_lines: list[str] = []
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        low = raw.strip().lower()
+        if any(low.startswith(k) for k in header_keys):
+            header_lines.append(raw.strip())
+            i += 1
+            continue
+        if not raw.strip() and header_lines:
+            i += 1
+            break
+        break
+    body = _collapse_blank_lines("\n".join(lines[i:]))
+    if not header_lines:
+        return _collapse_blank_lines(segment)
+    block = [_SEP, *header_lines, _SEP]
+    if body:
+        block.extend(["", body])
+    return "\n".join(block)
+
+
+def format_email_thread_body(body: str) -> str:
+    """Clean spacing and separate each Outlook message in the thread. Keeps signatures."""
     if not body:
         return ""
     text = body.replace("\r\n", "\n").replace("\r", "\n")
     text = text.replace("\u00a0", " ").replace("\u200b", "")
-    # Normalize common forward / reply separators
-    text = re.sub(
-        r"(?im)^[-\s]*Forwarded message[-\s]*$",
-        "\n────────────────\nForwarded message\n────────────────\n",
-        text,
-    )
-    text = re.sub(
-        r"(?im)^-+\s*Original Message\s*-+$",
-        "\n────────────────\nOriginal message\n────────────────\n",
-        text,
-    )
-    text = re.sub(
-        r"(?im)^_{5,}$",
-        "────────────────",
-        text,
-    )
-    text = re.sub(
-        r"(?im)^-{5,}$",
-        "────────────────",
-        text,
-    )
-    # Collapse spaces on each line, then excess blank lines
-    text = "\n".join(re.sub(r"[ \t]+", " ", line).rstrip() for line in text.split("\n"))
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+    text = re.sub(r"(?im)^[-\s]*Forwarded message[-\s]*$", "", text)
+    text = re.sub(r"(?im)^-+\s*Original Message\s*-+$", "", text)
+    text = _collapse_blank_lines(text)
+
+    parts = split_outlook_thread(text)
+    if not parts:
+        return ""
+    if len(parts) == 1 and not _OUTLOOK_THREAD_START.search(parts[0]):
+        return _collapse_blank_lines(parts[0])
+
+    formatted: list[str] = []
+    for part in parts:
+        if re.match(r"(?is)^From:\s+.+\n(?:Sent|Date):\s+", part):
+            formatted.append(_format_outlook_header_block(part))
+        else:
+            formatted.append(_collapse_blank_lines(part))
+    return "\n\n".join(p for p in formatted if p).strip()
+
+
+def normalize_email_body(body: str) -> str:
+    """Clean Outlook/forward noise so Notes (plain text) stay readable."""
+    return format_email_thread_body(body)
 
 
 def resolve_body(text_body: str, html_body: str) -> str:
     plain = (text_body or "").strip()
     html = (html_body or "").strip()
     if plain:
-        # Outlook sometimes dumps a plain body full of blank lines; prefer HTML then
         if html and plain.count("\n\n\n") >= 2:
             converted = html_to_text(html)
             if converted:
@@ -209,12 +263,20 @@ def resolve_body(text_body: str, html_body: str) -> str:
     return html_to_text(html)
 
 
+def _format_from_line(from_email: str, from_name: str) -> str:
+    name = (from_name or "").strip()
+    email = (from_email or "").strip()
+    if name and email and name.lower() != email.lower():
+        return f"From: {name} <{email}>"
+    if email:
+        return f"From: {email}"
+    return f"From: {name or '(unknown)'}"
+
+
 def build_note_description(*, from_email: str, from_name: str, subject: str, body: str) -> str:
-    who = from_name.strip() if from_name.strip() else from_email
-    from_line = f"From: {who} <{from_email}>" if from_email else f"From: {who}"
+    from_line = _format_from_line(from_email, from_name)
     subject_line = f"Subject: {subject}" if subject else "Subject: (none)"
     clean_body = normalize_email_body(body) if body else "(empty message body)"
-    # Plain-text card; Notes UI uses whitespace-pre-wrap
     return "\n".join(
         [
             "──────── Email ────────",
@@ -224,6 +286,62 @@ def build_note_description(*, from_email: str, from_name: str, subject: str, bod
             "",
             clean_body,
         ]
+    )
+
+
+def sanitize_inbound_html_coarse(html: str) -> str:
+    """Best-effort server-side strip before storage. Frontend DOMPurify is the real gate."""
+    if not html:
+        return ""
+    text = html
+    text = re.sub(r"(?is)<(script|style|iframe|object|embed|form|meta|link|base)\b[^>]*>.*?</\1>", "", text)
+    text = re.sub(r"(?is)<(script|style|iframe|object|embed|form|meta|link|base)\b[^>]*/?>", "", text)
+    text = re.sub(r"(?i)\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", "", text)
+    text = re.sub(r"(?i)javascript:", "", text)
+    text = re.sub(r"(?i)data:text/html", "data:blocked", text)
+    return text.strip()
+
+
+def _plain_to_simple_html(plain: str) -> str:
+    lines = (plain or "").split("\n")
+    out: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and set(stripped) <= {"─", "-", "—", "–"} and len(stripped) >= 3:
+            out.append("<hr>")
+            continue
+        out.append(f"{html_lib.escape(line)}<br>")
+    return "".join(out)
+
+
+def build_note_html(
+    *,
+    from_email: str,
+    from_name: str,
+    subject: str,
+    plain_body: str,
+    html_body: str,
+) -> str:
+    """HTML body for inbound notes only. Prefer original email HTML; else plain→simple HTML."""
+    from_line = _format_from_line(from_email, from_name)
+    from_disp = html_lib.escape(
+        from_line[6:].strip() if from_line.startswith("From: ") else from_line
+    )
+    subj_disp = html_lib.escape((subject or "").strip() or "(none)")
+    raw_html = (html_body or "").strip()
+    if raw_html and "<" in raw_html:
+        inner = sanitize_inbound_html_coarse(raw_html)
+    else:
+        inner = _plain_to_simple_html(normalize_email_body(plain_body) if plain_body else "(empty message body)")
+    return (
+        '<div class="mkhub-inbound-email">'
+        '<div class="mkhub-inbound-email-meta">'
+        f"<div><strong>From:</strong> {from_disp}</div>"
+        f"<div><strong>Subject:</strong> {subj_disp}</div>"
+        "</div>"
+        "<hr>"
+        f'<div class="mkhub-inbound-email-body">{inner}</div>'
+        "</div>"
     )
 
 
@@ -484,6 +602,13 @@ def _process_project_notes(db: Session, parsed: ParsedInboundEmail) -> InboundPr
         subject=subject,
         body=body,
     )
+    body_html = build_note_html(
+        from_email=from_email,
+        from_name=parsed.from_name or "",
+        subject=subject,
+        plain_body=body,
+        html_body=parsed.html_body or "",
+    )
 
     images: dict[str, Any] = {
         "inbound_email": {
@@ -491,6 +616,7 @@ def _process_project_notes(db: Session, parsed: ParsedInboundEmail) -> InboundPr
             "from_email": from_email,
             "from_name": parsed.from_name or None,
             "subject": subject,
+            "body_html": body_html,
         },
     }
     if attachment_meta:

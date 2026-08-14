@@ -22,6 +22,7 @@ import {
 } from '@/components/ui';
 
 import { ReportStatusChangeBadges } from '@/components/ReportStatusChangeBadges';
+import { ReportNoteBody } from '@/components/ReportNoteBody';
 import {
   formatReportListSubtitle,
   reportHasStatusBadges,
@@ -41,6 +42,11 @@ type ProjectReport = {
       from_id?: string | null;
       to_id?: string | null;
     };
+    inbound_email?: {
+      body_html?: string | null;
+      from_email?: string | null;
+      subject?: string | null;
+    } | null;
   };
   created_at?: string;
   created_by?: string;
@@ -449,9 +455,7 @@ function ReportDetailPanel({
           <EstimateChangesBlock selectedReport={selectedReport} />
         )}
 
-        <div className={uiCx(uiTypography.body, 'whitespace-pre-wrap leading-relaxed')}>
-          {selectedReport.description || 'No description provided.'}
-        </div>
+        <ReportNoteBody report={selectedReport} />
 
         {attachments.length > 0 && (
           <div className={uiCx('mt-4 border-t pt-4', uiBorders.subtle)}>
