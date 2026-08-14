@@ -19,15 +19,23 @@ services:
       - key: ALLOWED_ORIGINS
         value: "https://mkhub2.onrender.com"
       - key: MAIL_FROM
-        value: "noreply@mackkirk.com"
+        value: "no-reply@mackkirk.com"
       - key: SMTP_HOST
-        value: "smtp.sendgrid.net"
+        value: "smtp.office365.com"
       - key: SMTP_PORT
         value: "587"
       - key: SMTP_USERNAME
-        value: "apikey"
+        value: "no-reply@mackkirk.com"
       - key: SMTP_PASSWORD
         sync: false
+      - key: SMTP_TLS
+        value: "true"
+      - key: INBOUND_EMAIL_WEBHOOK_SECRET
+        sync: false
+      - key: INBOUND_EMAIL_NOTES_ADDRESSES
+        value: "notes@mackkirk.com"
+      - key: INBOUND_EMAIL_ALLOWED_DOMAINS
+        value: "mackkirk.com,mackkirkroofing.com"
       - key: ADMIN_USERNAME
         value: "admin"
       - key: ADMIN_EMAIL

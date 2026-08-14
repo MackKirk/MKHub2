@@ -67,6 +67,7 @@ from .routes.onboarding import me_router as onboarding_me_router, router as onbo
 from .routes.offboarding import router as offboarding_router
 from .routes.print_shop import router as print_shop_router
 from .routes.print_shop_supplies import router as print_shop_supplies_router
+from .routes.inbound_email import router as inbound_email_router
 
 
 def create_app() -> FastAPI:
@@ -279,6 +280,7 @@ def create_app() -> FastAPI:
     app.include_router(offboarding_router)
     app.include_router(print_shop_router)
     app.include_router(print_shop_supplies_router)
+    app.include_router(inbound_email_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)
