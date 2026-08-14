@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import type { DocumentTypePreset } from '@/components/ChooseDocumentTypeModal';
 import { getDocumentTypeCategories } from '@/lib/documentTypeGrouping';
 import type { DocElement, PageMargins } from '@/types/documentCreator';
+import { docElementRotationDeg, docElementRotateStyle } from '@/utils/documentElementGeometry';
 import { DocumentTypePageLayoutModal } from '@/components/DocumentTypePageLayoutModal';
 import OverlayPortal from '@/components/OverlayPortal';
 
@@ -69,6 +70,7 @@ function PageThumbnailSmall({
                 top: `${y * 100}%`,
                 width: `${w * 100}%`,
                 height: `${h * 100}%`,
+                ...docElementRotateStyle(docElementRotationDeg(el.rotation)),
               }}
             >
               {el.type === 'text' ? (

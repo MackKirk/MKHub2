@@ -42,11 +42,18 @@ const FIT_MODE_OPTIONS: { id: ImageFitMode; label: string }[] = [
   { id: 'cover', label: 'Fill area' },
   { id: 'contain', label: 'Fit image' },
   { id: 'background', label: 'Fit with background' },
+  { id: 'natural', label: 'Original proportions' },
 ];
 
 type LibraryFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string };
 
 const FILE_INPUT_ACCEPT = 'image/*,.heic,.heif,image/heic,image/heif';
+
+/** ClientFile.category for Project gallery Original vs Edited (Edited must include "derived"). */
+const GALLERY_ORIGINAL_CATEGORY = 'document-creator';
+const GALLERY_EDITED_CATEGORY = 'document-creator-derived';
+
+type GallerySessionSourceKind = 'new-file' | 'gallery' | 'document';
 
 /** PNG/GIF/WebP may carry an alpha channel (used when preserveTransparency is on). */
 function fileContentMayHaveAlpha(fileOrType: { type?: string; name?: string } | string): boolean {
@@ -141,6 +148,7 @@ export type ImagePickerConfirmMeta = {
   intrinsicHeight?: number;
   orientation?: ProposalSectionImageOrientation;
   mimeType?: string;
+  fitMode?: ImageFitMode;
 };
 
 export default function ImagePicker({
@@ -238,6 +246,11 @@ export default function ImagePicker({
   const dragging = useRef<{x:number, y:number, tx:number, ty:number}|null>(null);
   const [isPanning] = useState(true);
   const blobUrlRef = useRef<string | null>(null);
+  /** Unedited file added this picker session — not replaced by editor save or confirm crop. */
+  const sessionSourceKindRef = useRef<GallerySessionSourceKind | null>(null);
+  const sessionSourceFileRef = useRef<File | null>(null);
+  const sessionSourceFileObjectIdRef = useRef<string | undefined>(undefined);
+  const originalAttachedThisSessionRef = useRef(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const dropDepthRef = useRef(0);
@@ -256,6 +269,10 @@ export default function ImagePicker({
       autoOpenedEditorRef.current = false;
       setShowImageEditor(false);
       setEditorMatchSize(null);
+      sessionSourceKindRef.current = null;
+      sessionSourceFileRef.current = null;
+      sessionSourceFileObjectIdRef.current = undefined;
+      originalAttachedThisSessionRef.current = false;
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
@@ -409,6 +426,59 @@ export default function ImagePicker({
     finally { setIsLoadingLibrary(false); }
   };
 
+  const rememberNewSessionSource = (file: File) => {
+    sessionSourceKindRef.current = 'new-file';
+    sessionSourceFileRef.current = file;
+    sessionSourceFileObjectIdRef.current = undefined;
+    originalAttachedThisSessionRef.current = false;
+  };
+
+  const uploadGalleryBlob = async (blob: Blob, originalName: string, contentType: string): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', blob, originalName);
+    formData.append('original_name', originalName);
+    formData.append('content_type', contentType || 'application/octet-stream');
+    formData.append('project_id', projectId || '');
+    formData.append('client_id', '');
+    formData.append('employee_id', '');
+    formData.append('category_id', 'document-creator');
+    const conf: { id?: string } = await api('POST', '/files/upload-proxy', formData);
+    if (!conf?.id) throw new Error('Upload did not return a file id');
+    return conf.id;
+  };
+
+  const attachToProjectGallery = async (fileObjectId: string, originalName: string, category: string) => {
+    if (!projectId) return;
+    const params = new URLSearchParams({
+      file_object_id: fileObjectId,
+      category,
+      original_name: originalName || 'image',
+    });
+    await api('POST', `/projects/${encodeURIComponent(projectId)}/files?${params.toString()}`);
+    try {
+      await loadLibrary(false);
+    } catch (_e) { /* ignore */ }
+  };
+
+  const persistSessionOriginalToGallery = async () => {
+    if (!projectId) return;
+    if (sessionSourceKindRef.current !== 'new-file') return;
+    if (originalAttachedThisSessionRef.current) return;
+    const file = sessionSourceFileRef.current;
+    if (!file) return;
+    try {
+      const name = file.name || 'upload';
+      const contentType = file.type || 'application/octet-stream';
+      const foId = await uploadGalleryBlob(file, name, contentType);
+      sessionSourceFileObjectIdRef.current = foId;
+      await attachToProjectGallery(foId, name, GALLERY_ORIGINAL_CATEGORY);
+      originalAttachedThisSessionRef.current = true;
+    } catch (err) {
+      console.error('Failed to save original to gallery:', err);
+      toast.error('Could not save original image to gallery');
+    }
+  };
+
   useEffect(() => {
     if (tab === 'library' && isOpen && hasLibrary && !libraryLoaded && !isLoadingLibrary) {
       loadLibrary(true);
@@ -420,7 +490,7 @@ export default function ImagePicker({
     () => Math.round(landscapePreviewWidth * (targetHeight / targetWidth)),
     [targetWidth, targetHeight],
   );
-  const { cw, ch } = useMemo(() => {
+  const slotPreview = useMemo(() => {
     const aspect = effectiveWidth / effectiveHeight;
     if (allowOrientationToggle && orientation === 'portrait') {
       const h = Math.round(
@@ -445,6 +515,25 @@ export default function ImagePicker({
     if (!img) return { w: 1, h: 1 };
     return rotatedBoxSize(img.naturalWidth, img.naturalHeight, rotation);
   }, [img, rotation]);
+
+  const { cw, ch } = useMemo(() => {
+    if (enableFitModes && fitMode === 'natural' && img) {
+      const maxLong = landscapePreviewWidth;
+      const aspect = sourceBox.w / Math.max(1, sourceBox.h);
+      if (aspect >= 1) {
+        return { cw: maxLong, ch: Math.max(1, Math.round(maxLong / aspect)) };
+      }
+      return { cw: Math.max(1, Math.round(maxLong * aspect)), ch: maxLong };
+    }
+    return slotPreview;
+  }, [enableFitModes, fitMode, img, sourceBox, slotPreview]);
+
+  const activeExportDimensions = useMemo(() => {
+    if (enableFitModes && fitMode === 'natural') {
+      return computeExportDimensions(cw, ch, exportScale, maxExportLongSide);
+    }
+    return exportDimensions;
+  }, [enableFitModes, fitMode, cw, ch, exportScale, maxExportLongSide, exportDimensions]);
 
   const coverScale = useMemo(()=>{
     if(!img) return 1;
@@ -493,14 +582,14 @@ export default function ImagePicker({
   );
 
   const showAspectHint = useMemo(() => {
-    if (!enableFitModes || !img) return false;
+    if (!enableFitModes || !img || fitMode === 'natural') return false;
     return aspectMismatchSignificant(
       sourceBox.w,
       sourceBox.h,
       effectiveWidth,
       effectiveHeight,
     );
-  }, [enableFitModes, img, sourceBox, effectiveWidth, effectiveHeight]);
+  }, [enableFitModes, img, fitMode, sourceBox, effectiveWidth, effectiveHeight]);
 
   /** Export pixel size for current pan/zoom (tight crop — no letterbox margins in the file). Legacy path only. */
   const tightExportDimensions = useMemo(() => {
@@ -561,6 +650,7 @@ export default function ImagePicker({
 
 
   const loadFromFile = async (file: File)=>{
+    rememberNewSessionSource(file);
     setSourceMayHaveAlpha(fileContentMayHaveAlpha(file));
     const lower = (file.name||'').toLowerCase();
     const isHeic = lower.endsWith('.heic') || lower.endsWith('.heif') || String(file.type||'').includes('heic') || String(file.type||'').includes('heif');
@@ -587,6 +677,7 @@ export default function ImagePicker({
           
           const conf:any = await api('POST', '/files/upload-proxy', formData);
           const fileObjectId = conf.id;
+          sessionSourceFileObjectIdRef.current = fileObjectId;
           
           // Load from uploaded file
           const image = new Image();
@@ -661,6 +752,7 @@ export default function ImagePicker({
           
           api('POST', '/files/upload-proxy', formData).then((conf:any)=>{
             const fileObjectId = conf.id;
+            sessionSourceFileObjectIdRef.current = fileObjectId;
             const img2 = new Image();
             img2.onload = ()=>{
               setImg(img2); 
@@ -709,6 +801,7 @@ export default function ImagePicker({
       setProgressMessage(isHeic ? 'Converting HEIC to JPEG…' : 'Saving file…');
       const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type: contentType });
       const fileObjectId = conf.id;
+      sessionSourceFileObjectIdRef.current = fileObjectId;
       // Attach to client library
       try{
         await api('POST', `/clients/${encodeURIComponent(String(clientId))}/files?file_object_id=${encodeURIComponent(fileObjectId)}&category=${encodeURIComponent('proposal-upload')}&original_name=${encodeURIComponent(file.name||'upload')}`);
@@ -759,7 +852,15 @@ export default function ImagePicker({
     }
   };
 
-  const loadFromFileObject = async (fileObjectId:string, contentType?: string)=>{
+  const loadFromFileObject = async (
+    fileObjectId:string,
+    contentType?: string,
+    origin: 'gallery' | 'document' = 'document',
+  )=>{
+    sessionSourceKindRef.current = origin;
+    sessionSourceFileRef.current = null;
+    sessionSourceFileObjectIdRef.current = fileObjectId;
+    originalAttachedThisSessionRef.current = true;
     if (contentType) {
       setSourceMayHaveAlpha(fileContentMayHaveAlpha(contentType));
     }
@@ -902,13 +1003,12 @@ export default function ImagePicker({
     
     setIsConfirming(true);
     try {
+      await persistSessionOriginalToGallery();
       const canvas = document.createElement('canvas');
-      const { outW, outH } = computeExportDimensions(
-        effectiveWidth,
-        effectiveHeight,
-        exportScale,
-        maxExportLongSide,
-      );
+      const isNatural = enableFitModes && fitMode === 'natural';
+      const { outW, outH } = isNatural
+        ? computeExportDimensions(cw, ch, exportScale, maxExportLongSide)
+        : computeExportDimensions(effectiveWidth, effectiveHeight, exportScale, maxExportLongSide);
       canvas.width = outW;
       canvas.height = outH;
       const ctx = canvas.getContext('2d')!;
@@ -929,7 +1029,14 @@ export default function ImagePicker({
           panNormY: ty,
         });
 
-        if (fitMode === 'background') {
+        if (fitMode === 'natural') {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, outW, outH);
+          ctx.clip();
+          drawImageRotatedInRect(ctx, img, img.naturalWidth, img.naturalHeight, fg, rotation);
+          ctx.restore();
+        } else if (fitMode === 'background') {
           const bg = layoutCoverBackground({
             frameW: outW,
             frameH: outH,
@@ -1019,6 +1126,7 @@ export default function ImagePicker({
                 intrinsicWidth: outW,
                 intrinsicHeight: outH,
                 mimeType: exportMime,
+                ...(enableFitModes ? { fitMode } : {}),
                 ...(allowOrientationToggle ? { orientation } : {}),
               });
               resolve();
@@ -1179,10 +1287,14 @@ export default function ImagePicker({
             } catch (attachError) {
               console.error('Failed to attach edited image to client library:', attachError);
             }
-          } else if (projectId) {
+          }
+          if (projectId) {
             try {
-              loadLibrary(true);
-            } catch (_e) {}
+              await attachToProjectGallery(fileObjectId, uniqueName, GALLERY_EDITED_CATEGORY);
+            } catch (attachError) {
+              console.error('Failed to attach edited image to project gallery:', attachError);
+              toast.error('Could not save edited image to gallery');
+            }
           }
 
           setOriginalFileObjectId(fileObjectId);
@@ -1415,7 +1527,13 @@ export default function ImagePicker({
                           thumbnail size icons in the toolbar to adjust preview size.
                         </p>
                         {isLoadingLibrary ? (
-                          <p className="text-xs text-slate-500">Loading gallery…</p>
+                          <p className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+                            <span
+                              className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-slate-200 border-t-brand-red"
+                              aria-hidden
+                            />
+                            Loading gallery…
+                          </p>
                         ) : null}
                         {!galleryDialogOpen ? (
                           <button
@@ -1663,6 +1781,17 @@ export default function ImagePicker({
                 </div>
                 <p className={`${editorCaptionClass} mt-2 text-center text-slate-500`} style={{ width: cw + 6 }}>
                   {enableFitModes ? (
+                    fitMode === 'natural' ? (
+                      <>
+                        Image: {sourceBox.w} × {sourceBox.h} px
+                        {describeAspectRatio(sourceBox.w, sourceBox.h)
+                          ? ` · ${describeAspectRatio(sourceBox.w, sourceBox.h)}`
+                          : ''}
+                        {' · '}
+                        {preserveTransparency && sourceMayHaveAlpha ? 'PNG' : 'JPEG'}{' '}
+                        {activeExportDimensions.outW} × {activeExportDimensions.outH}px
+                      </>
+                    ) : (
                     <>
                       Target: {effectiveWidth} × {effectiveHeight} px
                       {targetAspectLabel ? ` · ${targetAspectLabel}` : ''}
@@ -1670,6 +1799,7 @@ export default function ImagePicker({
                       {preserveTransparency && sourceMayHaveAlpha ? 'PNG' : 'JPEG'}{' '}
                       {exportDimensions.outW} × {exportDimensions.outH}px
                     </>
+                    )
                   ) : (
                     <>
                       Slot target: {effectiveWidth} × {effectiveHeight}px ·{' '}
@@ -1811,7 +1941,7 @@ export default function ImagePicker({
           onReload={() => loadLibrary(true)}
           onSelect={(fileObjectId) => {
             const lib = [...filesOriginals, ...filesDerived].find((f) => f.file_object_id === fileObjectId);
-            void loadFromFileObject(fileObjectId, lib?.content_type);
+            void loadFromFileObject(fileObjectId, lib?.content_type, 'gallery');
             setGalleryDialogOpen(false);
           }}
         />

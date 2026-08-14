@@ -46,6 +46,8 @@ export type DocElement = {
   locked?: boolean;
   /** When true, element cannot be moved or resized but can still be edited (text, image). Use to avoid moving by accident. */
   lockPosition?: boolean;
+  /** Degrees, clockwise, around the element's box center. */
+  rotation?: number;
 };
 
 /** Content area margins (percent). Elements cannot be placed outside. */

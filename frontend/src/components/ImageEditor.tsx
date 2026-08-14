@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api, withFileAccessToken } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
 import { uiCx, uiModalLayer } from '@/components/ui/tokens';
@@ -85,6 +85,24 @@ function ShapeFillPatternIcon({
 const toolBtnBase = `${editorTransitionInteractive} flex items-center justify-center rounded-lg border px-2 py-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35`;
 const toolBtnIdle = `${toolBtnBase} border-transparent bg-slate-100/95 text-slate-800 hover:bg-slate-200/90 active:scale-[0.98]`;
 const toolBtnActive = `${toolBtnBase} border-brand-red/25 bg-brand-red text-white shadow-sm hover:bg-red-700 active:scale-[0.98]`;
+
+/** UI zoom is relative to the scale that fits the whole image in the canvas. */
+const EDITOR_ZOOM_MIN = 1;
+const EDITOR_ZOOM_MAX = 6;
+
+function computeEditorFitScale(
+  canvasW: number,
+  canvasH: number,
+  imageW: number,
+  imageH: number,
+  angleDeg: number,
+): number {
+  if (!canvasW || !canvasH || !imageW || !imageH) return 1;
+  const r = (((Math.round(angleDeg / 90) * 90) % 360) + 360) % 360;
+  const boxW = r === 90 || r === 270 ? imageH : imageW;
+  const boxH = r === 90 || r === 270 ? imageW : imageH;
+  return Math.min(canvasW / boxW, canvasH / boxH);
+}
 
 // Custom slider styles and icon rendering improvements
 const sliderStyle = `
@@ -225,6 +243,8 @@ type AnnotationItem = {
   fillColor?: string;
   fillOpacity?: number;
   fillPattern?: ShapeFillPattern;
+  /** Degrees, around the item's axis-aligned bounding-box center. */
+  rotation?: number;
 };
 
 type AnnotationBounds = { x: number; y: number; w: number; h: number };
@@ -263,6 +283,141 @@ function getResizeHandlePoints(bb: AnnotationBounds): { x: number; y: number; na
     { x: bb.x, y: bb.y + bb.h, name: 'sw' },
     { x: bb.x, y: bb.y + bb.h / 2, name: 'w' },
   ];
+}
+
+const ROTATE_HANDLE_OFFSET = 18;
+const ROTATE_HANDLE_RADIUS = 5;
+
+function annotationRotationDeg(it: AnnotationItem): number {
+  const r = it.rotation;
+  return typeof r === 'number' && Number.isFinite(r) ? r : 0;
+}
+
+function rotatePointAround(
+  x: number,
+  y: number,
+  cx: number,
+  cy: number,
+  deg: number,
+): { x: number; y: number } {
+  if (!deg) return { x, y };
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = x - cx;
+  const dy = y - cy;
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+}
+
+function boundsCenter(bb: AnnotationBounds): { cx: number; cy: number } {
+  return { cx: bb.x + bb.w / 2, cy: bb.y + bb.h / 2 };
+}
+
+function worldToLocalPoint(
+  x: number,
+  y: number,
+  bb: AnnotationBounds,
+  rotationDeg: number,
+): { x: number; y: number } {
+  const { cx, cy } = boundsCenter(bb);
+  return rotatePointAround(x, y, cx, cy, -rotationDeg);
+}
+
+function applyAnnotationRotation(
+  ctx: CanvasRenderingContext2D,
+  bb: AnnotationBounds,
+  rotationDeg: number,
+) {
+  if (!rotationDeg) return;
+  const { cx, cy } = boundsCenter(bb);
+  ctx.translate(cx, cy);
+  ctx.rotate((rotationDeg * Math.PI) / 180);
+  ctx.translate(-cx, -cy);
+}
+
+function getRotationHandleLocal(bb: AnnotationBounds): { x: number; y: number } {
+  return { x: bb.x + bb.w / 2, y: bb.y - ROTATE_HANDLE_OFFSET };
+}
+
+function getRotatedAabb(bb: AnnotationBounds, rotationDeg: number): AnnotationBounds {
+  if (!rotationDeg) return bb;
+  const { cx, cy } = boundsCenter(bb);
+  const corners = [
+    rotatePointAround(bb.x, bb.y, cx, cy, rotationDeg),
+    rotatePointAround(bb.x + bb.w, bb.y, cx, cy, rotationDeg),
+    rotatePointAround(bb.x + bb.w, bb.y + bb.h, cx, cy, rotationDeg),
+    rotatePointAround(bb.x, bb.y + bb.h, cx, cy, rotationDeg),
+  ];
+  let minX = corners[0].x;
+  let minY = corners[0].y;
+  let maxX = corners[0].x;
+  let maxY = corners[0].y;
+  for (const p of corners) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+function oppositeHandleAnchor(bb: AnnotationBounds, handle: string): { x: number; y: number } {
+  const { cx, cy } = boundsCenter(bb);
+  switch (handle) {
+    case 'e':
+      return { x: bb.x, y: cy };
+    case 'w':
+      return { x: bb.x + bb.w, y: cy };
+    case 'n':
+      return { x: cx, y: bb.y + bb.h };
+    case 's':
+      return { x: cx, y: bb.y };
+    case 'ne':
+      return { x: bb.x, y: bb.y + bb.h };
+    case 'nw':
+      return { x: bb.x + bb.w, y: bb.y + bb.h };
+    case 'se':
+      return { x: bb.x, y: bb.y };
+    case 'sw':
+      return { x: bb.x + bb.w, y: bb.y };
+    default:
+      return { x: cx, y: cy };
+  }
+}
+
+function shiftToKeepHandleAnchor(
+  oldBb: AnnotationBounds,
+  newBb: AnnotationBounds,
+  handle: string,
+  rotationDeg: number,
+): { x: number; y: number } {
+  if (!rotationDeg) return { x: 0, y: 0 };
+  const oldA = oppositeHandleAnchor(oldBb, handle);
+  const newA = oppositeHandleAnchor(newBb, handle);
+  const oldC = boundsCenter(oldBb);
+  const newC = boundsCenter(newBb);
+  const oldW = rotatePointAround(oldA.x, oldA.y, oldC.cx, oldC.cy, rotationDeg);
+  const newW = rotatePointAround(newA.x, newA.y, newC.cx, newC.cy, rotationDeg);
+  return { x: oldW.x - newW.x, y: oldW.y - newW.y };
+}
+
+function resizeCursorForHandle(handle: string, rotationDeg: number): string {
+  if (handle === 'rotate') return 'grab';
+  const order = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+  const cursors = [
+    'nwse-resize',
+    'ns-resize',
+    'nesw-resize',
+    'ew-resize',
+    'nwse-resize',
+    'ns-resize',
+    'nesw-resize',
+    'ew-resize',
+  ];
+  const idx = order.indexOf(handle);
+  if (idx < 0) return 'default';
+  const steps = Math.round(((((rotationDeg % 360) + 360) % 360) / 45)) % 8;
+  return cursors[(idx + steps) % 8];
 }
 
 /** Arrow shaft stops at the head base so the stroke does not protrude past the tip. */
@@ -460,6 +615,13 @@ export default function ImageEditor({
   const polygonPreviewRef = useRef<{ x: number; y: number } | null>(null);
   const movingRef = useRef<{ item: AnnotationItem; startX: number; startY: number } | null>(null);
   const resizingRef = useRef<{ item: AnnotationItem; handle: string; startX: number; startY: number; startW?: number; startH?: number; startR?: number; startRx?: number; startRy?: number; startX2?: number; startY2?: number } | null>(null);
+  const rotatingRef = useRef<{
+    item: AnnotationItem;
+    cx: number;
+    cy: number;
+    startRotation: number;
+    startPointerAngle: number;
+  } | null>(null);
   const marqueeRef = useRef<{ x: number; y: number; x2: number; y2: number } | null>(null);
   const textEditingRef = useRef<string | null>(null);
   const textCursorPositionRef = useRef<number>(0); // Current cursor/caret position
@@ -470,18 +632,21 @@ export default function ImageEditor({
   const offsetXRef = useRef<number>(0);
   const offsetYRef = useRef<number>(0);
   const scaleRef = useRef<number>(1);
+  const prevAngleRef = useRef(0);
   const blurredBgCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const blurredBgKeyRef = useRef<string>('');
   const itemsRef = useRef<AnnotationItem[]>([]);
   const selectedIdsRef = useRef<string[]>([]);
   const drawOverlayRef = useRef<() => void>(() => {});
   const lastCursorPosRef = useRef<{ x: number; y: number } | null>(null);
+  const overlayCursorRef = useRef('grab');
 
   const isGestureActive = () =>
     !!(
       drawingRef.current ||
       movingRef.current ||
       resizingRef.current ||
+      rotatingRef.current ||
       textSelectingRef.current ||
       draggingRef.current ||
       marqueeRef.current
@@ -523,71 +688,108 @@ export default function ImageEditor({
     };
   }, []);
 
-  // Update fontSize of text item being edited when fontSize changes
+  // Update fontSize of selected / editing text when the slider changes (not on selection change)
+  const prevFontSizeRef = useRef(fontSize);
   useEffect(() => {
-    if (textEditingRef.current) {
-      setItems(prev => prev.map(it => {
-        if (!it || !it.id) return it;
-        if (it.id === textEditingRef.current && it.type === 'text') {
-          return { ...it, fontSize };
-        }
-        return it;
-      }).filter(it => it && it.id));
-    }
-  }, [fontSize]);
+    const changed = prevFontSizeRef.current !== fontSize;
+    prevFontSizeRef.current = fontSize;
+    if (!changed) return;
+    setItems(prev => prev.map(it => {
+      if (!it || !it.id) return it;
+      if (it.type === 'text' && (it.id === textEditingRef.current || selectedIds.includes(it.id))) {
+        return { ...it, fontSize };
+      }
+      return it;
+    }).filter(it => it && it.id));
+  }, [fontSize, selectedIds]);
 
-  // Update text background settings of selected text items when settings change
+  const prevTextBgEnabledRef = useRef(textBackgroundEnabled);
+  const prevTextBgColorRef = useRef(textBackgroundColor);
+  const prevTextBgOpacityRef = useRef(textBackgroundOpacity);
   useEffect(() => {
-    if (selectedIds.length > 0) {
-      setItems(prev => prev.map(it => {
-        if (!it || !it.id) return it;
-        if (selectedIds.includes(it.id) && it.type === 'text') {
-          return {
-            ...it,
-            textBackgroundEnabled,
-            textBackgroundColor,
-            textBackgroundOpacity
-          };
-        }
-        return it;
-      }).filter(it => it && it.id));
-    }
+    const changed =
+      prevTextBgEnabledRef.current !== textBackgroundEnabled ||
+      prevTextBgColorRef.current !== textBackgroundColor ||
+      prevTextBgOpacityRef.current !== textBackgroundOpacity;
+    prevTextBgEnabledRef.current = textBackgroundEnabled;
+    prevTextBgColorRef.current = textBackgroundColor;
+    prevTextBgOpacityRef.current = textBackgroundOpacity;
+    if (!changed || selectedIds.length === 0) return;
+    setItems(prev => prev.map(it => {
+      if (!it || !it.id) return it;
+      if (selectedIds.includes(it.id) && it.type === 'text') {
+        return {
+          ...it,
+          textBackgroundEnabled,
+          textBackgroundColor,
+          textBackgroundOpacity
+        };
+      }
+      return it;
+    }).filter(it => it && it.id));
   }, [textBackgroundEnabled, textBackgroundColor, textBackgroundOpacity, selectedIds]);
 
-  // Update shape fill settings of selected rect/circle/polygon items when settings change
+  const prevFillEnabledRef = useRef(fillEnabled);
+  const prevFillColorRef = useRef(fillColor);
+  const prevFillOpacityRef = useRef(fillOpacity);
+  const prevFillPatternRef = useRef(fillPattern);
   useEffect(() => {
-    if (selectedIds.length > 0) {
-      setItems((prev) =>
-        prev
-          .map((it) => {
-            if (!it || !it.id) return it;
-            if (
-              selectedIds.includes(it.id) &&
-              (it.type === 'rect' || it.type === 'circle' || (it.type === 'polygon' && it.closed))
-            ) {
-              return {
-                ...it,
-                fillEnabled,
-                fillColor,
-                fillOpacity,
-                fillPattern,
-              };
-            }
-            return it;
-          })
-          .filter((it) => it && it.id),
-      );
-    }
+    const changed =
+      prevFillEnabledRef.current !== fillEnabled ||
+      prevFillColorRef.current !== fillColor ||
+      prevFillOpacityRef.current !== fillOpacity ||
+      prevFillPatternRef.current !== fillPattern;
+    prevFillEnabledRef.current = fillEnabled;
+    prevFillColorRef.current = fillColor;
+    prevFillOpacityRef.current = fillOpacity;
+    prevFillPatternRef.current = fillPattern;
+    if (!changed || selectedIds.length === 0) return;
+    setItems((prev) =>
+      prev
+        .map((it) => {
+          if (!it || !it.id) return it;
+          if (
+            selectedIds.includes(it.id) &&
+            (it.type === 'rect' || it.type === 'circle' || (it.type === 'polygon' && it.closed))
+          ) {
+            return {
+              ...it,
+              fillEnabled,
+              fillColor,
+              fillOpacity,
+              fillPattern,
+            };
+          }
+          return it;
+        })
+        .filter((it) => it && it.id),
+    );
   }, [fillEnabled, fillColor, fillOpacity, fillPattern, selectedIds]);
 
-  const showShapeFillPanel =
+  const selectedAnnotations = selectedIds
+    .map((id) => items.find((x) => x?.id === id))
+    .filter((it): it is AnnotationItem => !!it && !!it.id);
+
+  const showTextPanel =
+    mode === 'text' ||
+    (mode === 'select' && selectedAnnotations.some((it) => it.type === 'text'));
+
+  const showShapePanel =
     mode === 'rect' ||
+    mode === 'arrow' ||
     mode === 'circle' ||
     mode === 'polygon' ||
-    selectedIds.some((id) => {
-      const it = items.find((x) => x?.id === id);
-      return it?.type === 'rect' || it?.type === 'circle' || (it?.type === 'polygon' && it.closed);
-    });
+    mode === 'draw' ||
+    (mode === 'select' && selectedAnnotations.some((it) => it.type !== 'text'));
+
+  const showShapeFillPanel =
+    showShapePanel &&
+    (mode === 'rect' ||
+      mode === 'circle' ||
+      mode === 'polygon' ||
+      selectedAnnotations.some(
+        (it) => it.type === 'rect' || it.type === 'circle' || (it.type === 'polygon' && it.closed),
+      ));
 
   // Track previous colors/stroke to only update when they actually change
   const prevTextColorRef = useRef<string>(textColor);
@@ -595,7 +797,49 @@ export default function ImageEditor({
   const prevStrokeRef = useRef<number>(stroke);
   const prevSelectionForColorSyncRef = useRef<string | null>(null);
 
-  // Reflect selected item stroke/text color in tool pickers
+  // Update text color of selected text items when textColor changes (not when selection changes)
+  useEffect(() => {
+    const changed = prevTextColorRef.current !== textColor;
+    prevTextColorRef.current = textColor;
+    if (!changed || selectedIds.length === 0 || mode !== 'select') return;
+    setItems(prev => prev.map(it => {
+      if (!it || !it.id) return it;
+      if (selectedIds.includes(it.id) && it.type === 'text') {
+        return { ...it, color: textColor };
+      }
+      return it;
+    }).filter(it => it && it.id));
+  }, [textColor, selectedIds, mode]);
+
+  // Update stroke color of selected non-text items when strokeColor changes
+  useEffect(() => {
+    const changed = prevStrokeColorRef.current !== strokeColor;
+    prevStrokeColorRef.current = strokeColor;
+    if (!changed || selectedIds.length === 0 || mode !== 'select') return;
+    setItems(prev => prev.map(it => {
+      if (!it || !it.id) return it;
+      if (selectedIds.includes(it.id) && it.type !== 'text') {
+        return { ...it, color: strokeColor };
+      }
+      return it;
+    }).filter(it => it && it.id));
+  }, [strokeColor, selectedIds, mode]);
+
+  // Update stroke width of selected items when stroke changes (not when selection changes)
+  useEffect(() => {
+    const changed = prevStrokeRef.current !== stroke;
+    prevStrokeRef.current = stroke;
+    if (!changed || selectedIds.length === 0 || mode !== 'select') return;
+    setItems(prev => prev.map(it => {
+      if (!it || !it.id) return it;
+      if (selectedIds.includes(it.id) && it.type !== 'text') {
+        return { ...it, stroke };
+      }
+      return it;
+    }).filter(it => it && it.id));
+  }, [stroke, selectedIds, mode]);
+
+  // Reflect selected item properties in the visible tool panels
   useEffect(() => {
     const id = selectedIds.length === 1 ? selectedIds[0] : null;
     if (id === prevSelectionForColorSyncRef.current) return;
@@ -605,55 +849,32 @@ export default function ImageEditor({
     if (!it) return;
     if (it.type === 'text') {
       prevTextColorRef.current = it.color;
+      prevFontSizeRef.current = it.fontSize || fontSize;
+      prevTextBgEnabledRef.current = it.textBackgroundEnabled !== undefined ? it.textBackgroundEnabled : textBackgroundEnabled;
+      prevTextBgColorRef.current = it.textBackgroundColor || textBackgroundColor;
+      prevTextBgOpacityRef.current = it.textBackgroundOpacity !== undefined ? it.textBackgroundOpacity : textBackgroundOpacity;
       setTextColor(it.color);
+      if (it.fontSize) setFontSize(it.fontSize);
+      if (it.textBackgroundEnabled !== undefined) setTextBackgroundEnabled(it.textBackgroundEnabled);
+      if (it.textBackgroundColor) setTextBackgroundColor(it.textBackgroundColor);
+      if (it.textBackgroundOpacity !== undefined) setTextBackgroundOpacity(it.textBackgroundOpacity);
     } else {
       prevStrokeColorRef.current = it.color;
+      prevStrokeRef.current = it.stroke;
       setStrokeColor(it.color);
+      setStroke(it.stroke);
+      if (it.type === 'rect' || it.type === 'circle' || (it.type === 'polygon' && it.closed)) {
+        prevFillEnabledRef.current = it.fillEnabled !== undefined ? it.fillEnabled : fillEnabled;
+        prevFillColorRef.current = it.fillColor || fillColor;
+        prevFillOpacityRef.current = it.fillOpacity !== undefined ? it.fillOpacity : fillOpacity;
+        prevFillPatternRef.current = it.fillPattern || fillPattern;
+        if (it.fillEnabled !== undefined) setFillEnabled(it.fillEnabled);
+        if (it.fillColor) setFillColor(it.fillColor);
+        if (it.fillOpacity !== undefined) setFillOpacity(it.fillOpacity);
+        if (it.fillPattern) setFillPattern(it.fillPattern);
+      }
     }
   }, [selectedIds, items]);
-
-  // Update text color of selected text items when textColor changes (not when selection changes)
-  useEffect(() => {
-    if (selectedIds.length > 0 && mode === 'select' && prevTextColorRef.current !== textColor) {
-      setItems(prev => prev.map(it => {
-        if (!it || !it.id) return it;
-        if (selectedIds.includes(it.id) && it.type === 'text') {
-          return { ...it, color: textColor };
-        }
-        return it;
-      }).filter(it => it && it.id));
-    }
-    prevTextColorRef.current = textColor;
-  }, [textColor, selectedIds, mode]);
-
-  // Update stroke color of selected non-text items when strokeColor changes
-  useEffect(() => {
-    if (selectedIds.length > 0 && mode === 'select' && prevStrokeColorRef.current !== strokeColor) {
-      setItems(prev => prev.map(it => {
-        if (!it || !it.id) return it;
-        if (selectedIds.includes(it.id) && it.type !== 'text') {
-          return { ...it, color: strokeColor };
-        }
-        return it;
-      }).filter(it => it && it.id));
-    }
-    prevStrokeColorRef.current = strokeColor;
-  }, [strokeColor, selectedIds, mode]);
-
-  // Update stroke width of selected items when stroke changes (not when selection changes)
-  useEffect(() => {
-    // Only update if stroke actually changed (not just selection)
-    if (selectedIds.length > 0 && mode === 'select' && prevStrokeRef.current !== stroke) {
-      setItems(prev => prev.map(it => {
-        if (!it || !it.id) return it;
-        if (selectedIds.includes(it.id)) {
-          return { ...it, stroke };
-        }
-        return it;
-      }).filter(it => it && it.id));
-    }
-    prevStrokeRef.current = stroke;
-  }, [stroke, selectedIds, mode]);
 
   // Auto-switch from delete to select when no items are available
   useEffect(() => {
@@ -701,6 +922,7 @@ export default function ImageEditor({
       setLoadError(null);
       loadedFileIdRef.current = null;
       loadingRef.current = false;
+      prevAngleRef.current = 0;
       blurredBgCanvasRef.current = null;
       blurredBgKeyRef.current = '';
       if (cursorBlinkRef.current) {
@@ -776,6 +998,7 @@ export default function ImageEditor({
         setLoadError(null);
         setImg(image);
         setAngle(0);
+        prevAngleRef.current = 0;
         setScale(1);
         setOffsetX(0);
         setOffsetY(0);
@@ -906,11 +1129,7 @@ export default function ImageEditor({
     // Update canvas dimensions state for modal sizing
     setCanvasDimensions({ width: Math.round(canvasWidth), height: Math.round(canvasHeight) });
     
-    // Calculate initial scale to show the full image exactly (fit, not cover)
-    // This ensures the image appears complete without any white space
-    const fitScale = Math.min(canvasWidth / imgWidth, canvasHeight / imgHeight);
-    
-    // Set initial scale and reset offsets to center the image
+    const fitScale = computeEditorFitScale(displayWidth, displayHeight, imgWidth, imgHeight, 0);
     setScale(fitScale);
     setOffsetX(0);
     setOffsetY(0);
@@ -954,6 +1173,55 @@ export default function ImageEditor({
       y: Math.max(-maxOffsetY, Math.min(maxOffsetY, y)),
     };
   }, [img, scale, angle]);
+
+  const fitScale = useMemo(() => {
+    if (!img || canvasDimensions.width <= 0 || canvasDimensions.height <= 0) return 1;
+    return computeEditorFitScale(
+      canvasDimensions.width,
+      canvasDimensions.height,
+      img.naturalWidth,
+      img.naturalHeight,
+      angle,
+    );
+  }, [img, canvasDimensions.width, canvasDimensions.height, angle]);
+
+  const displayZoom = fitScale > 0 ? scale / fitScale : 1;
+
+  const applyDisplayZoom = useCallback(
+    (z: number) => {
+      const nextZ = Math.min(EDITOR_ZOOM_MAX, Math.max(EDITOR_ZOOM_MIN, z));
+      const nextScale = nextZ * (fitScale || 1);
+      const clamped = clampOffset(offsetXRef.current, offsetYRef.current, nextScale);
+      setScale(nextScale);
+      setOffsetX(clamped.x);
+      setOffsetY(clamped.y);
+    },
+    [fitScale, clampOffset],
+  );
+
+  useEffect(() => {
+    const prev = prevAngleRef.current;
+    if (prev === angle) return;
+    prevAngleRef.current = angle;
+    if (!img || canvasDimensions.width <= 0 || canvasDimensions.height <= 0) return;
+    const oldFit = computeEditorFitScale(
+      canvasDimensions.width,
+      canvasDimensions.height,
+      img.naturalWidth,
+      img.naturalHeight,
+      prev,
+    );
+    const newFit = computeEditorFitScale(
+      canvasDimensions.width,
+      canvasDimensions.height,
+      img.naturalWidth,
+      img.naturalHeight,
+      angle,
+    );
+    const z = oldFit > 0 ? scaleRef.current / oldFit : 1;
+    const nextZ = Math.min(EDITOR_ZOOM_MAX, Math.max(EDITOR_ZOOM_MIN, z));
+    setScale(nextZ * newFit);
+  }, [angle, img, canvasDimensions.width, canvasDimensions.height]);
 
   // Clamp offsets whenever they or scale/angle change
   useEffect(() => {
@@ -1134,6 +1402,10 @@ export default function ImageEditor({
     for (const it of items) {
       if (!it || !it.id) continue; // Skip null/undefined items
       ctx.save();
+      const itemBounds = getItemBounds(it);
+      if (itemBounds) {
+        applyAnnotationRotation(ctx, itemBounds, annotationRotationDeg(it));
+      }
       ctx.strokeStyle = it.color;
       ctx.fillStyle = it.color;
       ctx.lineWidth = it.stroke;
@@ -1409,7 +1681,7 @@ export default function ImageEditor({
         ctx.setLineDash([4, 3]);
         ctx.strokeStyle = '#d11616'; // brand-red
         ctx.lineWidth = 1;
-        const bb = getItemBounds(it);
+        const bb = itemBounds;
         if (bb) {
           ctx.strokeRect(bb.x, bb.y, bb.w, bb.h);
 
@@ -1425,6 +1697,21 @@ export default function ImageEditor({
             ctx.strokeRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
             ctx.strokeStyle = '#d11616';
           }
+
+          const rotHandle = getRotationHandleLocal(bb);
+          const stemX = bb.x + bb.w / 2;
+          ctx.beginPath();
+          ctx.moveTo(stemX, bb.y);
+          ctx.lineTo(rotHandle.x, rotHandle.y);
+          ctx.strokeStyle = '#d11616';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(rotHandle.x, rotHandle.y, ROTATE_HANDLE_RADIUS, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.strokeStyle = '#d11616';
+          ctx.stroke();
         }
       }
       ctx.restore();
@@ -1477,6 +1764,13 @@ export default function ImageEditor({
     if (!overlay || item.type !== 'text') return 0;
     const ctx = overlay.getContext('2d');
     if (!ctx) return 0;
+
+    const bb = getItemBounds(item);
+    if (bb) {
+      const local = worldToLocalPoint(clickX, clickY, bb, annotationRotationDeg(item));
+      clickX = local.x;
+      clickY = local.y;
+    }
 
     const itemFontSize = item.fontSize || fontSize;
     ctx.font = `${itemFontSize}px Montserrat`;
@@ -1575,7 +1869,7 @@ export default function ImageEditor({
     absolutePos += charPos;
     
     return Math.max(0, Math.min(absolutePos, textContent.length));
-  }, [fontSize]);
+  }, [fontSize, getItemBounds]);
 
   // Find item at position
   const itemAt = useCallback((x: number, y: number): AnnotationItem | null => {
@@ -1584,7 +1878,9 @@ export default function ImageEditor({
       const it = list[i];
       if (!it || !it.id) continue; // Skip null/undefined items
       const b = getItemBounds(it);
-      if (b && x >= b.x && y >= b.y && x <= b.x + b.w && y <= b.y + b.h) {
+      if (!b) continue;
+      const local = worldToLocalPoint(x, y, b, annotationRotationDeg(it));
+      if (local.x >= b.x && local.y >= b.y && local.x <= b.x + b.w && local.y <= b.y + b.h) {
         return it;
       }
     }
@@ -1596,12 +1892,20 @@ export default function ImageEditor({
     if (mode !== 'select') return null;
     const bb = getItemBounds(item);
     if (!bb) return null;
-    
+
+    const rotation = annotationRotationDeg(item);
+    const local = worldToLocalPoint(x, y, bb, rotation);
     const handleSize = getHandleHitSize(bb);
+
+    const rotHandle = getRotationHandleLocal(bb);
+    const rotHit = Math.max(handleSize, ROTATE_HANDLE_RADIUS * 2 + 4);
+    if (Math.hypot(local.x - rotHandle.x, local.y - rotHandle.y) <= rotHit / 2) {
+      return 'rotate';
+    }
+
     const handles = getResizeHandlePoints(bb);
-    
     for (const handle of handles) {
-      if (Math.abs(x - handle.x) <= handleSize / 2 && Math.abs(y - handle.y) <= handleSize / 2) {
+      if (Math.abs(local.x - handle.x) <= handleSize / 2 && Math.abs(local.y - handle.y) <= handleSize / 2) {
         return handle.name;
       }
     }
@@ -1611,6 +1915,17 @@ export default function ImageEditor({
   const beginResizeAt = useCallback((x: number, y: number, item: AnnotationItem, handle: string) => {
     const bb = getItemBounds(item);
     if (!bb) return;
+    if (handle === 'rotate') {
+      const { cx, cy } = boundsCenter(bb);
+      rotatingRef.current = {
+        item: { ...item },
+        cx,
+        cy,
+        startRotation: annotationRotationDeg(item),
+        startPointerAngle: Math.atan2(y - cy, x - cx),
+      };
+      return;
+    }
     resizingRef.current = {
       item: { ...item },
       handle,
@@ -1625,6 +1940,32 @@ export default function ImageEditor({
       startY2: item.type === 'arrow' ? item.y2 : undefined,
     };
   }, [getItemBounds]);
+
+  const setOverlayCursor = (cursor: string) => {
+    overlayCursorRef.current = cursor;
+    const overlay = overlayRef.current;
+    if (overlay) overlay.style.cursor = cursor;
+  };
+
+  useLayoutEffect(() => {
+    if (movingRef.current || resizingRef.current || rotatingRef.current || draggingRef.current) {
+      return;
+    }
+    if (mode === 'draw') {
+      overlayCursorRef.current = `url("${pencilCursorIcon}") 6 28, auto`;
+    } else if (mode === 'select' || mode === 'delete') {
+      overlayCursorRef.current = 'grab';
+    } else if (mode === 'pan') {
+      overlayCursorRef.current = 'default';
+    } else {
+      overlayCursorRef.current = 'crosshair';
+    }
+  }, [mode]);
+
+  useLayoutEffect(() => {
+    const overlay = overlayRef.current;
+    if (overlay) overlay.style.cursor = overlayCursorRef.current;
+  });
 
   // Handle wheel for zoom - using native event listener like ImagePicker
   useEffect(() => {
@@ -1643,7 +1984,9 @@ export default function ImageEditor({
       const currentScale = scaleRef.current;
       const currentOffsetX = offsetXRef.current;
       const currentOffsetY = offsetYRef.current;
-      const newScale = Math.min(3, Math.max(0.1, currentScale * factor));
+      const base = fitScale || 1;
+      const newZoom = Math.min(EDITOR_ZOOM_MAX, Math.max(EDITOR_ZOOM_MIN, (currentScale / base) * factor));
+      const newScale = newZoom * base;
       
       // Recalculate clamp values with new scale
       if (img) {
@@ -1660,7 +2003,7 @@ export default function ImageEditor({
     return () => {
       canvas.removeEventListener('wheel', handleWheel, { capture: true } as any);
     };
-  }, [isOpen, mode, img, clampOffset]);
+  }, [isOpen, mode, img, clampOffset, fitScale]);
 
   const cancelPolygonDrawing = useCallback(() => {
     const drawing = drawingRef.current;
@@ -1837,25 +2180,29 @@ export default function ImageEditor({
         const boxH = editingItem.h || 30;
         const safetyMargin = 10; // safety margin around text box before exiting edit mode
         const innerMargin = 4;   // inner margin to distinguish border vs inner text
+        const editBb = getItemBounds(editingItem);
+        const local = editBb
+          ? worldToLocalPoint(x, y, editBb, annotationRotationDeg(editingItem))
+          : { x, y };
+
+        const handle = getHandleAt(x, y, editingItem);
+        if (handle) {
+          beginResizeAt(x, y, editingItem, handle);
+          return;
+        }
 
         const insideExpandedBox =
-          x >= editingItem.x - safetyMargin &&
-          x <= editingItem.x + boxW + safetyMargin &&
-          y >= editingItem.y - safetyMargin &&
-          y <= editingItem.y + boxH + safetyMargin;
+          local.x >= editingItem.x - safetyMargin &&
+          local.x <= editingItem.x + boxW + safetyMargin &&
+          local.y >= editingItem.y - safetyMargin &&
+          local.y <= editingItem.y + boxH + safetyMargin;
 
         if (insideExpandedBox) {
-          const handle = getHandleAt(x, y, editingItem);
-          if (handle) {
-            beginResizeAt(x, y, editingItem, handle);
-            return;
-          }
-
           const insideCoreBox =
-              x >= editingItem.x + innerMargin &&
-              x <= editingItem.x + boxW - innerMargin &&
-              y >= editingItem.y + innerMargin &&
-              y <= editingItem.y + boxH - innerMargin;
+              local.x >= editingItem.x + innerMargin &&
+              local.x <= editingItem.x + boxW - innerMargin &&
+              local.y >= editingItem.y + innerMargin &&
+              local.y <= editingItem.y + boxH - innerMargin;
 
             if (insideCoreBox) {
               // Check if clicking on actual text content or empty area
@@ -1871,7 +2218,7 @@ export default function ImageEditor({
                 if (ctx) {
                   ctx.font = `${itemFontSize}px Montserrat`;
                   const topY = editingItem.y + padding;
-                  const relativeY = Math.max(0, y - topY);
+                  const relativeY = Math.max(0, local.y - topY);
                   const lineIndex = Math.floor(relativeY / lineHeight);
                   
                   // Word wrap to get lines (same logic as getTextCursorPosition)
@@ -1926,7 +2273,7 @@ export default function ImageEditor({
                     const lineText = lines[lineIndex];
                     const lineStartX = editingItem.x + padding;
                     const lineEndX = lineStartX + ctx.measureText(lineText).width;
-                    isClickOnText = x >= lineStartX && x <= lineEndX;
+                    isClickOnText = local.x >= lineStartX && local.x <= lineEndX;
                   }
                 }
               }
@@ -1952,6 +2299,7 @@ export default function ImageEditor({
                   setSelectedIds([editingItem.id]);
                 }
                 movingRef.current = { item: { ...editingItem }, startX: x, startY: y };
+                setOverlayCursor('grabbing');
                 e.stopPropagation();
                 return;
               }
@@ -1961,6 +2309,7 @@ export default function ImageEditor({
                 setSelectedIds([editingItem.id]);
               }
               movingRef.current = { item: { ...editingItem }, startX: x, startY: y };
+              setOverlayCursor('grabbing');
               e.stopPropagation();
               return;
             }
@@ -2226,6 +2575,7 @@ export default function ImageEditor({
             } else {
               // Non-text items: select and prepare to move
               movingRef.current = { item: { ...hit }, startX: x, startY: y };
+              setOverlayCursor('grabbing');
             }
           } else {
               // Click on empty area - disable text editing (already handled above)
@@ -2354,13 +2704,40 @@ export default function ImageEditor({
       return;
     }
     
+    if (rotatingRef.current) {
+      const rotState = rotatingRef.current;
+      const pointerAngle = Math.atan2(y - rotState.cy, x - rotState.cx);
+      let nextRot = rotState.startRotation + ((pointerAngle - rotState.startPointerAngle) * 180) / Math.PI;
+      if (e.shiftKey) {
+        nextRot = Math.round(nextRot / 15) * 15;
+      }
+      livePatchItems(prev => prev.map(it =>
+        !it || !it.id || it.id !== rotState.item.id ? it : { ...it, rotation: nextRot }
+      ));
+      (e.currentTarget as HTMLCanvasElement).style.cursor = 'grabbing';
+      return;
+    }
+
     if (resizingRef.current) {
       const resizeState = resizingRef.current;
-      const dx = x - resizeState.startX;
-      const dy = y - resizeState.startY;
       const item = resizeState.item;
+      const startBb = getItemBounds(item);
+      const rot = annotationRotationDeg(item);
+      let dx = x - resizeState.startX;
+      let dy = y - resizeState.startY;
+      let localX = x;
+      let localY = y;
+      if (startBb) {
+        const localStart = worldToLocalPoint(resizeState.startX, resizeState.startY, startBb, rot);
+        const localNow = worldToLocalPoint(x, y, startBb, rot);
+        dx = localNow.x - localStart.x;
+        dy = localNow.y - localStart.y;
+        localX = localNow.x;
+        localY = localNow.y;
+      }
       
-      livePatchItems(prev => prev.map(it => {
+      livePatchItems(prev => {
+        const mapped = prev.map(it => {
         if (!it || !it.id) return it;
         if (it.id === item.id) {
           if (it.type === 'rect') {
@@ -2406,8 +2783,8 @@ export default function ImageEditor({
                 let newY = centerY;
                 
                 if (handle === 'se' || handle === 'ne' || handle === 'sw' || handle === 'nw') {
-                  const distX = Math.abs(x - centerX);
-                  const distY = Math.abs(y - centerY);
+                  const distX = Math.abs(localX - centerX);
+                  const distY = Math.abs(localY - centerY);
                   if (handle === 'se' || handle === 'ne') { newRx = distX; }
                   if (handle === 'sw' || handle === 'nw') { newRx = distX; }
                   if (handle === 'se' || handle === 'sw') { newRy = distY; }
@@ -2429,7 +2806,7 @@ export default function ImageEditor({
                 let newR = startR!;
                 
                 if (handle === 'se' || handle === 'ne' || handle === 'sw' || handle === 'nw') {
-                  const dist = Math.hypot(x - centerX, y - centerY);
+                  const dist = Math.hypot(localX - centerX, localY - centerY);
                   newR = Math.max(1, dist);
                 } else if (handle.includes('e')) { 
                   newR = Math.max(1, startR! + dx); 
@@ -2527,11 +2904,30 @@ export default function ImageEditor({
           }
         }
         return it;
-      }));
+      });
+        const updated = mapped.find((it) => it && it.id === item.id);
+        if (!updated || !startBb || !rot) return mapped;
+        const nextBb = getItemBounds(updated);
+        if (!nextBb) return mapped;
+        const shift = shiftToKeepHandleAnchor(startBb, nextBb, resizeState.handle, rot);
+        if (!shift.x && !shift.y) return mapped;
+        return mapped.map((it) => {
+          if (!it || it.id !== item.id) return it;
+          return {
+            ...it,
+            x: it.x + shift.x,
+            y: it.y + shift.y,
+            ...(it.x2 != null ? { x2: it.x2 + shift.x } : {}),
+            ...(it.y2 != null ? { y2: it.y2 + shift.y } : {}),
+            ...(it.points ? { points: it.points.map((p) => ({ x: p.x + shift.x, y: p.y + shift.y })) } : {}),
+          };
+        });
+      });
       return;
     }
     
     if (movingRef.current) {
+      setOverlayCursor('grabbing');
       const moveState = movingRef.current;
       const dx = x - moveState.startX;
       const dy = y - moveState.startY;
@@ -2575,7 +2971,7 @@ export default function ImageEditor({
 
   const handleOverlayMouseUp = () => {
     // Commit pan offsets after live ref updates
-    if (draggingRef.current && mode === 'select' && !drawingRef.current && !movingRef.current && !resizingRef.current) {
+    if (draggingRef.current && mode === 'select' && !drawingRef.current && !movingRef.current && !resizingRef.current && !rotatingRef.current) {
       setOffsetX(offsetXRef.current);
       setOffsetY(offsetYRef.current);
       draggingRef.current = null;
@@ -2595,8 +2991,11 @@ export default function ImageEditor({
       for (const it of itemsRef.current) {
         if (!it || !it.id) continue;
         const b = getItemBounds(it);
-        if (b && b.x >= x && b.y >= y && (b.x + b.w) <= x + w && (b.y + b.h) <= y + h) {
-          sel.push(it.id);
+        if (b) {
+          const aabb = getRotatedAabb(b, annotationRotationDeg(it));
+          if (aabb.x >= x && aabb.y >= y && (aabb.x + aabb.w) <= x + w && (aabb.y + aabb.h) <= y + h) {
+            sel.push(it.id);
+          }
         }
       }
       selectedIdsRef.current = sel;
@@ -2605,7 +3004,7 @@ export default function ImageEditor({
       drawOverlay();
     }
 
-    const hadMoveOrResize = !!(movingRef.current || resizingRef.current);
+    const hadMoveOrResize = !!(movingRef.current || resizingRef.current || rotatingRef.current);
     
     // If we just finished drawing rect, arrow, circle, or text, switch to select mode
     const keepPolygonDrawing = mode === 'polygon' && drawingRef.current?.type === 'polygon';
@@ -2697,6 +3096,7 @@ export default function ImageEditor({
     }
     movingRef.current = null;
     resizingRef.current = null;
+    rotatingRef.current = null;
   };
 
   // Keyboard handlers
@@ -2908,8 +3308,19 @@ export default function ImageEditor({
 
   // Reset
   const handleReset = () => {
+    prevAngleRef.current = 0;
     setAngle(0);
-    setScale(1);
+    const fit =
+      img && canvasDimensions.width > 0
+        ? computeEditorFitScale(
+            canvasDimensions.width,
+            canvasDimensions.height,
+            img.naturalWidth,
+            img.naturalHeight,
+            0,
+          )
+        : 1;
+    setScale(fit);
     setOffsetX(0);
     setOffsetY(0);
     itemsRef.current = [];
@@ -2987,6 +3398,21 @@ export default function ImageEditor({
     for (const it of itemsToRender) {
       if (!it || !it.id) continue;
       ctx.save();
+      const overlayBb = getItemBounds(it);
+      if (overlayBb) {
+        const p1 = dispToImg(overlayBb.x, overlayBb.y);
+        const p2 = dispToImg(overlayBb.x + overlayBb.w, overlayBb.y + overlayBb.h);
+        applyAnnotationRotation(
+          ctx,
+          {
+            x: Math.min(p1.xi, p2.xi),
+            y: Math.min(p1.yi, p2.yi),
+            w: Math.abs(p2.xi - p1.xi),
+            h: Math.abs(p2.yi - p1.yi),
+          },
+          annotationRotationDeg(it),
+        );
+      }
       ctx.strokeStyle = it.color;
       ctx.fillStyle = it.color;
       ctx.lineWidth = Math.max(0.5, (it.stroke || 1) * lenScale);
@@ -3337,10 +3763,10 @@ export default function ImageEditor({
                       tabIndex={0}
                       style={{ 
                         display: canvasWidth > 0 ? 'block' : 'none',
-                        cursor: (mode === 'select' || mode === 'delete')
-                          ? 'default'
-                          : mode === 'draw'
-                            ? `url("${pencilCursorIcon}") 6 28, auto`
+                        cursor: mode === 'draw'
+                          ? `url("${pencilCursorIcon}") 6 28, auto`
+                          : mode === 'select' || mode === 'delete'
+                            ? 'move'
                             : mode !== 'pan'
                               ? 'crosshair'
                               : textEditingRef.current
@@ -3356,10 +3782,14 @@ export default function ImageEditor({
                           drawingRef.current ||
                           movingRef.current ||
                           resizingRef.current ||
+                          rotatingRef.current ||
                           draggingRef.current ||
                           marqueeRef.current ||
                           textSelectingRef.current
                         ) {
+                          if (movingRef.current || draggingRef.current || rotatingRef.current) {
+                            setOverlayCursor('grabbing');
+                          }
                           handleOverlayMouseMove(e);
                           return;
                         }
@@ -3382,10 +3812,7 @@ export default function ImageEditor({
                             if (selectedIdsRef.current.includes(item.id)) {
                               const handle = getHandleAt(x, y, item);
                               if (handle) {
-                                if (handle === 'nw' || handle === 'se') cursor = 'nwse-resize';
-                                else if (handle === 'ne' || handle === 'sw') cursor = 'nesw-resize';
-                                else if (handle === 'n' || handle === 's') cursor = 'ns-resize';
-                                else if (handle === 'e' || handle === 'w') cursor = 'ew-resize';
+                                cursor = resizeCursorForHandle(handle, annotationRotationDeg(item));
                                 handleFound = true;
                                 break;
                               }
@@ -3396,7 +3823,7 @@ export default function ImageEditor({
                         if (!handleFound) {
                           const hit = itemAt(x, y);
                           if (hit) {
-                            cursor = hit.type === 'text' && textEditingRef.current === hit.id ? 'text' : 'default';
+                            cursor = hit.type === 'text' && textEditingRef.current === hit.id ? 'text' : 'move';
                           } else if (mode === 'select') {
                             cursor = 'grab';
                           } else {
@@ -3404,7 +3831,7 @@ export default function ImageEditor({
                           }
                         }
 
-                        (e.target as HTMLCanvasElement).style.cursor = cursor;
+                        setOverlayCursor(cursor);
                         handleOverlayMouseMove(e);
                       }}
                       onWheel={(e) => {
@@ -3419,7 +3846,12 @@ export default function ImageEditor({
                         const currentScale = scaleRef.current;
                         const currentOffsetX = offsetXRef.current;
                         const currentOffsetY = offsetYRef.current;
-                        const newScale = Math.min(3, Math.max(0.1, currentScale * factor));
+                        const base = fitScale || 1;
+                        const newZoom = Math.min(
+                          EDITOR_ZOOM_MAX,
+                          Math.max(EDITOR_ZOOM_MIN, (currentScale / base) * factor),
+                        );
+                        const newScale = newZoom * base;
                         
                         // Recalculate clamp values with new scale
                         const clamped = clampOffset(currentOffsetX, currentOffsetY, newScale);
@@ -3468,18 +3900,18 @@ export default function ImageEditor({
                       <span className="flex w-11 shrink-0 text-xs font-medium text-slate-700">Zoom</span>
                       <input
                         type="range"
-                        min="0.1"
-                        max="3"
-                        step="0.01"
+                        min={EDITOR_ZOOM_MIN}
+                        max={EDITOR_ZOOM_MAX}
+                        step={0.01}
                         disabled={isLoading || !img}
-                        value={scale}
-                        onChange={e => setScale(parseFloat(e.target.value))}
+                        value={Math.min(EDITOR_ZOOM_MAX, Math.max(EDITOR_ZOOM_MIN, displayZoom))}
+                        onChange={(e) => applyDisplayZoom(parseFloat(e.target.value || '1'))}
                         className="custom-slider"
                         style={{
-                          background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((scale - 0.1) / (3 - 0.1)) * 100}%, #e5e7eb ${((scale - 0.1) / (3 - 0.1)) * 100}%, #e5e7eb 100%)`
+                          background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((Math.min(EDITOR_ZOOM_MAX, Math.max(EDITOR_ZOOM_MIN, displayZoom)) - EDITOR_ZOOM_MIN) / (EDITOR_ZOOM_MAX - EDITOR_ZOOM_MIN)) * 100}%, #e5e7eb ${((Math.min(EDITOR_ZOOM_MAX, Math.max(EDITOR_ZOOM_MIN, displayZoom)) - EDITOR_ZOOM_MIN) / (EDITOR_ZOOM_MAX - EDITOR_ZOOM_MIN)) * 100}%, #e5e7eb 100%)`
                         }}
                       />
-                      <div className="custom-slider-value">{scale.toFixed(2)}×</div>
+                      <div className="custom-slider-value">{displayZoom.toFixed(2)}×</div>
                     </div>
                     <button
                       type="button"
@@ -3598,6 +4030,7 @@ export default function ImageEditor({
                 </div>
               </div>
 
+              {showTextPanel && (
               <div className="border-t border-slate-200/80 pt-3">
                 <span className={`${editorGroupLabelClass} mb-2 block`}>Text</span>
                 <div className="mb-1 flex min-w-0 items-center gap-2">
@@ -3660,9 +4093,11 @@ export default function ImageEditor({
                   </>
                 )}
               </div>
+              )}
 
+              {showShapePanel && (
                     <div className="border-t border-slate-200/80 pt-3">
-                      <span className={`${editorGroupLabelClass} mb-2 block`}>Shape fill</span>
+                      <span className={`${editorGroupLabelClass} mb-2 block`}>Shape</span>
                       <div className="mb-1 flex min-w-0 items-center gap-2">
                         <span className="w-10 shrink-0 text-[11px] font-medium text-slate-700">Color</span>
                         <DocumentEditorFontColorPicker
@@ -3752,6 +4187,12 @@ export default function ImageEditor({
                         </>
                       )}
                     </div>
+              )}
+              {!showTextPanel && !showShapePanel && (
+                <p className={`${editorCaptionClass} border-t border-slate-200/80 pt-3 text-slate-400`}>
+                  Select an object to edit its properties.
+                </p>
+              )}
                 </div>
             </aside>
             </div>

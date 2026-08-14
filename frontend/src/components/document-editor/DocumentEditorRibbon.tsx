@@ -32,6 +32,8 @@ export type DocumentEditorRibbonProps = {
   onTitleChange: (value: string) => void;
   showTitleInput: boolean;
   saveStatus?: DocumentSaveStatus | null;
+  /** True while page images / backgrounds are still loading in the canvas. */
+  mediaLoading?: boolean;
   isTemplate: boolean;
   showExportPdf: boolean;
   onExportPdf: () => void;
@@ -129,6 +131,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     onTitleChange,
     showTitleInput,
     saveStatus,
+    mediaLoading = false,
     isTemplate,
     showExportPdf,
     onExportPdf,
@@ -529,9 +532,9 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
         )}
         </div>
         {/* Export / save status / extra actions stay outside the view-only blur — Export PDF works while viewing. */}
-        {(showExportPdf || saveStatus || extraActions) && (
+        {(showExportPdf || saveStatus || mediaLoading || extraActions) && (
           <div className="ml-auto flex shrink-0 items-end gap-2 border-l border-slate-200/75 pl-2 sm:pl-2.5">
-            {(showExportPdf || saveStatus) && (
+            {(showExportPdf || saveStatus || mediaLoading) && (
               <div className="flex min-h-[64px] flex-col items-center justify-end gap-1 py-1">
                 {showExportPdf ? (
                   <RibbonCompactButton
@@ -543,7 +546,17 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                     variant="primary"
                   />
                 ) : null}
-                {saveStatus ? <DocumentSaveStatusBadge status={saveStatus} /> : null}
+                <div className="flex items-center justify-center gap-1.5">
+                  {mediaLoading ? (
+                    <span
+                      className="inline-flex h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"
+                      role="status"
+                      aria-label="Loading images"
+                      title="Loading images…"
+                    />
+                  ) : null}
+                  {saveStatus ? <DocumentSaveStatusBadge status={saveStatus} /> : null}
+                </div>
               </div>
             )}
             {extraActions ? <div className="flex shrink-0 items-end pb-2.5 pr-1">{extraActions}</div> : null}

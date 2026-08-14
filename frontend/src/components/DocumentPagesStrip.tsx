@@ -1,6 +1,7 @@
 import { withFileAccessToken } from '@/lib/api';
 import { memo, useEffect, useRef, useState } from 'react';
 import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
+import { docElementRotationDeg, docElementRotateStyle } from '@/utils/documentElementGeometry';
 import {
   editorSidePanelBodyClass,
   editorSidePanelCollapsedRailButtonClass,
@@ -124,12 +125,9 @@ const PageThumbnail = memo(function PageThumbnail({
       ref={thumbRef}
       type="button"
       onClick={onClick}
-      className={`relative w-full flex-shrink-0 overflow-hidden rounded-lg border border-slate-200/90 bg-white shadow-sm transition-[box-shadow,border-color,transform] duration-200 ease-out ${
-        isSelected
-          ? 'border-brand-red/45 shadow-md ring-1 ring-brand-red/20'
-          : 'hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md'
-      }`}
+      className="relative w-full flex-shrink-0 overflow-hidden bg-white"
       style={{ aspectRatio: `${A4_ASPECT}` }}
+      aria-pressed={isSelected}
     >
       <div className="absolute inset-0">
         {backgroundUrl ? (
@@ -195,6 +193,7 @@ const PageThumbnail = memo(function PageThumbnail({
                 top: `${y * 100}%`,
                 width: `${w * 100}%`,
                 height: `${h * 100}%`,
+                ...docElementRotateStyle(docElementRotationDeg(el.rotation)),
               }}
             >
               {el.type === 'text' ? (
@@ -362,7 +361,7 @@ export default function DocumentPagesStrip({
           </div>
         </div>
       </div>
-      <div className={`${editorSidePanelBodyClass} flex flex-col gap-2`}>
+      <div className={`${editorSidePanelBodyClass} flex flex-col gap-3`}>
       {pages.map((page, i) => {
         const template = templates.find((t) => t.id === (page.template_id ?? ''));
         const backgroundUrl = template?.background_file_id
@@ -370,6 +369,8 @@ export default function DocumentPagesStrip({
           : null;
         const isDragging = dragPageIndex === i;
         const isDropTarget = dragOverIndex === i;
+        const isSelected = currentPageIndex === i;
+        const pageLabel = i === 0 ? 'Cover' : `Page ${i + 1}`;
         return (
           <div
             key={i}
@@ -379,20 +380,28 @@ export default function DocumentPagesStrip({
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, i)}
             onDragEnd={handleDragEnd}
-            className={`group relative rounded-lg px-0.5 transition-colors duration-200 ${
+            className={`group relative flex shrink-0 flex-col overflow-hidden rounded-lg border bg-white shadow-sm transition-[border-color,box-shadow,opacity] duration-200 ${
               canReorder ? 'cursor-grab active:cursor-grabbing' : ''
-            } ${isDropTarget ? 'rounded-lg bg-brand-red/[0.08] ring-1 ring-inset ring-brand-red/30' : ''} ${isDragging ? 'opacity-50' : ''}`}
+            } ${
+              isSelected
+                ? 'border-brand-red/45 shadow-md ring-1 ring-brand-red/20'
+                : 'border-slate-200/90 hover:border-slate-300 hover:shadow-md'
+            } ${isDropTarget ? 'ring-1 ring-brand-red/30' : ''} ${isDragging ? 'opacity-50' : ''}`}
           >
             <PageThumbnail
               page={page}
               templates={templates}
               backgroundUrl={backgroundUrl}
-              isSelected={currentPageIndex === i}
+              isSelected={isSelected}
               onClick={() => onPageSelect(i)}
             />
-            <div className="mt-1 flex items-center justify-center gap-1">
-              <span className="flex-1 text-center text-[10px] font-semibold tabular-nums text-slate-400">
-                {i === 0 ? 'Cover' : i + 1}
+            <div
+              className={`flex shrink-0 items-center gap-0.5 border-t px-1.5 py-1 ${
+                isSelected ? 'border-brand-red/15 bg-red-50/70' : 'border-slate-100 bg-slate-50'
+              }`}
+            >
+              <span className="min-w-0 flex-1 truncate text-[10px] font-semibold tabular-nums text-slate-500">
+                {pageLabel}
               </span>
               {canDuplicate && (
                 <button
@@ -401,9 +410,9 @@ export default function DocumentPagesStrip({
                     e.stopPropagation();
                     onDuplicatePage?.(i);
                   }}
-                  className="rounded-md p-1 text-slate-400 transition-[color,background-color] duration-200 hover:bg-slate-100 hover:text-slate-700"
-                  aria-label="Duplicate page"
-                  title="Duplicate page"
+                  className="rounded-md p-1 text-slate-400 transition-[color,background-color] duration-200 hover:bg-white hover:text-slate-700"
+                  aria-label={`Duplicate ${pageLabel}`}
+                  title={`Duplicate ${pageLabel}`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h2m8 0h2a2 2 0 012 2v2m0 8v2a2 2 0 01-2 2h-2m-4-4h8" />
@@ -417,9 +426,9 @@ export default function DocumentPagesStrip({
                     e.stopPropagation();
                     onDeletePage?.(i);
                   }}
-                  className="rounded-md p-1 text-slate-400 transition-[color,background-color] duration-200 hover:bg-red-50 hover:text-red-600"
-                  aria-label="Delete page"
-                  title="Delete page"
+                  className="rounded-md p-1 text-slate-400 transition-[color,background-color] duration-200 hover:bg-white hover:text-red-600"
+                  aria-label={`Delete ${pageLabel}`}
+                  title={`Delete ${pageLabel}`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -434,7 +443,7 @@ export default function DocumentPagesStrip({
         <button
           type="button"
           onClick={onAddPage}
-          className="flex items-center justify-center rounded-lg border border-dashed border-slate-300/90 py-2.5 text-slate-500 transition-[border-color,background-color,color] duration-200 ease-out hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
+          className="flex shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-300/90 py-2.5 text-slate-500 transition-[border-color,background-color,color] duration-200 ease-out hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
         >
           <span className="text-lg font-light">+</span>
           <span className="sr-only">Add page</span>

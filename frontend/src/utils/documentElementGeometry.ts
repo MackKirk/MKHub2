@@ -115,3 +115,111 @@ export function clampGeometryPct(
     y_pct: Math.max(b.minY, Math.min(b.maxY, next.y_pct)),
   };
 }
+
+export function docElementRotationDeg(rotation: number | null | undefined): number {
+  return typeof rotation === 'number' && Number.isFinite(rotation) ? rotation : 0;
+}
+
+export function docElementRotateStyle(rotationDeg: number): {
+  transform?: string;
+  transformOrigin?: string;
+} {
+  if (!rotationDeg) return {};
+  return { transform: `rotate(${rotationDeg}deg)`, transformOrigin: 'center center' };
+}
+
+export function rotatePointerDeltaToLocal(
+  dxPx: number,
+  dyPx: number,
+  rotationDeg: number,
+): { dx: number; dy: number } {
+  if (!rotationDeg) return { dx: dxPx, dy: dyPx };
+  const rad = (-rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return { dx: dxPx * cos - dyPx * sin, dy: dxPx * sin + dyPx * cos };
+}
+
+const RESIZE_HANDLE_ORDER = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;
+const RESIZE_HANDLE_CURSORS = [
+  'nw-resize',
+  'n-resize',
+  'ne-resize',
+  'e-resize',
+  'se-resize',
+  's-resize',
+  'sw-resize',
+  'w-resize',
+] as const;
+
+export function resizeCursorForDocRotation(dir: string, rotationDeg: number): string {
+  const idx = RESIZE_HANDLE_ORDER.indexOf(dir as (typeof RESIZE_HANDLE_ORDER)[number]);
+  if (idx < 0) return 'default';
+  const steps = Math.round(((((rotationDeg % 360) + 360) % 360) / 45)) % 8;
+  return RESIZE_HANDLE_CURSORS[(idx + steps) % 8];
+}
+
+type BoxPct = { x: number; y: number; w: number; h: number };
+
+function oppositeHandleAnchorPct(box: BoxPct, handle: string): { x: number; y: number } {
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  switch (handle) {
+    case 'e':
+      return { x: box.x, y: cy };
+    case 'w':
+      return { x: box.x + box.w, y: cy };
+    case 'n':
+      return { x: cx, y: box.y + box.h };
+    case 's':
+      return { x: cx, y: box.y };
+    case 'ne':
+      return { x: box.x, y: box.y + box.h };
+    case 'nw':
+      return { x: box.x + box.w, y: box.y + box.h };
+    case 'se':
+      return { x: box.x, y: box.y };
+    case 'sw':
+      return { x: box.x + box.w, y: box.y };
+    default:
+      return { x: cx, y: cy };
+  }
+}
+
+function rotatePxAround(x: number, y: number, cx: number, cy: number, deg: number): { x: number; y: number } {
+  if (!deg) return { x, y };
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = x - cx;
+  const dy = y - cy;
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+}
+
+/** Keep the opposite handle fixed in screen space when resizing a rotated box. */
+export function shiftToKeepHandleAnchorPct(
+  oldBox: BoxPct,
+  newBox: BoxPct,
+  handle: string,
+  rotationDeg: number,
+  canvasW: number,
+  canvasH: number,
+): { x: number; y: number } {
+  if (!rotationDeg || !canvasW || !canvasH) return { x: 0, y: 0 };
+  const oldA = oppositeHandleAnchorPct(oldBox, handle);
+  const newA = oppositeHandleAnchorPct(newBox, handle);
+  const oldC = {
+    cx: ((oldBox.x + oldBox.w / 2) / 100) * canvasW,
+    cy: ((oldBox.y + oldBox.h / 2) / 100) * canvasH,
+  };
+  const newC = {
+    cx: ((newBox.x + newBox.w / 2) / 100) * canvasW,
+    cy: ((newBox.y + newBox.h / 2) / 100) * canvasH,
+  };
+  const oldW = rotatePxAround((oldA.x / 100) * canvasW, (oldA.y / 100) * canvasH, oldC.cx, oldC.cy, rotationDeg);
+  const newW = rotatePxAround((newA.x / 100) * canvasW, (newA.y / 100) * canvasH, newC.cx, newC.cy, rotationDeg);
+  return {
+    x: ((oldW.x - newW.x) / canvasW) * 100,
+    y: ((oldW.y - newW.y) / canvasH) * 100,
+  };
+}

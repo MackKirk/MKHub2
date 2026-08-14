@@ -191,7 +191,7 @@ def assert_can_initiate_upload(
         if not can_write_business_line(user, getattr(proj, "business_line", None)):
             raise _forbidden("cannot write files for this project business line")
         cat_norm = (category_id or "").strip().lower()
-        if cat_norm in ("document-creator", "document-creator-template"):
+        if cat_norm.startswith("document-creator"):
             if not _has_project_feature_permission(
                 user, getattr(proj, "business_line", None), "documents", "write"
             ):
@@ -556,7 +556,7 @@ def _user_has_document_creator_api_read_permission(user: User) -> bool:
 def _is_document_creator_blob(fo: FileObject) -> bool:
     """True for uploads under the document-creator category / path."""
     cat = (str(fo.category_id).lower().strip() if fo.category_id else "")
-    if cat == "document-creator":
+    if cat.startswith("document-creator"):
         return True
     key = (getattr(fo, "key", None) or "").replace("\\", "/").lower()
     return "/document-creator/" in key

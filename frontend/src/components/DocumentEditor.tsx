@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useDocumentAutoSave, type DocumentSaveStatus } from '@/hooks/useDocumentAutoSave';
+import { useDocumentMediaLoading } from '@/hooks/useDocumentMediaLoading';
 import DocumentPreview from '@/components/DocumentPreview';
 import DocumentPagesStrip from '@/components/DocumentPagesStrip';
 import { AddPageModal } from '@/components/AddPageModal';
@@ -922,6 +923,28 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const ribbonSaveStatus: DocumentSaveStatus | null =
     isTemplate || readOnly ? null : saveStatus;
 
+  /** Thumbnails actually mounted on the canvas (current page, or current ± 1 when stacked). */
+  const canvasMediaUrls = useMemo(() => {
+    const useStackedPages = !isTemplate && pages.length > 1;
+    const urls: string[] = [];
+    for (let i = 0; i < pages.length; i++) {
+      if (useStackedPages && Math.abs(i - currentPageIndex) > 1) continue;
+      if (!useStackedPages && i !== currentPageIndex) continue;
+      const page = pages[i];
+      const tmpl = templates.find((t) => t.id === (page.template_id ?? ''));
+      if (tmpl?.background_file_id) {
+        urls.push(withFileAccessToken(`/files/${tmpl.background_file_id}/thumbnail?w=800`));
+      }
+      for (const el of page.elements ?? []) {
+        if (el.type === 'image' && el.content) {
+          urls.push(withFileAccessToken(`/files/${el.content}/thumbnail?w=900`));
+        }
+      }
+    }
+    return urls;
+  }, [pages, templates, currentPageIndex, isTemplate]);
+  const mediaLoading = useDocumentMediaLoading(canvasMediaUrls);
+
   // Keyboard shortcuts: Delete, Arrow keys, Undo/Redo, Copy/Paste/Duplicate
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1251,13 +1274,37 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       pageIndex: number,
       elementId: string,
       fileId: string,
-      meta?: { intrinsicWidth?: number; intrinsicHeight?: number; preserveFrame?: boolean },
+      meta?: {
+        intrinsicWidth?: number;
+        intrinsicHeight?: number;
+        preserveFrame?: boolean;
+        fitMode?: ImagePickerConfirmMeta['fitMode'];
+      },
     ) => {
       pushHistory();
       updateElementsAtPageIndex(pageIndex, (prev) =>
         prev.map((el) => {
           if (el.id !== elementId) return el;
           if (el.type !== 'image') return { ...el, content: fileId };
+          const iw = meta?.intrinsicWidth;
+          const ih = meta?.intrinsicHeight;
+          if (meta?.fitMode === 'natural' && iw && ih && iw > 0 && ih > 0) {
+            const prevW = el.width_pct ?? 40;
+            const prevH = el.height_pct ?? 25;
+            const { width_pct, height_pct } = sizeImageElementFrameForIntrinsicAspect(prevW, iw, ih);
+            const cx = (el.x_pct ?? 0) + prevW / 2;
+            const cy = (el.y_pct ?? 0) + prevH / 2;
+            return {
+              ...el,
+              content: fileId,
+              imageFit: 'fill' as const,
+              imagePosition: '50% 50%',
+              width_pct,
+              height_pct,
+              x_pct: Math.max(0, Math.min(100 - width_pct, cx - width_pct / 2)),
+              y_pct: Math.max(0, Math.min(100 - height_pct, cy - height_pct / 2)),
+            };
+          }
           // Image area / slot: fill content only; never change frame geometry.
           if (!el.content || meta?.preserveFrame) {
             return {
@@ -1268,8 +1315,6 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
             };
           }
           const next: DocElement = { ...el, content: fileId, imageFit: 'fill' };
-          const iw = meta?.intrinsicWidth;
-          const ih = meta?.intrinsicHeight;
           if (iw && ih && iw > 0 && ih > 0) {
             const { width_pct, height_pct } = sizeImageElementFrameForIntrinsicAspect(
               el.width_pct ?? 40,
@@ -1446,7 +1491,14 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     [pushHistory]
   );
 
-  const handleDeletePage = useCallback((index: number) => {
+  const handleDeletePage = useCallback(async (index: number) => {
+    if (pages.length <= 1) return;
+    const choice = await confirmRef.current({
+      title: 'Delete page',
+      message: `Remove page ${index + 1} from this document?`,
+      confirmText: 'Delete',
+    });
+    if (choice !== 'confirm') return;
     pushHistory();
     setPages((prev) => {
       if (prev.length <= 1) return prev;
@@ -1458,7 +1510,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       return prev;
     });
     setSelectedElementIds([]);
-  }, [pushHistory]);
+  }, [pages.length, pushHistory]);
 
   const handleDuplicatePage = useCallback(
     (index: number) => {
@@ -1989,6 +2041,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         onTitleChange={setTitle}
         showTitleInput={!isTemplate && !readOnly}
         saveStatus={ribbonSaveStatus}
+        mediaLoading={mediaLoading}
         isTemplate={!!isTemplate}
         showExportPdf={!isTemplate}
         onExportPdf={handleExportPdf}
@@ -2489,7 +2542,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           allowEdit={true}
           exportScale={2}
           preserveTransparency={true}
-          enableFitModes={Boolean(imagePickerReplaceElementId)}
+          enableFitModes
           onConfirm={async (blob, meta?: ImagePickerConfirmMeta) => {
             if (imagePickerConfirmLockRef.current) return;
             imagePickerConfirmLockRef.current = true;
@@ -2517,6 +2570,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                   intrinsicWidth: meta?.intrinsicWidth,
                   intrinsicHeight: meta?.intrinsicHeight,
                   preserveFrame: replaceTarget.preserveFrame,
+                  fitMode: meta?.fitMode,
                 });
                 toast.success('Image updated.');
               } else {

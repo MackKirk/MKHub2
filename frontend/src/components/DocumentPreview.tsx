@@ -21,6 +21,11 @@ import { notifyTextEditBlocking } from '@/components/document-editor/notifyTextE
 import {
   DOCUMENT_MIN_SIZE_PCT,
   DOCUMENT_REF_WIDTH_PX,
+  docElementRotationDeg,
+  docElementRotateStyle,
+  resizeCursorForDocRotation,
+  rotatePointerDeltaToLocal,
+  shiftToKeepHandleAnchorPct,
 } from '@/utils/documentElementGeometry';
 
 export type TemplateMargins = {
@@ -1948,8 +1953,18 @@ export default function DocumentPreview({
     startY_pct: number;
     startW_pct: number;
     startH_pct: number;
+    rotation: number;
     hasResized: boolean;
     live: { x_pct: number; y_pct: number; width_pct: number; height_pct: number } | null;
+  } | null>(null);
+  const rotateRef = useRef<{
+    elementId: string;
+    cxScreen: number;
+    cyScreen: number;
+    startRotation: number;
+    startPointerAngle: number;
+    hasRotated: boolean;
+    live: number | null;
   } | null>(null);
   const elementsRef = useRef(elements);
   elementsRef.current = elements;
@@ -1966,11 +1981,11 @@ export default function DocumentPreview({
   const dragGuideLinesRef = useRef<{ v: number[]; h: number[] } | null>(null);
   /** Live geometry during drag/resize so React re-renders (guides) do not snap back to committed props. */
   const [gestureGeom, setGestureGeom] = useState<
-    Record<string, { x_pct: number; y_pct: number; width_pct?: number; height_pct?: number }>
+    Record<string, { x_pct: number; y_pct: number; width_pct?: number; height_pct?: number; rotation?: number }>
   >({});
   const gestureGeomRafRef = useRef(0);
   const publishGestureGeom = useCallback(
-    (next: Record<string, { x_pct: number; y_pct: number; width_pct?: number; height_pct?: number }>) => {
+    (next: Record<string, { x_pct: number; y_pct: number; width_pct?: number; height_pct?: number; rotation?: number }>) => {
       cancelAnimationFrame(gestureGeomRafRef.current);
       gestureGeomRafRef.current = requestAnimationFrame(() => {
         setGestureGeom(next);
@@ -1994,7 +2009,7 @@ export default function DocumentPreview({
   const [dragGuideLines, setDragGuideLines] = useState<{ v: number[]; h: number[] } | null>(null);
 
   const applyElementBoxToDom = useCallback(
-    (elementId: string, box: { x_pct: number; y_pct: number; width_pct?: number; height_pct?: number }) => {
+    (elementId: string, box: { x_pct: number; y_pct: number; width_pct?: number; height_pct?: number; rotation?: number }) => {
       const node = canvasRef.current?.querySelector(
         `[data-doc-el-id="${elementId}"]`,
       ) as HTMLElement | null;
@@ -2003,6 +2018,11 @@ export default function DocumentPreview({
       node.style.top = `${box.y_pct}%`;
       if (box.width_pct != null) node.style.width = `${box.width_pct}%`;
       if (box.height_pct != null) node.style.height = `${box.height_pct}%`;
+      if (box.rotation != null) {
+        const rot = docElementRotateStyle(box.rotation);
+        node.style.transform = rot.transform ?? '';
+        node.style.transformOrigin = rot.transformOrigin ?? '';
+      }
     },
     [],
   );
@@ -2186,7 +2206,45 @@ export default function DocumentPreview({
         startY_pct: el.y_pct ?? 20,
         startW_pct: el.width_pct ?? 80,
         startH_pct: el.height_pct ?? 8,
+        rotation: docElementRotationDeg(el.rotation),
         hasResized: false,
+        live: null,
+      };
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [isViewOnly, lockBlockElements, onPageInteraction, isOtherElementWhileEditing, notifyBlockedByTextEdit],
+  );
+
+  const handleRotatePointerDown = useCallback(
+    (e: React.PointerEvent, el: DocElement) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (isViewOnly) return;
+      if (isOtherElementWhileEditing(el.id)) {
+        notifyBlockedByTextEdit();
+        return;
+      }
+      onPageInteraction?.();
+      if (e.button !== 0) return;
+      if (el.locked) return;
+      if (el.lockPosition) return;
+      if (el.type === 'block' && lockBlockElements) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = el.x_pct ?? 10;
+      const y = el.y_pct ?? 20;
+      const w = el.width_pct ?? 80;
+      const h = el.height_pct ?? 8;
+      const cxScreen = rect.left + ((x + w / 2) / 100) * rect.width;
+      const cyScreen = rect.top + ((y + h / 2) / 100) * rect.height;
+      rotateRef.current = {
+        elementId: el.id,
+        cxScreen,
+        cyScreen,
+        startRotation: docElementRotationDeg(el.rotation),
+        startPointerAngle: Math.atan2(e.clientY - cyScreen, e.clientX - cxScreen),
+        hasRotated: false,
         live: null,
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -2247,6 +2305,26 @@ export default function DocumentPreview({
     setGestureGeom({});
   }, []);
 
+  const commitRotateGesture = useCallback(() => {
+    const rotating = rotateRef.current;
+    if (!rotating) return;
+    if (rotating.hasRotated && rotating.live != null) {
+      const nextRot = rotating.live;
+      const batch = onBatchUpdateElementsRef.current;
+      const single = onUpdateElementRef.current;
+      if (batch) {
+        batch((prev) =>
+          prev.map((el) => (el.id === rotating.elementId ? { ...el, rotation: nextRot } : el)),
+        );
+      } else if (single) {
+        single(rotating.elementId, (el) => ({ ...el, rotation: nextRot }));
+      }
+    }
+    if (rotating.hasRotated) onGestureChangeRef.current?.(false);
+    rotateRef.current = null;
+    setGestureGeom({});
+  }, []);
+
   const handlePointerUp = useCallback(
     (e: React.PointerEvent, el: DocElement) => {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
@@ -2262,6 +2340,14 @@ export default function DocumentPreview({
       if (dragRef.current) commitDragGesture();
     },
     [isOtherElementWhileEditing, commitDragGesture],
+  );
+
+  const handleRotatePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      if (rotateRef.current) commitRotateGesture();
+    },
+    [commitRotateGesture],
   );
 
   const handleResizePointerUp = useCallback(
@@ -2349,15 +2435,20 @@ export default function DocumentPreview({
       const blocks = elementsNow.filter((x) => x.type === 'block');
       const isBlock = el?.type === 'block';
       const rect = canvasRef.current.getBoundingClientRect();
-      const dx = ((e.clientX - resize.startX) / rect.width) * 100;
-      const dy = ((e.clientY - resize.startY) / rect.height) * 100;
+      const local = rotatePointerDeltaToLocal(
+        e.clientX - resize.startX,
+        e.clientY - resize.startY,
+        resize.rotation,
+      );
+      const dx = (local.dx / rect.width) * 100;
+      const dy = (local.dy / rect.height) * 100;
       if (!resize.hasResized && (Math.abs(dx) > 0.2 || Math.abs(dy) > 0.2)) {
         onBeginUserActionRef.current?.();
         resize.hasResized = true;
         onGestureChangeRef.current?.(true);
       }
       const keepAspect = (e.ctrlKey || e.metaKey) && isCornerResizeHandle(resize.handle);
-      const next = isBlock
+      let next = isBlock
         ? applyResizeBlock(
             resize.handle,
             dx,
@@ -2379,6 +2470,17 @@ export default function DocumentPreview({
             marginsNow,
             keepAspect,
           );
+      if (resize.rotation) {
+        const shift = shiftToKeepHandleAnchorPct(
+          { x: resize.startX_pct, y: resize.startY_pct, w: resize.startW_pct, h: resize.startH_pct },
+          { x: next.x_pct, y: next.y_pct, w: next.width_pct, h: next.height_pct },
+          resize.handle,
+          resize.rotation,
+          rect.width,
+          rect.height,
+        );
+        next = { ...next, x_pct: next.x_pct + shift.x, y_pct: next.y_pct + shift.y };
+      }
       if (
         !isBlock &&
         overlapsAnyBlock(next.x_pct, next.y_pct, next.width_pct, next.height_pct, blocks, resize.elementId)
@@ -2411,13 +2513,43 @@ export default function DocumentPreview({
       return true;
     };
 
+    const processRotateMove = (e: PointerEvent) => {
+      const rotating = rotateRef.current;
+      if (!rotating) return false;
+      const pointerAngle = Math.atan2(e.clientY - rotating.cyScreen, e.clientX - rotating.cxScreen);
+      let nextRot = rotating.startRotation + ((pointerAngle - rotating.startPointerAngle) * 180) / Math.PI;
+      if (e.shiftKey) nextRot = Math.round(nextRot / 15) * 15;
+      if (!rotating.hasRotated && Math.abs(nextRot - rotating.startRotation) > 0.4) {
+        onBeginUserActionRef.current?.();
+        rotating.hasRotated = true;
+        onGestureChangeRef.current?.(true);
+      }
+      rotating.live = nextRot;
+      const el = elementsRef.current.find((x) => x.id === rotating.elementId);
+      applyElementBoxToDom(rotating.elementId, {
+        x_pct: el?.x_pct ?? 10,
+        y_pct: el?.y_pct ?? 20,
+        rotation: nextRot,
+      });
+      publishGestureGeom({
+        [rotating.elementId]: {
+          x_pct: el?.x_pct ?? 10,
+          y_pct: el?.y_pct ?? 20,
+          rotation: nextRot,
+        },
+      });
+      return true;
+    };
+
     const onDocMove = (e: PointerEvent) => {
       if (processDragMove(e)) return;
-      processResizeMove(e);
+      if (processResizeMove(e)) return;
+      processRotateMove(e);
     };
     const onDocUp = () => {
       if (dragRef.current) commitDragGesture();
       else if (resizeRef.current) commitResizeGesture();
+      else if (rotateRef.current) commitRotateGesture();
     };
     document.addEventListener('pointermove', onDocMove);
     document.addEventListener('pointerup', onDocUp);
@@ -2434,6 +2566,7 @@ export default function DocumentPreview({
     setGuidesIfChanged,
     commitDragGesture,
     commitResizeGesture,
+    commitRotateGesture,
     publishGestureGeom,
   ]);
 
@@ -2692,6 +2825,7 @@ export default function DocumentPreview({
             const y = (live?.y_pct ?? el.y_pct ?? 20) / 100;
             const w = (live?.width_pct ?? el.width_pct ?? 80) / 100;
             const h = (live?.height_pct ?? el.height_pct ?? 8) / 100;
+            const rotationDeg = docElementRotationDeg(live?.rotation ?? el.rotation);
             const isSelected = selectedElementIds.includes(el.id);
             const isEditing = editingElementId === el.id && el.type === 'text' && !el.locked;
             const isBlock = el.type === 'block';
@@ -2803,6 +2937,7 @@ export default function DocumentPreview({
                   top: `${y * 100}%`,
                   width: `${w * 100}%`,
                   height: `${h * 100}%`,
+                  ...docElementRotateStyle(rotationDeg),
                 }}
               >
                 {el.type === 'text' ? (
@@ -2941,16 +3076,32 @@ export default function DocumentPreview({
                   )
                 )}
                 {showHandles &&
-                  HANDLES.map(({ position, cursor, dir }) => (
+                  HANDLES.map(({ position, dir }) => (
                     <div
                       key={dir}
                       role="presentation"
                       className={`absolute h-2.5 w-2.5 rounded-full border border-white bg-white shadow-sm ring-[2px] ring-brand-red/75 transition-transform duration-200 ease-out hover:scale-110 hover:ring-brand-red ${position}`}
-                      style={{ cursor }}
+                      style={{ cursor: resizeCursorForDocRotation(dir, rotationDeg) }}
                       onPointerDown={(e) => handleResizePointerDown(e, el, dir)}
                       onPointerUp={handleResizePointerUp}
                     />
                   ))}
+                {showHandles && (
+                  <>
+                    <div
+                      className="pointer-events-none absolute left-1/2 top-0 h-4 w-px -translate-x-1/2 -translate-y-full bg-brand-red/75"
+                      aria-hidden
+                    />
+                    <div
+                      role="presentation"
+                      title="Rotate"
+                      className="absolute left-1/2 top-0 h-3 w-3 rounded-full border border-white bg-white shadow-sm ring-[2px] ring-brand-red/75 hover:scale-110 hover:ring-brand-red"
+                      style={{ transform: 'translate(-50%, calc(-100% - 10px))', cursor: 'grab' }}
+                      onPointerDown={(e) => handleRotatePointerDown(e, el)}
+                      onPointerUp={handleRotatePointerUp}
+                    />
+                  </>
+                )}
               </div>
             </Fragment>
             );
