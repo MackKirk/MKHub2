@@ -154,19 +154,77 @@ def html_to_text(html: str) -> str:
     text = re.sub(r"(?i)<br\s*/?>", "\n", text)
     text = re.sub(r"(?i)</p\s*>", "\n\n", text)
     text = re.sub(r"(?i)</div\s*>", "\n", text)
+    text = re.sub(r"(?i)</li\s*>", "\n", text)
     text = re.sub(r"(?i)</tr\s*>", "\n", text)
+    text = re.sub(r"(?i)<hr\s*/?>", "\n────────────────\n", text)
     text = re.sub(r"(?s)<[^>]+>", "", text)
     text = html_lib.unescape(text)
-    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = text.replace("\u00a0", " ").replace("\u200b", "")
+    return normalize_email_body(text)
+
+
+def normalize_email_body(body: str) -> str:
+    """Clean Outlook/forward noise so Notes (plain text) stay readable."""
+    if not body:
+        return ""
+    text = body.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\u00a0", " ").replace("\u200b", "")
+    # Normalize common forward / reply separators
+    text = re.sub(
+        r"(?im)^[-\s]*Forwarded message[-\s]*$",
+        "\n────────────────\nForwarded message\n────────────────\n",
+        text,
+    )
+    text = re.sub(
+        r"(?im)^-+\s*Original Message\s*-+$",
+        "\n────────────────\nOriginal message\n────────────────\n",
+        text,
+    )
+    text = re.sub(
+        r"(?im)^_{5,}$",
+        "────────────────",
+        text,
+    )
+    text = re.sub(
+        r"(?im)^-{5,}$",
+        "────────────────",
+        text,
+    )
+    # Collapse spaces on each line, then excess blank lines
+    text = "\n".join(re.sub(r"[ \t]+", " ", line).rstrip() for line in text.split("\n"))
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
 def resolve_body(text_body: str, html_body: str) -> str:
     plain = (text_body or "").strip()
+    html = (html_body or "").strip()
     if plain:
-        return plain
-    return html_to_text(html_body or "")
+        # Outlook sometimes dumps a plain body full of blank lines; prefer HTML then
+        if html and plain.count("\n\n\n") >= 2:
+            converted = html_to_text(html)
+            if converted:
+                return converted
+        return normalize_email_body(plain)
+    return html_to_text(html)
+
+
+def build_note_description(*, from_email: str, from_name: str, subject: str, body: str) -> str:
+    who = from_name.strip() if from_name.strip() else from_email
+    from_line = f"From: {who} <{from_email}>" if from_email else f"From: {who}"
+    subject_line = f"Subject: {subject}" if subject else "Subject: (none)"
+    clean_body = normalize_email_body(body) if body else "(empty message body)"
+    # Plain-text card; Notes UI uses whitespace-pre-wrap
+    return "\n".join(
+        [
+            "──────── Email ────────",
+            from_line,
+            subject_line,
+            "───────────────────────",
+            "",
+            clean_body,
+        ]
+    )
 
 
 def parse_message_id_from_headers(headers: str) -> str:
@@ -188,7 +246,11 @@ def route_kind_for_recipients(recipient_emails: list[str]) -> RouteKind:
 
 def collect_recipient_emails(parsed: ParsedInboundEmail) -> list[str]:
     out: list[str] = []
-    for src in (parsed.envelope_to, extract_email_addresses_from_header(parsed.to_raw), extract_email_addresses_from_header(parsed.cc_raw)):
+    for src in (
+        parsed.envelope_to,
+        extract_email_addresses_from_header(parsed.to_raw),
+        extract_email_addresses_from_header(parsed.cc_raw),
+    ):
         for addr in src:
             a = addr.lower().strip()
             if a and a not in out:
@@ -231,7 +293,6 @@ def find_projects_by_mk_code(db: Session, mk_code: str) -> list[Project]:
     prefix = (mk_code or "").strip().upper()
     if not prefix:
         return []
-    # Exact prefix before '/' or end; avoid MK-00497 matching MK-004970
     like = f"{prefix}%"
     rows = (
         db.query(Project)
@@ -304,17 +365,6 @@ def _store_attachment(
     db.add(fo)
     db.flush()
     return fo
-
-
-def build_note_description(*, from_email: str, from_name: str, subject: str, body: str) -> str:
-    who = from_name.strip() if from_name.strip() else from_email
-    header_lines = [
-        f"From: {who} <{from_email}>" if from_email else f"From: {who}",
-        f"Subject: {subject}" if subject else None,
-        "",
-        body or "(empty message body)",
-    ]
-    return "\n".join(line for line in header_lines if line is not None)
 
 
 def process_inbound_email(db: Session, parsed: ParsedInboundEmail) -> InboundProcessResult:

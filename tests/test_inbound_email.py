@@ -202,7 +202,24 @@ class TestProcessInboundNotes(unittest.TestCase):
         self.assertEqual(added.category_id, "client-communication-log")
         self.assertIn("MK-00497", added.title)
         self.assertIn("Looks good", added.description)
+        self.assertIn("──────── Email ────────", added.description)
         self.assertEqual(added.images["inbound_email"]["message_id"], "mid-1")
+
+    def test_build_note_description_format(self):
+        from app.services.inbound_email import build_note_description
+
+        text = build_note_description(
+            from_email="alex@mackkirk.com",
+            from_name="Alex",
+            subject="Re: MK-00497",
+            body="Hello\n\n\n\nWorld\n-----Original Message-----\nOld",
+        )
+        self.assertIn("──────── Email ────────", text)
+        self.assertIn("From: Alex <alex@mackkirk.com>", text)
+        self.assertIn("Subject: Re: MK-00497", text)
+        self.assertIn("───────────────────────", text)
+        self.assertIn("Original message", text)
+        self.assertNotIn("\n\n\n\n", text)
 
 
 class TestFindProjectsByMkCodeFilter(unittest.TestCase):
