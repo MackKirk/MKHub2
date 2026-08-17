@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import type { DocumentTypePreset } from '@/components/ChooseDocumentTypeModal';
 import { getDocumentTypeCategories } from '@/lib/documentTypeGrouping';
 import type { DocElement, PageMargins } from '@/types/documentCreator';
+import { docElementRotationDeg, docElementRotateStyle } from '@/utils/documentElementGeometry';
 import { DocumentTypePageLayoutModal } from '@/components/DocumentTypePageLayoutModal';
 import OverlayPortal from '@/components/OverlayPortal';
 
@@ -69,6 +70,7 @@ function PageThumbnailSmall({
                 top: `${y * 100}%`,
                 width: `${w * 100}%`,
                 height: `${h * 100}%`,
+                ...docElementRotateStyle(docElementRotationDeg(el.rotation)),
               }}
             >
               {el.type === 'text' ? (
@@ -198,7 +200,19 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
     setPages((prev) => [...prev, { template_id: '', label: '' }]);
   };
 
-  const removePage = (index: number) => {
+  const removePage = async (index: number) => {
+    const page = pages[index];
+    const pageName =
+      page?.label?.trim() ||
+      templates.find((t) => t.id === page?.template_id)?.name ||
+      `Page ${index + 1}`;
+    const ok = await confirm({
+      title: 'Remove page',
+      message: `Remove "${pageName}" from this template? This only affects the template until you save.`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+    });
+    if (ok !== 'confirm') return;
     setPages((prev) => prev.filter((_, i) => i !== index));
     if (draggingPageIdx === index) setDraggingPageIdx(null);
     if (dragOverPageIdx === index) setDragOverPageIdx(null);
@@ -436,8 +450,11 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                 <tbody className="divide-y divide-slate-50">
                   {[
                     { token: '<Project Name>', label: 'Project name' },
+                    { token: '<Project Address>', label: 'Project address' },
                     { token: '<Customer Name>', label: 'Customer name' },
+                    { token: '<Customer Address>', label: 'Customer address' },
                     { token: '<Reference Code>', label: 'Project code' },
+                    { token: '<Auto Date>', label: 'Date when page is added' },
                   ].map(({ token, label }) => (
                     <tr key={token}>
                       <td className="py-1.5 pr-3">
@@ -681,7 +698,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                           </button>
                           <button
                             type="button"
-                            onClick={() => removePage(idx)}
+                            onClick={() => { void removePage(idx); }}
                             className="p-2 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
                             title="Remove page"
                             aria-label="Remove page"

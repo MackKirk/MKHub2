@@ -19,6 +19,8 @@ import {
   editorContextNativeSelectClass,
   editorContextToolbarGroupClass,
   editorContextToolbarRowClass,
+  editorContextToolbarStackClass,
+  editorContextToolbarStackRowClass,
   editorSegmentedControlTrackClass,
   editorSegmentedSegmentIdleClass,
   editorSegmentedSegmentSelectedClass,
@@ -36,6 +38,14 @@ import {
 
 function Cluster({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={`${editorContextToolbarGroupClass} ${className ?? ''}`}>{children}</div>;
+}
+
+function Stack({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={`${editorContextToolbarStackClass} ${className ?? ''}`}>{children}</div>;
+}
+
+function StackRow({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={`${editorContextToolbarStackRowClass} ${className ?? ''}`}>{children}</div>;
 }
 
 const geometryPxInputClass =
@@ -90,15 +100,11 @@ function GeometryPxInput({
   );
 }
 
-function ElementGeometryCluster({
-  element,
-  margins,
-  onUpdate,
-}: {
-  element: DocElement;
-  margins?: PageMarginsPct | null;
-  onUpdate: (id: string, updater: (el: DocElement) => DocElement) => void;
-}) {
+function getElementGeometry(
+  element: DocElement,
+  margins: PageMarginsPct | null | undefined,
+  onUpdate: (id: string, updater: (el: DocElement) => DocElement) => void,
+) {
   const locked = !!element.locked;
   const positionLocked = locked || !!element.lockPosition;
   const px = geometryPctToPx({
@@ -129,24 +135,77 @@ function ElementGeometryCluster({
     });
   };
 
-  return (
-    <>
-      <Cluster className="gap-1.5">
-        <span className={editorToolbarMicroLabelClass}>Pos</span>
-        <GeometryPxInput label="X" valuePx={px.x} disabled={positionLocked} onCommit={(n) => applyField('x', n)} />
-        <GeometryPxInput label="Y" valuePx={px.y} disabled={positionLocked} onCommit={(n) => applyField('y', n)} />
-      </Cluster>
-      <Cluster className="gap-1.5">
-        <span className={editorToolbarMicroLabelClass}>Size</span>
-        <GeometryPxInput label="W" valuePx={px.width} disabled={locked} onCommit={(n) => applyField('width', n)} />
-        <GeometryPxInput label="H" valuePx={px.height} disabled={locked} onCommit={(n) => applyField('height', n)} />
-      </Cluster>
-    </>
-  );
+  return { locked, positionLocked, px, applyField };
 }
 
 type LineListStyle = Exclude<NonNullable<DocElement['listStyle']>, 'none'>;
 type RunFormat = Partial<Omit<RichTextRun, 'text'>>;
+
+/** Apply run format to every rich-text run + element defaults (selected, not editing). */
+function applyFormatToEntireTextElement(el: DocElement, format: RunFormat): DocElement {
+  const next: DocElement = { ...el };
+  if (format.bold !== undefined) next.fontWeight = format.bold ? 'bold' : 'normal';
+  if (format.italic !== undefined) next.fontStyle = format.italic ? 'italic' : 'normal';
+  if (format.fontSize !== undefined) next.fontSize = format.fontSize;
+  if (format.color !== undefined) next.color = format.color;
+  if (format.fontFamily !== undefined) next.fontFamily = format.fontFamily;
+  if (el.richLines && el.richLines.length > 0) {
+    next.richLines = el.richLines.map((line) => line.map((run) => ({ ...run, ...format })));
+  }
+  return next;
+}
+
+function applyAlignToEntireTextElement(
+  el: DocElement,
+  align: 'left' | 'center' | 'right',
+): DocElement {
+  return {
+    ...el,
+    textAlign: align,
+    lineTextAligns: el.lineTextAligns?.length
+      ? el.lineTextAligns.map(() => align)
+      : el.lineTextAligns,
+  };
+}
+
+/** Uniform run format across the whole box, or null for a property when mixed / missing. */
+function entireTextElementFormat(el: DocElement): {
+  bold: boolean;
+  italic: boolean;
+  fontSize: number;
+  color: string;
+  fontFamily: NonNullable<DocElement['fontFamily']>;
+} {
+  const fallbackBold = (el.fontWeight ?? 'normal') === 'bold';
+  const fallbackItalic = (el.fontStyle ?? 'normal') === 'italic';
+  const fallbackSize = el.fontSize ?? 12;
+  const fallbackColor = el.color ?? '#000000';
+  const fallbackFamily = el.fontFamily ?? 'Montserrat';
+  const runs = (el.richLines ?? []).flat();
+  if (runs.length === 0) {
+    return {
+      bold: fallbackBold,
+      italic: fallbackItalic,
+      fontSize: fallbackSize,
+      color: fallbackColor,
+      fontFamily: fallbackFamily,
+    };
+  }
+  const bolds = runs.map((r) => r.bold ?? fallbackBold);
+  const italics = runs.map((r) => r.italic ?? fallbackItalic);
+  const sizes = runs.map((r) => r.fontSize ?? fallbackSize);
+  const colors = runs.map((r) => r.color ?? fallbackColor);
+  const families = runs.map((r) => r.fontFamily ?? fallbackFamily);
+  const allSame = <T,>(vals: T[]) => vals.every((v) => v === vals[0]);
+  return {
+    // Mixed → not "all on", so the next click applies the style to the whole block.
+    bold: bolds.every(Boolean),
+    italic: italics.every(Boolean),
+    fontSize: allSame(sizes) ? sizes[0] : fallbackSize,
+    color: allSame(colors) ? colors[0] : fallbackColor,
+    fontFamily: allSame(families) ? families[0] : fallbackFamily,
+  };
+}
 
 // ── Constants shared with DocumentPreview.tsx ─────────────────────────────
 const INLINE_TEXT_EDITOR_ATTR = 'data-inline-text-editor';
@@ -342,33 +401,45 @@ export default function DocumentSelectionInspector({
   const isLocked = !!element.locked;
   const hasImage = isImage && !!element.content;
 
-  const geometryRow = (
-    <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
-      <ElementGeometryCluster element={element} margins={margins} onUpdate={onUpdate} />
-    </div>
-  );
+  const geo = getElementGeometry(element, margins, onUpdate);
 
   if (isBlock) {
-    return geometryRow;
+    return (
+      <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
+        <Stack>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Pos</span>
+            <GeometryPxInput label="X" valuePx={geo.px.x} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('x', n)} />
+            <GeometryPxInput label="Y" valuePx={geo.px.y} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('y', n)} />
+          </StackRow>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Size</span>
+            <GeometryPxInput label="W" valuePx={geo.px.width} disabled={geo.locked} onCommit={(n) => geo.applyField('width', n)} />
+            <GeometryPxInput label="H" valuePx={geo.px.height} disabled={geo.locked} onCommit={(n) => geo.applyField('height', n)} />
+          </StackRow>
+        </Stack>
+      </div>
+    );
   }
 
   if (isText && !isLocked) {
-    // When editing: read bold/italic/color/size/font from selection; else from element.
+    // When editing: read from caret/selection. When only selected: from the whole block (all runs).
+    const blockFmt = entireTextElementFormat(element);
     const activeBold = isEditing && selFmt !== null
       ? (selFmt.bold ?? (element.fontWeight ?? 'normal') === 'bold')
-      : (element.fontWeight ?? 'normal') === 'bold';
+      : blockFmt.bold;
     const activeItalic = isEditing && selFmt !== null
       ? (selFmt.italic ?? (element.fontStyle ?? 'normal') === 'italic')
-      : (element.fontStyle ?? 'normal') === 'italic';
+      : blockFmt.italic;
     const activeColor = isEditing && selFmt !== null && selFmt.color !== undefined
       ? selFmt.color
-      : (element.color ?? '#000000');
+      : blockFmt.color;
     const activeFontSize = isEditing && selFmt !== null
       ? (selFmt.fontSize ?? element.fontSize ?? 12)
-      : (element.fontSize ?? 12);
+      : blockFmt.fontSize;
     const activeFontFamily = isEditing && selFmt !== null && selFmt.fontFamily !== undefined
       ? selFmt.fontFamily
-      : (element.fontFamily ?? 'Montserrat');
+      : blockFmt.fontFamily;
 
     // H-alignment: per-line when editing, element-level otherwise.
     const activeHAlign = isEditing
@@ -376,317 +447,371 @@ export default function DocumentSelectionInspector({
       : (element.textAlign ?? 'left');
 
     return (
-      <>
-        {geometryRow}
       <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
-        <Cluster className="gap-2">
-          <span className={editorToolbarMicroLabelClass}>Preset</span>
-          <select
-            value=""
-            onChange={(e) => {
-              const preset = TEXT_STYLE_PRESETS.find((p) => p.id === e.target.value);
-              if (!preset) { e.target.value = ''; return; }
-              const fmt: RunFormat = {
-                fontFamily: preset.fontFamily,
-                bold: preset.fontWeight === 'bold',
-                fontSize: preset.fontSize,
-                color: preset.color,
-              };
-              if (!dispatchFormatToInlineEditor(id, fmt)) {
-                onUpdate(id, (el) => ({
-                  ...el,
+        <Stack>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Pos</span>
+            <GeometryPxInput label="X" valuePx={geo.px.x} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('x', n)} />
+            <GeometryPxInput label="Y" valuePx={geo.px.y} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('y', n)} />
+          </StackRow>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Preset</span>
+            <select
+              value=""
+              onChange={(e) => {
+                const preset = TEXT_STYLE_PRESETS.find((p) => p.id === e.target.value);
+                if (!preset) { e.target.value = ''; return; }
+                const fmt: RunFormat = {
                   fontFamily: preset.fontFamily,
-                  fontWeight: preset.fontWeight,
+                  bold: preset.fontWeight === 'bold',
                   fontSize: preset.fontSize,
                   color: preset.color,
-                }));
-              }
-              e.target.value = '';
-            }}
-            className={`${editorContextNativeSelectClass} w-[min(10rem,36vw)] min-w-[7.5rem]`}
-            title="Apply preset"
-          >
-            <option value="">Choose preset…</option>
-            {TEXT_STYLE_PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>{p.label}</option>
-            ))}
-          </select>
-        </Cluster>
-
-        <Cluster className="gap-2">
-          <span className={editorToolbarMicroLabelClass}>List</span>
-          <div className={`${editorSegmentedControlTrackClass} w-[9.5rem] shrink-0 sm:w-[10rem]`}>
-            {(
-              [
-                { mode: 'none' as const, title: 'Plain text', Icon: ParagraphPlainIcon },
-                { mode: 'bullet' as const, title: 'Bullets', Icon: ListBulletIcon },
-                { mode: 'numbered' as const, title: 'Numbering', Icon: ListNumberedIcon },
-                { mode: 'lettered' as const, title: 'Lettered list (a, b, c)', Icon: ListLetteredIcon },
-              ] as const
-            ).map(({ mode, title, Icon }) => {
-              const current = selectedInlineEditorListMode(element);
-              const selected = current === mode;
-              return (
-                <button
-                  key={mode}
-                  type="button"
-                  onPointerDown={(e) => e.preventDefault()}
-                  onMouseDown={(e) => e.preventDefault()}
-                  title={title}
-                  aria-label={title}
-                  aria-pressed={selected}
-                  onClick={() => {
-                    if (dispatchListStyleToInlineEditor(id, mode)) return;
-                    onUpdate(id, (el) => applyListStyleToSelection(el, mode, selectedInlineEditorLineIndexes(id)));
-                  }}
-                  className={`flex h-full min-h-0 flex-1 items-center justify-center px-1 transition-[background-color,color,box-shadow] duration-150 ${selected ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass}`}
-                >
-                  <Icon className="h-4 w-4 shrink-0 text-slate-800" />
-                </button>
-              );
-            })}
-          </div>
-        </Cluster>
-
-        <Cluster className="gap-2">
-          <span className={editorToolbarMicroLabelClass}>Font</span>
-          <select
-            value={activeFontFamily}
-            onChange={(e) => {
-              const val = e.target.value as DocElement['fontFamily'];
-              if (!dispatchFormatToInlineEditor(id, { fontFamily: val })) {
-                onUpdate(id, (el) => ({ ...el, fontFamily: val }));
-              }
-            }}
-            className={`${editorContextNativeSelectClass} w-[min(9rem,34vw)] min-w-[6.5rem]`}
-          >
-            {DOCUMENT_EDITOR_FONTS.map((f) => (
-              <option key={f} value={f}>{f}</option>
-            ))}
-          </select>
-        </Cluster>
-
-        <Cluster className="gap-1.5">
-          <span className={`${editorToolbarMicroLabelClass} mr-0.5`}>Style</span>
-          <button
-            type="button"
-            onPointerDown={(e) => e.preventDefault()}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              if (!dispatchFormatToInlineEditor(id, { bold: !activeBold }, true)) {
-                onUpdate(id, (el) => ({ ...el, fontWeight: (el.fontWeight ?? 'normal') === 'bold' ? 'normal' : 'bold' }));
-              }
-            }}
-            className={`h-8 w-8 shrink-0 rounded-md border text-xs font-bold transition-[background-color,border-color,color,box-shadow] duration-150 ${
-              activeBold
-                ? 'border-slate-800 bg-slate-800 text-white shadow-sm'
-                : 'border-slate-300/95 bg-white text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-50'
-            }`}
-            title="Bold"
-          >
-            B
-          </button>
-          <button
-            type="button"
-            onPointerDown={(e) => e.preventDefault()}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              if (!dispatchFormatToInlineEditor(id, { italic: !activeItalic }, true)) {
-                onUpdate(id, (el) => ({ ...el, fontStyle: (el.fontStyle ?? 'normal') === 'italic' ? 'normal' : 'italic' }));
-              }
-            }}
-            className={`h-8 w-8 shrink-0 rounded-md border text-xs italic transition-[background-color,border-color,color,box-shadow] duration-150 ${
-              activeItalic
-                ? 'border-slate-800 bg-slate-800 text-white shadow-sm'
-                : 'border-slate-300/95 bg-white text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-50'
-            }`}
-            title="Italic"
-          >
-            I
-          </button>
-          <div className="flex h-8 items-center gap-0.5 rounded-md border border-slate-300/90 bg-white px-0.5 shadow-sm">
-            <span className="pl-1 text-[10px] font-semibold text-slate-600">Size</span>
-            <button
-              type="button"
-              onPointerDown={(e) => e.preventDefault()}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                const next = Math.max(6, activeFontSize - 1);
-                if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
-                  onUpdate(id, (el) => ({ ...el, fontSize: next }));
+                };
+                if (!dispatchFormatToInlineEditor(id, fmt)) {
+                  onUpdate(id, (el) => applyFormatToEntireTextElement(el, fmt));
                 }
+                e.target.value = '';
               }}
-              className="h-6 w-6 shrink-0 rounded text-sm font-semibold text-slate-700 hover:bg-slate-100"
-              title="Smaller"
-              aria-label="Decrease font size"
+              className={`${editorContextNativeSelectClass} w-[min(10rem,36vw)] min-w-[7.5rem]`}
+              title="Apply preset"
             >
-              −
-            </button>
-            <input
-              type="number"
-              min={6}
-              max={99}
-              value={activeFontSize}
+              <option value="">Choose preset…</option>
+              {TEXT_STYLE_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+          </StackRow>
+        </Stack>
+
+        <Stack>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Size</span>
+            <GeometryPxInput label="W" valuePx={geo.px.width} disabled={geo.locked} onCommit={(n) => geo.applyField('width', n)} />
+            <GeometryPxInput label="H" valuePx={geo.px.height} disabled={geo.locked} onCommit={(n) => geo.applyField('height', n)} />
+          </StackRow>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>List</span>
+            <div className={`${editorSegmentedControlTrackClass} w-[9.5rem] shrink-0 sm:w-[10rem]`}>
+              {(
+                [
+                  { mode: 'none' as const, title: 'Plain text', Icon: ParagraphPlainIcon },
+                  { mode: 'bullet' as const, title: 'Bullets', Icon: ListBulletIcon },
+                  { mode: 'numbered' as const, title: 'Numbering', Icon: ListNumberedIcon },
+                  { mode: 'lettered' as const, title: 'Lettered list (a, b, c)', Icon: ListLetteredIcon },
+                ] as const
+              ).map(({ mode, title, Icon }) => {
+                const current = selectedInlineEditorListMode(element);
+                const selected = current === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onMouseDown={(e) => e.preventDefault()}
+                    title={title}
+                    aria-label={title}
+                    aria-pressed={selected}
+                    onClick={() => {
+                      if (dispatchListStyleToInlineEditor(id, mode)) return;
+                      onUpdate(id, (el) => applyListStyleToSelection(el, mode, selectedInlineEditorLineIndexes(id)));
+                    }}
+                    className={`flex h-full min-h-0 flex-1 items-center justify-center px-1 transition-[background-color,color,box-shadow] duration-150 ${selected ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass}`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0 text-slate-800" />
+                  </button>
+                );
+              })}
+            </div>
+          </StackRow>
+        </Stack>
+
+        <Stack>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Font</span>
+            <select
+              value={activeFontFamily}
               onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isNaN(n)) return;
-                const clamped = Math.max(6, Math.min(99, n));
-                if (!dispatchFormatToInlineEditor(id, { fontSize: clamped })) {
-                  onUpdate(id, (el) => ({ ...el, fontSize: clamped }));
+                const val = e.target.value as DocElement['fontFamily'];
+                if (!dispatchFormatToInlineEditor(id, { fontFamily: val })) {
+                  onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontFamily: val }));
                 }
               }}
-              className="h-6 w-11 rounded border-0 bg-transparent p-0 text-center text-xs font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-0"
-            />
+              className={`${editorContextNativeSelectClass} w-[min(9rem,34vw)] min-w-[6.5rem]`}
+            >
+              {DOCUMENT_EDITOR_FONTS.map((f) => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+          </StackRow>
+          <StackRow>
+            <span className={`${editorToolbarMicroLabelClass} mr-0.5`}>Style</span>
             <button
               type="button"
               onPointerDown={(e) => e.preventDefault()}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
-                const next = Math.min(99, activeFontSize + 1);
-                if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
-                  onUpdate(id, (el) => ({ ...el, fontSize: next }));
+                if (!dispatchFormatToInlineEditor(id, { bold: !activeBold }, true)) {
+                  onUpdate(id, (el) => applyFormatToEntireTextElement(el, { bold: !activeBold }));
                 }
               }}
-              className="h-6 w-6 shrink-0 rounded text-sm font-semibold text-slate-700 hover:bg-slate-100"
-              title="Larger"
-              aria-label="Increase font size"
+              className={`h-8 w-8 shrink-0 rounded-md border text-xs font-bold transition-[background-color,border-color,color,box-shadow] duration-150 ${
+                activeBold
+                  ? 'border-slate-800 bg-slate-800 text-white shadow-sm'
+                  : 'border-slate-300/95 bg-white text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-50'
+              }`}
+              title="Bold"
             >
-              +
+              B
             </button>
-          </div>
-          <DocumentEditorFontColorPicker
-            key={id}
-            value={activeColor}
-            onChange={(c) => {
-              if (!dispatchFormatToInlineEditor(id, { color: c })) {
-                onUpdate(id, (el) => ({ ...el, color: c }));
-              }
-            }}
-          />
-        </Cluster>
-
-        <Cluster className="gap-2">
-          <span className={editorToolbarMicroLabelClass}>H</span>
-          <div className={`${editorSegmentedControlTrackClass} w-[7.25rem]`}>
-            {[
-              { v: 'left' as const, title: 'Align left', icon: <AlignLeftIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-              { v: 'center' as const, title: 'Align center', icon: <AlignCenterIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-              { v: 'right' as const, title: 'Align right', icon: <AlignRightIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-            ].map(({ v, title, icon }) => (
+            <button
+              type="button"
+              onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                if (!dispatchFormatToInlineEditor(id, { italic: !activeItalic }, true)) {
+                  onUpdate(id, (el) => applyFormatToEntireTextElement(el, { italic: !activeItalic }));
+                }
+              }}
+              className={`h-8 w-8 shrink-0 rounded-md border text-xs italic transition-[background-color,border-color,color,box-shadow] duration-150 ${
+                activeItalic
+                  ? 'border-slate-800 bg-slate-800 text-white shadow-sm'
+                  : 'border-slate-300/95 bg-white text-slate-900 shadow-sm hover:border-slate-400 hover:bg-slate-50'
+              }`}
+              title="Italic"
+            >
+              I
+            </button>
+            <div className="flex h-8 items-center gap-0.5 rounded-md border border-slate-300/90 bg-white px-0.5 shadow-sm">
+              <span className="pl-1 text-[10px] font-semibold text-slate-600">Size</span>
               <button
-                key={v}
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  if (!dispatchLineAlignToInlineEditor(id, v)) {
-                    onUpdate(id, (el) => ({ ...el, textAlign: v }));
+                  const next = Math.max(6, activeFontSize - 1);
+                  if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
+                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: next }));
                   }
                 }}
-                className={`flex h-full min-h-0 flex-1 items-center justify-center transition-[background-color,color,box-shadow] duration-150 ${
-                  activeHAlign === v ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
-                }`}
-                title={title}
+                className="h-6 w-6 shrink-0 rounded text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                title="Smaller"
+                aria-label="Decrease font size"
               >
-                {icon}
+                −
               </button>
-            ))}
-          </div>
-        </Cluster>
-
-        <Cluster className="gap-2">
-          <span className={editorToolbarMicroLabelClass}>V</span>
-          <div className={`${editorSegmentedControlTrackClass} w-[7.25rem]`}>
-            {[
-              { v: 'top' as const, title: 'Top', icon: <AlignTopIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-              { v: 'center' as const, title: 'Center', icon: <AlignMiddleIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-              { v: 'bottom' as const, title: 'Bottom', icon: <AlignBottomIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
-            ].map(({ v, title, icon }) => (
+              <input
+                type="number"
+                min={6}
+                max={99}
+                value={activeFontSize}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isNaN(n)) return;
+                  const clamped = Math.max(6, Math.min(99, n));
+                  if (!dispatchFormatToInlineEditor(id, { fontSize: clamped })) {
+                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: clamped }));
+                  }
+                }}
+                className="h-6 w-11 rounded border-0 bg-transparent p-0 text-center text-xs font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-0"
+              />
               <button
-                key={v}
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => onUpdate(id, (el) => ({ ...el, verticalAlign: v }))}
-                className={`flex h-full min-h-0 flex-1 items-center justify-center transition-[background-color,color,box-shadow] duration-150 ${
-                  (element.verticalAlign ?? 'top') === v ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
-                }`}
-                title={title}
+                onClick={() => {
+                  const next = Math.min(99, activeFontSize + 1);
+                  if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
+                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: next }));
+                  }
+                }}
+                className="h-6 w-6 shrink-0 rounded text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                title="Larger"
+                aria-label="Increase font size"
               >
-                {icon}
+                +
               </button>
-            ))}
-          </div>
-        </Cluster>
+            </div>
+            <DocumentEditorFontColorPicker
+              key={id}
+              value={activeColor}
+              onChange={(c) => {
+                if (!dispatchFormatToInlineEditor(id, { color: c })) {
+                  onUpdate(id, (el) => applyFormatToEntireTextElement(el, { color: c }));
+                }
+              }}
+            />
+          </StackRow>
+        </Stack>
+
+        <Stack>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>H</span>
+            <div className={`${editorSegmentedControlTrackClass} w-[7.25rem]`}>
+              {[
+                { v: 'left' as const, title: 'Align left', icon: <AlignLeftIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
+                { v: 'center' as const, title: 'Align center', icon: <AlignCenterIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
+                { v: 'right' as const, title: 'Align right', icon: <AlignRightIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
+              ].map(({ v, title, icon }) => (
+                <button
+                  key={v}
+                  type="button"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    if (!dispatchLineAlignToInlineEditor(id, v)) {
+                      onUpdate(id, (el) => applyAlignToEntireTextElement(el, v));
+                    }
+                  }}
+                  className={`flex h-full min-h-0 flex-1 items-center justify-center transition-[background-color,color,box-shadow] duration-150 ${
+                    activeHAlign === v ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
+                  }`}
+                  title={title}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
+          </StackRow>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>V</span>
+            <div className={`${editorSegmentedControlTrackClass} w-[7.25rem]`}>
+              {[
+                { v: 'top' as const, title: 'Top', icon: <AlignTopIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
+                { v: 'center' as const, title: 'Center', icon: <AlignMiddleIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
+                { v: 'bottom' as const, title: 'Bottom', icon: <AlignBottomIcon className="h-4 w-4 shrink-0 text-slate-800" /> },
+              ].map(({ v, title, icon }) => (
+                <button
+                  key={v}
+                  type="button"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onUpdate(id, (el) => ({ ...el, verticalAlign: v }))}
+                  className={`flex h-full min-h-0 flex-1 items-center justify-center transition-[background-color,color,box-shadow] duration-150 ${
+                    (element.verticalAlign ?? 'top') === v ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
+                  }`}
+                  title={title}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
+          </StackRow>
+        </Stack>
       </div>
-      </>
     );
   }
 
   if (isImage && hasImage && !isLocked) {
     return (
-      <>
-        {geometryRow}
-      <div className={editorContextToolbarRowClass}>
-        <Cluster className="gap-2">
-          <span className={editorToolbarMicroLabelClass}>Fit</span>
-          <div className={editorSegmentedControlTrackClass}>
-            {(['contain', 'cover', 'fill', 'none'] as const).map((fit) => (
-              <button
-                key={fit}
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => onUpdate(id, (el) => ({ ...el, imageFit: fit }))}
-                className={`flex h-full min-h-0 min-w-[3rem] flex-1 items-center justify-center px-2 text-[11px] font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
-                  (element.imageFit ?? 'contain') === fit ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
-                }`}
-                title={fit}
-              >
-                {fit}
-              </button>
-            ))}
-          </div>
-        </Cluster>
-        <Cluster className="gap-2">
-          <span className={editorToolbarMicroLabelClass}>Pos</span>
-          <ImagePositionDropdown
-            key={id}
-            value={element.imagePosition ?? '50% 50%'}
-            onChange={(v) => onUpdate(id, (el) => ({ ...el, imagePosition: v }))}
-          />
-        </Cluster>
+      <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
+        <Stack>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Pos</span>
+            <GeometryPxInput label="X" valuePx={geo.px.x} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('x', n)} />
+            <GeometryPxInput label="Y" valuePx={geo.px.y} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('y', n)} />
+          </StackRow>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Size</span>
+            <GeometryPxInput label="W" valuePx={geo.px.width} disabled={geo.locked} onCommit={(n) => geo.applyField('width', n)} />
+            <GeometryPxInput label="H" valuePx={geo.px.height} disabled={geo.locked} onCommit={(n) => geo.applyField('height', n)} />
+          </StackRow>
+        </Stack>
+        <Stack>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Fit</span>
+            <div className={editorSegmentedControlTrackClass}>
+              {(['contain', 'cover', 'fill', 'none'] as const).map((fit) => (
+                <button
+                  key={fit}
+                  type="button"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onUpdate(id, (el) => ({ ...el, imageFit: fit }))}
+                  className={`flex h-full min-h-0 min-w-[3rem] flex-1 items-center justify-center px-2 text-[11px] font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
+                    (element.imageFit ?? 'contain') === fit ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
+                  }`}
+                  title={fit}
+                >
+                  {fit}
+                </button>
+              ))}
+            </div>
+          </StackRow>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Pos</span>
+            <ImagePositionDropdown
+              key={id}
+              value={element.imagePosition ?? '50% 50%'}
+              onChange={(v) => onUpdate(id, (el) => ({ ...el, imagePosition: v }))}
+            />
+          </StackRow>
+        </Stack>
       </div>
-      </>
     );
   }
 
   if (isText && isLocked) {
     return (
-      <>
-        {geometryRow}
-      <p className="basis-full rounded-md border border-amber-200/80 bg-amber-50/90 px-2.5 py-1.5 text-[11px] text-amber-900">
-        Unlock the text element to edit formatting.
-      </p>
-      </>
+      <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
+        <Stack>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Pos</span>
+            <GeometryPxInput label="X" valuePx={geo.px.x} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('x', n)} />
+            <GeometryPxInput label="Y" valuePx={geo.px.y} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('y', n)} />
+          </StackRow>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Size</span>
+            <GeometryPxInput label="W" valuePx={geo.px.width} disabled={geo.locked} onCommit={(n) => geo.applyField('width', n)} />
+            <GeometryPxInput label="H" valuePx={geo.px.height} disabled={geo.locked} onCommit={(n) => geo.applyField('height', n)} />
+          </StackRow>
+        </Stack>
+        <Cluster className="self-center">
+          <p className="rounded-md border border-amber-200/80 bg-amber-50/90 px-2.5 py-1.5 text-[11px] text-amber-900">
+            Unlock the text element to edit formatting.
+          </p>
+        </Cluster>
+      </div>
     );
   }
 
   if (isImage && (!hasImage || isLocked)) {
     return (
-      <>
-        {geometryRow}
-      <p className="basis-full rounded-md border border-slate-200/90 bg-slate-50/80 px-2.5 py-1.5 text-[11px] text-slate-600">
-        {isLocked ? 'Unlock the image to adjust fit and position.' : 'Add an image to adjust fit and position.'}
-      </p>
-      </>
+      <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
+        <Stack>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Pos</span>
+            <GeometryPxInput label="X" valuePx={geo.px.x} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('x', n)} />
+            <GeometryPxInput label="Y" valuePx={geo.px.y} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('y', n)} />
+          </StackRow>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Size</span>
+            <GeometryPxInput label="W" valuePx={geo.px.width} disabled={geo.locked} onCommit={(n) => geo.applyField('width', n)} />
+            <GeometryPxInput label="H" valuePx={geo.px.height} disabled={geo.locked} onCommit={(n) => geo.applyField('height', n)} />
+          </StackRow>
+        </Stack>
+        <Cluster className="self-center">
+          <p className="rounded-md border border-slate-200/90 bg-slate-50/80 px-2.5 py-1.5 text-[11px] text-slate-600">
+            {isLocked ? 'Unlock the image to adjust fit and position.' : 'Add an image to adjust fit and position.'}
+          </p>
+        </Cluster>
+      </div>
     );
   }
 
   return (
-    <>
-      {geometryRow}
-      <p className="py-0.5 text-[11px] text-slate-600">No formatting options for this selection.</p>
-    </>
+    <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
+      <Stack>
+        <StackRow>
+          <span className={editorToolbarMicroLabelClass}>Pos</span>
+          <GeometryPxInput label="X" valuePx={geo.px.x} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('x', n)} />
+          <GeometryPxInput label="Y" valuePx={geo.px.y} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('y', n)} />
+        </StackRow>
+        <StackRow>
+          <span className={editorToolbarMicroLabelClass}>Size</span>
+          <GeometryPxInput label="W" valuePx={geo.px.width} disabled={geo.locked} onCommit={(n) => geo.applyField('width', n)} />
+          <GeometryPxInput label="H" valuePx={geo.px.height} disabled={geo.locked} onCommit={(n) => geo.applyField('height', n)} />
+        </StackRow>
+      </Stack>
+    </div>
   );
 }

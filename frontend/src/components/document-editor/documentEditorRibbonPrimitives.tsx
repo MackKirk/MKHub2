@@ -22,15 +22,23 @@ export const editorContextStripClass =
   'border-t border-slate-200/75 bg-white/98 shadow-[inset_0_1px_0_0_rgba(255,255,255,1)]';
 
 /**
- * Single horizontal toolbar row (selection ribbon + formatting inspector).
- * Groups are direct children — use editorContextToolbarGroupClass on each.
+ * Horizontal strip of two-line columns (selection ribbon + formatting inspector).
+ * Columns are direct children — use editorContextToolbarStackClass on each.
  */
 export const editorContextToolbarRowClass =
-  'flex min-h-8 min-w-0 flex-nowrap items-center divide-x divide-slate-300/85 overflow-x-auto py-0.5 [scrollbar-width:thin]';
+  'flex min-h-0 min-w-0 flex-nowrap items-stretch divide-x divide-slate-300/85 overflow-x-auto py-0.5 [scrollbar-width:thin]';
 
-/** One logical group between row dividers (padding only — no box border). */
+/** One logical group between row dividers (padding only — no box border). Single-line. */
 export const editorContextToolbarGroupClass =
   'flex min-w-0 flex-shrink-0 items-center gap-1 px-2.5 first:pl-0 sm:gap-1.5 sm:px-3';
+
+/** Two-line column between row dividers (top/bottom control stacks). */
+export const editorContextToolbarStackClass =
+  'flex min-w-0 flex-shrink-0 flex-col justify-center gap-0.5 px-2.5 first:pl-0 sm:gap-1 sm:px-3';
+
+/** One row inside a two-line stack column. */
+export const editorContextToolbarStackRowClass =
+  'flex h-8 min-w-0 flex-shrink-0 items-center gap-1 sm:gap-1.5';
 
 /** Contextual toolbar text buttons — flat / ghost (aligns with main ribbon h-8 controls). */
 export const selectionToolButtonBaseClass = `${editorTransitionInteractive} inline-flex h-8 items-center rounded-md px-2.5 text-[11px] font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 active:scale-[0.98]`;

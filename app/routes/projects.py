@@ -2483,8 +2483,16 @@ def list_project_files(
     out = []
     for cf in cfiles:
         # Category-level permission filter (default allow-all if config not set)
-        if not has_project_files_category_permission(user, getattr(cf, "category", None), action="read", project=proj):
-            continue
+        cat = getattr(cf, "category", None)
+        if not has_project_files_category_permission(user, cat, action="read", project=proj):
+            # Document Creator gallery originals/edited use document-creator* categories.
+            if not (
+                str(cat or "").strip().lower().startswith("document-creator")
+                and _has_project_feature_permission(
+                    user, getattr(proj, "business_line", None), "documents", "read"
+                )
+            ):
+                continue
         fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
         if not fo:
             continue
@@ -2683,6 +2691,11 @@ def attach_project_file(
             category = folder.category
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid folder_id")
+    elif str(category or "").strip().lower().startswith("document-creator"):
+        if not _has_project_feature_permission(
+            user, getattr(proj, "business_line", None), "documents", "write"
+        ):
+            raise HTTPException(status_code=403, detail="Forbidden")
     elif not has_project_files_category_permission(user, category, action="write", project=proj):
         raise HTTPException(status_code=403, detail="Forbidden")
     fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()

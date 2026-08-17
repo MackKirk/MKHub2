@@ -1,5 +1,6 @@
 import { withFileAccessToken } from '@/lib/api';
 import type { DocumentPage, DocElement } from '@/types/documentCreator';
+import { docElementRotationDeg, docElementRotateStyle } from '@/utils/documentElementGeometry';
 
 const A4_ASPECT = 210 / 297;
 const DEFAULT_THUMB_WIDTH_PX = 48;
@@ -56,6 +57,7 @@ function MiniPageThumb({
                 top: `${y * 100}%`,
                 width: `${w * 100}%`,
                 height: `${h * 100}%`,
+                ...docElementRotateStyle(docElementRotationDeg(el.rotation)),
               }}
             >
               {el.type === 'text' ? (

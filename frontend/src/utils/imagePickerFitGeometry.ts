@@ -4,7 +4,7 @@
  * so the same (zoom, panNorm) works at any frame resolution.
  */
 
-export type ImageFitMode = 'cover' | 'contain' | 'background';
+export type ImageFitMode = 'cover' | 'contain' | 'background' | 'natural';
 
 export type ImageRotationDeg = 0 | 90 | 180 | 270;
 
@@ -76,7 +76,7 @@ export type ImageLayout = {
   scale: number;
 };
 
-/** Foreground base scale: cover = max, contain/background = min. */
+/** Foreground base scale: cover = max, contain/background/natural = min. */
 export function baseScale(
   mode: ImageFitMode,
   frameW: number,

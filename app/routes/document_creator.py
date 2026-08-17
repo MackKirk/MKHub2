@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from ..db import get_db
-from ..models.models import DocumentTemplate, DocumentType, UserDocument, User, FileObject, Project, Client, EmployeeProfile
+from ..models.models import DocumentTemplate, DocumentType, UserDocument, User, FileObject, Project, Client, ClientSite, EmployeeProfile
 from ..auth.security import get_current_user, require_permissions
 
 
@@ -163,12 +163,18 @@ def _template_to_out(t: DocumentTemplate) -> dict:
 
 
 def _doc_to_out(d: UserDocument, db: Optional[Session] = None) -> dict:
+    pages = d.pages
+    # Repair display for docs created before richLines token substitution existed:
+    # content may already be filled while richLines still hold <Project Name> etc.
+    if db is not None:
+        pages = _pages_with_project_tokens(pages, d.project_id, db, when=d.created_at)
+
     out = {
         "id": str(d.id),
         "title": d.title,
         "document_type_id": str(d.document_type_id) if d.document_type_id else None,
         "project_id": str(d.project_id) if d.project_id else None,
-        "pages": d.pages,
+        "pages": pages,
         "created_by": str(d.created_by) if d.created_by else None,
         "created_at": d.created_at.isoformat() if d.created_at else None,
         "updated_at": d.updated_at.isoformat() if d.updated_at else None,
@@ -230,39 +236,158 @@ def _clone_elements_with_new_ids(elements: Optional[list], prefix: str) -> list:
 # Ordered list of (token_in_template, value_key). Order matters: more specific tokens first.
 _PLACEHOLDER_TOKENS: list[tuple[str, str]] = [
     ("<Project Name>", "project_name"),
+    ("<Project Address>", "project_address"),
     ("<Customer Name>", "customer_name"),
+    ("<Customer Address>", "customer_address"),
     ("<Reference Code>", "reference_code"),
     ("REFERENCE CODE", "reference_code"),
+    ("<Auto Date>", "auto_date"),
 ]
 
 
+_TRAILING_COUNTRY_NAMES = frozenset(
+    {
+        "canada",
+        "united states of america",
+        "united states",
+        "usa",
+        "u.s.a.",
+        "u.s.",
+        "us",
+    }
+)
+
+
+def _strip_trailing_country(address: str) -> str:
+    """Drop a trailing country segment, e.g. '... BC V1M 3C8, Canada' -> '... BC V1M 3C8'."""
+    text = (address or "").strip()
+    if not text:
+        return ""
+    parts = [p.strip() for p in text.split(",") if p.strip()]
+    while len(parts) > 1 and parts[-1].casefold() in _TRAILING_COUNTRY_NAMES:
+        parts.pop()
+    return ", ".join(parts)
+
+
+def _format_address_lines(line1: Optional[str], line2: Optional[str] = None) -> str:
+    """Street address only: line1/line2, without trailing country."""
+    lines: list[str] = []
+    for part in (line1, line2):
+        text = _strip_trailing_country(part or "")
+        if text:
+            lines.append(text)
+    return "\n".join(lines)
+
+
+def _format_customer_address(client: Client) -> str:
+    """Primary client street address (line1/line2 only)."""
+    return _format_address_lines(client.address_line1, client.address_line2)
+
+
+def _format_project_address(proj: Project, db: Session) -> str:
+    """Site street address when linked; otherwise project.address (no city/postal)."""
+    site = db.get(ClientSite, proj.site_id) if proj.site_id else None
+    line1 = (getattr(site, "site_address_line1", None) if site else None) or proj.address
+    line2 = (getattr(site, "site_address_line2", None) if site else None) or None
+    return _format_address_lines(line1, line2)
+
+
+def _format_auto_date(when: Optional[datetime] = None, tz_name: Optional[str] = None) -> str:
+    """Long English date, e.g. August 17, 2026 (project/local timezone)."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo((tz_name or "America/Vancouver").strip() or "America/Vancouver")
+    except Exception:
+        tz = timezone.utc
+    dt = when or datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone(tz)
+    return f"{local.strftime('%B')} {local.day}, {local.year}"
+
+
+def _replace_tokens_in_text(content: str, values: dict) -> str:
+    for token, key in _PLACEHOLDER_TOKENS:
+        content = content.replace(token, values.get(key, ""))
+    return content
+
+
 def _substitute_project_tokens(elements: list, values: dict) -> list:
-    """Replace placeholder tokens in text element content with project data. Mutates in place."""
+    """Replace placeholder tokens in text elements (content + richLines runs). Mutates in place."""
     for el in elements:
-        if el.get("type") != "text" or not el.get("content"):
+        if el.get("type") != "text":
             continue
-        content: str = el["content"]
-        for token, key in _PLACEHOLDER_TOKENS:
-            content = content.replace(token, values.get(key, ""))
-        el["content"] = content
+        if el.get("content"):
+            el["content"] = _replace_tokens_in_text(el["content"], values)
+        # Main canvas prefers richLines over content when present — must substitute both.
+        rich = el.get("richLines") or el.get("rich_lines")
+        if isinstance(rich, list):
+            for line in rich:
+                if not isinstance(line, list):
+                    continue
+                for run in line:
+                    if isinstance(run, dict) and isinstance(run.get("text"), str):
+                        run["text"] = _replace_tokens_in_text(run["text"], values)
     return elements
 
 
-def _project_token_values(project_id: uuid.UUID, db: Session) -> Optional[dict]:
-    """Fetch project + client and build the token substitution dict. Returns None if project not found."""
-    proj = db.get(Project, project_id)
-    if not proj:
-        return None
-    client_name = ""
-    if proj.client_id:
-        client = db.get(Client, proj.client_id)
-        if client:
-            client_name = client.display_name or client.name or ""
-    return {
-        "project_name": proj.name or "",
-        "customer_name": client_name,
-        "reference_code": proj.code or "",
+def _pages_with_project_tokens(
+    pages: Any,
+    project_id: Optional[uuid.UUID],
+    db: Session,
+    *,
+    when: Optional[datetime] = None,
+) -> Any:
+    """Deep-copy pages and fill tokens. Auto Date uses `when` (e.g. doc created_at) or now."""
+    if not isinstance(pages, list):
+        return pages
+    token_values = _project_token_values(project_id, db, when=when)
+    pages = copy.deepcopy(pages)
+    for page in pages:
+        if isinstance(page, dict) and isinstance(page.get("elements"), list):
+            _substitute_project_tokens(page["elements"], token_values)
+    return pages
+
+
+def _project_token_values(
+    project_id: Optional[uuid.UUID],
+    db: Session,
+    *,
+    when: Optional[datetime] = None,
+) -> dict:
+    """Build token substitution dict. Always includes auto_date; project fields when available."""
+    tz_name = "America/Vancouver"
+    values: dict = {
+        "project_name": "",
+        "project_address": "",
+        "customer_name": "",
+        "customer_address": "",
+        "reference_code": "",
+        "auto_date": "",
     }
+    if project_id:
+        proj = db.get(Project, project_id)
+        if proj:
+            tz_name = (proj.timezone or "").strip() or tz_name
+            client_name = ""
+            customer_address = ""
+            if proj.client_id:
+                client = db.get(Client, proj.client_id)
+                if client:
+                    client_name = client.display_name or client.name or ""
+                    customer_address = _format_customer_address(client)
+            values.update(
+                {
+                    "project_name": proj.name or "",
+                    "project_address": _format_project_address(proj, db),
+                    "customer_name": client_name,
+                    "customer_address": customer_address,
+                    "reference_code": proj.code or "",
+                }
+            )
+    values["auto_date"] = _format_auto_date(when, tz_name=tz_name)
+    return values
 
 
 # --- Document types (preset page sequences) ---
@@ -498,16 +623,15 @@ def expand_document_type_pages(
             )
         margins = entry_margins if entry_margins is not None else getattr(template, "margins", None)
         pages.append({"template_id": str(tuid), "margins": margins, "elements": elements})
-    # Auto-fill project tokens when project_id is provided
-    if project_id:
-        try:
-            pid = uuid.UUID(project_id)
-            token_values = _project_token_values(pid, db)
-            if token_values:
-                for page in pages:
-                    _substitute_project_tokens(page.get("elements", []), token_values)
-        except ValueError:
-            pass  # invalid uuid — ignore silently, don't break the response
+    # Auto-fill tokens (project fields + Auto Date at expand time)
+    now = datetime.now(timezone.utc)
+    try:
+        pid = uuid.UUID(project_id) if project_id else None
+    except ValueError:
+        pid = None
+    token_values = _project_token_values(pid, db, when=now)
+    for page in pages:
+        _substitute_project_tokens(page.get("elements", []), token_values)
     return pages
 
 
@@ -753,16 +877,15 @@ def create_document(
             entry_elements = entry.get("elements") if isinstance(entry.get("elements"), list) else []
             elements = _clone_elements_with_new_ids(entry_elements, f"p{idx}") if entry_elements else []
             pages.append({"template_id": str(tuid), "margins": entry_margins, "elements": elements})
-    # Auto-fill project tokens in text elements when document is linked to a project
-    if body.project_id:
-        try:
-            pid = uuid.UUID(body.project_id)
-            token_values = _project_token_values(pid, db)
-            if token_values:
-                for page in pages:
-                    _substitute_project_tokens(page.get("elements", []), token_values)
-        except ValueError:
-            pass  # invalid project_id uuid — already validated above, ignore here
+    # Auto-fill tokens (project fields + Auto Date at document create time)
+    now = datetime.now(timezone.utc)
+    try:
+        pid = uuid.UUID(body.project_id) if body.project_id else None
+    except ValueError:
+        pid = None
+    token_values = _project_token_values(pid, db, when=now)
+    for page in pages:
+        _substitute_project_tokens(page.get("elements", []), token_values)
     doc = UserDocument(
         title=body.title or "Sem título",
         document_type_id=dtype_id,
@@ -843,15 +966,19 @@ def acquire_document_edit_lock(
 
     now = datetime.now(timezone.utc)
     if _edit_lock_active(doc, now) and doc.edit_lock_session_id != session_id:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "document_in_use",
-                "message": "This document is already open for editing elsewhere.",
-                "holder_name": _holder_display_name(db, doc.edit_lock_user_id),
-                "expires_at": doc.edit_lock_expires_at.isoformat() if doc.edit_lock_expires_at else None,
-            },
-        )
+        # Another browser tab / crashed session of the *same* user left a live lease.
+        # Let them reclaim it instead of blocking themselves for up to EDIT_LOCK_LEASE_SECONDS.
+        holder_id = doc.edit_lock_user_id
+        if holder_id is None or str(holder_id) != str(user.id):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "document_in_use",
+                    "message": "This document is already open for editing elsewhere.",
+                    "holder_name": _holder_display_name(db, holder_id),
+                    "expires_at": doc.edit_lock_expires_at.isoformat() if doc.edit_lock_expires_at else None,
+                },
+            )
 
     _grant_edit_lock(doc, user, session_id, now)
     db.commit()
@@ -1040,7 +1167,12 @@ def export_document_pdf(
 
     try:
         from ..document_creator.pdf_builder import build_pdf_bytes
-        pdf_bytes = build_pdf_bytes(db, doc, canvas_width_px=(body.canvas_width_px if body else None))
+        original_pages = doc.pages
+        doc.pages = _pages_with_project_tokens(original_pages, doc.project_id, db, when=doc.created_at)
+        try:
+            pdf_bytes = build_pdf_bytes(db, doc, canvas_width_px=(body.canvas_width_px if body else None))
+        finally:
+            doc.pages = original_pages
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 

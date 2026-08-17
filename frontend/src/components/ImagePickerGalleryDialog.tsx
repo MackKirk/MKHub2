@@ -152,7 +152,12 @@ export default function ImagePickerGalleryDialog({
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             {isLoading ? (
-              <div className="flex h-full min-h-[320px] items-center justify-center text-sm text-slate-500">
+              <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-3 text-sm text-slate-500">
+                <span
+                  className="h-8 w-8 shrink-0 animate-spin rounded-full border-2 border-slate-200 border-t-brand-red"
+                  role="status"
+                  aria-label="Loading gallery"
+                />
                 Loading gallery…
               </div>
             ) : (

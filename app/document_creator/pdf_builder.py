@@ -965,6 +965,17 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                     w = page_width * w_pct
                     h = page_height * h_pct
                     content = el.get("content") or ""
+                    try:
+                        rotation_deg = float(el.get("rotation") or 0)
+                    except (TypeError, ValueError):
+                        rotation_deg = 0.0
+                    c.saveState()
+                    if rotation_deg:
+                        cx = x + w / 2.0
+                        cy = y + h / 2.0
+                        c.translate(cx, cy)
+                        c.rotate(-rotation_deg)
+                        c.translate(-cx, -cy)
                     if el_type == "text":
                         font_size_px = float(el.get("fontSize") or el.get("font_size", 11) or 11)
                         is_bold = el.get("fontWeight") == "bold"
@@ -1046,6 +1057,7 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                                             )
                         except Exception:
                             pass
+                    c.restoreState()
             else:
                 # Legacy: areas_definition + areas_content
                 areas_def = (template.areas_definition if template and template.areas_definition else []) or []
