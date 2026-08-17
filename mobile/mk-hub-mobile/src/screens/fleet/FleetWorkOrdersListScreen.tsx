@@ -77,6 +77,7 @@ export const FleetWorkOrdersListScreen: React.FC = () => {
         search: query.trim() || undefined,
         status: statusFilter || undefined,
         assigned_to: relatedToMe && user?.id ? user.id : undefined,
+        entity_type: "fleet",
         limit: 50,
         sort: "created_at",
         dir: "desc"

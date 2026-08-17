@@ -25,6 +25,7 @@ import { EquipmentGeneralTab } from '@/components/companyAssets/EquipmentGeneral
 import EquipmentAssignModal from '@/components/companyAssets/EquipmentAssignModal';
 import EquipmentReturnModal from '@/components/companyAssets/EquipmentReturnModal';
 import NewEquipmentWorkOrderModal from '@/components/companyAssets/NewEquipmentWorkOrderModal';
+import { invalidateEquipmentAfterWorkOrderChange } from '@/lib/equipmentWorkOrderSync';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import {
@@ -524,7 +525,7 @@ export default function EquipmentDetail() {
             onSort={setWorkOrderTableSort}
             canEdit={canEditWorkOrders}
             onCreateClick={() => setShowWorkOrderForm(true)}
-            onOpenWorkOrder={(workOrderId) => nav(`/fleet/work-orders/${workOrderId}`)}
+            onOpenWorkOrder={(workOrderId) => nav(`/company-assets/work-orders/${workOrderId}`)}
           />
         )}
 
@@ -623,9 +624,11 @@ export default function EquipmentDetail() {
         equipmentDisplayName={lockedEquipmentDisplayName}
         employees={employees}
         onClose={() => setShowWorkOrderForm(false)}
-        onSuccess={() => {
+        onSuccess={(data) => {
           queryClient.invalidateQueries({ queryKey: ['equipmentWorkOrders', id] });
           queryClient.invalidateQueries({ queryKey: ['equipmentHistory', id] });
+          if (id) invalidateEquipmentAfterWorkOrderChange(queryClient, id);
+          if (data?.id) nav(`/company-assets/work-orders/${data.id}`);
         }}
       />
       <EditEquipmentGeneralModal

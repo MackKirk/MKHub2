@@ -183,7 +183,7 @@ export function WorkOrderNewForm({
       }
 
       const payload: any = {
-        entity_type: form.entity_type,
+        entity_type: 'fleet',
         entity_id: form.entity_id || null,
         description: form.description.trim(),
         category: form.category,
@@ -321,7 +321,6 @@ export function WorkOrderNewForm({
                 className={selectClass}
               >
                 <option value="fleet">Fleet Asset</option>
-                <option value="equipment">Equipment</option>
               </select>
             </div>
           )}
@@ -498,7 +497,7 @@ export function WorkOrderNewForm({
 export default function WorkOrderNew() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
-  const entityType = searchParams.get('entity_type') || 'fleet';
+  const entityType = 'fleet';
   const entityId = searchParams.get('entity_id') || '';
   return (
     <div className="space-y-4 min-w-0 overflow-x-hidden">

@@ -6,6 +6,7 @@ import SubcontractorSimpleSignature from '@/components/SubcontractorSimpleSignat
 import { useConfirm } from '@/components/ConfirmProvider';
 import { ProjectSearchCombobox } from '@/components/ProjectSearchCombobox';
 import { scWorkerClockQuickInfo } from '@/lib/formModalQuickInfo';
+import { formatRoundedHhmm, parseHhmm } from '@/lib/timePickerUtils';
 import {
   AppButton,
   AppCheckbox,
@@ -127,22 +128,12 @@ export function SubcontractorWorkerClockModalLayer({
   const sigProjectId = projectId || openAttendance?.project_id || '';
 
   useEffect(() => {
-    const now = new Date();
-    const hour24 = now.getHours();
-    const minute = now.getMinutes();
-    const roundedMin = Math.round(minute / 5) * 5;
-    const finalMinute = roundedMin === 60 ? 0 : roundedMin;
-    const finalHour = roundedMin === 60 ? (hour24 === 23 ? 0 : hour24 + 1) : hour24;
-
-    const hour12 = finalHour === 0 ? 12 : finalHour > 12 ? finalHour - 12 : finalHour;
-    const amPm = finalHour >= 12 ? 'PM' : 'AM';
-
-    setSelectedHour12(String(hour12));
-    setSelectedMinute(String(finalMinute).padStart(2, '0'));
-    setSelectedAmPm(amPm);
-
-    const hour24Final = amPm === 'PM' && hour12 !== 12 ? hour12 + 12 : amPm === 'AM' && hour12 === 12 ? 0 : hour12;
-    setSelectedTime(`${String(hour24Final).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}`);
+    const roundedHhmm = formatRoundedHhmm();
+    const { hour12, minute, amPm } = parseHhmm(roundedHhmm);
+    setSelectedHour12(hour12);
+    setSelectedMinute(minute);
+    setSelectedAmPm(amPm || 'AM');
+    setSelectedTime(roundedHhmm);
   }, [clockType]);
 
   const getCurrentLocation = useCallback(() => {
@@ -239,11 +230,8 @@ export function SubcontractorWorkerClockModalLayer({
     }
 
     let timeToUse = selectedTime;
-    if (!hasUnrestrictedClock || !timeToUse || !timeToUse.includes(':')) {
-      const now = new Date();
-      const hours = now.getHours();
-      const minutes = Math.floor(now.getMinutes() / 5) * 5;
-      timeToUse = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    if (!timeToUse || !timeToUse.includes(':')) {
+      timeToUse = formatRoundedHhmm();
     }
 
     const [hours, minutes] = timeToUse.split(':').map(Number);
@@ -437,10 +425,10 @@ export function SubcontractorWorkerClockModalLayer({
           <span className="mb-1.5 block text-xs font-medium text-gray-700">Time</span>
           {!hasUnrestrictedClock ? (
             <div className="flex items-center gap-2 pointer-events-none opacity-60">
-              <AppSelect className="flex-1" value={selectedHour12} options={HOUR_OPTIONS} placeholder="Hour" disabled />
+              <AppSelect className="flex-1" value={selectedHour12} options={HOUR_OPTIONS} placeholder="Hour" disabled sortOptions={false} />
               <span className="font-medium text-gray-500">:</span>
-              <AppSelect className="flex-1" value={selectedMinute} options={MINUTE_OPTIONS} placeholder="Min" disabled />
-              <AppSelect className="flex-1" value={selectedAmPm} options={AM_PM_OPTIONS} disabled />
+              <AppSelect className="flex-1" value={selectedMinute} options={MINUTE_OPTIONS} placeholder="Min" disabled sortOptions={false} />
+              <AppSelect className="flex-1" value={selectedAmPm} options={AM_PM_OPTIONS} disabled sortOptions={false} />
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -455,6 +443,7 @@ export function SubcontractorWorkerClockModalLayer({
                 options={HOUR_OPTIONS}
                 placeholder="Hour"
                 required
+                sortOptions={false}
               />
               <span className="font-medium text-gray-500">:</span>
               <AppSelect
@@ -468,6 +457,7 @@ export function SubcontractorWorkerClockModalLayer({
                 options={MINUTE_OPTIONS}
                 placeholder="Min"
                 required
+                sortOptions={false}
               />
               <AppSelect
                 className="flex-1"
@@ -479,6 +469,7 @@ export function SubcontractorWorkerClockModalLayer({
                 }}
                 options={AM_PM_OPTIONS}
                 required
+                sortOptions={false}
               />
             </div>
           )}

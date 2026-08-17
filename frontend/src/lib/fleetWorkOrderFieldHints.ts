@@ -4,6 +4,8 @@ export const FLEET_WORK_ORDER_FIELD_HINTS = {
     'Entity type\n\nWhether this work order applies to a fleet vehicle or equipment.',
   vehicle:
     'Vehicle\n\nFleet asset this work order applies to. Required for work orders shown on the schedule.',
+  equipment:
+    'Equipment\n\nCompany asset this work order applies to. Required.',
   category: 'Category\n\nType of work (maintenance, repair, inspection, other).',
   urgency: 'Urgency\n\nPriority for scheduling and follow-up (low through urgent).',
   assigned_to: 'Assigned to\n\nTeam member responsible for the work order. Leave unassigned if not known yet.',

@@ -1446,6 +1446,7 @@ export default function ClockInOut() {
               options={hourSelectOptions}
               placeholder="Hour"
               required
+              sortOptions={false}
             />
             <span className="font-medium text-gray-500">:</span>
             <AppSelect
@@ -1459,6 +1460,7 @@ export default function ClockInOut() {
               options={minuteSelectOptions}
               placeholder="Min"
               required
+              sortOptions={false}
             />
             <AppSelect
               className="flex-1"
@@ -1470,6 +1472,7 @@ export default function ClockInOut() {
               }}
               options={amPmSelectOptions}
               required
+              sortOptions={false}
             />
           </div>
         </div>

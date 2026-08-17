@@ -626,11 +626,11 @@ export default function FleetDashboard() {
   });
 
   const { data: openWorkOrdersData } = useQuery({
-    queryKey: ['work-orders', 'open'],
+    queryKey: ['work-orders', 'open', 'fleet'],
     queryFn: () =>
       api<{ items: Array<{ id: string; work_order_number?: string; description?: string; status?: string }>; total: number }>(
         'GET',
-        '/fleet/work-orders?status=open&limit=10&page=1'
+        '/fleet/work-orders?status=open&entity_type=fleet&limit=10&page=1'
       ),
   });
 
@@ -682,7 +682,7 @@ export default function FleetDashboard() {
       <AppPageHeader
         title="Fleet & Equipment"
         subtitle="Executive overview"
-        icon={<Truck className="h-4 w-4" />}
+        icon={<Truck className="h-4 w-4" />}
       />
 
       <section>

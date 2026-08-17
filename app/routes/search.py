@@ -330,7 +330,12 @@ def global_search(
                 num = (getattr(wo, "work_order_number", None) or "").strip()
                 desc = (getattr(wo, "description", None) or "").strip()
                 title = num or wid
-                items.append({"type": "work_order", "id": wid, "title": title, "subtitle": desc[:120] or None, "href": f"/fleet/work-orders/{wid}"})
+                wo_href = (
+                    f"/company-assets/work-orders/{wid}"
+                    if (getattr(wo, "entity_type", None) or "").lower() == "equipment"
+                    else f"/fleet/work-orders/{wid}"
+                )
+                items.append({"type": "work_order", "id": wid, "title": title, "subtitle": desc[:120] or None, "href": wo_href})
             if items:
                 sections.append({"id": "work_orders", "label": "Work Orders", "items": items})
         except Exception:

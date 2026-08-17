@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { JobSearchCombobox } from '@/components/JobSearchCombobox';
 import { formatJobPickerLine, getPredefinedJob, isPredefinedJobId } from '@/constants/predefinedJobs';
+import { formatRoundedHhmm, parseHhmm } from '@/lib/timePickerUtils';
 import {
   AppButton,
   AppControlLabelRow,
@@ -406,22 +407,12 @@ export function ClockInOutModalLayer({
 
   useEffect(() => {
     if (clockType) {
-      const now = new Date();
-      const hour24 = now.getHours();
-      const minute = now.getMinutes();
-      const roundedMin = Math.round(minute / 5) * 5;
-      const finalMinute = roundedMin === 60 ? 0 : roundedMin;
-      const finalHour = roundedMin === 60 ? (hour24 === 23 ? 0 : hour24 + 1) : hour24;
-
-      const hour12 = finalHour === 0 ? 12 : finalHour > 12 ? finalHour - 12 : finalHour;
-      const amPm = finalHour >= 12 ? 'PM' : 'AM';
-
-      setSelectedHour12(String(hour12));
-      setSelectedMinute(String(finalMinute).padStart(2, '0'));
-      setSelectedAmPm(amPm);
-
-      const hour24Final = amPm === 'PM' && hour12 !== 12 ? hour12 + 12 : amPm === 'AM' && hour12 === 12 ? 0 : hour12;
-      setSelectedTime(`${String(hour24Final).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}`);
+      const roundedHhmm = formatRoundedHhmm();
+      const { hour12, minute, amPm } = parseHhmm(roundedHhmm);
+      setSelectedHour12(hour12);
+      setSelectedMinute(minute);
+      setSelectedAmPm(amPm || 'AM');
+      setSelectedTime(roundedHhmm);
     }
   }, [clockType]);
 
@@ -522,11 +513,8 @@ export function ClockInOutModalLayer({
     }
 
     let timeToUse = selectedTime;
-    if (!hasUnrestrictedClock || !timeToUse || !timeToUse.includes(':')) {
-      const now = new Date();
-      const hours = now.getHours();
-      const minutes = Math.floor(now.getMinutes() / 5) * 5;
-      timeToUse = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    if (!timeToUse || !timeToUse.includes(':')) {
+      timeToUse = formatRoundedHhmm();
     }
 
     const [hours, minutes] = timeToUse.split(':').map(Number);
@@ -814,6 +802,7 @@ export function ClockInOutModalLayer({
               placeholder="Hour"
               disabled={!hasUnrestrictedClock}
               required
+              sortOptions={false}
             />
             <span className="shrink-0 text-xs font-medium text-gray-500">:</span>
             <AppSelect
@@ -828,6 +817,7 @@ export function ClockInOutModalLayer({
               placeholder="Min"
               disabled={!hasUnrestrictedClock}
               required
+              sortOptions={false}
             />
             <AppSelect
               className="min-w-0 flex-1"
@@ -840,6 +830,7 @@ export function ClockInOutModalLayer({
               options={[...amPmSelectOptions]}
               disabled={!hasUnrestrictedClock}
               required
+              sortOptions={false}
             />
           </div>
         </div>

@@ -51,3 +51,24 @@ export function formatTimeDisplay(hhmm: string): string {
   if (!hour12 || !minute || !amPm) return '';
   return `${hour12}:${minute} ${amPm}`;
 }
+
+/**
+ * Round a Date to the nearest 5-minute increment (matches backend round_to_5_minutes).
+ * Remainder >= 3 minutes rounds up; 58–59 rolls into the next hour.
+ */
+export function roundToNearest5Minutes(date: Date = new Date()): Date {
+  const result = new Date(date.getTime());
+  let rounded = Math.round(result.getMinutes() / 5) * 5;
+  if (rounded === 60) {
+    result.setHours(result.getHours() + 1);
+    rounded = 0;
+  }
+  result.setMinutes(rounded, 0, 0);
+  return result;
+}
+
+/** `HH:mm` from a date rounded to the nearest 5 minutes. */
+export function formatRoundedHhmm(date: Date = new Date()): string {
+  const rounded = roundToNearest5Minutes(date);
+  return `${String(rounded.getHours()).padStart(2, '0')}:${String(rounded.getMinutes()).padStart(2, '0')}`;
+}

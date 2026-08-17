@@ -498,6 +498,9 @@ export default function AppShell({ children }: PropsWithChildren){
         permissionsSet.has('equipment:write')
       );
     }
+    if (requiredPermission === 'fleet:equipment:work_orders:read') {
+      return has || permissionsSet.has('fleet:equipment:work_orders:write');
+    }
     if (requiredPermission === 'hr:onboarding:read') {
       return has || permissionsSet.has('hr:onboarding:write');
     }
@@ -678,6 +681,7 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconBox />,
       items: [
         { id: 'equipment', label: 'Equipment', path: '/company-assets/equipment', icon: <IconWrench />, requiredPermission: 'fleet:equipment:read' },
+        { id: 'company-assets-work-orders', label: 'Work Orders', path: '/company-assets/work-orders', icon: <IconClipboard />, requiredPermission: 'fleet:equipment:work_orders:read' },
         { id: 'corporate-cards', label: 'Corporate Cards', path: '/company-assets/credit-cards', icon: <IconCreditCard />, requiredPermission: 'company_cards:read' },
         { id: 'fuel-cards', label: 'Fuel Cards', path: '/company-assets/fuel-cards', icon: <IconFuelPump />, requiredPermission: 'fuel_cards:read' },
       ]
@@ -1074,6 +1078,7 @@ export default function AppShell({ children }: PropsWithChildren){
     if (category.id === 'sales') return '/quotes';
     if (category.id === 'company-assets') {
       if (hasPermission('fleet:equipment:read')) return '/company-assets/equipment';
+      if (hasPermission('fleet:equipment:work_orders:read')) return '/company-assets/work-orders';
       if (hasPermission('company_cards:read')) return '/company-assets/credit-cards';
       if (hasPermission('fuel_cards:read')) return '/company-assets/fuel-cards';
       const first = category.items.find((it) => hasPermission(it.requiredPermission));

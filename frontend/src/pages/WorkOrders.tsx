@@ -12,6 +12,8 @@ import {
 import { getUrgencyBadgeVariant, getWorkOrderStatusBadgeVariant } from '@/lib/fleetUi';
 import WorkOrderListNewModal from '@/components/fleet/WorkOrderListNewModal';
 import { canAssignFleetWorkOrder, canEditFleetWorkOrderRecord } from '@/lib/fleetPermissions';
+import { canEditEquipmentTab } from '@/lib/companyAssetsPermissions';
+import { workOrderDetailPath, type WorkOrderListScope } from '@/lib/workOrderPaths';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
@@ -64,13 +66,12 @@ type WorkOrderListResponse = {
 
 const DESC_TRUNCATE = 60;
 
-const LIST_GRID_COLS = 'grid-cols-[2fr_5fr_2fr_2fr_2fr_2fr_2fr_2fr]';
-const LIST_MIN_WIDTH = 'min-w-[960px]';
+const LIST_GRID_COLS = 'grid-cols-[2fr_5fr_2fr_2fr_2fr_2fr_2fr]';
+const LIST_MIN_WIDTH = 'min-w-[880px]';
 
 type SortColumn =
   | 'work_order_number'
   | 'description'
-  | 'entity_type'
   | 'category'
   | 'urgency'
   | 'status'
@@ -79,13 +80,12 @@ type SortColumn =
 
 function buildMetaLine(wo: WorkOrder): string {
   const parts: string[] = [];
-  if (wo.entity_type) parts.push(wo.entity_type);
   if (wo.category) parts.push(wo.category.replace(/_/g, ' '));
   if (wo.urgency) parts.push(wo.urgency.replace(/_/g, ' '));
   return parts.join(' • ');
 }
 
-const FILTER_PARAM_KEYS = ['status', 'status_not', 'urgency', 'urgency_not', 'entity_type', 'entity_type_not', 'category', 'category_not'];
+const FILTER_PARAM_KEYS = ['status', 'status_not', 'urgency', 'urgency_not', 'category', 'category_not'];
 
 function ruleValueStr(rule: FilterRule): string {
   return typeof rule.value === 'string' ? rule.value : (Array.isArray(rule.value) ? rule.value[0] ?? '' : '');
@@ -100,7 +100,6 @@ function convertRulesToParams(rules: FilterRule[], existing: URLSearchParams): U
   const fieldsSet = new Set(rules.filter((r) => ruleValueStr(r)?.trim()).map((r) => r.field));
   if (fieldsSet.has('status')) { params.delete('status'); params.delete('status_not'); }
   if (fieldsSet.has('urgency')) { params.delete('urgency'); params.delete('urgency_not'); }
-  if (fieldsSet.has('entity_type')) { params.delete('entity_type'); params.delete('entity_type_not'); }
   if (fieldsSet.has('category')) { params.delete('category'); params.delete('category_not'); }
   for (const rule of rules) {
     const v = ruleValueStr(rule);
@@ -113,10 +112,6 @@ function convertRulesToParams(rules: FilterRule[], existing: URLSearchParams): U
       case 'urgency':
         if (rule.operator === 'is') params.set('urgency', v);
         else params.set('urgency_not', v);
-        break;
-      case 'entity_type':
-        if (rule.operator === 'is') params.set('entity_type', v);
-        else params.set('entity_type_not', v);
         break;
       case 'category':
         if (rule.operator === 'is') params.set('category', v);
@@ -138,10 +133,6 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
   const urgencyNot = params.get('urgency_not');
   if (urgency) rules.push({ id: `rule-${idCounter++}`, field: 'urgency', operator: 'is', value: urgency });
   else if (urgencyNot) rules.push({ id: `rule-${idCounter++}`, field: 'urgency', operator: 'is_not', value: urgencyNot });
-  const entityType = params.get('entity_type');
-  const entityTypeNot = params.get('entity_type_not');
-  if (entityType) rules.push({ id: `rule-${idCounter++}`, field: 'entity_type', operator: 'is', value: entityType });
-  else if (entityTypeNot) rules.push({ id: `rule-${idCounter++}`, field: 'entity_type', operator: 'is_not', value: entityTypeNot });
   const category = params.get('category');
   const categoryNot = params.get('category_not');
   if (category) rules.push({ id: `rule-${idCounter++}`, field: 'category', operator: 'is', value: category });
@@ -165,11 +156,6 @@ const URGENCY_OPTIONS = [
   { value: 'urgent', label: 'Urgent' },
 ];
 
-const ENTITY_TYPE_OPTIONS = [
-  { value: 'fleet', label: 'Fleet' },
-  { value: 'equipment', label: 'Equipment' },
-];
-
 const CATEGORY_OPTIONS = [
   { value: 'maintenance', label: 'Maintenance' },
   { value: 'repair', label: 'Repair' },
@@ -180,7 +166,6 @@ const CATEGORY_OPTIONS = [
 const WORK_ORDER_FILTER_FIELDS: FieldConfig[] = [
   { id: 'status', label: 'Status', type: 'select', operators: ['is', 'is_not'], getOptions: () => STATUS_OPTIONS },
   { id: 'urgency', label: 'Urgency', type: 'select', operators: ['is', 'is_not'], getOptions: () => URGENCY_OPTIONS },
-  { id: 'entity_type', label: 'Entity Type', type: 'select', operators: ['is', 'is_not'], getOptions: () => ENTITY_TYPE_OPTIONS },
   { id: 'category', label: 'Category', type: 'select', operators: ['is', 'is_not'], getOptions: () => CATEGORY_OPTIONS },
 ];
 
@@ -192,7 +177,6 @@ function getWorkOrderFieldLabel(fieldId: string): string {
 const WO_VALUE_LABELS: Record<string, Record<string, string>> = {
   status: Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label])),
   urgency: Object.fromEntries(URGENCY_OPTIONS.map((o) => [o.value, o.label])),
-  entity_type: Object.fromEntries(ENTITY_TYPE_OPTIONS.map((o) => [o.value, o.label])),
   category: Object.fromEntries(CATEGORY_OPTIONS.map((o) => [o.value, o.label])),
 };
 
@@ -202,7 +186,7 @@ function getWorkOrderValueLabel(rule: FilterRule): string {
   return (map && map[v]) ?? v ?? '';
 }
 
-export default function WorkOrders() {
+export default function WorkOrders({ scope = 'fleet' }: { scope?: WorkOrderListScope }) {
   const nav = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -212,7 +196,10 @@ export default function WorkOrders() {
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
   const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
-  const canCreateWorkOrder = canEditFleetWorkOrderRecord(isAdmin, permissions);
+  const canCreateWorkOrder =
+    scope === 'equipment'
+      ? canEditEquipmentTab(isAdmin, permissions, 'work_orders')
+      : canEditFleetWorkOrderRecord(isAdmin, permissions);
   const canAssign = canAssignFleetWorkOrder(isAdmin, permissions);
 
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
@@ -222,7 +209,6 @@ export default function WorkOrders() {
   const validSorts: SortColumn[] = [
     'work_order_number',
     'description',
-    'entity_type',
     'category',
     'urgency',
     'status',
@@ -254,6 +240,7 @@ export default function WorkOrders() {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       'workOrders',
+      scope,
       search,
       sortBy,
       sortDir,
@@ -262,8 +249,6 @@ export default function WorkOrders() {
       searchParams.get('status_not'),
       searchParams.get('urgency'),
       searchParams.get('urgency_not'),
-      searchParams.get('entity_type'),
-      searchParams.get('entity_type_not'),
       searchParams.get('category'),
       searchParams.get('category_not'),
     ],
@@ -274,18 +259,15 @@ export default function WorkOrders() {
       const statusNot = searchParams.get('status_not');
       const urgency = searchParams.get('urgency');
       const urgencyNot = searchParams.get('urgency_not');
-      const entityType = searchParams.get('entity_type');
-      const entityTypeNot = searchParams.get('entity_type_not');
       const category = searchParams.get('category');
       const categoryNot = searchParams.get('category_not');
       if (status) params.set('status', status);
       if (statusNot) params.set('status_not', statusNot);
       if (urgency) params.set('urgency', urgency);
       if (urgencyNot) params.set('urgency_not', urgencyNot);
-      if (entityType) params.set('entity_type', entityType);
-      if (entityTypeNot) params.set('entity_type_not', entityTypeNot);
       if (category) params.set('category', category);
       if (categoryNot) params.set('category_not', categoryNot);
+      params.set('entity_type', scope);
       params.set('sort', sortBy);
       params.set('dir', sortDir);
       params.set('page', String(page));
@@ -316,16 +298,16 @@ export default function WorkOrders() {
     setSearchParams(params, { replace: true });
   };
 
-
-
   const showEmptyList = !isLoading && workOrders.length === 0;
+  const subtitle =
+    scope === 'equipment' ? 'Equipment work order management' : 'Fleet work order management';
 
   return (
     <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <AppPageHeader
         title="Work Orders"
-        subtitle="Unified work order management"
-        icon={<ClipboardList className="h-4 w-4" />}
+        subtitle={subtitle}
+        icon={<ClipboardList className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -483,13 +465,6 @@ export default function WorkOrders() {
                         onSort={setListSort}
                       />
                       <AppSortableEntityListSortColumn
-                        label="Type"
-                        column="entity_type"
-                        sortBy={sortBy}
-                        sortDir={sortDir}
-                        onSort={setListSort}
-                      />
-                      <AppSortableEntityListSortColumn
                         label="Category"
                         column="category"
                         sortBy={sortBy}
@@ -542,11 +517,11 @@ export default function WorkOrders() {
                             gridCols={LIST_GRID_COLS}
                             minWidth={LIST_MIN_WIDTH}
                             className="cursor-pointer"
-                            onClick={() => nav(`/fleet/work-orders/${wo.id}`)}
+                            onClick={() => nav(workOrderDetailPath(scope, wo.id))}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
-                                nav(`/fleet/work-orders/${wo.id}`);
+                                nav(workOrderDetailPath(scope, wo.id));
                               }
                             }}
                           >
@@ -561,7 +536,6 @@ export default function WorkOrders() {
                                 <span className={uiCx(uiTypography.helper, 'block truncate')}>{metaLine}</span>
                               ) : null}
                             </div>
-                            <span className={uiCx(uiTypography.body, 'capitalize text-gray-600')}>{wo.entity_type}</span>
                             <span className={uiCx(uiTypography.body, 'capitalize text-gray-600')}>{categoryLabel}</span>
                             <div className="min-w-0">
                               <AppBadge variant={getUrgencyBadgeVariant(wo.urgency)}>
@@ -603,12 +577,13 @@ export default function WorkOrders() {
       <WorkOrderListNewModal
         open={canCreateWorkOrder && showNewWorkOrderModal}
         canAssign={canAssign}
+        entityScope={scope}
         onClose={() => setShowNewWorkOrderModal(false)}
         onCreated={(data) => {
           setShowNewWorkOrderModal(false);
           queryClient.invalidateQueries({ queryKey: ['workOrders'] });
           queryClient.invalidateQueries({ queryKey: ['fleet-work-orders-calendar'] });
-          nav(`/fleet/work-orders/${data.id}`);
+          nav(workOrderDetailPath(scope, data.id));
         }}
       />
     </div>
