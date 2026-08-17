@@ -20,6 +20,8 @@ DOCUMENT_BACKGROUNDS_READ = "settings:document_backgrounds:read"
 DOCUMENT_BACKGROUNDS_WRITE = "settings:document_backgrounds:write"
 DOCUMENT_TEMPLATES_READ = "settings:document_templates:read"
 DOCUMENT_TEMPLATES_WRITE = "settings:document_templates:write"
+AUTO_TASKS_READ = "settings:auto_tasks:read"
+AUTO_TASKS_WRITE = "settings:auto_tasks:write"
 
 # Lists managed under Files & assets tab (SettingsFilesAssetsPanel).
 FILES_ASSETS_LIST_NAMES = frozenset(
@@ -68,6 +70,7 @@ SETTINGS_CHILD_READ_KEYS = frozenset(
         TERMS_TEMPLATES_READ,
         DOCUMENT_BACKGROUNDS_READ,
         DOCUMENT_TEMPLATES_READ,
+        AUTO_TASKS_READ,
     }
 )
 
@@ -79,6 +82,7 @@ SETTINGS_CHILD_WRITE_KEYS = frozenset(
         TERMS_TEMPLATES_WRITE,
         DOCUMENT_BACKGROUNDS_WRITE,
         DOCUMENT_TEMPLATES_WRITE,
+        AUTO_TASKS_WRITE,
     }
 )
 
@@ -188,6 +192,21 @@ def can_write_document_templates(user: User) -> bool:
     return _has_permission(user, DOCUMENT_TEMPLATES_WRITE)
 
 
+def can_read_auto_tasks(user: User) -> bool:
+    if _user_is_admin(user):
+        return True
+    return (
+        _has_permission(user, AUTO_TASKS_READ)
+        or _has_permission(user, AUTO_TASKS_WRITE)
+    )
+
+
+def can_write_auto_tasks(user: User) -> bool:
+    if _user_is_admin(user):
+        return True
+    return _has_permission(user, AUTO_TASKS_WRITE)
+
+
 def _list_area(list_name: str) -> Literal["lookup", "files", "terms", "unknown"]:
     if list_name == TERMS_TEMPLATES_LIST_NAME:
         return "terms"
@@ -272,6 +291,8 @@ def settings_permissions_payload(user: User) -> dict[str, bool]:
     can_edit_backgrounds_card = can_write_document_backgrounds(user)
     can_view_document_templates_card = can_read_document_templates(user)
     can_edit_document_templates_card = can_write_document_templates(user)
+    can_view_auto_tasks = can_read_auto_tasks(user)
+    can_edit_auto_tasks = can_write_auto_tasks(user)
     can_view_templates_tab = any(
         (
             can_view_permission_templates_card,
@@ -281,7 +302,7 @@ def settings_permissions_payload(user: User) -> dict[str, bool]:
         )
     )
     return {
-        "can_access_settings": can_view_lookup or can_view_files or can_view_templates_tab,
+        "can_access_settings": can_view_lookup or can_view_files or can_view_templates_tab or can_view_auto_tasks,
         "has_legacy_full_settings_access": False,
         "can_view_lookup_lists": can_view_lookup,
         "can_edit_lookup_lists": can_edit_lookup,
@@ -296,4 +317,6 @@ def settings_permissions_payload(user: User) -> dict[str, bool]:
         "can_view_document_templates": can_view_document_templates_card,
         "can_edit_document_templates": can_edit_document_templates_card,
         "can_view_templates_tab": can_view_templates_tab,
+        "can_view_auto_tasks": can_view_auto_tasks,
+        "can_edit_auto_tasks": can_edit_auto_tasks,
     }

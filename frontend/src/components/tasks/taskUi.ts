@@ -32,6 +32,7 @@ const originLabels: Record<string, string> = {
   system_order: 'System',
   system_attendance: 'System',
   bug: 'Bug',
+  auto_task: 'Auto',
 };
 
 export function getTaskSourceLabel(task: Pick<Task, 'origin' | 'request'>): string {

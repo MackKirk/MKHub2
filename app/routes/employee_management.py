@@ -13,13 +13,68 @@ from ..models.models import (
     EmployeeSalaryHistory, EmployeeLoan, LoanPayment,
     EmployeeNotice, EmployeeFineTicket, EmployeeEquipment,
     TimeOffBalance, TimeOffRequest, TimeOffHistory,
-    EmployeeReport, ReportAttachment, ReportComment
+    EmployeeReport, ReportAttachment, ReportComment,
+    EmployeeDocument, EmployeeFolder,
 )
 from ..auth.security import require_permissions, require_roles, get_current_user
 from ..services.bamboohr_client import BambooHRClient
 
 
 router = APIRouter(prefix="/employees", tags=["employee-management"])
+
+REPORTS_DOCUMENTS_FOLDER_NAME = "Reports"
+
+
+def _get_or_create_reports_documents_folder(
+    db: Session, user_id: uuid_lib.UUID, created_by: Optional[uuid_lib.UUID] = None
+) -> EmployeeFolder:
+    folder = (
+        db.query(EmployeeFolder)
+        .filter(
+            EmployeeFolder.user_id == user_id,
+            EmployeeFolder.name == REPORTS_DOCUMENTS_FOLDER_NAME,
+            EmployeeFolder.parent_id.is_(None),
+        )
+        .first()
+    )
+    if folder:
+        return folder
+    folder = EmployeeFolder(
+        user_id=user_id,
+        name=REPORTS_DOCUMENTS_FOLDER_NAME,
+        parent_id=None,
+        created_by=created_by,
+    )
+    db.add(folder)
+    db.flush()
+    return folder
+
+
+def _mirror_report_attachment_to_employee_docs(
+    db: Session,
+    user_id: uuid_lib.UUID,
+    file_id: uuid_lib.UUID,
+    file_name: Optional[str],
+    created_by: Optional[uuid_lib.UUID],
+) -> None:
+    existing = (
+        db.query(EmployeeDocument)
+        .filter(EmployeeDocument.user_id == user_id, EmployeeDocument.file_id == file_id)
+        .first()
+    )
+    if existing:
+        return
+    folder = _get_or_create_reports_documents_folder(db, user_id, created_by)
+    db.add(
+        EmployeeDocument(
+            user_id=user_id,
+            doc_type=f"folder:{folder.id}",
+            title=(file_name or "").strip() or "Report attachment",
+            notes="Uploaded from employee report.",
+            file_id=file_id,
+            created_by=created_by,
+        )
+    )
 
 
 # =====================
@@ -3208,6 +3263,14 @@ def add_report_attachment(
         created_by=current_user.id,
     )
     db.add(comment)
+
+    _mirror_report_attachment_to_employee_docs(
+        db,
+        user_id=report.user_id,
+        file_id=attachment.file_id,
+        file_name=attachment.file_name,
+        created_by=current_user.id,
+    )
     
     db.commit()
     

@@ -25,6 +25,7 @@ import DocumentTemplatesTab from '@/components/DocumentTemplatesTab';
 import DocumentTypesTab from '@/components/DocumentTypesTab';
 import SettingsLookupListsPanel from '@/components/settings/SettingsLookupListsPanel';
 import SettingsFilesAssetsPanel from '@/components/settings/SettingsFilesAssetsPanel';
+import SettingsAutoTasksPanel from '@/components/settings/SettingsAutoTasksPanel';
 import {
   IMPLEMENTED_PERMISSIONS,
   isHiddenPermissionKey,
@@ -112,7 +113,7 @@ import {
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
-type SettingsSection = 'files' | 'templates' | 'lists';
+type SettingsSection = 'files' | 'templates' | 'lists' | 'auto-tasks';
 
 export default function SystemSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -147,21 +148,24 @@ export default function SystemSettings() {
   const canEditDocBg = !!settingsPerms?.can_edit_document_backgrounds;
   const canViewDocTpl = !!settingsPerms?.can_view_document_templates;
   const canEditDocTpl = !!settingsPerms?.can_edit_document_templates;
+  const canViewAutoTasks = !!settingsPerms?.can_view_auto_tasks;
+  const canEditAutoTasks = !!settingsPerms?.can_edit_auto_tasks;
 
   const allowedSections = useMemo(() => {
     const sections: SettingsSection[] = [];
     if (canViewLists) sections.push('lists');
     if (canViewFiles) sections.push('files');
     if (canViewTemplates) sections.push('templates');
+    if (canViewAutoTasks) sections.push('auto-tasks');
     return sections;
-  }, [canViewLists, canViewFiles, canViewTemplates]);
+  }, [canViewLists, canViewFiles, canViewTemplates, canViewAutoTasks]);
 
   const [section, setSection] = useState<SettingsSection>('lists');
 
   useEffect(() => {
     const raw = (searchParams.get('section') || '').toLowerCase();
     let desired: SettingsSection | null = null;
-    if (raw === 'templates' || raw === 'files' || raw === 'lists') {
+    if (raw === 'templates' || raw === 'files' || raw === 'lists' || raw === 'auto-tasks') {
       desired = raw as SettingsSection;
     } else if (!raw) {
       desired = 'lists';
@@ -192,6 +196,7 @@ export default function SystemSettings() {
     canViewLists ? { id: 'lists' as SettingsSection, label: 'Lookup lists' } : null,
     canViewFiles ? { id: 'files' as SettingsSection, label: 'Files & assets' } : null,
     canViewTemplates ? { id: 'templates' as SettingsSection, label: 'Templates' } : null,
+    canViewAutoTasks ? { id: 'auto-tasks' as SettingsSection, label: 'Auto tasks' } : null,
   ].filter(Boolean) as { id: SettingsSection; label: string }[];
 
   if (!settingsPermsFetched) {
@@ -199,7 +204,7 @@ export default function SystemSettings() {
       <div className={uiCx(uiSpacing.pageStack, 'bg-gray-50')}>
         <AppPageHeader
           title="System settings"
-          subtitle="Administration for lookup lists, files & assets, and templates used across MKHub."
+          subtitle="Administration for lookup lists, files & assets, templates, and auto tasks."
           icon={<Settings className="h-4 w-4" />}
         />
         <AppCard>
@@ -214,7 +219,7 @@ export default function SystemSettings() {
       <div className={uiCx(uiSpacing.pageStack, 'bg-gray-50')}>
         <AppPageHeader
           title="System settings"
-          subtitle="Administration for lookup lists, files & assets, and templates used across MKHub."
+          subtitle="Administration for lookup lists, files & assets, templates, and auto tasks."
           icon={<Settings className="h-4 w-4" />}
         />
         <AppCard>
@@ -231,7 +236,7 @@ export default function SystemSettings() {
     <div className={uiCx(uiSpacing.pageStack, 'bg-gray-50')}>
       <AppPageHeader
         title="System settings"
-        subtitle="Administration for lookup lists, files & assets, and templates used across MKHub."
+        subtitle="Administration for lookup lists, files & assets, templates, and auto tasks."
         icon={<Settings className="h-4 w-4" />}
       />
 
@@ -248,6 +253,8 @@ export default function SystemSettings() {
       {section === 'lists' && canViewLists && <SettingsLookupListsPanel canEdit={canEditLists} />}
 
       {section === 'files' && canViewFiles && <SettingsFilesAssetsPanel canEdit={canEditFiles} />}
+
+      {section === 'auto-tasks' && canViewAutoTasks && <SettingsAutoTasksPanel canEdit={canEditAutoTasks} />}
 
       {section === 'templates' && canViewTemplates && (
         <div className={uiSpacing.pageStack}>
@@ -408,7 +415,7 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
         processed.push({
           ...cat,
           label: 'Settings',
-          description: 'System settings — lookup lists, files & assets, and templates.',
+          description: 'System settings — lookup lists, files & assets, templates, and auto tasks.',
           permissions: filterSettingsAreaPermissions(cat.permissions || []),
         });
       } else if (cat.name === 'work_orders' || cat.name === 'inspections') {

@@ -372,8 +372,12 @@ export function employeeReportFormQuickInfo(opts: { isWorker: boolean; editing: 
     behavior: (
       <>
         {editing
-          ? 'Attachments upload when you pick files and attach to the report immediately. You can remove files before saving other changes.'
-          : 'Attachments upload when you pick files and are saved with the new report when you create it.'}
+          ? isWorker
+            ? 'Attachments accept any file type. They upload when you pick files and attach to the report immediately. You can remove files before saving other changes.'
+            : 'Attachments accept any file type (same as Docs). They upload when you pick files, attach to the report immediately, and also appear in the employee Documents tab. You can remove files before saving other changes.'
+          : isWorker
+            ? 'Attachments accept any file type. They upload when you pick files and are saved with the new report when you create it.'
+            : 'Attachments accept any file type (same as Docs). They upload when you pick files, save with the new report, and also appear in the employee Documents tab.'}
       </>
     ),
     actions: (
@@ -2154,6 +2158,36 @@ export const projectWarrantyClaimDetailQuickInfo = formModalQuickInfo({
     <>
       {uiLabel('Close')} returns to the list. {uiLabel('Edit')} opens the edit form. {uiLabel('Cancel claim')} requires
       a cancellation reason.
+    </>
+  ),
+});
+
+/** System Settings — configure who receives an automatic task. */
+export const autoTaskRouteQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Set the task that will be created for this event, who receives it, when it should start, and how long they have
+      to complete it.
+    </>
+  ),
+  howToUse: (
+    <>
+      Edit {uiLabel('Task title')} and {uiLabel('Task description')}, then pick {uiLabel('People')} and/or{' '}
+      {uiLabel('Divisions')}. Use {uiLabel('Starts after')} if this task should wait for another auto task. Optionally
+      set {uiLabel('Expected completion (days)')}.
+    </>
+  ),
+  behavior: (
+    <>
+      Placeholders like {'{name}'} and {'{email}'} are filled in when the task is created. Each person gets their own
+      task. Each division gets one shared task that anyone on that team can pick up. If {uiLabel('Starts after')} is
+      set, this task is created only when that other task is done — unless it was never created for the same hire, in
+      which case this one starts immediately.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Save')} updates this auto task. {uiLabel('Cancel')} closes without saving.
     </>
   ),
 });

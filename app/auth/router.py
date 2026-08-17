@@ -136,8 +136,26 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         division_ids=division_ids_list,
         document_ids=document_ids_list,
+        onboarding_requirements={
+            "needs_email": bool(req.needs_email),
+            "needs_business_card": bool(req.needs_business_card),
+            "needs_phone": bool(req.needs_phone),
+            "needs_vehicle": bool(req.needs_vehicle),
+            "needs_equipment": bool(req.needs_equipment),
+            "equipment_list": req.equipment_list,
+        },
+        job_title=req.job_title,
+        hire_date=req.hire_date,
     )
     db.add(inv)
+    db.flush()
+    try:
+        from ..services.auto_task_service import fire_onboarding_invite_auto_tasks
+
+        with db.begin_nested():
+            fire_onboarding_invite_auto_tasks(db, invite=inv, req=req, requested_by_id=user.id)
+    except Exception as e:
+        structlog.get_logger().warning("onboarding_auto_tasks_failed", error=str(e))
     db.commit()
     
     # Get inviter information for email signature

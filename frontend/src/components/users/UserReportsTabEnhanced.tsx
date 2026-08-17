@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Paperclip } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
+import { FILE_LIBRARY_ACCEPT } from '@/components/files';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -817,6 +818,10 @@ function CreateReportModal({
         }
       }
       toast.success(added.length === 1 ? 'File uploaded' : `${added.length} files uploaded`);
+      if (report && fileUploadEmployeeId) {
+        queryClient.invalidateQueries({ queryKey: ['user-docs', fileUploadEmployeeId] });
+        queryClient.invalidateQueries({ queryKey: ['user-folders', fileUploadEmployeeId] });
+      }
     } catch (e: any) {
       toast.error(e?.message || 'Failed to upload file');
     } finally {
@@ -887,8 +892,12 @@ function CreateReportModal({
         }
         toast.success('Report created');
       }
-      
+
       queryClient.invalidateQueries({ queryKey: [...reportsListQueryKey] });
+      if (fileUploadEmployeeId) {
+        queryClient.invalidateQueries({ queryKey: ['user-docs', fileUploadEmployeeId] });
+        queryClient.invalidateQueries({ queryKey: ['user-folders', fileUploadEmployeeId] });
+      }
       onClose();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Failed to create report');
@@ -1076,18 +1085,27 @@ function CreateReportModal({
           mode="multiple"
           value={[]}
           onChange={() => {}}
+          accept={FILE_LIBRARY_ACCEPT}
           onFilesSelected={handleFilesSelected}
           disabled={uploading}
           label="Attachments"
           fieldHint={
             report
-              ? 'Attachments\n\nFiles attach to this report as soon as they are selected.'
-              : 'Attachments\n\nFiles upload when selected and are saved when you create the report.'
+              ? isWorker
+                ? 'Attachments\n\nAny file type (images, PDF, Office, zip, etc.). Files attach to this report as soon as they are selected.'
+                : 'Attachments\n\nAny file type (images, PDF, Office, zip, etc.), same as Docs. Files attach to this report as soon as they are selected and also appear in the employee Documents tab (Reports folder).'
+              : isWorker
+                ? 'Attachments\n\nAny file type (images, PDF, Office, zip, etc.). Files upload when selected and are saved when you create the report.'
+                : 'Attachments\n\nAny file type (images, PDF, Office, zip, etc.), same as Docs. Files upload when selected, attach when you create the report, and also appear in the employee Documents tab (Reports folder).'
           }
           helperText={
             report
-              ? 'Uploads attach to this report immediately.'
-              : 'Files upload when selected and attach when you save the report.'
+              ? isWorker
+                ? 'Any file type. Uploads attach to this report immediately.'
+                : 'Any file type, same as Docs. Uploads attach to this report and the employee Documents tab.'
+              : isWorker
+                ? 'Any file type. Files upload when selected and attach when you save the report.'
+                : 'Any file type, same as Docs. Files attach to the report and also appear in Documents.'
           }
         />
         {report ? (

@@ -124,6 +124,9 @@ class Invite(Base):
     accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of division UUIDs as strings
     document_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of onboarding base document UUIDs as strings; null = all active docs
+    onboarding_requirements: Mapped[Optional[dict]] = mapped_column(JSON)
+    job_title: Mapped[Optional[str]] = mapped_column(String(255))
+    hire_date: Mapped[Optional[str]] = mapped_column(String(50))
 
 
 class RefreshToken(Base):
@@ -2186,6 +2189,47 @@ class TaskLogEntry(Base):
     actor_name: Mapped[Optional[str]] = mapped_column(String(255))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+
+
+class AutoTaskRoute(Base):
+    """Admin-configured recipients and SLA for a coded auto-task trigger."""
+    __tablename__ = "auto_task_routes"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    trigger_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    recipient_user_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    recipient_division_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    due_in_days: Mapped[Optional[int]] = mapped_column(Integer)
+    task_title: Mapped[Optional[str]] = mapped_column(String(255))
+    task_description: Mapped[Optional[str]] = mapped_column(Text)
+    notify_push: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notify_email: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    starts_after_key: Mapped[Optional[str]] = mapped_column(String(100))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+
+class AutoTaskLog(Base):
+    """One row per trigger firing (created, skipped, or error)."""
+    __tablename__ = "auto_task_logs"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    trigger_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    origin_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    origin_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    origin_label: Mapped[Optional[str]] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    task_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    payload_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index("idx_auto_task_log_trigger_origin", "trigger_key", "origin_id"),
+    )
 
 
 # Dispatch & Time Tracking Models

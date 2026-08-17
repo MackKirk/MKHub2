@@ -95,6 +95,8 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'settings:document_backgrounds:write',
   'settings:document_templates:read',
   'settings:document_templates:write',
+  'settings:auto_tasks:read',
+  'settings:auto_tasks:write',
   'documents:access',
   'documents:read',
   'documents:write',

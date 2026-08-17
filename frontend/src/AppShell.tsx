@@ -17,6 +17,7 @@ import InstallPrompt from '@/components/InstallPrompt';
 import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
 import HubChatLauncher from '@/components/HubChatLauncher';
 import { canAccessProjectLineMenu, isAdminRole } from '@/lib/projectLinePermissionKeys';
+import { hasAnySettingsPermission } from '@/lib/settingsPermissions';
 import { usePageViewTracker } from '@/lib/usePageViewTracker';
 import { AppUserAvatar, uiCx, uiDropdown } from '@/components/ui';
 
@@ -294,8 +295,6 @@ export default function AppShell({ children }: PropsWithChildren){
   const { data: settingsPerms } = useQuery({
     queryKey: ['me-settings-permissions'],
     queryFn: () => api<any>('GET', '/auth/me/settings-permissions'),
-    refetchOnMount: 'always',
-    staleTime: 0,
   });
   const userId = me?.id ? String(me.id) : '';
   
@@ -430,6 +429,10 @@ export default function AppShell({ children }: PropsWithChildren){
     () => new Set((me?.permissions || []).map((p: unknown) => String(p))),
     [me?.permissions],
   );
+  const canAccessSettingsMenu =
+    settingsPerms != null
+      ? !!settingsPerms.can_access_settings
+      : hasAnySettingsPermission(permissionsSet, isAdmin);
 
   const hasPermission = (requiredPermission?: string) => {
     if (!requiredPermission) return true;
@@ -513,7 +516,7 @@ export default function AppShell({ children }: PropsWithChildren){
       );
     }
     if (requiredPermission === 'settings:access') {
-      return !!settingsPerms?.can_access_settings;
+      return canAccessSettingsMenu;
     }
     if (requiredPermission === 'business:projects:safety:read') {
       return (
@@ -536,7 +539,7 @@ export default function AppShell({ children }: PropsWithChildren){
 
   const canSeeMenuItem = (item: MenuItem): boolean => {
     if (item.id === 'system-settings') {
-      return !!settingsPerms?.can_access_settings;
+      return canAccessSettingsMenu;
     }
     if (hasPermission(item.requiredPermission)) return true;
     return Array.isArray(item.children) && item.children.some(canSeeMenuItem);
@@ -799,7 +802,7 @@ export default function AppShell({ children }: PropsWithChildren){
       return true;
     });
     return unique.length ? [{ id: 'pages', label: 'Pages', items: unique }] : [];
-  }, [menuCategories, permissionsSet, isAdmin]);
+  }, [menuCategories, permissionsSet, isAdmin, canAccessSettingsMenu]);
 
   const canSeeGlobalSearchItem = useMemo(() => {
     return (item: GlobalSearchItem) => {
@@ -997,13 +1000,13 @@ export default function AppShell({ children }: PropsWithChildren){
         if (!hasPermission('sales:quotations:read')) return false;
       }
       if (category.id === 'settings') {
-        if (!settingsPerms?.can_access_settings) return false;
+        if (!canAccessSettingsMenu) return false;
       }
       const visibleItems = category.items.filter(canSeeMenuItem);
       return visibleItems.length > 0;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [menuCategories, permissionsSet, isAdmin]);
+  }, [menuCategories, permissionsSet, isAdmin, canAccessSettingsMenu]);
 
   const selectedNavCategory = useMemo(
     () => visibleMenuCategories.find((c) => c.id === activeNavCategoryId) ?? null,

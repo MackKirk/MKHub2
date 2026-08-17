@@ -68,6 +68,7 @@ from .routes.offboarding import router as offboarding_router
 from .routes.print_shop import router as print_shop_router
 from .routes.print_shop_supplies import router as print_shop_supplies_router
 from .routes.inbound_email import router as inbound_email_router
+from .routes.auto_tasks import router as auto_tasks_router
 
 
 def create_app() -> FastAPI:
@@ -244,6 +245,7 @@ def create_app() -> FastAPI:
     app.include_router(clients_router)
     app.include_router(employees_router)
     app.include_router(calendar_router)
+    app.include_router(auto_tasks_router)
     app.include_router(settings_router)
     app.include_router(integrations_router)
     app.include_router(inventory_router)
@@ -373,6 +375,16 @@ def create_app() -> FastAPI:
                     )
                 except Exception as _e:
                     print(f"[startup] print_shop_requests create_all (non-critical): {_e}")
+
+                try:
+                    from .models.models import AutoTaskLog, AutoTaskRoute
+
+                    Base.metadata.create_all(
+                        bind=engine,
+                        tables=[AutoTaskRoute.__table__, AutoTaskLog.__table__],
+                    )
+                except Exception as _e:
+                    print(f"[startup] auto_task tables create_all (non-critical): {_e}")
 
                 if dialect != "postgresql" and "postgresql" not in dialect:
                     print("[startup] Skipping schema migrations (non-PostgreSQL). Production requires PostgreSQL.")
@@ -2743,6 +2755,50 @@ def create_app() -> FastAPI:
                     except Exception as _e:
                         print(f"[startup] client_files warranty columns (non-critical): {_e}")
 
+                    try:
+                        for col, ddl in [
+                            ("onboarding_requirements", "JSON"),
+                            ("job_title", "VARCHAR(255)"),
+                            ("hire_date", "VARCHAR(50)"),
+                        ]:
+                            exists = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_name = 'invites' AND column_name = :c
+                                    """
+                                ),
+                                {"c": col},
+                            ).fetchall()
+                            if not exists:
+                                db.execute(text(f"ALTER TABLE invites ADD COLUMN {col} {ddl}"))
+                                db.commit()
+                                print(f"[startup] Added invites.{col}")
+                    except Exception as _e:
+                        print(f"[startup] invites auto-task columns (non-critical): {_e}")
+
+                    try:
+                        for col, ddl in [
+                            ("task_title", "VARCHAR(255)"),
+                            ("task_description", "TEXT"),
+                            ("starts_after_key", "VARCHAR(100)"),
+                        ]:
+                            exists = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_name = 'auto_task_routes' AND column_name = :c
+                                    """
+                                ),
+                                {"c": col},
+                            ).fetchall()
+                            if not exists:
+                                db.execute(text(f"ALTER TABLE auto_task_routes ADD COLUMN {col} {ddl}"))
+                                db.commit()
+                                print(f"[startup] Added auto_task_routes.{col}")
+                    except Exception as _e:
+                        print(f"[startup] auto_task_routes copy columns (non-critical): {_e}")
+
                     # Soft delete columns (if missing)
                     for table_name, fk_col in [("projects", "deleted_by_id"), ("clients", "deleted_by_id"), ("proposals", "deleted_by_id"), ("quotes", "deleted_by_id")]:
                         try:
@@ -2792,6 +2848,14 @@ def create_app() -> FastAPI:
                     seed_company_assets_permissions()
                 except Exception as e:
                     print(f"⚠️  Could not seed company assets permissions on startup: {e}")
+                try:
+                    import sys
+                    import os
+                    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    from scripts.seed_settings_permissions import seed_settings_permissions
+                    seed_settings_permissions()
+                except Exception as e:
+                    print(f"⚠️  Could not seed settings permissions on startup: {e}")
             except Exception as e:
                 print(f"⚠️  Could not seed permissions on startup: {e}")
             finally:

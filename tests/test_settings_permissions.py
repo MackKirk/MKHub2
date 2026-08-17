@@ -145,6 +145,7 @@ class TestSettingsPermissions(unittest.TestCase):
         self.assertFalse(payload["can_access_settings"])
         self.assertFalse(payload["can_view_lookup_lists"])
         self.assertFalse(payload["can_view_templates_tab"])
+        self.assertFalse(payload["can_view_auto_tasks"])
 
     def test_settings_permissions_endpoint_single_view_lookup_only(self):
         payload = settings_permissions_payload(_user_with({"settings:lookup_lists:read": True}))

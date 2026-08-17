@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
+import structlog
 
 from ..auth.security import get_current_user
 from ..db import get_db
@@ -14,6 +15,7 @@ from ..services.task_service import create_task_item, get_user_display
 
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+logger = structlog.get_logger()
 
 
 class TaskTitleUpdate(BaseModel):
@@ -722,6 +724,13 @@ def conclude_task(task_id: str, db: Session = Depends(get_db), me: User = Depend
     task.concluded_by_name = get_user_display(db, me.id)
     task.updated_at = now
     _add_task_log(db, task, me, "status_changed", "Status changed: In progress → Done")
+    db.flush()
+    try:
+        from ..services.auto_task_service import fire_dependents_for_completed_task
+
+        fire_dependents_for_completed_task(db, task)
+    except Exception as exc:
+        logger.warning("auto_task_dependents_failed", task_id=str(task.id), error=str(exc))
 
     db.commit()
     db.refresh(task)

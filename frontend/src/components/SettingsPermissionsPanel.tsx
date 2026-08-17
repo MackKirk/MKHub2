@@ -24,7 +24,9 @@ export function SettingsPermissionsPanel({
 }) {
   const tabRows = buildSettingsPermissionRows(areaPerms).filter(
     (r) =>
-      r.readKey === 'settings:lookup_lists:read' || r.readKey === 'settings:files_assets:read',
+      r.readKey === 'settings:lookup_lists:read' ||
+      r.readKey === 'settings:files_assets:read' ||
+      r.readKey === 'settings:auto_tasks:read',
   );
   const templateRows = buildSettingsPermissionRows(areaPerms).filter(
     (r) =>

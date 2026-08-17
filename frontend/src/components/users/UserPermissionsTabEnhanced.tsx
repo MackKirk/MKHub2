@@ -1161,7 +1161,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                   category: {
                     ...cat.category,
                     label: 'Settings',
-                    description: 'System settings — lookup lists, files & assets, and templates.',
+                    description: 'System settings — lookup lists, files & assets, templates, and auto tasks.',
                   },
                   permissions: filterSettingsAreaPermissions(cat.permissions),
                 });

@@ -43,7 +43,7 @@ def seed_settings_permissions():
             print("Category 'settings' already exists, updating...")
             category.label = "Settings"
             category.description = (
-                "Permissions for System Settings — lookup lists, files & assets, and templates."
+                "Permissions for System Settings — lookup lists, files & assets, templates, and auto tasks."
             )
             category.is_active = True
         else:
@@ -51,7 +51,7 @@ def seed_settings_permissions():
                 name="settings",
                 label="Settings",
                 description=(
-                    "Permissions for System Settings — lookup lists, files & assets, and templates."
+                "Permissions for System Settings — lookup lists, files & assets, templates, and auto tasks."
                 ),
                 sort_index=6,
             )
@@ -140,6 +140,18 @@ def seed_settings_permissions():
                 "label": "Document creator — document templates",
                 "description": "Create, edit, duplicate, and delete document template presets.",
                 "sort_index": 12,
+            },
+            {
+                "key": "settings:auto_tasks:read",
+                "label": "Auto tasks",
+                "description": "View automatic task triggers and who receives them.",
+                "sort_index": 13,
+            },
+            {
+                "key": "settings:auto_tasks:write",
+                "label": "Auto tasks",
+                "description": "Configure who receives automatic tasks and expected completion time.",
+                "sort_index": 14,
             },
         ]
 

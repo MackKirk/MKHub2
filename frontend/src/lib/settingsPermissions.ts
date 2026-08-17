@@ -16,6 +16,8 @@ export const SETTINGS_DOCUMENT_BACKGROUNDS_READ = 'settings:document_backgrounds
 export const SETTINGS_DOCUMENT_BACKGROUNDS_WRITE = 'settings:document_backgrounds:write';
 export const SETTINGS_DOCUMENT_TEMPLATES_READ = 'settings:document_templates:read';
 export const SETTINGS_DOCUMENT_TEMPLATES_WRITE = 'settings:document_templates:write';
+export const SETTINGS_AUTO_TASKS_READ = 'settings:auto_tasks:read';
+export const SETTINGS_AUTO_TASKS_WRITE = 'settings:auto_tasks:write';
 
 export const SETTINGS_CHILD_READ_KEYS = [
   SETTINGS_LOOKUP_LISTS_READ,
@@ -24,6 +26,7 @@ export const SETTINGS_CHILD_READ_KEYS = [
   SETTINGS_TERMS_TEMPLATES_READ,
   SETTINGS_DOCUMENT_BACKGROUNDS_READ,
   SETTINGS_DOCUMENT_TEMPLATES_READ,
+  SETTINGS_AUTO_TASKS_READ,
 ] as const;
 
 export const SETTINGS_CHILD_WRITE_KEYS = [
@@ -33,6 +36,7 @@ export const SETTINGS_CHILD_WRITE_KEYS = [
   SETTINGS_TERMS_TEMPLATES_WRITE,
   SETTINGS_DOCUMENT_BACKGROUNDS_WRITE,
   SETTINGS_DOCUMENT_TEMPLATES_WRITE,
+  SETTINGS_AUTO_TASKS_WRITE,
 ] as const;
 
 export const SETTINGS_ALL_CHILD_KEYS = [
@@ -128,6 +132,30 @@ export function buildSettingsPermissionRows(areaPerms: PermDef[]): ScopedPermiss
       readKey: SETTINGS_FILES_ASSETS_READ,
 
       writeKey: filesWrite?.key,
+
+    });
+
+  }
+
+
+
+  const autoTasksRead = byKey.get(SETTINGS_AUTO_TASKS_READ);
+
+  const autoTasksWrite = byKey.get(SETTINGS_AUTO_TASKS_WRITE);
+
+  if (autoTasksRead) {
+
+    rows.push({
+
+      id: autoTasksRead.id,
+
+      label: autoTasksRead.label,
+
+      description: autoTasksRead.description,
+
+      readKey: SETTINGS_AUTO_TASKS_READ,
+
+      writeKey: autoTasksWrite?.key,
 
     });
 
@@ -542,6 +570,32 @@ export function canViewDocumentTemplatesCard(permissions: Set<string>, isAdmin =
 export function canEditDocumentTemplatesCard(permissions: Set<string>, isAdmin = false): boolean {
 
   return canEditGranular(permissions, isAdmin, SETTINGS_DOCUMENT_TEMPLATES_WRITE);
+
+}
+
+
+
+export function canViewAutoTasksTab(permissions: Set<string>, isAdmin = false): boolean {
+
+  return canViewGranular(
+
+    permissions,
+
+    isAdmin,
+
+    SETTINGS_AUTO_TASKS_READ,
+
+    SETTINGS_AUTO_TASKS_WRITE,
+
+  );
+
+}
+
+
+
+export function canEditAutoTasksTab(permissions: Set<string>, isAdmin = false): boolean {
+
+  return canEditGranular(permissions, isAdmin, SETTINGS_AUTO_TASKS_WRITE);
 
 }
 
