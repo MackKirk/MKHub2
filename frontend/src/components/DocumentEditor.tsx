@@ -1093,7 +1093,19 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const currentTemplateId = currentPage?.template_id ?? null;
   const currentTemplate = templates.find((t) => t.id === currentTemplateId);
   const elements = currentPage?.elements ?? [];
-  const selectedElement = selectedElementIds.length === 1 ? elements.find((e) => e.id === selectedElementIds[0]) : null;
+  /** Prefer the page that owns the selection so toolbar stays usable after scroll sync. */
+  const selectionPageIndex = (() => {
+    if (selectedElementIds.length === 0) return currentPageIndex;
+    for (let i = 0; i < pages.length; i++) {
+      if ((pages[i].elements ?? []).some((e) => selectedElementIds.includes(e.id))) return i;
+    }
+    return currentPageIndex;
+  })();
+  const selectionPageElements = pages[selectionPageIndex]?.elements ?? elements;
+  const selectedElement =
+    selectedElementIds.length === 1
+      ? selectionPageElements.find((e) => e.id === selectedElementIds[0]) ?? null
+      : null;
 
   /** A4 aspect: height = width * (297/210). Used to compute image area size in px for ImagePicker. */
   const A4_HEIGHT_RATIO = 297 / 210;
@@ -1114,6 +1126,13 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     ...defaultMargins,
     ...currentTemplate?.margins,
     ...currentPage?.margins,
+  };
+  const selectionPage = pages[selectionPageIndex];
+  const selectionTemplate = templates.find((t) => t.id === (selectionPage?.template_id ?? ''));
+  const selectionEffectiveMargins: PageMargins = {
+    ...defaultMargins,
+    ...selectionTemplate?.margins,
+    ...selectionPage?.margins,
   };
 
   /** Multi-page documents: vertical stack + scroll; template editor stays single-page. */
@@ -1144,15 +1163,25 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     (index: number) => {
       setTextEditingElementId(null);
       setCurrentPageIndex(index);
+      // Explicit page jump: keep only selections that live on the destination page.
+      setSelectedElementIds((prev) => {
+        const idsOnPage = new Set((stateRef.current.pages[index]?.elements ?? []).map((e) => e.id));
+        return prev.filter((id) => idsOnPage.has(id));
+      });
       requestAnimationFrame(() => scrollToPageSection(index, 'smooth'));
     },
     [scrollToPageSection],
   );
 
+  // Drop stale ids when pages/elements are removed — do NOT clear on scroll-driven
+  // currentPageIndex changes (IntersectionObserver), or the formatting toolbar vanishes.
   useEffect(() => {
-    const idsOnPage = new Set((pages[currentPageIndex]?.elements ?? []).map((e) => e.id));
-    setSelectedElementIds((prev) => prev.filter((id) => idsOnPage.has(id)));
-  }, [currentPageIndex, pages]);
+    const allIds = new Set(pages.flatMap((p) => (p.elements ?? []).map((e) => e.id)));
+    setSelectedElementIds((prev) => {
+      const next = prev.filter((id) => allIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [pages]);
 
   useLayoutEffect(() => {
     if (isTemplate || !id) return;
@@ -1333,29 +1362,43 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   );
 
   const moveElement = useCallback(
-    (fromIndex: number, toIndex: number) => {
+    (fromIndex: number, toIndex: number, pageIndex?: number) => {
       if (fromIndex === toIndex) return;
       pushHistory();
-      setCurrentPageElements((prev) => {
+      const targetPage = pageIndex ?? stateRef.current.currentPageIndex;
+      updateElementsAtPageIndex(targetPage, (prev) => {
         const next = [...prev];
         const [moved] = next.splice(fromIndex, 1);
         next.splice(toIndex, 0, moved);
         return next;
       });
     },
-    [pushHistory, setCurrentPageElements]
+    [pushHistory, updateElementsAtPageIndex]
   );
 
   const bringToFront = useCallback(
-    (index: number) => moveElement(index, elements.length - 1),
-    [moveElement, elements.length]
+    (index: number, pageIndex?: number) => {
+      const len =
+        (pageIndex != null ? stateRef.current.pages[pageIndex]?.elements : stateRef.current.pages[stateRef.current.currentPageIndex]?.elements)
+          ?.length ?? 0;
+      moveElement(index, Math.max(0, len - 1), pageIndex);
+    },
+    [moveElement]
   );
-  const sendToBack = useCallback((index: number) => moveElement(index, 0), [moveElement]);
+  const sendToBack = useCallback((index: number, pageIndex?: number) => moveElement(index, 0, pageIndex), [moveElement]);
   const moveForward = useCallback(
-    (index: number) => moveElement(index, Math.min(elements.length - 1, index + 1)),
-    [moveElement, elements.length]
+    (index: number, pageIndex?: number) => {
+      const len =
+        (pageIndex != null ? stateRef.current.pages[pageIndex]?.elements : stateRef.current.pages[stateRef.current.currentPageIndex]?.elements)
+          ?.length ?? 0;
+      moveElement(index, Math.min(len - 1, index + 1), pageIndex);
+    },
+    [moveElement]
   );
-  const moveBackward = useCallback((index: number) => moveElement(index, Math.max(0, index - 1)), [moveElement]);
+  const moveBackward = useCallback(
+    (index: number, pageIndex?: number) => moveElement(index, Math.max(0, index - 1), pageIndex),
+    [moveElement]
+  );
 
   const handleAddElement = useCallback((el: DocElement) => {
     pushHistory();
@@ -1365,10 +1408,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   }, [setCurrentPageElements, pushHistory, textEditingElementId, notifyBlockedByTextEdit]);
 
   const handleUpdateElement = useCallback((elementId: string, updater: (e: DocElement) => DocElement) => {
-    setCurrentPageElements((prev) =>
+    const pageIndex = findPageIndexForElement(elementId) ?? stateRef.current.currentPageIndex;
+    updateElementsAtPageIndex(pageIndex, (prev) =>
       prev.map((e) => (e.id === elementId ? updater(e) : e))
     );
-  }, [setCurrentPageElements]);
+  }, [findPageIndexForElement, updateElementsAtPageIndex]);
 
   const handleUpdateElementWithHistory = useCallback((elementId: string, updater: (e: DocElement) => DocElement) => {
     pushHistory();
@@ -1377,9 +1421,10 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
 
   const handleRemoveElement = useCallback((elementId: string) => {
     pushHistory();
-    setCurrentPageElements((prev) => prev.filter((e) => e.id !== elementId));
+    const pageIndex = findPageIndexForElement(elementId) ?? stateRef.current.currentPageIndex;
+    updateElementsAtPageIndex(pageIndex, (prev) => prev.filter((e) => e.id !== elementId));
     setSelectedElementIds((prev) => prev.filter((id) => id !== elementId));
-  }, [setCurrentPageElements, pushHistory]);
+  }, [findPageIndexForElement, updateElementsAtPageIndex, pushHistory]);
 
   const handleUpdateElementAtPage = useCallback(
     (pageIndex: number, elementId: string, updater: (e: DocElement) => DocElement) => {
@@ -1401,12 +1446,17 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
 
   const handleAlignSelected = useCallback(
     (alignment: AlignKind) => {
+      const pageIdx =
+        selectedElementIds.length > 0
+          ? findPageIndexForElement(selectedElementIds[0]) ?? stateRef.current.currentPageIndex
+          : stateRef.current.currentPageIndex;
+      const pageEls = stateRef.current.pages[pageIdx]?.elements ?? [];
       const ids = selectedElementIds.filter((id) => {
-        const el = elements.find((e) => e.id === id);
+        const el = pageEls.find((e) => e.id === id);
         return el && !el.locked && !el.lockPosition;
       });
       if (ids.length < 2) return;
-      const sel = elements.filter((e) => ids.includes(e.id));
+      const sel = pageEls.filter((e) => ids.includes(e.id));
       let left = 100,
         right = 0,
         top = 100,
@@ -1423,12 +1473,14 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       });
       const centerX = (left + right) / 2;
       const centerY = (top + bottom) / 2;
-      const L = effectiveMargins?.left_pct ?? 0;
-      const R = effectiveMargins?.right_pct ?? 0;
-      const T = effectiveMargins?.top_pct ?? 0;
-      const B = effectiveMargins?.bottom_pct ?? 0;
+      const page = stateRef.current.pages[pageIdx];
+      const tmpl = templates.find((t) => t.id === (page?.template_id ?? ''));
+      const L = page?.margins?.left_pct ?? tmpl?.margins?.left_pct ?? 0;
+      const R = page?.margins?.right_pct ?? tmpl?.margins?.right_pct ?? 0;
+      const T = page?.margins?.top_pct ?? tmpl?.margins?.top_pct ?? 0;
+      const B = page?.margins?.bottom_pct ?? tmpl?.margins?.bottom_pct ?? 0;
       pushHistory();
-      setCurrentPageElements((prev) =>
+      updateElementsAtPageIndex(pageIdx, (prev) =>
         prev.map((el) => {
           if (!ids.includes(el.id)) return el;
           const w = el.width_pct ?? 80;
@@ -1461,7 +1513,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         })
       );
     },
-    [selectedElementIds, elements, effectiveMargins, pushHistory, setCurrentPageElements]
+    [selectedElementIds, findPageIndexForElement, templates, pushHistory, updateElementsAtPageIndex]
   );
 
   const newPageWithTemplate = useCallback((templateId: string | null): DocumentPage => {
@@ -2086,7 +2138,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           !readOnly && selectedElementIds.length > 0 ? (
             <DocumentSelectionRibbon
               selectedElementIds={selectedElementIds}
-              elements={elements}
+              elements={selectionPageElements}
               element={selectedElement && selectedElement.type !== 'block' ? selectedElement : null}
               onUpdate={handleUpdateElementWithHistory}
               onRemove={handleRemoveElement}
@@ -2106,32 +2158,32 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
               onSendBackward={
                 selectedElement
                   ? () => {
-                      const idx = elements.findIndex((e) => e.id === selectedElement.id);
-                      if (idx >= 0) moveBackward(idx);
+                      const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
+                      if (idx >= 0) moveBackward(idx, selectionPageIndex);
                     }
                   : undefined
               }
               onBringForward={
                 selectedElement
                   ? () => {
-                      const idx = elements.findIndex((e) => e.id === selectedElement.id);
-                      if (idx >= 0) moveForward(idx);
+                      const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
+                      if (idx >= 0) moveForward(idx, selectionPageIndex);
                     }
                   : undefined
               }
               onSendToBack={
                 selectedElement
                   ? () => {
-                      const idx = elements.findIndex((e) => e.id === selectedElement.id);
-                      if (idx >= 0) sendToBack(idx);
+                      const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
+                      if (idx >= 0) sendToBack(idx, selectionPageIndex);
                     }
                   : undefined
               }
               onBringToFront={
                 selectedElement
                   ? () => {
-                      const idx = elements.findIndex((e) => e.id === selectedElement.id);
-                      if (idx >= 0) bringToFront(idx);
+                      const idx = selectionPageElements.findIndex((e) => e.id === selectedElement.id);
+                      if (idx >= 0) bringToFront(idx, selectionPageIndex);
                     }
                   : undefined
               }
@@ -2143,7 +2195,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
             <DocumentSelectionInspector
               element={selectedElement}
               onUpdate={handleUpdateElementWithHistory}
-              margins={effectiveMargins}
+              margins={selectionEffectiveMargins}
             />
           ) : undefined
         }

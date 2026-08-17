@@ -18,6 +18,7 @@ import {
   SHAPE_FILL_PATTERNS,
   type ShapeFillPattern,
 } from '@/components/imageEditorShapeFill';
+import { ROTATE_CURSOR } from '@/utils/documentElementGeometry';
 
 function ShapeFillPatternIcon({
   pattern,
@@ -402,7 +403,7 @@ function shiftToKeepHandleAnchor(
 }
 
 function resizeCursorForHandle(handle: string, rotationDeg: number): string {
-  if (handle === 'rotate') return 'grab';
+  if (handle === 'rotate') return ROTATE_CURSOR;
   const order = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
   const cursors = [
     'nwse-resize',
@@ -884,7 +885,7 @@ export default function ImageEditor({
   }, [mode, items.length]);
 
   // Helper to exit text editing mode (used by ESC and click-outside)
-  const exitTextEditing = useCallback(() => {
+  const exitTextEditing = useCallback((opts?: { keepSelection?: boolean }) => {
     const editingId = textEditingRef.current;
     if (!editingId) return;
 
@@ -903,10 +904,16 @@ export default function ImageEditor({
       return next;
     });
 
-    // Keep the text selected so user can still move/resize it
-    setSelectedIds(prev =>
-      prev.length === 1 && prev[0] === editingId ? prev : [editingId]
-    );
+    if (opts?.keepSelection === false) {
+      selectedIdsRef.current = [];
+      setSelectedIds([]);
+    } else {
+      // ESC / tool switch: keep selected so handles stay available
+      setSelectedIds(prev =>
+        prev.length === 1 && prev[0] === editingId ? prev : [editingId]
+      );
+      selectedIdsRef.current = [editingId];
+    }
 
     stopTextCursorBlink();
 
@@ -1871,6 +1878,96 @@ export default function ImageEditor({
     return Math.max(0, Math.min(absolutePos, textContent.length));
   }, [fontSize, getItemBounds]);
 
+  const wrapTextLines = useCallback((ctx: CanvasRenderingContext2D, textContent: string, maxWidth: number): string[] => {
+    const lines: string[] = [];
+    const paragraphs = textContent.split('\n');
+    for (const para of paragraphs) {
+      if (!para.trim() && lines.length > 0) {
+        lines.push('');
+        continue;
+      }
+      const words = para.split(' ');
+      let currentLine = '';
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        const wordMetrics = ctx.measureText(word);
+        if (wordMetrics.width > maxWidth) {
+          if (currentLine) {
+            lines.push(currentLine);
+            currentLine = '';
+          }
+          let charLine = '';
+          for (let j = 0; j < word.length; j++) {
+            const charTest = charLine + word[j];
+            const charMetrics = ctx.measureText(charTest);
+            if (charMetrics.width > maxWidth && charLine) {
+              lines.push(charLine);
+              charLine = word[j];
+            } else {
+              charLine = charTest;
+            }
+          }
+          if (charLine) currentLine = charLine;
+        } else {
+          const testLine = currentLine ? `${currentLine} ${word}` : word;
+          const testMetrics = ctx.measureText(testLine);
+          if (testMetrics.width > maxWidth && currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        }
+      }
+      if (currentLine) lines.push(currentLine);
+    }
+    return lines;
+  }, []);
+
+  // True when the pointer is on rendered glyphs (not empty padding / border).
+  const isClickOnTextContent = useCallback((item: AnnotationItem, clickX: number, clickY: number): boolean => {
+    const overlay = overlayRef.current;
+    if (!overlay || item.type !== 'text') return false;
+    const ctx = overlay.getContext('2d');
+    if (!ctx) return false;
+
+    const textContent = item.text || '';
+    if (!textContent) return false;
+
+    const bb = getItemBounds(item);
+    const local = bb
+      ? worldToLocalPoint(clickX, clickY, bb, annotationRotationDeg(item))
+      : { x: clickX, y: clickY };
+
+    const boxW = item.w || 200;
+    const boxH = item.h || 30;
+    const innerMargin = 4;
+    const insideCoreBox =
+      local.x >= item.x + innerMargin &&
+      local.x <= item.x + boxW - innerMargin &&
+      local.y >= item.y + innerMargin &&
+      local.y <= item.y + boxH - innerMargin;
+    if (!insideCoreBox) return false;
+
+    const itemFontSize = item.fontSize || fontSize;
+    ctx.font = `${itemFontSize}px Montserrat`;
+    const padding = 4;
+    const maxWidth = boxW - padding * 2;
+    const lineHeight = itemFontSize * 1.2;
+    const topY = item.y + padding;
+    const relativeY = Math.max(0, local.y - topY);
+    const lineIndex = Math.floor(relativeY / lineHeight);
+    const lines = wrapTextLines(ctx, textContent, maxWidth);
+
+    if (lineIndex >= 0 && lineIndex < lines.length && lines[lineIndex].trim()) {
+      const lineText = lines[lineIndex];
+      const lineStartX = item.x + padding;
+      const lineEndX = lineStartX + ctx.measureText(lineText).width;
+      return local.x >= lineStartX && local.x <= lineEndX;
+    }
+    return false;
+  }, [fontSize, getItemBounds, wrapTextLines]);
+
   // Find item at position
   const itemAt = useCallback((x: number, y: number): AnnotationItem | null => {
     const list = itemsRef.current;
@@ -2098,7 +2195,7 @@ export default function ImageEditor({
   const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     // Disable pan when editing text - clicking canvas should exit edit mode
     if (textEditingRef.current) {
-      exitTextEditing();
+      exitTextEditing({ keepSelection: false });
       return;
     }
     if (!img) return;
@@ -2129,7 +2226,9 @@ export default function ImageEditor({
       if (x >= 0 && x <= displayWidth && y >= 0 && y <= displayHeight) {
         const hit = itemAt(x, y);
         if (!hit) {
-          // Click is outside any item, allow pan
+          // Click is outside any item: drop selection and pan
+          selectedIdsRef.current = [];
+          setSelectedIds([]);
           e.preventDefault();
           draggingRef.current = {
             x: e.clientX - rect.left,
@@ -2179,7 +2278,6 @@ export default function ImageEditor({
         const boxW = editingItem.w || 200;
         const boxH = editingItem.h || 30;
         const safetyMargin = 10; // safety margin around text box before exiting edit mode
-        const innerMargin = 4;   // inner margin to distinguish border vs inner text
         const editBb = getItemBounds(editingItem);
         const local = editBb
           ? worldToLocalPoint(x, y, editBb, annotationRotationDeg(editingItem))
@@ -2198,126 +2296,33 @@ export default function ImageEditor({
           local.y <= editingItem.y + boxH + safetyMargin;
 
         if (insideExpandedBox) {
-          const insideCoreBox =
-              local.x >= editingItem.x + innerMargin &&
-              local.x <= editingItem.x + boxW - innerMargin &&
-              local.y >= editingItem.y + innerMargin &&
-              local.y <= editingItem.y + boxH - innerMargin;
-
-            if (insideCoreBox) {
-              // Check if clicking on actual text content or empty area
-              const itemFontSize = editingItem.fontSize || fontSize;
-              const textContent = editingItem.text || '';
-              const padding = 4;
-              const maxWidth = boxW - padding * 2;
-              const lineHeight = itemFontSize * 1.2;
-              
-              let isClickOnText = false;
-              if (textContent && overlayRef.current) {
-                const ctx = overlayRef.current.getContext('2d');
-                if (ctx) {
-                  ctx.font = `${itemFontSize}px Montserrat`;
-                  const topY = editingItem.y + padding;
-                  const relativeY = Math.max(0, local.y - topY);
-                  const lineIndex = Math.floor(relativeY / lineHeight);
-                  
-                  // Word wrap to get lines (same logic as getTextCursorPosition)
-                  const paragraphs = textContent.split('\n');
-                  const lines: string[] = [];
-                  
-                  for (const para of paragraphs) {
-                    if (!para.trim() && lines.length > 0) {
-                      lines.push('');
-                      continue;
-                    }
-                    
-                    const words = para.split(' ');
-                    let currentLine = '';
-                    
-                    for (let i = 0; i < words.length; i++) {
-                      const word = words[i];
-                      const wordMetrics = ctx.measureText(word);
-                      if (wordMetrics.width > maxWidth) {
-                        if (currentLine) {
-                          lines.push(currentLine);
-                          currentLine = '';
-                        }
-                        let charLine = '';
-                        for (let j = 0; j < word.length; j++) {
-                          const charTest = charLine + word[j];
-                          const charMetrics = ctx.measureText(charTest);
-                          if (charMetrics.width > maxWidth && charLine) {
-                            lines.push(charLine);
-                            charLine = word[j];
-                          } else {
-                            charLine = charTest;
-                          }
-                        }
-                        if (charLine) currentLine = charLine;
-                      } else {
-                        const testLine = currentLine ? `${currentLine} ${word}` : word;
-                        const testMetrics = ctx.measureText(testLine);
-                        if (testMetrics.width > maxWidth && currentLine) {
-                          lines.push(currentLine);
-                          currentLine = word;
-                        } else {
-                          currentLine = testLine;
-                        }
-                      }
-                    }
-                    if (currentLine) lines.push(currentLine);
-                  }
-                  
-                  // Check if click is on a line with text
-                  if (lineIndex >= 0 && lineIndex < lines.length && lines[lineIndex].trim()) {
-                    const lineText = lines[lineIndex];
-                    const lineStartX = editingItem.x + padding;
-                    const lineEndX = lineStartX + ctx.measureText(lineText).width;
-                    isClickOnText = local.x >= lineStartX && local.x <= lineEndX;
-                  }
-                }
-              }
-              
-              if (isClickOnText) {
-                // Click inside the core text area on actual text → start caret + drag-selection
-                const cursorPos = getTextCursorPosition(editingItem, x, y);
-                textCursorPositionRef.current = cursorPos;
-                textSelectionStartRef.current = cursorPos;
-                textSelectingRef.current = true;
-                setItems(prev => prev.map(it =>
-                  !it || !it.id ? it : (it.id === editingItem.id ? { ...it, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it)
-                ).filter(it => it && it.id));
-                // Ensure overlay has focus for keyboard events (arrows, etc)
-                if (overlayRef.current) {
-                  overlayRef.current.focus();
-                }
-                e.stopPropagation();
-                return;
-              } else {
-                // Click in empty area inside text box → move whole box
-                if (!selectedIds.includes(editingItem.id)) {
-                  setSelectedIds([editingItem.id]);
-                }
-                movingRef.current = { item: { ...editingItem }, startX: x, startY: y };
-                setOverlayCursor('grabbing');
-                e.stopPropagation();
-                return;
-              }
-            } else {
-              // Click in border zone (between core box and expanded margin) → move whole box
-              if (!selectedIds.includes(editingItem.id)) {
-                setSelectedIds([editingItem.id]);
-              }
-              movingRef.current = { item: { ...editingItem }, startX: x, startY: y };
-              setOverlayCursor('grabbing');
-              e.stopPropagation();
-              return;
+          if (isClickOnTextContent(editingItem, x, y)) {
+            // Click on glyphs → caret + drag-selection
+            const cursorPos = getTextCursorPosition(editingItem, x, y);
+            textCursorPositionRef.current = cursorPos;
+            textSelectionStartRef.current = cursorPos;
+            textSelectingRef.current = true;
+            setItems(prev => prev.map(it =>
+              !it || !it.id ? it : (it.id === editingItem.id ? { ...it, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it)
+            ).filter(it => it && it.id));
+            if (overlayRef.current) {
+              overlayRef.current.focus();
             }
-        } else {
-          // Clicking completely outside the expanded text box → exit edit mode (same as ESC)
-          exitTextEditing();
+            e.stopPropagation();
+            return;
+          }
+          // Empty padding or border → move whole box
+          if (!selectedIds.includes(editingItem.id)) {
+            setSelectedIds([editingItem.id]);
+          }
+          movingRef.current = { item: { ...editingItem }, startX: x, startY: y };
+          setOverlayCursor('grabbing');
           e.stopPropagation();
           return;
+        } else {
+          // Click outside the text box → exit edit and deselect, then continue
+          // so another object can be selected (or empty canvas can pan) in one click.
+          exitTextEditing({ keepSelection: false });
         }
       }
     }
@@ -2533,18 +2538,10 @@ export default function ImageEditor({
               return; // Don't do anything else, just update cursor position
             }
             
-            // If clicking outside the text being edited, exit edit mode and return to select
+            // If clicking outside the text being edited, exit edit + deselect in one click,
+            // then continue so another item can be selected (or empty canvas clears/pans).
             if (textEditingRef.current && (!hit || hit.type !== 'text' || hit.id !== textEditingRef.current)) {
-              setItems(prev => {
-                const next = prev.map(it => !it || !it.id ? it : ({ ...it, _editing: false })).filter(it => it && it.id) as AnnotationItem[];
-                itemsRef.current = next;
-                return next;
-              });
-              textEditingRef.current = null;
-              textCursorPositionRef.current = 0;
-              stopTextCursorBlink();
-              setMode('select');
-              return; // Don't continue with selection logic
+              exitTextEditing({ keepSelection: false });
             }
             
           if (hit) {
@@ -2555,10 +2552,12 @@ export default function ImageEditor({
             }
             
             if (hit.type === 'text') {
-              // Any click inside the text box (not on a handle) enters edit mode
+              // One click: select + focus. Glyphs → caret; empty padding/border → drag.
               const cursorPos = getTextCursorPosition(hit, x, y);
+              const onGlyphs = isClickOnTextContent(hit, x, y);
               textCursorPositionRef.current = cursorPos;
-              textSelectionStartRef.current = null;
+              textSelectionStartRef.current = onGlyphs ? cursorPos : null;
+              textSelectingRef.current = onGlyphs;
               setItems(prev => {
                 const next = prev.map(it =>
                   !it || !it.id ? it : (it.id === hit.id ? { ...it, _editing: true, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it)
@@ -2571,14 +2570,20 @@ export default function ImageEditor({
               if (overlayRef.current) {
                 overlayRef.current.focus();
               }
-              movingRef.current = null;
+              if (onGlyphs) {
+                movingRef.current = null;
+              } else {
+                movingRef.current = { item: { ...hit }, startX: x, startY: y };
+                setOverlayCursor('grabbing');
+              }
             } else {
               // Non-text items: select and prepare to move
               movingRef.current = { item: { ...hit }, startX: x, startY: y };
               setOverlayCursor('grabbing');
             }
           } else {
-              // Click on empty area - disable text editing (already handled above)
+              // Click on empty area — drop focus + selection in one click, then pan.
+              selectedIdsRef.current = [];
               setSelectedIds([]);
               // Click on empty area -> allow pan in select mode
               if (mode === 'select' && img) {
@@ -2714,7 +2719,7 @@ export default function ImageEditor({
       livePatchItems(prev => prev.map(it =>
         !it || !it.id || it.id !== rotState.item.id ? it : { ...it, rotation: nextRot }
       ));
-      (e.currentTarget as HTMLCanvasElement).style.cursor = 'grabbing';
+      (e.currentTarget as HTMLCanvasElement).style.cursor = ROTATE_CURSOR;
       return;
     }
 
@@ -3787,8 +3792,10 @@ export default function ImageEditor({
                           marqueeRef.current ||
                           textSelectingRef.current
                         ) {
-                          if (movingRef.current || draggingRef.current || rotatingRef.current) {
+                          if (movingRef.current || draggingRef.current) {
                             setOverlayCursor('grabbing');
+                          } else if (rotatingRef.current) {
+                            setOverlayCursor(ROTATE_CURSOR);
                           }
                           handleOverlayMouseMove(e);
                           return;

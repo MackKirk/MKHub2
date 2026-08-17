@@ -152,6 +152,9 @@ const RESIZE_HANDLE_CURSORS = [
   'w-resize',
 ] as const;
 
+/** Custom rotate cursor (user icon, black, compact). Hotspot at center. */
+export const ROTATE_CURSOR = 'url("/ui/assets/icons/rotate-cursor.png?v=5") 12 12, crosshair';
+
 export function resizeCursorForDocRotation(dir: string, rotationDeg: number): string {
   const idx = RESIZE_HANDLE_ORDER.indexOf(dir as (typeof RESIZE_HANDLE_ORDER)[number]);
   if (idx < 0) return 'default';

@@ -430,8 +430,11 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                       <tbody className="divide-y divide-slate-50">
                         {[
                           { token: '<Project Name>', label: 'Project name' },
+                          { token: '<Project Address>', label: 'Project address' },
                           { token: '<Customer Name>', label: 'Customer name' },
+                          { token: '<Customer Address>', label: 'Customer address' },
                           { token: '<Reference Code>', label: 'Project code' },
+                          { token: '<Auto Date>', label: 'Date when page is added' },
                         ].map(({ token, label }) => (
                           <tr key={token}>
                             <td className="py-1.5 pr-3">
@@ -567,17 +570,17 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
       {selectionPanel || inspectorPanel ? (
         <div
           data-document-editor-formatting="true"
-          className={`${editorContextStripClass} flex shrink-0 flex-nowrap items-center gap-0 overflow-x-auto px-2 py-1 sm:px-3 sm:py-1.5 [scrollbar-width:thin]`}
+          className={`${editorContextStripClass} flex shrink-0 flex-nowrap items-stretch gap-0 overflow-x-auto px-2 py-1 sm:px-3 sm:py-1.5 [scrollbar-width:thin]`}
           role="region"
           aria-label="Selection and formatting"
         >
-          {selectionPanel ? <div className="shrink-0">{selectionPanel}</div> : null}
+          {selectionPanel ? <div className="flex shrink-0 items-stretch">{selectionPanel}</div> : null}
           {selectionPanel && inspectorPanel ? (
             // Match editorContextToolbarRowClass divide-x + group px (Done/Delete separators).
-            <div className="h-8 w-px shrink-0 self-center bg-slate-300/85" aria-hidden />
+            <div className="w-px shrink-0 self-stretch bg-slate-300/85" aria-hidden />
           ) : null}
           {inspectorPanel ? (
-            <div className="min-w-0 shrink-0 pl-2.5 sm:pl-3">{inspectorPanel}</div>
+            <div className="flex min-w-0 shrink-0 items-stretch pl-2.5 sm:pl-3">{inspectorPanel}</div>
           ) : null}
         </div>
       ) : null}

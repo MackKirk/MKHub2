@@ -25,6 +25,7 @@ import {
   docElementRotateStyle,
   resizeCursorForDocRotation,
   rotatePointerDeltaToLocal,
+  ROTATE_CURSOR,
   shiftToKeepHandleAnchorPct,
 } from '@/utils/documentElementGeometry';
 
@@ -3096,7 +3097,7 @@ export default function DocumentPreview({
                       role="presentation"
                       title="Rotate"
                       className="absolute left-1/2 top-0 h-3 w-3 rounded-full border border-white bg-white shadow-sm ring-[2px] ring-brand-red/75 hover:scale-110 hover:ring-brand-red"
-                      style={{ transform: 'translate(-50%, calc(-100% - 10px))', cursor: 'grab' }}
+                      style={{ transform: 'translate(-50%, calc(-100% - 10px))', cursor: ROTATE_CURSOR }}
                       onPointerDown={(e) => handleRotatePointerDown(e, el)}
                       onPointerUp={handleRotatePointerUp}
                     />
