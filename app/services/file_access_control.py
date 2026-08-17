@@ -554,12 +554,23 @@ def _user_has_document_creator_api_read_permission(user: User) -> bool:
 
 
 def _is_document_creator_blob(fo: FileObject) -> bool:
-    """True for uploads under the document-creator category / path."""
+    """True for uploads under document-creator* categories / path folders.
+
+    Template editor images use category ``document-creator-template`` (key folder
+    ``document-creator-template``). ImagePicker derived assets use
+    ``document-creator-derived``. Matching only ``/document-creator/`` missed those
+    folders, so non-admins got 403 on template logos while admins still passed
+    ``is_admin``. Does not grant access by itself — callers still require
+    document-creator read (or project documents) permission.
+    """
     cat = (str(fo.category_id).lower().strip() if fo.category_id else "")
     if cat.startswith("document-creator"):
         return True
     key = (getattr(fo, "key", None) or "").replace("\\", "/").lower()
-    return "/document-creator/" in key
+    for part in key.strip("/").split("/"):
+        if part == "document-creator" or part.startswith("document-creator-"):
+            return True
+    return False
 
 
 def _is_file_referenced_in_project_documents(

@@ -968,13 +968,14 @@ def acquire_document_edit_lock(
     if _edit_lock_active(doc, now) and doc.edit_lock_session_id != session_id:
         # Another browser tab / crashed session of the *same* user left a live lease.
         # Let them reclaim it instead of blocking themselves for up to EDIT_LOCK_LEASE_SECONDS.
-        if doc.edit_lock_user_id != user.id:
+        holder_id = doc.edit_lock_user_id
+        if holder_id is None or str(holder_id) != str(user.id):
             raise HTTPException(
                 status_code=409,
                 detail={
                     "code": "document_in_use",
                     "message": "This document is already open for editing elsewhere.",
-                    "holder_name": _holder_display_name(db, doc.edit_lock_user_id),
+                    "holder_name": _holder_display_name(db, holder_id),
                     "expires_at": doc.edit_lock_expires_at.isoformat() if doc.edit_lock_expires_at else None,
                 },
             )

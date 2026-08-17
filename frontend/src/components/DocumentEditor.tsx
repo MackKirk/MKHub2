@@ -83,7 +83,21 @@ type UserDocument = {
   pages?: DocumentPage[];
   created_at?: string;
   updated_at?: string | null;
+  edit_lock?: {
+    active?: boolean;
+    user_id?: string | null;
+    user_name?: string | null;
+    session_id?: string | null;
+  };
 };
+
+function holderNameFromLockError(e: unknown): string | null {
+  if (!(e instanceof ApiError) || !e.detail || typeof e.detail !== 'object' || Array.isArray(e.detail)) {
+    return null;
+  }
+  const name = (e.detail as { holder_name?: unknown }).holder_name;
+  return typeof name === 'string' && name.trim() ? name.trim() : null;
+}
 
 const defaultPage = (): DocumentPage => ({ template_id: null, elements: [] });
 
@@ -198,6 +212,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const heartbeatFailCountRef = useRef(0);
   const lockLostHandlingRef = useRef(false);
   const lockMountGenRef = useRef(0);
+  const inUsePromptedIdRef = useRef<string | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const navigateBackRef = useRef(navigateBackToDocumentCreate);
@@ -515,10 +530,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     suppressSaveRetryRef.current = false;
     versionConflictHandlingRef.current = false;
     lockLostHandlingRef.current = false;
+    inUsePromptedIdRef.current = null;
     setHoldsEditLock(false);
     setLockForcedReadOnly(false);
     setLockBannerHolder(null);
-    setEditLockStatus(isTemplate || propReadOnly ? 'idle' : 'pending');
+    setEditLockStatus(isTemplate ? 'idle' : 'pending');
   }, [id, isTemplate, propReadOnly]);
 
   useEffect(() => {
@@ -707,15 +723,35 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   );
 
   // Acquire exclusive edit lock when opening a writable document.
-  // UI stays read-only (editLockStatus=pending) until this resolves.
+  // UI stays on "Opening document…" (editLockStatus=pending) until this resolves
+  // or the user picks View only / Leave.
   useEffect(() => {
     if (isTemplate || !id || propReadOnly) {
-      setEditLockStatus('idle');
       return;
     }
     setEditLockStatus('pending');
     let cancelled = false;
     const gen = ++lockMountGenRef.current;
+
+    const promptInUse = async (holder: string | null) => {
+      const msg = holder
+        ? `This document is already open for editing elsewhere (by ${holder}). You can view it read-only or leave.`
+        : 'This document is already open for editing elsewhere. You can view it read-only or leave.';
+      return confirmRef.current({
+        title: 'Document in use',
+        message: msg,
+        confirmText: 'View only',
+        cancelText: 'Leave',
+      });
+    };
+
+    const stayViewOnly = (holder: string | null) => {
+      setLockForcedReadOnly(true);
+      setLockBannerHolder(holder || 'another session');
+      holdsEditLockRef.current = false;
+      setHoldsEditLock(false);
+      setEditLockStatus('denied');
+    };
 
     (async () => {
       try {
@@ -724,14 +760,9 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         });
         if (cancelled) {
           if (lockMountGenRef.current === gen) {
-            // No newer mount for this document has taken over — this really is
-            // the final owner tearing down; safe to release what we just acquired.
             holdsEditLockRef.current = true;
             releaseEditLock();
           }
-          // else: a newer mount already owns the lock/session (StrictMode
-          // remount, or a fast "Reload" after a version conflict) — leave
-          // the shared lock/session state untouched.
           return;
         }
         holdsEditLockRef.current = true;
@@ -742,32 +773,36 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       } catch (e: unknown) {
         if (cancelled) return;
         const code = getApiErrorCode(e);
-        if (code === 'document_in_use' || (e instanceof ApiError && e.status === 409)) {
-          const detail =
-            e instanceof ApiError && e.detail && typeof e.detail === 'object'
-              ? (e.detail as { holder_name?: string | null })
-              : null;
-          const holder = detail?.holder_name?.trim() || null;
-          const msg = holder
-            ? `This document is already open for editing elsewhere (by ${holder}). You can view it read-only or leave.`
-            : 'This document is already open for editing elsewhere. You can view it read-only or leave.';
-          const result = await confirmRef.current({
-            title: 'Document in use',
-            message: msg,
-            confirmText: 'View only',
-            cancelText: 'Leave',
-          });
-          if (cancelled) return;
-          if (result === 'confirm') {
-            setLockForcedReadOnly(true);
-            setLockBannerHolder(holder || 'another session');
-            holdsEditLockRef.current = false;
-            setHoldsEditLock(false);
-            setEditLockStatus('denied');
-          } else {
-            setEditLockStatus('denied');
-            leaveEditor();
+        const isInUse = code === 'document_in_use' || (e instanceof ApiError && e.status === 409);
+        const isForbidden = e instanceof ApiError && e.status === 403;
+        if (isInUse || isForbidden) {
+          let holder = holderNameFromLockError(e);
+          let inUse = isInUse;
+          if (!inUse && isForbidden) {
+            try {
+              const latest = await api<UserDocument>('GET', `/document-creator/documents/${id}`);
+              if (cancelled) return;
+              inUse = !!latest.edit_lock?.active;
+              holder = latest.edit_lock?.user_name?.trim() || holder;
+            } catch {
+              /* stay with 403-only path */
+            }
           }
+          if (inUse) {
+            const result = await promptInUse(holder);
+            if (cancelled) return;
+            if (result === 'confirm') stayViewOnly(holder);
+            else {
+              setEditLockStatus('denied');
+              leaveEditor();
+            }
+            return;
+          }
+          setLockForcedReadOnly(true);
+          holdsEditLockRef.current = false;
+          setHoldsEditLock(false);
+          setLockBannerHolder(null);
+          setEditLockStatus('denied');
           return;
         }
         toast.error(e instanceof Error ? e.message : 'Could not start editing session.');
@@ -779,13 +814,6 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     return () => {
       cancelled = true;
       const releaseGen = gen;
-      // Defer release to the next tick: React StrictMode's cleanup+remount cycle for this
-      // same component instance runs fully synchronously (cleanup, then the effect body again,
-      // bumping lockMountGenRef before yielding to the event loop) — so a 0ms timeout is enough
-      // to see the bumped generation and skip releasing a lock a StrictMode remount already owns.
-      // Keeping this short (rather than a longer artificial delay) avoids falsely reporting
-      // "document in use" to the same user/tab on a genuine close-then-reopen (or HMR remount),
-      // since any *different* component instance has its own independent generation counter.
       window.setTimeout(() => {
         if (lockMountGenRef.current !== releaseGen) return;
         releaseEditLock();
@@ -793,6 +821,49 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally stable; callbacks via refs
   }, [id, isTemplate, propReadOnly, lockAcquireNonce, releaseEditLock, leaveEditor]);
+
+  // Read-only open: still show Opening… then Document in use if someone else holds the lock.
+  useEffect(() => {
+    if (isTemplate || !id || !propReadOnly) return;
+    if (!isFetched || isPlaceholderData) {
+      setEditLockStatus('pending');
+      return;
+    }
+    const lock = doc?.edit_lock;
+    if (!lock?.active) {
+      setEditLockStatus('idle');
+      return;
+    }
+    if (inUsePromptedIdRef.current === id) return;
+    inUsePromptedIdRef.current = id;
+    let cancelled = false;
+    const holder = lock.user_name?.trim() || null;
+    (async () => {
+      const result = await confirmRef.current({
+        title: 'Document in use',
+        message: holder
+          ? `This document is already open for editing elsewhere (by ${holder}). You can view it read-only or leave.`
+          : 'This document is already open for editing elsewhere. You can view it read-only or leave.',
+        confirmText: 'View only',
+        cancelText: 'Leave',
+      });
+      if (cancelled) {
+        inUsePromptedIdRef.current = null;
+        return;
+      }
+      if (result === 'confirm') {
+        setLockForcedReadOnly(true);
+        setLockBannerHolder(holder || 'another session');
+        setEditLockStatus('idle');
+      } else {
+        setEditLockStatus('idle');
+        leaveEditor();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, isTemplate, propReadOnly, isFetched, isPlaceholderData, doc?.edit_lock?.active, doc?.edit_lock?.user_name, leaveEditor]);
 
   // Heartbeat while holding the edit lock.
   useEffect(() => {
@@ -2063,12 +2134,14 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
 
   return (
     <div className="relative flex flex-col h-full min-h-0 max-w-full">
-      {editLockStatus === 'pending' && !isTemplate && !propReadOnly ? (
-        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm">
-            Opening document…
+      {editLockStatus === 'pending' && !isTemplate ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-[225] flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm">
+              Opening document…
+            </div>
           </div>
-        </div>
+        </OverlayPortal>
       ) : null}
       <div
         className={
@@ -2107,8 +2180,8 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         readOnly={readOnly}
         showViewOnlyBadge={readOnly && editLockStatus !== 'pending'}
         viewOnlyNotice={
-          lockForcedReadOnly && !propReadOnly
-            ? `This document is being edited by ${lockBannerHolder || 'another session'}`
+          lockBannerHolder
+            ? `This document is being edited by ${lockBannerHolder}`
             : null
         }
         onAddText={handleAddText}

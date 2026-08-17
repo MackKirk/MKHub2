@@ -17,7 +17,13 @@ type Props = {
 
 export default function ConfirmDialog({ open, title='Confirm', message, confirmText='Confirm', cancelText='Cancel', showDiscard=false, discardText='Discard', onConfirm, onCancel, onDiscard }: Props){
   useEffect(()=>{
-    const onKey=(e: KeyboardEvent)=>{ if(!open) return; if(e.key==='Escape'){ onCancel(); } if(e.key==='Enter'){ onConfirm(); } };
+    if (!open) return;
+    // Ignore Enter from the keypress that opened this dialog (e.g. activating Edit).
+    const openedAt = Date.now();
+    const onKey=(e: KeyboardEvent)=>{
+      if(e.key==='Escape'){ onCancel(); return; }
+      if(e.key==='Enter' && Date.now() - openedAt > 400){ onConfirm(); }
+    };
     window.addEventListener('keydown', onKey);
     return ()=> window.removeEventListener('keydown', onKey);
   }, [open, onCancel, onConfirm]);
