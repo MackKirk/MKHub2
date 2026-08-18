@@ -100,6 +100,51 @@ function GeometryPxInput({
   );
 }
 
+const FONT_SIZE_MIN = 6;
+const FONT_SIZE_MAX = 99;
+
+function FontSizeInput({
+  value,
+  onCommit,
+}: {
+  value: number;
+  onCommit: (next: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => String(value));
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commit = () => {
+    const n = Number(draft);
+    if (!Number.isFinite(n)) {
+      setDraft(String(value));
+      return;
+    }
+    const clamped = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, Math.round(n)));
+    setDraft(String(clamped));
+    if (clamped !== value) onCommit(clamped);
+  };
+
+  return (
+    <input
+      type="number"
+      step={1}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          (e.currentTarget as HTMLInputElement).blur();
+        }
+      }}
+      className="h-6 w-11 rounded border-0 bg-transparent p-0 text-center text-xs font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-0"
+      aria-label="Font size"
+    />
+  );
+}
+
 function getElementGeometry(
   element: DocElement,
   margins: PageMarginsPct | null | undefined,
@@ -588,7 +633,7 @@ export default function DocumentSelectionInspector({
                 onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  const next = Math.max(6, activeFontSize - 1);
+                  const next = Math.max(FONT_SIZE_MIN, activeFontSize - 1);
                   if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
                     onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: next }));
                   }
@@ -599,27 +644,20 @@ export default function DocumentSelectionInspector({
               >
                 −
               </button>
-              <input
-                type="number"
-                min={6}
-                max={99}
+              <FontSizeInput
                 value={activeFontSize}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (Number.isNaN(n)) return;
-                  const clamped = Math.max(6, Math.min(99, n));
-                  if (!dispatchFormatToInlineEditor(id, { fontSize: clamped })) {
-                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: clamped }));
+                onCommit={(next) => {
+                  if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
+                    onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: next }));
                   }
                 }}
-                className="h-6 w-11 rounded border-0 bg-transparent p-0 text-center text-xs font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-0"
               />
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  const next = Math.min(99, activeFontSize + 1);
+                  const next = Math.min(FONT_SIZE_MAX, activeFontSize + 1);
                   if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
                     onUpdate(id, (el) => applyFormatToEntireTextElement(el, { fontSize: next }));
                   }

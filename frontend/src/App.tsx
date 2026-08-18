@@ -259,6 +259,8 @@ export default function App(){
           <Route path="/company-assets/equipment" element={<AppShell><EquipmentList/></AppShell>} />
           <Route path="/company-assets/equipment/new" element={<AppShell><EquipmentNew/></AppShell>} />
           <Route path="/company-assets/equipment/:id" element={<AppShell><EquipmentDetail/></AppShell>} />
+          <Route path="/company-assets/work-orders" element={<AppShell><WorkOrders scope="equipment"/></AppShell>} />
+          <Route path="/company-assets/work-orders/:id" element={<AppShell><WorkOrderDetail/></AppShell>} />
           <Route path="/company-assets/credit-cards" element={<AppShell><CompanyCreditCardsList/></AppShell>} />
           <Route path="/company-assets/credit-cards/new" element={<AppShell><CompanyCreditCardNew/></AppShell>} />
           <Route path="/company-assets/credit-cards/:id" element={<AppShell><CompanyCreditCardDetail/></AppShell>} />
@@ -271,7 +273,7 @@ export default function App(){
           <Route path="/fleet/calendar" element={<AppShell><FleetSchedulePage/></AppShell>} />
           <Route path="/fleet/inspection-schedules" element={<Navigate to="/fleet/calendar" replace />} />
           <Route path="/fleet/inspection-schedules/:id" element={<FleetInspectionScheduleLegacyRedirect />} />
-          <Route path="/fleet/work-orders" element={<AppShell><WorkOrders/></AppShell>} />
+          <Route path="/fleet/work-orders" element={<AppShell><WorkOrders scope="fleet"/></AppShell>} />
           <Route path="/fleet/work-orders/new" element={<AppShell><WorkOrderNew/></AppShell>} />
           <Route path="/fleet/work-orders/:id" element={<AppShell><WorkOrderDetail/></AppShell>} />
           <Route path="/fleet/inspections" element={<AppShell><Inspections/></AppShell>} />

@@ -113,6 +113,7 @@ export function AppTimePicker({
               options={[...TIME_HOUR_12_OPTIONS]}
               placeholder="Hour"
               disabled={disabled}
+              sortOptions={false}
             />
             <span className="shrink-0 text-xs font-medium text-gray-500">:</span>
             <AppSelect
@@ -122,6 +123,7 @@ export function AppTimePicker({
               options={[...TIME_MINUTE_OPTIONS]}
               placeholder="Min"
               disabled={disabled}
+              sortOptions={false}
             />
             <AppSelect
               className="min-w-0 flex-1"
@@ -129,6 +131,7 @@ export function AppTimePicker({
               onChange={(e) => applyParts(hour12, minute, e.target.value as TimeAmPm)}
               options={[...TIME_AM_PM_OPTIONS]}
               disabled={disabled}
+              sortOptions={false}
             />
           </div>
         </div>

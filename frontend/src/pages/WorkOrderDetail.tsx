@@ -19,6 +19,13 @@ import {
   type FleetWorkOrderTab,
 } from '@/lib/fleetPermissions';
 import {
+  workOrderDetailPath,
+  workOrderListPath,
+  workOrderScopeFromEntityType,
+  workOrderScopeFromPathname,
+} from '@/lib/workOrderPaths';
+import { invalidateEquipmentAfterWorkOrderChange } from '@/lib/equipmentWorkOrderSync';
+import {
   AppButton,
   AppCard,
   AppEmptyState,
@@ -143,6 +150,8 @@ export default function WorkOrderDetail() {
   const [tab, setTab] = useState<'general' | 'costs' | 'files' | 'activity'>(initialTab);
   const [isHeroCollapsed, setIsHeroCollapsed] = useState(tab !== 'general');
   const isValidId = id && id !== 'new';
+  const pathScope = workOrderScopeFromPathname(location.pathname);
+  const listPath = workOrderListPath(pathScope);
 
   useEffect(() => {
     setIsHeroCollapsed(tab !== 'general');
@@ -167,6 +176,14 @@ export default function WorkOrderDetail() {
     queryFn: () => api<WorkOrder>('GET', `/fleet/work-orders/${id}`),
     enabled: isValidId,
   });
+
+  useEffect(() => {
+    if (!workOrder || !id) return;
+    const expectedScope = workOrderScopeFromEntityType(workOrder.entity_type);
+    if (expectedScope === pathScope) return;
+    const tabParam = new URLSearchParams(location.search).get('tab');
+    nav(workOrderDetailPath(expectedScope, id, tabParam || undefined), { replace: true });
+  }, [workOrder, id, pathScope, location.search, nav]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -212,6 +229,14 @@ export default function WorkOrderDetail() {
   const canEditFiles = canEditFleetWorkOrderTab(isAdmin, permissions, 'files');
   const canViewTab = (t: FleetWorkOrderTab) => canViewFleetWorkOrderTab(isAdmin, permissions, t);
 
+  const invalidateLinkedEquipmentStatus = () => {
+    const wo = queryClient.getQueryData<WorkOrder>(['workOrder', id]);
+    if (wo?.entity_type === 'equipment' && wo.entity_id) {
+      invalidateEquipmentAfterWorkOrderChange(queryClient, wo.entity_id);
+      queryClient.invalidateQueries({ queryKey: ['equipmentWorkOrders', wo.entity_id] });
+    }
+  };
+
   const updateCostsMutation = useMutation({
     mutationFn: async (newCosts: any) => {
       return api('PUT', `/fleet/work-orders/${id}`, { costs: newCosts });
@@ -246,6 +271,7 @@ export default function WorkOrderDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
       queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
+      invalidateLinkedEquipmentStatus();
       toast.success('Status updated');
       setShowStatusReasonModal(false);
       setShowEditStatusModal(false);
@@ -262,6 +288,7 @@ export default function WorkOrderDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
       queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
+      invalidateLinkedEquipmentStatus();
       toast.success('Work order started');
     },
     onError: () => toast.error('Failed to start work order'),
@@ -274,6 +301,7 @@ export default function WorkOrderDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
       queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
+      invalidateLinkedEquipmentStatus();
       toast.success('Work order finished');
       setShowCheckOutModal(false);
       setCheckOutForm({ check_out_at: '', odometer_reading: '', hours_reading: '' });
@@ -286,6 +314,7 @@ export default function WorkOrderDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
       queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
+      invalidateLinkedEquipmentStatus();
       toast.success('Work order reopened');
       setShowReopenModal(false);
       setReopenReason('');
@@ -296,10 +325,15 @@ export default function WorkOrderDetail() {
   const deleteWorkOrderMutation = useMutation({
     mutationFn: () => api('DELETE', `/fleet/work-orders/${id}`),
     onSuccess: () => {
+      const wo = queryClient.getQueryData<WorkOrder>(['workOrder', id]);
+      if (wo?.entity_type === 'equipment' && wo.entity_id) {
+        invalidateEquipmentAfterWorkOrderChange(queryClient, wo.entity_id);
+        queryClient.invalidateQueries({ queryKey: ['equipmentWorkOrders', wo.entity_id] });
+      }
       toast.success('Work order deleted');
       queryClient.invalidateQueries({ queryKey: ['workOrder'] });
       queryClient.invalidateQueries({ queryKey: ['fleet-work-orders-calendar'] });
-      nav('/fleet/work-orders');
+      nav(listPath);
     },
     onError: () => toast.error('Failed to delete work order'),
   });
@@ -347,7 +381,7 @@ export default function WorkOrderDetail() {
 
 
 
-  const goBackFromWorkOrder = useNavigateBack('/fleet/work-orders');
+  const goBackFromWorkOrder = useNavigateBack(listPath);
 
   const toIsoStringOrUndefined = (value: string): string | undefined => {
     const trimmed = value.trim();
@@ -433,9 +467,9 @@ export default function WorkOrderDetail() {
     if (!woTabItems.some((t) => t.key === tab)) {
       const next = woTabItems[0].key;
       setTab(next);
-      if (id) nav(`/fleet/work-orders/${id}?tab=${next}`, { replace: true });
+      if (id) nav(workOrderDetailPath(pathScope, id, next), { replace: true });
     }
-  }, [permissionsReady, woTabItems, tab, id, nav]);
+  }, [permissionsReady, woTabItems, tab, id, nav, pathScope]);
 
   if (!isValidId) {
     return <div className="p-4">Invalid work order ID</div>;
@@ -447,7 +481,7 @@ export default function WorkOrderDetail() {
       <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
         <AppPageHeader
           title="Work order"
-          subtitle="Fleet work order details"
+          subtitle={pathScope === 'equipment' ? 'Equipment work order details' : 'Fleet work order details'}
           icon={<ClipboardList className="h-4 w-4" />}
           onBack={goBackFromWorkOrder}
           backLabel="Back"
@@ -547,7 +581,7 @@ export default function WorkOrderDetail() {
                 value={tab}
                 onChange={(next) => {
                   setTab(next as typeof tab);
-                  nav(`/fleet/work-orders/${id}?tab=${next}`, { replace: true });
+                  nav(workOrderDetailPath(pathScope, id, next), { replace: true });
                 }}
               />
             ) : (

@@ -31,7 +31,7 @@ type Props = {
   equipmentId: string;
   equipmentDisplayName?: string;
   employees: unknown[];
-  onSuccess: () => void;
+  onSuccess: (data: { id: string }) => void;
 };
 
 function buildInitialForm(): FormValues {
@@ -85,11 +85,11 @@ export default function NewEquipmentWorkOrderModal({
         costs: { labor: [], parts: [], other: [], total: 0 },
         origin_source: 'manual',
       };
-      return api('POST', '/fleet/work-orders', payload);
+      return api<{ id: string }>('POST', '/fleet/work-orders', payload);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success('Work order created successfully');
-      onSuccess();
+      onSuccess(data);
       onClose();
     },
     onError: () => {

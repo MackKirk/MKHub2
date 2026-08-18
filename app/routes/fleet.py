@@ -37,6 +37,11 @@ from ..services.asset_assignment_service import (
     create_assignment_for_equipment_item,
     return_assignment_for_equipment_item,
 )
+from ..services.equipment_work_order_sync import (
+    assert_equipment_status_change_allowed,
+    sync_equipment_for_work_order,
+    sync_equipment_status_from_work_orders,
+)
 from ..services.task_service import get_user_display
 from ..models.models import (
     FleetAsset,
@@ -423,10 +428,10 @@ def get_dashboard(
     # Assigned now (unified asset_assignments: fleet + equipment with no returned_at)
     assigned_now_count = db.query(AssetAssignment).filter(AssetAssignment.returned_at.is_(None)).count()
 
-    # Work orders
-    open_wos = db.query(WorkOrder).filter(WorkOrder.status == "open").count()
-    in_progress_wos = db.query(WorkOrder).filter(WorkOrder.status == "in_progress").count()
-    pending_parts_wos = db.query(WorkOrder).filter(WorkOrder.status == "pending_parts").count()
+    # Work orders (fleet only — equipment WOs live under Company Assets)
+    open_wos = db.query(WorkOrder).filter(WorkOrder.entity_type == "fleet", WorkOrder.status == "open").count()
+    in_progress_wos = db.query(WorkOrder).filter(WorkOrder.entity_type == "fleet", WorkOrder.status == "in_progress").count()
+    pending_parts_wos = db.query(WorkOrder).filter(WorkOrder.entity_type == "fleet", WorkOrder.status == "pending_parts").count()
     
     # Overdue equipment
     overdue_checkouts = db.query(EquipmentCheckout).filter(
@@ -1454,6 +1459,13 @@ def update_equipment(
 
     before = snapshot_equipment(equipment)
     update_data = equipment_update.dict(exclude_unset=True)
+    if "status" in update_data:
+        assert_equipment_status_change_allowed(
+            db,
+            equipment_id,
+            update_data.get("status"),
+            current_status=equipment.status,
+        )
     for key, value in update_data.items():
         setattr(equipment, key, value)
     equipment.updated_at = datetime.now(timezone.utc)
@@ -3296,8 +3308,21 @@ def list_work_orders(
     user=Depends(get_current_user),
 ):
     """List work orders with filters, sort, search, and pagination."""
-    if not has_fleet_work_orders_list_permission(user):
+    can_fleet = has_fleet_work_orders_list_permission(user)
+    can_equipment = has_equipment_tab_permission(user, "work_orders", "read")
+    requested_type = (entity_type or "").strip().lower() or None
+
+    if requested_type == "equipment":
+        if not can_equipment:
+            raise HTTPException(status_code=403, detail="Forbidden")
+    elif requested_type == "fleet":
+        if not can_fleet:
+            raise HTTPException(status_code=403, detail="Forbidden")
+    elif requested_type:
+        raise HTTPException(status_code=400, detail="Invalid entity_type")
+    elif not can_fleet and not can_equipment:
         raise HTTPException(status_code=403, detail="Forbidden")
+
     offset = (page - 1) * limit
     query = db.query(WorkOrder)
 
@@ -3307,10 +3332,16 @@ def list_work_orders(
         query = query.filter(WorkOrder.status != status_not)
     if assigned_to:
         query = query.filter(WorkOrder.assigned_to_user_id == assigned_to)
-    if entity_type:
-        query = query.filter(WorkOrder.entity_type == entity_type)
+    if requested_type:
+        query = query.filter(WorkOrder.entity_type == requested_type)
+    elif can_fleet and not can_equipment:
+        query = query.filter(WorkOrder.entity_type == "fleet")
+    elif can_equipment and not can_fleet:
+        query = query.filter(WorkOrder.entity_type == "equipment")
     if entity_type_not:
         query = query.filter(WorkOrder.entity_type != entity_type_not)
+    if not can_fleet:
+        query = query.filter(WorkOrder.entity_type == "equipment")
     if entity_id:
         query = query.filter(WorkOrder.entity_id == entity_id)
     if category:
@@ -3447,11 +3478,17 @@ def get_work_order(
     user=Depends(get_current_user),
 ):
     """Get work order detail"""
-    if not has_fleet_work_orders_list_permission(user):
-        raise HTTPException(status_code=403, detail="Forbidden")
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
+    entity_type = (getattr(wo, "entity_type", None) or "").lower()
+    can_fleet = has_fleet_work_orders_list_permission(user)
+    can_equipment = has_equipment_tab_permission(user, "work_orders", "read")
+    if entity_type == "equipment":
+        if not (can_fleet or can_equipment):
+            raise HTTPException(status_code=403, detail="Forbidden")
+    elif not can_fleet:
+        raise HTTPException(status_code=403, detail="Forbidden")
     return wo
 
 
@@ -3549,6 +3586,7 @@ def create_work_order(
         },
         created_by=user.id,
     )
+    sync_equipment_for_work_order(db, wo)
     db.commit()
     db.refresh(wo)
     audit_fleet(
@@ -3659,6 +3697,7 @@ def update_work_order(
             created_by=user.id,
         )
 
+    sync_equipment_for_work_order(db, wo)
     db.commit()
     db.refresh(wo)
     after_wo = snapshot_work_order(wo)
@@ -3708,6 +3747,7 @@ def update_work_order_status(
             created_by=user.id,
         )
 
+    sync_equipment_for_work_order(db, wo)
     db.commit()
     db.refresh(wo)
     after_flow = snapshot_work_order_flow(wo)
@@ -3781,6 +3821,7 @@ def work_order_check_in(
         created_by=user.id,
     )
 
+    sync_equipment_for_work_order(db, wo)
     db.commit()
     db.refresh(wo)
     after_flow = snapshot_work_order_flow(wo)
@@ -3855,6 +3896,7 @@ def work_order_check_out(
         created_by=user.id,
     )
 
+    sync_equipment_for_work_order(db, wo)
     db.commit()
     db.refresh(wo)
     after_flow = snapshot_work_order_flow(wo)
@@ -3914,6 +3956,7 @@ def reopen_work_order(
         created_by=user.id,
     )
 
+    sync_equipment_for_work_order(db, wo)
     db.commit()
     db.refresh(wo)
     after_flow = snapshot_work_order_flow(wo)
@@ -3989,7 +4032,14 @@ def delete_work_order(
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
     snap = snapshot_work_order(wo)
+    equipment_entity_id = (
+        wo.entity_id
+        if (getattr(wo, "entity_type", None) or "").lower() == "equipment" and wo.entity_id
+        else None
+    )
     db.delete(wo)
+    if equipment_entity_id:
+        sync_equipment_status_from_work_orders(db, equipment_entity_id)
     db.commit()
     del_ctx: Dict[str, Any] = {"work_order_number": snap.get("work_order_number")}
     if snap.get("entity_type") == "fleet" and snap.get("entity_id"):

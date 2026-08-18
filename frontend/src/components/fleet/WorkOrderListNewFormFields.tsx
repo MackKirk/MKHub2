@@ -17,11 +17,6 @@ import {
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { FLEET_WORK_ORDER_FIELD_HINTS as H } from '@/lib/fleetWorkOrderFieldHints';
 
-const ENTITY_TYPE_OPTIONS = [
-  { value: 'fleet', label: 'Fleet asset' },
-  { value: 'equipment', label: 'Equipment' },
-];
-
 const CATEGORY_OPTIONS = [
   { value: 'maintenance', label: 'Maintenance' },
   { value: 'repair', label: 'Repair' },
@@ -59,10 +54,15 @@ type Props = {
   disabled?: boolean;
   canAssign?: boolean;
   employees: unknown[];
+  lockedEntityType?: 'fleet' | 'equipment';
   vehicleOptions: AppComboboxOption[];
   vehicleLoading?: boolean;
   vehicleError?: boolean;
   onRetryVehicles?: () => void;
+  equipmentOptions?: AppComboboxOption[];
+  equipmentLoading?: boolean;
+  equipmentError?: boolean;
+  onRetryEquipment?: () => void;
   onChange: (field: keyof WorkOrderListNewFormValues, value: string | boolean) => void;
   onSubmit: () => void;
 };
@@ -73,10 +73,15 @@ export function WorkOrderListNewFormFields({
   disabled,
   canAssign = true,
   employees,
+  lockedEntityType = 'fleet',
   vehicleOptions,
   vehicleLoading = false,
   vehicleError = false,
   onRetryVehicles,
+  equipmentOptions = [],
+  equipmentLoading = false,
+  equipmentError = false,
+  onRetryEquipment,
   onChange,
   onSubmit,
 }: Props) {
@@ -84,11 +89,17 @@ export function WorkOrderListNewFormFields({
     mapEmployeeToAppUserSelect(e as Record<string, unknown>),
   );
 
-  const isFleet = values.entity_type === 'fleet';
+  const isFleet = lockedEntityType === 'fleet';
 
   const vehicleLabel = (
     <>
       Vehicle <span className="text-brand-red">*</span>
+    </>
+  );
+
+  const equipmentLabel = (
+    <>
+      Equipment <span className="text-brand-red">*</span>
     </>
   );
 
@@ -116,6 +127,30 @@ export function WorkOrderListNewFormFields({
     />
   );
 
+  const equipmentField = equipmentLoading ? (
+    <AppInput label={equipmentLabel} value="Loading equipment…" readOnly disabled fieldHint={H.equipment} />
+  ) : equipmentError ? (
+    <div className="space-y-2">
+      <p className={uiTypography.helper}>Could not load equipment. Check your connection and try again.</p>
+      {onRetryEquipment ? (
+        <AppButton type="button" variant="secondary" size="sm" onClick={onRetryEquipment}>
+          Retry
+        </AppButton>
+      ) : null}
+    </div>
+  ) : (
+    <AppCombobox
+      label={equipmentLabel}
+      value={values.entity_id}
+      onChange={(v) => onChange('entity_id', v)}
+      options={equipmentOptions}
+      placeholder="Search by name, unit #, category…"
+      disabled={disabled}
+      fieldHint={H.equipment}
+      emptyMessage="No equipment match. Try another search."
+    />
+  );
+
   const descriptionLabel = (
     <>
       Description / notes <span className="text-brand-red">*</span>
@@ -132,18 +167,7 @@ export function WorkOrderListNewFormFields({
       className={uiSpacing.sectionStack}
     >
       <div className={uiLayout.sectionGrid2}>
-        <AppSelect
-          label="Entity type"
-          value={values.entity_type}
-          onChange={(e) => {
-            onChange('entity_type', e.target.value);
-            onChange('entity_id', '');
-          }}
-          options={ENTITY_TYPE_OPTIONS}
-          disabled={disabled}
-          fieldHint={H.entity_type}
-        />
-        {isFleet ? vehicleField : null}
+        {isFleet ? vehicleField : equipmentField}
         <AppSelect
           label="Category"
           value={values.category}
