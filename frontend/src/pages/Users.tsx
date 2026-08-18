@@ -2,8 +2,10 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { api, withFileAccessToken } from '@/lib/api';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useMemo, useEffect } from 'react';
-import { LayoutGrid, List, Search, SlidersHorizontal, Star, Users as UsersIcon } from 'lucide-react';
+import { LayoutGrid, List, Network, Search, SlidersHorizontal, Star, Users as UsersIcon } from 'lucide-react';
 import InviteUserModal from '@/components/InviteUserModal';
+import { UserOrgTreeView } from '@/components/users/UserOrgTreeView';
+import type { OrgPerson } from '@/lib/userOrgTree';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
@@ -40,9 +42,36 @@ import {
   uiTypography,
 } from '@/components/ui';
 
-type User = { id:string, username:string, email?:string, name?:string, roles?:string[], is_active?:boolean, profile_photo_file_id?:string, job_title?:string, phone?:string, mobile_phone?:string };
+type User = {
+  id: string;
+  username: string;
+  email?: string;
+  name?: string;
+  roles?: string[];
+  is_active?: boolean;
+  profile_photo_file_id?: string;
+  job_title?: string;
+  phone?: string;
+  mobile_phone?: string;
+  manager_user_id?: string | null;
+};
 type UsersResponse = { items: User[], total: number, page: number, limit: number, total_pages: number };
+type UsersOrgTreeResponse = { items: OrgPerson[]; total: number; truncated?: boolean };
 type UserSortColumn = 'user' | 'job_title' | 'email' | 'status';
+type UsersViewMode = 'cards' | 'list' | 'hierarchy';
+
+const USER_FILTER_PARAM_KEYS = [
+  'division_id',
+  'division_id_not',
+  'role_id',
+  'role_id_not',
+  'employment_type',
+  'employment_type_not',
+  'project_division_id',
+  'project_division_id_not',
+  'manager_id',
+  'manager_id_not',
+] as const;
 
 const USER_LIST_GRID_COLS = 'grid-cols-[30fr_20fr_28fr_22fr]';
 const USER_LIST_MIN_WIDTH = 'min-w-[640px]';
@@ -170,18 +199,7 @@ function buildUsersListSearchParams(
     if (statusNot) params.set('status_not', statusNot);
     if (searchParams.get('is_admin') === '1') params.set('is_admin', '1');
   }
-  for (const key of [
-    'division_id',
-    'division_id_not',
-    'role_id',
-    'role_id_not',
-    'employment_type',
-    'employment_type_not',
-    'project_division_id',
-    'project_division_id_not',
-    'manager_id',
-    'manager_id_not',
-  ]) {
+  for (const key of USER_FILTER_PARAM_KEYS) {
     const value = searchParams.get(key);
     if (value) params.set(key, value);
   }
@@ -189,6 +207,25 @@ function buildUsersListSearchParams(
   params.set('limit', String(opts.limit));
   params.set('sort', opts.sort);
   params.set('dir', opts.dir);
+  return params;
+}
+
+function buildUsersOrgTreeSearchParams(
+  searchParams: URLSearchParams,
+  opts?: { omitQuickFilters?: boolean },
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (!opts?.omitQuickFilters) {
+    const status = searchParams.get('status');
+    const statusNot = searchParams.get('status_not');
+    if (status) params.set('status', status);
+    if (statusNot) params.set('status_not', statusNot);
+    if (searchParams.get('is_admin') === '1') params.set('is_admin', '1');
+  }
+  for (const key of USER_FILTER_PARAM_KEYS) {
+    const value = searchParams.get(key);
+    if (value) params.set(key, value);
+  }
   return params;
 }
 
@@ -204,18 +241,18 @@ export default function Users(){
   const [bambooForceReplace, setBambooForceReplace] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
+  const [viewMode, setViewMode] = useState<UsersViewMode>(() => {
     const urlView = searchParams.get('view');
-    if (urlView === 'list' || urlView === 'cards') return urlView;
+    if (urlView === 'list' || urlView === 'cards' || urlView === 'hierarchy') return urlView;
     const saved = localStorage.getItem('users-view-mode');
-    return saved === 'list' || saved === 'cards' ? saved : 'cards';
+    return saved === 'list' || saved === 'cards' || saved === 'hierarchy' ? saved : 'cards';
   });
 
   useEffect(() => {
     setSearchParams((prev) => {
       const params = new URLSearchParams(prev);
-      if (viewMode === 'list') params.set('view', 'list');
-      else params.delete('view');
+      if (viewMode === 'cards') params.delete('view');
+      else params.set('view', viewMode);
       return params;
     }, { replace: true });
     localStorage.setItem('users-view-mode', viewMode);
@@ -280,6 +317,19 @@ export default function Users(){
   const { data, isLoading } = useQuery<UsersResponse>({
     queryKey: ['users', queryParams],
     queryFn: () => api<UsersResponse>('GET', `/users?${queryParams}`),
+    enabled: viewMode !== 'hierarchy',
+  });
+
+  const orgTreeQueryParams = useMemo(
+    () => buildUsersOrgTreeSearchParams(searchParams).toString(),
+    [searchParams],
+  );
+
+  const { data: orgTree, isLoading: orgTreeLoading } = useQuery<UsersOrgTreeResponse>({
+    queryKey: ['users', 'org-tree', orgTreeQueryParams],
+    queryFn: () => api<UsersOrgTreeResponse>('GET', `/users/org-tree?${orgTreeQueryParams}`),
+    enabled: viewMode === 'hierarchy',
+    staleTime: 60_000,
   });
 
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -303,7 +353,8 @@ export default function Users(){
 
   const users = data?.items || [];
   const totalPages = data?.total_pages || 0;
-  const total = data?.total || 0;
+  const total = viewMode === 'hierarchy' ? (orgTree?.total || 0) : (data?.total || 0);
+  const listLoading = viewMode === 'hierarchy' ? orgTreeLoading : isLoading;
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -662,6 +713,7 @@ export default function Users(){
               onClick={() => setViewMode('list')}
               title="List view"
               aria-label="List view"
+              aria-pressed={viewMode === 'list'}
             >
               <List className="h-4 w-4" />
             </AppButton>
@@ -673,13 +725,30 @@ export default function Users(){
               onClick={() => setViewMode('cards')}
               title="Card view"
               aria-label="Card view"
+              aria-pressed={viewMode === 'cards'}
             >
               <LayoutGrid className="h-4 w-4" />
+            </AppButton>
+            <AppButton
+              type="button"
+              variant={viewMode === 'hierarchy' ? 'primary' : 'secondary'}
+              size="sm"
+              className="!rounded-none !border-l-0 !px-2.5"
+              onClick={() => setViewMode('hierarchy')}
+              title="Hierarchy view"
+              aria-label="Hierarchy view"
+              aria-pressed={viewMode === 'hierarchy'}
+            >
+              <Network className="h-4 w-4" />
             </AppButton>
           </div>
           <div className="min-w-0 flex-1">
             <AppInput
-              placeholder="Search by name, username, or email..."
+              placeholder={
+                viewMode === 'hierarchy'
+                  ? 'Search the org chart by name, title, or email...'
+                  : 'Search by name, username, or email...'
+              }
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
               leftIcon={<Search className="h-4 w-4" />}
@@ -727,9 +796,21 @@ export default function Users(){
 
       <AppCard
         className={uiShadows.card}
-        bodyClassName={viewMode === 'list' && !isLoading && users.length > 0 ? '!p-0' : uiSpacing.cardPadding}
+        bodyClassName={
+          ((viewMode === 'list' && !listLoading && users.length > 0) ||
+            (viewMode === 'hierarchy' && !listLoading && (orgTree?.items.length || 0) > 0))
+            ? '!p-0'
+            : uiSpacing.cardPadding
+        }
         footer={
-          totalPages > 1 ? (
+          viewMode === 'hierarchy' && (orgTree?.total || 0) > 0 ? (
+            <p className={uiTypography.helper}>
+              {searchQuery.trim()
+                ? 'Search keeps the reporting path so you can see who sits above a match.'
+                : `${orgTree?.total || 0} people in this org chart`}
+              {orgTree?.truncated ? ' (showing the first 5,000)' : ''}
+            </p>
+          ) : viewMode !== 'hierarchy' && totalPages > 1 ? (
             <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
               <p className={uiTypography.helper}>
                 Showing {((page - 1) * pageLimit) + 1} to {Math.min(page * pageLimit, total)} of {total} users
@@ -761,8 +842,14 @@ export default function Users(){
           ) : undefined
         }
       >
-        {isLoading ? (
-          viewMode === 'list' ? (
+        {listLoading ? (
+          viewMode === 'cards' ? (
+            <div className="grid gap-3 md:grid-cols-4">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className={uiCx('h-20 animate-pulse bg-gray-100', uiRadius.card)} />
+              ))}
+            </div>
+          ) : (
             <div className="animate-pulse divide-y divide-gray-100">
               {Array.from({ length: 10 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-4 py-3">
@@ -774,13 +861,25 @@ export default function Users(){
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-4">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className={uiCx('h-20 animate-pulse bg-gray-100', uiRadius.card)} />
-              ))}
-            </div>
           )
+        ) : viewMode === 'hierarchy' ? (
+          <div className="flex flex-col">
+            {canInviteUser ? (
+              <div className={uiSpacing.cardPadding}>
+                <AppListCreateItem
+                  label="Invite User"
+                  layout="row"
+                  className="w-full"
+                  onClick={() => setShowInviteModal(true)}
+                />
+              </div>
+            ) : null}
+            <UserOrgTreeView
+              people={orgTree?.items || []}
+              searchQuery={searchQuery}
+              canViewUserDetails={canViewUserDetails}
+            />
+          </div>
         ) : users.length === 0 ? (
           <div className={uiSpacing.sectionStack}>
             {canInviteUser ? (

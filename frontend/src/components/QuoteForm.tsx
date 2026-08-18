@@ -64,7 +64,7 @@ const QUOTE_FIELD_HINTS = {
   frontCover: 'Front Cover Image\n\nMain cover photo. Cropped to 566×537 px in the PDF.',
   sectionTitle: 'Section title\n\nHeading for this section in the generated PDF.',
   sectionText: 'Section text\n\nBody copy for a text section. Press Tab to indent with four spaces.',
-  imageCaption: 'Caption\n\nCaption printed under the image in the PDF.',
+  imageCaption: 'Caption\n\nPrinted under the image in the PDF (up to three lines).',
   pricingName: 'Item name\n\nLine item description in the pricing table.',
   pricingPrice: 'Price\n\nLine price before tax; formatted when you leave the field.',
   optionalService: 'Service\n\nOptional line the client may accept; does not change the quotation total.',

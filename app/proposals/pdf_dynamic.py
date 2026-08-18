@@ -158,6 +158,20 @@ def wrap_text(text, font_name, font_size, max_width):
     return lines if lines else [""]
 
 
+# Image-grid captions: ~50 chars/line in a 275pt cell. Allow 3 lines (was 90 chars ≈ 2).
+CAPTION_MAX_LINES = 3
+CAPTION_WRAP_WIDTH = 263  # 275pt column minus default table cell padding
+
+
+def caption_text_for_pdf(caption: str, font_name: str = "Montserrat-Bold", font_size: float = 9.5) -> str:
+    """Wrap caption to at most 3 PDF lines; extra words are dropped."""
+    text = " ".join((caption or "").split())
+    if not text:
+        return ""
+    lines = wrap_text(text, font_name, font_size, CAPTION_WRAP_WIDTH)
+    return "<br/>".join(lines[:CAPTION_MAX_LINES])
+
+
 def _pricing_qty_label(quantity):
     if quantity == int(quantity):
         return f"Qty {int(quantity)}"
@@ -767,6 +781,8 @@ def build_dynamic_pages(data, output_path):
         fontName="Montserrat-Bold", fontSize=9.5, leading=14, textColor=colors.grey, alignment=4)  # 4 = TA_JUSTIFY
     user_style_centered = ParagraphStyle("UserGreyCentered", parent=styles["Normal"],
         fontName="Montserrat-Bold", fontSize=9.5, leading=14, textColor=colors.grey, alignment=1)  # 1 = TA_CENTER
+    caption_style = ParagraphStyle("ImageCaption", parent=user_style, leading=13)
+    caption_style_centered = ParagraphStyle("ImageCaptionCentered", parent=user_style_centered, leading=13)
 
     frame_width = A4[0] - 70  # Must match Frame width defined later
 
@@ -1050,11 +1066,11 @@ def build_dynamic_pages(data, output_path):
                         pass
                     # Note: optimized_path is now in temp_images list and will be cleaned up at end of PDF generation
                 caption = img.get("caption", "")
-                caption_text = caption[:90] if caption else None
+                caption_text = caption_text_for_pdf(caption) if caption else None
 
-                if caption:
+                if caption_text:
                     flow.append(Spacer(1, 4))
-                    flow.append(Paragraph(caption_text, user_style))
+                    flow.append(Paragraph(caption_text, caption_style))
                     # Store caption for this flow using id() as key
                     flow_captions[id(flow)] = caption_text
                 if flow:
@@ -1078,7 +1094,7 @@ def build_dynamic_pages(data, output_path):
                             for idx, item in enumerate(flow):
                                 if isinstance(item, Paragraph):
                                     # Replace with centered version
-                                    flow[idx] = Paragraph(caption_text, user_style_centered)
+                                    flow[idx] = Paragraph(caption_text, caption_style_centered)
                                     break  # Only replace first paragraph (the caption)
 
             if imgs:

@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { api } from '@/lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { ApiError, api } from '@/lib/api';
+import { LOGIN_TOAST_ID, lockSecondsForFailures, parseRetryAfterSeconds } from '@/lib/loginThrottle';
 import { resolvePostAuthDestination } from '@/lib/profileCompleteness';
 import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -77,9 +78,12 @@ function scrollFocusedFieldIntoView(target: EventTarget | null) {
   }, 350);
 }
 
-function loginErrorMessage(raw: unknown): string {
+function loginErrorMessage(raw: unknown, status?: number): string {
   const message = String(raw || '').trim();
   const lower = message.toLowerCase();
+  if (status === 429 || lower.includes('too many login attempts') || lower.includes('too many requests')) {
+    return message || 'Too many login attempts. Please wait and try again.';
+  }
   if (!message || lower === 'unauthorized' || lower === 'invalid credentials') {
     return LOGIN_ERROR_CREDENTIALS;
   }
@@ -87,6 +91,10 @@ function loginErrorMessage(raw: unknown): string {
     return LOGIN_ERROR_DEACTIVATED;
   }
   return message || LOGIN_ERROR_GENERIC;
+}
+
+function showLoginError(message: string) {
+  toast.error(message, { id: LOGIN_TOAST_ID });
 }
 
 export default function Login() {
@@ -100,8 +108,32 @@ export default function Login() {
   const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
   const [fieldFocused, setFieldFocused] = useState(false);
+  const [consecutiveFailures, setConsecutiveFailures] = useState(0);
+  const [lockUntil, setLockUntil] = useState(0);
+  const [lockRemaining, setLockRemaining] = useState(0);
+  const submitLockRef = useRef(false);
   const nav = useNavigate();
   const loc = useLocation() as { state?: { from?: string } };
+
+  useEffect(() => {
+    if (!lockUntil) {
+      setLockRemaining(0);
+      return;
+    }
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((lockUntil - Date.now()) / 1000));
+      setLockRemaining(left);
+      if (left <= 0) setLockUntil(0);
+    };
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [lockUntil]);
+
+  const startCooldown = (seconds: number) => {
+    if (seconds <= 0) return;
+    setLockUntil(Date.now() + seconds * 1000);
+  };
 
   const closeForgotModal = () => {
     setForgotPasswordOpen(false);
@@ -111,19 +143,23 @@ export default function Login() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
+    if (submitLockRef.current || loggingIn || lockRemaining > 0) return;
     if (!identifier.trim() || !password) {
       const empty = LOGIN_ERROR_CREDENTIALS;
       setError(empty);
-      toast.error(empty);
+      showLoginError(empty);
       return;
     }
+    submitLockRef.current = true;
+    setError('');
     if (rememberMe) saveIdentifier(identifier);
     else saveIdentifier('');
     setLoggingIn(true);
     try {
       const j = await api<{ access_token: string }>('POST', '/auth/login', { identifier, password });
       if (j && j.access_token) {
+        setConsecutiveFailures(0);
+        setLockUntil(0);
         localStorage.setItem('user_token', j.access_token);
         const requested = loc.state?.from ? String(loc.state.from) : '/home';
         try {
@@ -133,15 +169,29 @@ export default function Login() {
           nav(requested, { replace: true });
         }
       } else {
+        const nextFails = consecutiveFailures + 1;
+        setConsecutiveFailures(nextFails);
+        startCooldown(lockSecondsForFailures(nextFails));
         setError(LOGIN_ERROR_CREDENTIALS);
-        toast.error(LOGIN_ERROR_CREDENTIALS);
+        showLoginError(LOGIN_ERROR_CREDENTIALS);
       }
-    } catch (err: any) {
-      const next = loginErrorMessage(err?.message || err?.detail);
+    } catch (err: unknown) {
+      const status = err instanceof ApiError ? err.status : undefined;
+      const raw = err instanceof Error ? err.message : String(err);
+      const next = loginErrorMessage(raw, status);
+      const fromServer = parseRetryAfterSeconds(next);
+      if (status !== 429) {
+        const nextFails = consecutiveFailures + 1;
+        setConsecutiveFailures(nextFails);
+        startCooldown(fromServer ?? lockSecondsForFailures(nextFails));
+      } else {
+        startCooldown(fromServer ?? 10);
+      }
       setError(next);
-      toast.error(next);
+      showLoginError(next);
     } finally {
       setLoggingIn(false);
+      submitLockRef.current = false;
     }
   }
 
@@ -305,11 +355,15 @@ export default function Login() {
               type="submit"
               className="w-full"
               size="lg"
-              disabled={loggingIn}
+              disabled={loggingIn || lockRemaining > 0}
               loading={loggingIn}
               leftIcon={<LogIn className="h-4 w-4" />}
             >
-              {loggingIn ? 'Signing in…' : 'Sign in'}
+              {loggingIn
+                ? 'Signing in…'
+                : lockRemaining > 0
+                  ? `Try again in ${lockRemaining}s`
+                  : 'Sign in'}
             </AppButton>
           </form>
           <div className={fieldFocused ? 'hidden md:block' : undefined}>

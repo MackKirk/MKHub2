@@ -68,7 +68,7 @@ const PROPOSAL_FIELD_HINTS = {
   insideCover: 'Inside Cover Image\n\nInside cover page image. Cropped to 540×340 px in the PDF.',
   sectionTitle: 'Section title\n\nHeading for this section in the generated PDF.',
   sectionText: 'Section text\n\nBody copy for a text section. Press Tab to indent with four spaces.',
-  imageCaption: 'Caption\n\nCaption printed under the image in the PDF.',
+  imageCaption: 'Caption\n\nPrinted under the image in the PDF (up to three lines).',
   pricingName: 'Item name\n\nLine item description in the pricing table.',
   pricingPrice: 'Price\n\nLine price before tax; formatted when you leave the field.',
   areaDisplayUnit: 'Area display unit\n\nUnit for area totals and cost per area in the summary.',

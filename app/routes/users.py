@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import update, or_, exists, select, func as sa_func, func, literal, cast, String
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import Optional, List, Any, Tuple, Literal, Dict
 from collections import Counter, defaultdict
 import math
@@ -489,28 +489,29 @@ def hr_data_quality(
     }
 
 
-def _user_to_dict(u: User, ep: Optional[EmployeeProfile]) -> dict:
+def _user_to_dict(u: User, ep: Optional[EmployeeProfile], *, include_divisions: bool = True) -> dict:
     name = (getattr(ep, 'preferred_name', None) or '').strip() if ep else ''
     if not name:
         first = (getattr(ep, 'first_name', None) or '').strip() if ep else ''
         last = (getattr(ep, 'last_name', None) or '').strip() if ep else ''
         name = ' '.join([x for x in [first, last] if x])
     roles = [r.name for r in getattr(u, 'roles', [])]
-    divisions = [{"id": str(d.id), "label": d.label} for d in getattr(u, 'divisions', [])]
-    return {
+    payload = {
         "id": str(u.id),
         "username": u.username,
         "email": u.email_personal,
         "is_active": u.is_active,
         "name": name or None,
         "roles": roles,
-        "divisions": divisions,
         "profile_photo_file_id": str(getattr(ep, 'profile_photo_file_id')) if (ep and getattr(ep, 'profile_photo_file_id', None)) else None,
         "manager_user_id": str(ep.manager_user_id) if (ep and ep.manager_user_id) else None,
         "job_title": getattr(ep, 'job_title', None) if ep else None,
         "phone": getattr(ep, 'phone', None) if ep else None,
         "mobile_phone": getattr(ep, 'mobile_phone', None) if ep else None,
     }
+    if include_divisions:
+        payload["divisions"] = [{"id": str(d.id), "label": d.label} for d in getattr(u, 'divisions', [])]
+    return payload
 
 
 def _user_list_display_name_expr():
@@ -797,6 +798,64 @@ def users_tab_counts(
         "active": base.filter(User.is_active == True).count(),  # noqa: E712
         "inactive": base.filter(User.is_active == False).count(),  # noqa: E712
         "admins": base.filter(_admin_role_exists_clause()).count(),
+    }
+
+
+ORG_TREE_MAX = 5000
+
+
+@router.get("/org-tree")
+def users_org_tree(
+    status: Optional[str] = None,
+    status_not: Optional[str] = None,
+    division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
+    role_id: Optional[str] = None,
+    role_id_not: Optional[str] = None,
+    employment_type: Optional[str] = None,
+    employment_type_not: Optional[str] = None,
+    project_division_id: Optional[str] = None,
+    project_division_id_not: Optional[str] = None,
+    manager_id: Optional[str] = None,
+    manager_id_not: Optional[str] = None,
+    is_admin: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("hr:users:read", "users:read")),
+):
+    """Unpaginated users for the org-chart view (supervisor = manager_user_id). Search is applied client-side."""
+    query = _apply_user_list_filters(
+        _users_list_base_query(db).options(selectinload(User.roles)),
+        status=status,
+        status_not=status_not,
+        division_id=division_id,
+        division_id_not=division_id_not,
+        role_id=role_id,
+        role_id_not=role_id_not,
+        employment_type=employment_type,
+        employment_type_not=employment_type_not,
+        project_division_id=project_division_id,
+        project_division_id_not=project_division_id_not,
+        manager_id=manager_id,
+        manager_id_not=manager_id_not,
+        is_admin=is_admin,
+    )
+    order_parts = _users_list_order_parts("user", "asc")
+    rows = query.order_by(*order_parts).limit(ORG_TREE_MAX).all()
+    items = [_user_to_dict(u, ep, include_divisions=False) for u, ep in rows]
+    manager_uuid = _parse_uuid_param(manager_id)
+    if manager_uuid and not any(row["id"] == str(manager_uuid) for row in items):
+        manager_row = (
+            _users_list_base_query(db)
+            .options(selectinload(User.roles))
+            .filter(User.id == manager_uuid)
+            .first()
+        )
+        if manager_row:
+            items.append(_user_to_dict(manager_row[0], manager_row[1], include_divisions=False))
+    return {
+        "items": items,
+        "total": len(items),
+        "truncated": len(rows) >= ORG_TREE_MAX,
     }
 
 

@@ -41,6 +41,13 @@ from .security import (
     require_permissions,
     _has_permission,
 )
+from .login_throttle import (
+    client_ip as login_client_ip,
+    enforce_login_allowed,
+    note_login_attempt,
+    record_login_failure,
+    record_login_success,
+)
 from ..logging import structlog
 from ..services.training_matrix_slots import get_matrix_training_defs, is_valid_matrix_training_id
 from ..training_matrix_catalog import catalog_dicts, format_record_cell_display, matrix_cell_detail, normalize_matrix_training_id
@@ -1073,6 +1080,9 @@ def _log_login_failure(db: Session, request: Request, reason: str, message: str)
 
 @router.post("/login", response_model=TokenResponse)
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    ip = login_client_ip(request)
+    enforce_login_allowed(ip, req.identifier or "")
+    note_login_attempt(ip)
     id_lower = (req.identifier or "").strip().lower()
     q = db.query(User).filter(
         (User.username == req.identifier)
@@ -1082,10 +1092,12 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = q.first()
     if user and _user_login_is_deactivated(user):
         _log_login_failure(db, request, "user_inactive", "Login failed: user inactive")
+        record_login_failure(ip, req.identifier or "")
         raise HTTPException(status_code=403, detail=LOGIN_ACCOUNT_DEACTIVATED)
     if not user or not verify_password(req.password, user.password_hash):
         reason = "user_not_found" if not user else "invalid_password"
         _log_login_failure(db, request, reason, "Login failed")
+        record_login_failure(ip, req.identifier or "")
         raise HTTPException(status_code=400, detail=LOGIN_INVALID_CREDENTIALS)
     from ..services.offboarding_service import enforce_due_revocation_for_user
 
@@ -1093,9 +1105,11 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         db.refresh(user)
     if _user_login_is_deactivated(user):
         _log_login_failure(db, request, "user_inactive", "Login failed: user inactive")
+        record_login_failure(ip, req.identifier or "")
         raise HTTPException(status_code=403, detail=LOGIN_ACCOUNT_DEACTIVATED)
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))
+    record_login_success(ip, req.identifier or "")
     user.last_login_at = datetime.now(timezone.utc)
     from ..services.refresh_tokens import clear_refresh_tokens_for_user, persist_refresh_token_for_user
 
