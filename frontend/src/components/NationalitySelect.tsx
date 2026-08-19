@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { AppCombobox } from '@/components/ui/AppCombobox';
 
 const NATIONALITIES = [
@@ -34,6 +35,7 @@ interface NationalitySelectProps {
   className?: string;
   disabled?: boolean;
   placeholder?: string;
+  error?: ReactNode;
 }
 
 export default function NationalitySelect({
@@ -42,6 +44,7 @@ export default function NationalitySelect({
   className = '',
   disabled = false,
   placeholder = 'Search nationality...',
+  error,
 }: NationalitySelectProps) {
   const options = useMemo(
     () => NATIONALITIES.map((nationality) => ({ value: nationality, label: nationality })),
@@ -57,6 +60,7 @@ export default function NationalitySelect({
       disabled={disabled}
       leftIcon={null}
       triggerClassName={className}
+      error={error}
       emptyMessage="No nationalities found"
     />
   );

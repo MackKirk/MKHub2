@@ -4,7 +4,7 @@ import { Search } from 'lucide-react';
 import { sortByLabel } from '@/lib/sortOptions';
 import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
-import { uiCx, uiDropdown } from './tokens';
+import { uiBorders, uiCx, uiDropdown } from './tokens';
 import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 export type AppComboboxOption = {
@@ -27,6 +27,7 @@ export type AppComboboxProps = {
   label?: ReactNode;
   fieldHint?: ReactNode;
   helperText?: ReactNode;
+  error?: ReactNode;
   placeholder?: string;
   leftIcon?: ReactNode;
   disabled?: boolean;
@@ -45,6 +46,7 @@ export function AppCombobox({
   label,
   fieldHint,
   helperText,
+  error,
   placeholder = 'Search…',
   leftIcon,
   disabled,
@@ -198,12 +200,13 @@ export function AppCombobox({
           className={uiCx(
             uiDropdown.trigger,
             showLeftIcon && uiDropdown.triggerWithLeftIcon,
+            error && uiBorders.inputInvalid,
             open && !disabled && 'border-gray-400 ring-1 ring-inset ring-gray-400/35',
             triggerClassName,
           )}
         />
       </div>
-      {helperText ? <p className="text-xs text-gray-600">{helperText}</p> : null}
+      {error ? <p className="text-xs text-red-600">{error}</p> : helperText ? <p className="text-xs text-gray-600">{helperText}</p> : null}
       {typeof document !== 'undefined' && dropdown ? createPortal(dropdown, document.body) : null}
     </div>
   );

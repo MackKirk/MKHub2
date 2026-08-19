@@ -10,6 +10,7 @@ import {
   dataTransferMayContainDirectory,
 } from '@/lib/projectFolderDrop';
 import { formatDateTimeVancouver } from '@/lib/dateUtils';
+import { downloadStoredFile, downloadStoredFiles } from '@/lib/downloadFile';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
   FileImagePreviewModal,
@@ -128,6 +129,7 @@ export default function ProjectFilesTabEnhanced({
   });
   const [isDragging, setIsDragging] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{id:string, file:File, progress:number, status:'pending'|'uploading'|'success'|'error', error?:string}>>([]);
   const imageGallery = useFileImageGallery();
@@ -506,6 +508,27 @@ export default function ProjectFilesTabEnhanced({
     await moveFilesToLocation(fileIds, { category: cat, folderId }, label);
   };
 
+  const handleBulkDownloadSelected = async () => {
+    const ids = [...fileSelection.selectedIds];
+    const payload = ids
+      .map((id) => files.find((f) => f.id === id))
+      .filter((f): f is NonNullable<typeof f> => Boolean(f?.file_object_id))
+      .map((f) => ({ fileObjectId: f.file_object_id, filename: f.original_name || 'file' }));
+    if (payload.length === 0) {
+      toast.error('No files to download');
+      return;
+    }
+    setBulkDownloading(true);
+    try {
+      await downloadStoredFiles(payload, 'project-files.zip');
+      toast.success(payload.length === 1 ? 'Download started' : `Downloading ${payload.length} files as ZIP`);
+    } catch {
+      toast.error('Download failed');
+    } finally {
+      setBulkDownloading(false);
+    }
+  };
+
   const handleBulkDeleteSelected = async () => {
     const ids = [...fileSelection.selectedIds];
     if (ids.length === 0) return;
@@ -708,8 +731,12 @@ export default function ProjectFilesTabEnhanced({
     setPendingPreviewFileId(null);
   }, [filesLibraryView, pendingPreviewFileId, files]);
 
-  const fetchDownloadUrl = async (fid:string)=>{
-    try{ const r:any = await api('GET', withFileAccessToken(`/files/${fid}/download`)); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
+  const handleFileDownload = async (fileObjectId: string, filename?: string) => {
+    try {
+      await downloadStoredFile(fileObjectId, filename);
+    } catch {
+      toast.error('Download failed');
+    }
   };
 
   const resolveUploadContext = useCallback(
@@ -1446,8 +1473,7 @@ export default function ProjectFilesTabEnhanced({
                                     preset="download"
                                     label="Download"
                                     onClick={async () => {
-                                      const url = await fetchDownloadUrl(df.file_object_id);
-                                      if (url) window.open(url, '_blank');
+                                      await handleFileDownload(df.file_object_id, df.original_name);
                                     }}
                                   />
                                   <button
@@ -1870,7 +1896,9 @@ export default function ProjectFilesTabEnhanced({
                   onSelectAll={() => fileSelection.selectAll(visibleFileIds)}
                   onClear={() => fileSelection.clear()}
                   onDeleteSelected={handleBulkDeleteSelected}
+                  onDownloadSelected={() => void handleBulkDownloadSelected()}
                   deleting={bulkDeleting}
+                  downloading={bulkDownloading}
                 />
               ) : null}
               {(selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (currentParentFolderId !== null || currentFolderChildren.length > 0 || currentFiles.length > 0)) || (selectedCategory === 'all' || selectedCategory === 'uncategorized') && currentFiles.length > 0 ? (
@@ -2345,8 +2373,7 @@ export default function ProjectFilesTabEnhanced({
                                   label="Download"
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    const url = await fetchDownloadUrl(f.file_object_id);
-                                    if (url) window.open(url, '_blank');
+                                    await handleFileDownload(f.file_object_id, f.original_name);
                                   }}
                                 />
                                 {canWriteFiles && (

@@ -1,7 +1,9 @@
 import { useEffect, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import toast from 'react-hot-toast';
 import OverlayPortal from '@/components/OverlayPortal';
 import { AppButton, AppModal, uiCx, uiLayout } from '@/components/ui';
+import { downloadFromUrl, downloadStoredFile } from '@/lib/downloadFile';
 import type { FileImagePreviewItem } from './fileImagePreview';
 
 type Props = {
@@ -112,6 +114,19 @@ export default function FileImagePreviewModal({
     </span>
   ) : null;
 
+  const downloadCurrent = async () => {
+    if (!current) return;
+    try {
+      if (current.fileObjectId) {
+        await downloadStoredFile(current.fileObjectId, current.name);
+      } else if (current.url) {
+        await downloadFromUrl(current.url, current.name);
+      }
+    } catch {
+      toast.error('Download failed');
+    }
+  };
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -146,15 +161,15 @@ export default function FileImagePreviewModal({
                 {counter}
               </h3>
               <div className="flex items-center gap-2">
-                {current.url ? (
-                  <a
-                    href={current.url}
-                    download={current.name}
+                {current.url || current.fileObjectId ? (
+                  <button
+                    type="button"
+                    onClick={() => void downloadCurrent()}
                     className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
                     title="Download"
                   >
                     ⬇️
-                  </a>
+                  </button>
                 ) : null}
                 {legacyActions?.(current)}
                 {current.url ? (
@@ -215,14 +230,8 @@ export default function FileImagePreviewModal({
           <AppButton
             size="sm"
             type="button"
-            disabled={!current.url}
-            onClick={() => {
-              if (!current.url) return;
-              const a = document.createElement('a');
-              a.href = current.url;
-              a.download = current.name;
-              a.click();
-            }}
+            disabled={!current.url && !current.fileObjectId}
+            onClick={() => void downloadCurrent()}
           >
             Download
           </AppButton>

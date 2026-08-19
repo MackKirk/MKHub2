@@ -6,7 +6,9 @@ type FileListSelectionBarProps = {
   onSelectAll: () => void;
   onClear: () => void;
   onDeleteSelected: () => void;
+  onDownloadSelected?: () => void;
   deleting?: boolean;
+  downloading?: boolean;
   className?: string;
 };
 
@@ -16,7 +18,9 @@ export function FileListSelectionBar({
   onSelectAll,
   onClear,
   onDeleteSelected,
+  onDownloadSelected,
   deleting,
+  downloading,
   className,
 }: FileListSelectionBarProps) {
   if (selectedCount === 0) {
@@ -42,12 +46,25 @@ export function FileListSelectionBar({
         <AppButton variant="ghost" size="sm" type="button" onClick={onClear}>
           Clear
         </AppButton>
+        {onDownloadSelected ? (
+          <AppButton
+            variant="secondary"
+            size="sm"
+            type="button"
+            onClick={onDownloadSelected}
+            loading={downloading}
+            disabled={deleting}
+          >
+            {selectedCount === 1 ? 'Download' : 'Download ZIP'}
+          </AppButton>
+        ) : null}
         <AppButton
           variant="secondary"
           size="sm"
           type="button"
           onClick={onDeleteSelected}
           loading={deleting}
+          disabled={downloading}
         >
           Delete selected
         </AppButton>

@@ -37,7 +37,7 @@ export function AppInput({
             uiSpacing.controlX,
             uiSpacing.controlY,
             uiRadius.control,
-            uiBorders.input,
+            error ? uiBorders.inputInvalid : uiBorders.input,
             leftIcon ? 'pl-8' : '',
             rightIcon ? 'pr-9' : '',
             inputClassName,

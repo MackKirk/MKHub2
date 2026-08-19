@@ -38,6 +38,7 @@ import {
   type FilesLibraryHomeFile,
 } from '@/components/files';
 import { libraryFilesMoveCategoryQuickInfo } from '@/lib/formModalQuickInfo';
+import { downloadStoredFiles } from '@/lib/downloadFile';
 import { AppButton, AppCard, AppSectionHeader, appSectionPresetProps, AppCheckboxControl, AppListRowIconButton, uiCx, uiSpacing } from '@/components/ui';
 
 export type ClientFileForFiles = { id: string; file_object_id: string; is_image?: boolean; content_type?: string; category?: string; original_name?: string; uploaded_at?: string; site_id?: string };
@@ -70,6 +71,7 @@ export function SubcontractorCompanyFilesTabEnhanced({
   });
   const [isDragging, setIsDragging] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
   const fileSelection = useFileListSelection();
   const { dropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
   const [showUpload, setShowUpload] = useState(false);
@@ -333,6 +335,27 @@ export function SubcontractorCompanyFilesTabEnhanced({
     await action(ids);
     endFileDrag();
     return true;
+  };
+
+  const handleBulkDownloadSelected = async () => {
+    const ids = [...fileSelection.selectedIds];
+    const payload = ids
+      .map((id) => files.find((f) => f.id === id))
+      .filter((f): f is NonNullable<typeof f> => Boolean(f?.file_object_id))
+      .map((f) => ({ fileObjectId: f.file_object_id, filename: f.original_name || 'file' }));
+    if (payload.length === 0) {
+      toast.error('No files to download');
+      return;
+    }
+    setBulkDownloading(true);
+    try {
+      await downloadStoredFiles(payload, 'subcontractor-files.zip');
+      toast.success(payload.length === 1 ? 'Download started' : `Downloading ${payload.length} files as ZIP`);
+    } catch {
+      toast.error('Download failed');
+    } finally {
+      setBulkDownloading(false);
+    }
   };
 
   const handleBulkDeleteSelected = async () => {
@@ -913,7 +936,9 @@ export function SubcontractorCompanyFilesTabEnhanced({
                     onSelectAll={() => fileSelection.selectAll(visibleFileIds)}
                     onClear={() => fileSelection.clear()}
                     onDeleteSelected={handleBulkDeleteSelected}
+                    onDownloadSelected={() => void handleBulkDownloadSelected()}
                     deleting={bulkDeleting}
+                    downloading={bulkDownloading}
                     className="m-3 mb-0"
                   />
                 ) : null}

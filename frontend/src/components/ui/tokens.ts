@@ -21,6 +21,8 @@ export const uiShadows = {
 export const uiBorders = {
   subtle: 'border border-gray-200',
   input: 'border border-gray-300',
+  /** Empty/invalid control after a submit attempt */
+  inputInvalid: 'border-red-300 !bg-red-50',
   strong: 'border border-gray-300',
   createDashed: 'border-2 border-dashed border-gray-300',
 } as const;

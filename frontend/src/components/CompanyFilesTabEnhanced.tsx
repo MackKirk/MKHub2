@@ -3,6 +3,7 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { downloadStoredFiles } from '@/lib/downloadFile';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   FileImagePreviewModal,
@@ -112,6 +113,7 @@ export default function CompanyFilesTabEnhanced() {
   const fileSelection = useFileListSelection();
   const { dropTarget, setDropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<Record<string, unknown>>('GET', '/auth/me') });
   const isAdmin = isAdminRole(me?.roles as string[] | undefined);
@@ -793,6 +795,30 @@ export default function CompanyFilesTabEnhanced() {
     ]);
   }, [refetchDocs, refetchFolderTree, queryClient]);
 
+  const handleBulkDownloadSelected = async () => {
+    const ids = [...fileSelection.selectedIds];
+    const payload = ids
+      .map((id) => docs.find((d) => d.id === id))
+      .filter((d): d is NonNullable<typeof d> => Boolean(d?.file_id))
+      .map((d) => ({
+        fileObjectId: String(d.file_id),
+        filename: d.original_name || d.title || 'file',
+      }));
+    if (payload.length === 0) {
+      toast.error('No files to download');
+      return;
+    }
+    setBulkDownloading(true);
+    try {
+      await downloadStoredFiles(payload, 'company-files.zip');
+      toast.success(payload.length === 1 ? 'Download started' : `Downloading ${payload.length} files as ZIP`);
+    } catch {
+      toast.error('Download failed');
+    } finally {
+      setBulkDownloading(false);
+    }
+  };
+
   const handleBulkDeleteSelected = async () => {
     const ids = [...fileSelection.selectedIds];
     if (ids.length === 0) return;
@@ -1444,7 +1470,9 @@ export default function CompanyFilesTabEnhanced() {
                         onSelectAll={() => fileSelection.selectAll(visibleFileIds)}
                         onClear={() => fileSelection.clear()}
                         onDeleteSelected={handleBulkDeleteSelected}
+                        onDownloadSelected={() => void handleBulkDownloadSelected()}
                         deleting={bulkDeleting}
+                        downloading={bulkDownloading}
                         className="m-3 mb-0"
                       />
                     ) : null}

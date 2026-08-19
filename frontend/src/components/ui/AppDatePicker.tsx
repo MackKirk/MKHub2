@@ -22,7 +22,7 @@ import {
   startOfMonth,
   toIsoDateLocal,
 } from './datePickerUtils';
-import { uiCx, uiDatePicker, uiDropdown, uiTypography } from './tokens';
+import { uiBorders, uiCx, uiDatePicker, uiDropdown, uiTypography } from './tokens';
 import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
@@ -38,6 +38,7 @@ export type AppDatePickerProps = {
   label?: ReactNode;
   fieldHint?: ReactNode;
   helperText?: ReactNode;
+  error?: ReactNode;
   placeholder?: string;
   min?: string;
   max?: string;
@@ -78,6 +79,7 @@ export function AppDatePicker({
   label,
   fieldHint,
   helperText,
+  error,
   placeholder = 'yyyy-mm-dd',
   value = '',
   onChange,
@@ -329,6 +331,7 @@ export function AppDatePicker({
               uiDropdown.trigger,
               'flex w-full items-center justify-between gap-2 pr-9 text-left',
               !display && 'text-gray-400',
+              error && uiBorders.inputInvalid,
               open && !disabled && 'border-gray-400 ring-1 ring-inset ring-gray-400/35',
               triggerClassName,
             ),
@@ -371,7 +374,7 @@ export function AppDatePicker({
         {triggerButton}
         {!isCardTrigger ? <Calendar className={uiDatePicker.triggerIcon} aria-hidden /> : null}
       </div>
-      {helperText ? <span className={uiTypography.helper}>{helperText}</span> : null}
+      {error ? <span className="block text-xs text-red-600">{error}</span> : helperText ? <span className={uiTypography.helper}>{helperText}</span> : null}
       {typeof document !== 'undefined' && panel ? createPortal(panel, document.body) : null}
     </div>
   );

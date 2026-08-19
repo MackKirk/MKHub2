@@ -70,6 +70,40 @@ const VISA_STATUS_OPTIONS = [
 
 const ADDRESS_INPUT_CLASS =
   'w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400';
+const ADDRESS_INPUT_INVALID_CLASS =
+  'w-full rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-red-300 focus:border-red-300';
+const HUB_REQUIRED_MSG = 'Required to enter the Hub';
+
+const HUB_REQUIRED_FIELDS = [
+  'gender',
+  'date_of_birth',
+  'marital_status',
+  'nationality',
+  'phone',
+  'address_line1',
+  'city',
+  'province',
+  'postal_code',
+  'country',
+  'sin_number',
+  'work_eligibility_status',
+] as const;
+
+const HUB_FIELD_TO_STEP: Record<string, number> = {
+  gender: 1,
+  date_of_birth: 1,
+  marital_status: 1,
+  nationality: 1,
+  address_line1: 2,
+  city: 2,
+  province: 2,
+  postal_code: 2,
+  country: 2,
+  phone: 3,
+  sin_number: 5,
+  work_eligibility_status: 5,
+  emergency_contact: 6,
+};
 
 export default function OnboardingWizard() {
   const navigate = useNavigate();
@@ -106,6 +140,7 @@ export default function OnboardingWizard() {
   const [form, setForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
   const [formInitialized, setFormInitialized] = useState(false);
+  const [hubAttempted, setHubAttempted] = useState(false);
   
   // Address dropdowns state
   const [countries, setCountries] = useState<Array<{ name: string }>>([]);
@@ -175,54 +210,30 @@ export default function OnboardingWizard() {
   
   const hasEmergencyContact = emergencyContactsData && emergencyContactsData.length > 0;
 
-  /** Fields required to enter the Hub (must match isOnboardingComplete / AppShell). */
-  const HUB_REQUIRED_FIELDS = [
-    'gender',
-    'date_of_birth',
-    'marital_status',
-    'nationality',
-    'phone',
-    'address_line1',
-    'city',
-    'province',
-    'postal_code',
-    'country',
-    'sin_number',
-    'work_eligibility_status',
-  ] as const;
-
-  /** Which wizard steps still block "Save and continue to the Hub". */
-  const getHubIncompleteSteps = useCallback((): number[] => {
-    const steps = new Set<number>();
-    const fieldToStep: Record<string, number> = {
-      gender: 1,
-      date_of_birth: 1,
-      marital_status: 1,
-      nationality: 1,
-      address_line1: 2,
-      city: 2,
-      province: 2,
-      postal_code: 2,
-      country: 2,
-      phone: 3,
-      sin_number: 5,
-      work_eligibility_status: 5,
-    };
+  const missingHubFields = useMemo(() => {
+    const missing: string[] = [];
     for (const field of HUB_REQUIRED_FIELDS) {
-      const value = String((form as any)[field] || '').trim();
-      if (!value) {
-        steps.add(fieldToStep[field] ?? 1);
-      }
+      if (!String((form as any)[field] || '').trim()) missing.push(field);
     }
-    if (userId) {
-      if (emergencyContactsLoading || emergencyContactsData === undefined) {
-        steps.add(6);
-      } else if (!hasEmergencyContact) {
-        steps.add(6);
-      }
+    if (userId && !emergencyContactsLoading && emergencyContactsData !== undefined && !hasEmergencyContact) {
+      missing.push('emergency_contact');
+    }
+    return missing;
+  }, [form, userId, emergencyContactsLoading, emergencyContactsData, hasEmergencyContact]);
+
+  const incompleteHubSteps = useMemo(() => {
+    const steps = new Set<number>();
+    for (const field of missingHubFields) {
+      steps.add(HUB_FIELD_TO_STEP[field] ?? 1);
     }
     return Array.from(steps).sort((a, b) => a - b);
-  }, [form, userId, emergencyContactsLoading, emergencyContactsData, hasEmergencyContact]);
+  }, [missingHubFields]);
+
+  const hubFieldError = (field: string) =>
+    hubAttempted && missingHubFields.includes(field) ? HUB_REQUIRED_MSG : undefined;
+
+  /** Which wizard steps still block "Save and continue to the Hub". */
+  const getHubIncompleteSteps = useCallback((): number[] => incompleteHubSteps, [incompleteHubSteps]);
   
   // Required fields for each step
   const stepRequiredFields: Record<number, string[]> = {
@@ -235,7 +246,7 @@ export default function OnboardingWizard() {
   };
   
   // Find the first step with missing required fields
-  const findFirstIncompleteStep = useCallback((formData: any, hasEmergency: boolean): number => {
+  const findFirstIncompleteStep = useCallback((formData: any, hasEmergency: boolean): number | null => {
     for (let step = 1; step <= totalSteps; step++) {
       const required = stepRequiredFields[step] || [];
       
@@ -258,8 +269,8 @@ export default function OnboardingWizard() {
       }
     }
     
-    // All steps are complete, return the last step
-    return totalSteps;
+    // All required steps are complete — do not jump to the last page
+    return null;
   }, [totalSteps]);
   
   // Initialize currentStep to the first incomplete step when form is initialized (only once)
@@ -267,7 +278,9 @@ export default function OnboardingWizard() {
   useEffect(() => {
     if (formInitialized && Object.keys(form).length > 0 && !emergencyContactsLoading && !stepInitialized) {
       const firstIncomplete = findFirstIncompleteStep(form, hasEmergencyContact);
-      setCurrentStep(firstIncomplete);
+      if (firstIncomplete != null) {
+        setCurrentStep(firstIncomplete);
+      }
       setStepInitialized(true);
     }
   }, [formInitialized, form, emergencyContactsLoading, hasEmergencyContact, findFirstIncompleteStep, stepInitialized]);
@@ -279,8 +292,9 @@ export default function OnboardingWizard() {
     setSaving(true);
     try {
       await api('PUT', '/auth/me/profile', form);
-      await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
-      await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
+      const fresh = await api<ProfileResp>('GET', '/auth/me/profile');
+      queryClient.setQueryData(['meProfile'], fresh);
+      queryClient.setQueryData(['me-profile'], fresh);
     } catch (error: any) {
       toast.error(error?.message || 'Failed to save');
       throw error; // Re-throw to allow callers to handle the error
@@ -541,19 +555,34 @@ export default function OnboardingWizard() {
   };
 
   const handleSaveAndContinueToHub = async () => {
+    setHubAttempted(true);
+    if (userId && (emergencyContactsLoading || emergencyContactsData === undefined)) {
+      toast.error('Please wait a moment and try again.');
+      return;
+    }
     const incomplete = getHubIncompleteSteps();
     if (incomplete.length > 0) {
-      const detail = incomplete.map((s) => `Step ${s} (${STEP_LABELS[s]})`).join(', ');
-      toast.error(
-        `Please complete all required fields before continuing to the Hub. Missing information in: ${detail}.`
-      );
+      const target = incomplete[0];
+      const names = incomplete.map((s) => STEP_LABELS[s]).join(', ');
+      toast.error(`Please complete the highlighted fields. Missing: ${names}.`);
+      if (target !== currentStep) {
+        try {
+          await saveProfile();
+        } catch {
+          /* still jump to the missing step */
+        }
+        setCurrentStep(target);
+      }
       return;
     }
     try {
       await saveProfile();
-      await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
-      await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
-      await queryClient.invalidateQueries({ queryKey: ['emergency-contacts', userId] });
+      if (userId) {
+        await queryClient.ensureQueryData({
+          queryKey: ['emergency-contacts', userId],
+          queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`),
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: ['me-onboarding-docs'] });
       await queryClient.invalidateQueries({ queryKey: ['me-onboarding-status'] });
       toast.success('Profile saved. Welcome to the Hub.');
@@ -583,6 +612,17 @@ export default function OnboardingWizard() {
     }
     setCurrentStep(step);
   };
+
+  useEffect(() => {
+    if (!hubAttempted) return;
+    const fieldOnStep = missingHubFields.find((field) => (HUB_FIELD_TO_STEP[field] ?? 1) === currentStep);
+    if (!fieldOnStep) return;
+    const id = `onboarding-field-${fieldOnStep}`;
+    const t = window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [hubAttempted, currentStep, missingHubFields]);
   
   const countryOptions = useMemo(
     () => countries.map((c) => ({ value: c.name, label: c.name })),
@@ -660,6 +700,7 @@ export default function OnboardingWizard() {
               const step = i + 1;
               const reached = step <= currentStep;
               const isCurrent = step === currentStep;
+              const needsInfo = incompleteHubSteps.includes(step);
               return (
                 <button
                   key={step}
@@ -669,10 +710,10 @@ export default function OnboardingWizard() {
                   aria-current={isCurrent ? 'step' : undefined}
                   disabled={saving}
                   onClick={() => handleJumpToStep(step)}
-                  title={STEP_LABELS[step]}
+                  title={needsInfo ? `${STEP_LABELS[step]} — information missing` : STEP_LABELS[step]}
                   className={uiCx(
                     'min-h-[10px] flex-1 rounded-full transition-all disabled:cursor-not-allowed disabled:opacity-50',
-                    reached ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]' : 'bg-gray-200',
+                    needsInfo ? 'bg-red-300' : reached ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]' : 'bg-gray-200',
                     isCurrent ? 'ring-2 ring-brand-red ring-offset-2 ring-offset-white' : 'cursor-pointer hover:brightness-95',
                   )}
                 />
@@ -683,6 +724,7 @@ export default function OnboardingWizard() {
             {Array.from({ length: totalSteps }, (_, i) => {
               const step = i + 1;
               const isCurrent = step === currentStep;
+              const needsInfo = incompleteHubSteps.includes(step);
               return (
                 <button
                   key={step}
@@ -691,11 +733,16 @@ export default function OnboardingWizard() {
                   onClick={() => handleJumpToStep(step)}
                   className={uiCx(
                     'rounded-md px-1.5 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                    isCurrent ? 'bg-red-50 font-semibold text-brand-red' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900',
+                    isCurrent
+                      ? 'bg-red-50 font-semibold text-brand-red'
+                      : needsInfo
+                        ? 'bg-red-50/80 text-red-700 hover:bg-red-50'
+                        : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900',
                   )}
                 >
                   <span className="sr-only">Step {step}: </span>
-                  {STEP_LABELS[step]}
+                  <span className="block">{STEP_LABELS[step]}</span>
+                  {needsInfo ? <span className="mt-0.5 block text-[10px] font-medium text-red-600">Needs info</span> : null}
                 </button>
               );
             })}
@@ -729,27 +776,37 @@ export default function OnboardingWizard() {
                   onChange={(e) => set('prefered_name', e.target.value)}
                 />
                 <AppSelect
+                  id="onboarding-field-gender"
                   label="Gender *"
                   placeholder="Select..."
                   value={form.gender || ''}
                   onChange={(e) => set('gender', e.target.value)}
                   options={GENDER_OPTIONS}
+                  error={hubFieldError('gender')}
                 />
                 <AppSelect
+                  id="onboarding-field-marital_status"
                   label="Marital status *"
                   placeholder="Select..."
                   value={form.marital_status || ''}
                   onChange={(e) => set('marital_status', e.target.value)}
                   options={MARITAL_STATUS_OPTIONS}
+                  error={hubFieldError('marital_status')}
                 />
                 <AppDatePicker
+                  id="onboarding-field-date_of_birth"
                   label="Date of birth *"
                   value={form.date_of_birth ? String(form.date_of_birth).slice(0, 10) : ''}
                   onChange={(e) => set('date_of_birth', e.target.value)}
+                  error={hubFieldError('date_of_birth')}
                 />
-                <div className="space-y-1.5">
+                <div className="space-y-1.5" id="onboarding-field-nationality">
                   <AppControlLabelRow label="Nationality *" />
-                  <NationalitySelect value={form.nationality || ''} onChange={(v) => set('nationality', v)} />
+                  <NationalitySelect
+                    value={form.nationality || ''}
+                    onChange={(v) => set('nationality', v)}
+                    error={hubFieldError('nationality')}
+                  />
                 </div>
               </div>
             </div>
@@ -760,7 +817,7 @@ export default function OnboardingWizard() {
             <div className={uiSpacing.sectionStack}>
               <AppSectionHeader title="Address" description="Home address for contact and records" />
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5" id="onboarding-field-address_line1">
                   <AppControlLabelRow label="Address line 1 *" />
                   <AddressAutocomplete
                     key="address-line1-onboarding"
@@ -768,8 +825,11 @@ export default function OnboardingWizard() {
                     onChange={handleAddressChange}
                     onAddressSelect={handleAddressSelect}
                     placeholder="Start typing an address..."
-                    className={ADDRESS_INPUT_CLASS}
+                    className={hubFieldError('address_line1') ? ADDRESS_INPUT_INVALID_CLASS : ADDRESS_INPUT_CLASS}
                   />
+                  {hubFieldError('address_line1') ? (
+                    <span className="block text-xs text-red-600">{HUB_REQUIRED_MSG}</span>
+                  ) : null}
                 </div>
                 <AppInput
                   label="Complement (e.g., Apt, Unit, Basement)"
@@ -778,6 +838,7 @@ export default function OnboardingWizard() {
                   placeholder="Apt 101, Unit 2, Basement, etc."
                 />
                 <AppCombobox
+                  id="onboarding-field-country"
                   label="Country *"
                   value={form.country || ''}
                   onChange={handleCountryChange}
@@ -785,8 +846,10 @@ export default function OnboardingWizard() {
                   placeholder={loadingStates ? 'Loading...' : 'Search country...'}
                   disabled={loadingStates}
                   leftIcon={null}
+                  error={hubFieldError('country')}
                 />
                 <AppCombobox
+                  id="onboarding-field-province"
                   label="Province/State *"
                   value={form.province || ''}
                   onChange={handleProvinceChange}
@@ -796,8 +859,10 @@ export default function OnboardingWizard() {
                   }
                   disabled={!form.country || loadingStates || loadingCities}
                   leftIcon={null}
+                  error={hubFieldError('province')}
                 />
                 <AppCombobox
+                  id="onboarding-field-city"
                   label="City *"
                   value={form.city || ''}
                   onChange={(v) => set('city', v)}
@@ -805,16 +870,20 @@ export default function OnboardingWizard() {
                   placeholder={loadingCities ? 'Loading...' : form.province ? 'Search city...' : 'Select province first'}
                   disabled={!form.country || !form.province || loadingCities}
                   leftIcon={null}
+                  error={hubFieldError('city')}
                 />
-                <div className="space-y-1.5">
+                <div className="space-y-1.5" id="onboarding-field-postal_code">
                   <AppControlLabelRow label="Postal code *" />
                   <PostalCodeAutocomplete
                     value={form.postal_code || ''}
                     onChange={(value) => set('postal_code', value)}
                     onPostalCodeSelect={handlePostalCodeSelect}
                     placeholder="Enter postal code..."
-                    className={ADDRESS_INPUT_CLASS}
+                    className={hubFieldError('postal_code') ? ADDRESS_INPUT_INVALID_CLASS : ADDRESS_INPUT_CLASS}
                   />
+                  {hubFieldError('postal_code') ? (
+                    <span className="block text-xs text-red-600">{HUB_REQUIRED_MSG}</span>
+                  ) : null}
                 </div>
                 <div className="space-y-1.5">
                   <AppControlLabelRow label="Address line 2" />
@@ -840,9 +909,11 @@ export default function OnboardingWizard() {
               <AppSectionHeader title="Contact" description="How we can reach you" />
               <div className="grid gap-4 md:grid-cols-2">
                 <AppInput
+                  id="onboarding-field-phone"
                   label="Phone 1 *"
                   value={form.phone || ''}
                   onChange={(e) => set('phone', formatPhone(e.target.value))}
+                  error={hubFieldError('phone')}
                 />
                 <AppInput
                   label="Phone 2"
@@ -860,11 +931,20 @@ export default function OnboardingWizard() {
           
           {/* Step 5: Legal & Documents */}
           {currentStep === 5 && userId && (
-            <LegalDocumentsStep userId={userId} form={form} set={set} formatSIN={formatSIN} />
+            <LegalDocumentsStep
+              userId={userId}
+              form={form}
+              set={set}
+              formatSIN={formatSIN}
+              sinError={hubFieldError('sin_number')}
+              workEligibilityError={hubFieldError('work_eligibility_status')}
+            />
           )}
           
           {/* Step 6: Emergency Contacts */}
-          {currentStep === 6 && userId && <EmergencyContactsStep userId={userId} />}
+          {currentStep === 6 && userId && (
+            <EmergencyContactsStep userId={userId} highlightMissing={Boolean(hubFieldError('emergency_contact'))} />
+          )}
         </AppCard>
       </main>
     </div>
@@ -1032,24 +1112,42 @@ function EducationStep({ userId }: { userId: string }) {
 }
 
 // Legal & Documents Step Component
-function LegalDocumentsStep({ userId, form, set, formatSIN }: { userId: string; form: any; set: (k: string, v: any) => void; formatSIN: (v: string) => string }) {
+function LegalDocumentsStep({
+  userId,
+  form,
+  set,
+  formatSIN,
+  sinError,
+  workEligibilityError,
+}: {
+  userId: string;
+  form: any;
+  set: (k: string, v: any) => void;
+  formatSIN: (v: string) => string;
+  sinError?: string;
+  workEligibilityError?: string;
+}) {
   return (
     <div className={uiSpacing.sectionStack}>
       <AppSectionHeader title="Legal & Documents" description="Legal status and identification" />
       <div className="grid gap-4 md:grid-cols-2">
         <AppInput
+          id="onboarding-field-sin_number"
           label="SIN/SSN *"
           value={form.sin_number || ''}
           onChange={(e) => set('sin_number', formatSIN(e.target.value))}
           maxLength={11}
           placeholder="123-456-789"
+          error={sinError}
         />
         <AppSelect
+          id="onboarding-field-work_eligibility_status"
           label="Work Eligibility Status *"
           placeholder="Select..."
           value={form.work_eligibility_status || ''}
           onChange={(e) => set('work_eligibility_status', e.target.value)}
           options={WORK_ELIGIBILITY_OPTIONS}
+          error={workEligibilityError}
         />
       </div>
       <WorkEligibilityDocumentsSection
@@ -1062,7 +1160,7 @@ function LegalDocumentsStep({ userId, form, set, formatSIN }: { userId: string; 
 }
 
 // Emergency Contacts Step Component (reused from Profile.tsx)
-function EmergencyContactsStep({ userId }: { userId: string }) {
+function EmergencyContactsStep({ userId, highlightMissing }: { userId: string; highlightMissing?: boolean }) {
   const { data, refetch } = useQuery({
     queryKey: ['emergency-contacts', userId],
     queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`)
@@ -1355,14 +1453,14 @@ function EmergencyContactsStep({ userId }: { userId: string }) {
   const contacts = data || [];
 
   return (
-    <div className={uiSpacing.sectionStack}>
+    <div className={uiSpacing.sectionStack} id="onboarding-field-emergency_contact">
       <AppSectionHeader
         title="Emergency Contacts"
         description="People to contact in case of emergency. At least one contact is required."
       />
 
       {contacts.length === 0 ? (
-        <AppCard bodyClassName="border-red-200 bg-red-50">
+        <AppCard bodyClassName={uiCx('border-red-200 bg-red-50', highlightMissing && 'ring-2 ring-red-200')}>
           <p className={uiCx(uiTypography.helper, 'text-red-700')}>
             <strong>Required:</strong> Please add at least one emergency contact to continue.
           </p>

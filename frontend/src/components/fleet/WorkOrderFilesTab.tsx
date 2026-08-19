@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { downloadStoredFiles } from '@/lib/downloadFile';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
   FileImagePreviewModal,
@@ -106,6 +107,7 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
   const [uploadCategory, setUploadCategory] = useState<string>('outros');
   const [isDragging, setIsDragging] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
   const fileSelection = useFileListSelection();
   const { dropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
   const [showUpload, setShowUpload] = useState(false);
@@ -332,6 +334,27 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
     await action(ids);
     endFileDrag();
     return true;
+  };
+
+  const handleBulkDownloadSelected = async () => {
+    const ids = [...fileSelection.selectedIds];
+    const payload = ids
+      .map((id) => files.find((f) => f.id === id))
+      .filter((f): f is NonNullable<typeof f> => Boolean(f?.file_object_id))
+      .map((f) => ({ fileObjectId: f.file_object_id, filename: f.original_name || 'file' }));
+    if (payload.length === 0) {
+      toast.error('No files to download');
+      return;
+    }
+    setBulkDownloading(true);
+    try {
+      await downloadStoredFiles(payload, 'work-order-files.zip');
+      toast.success(payload.length === 1 ? 'Download started' : `Downloading ${payload.length} files as ZIP`);
+    } catch {
+      toast.error('Download failed');
+    } finally {
+      setBulkDownloading(false);
+    }
   };
 
   const handleBulkDeleteSelected = async () => {
@@ -764,7 +787,9 @@ export function WorkOrderFilesTab({ workOrderId, canEdit = true }: Props) {
                     onSelectAll={() => fileSelection.selectAll(visibleFileIds)}
                     onClear={() => fileSelection.clear()}
                     onDeleteSelected={handleBulkDeleteSelected}
+                    onDownloadSelected={() => void handleBulkDownloadSelected()}
                     deleting={bulkDeleting}
+                    downloading={bulkDownloading}
                     className="mb-3"
                   />
 

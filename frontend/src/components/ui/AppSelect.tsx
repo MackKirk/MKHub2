@@ -11,7 +11,7 @@ import { ChevronDown, Plus } from 'lucide-react';
 import { sortByLabel } from '@/lib/sortOptions';
 import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
-import { uiCx, uiDropdown, uiTypography } from './tokens';
+import { uiBorders, uiCx, uiDropdown, uiTypography } from './tokens';
 import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 export type AppSelectOption = {
@@ -352,6 +352,7 @@ export function AppSelect({
     uiDropdown.trigger,
     'flex w-full items-center justify-between gap-2 pr-8 text-left',
     showPlaceholder && 'text-gray-400',
+    error && uiBorders.inputInvalid,
     open && !disabled && 'border-gray-400 ring-1 ring-inset ring-gray-400/35',
     triggerClassName ?? selectClassName,
   );

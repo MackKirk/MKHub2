@@ -1,3 +1,4 @@
+import toast from 'react-hot-toast';
 import {
   AppButton,
   AppEmptyState,
@@ -7,6 +8,7 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
+import { downloadFromUrl } from '@/lib/downloadFile';
 import { canEmbedWithOfficeOnline, officeOnlineEmbedSrc } from './officeOnlinePreview';
 
 type Props = {
@@ -15,14 +17,6 @@ type Props = {
   name: string | null | undefined;
   onClose: () => void;
 };
-
-function downloadFile(url: string, name: string) {
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name || 'download';
-  a.rel = 'noopener';
-  a.click();
-}
 
 export function FileOfficePreviewModal({ open, url, name, onClose }: Props) {
   const fileUrl = url || '';
@@ -53,7 +47,13 @@ export function FileOfficePreviewModal({ open, url, name, onClose }: Props) {
               >
                 Open
               </AppButton>
-              <AppButton size="sm" type="button" onClick={() => downloadFile(fileUrl, fileName)}>
+              <AppButton
+                size="sm"
+                type="button"
+                onClick={() => {
+                  void downloadFromUrl(fileUrl, fileName).catch(() => toast.error('Download failed'));
+                }}
+              >
                 Download
               </AppButton>
             </>
