@@ -13,6 +13,27 @@
 -->
 
 <<<RELEASE>>>
+id: 2026-08-18-1
+date: 2026-08-18
+title: Update 1.1.045 - Week 34
+
+### New
+- Files: select several files and download them together as a ZIP (one file still downloads normally).
+
+### Improved
+- Onboarding: categories at the top show where information is missing; Go to the Hub opens that step and highlights the empty fields.
+- Proposal PDF image captions can use up to three lines instead of two.
+- Login: after several failed attempts, Sign in waits before the next try (helps against password stuffing).
+
+### Fixed
+- Login no longer stacks error toasts or sends a flood of requests when the Sign in button is clicked repeatedly.
+- After filling a missing onboarding field, Go to the Hub goes to the Hub instead of bouncing to Emergency Contacts.
+- Project Files: Download saves the image instead of opening it in a new tab.
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
 id: 2026-08-14-1
 date: 2026-08-14
 title: Update 1.1.044 - Week 33
