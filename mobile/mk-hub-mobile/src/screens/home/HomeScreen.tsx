@@ -17,8 +17,6 @@ import { useAuth } from "../../hooks/useAuth";
 import { useCommunityBadge } from "../../hooks/useCommunityBadge";
 import { useTasksBadge } from "../../hooks/useTasksBadge";
 import { hasPermission } from "../../lib/permissions";
-import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
-import { MKCard } from "../../components/MKCard";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { getCommunityPosts } from "../../services/community";
 import type { CommunityPost } from "../../types/community";
@@ -26,7 +24,14 @@ import { stripHtmlToPlain } from "../../utils/stripHtml";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { typography } from "../../theme/typography";
-import { radius } from "../../theme/radius";
+import { radius, shadows } from "../../theme/radius";
+import { formatDateLocal } from "../../lib/dateUtils";
+import {
+  formatMinutesLabel,
+  formatTime12h,
+  getClockStateForDate
+} from "../../services/shifts";
+import type { ClockDayState, ShiftAttendanceResponse } from "../../types/shifts";
 import type { AppTabParamList, HomeStackParamList, RootStackParamList } from "../../navigation/types";
 
 type HomeNav = CompositeNavigationProp<
@@ -39,47 +44,117 @@ type HomeNav = CompositeNavigationProp<
 
 interface QuickAction {
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  accentColor: string;
-  badgeCount?: number;
-  onPress: () => void;
-}
-
-interface BusinessLink {
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  requiredPermission?: string;
-  onPress: () => void;
-}
-
-interface BusinessCard {
-  id: string;
-  title: string;
   subtitle: string;
-  headerIcon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof Ionicons.glyphMap;
   accentColor: string;
-  requiredPermission: string;
-  links: BusinessLink[];
+  tintBg: string;
+  onPress: () => void;
 }
 
-const NOVIDADES_PREVIEW_LIMIT = 3;
+const COMMUNITY_PREVIEW_LIMIT = 2;
+const HOME_GREEN = colors.homeAccent;
+
+const COMMUNITY_TINTS: Array<{
+  bg: string;
+  fg: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}> = [
+  { bg: "#DBEAFE", fg: "#2563EB", icon: "megaphone-outline" },
+  { bg: "#DCFCE7", fg: HOME_GREEN, icon: "calendar-outline" },
+  { bg: "#FEF3C7", fg: "#D97706", icon: "notifications-outline" },
+  { bg: "#EDE9FE", fg: "#7C3AED", icon: "chatbubbles-outline" }
+];
+
+function timeOfDayGreeting(date = new Date()): string {
+  const hour = date.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function communityAccent(post: CommunityPost, index: number) {
+  if (post.is_urgent) {
+    return { bg: "#FEE2E2", fg: "#DC2626", icon: "megaphone-outline" as const };
+  }
+  return COMMUNITY_TINTS[index % COMMUNITY_TINTS.length];
+}
+
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.max(0, Math.floor(diffMs / 60000));
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric"
+  });
+}
+
+function attendanceWorkedMinutes(
+  attendance: ShiftAttendanceResponse,
+  now: Date
+): number {
+  if (!attendance.clock_in_time) return 0;
+  const start = new Date(attendance.clock_in_time).getTime();
+  const end = attendance.clock_out_time
+    ? new Date(attendance.clock_out_time).getTime()
+    : now.getTime();
+  const raw = Math.max(0, Math.floor((end - start) / (1000 * 60)));
+  const breakMins = attendance.clock_out_time
+    ? attendance.break_minutes || 0
+    : 0;
+  return Math.max(0, raw - breakMins);
+}
+
+function dayWorkedMinutes(dayState: ClockDayState | null, now: Date): number {
+  if (!dayState) return 0;
+  const seen = new Set<string>();
+  let total = 0;
+  const add = (att: ShiftAttendanceResponse) => {
+    const key =
+      att.id ||
+      `${att.shift_id || "direct"}-${att.clock_in_time || ""}-${att.clock_out_time || ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    total += attendanceWorkedMinutes(att, now);
+  };
+  if (dayState.openAttendance) add(dayState.openAttendance);
+  for (const att of dayState.completeAttendances) add(att);
+  for (const att of dayState.attendances) {
+    if (!att.clock_in_time) continue;
+    add(att);
+  }
+  return total;
+}
 
 export const HomeScreen: React.FC = () => {
   const { user, permissions, roles } = useAuth();
   const navigation = useNavigation<HomeNav>();
   const { openMenu } = useHubMenu();
   const { unreadCount, setUnreadCount } = useCommunityBadge();
-  const { openCount: tasksOpenCount, refreshTasks } = useTasksBadge();
+  const { acceptedCount, inProgressCount, refreshTasks } = useTasksBadge();
 
   const permissionsSet = useMemo(() => new Set(permissions), [permissions]);
 
   const [novidades, setNovidades] = useState<CommunityPost[]>([]);
   const [loadingNovidades, setLoadingNovidades] = useState(false);
+  const [dayState, setDayState] = useState<ClockDayState | null>(null);
 
   const firstName =
     (user?.first_name && user.first_name.trim()) ||
     user?.username ||
     "there";
+
+  const greeting = `${timeOfDayGreeting()}, ${firstName}`;
+  const todayLabel = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric"
+  });
 
   const goStack = useCallback(
     (screen: keyof HomeStackParamList, params?: object) => {
@@ -88,226 +163,83 @@ export const HomeScreen: React.FC = () => {
     [navigation]
   );
 
-  const businessCards: BusinessCard[] = useMemo(
-    () => [
-      {
-        id: "production",
-        title: "Production",
-        subtitle: "Sales",
-        headerIcon: "briefcase-outline",
-        accentColor: "#2563eb",
-        requiredPermission: "business:construction:projects:read",
-        links: [
-          {
-            label: "Opportunities",
-            icon: "document-text-outline",
-            onPress: () =>
-              goStack("ProjectsList", {
-                listKind: "opportunities",
-                businessLine: "construction",
-                title: "Opportunities"
-              })
-          },
-          {
-            label: "Projects",
-            icon: "folder-open-outline",
-            onPress: () =>
-              goStack("ProjectsList", {
-                listKind: "projects",
-                businessLine: "construction",
-                title: "Projects"
-              })
-          }
-        ]
-      },
-      {
-        id: "rm",
-        title: "Repairs & Maintenance",
-        subtitle: "",
-        headerIcon: "construct-outline",
-        accentColor: "#d97706",
-        requiredPermission: "business:rm:projects:read",
-        links: [
-          {
-            label: "Opportunities",
-            icon: "document-text-outline",
-            onPress: () =>
-              goStack("ProjectsList", {
-                listKind: "opportunities",
-                businessLine: "repairs_maintenance",
-                title: "R&M Opportunities"
-              })
-          },
-          {
-            label: "Projects",
-            icon: "folder-open-outline",
-            onPress: () =>
-              goStack("ProjectsList", {
-                listKind: "projects",
-                businessLine: "repairs_maintenance",
-                title: "R&M Projects"
-              })
-          }
-        ]
-      },
-      {
-        id: "customers",
-        title: "Customers",
-        subtitle: "Customers, contacts & sites",
-        headerIcon: "people-outline",
-        accentColor: "#be123c",
-        requiredPermission: "business:customers:read",
-        links: [
-          {
-            label: "Customers",
-            icon: "people-outline",
-            requiredPermission: "business:customers:read",
-            onPress: () => goStack("CustomersList")
-          }
-        ]
-      },
-      {
-        id: "fleet-shop",
-        title: "Fleet Shop",
-        subtitle: "Work orders & vehicles",
-        headerIcon: "build-outline",
-        accentColor: "#115e59",
-        requiredPermission: "fleet:shop:access",
-        links: [
-          {
-            label: "Work Orders",
-            icon: "clipboard-outline",
-            requiredPermission: "work_orders:read",
-            onPress: () => goStack("FleetWorkOrders")
-          },
-          {
-            label: "Schedule",
-            icon: "calendar-outline",
-            requiredPermission: "work_orders:read",
-            onPress: () => goStack("FleetSchedule")
-          },
-          {
-            label: "Inspections",
-            icon: "checkbox-outline",
-            requiredPermission: "inspections:read",
-            onPress: () => goStack("FleetInspections")
-          },
-          {
-            label: "Vehicles",
-            icon: "car-outline",
-            requiredPermission: "fleet:vehicles:read",
-            onPress: () =>
-              goStack("FleetAssetsList", {
-                listKind: "vehicles",
-                title: "Vehicles"
-              })
-          }
-        ]
-      },
-      {
-        id: "company-assets",
-        title: "Company Assets",
-        subtitle: "Equipment & corporate cards",
-        headerIcon: "cube-outline",
-        accentColor: "#7c3aed",
-        requiredPermission: "company_assets:access",
-        links: [
-          {
-            label: "Equipment",
-            icon: "construct-outline",
-            requiredPermission: "equipment:read",
-            onPress: () =>
-              goStack("FleetAssetsList", {
-                listKind: "equipment",
-                title: "Equipment"
-              })
-          },
-          {
-            label: "Corporate Cards",
-            icon: "card-outline",
-            requiredPermission: "company_cards:read",
-            onPress: () => goStack("CompanyCreditCards")
-          }
-        ]
-      }
-    ],
+  const goPlaceholder = useCallback(
+    (title: string, message: string) => {
+      goStack("Placeholder", { title, message });
+    },
     [goStack]
   );
 
-  const visibleBusinessCards = useMemo(
-    () =>
-      businessCards
-        .filter((card) => hasPermission(permissionsSet, roles, card.requiredPermission))
-        .filter((card) =>
-          card.links.some(
-            (link) =>
-              !link.requiredPermission ||
-              hasPermission(permissionsSet, roles, link.requiredPermission)
-          )
-        ),
-    [businessCards, permissionsSet, roles]
-  );
+  const openAssets = useCallback(() => {
+    if (hasPermission(permissionsSet, roles, "fleet:access")) {
+      goStack("FleetMyAssets");
+      return;
+    }
+    if (hasPermission(permissionsSet, roles, "equipment:read")) {
+      goStack("FleetAssetsList", { listKind: "equipment", title: "Equipment" });
+      return;
+    }
+    goPlaceholder("Assets", "Company assets will be available here soon.");
+  }, [goPlaceholder, goStack, permissionsSet, roles]);
 
-  const quickActions: QuickAction[] = useMemo(() => {
-    const actions: QuickAction[] = [
+  const quickActions: QuickAction[] = useMemo(
+    () => [
       {
-        label: "Schedule",
-        icon: "calendar-outline",
-        accentColor: "#2563eb",
-        onPress: () => goStack("Schedule")
-      },
-      {
-        label: "Clock",
+        label: "Clock In/Out",
+        subtitle: "Track your time",
         icon: "time-outline",
-        accentColor: "#059669",
+        accentColor: "#166534",
+        tintBg: "#DCFCE7",
         onPress: () => navigation.navigate("Clock")
       },
       {
-        label: "Tasks",
-        icon: "checkmark-circle-outline",
-        accentColor: "#7c3aed",
-        badgeCount: tasksOpenCount,
-        onPress: () => navigation.navigate("Tasks")
+        label: "Schedule",
+        subtitle: "View your shifts",
+        icon: "calendar-outline",
+        accentColor: "#2563EB",
+        tintBg: "#DBEAFE",
+        onPress: () => goStack("Schedule")
       },
       {
-        label: "Community",
-        icon: "chatbubbles-outline",
-        accentColor: colors.primary,
-        badgeCount: unreadCount,
-        onPress: () => navigation.navigate("Community")
+        label: "Time Off",
+        subtitle: "Request time off",
+        icon: "sunny-outline",
+        accentColor: "#EA580C",
+        tintBg: "#FFEDD5",
+        onPress: () =>
+          goPlaceholder(
+            "Time Off",
+            "Time-off requests will be available here soon."
+          )
+      },
+      {
+        label: "Sick Leave",
+        subtitle: "Report an absence",
+        icon: "medkit-outline",
+        accentColor: "#DC2626",
+        tintBg: "#FEE2E2",
+        onPress: () =>
+          goPlaceholder(
+            "Sick Leave",
+            "Sick leave reporting will be available here soon."
+          )
       }
-    ];
-
-    if (hasPermission(permissionsSet, roles, "fleet:access")) {
-      actions.push({
-        label: "My Assets",
-        icon: "person-circle-outline",
-        accentColor: "#0f766e",
-        onPress: () => goStack("FleetMyAssets")
-      });
-    }
-
-    actions.push({
-      label: "Profile",
-      icon: "person-outline",
-      accentColor: "#64748b",
-      onPress: () =>
-        goStack("Placeholder", {
-          title: "Profile",
-          message: "Your profile will be available here soon."
-        })
-    });
-
-    return actions;
-  }, [goStack, navigation, permissionsSet, roles, tasksOpenCount, unreadCount]);
+    ],
+    [goPlaceholder, goStack, navigation]
+  );
 
   const loadNovidades = useCallback(async () => {
     try {
       setLoadingNovidades(true);
-      const unread = await getCommunityPosts("unread");
-      const count = Array.isArray(unread) ? unread.length : 0;
-      setUnreadCount(count);
-      setNovidades(unread.slice(0, NOVIDADES_PREVIEW_LIMIT));
+      const [unread, all] = await Promise.all([
+        getCommunityPosts("unread"),
+        getCommunityPosts("all")
+      ]);
+      const unreadList = Array.isArray(unread) ? unread : [];
+      const allList = Array.isArray(all) ? all : [];
+      setUnreadCount(unreadList.length);
+      const previewSource = unreadList.length > 0 ? unreadList : allList;
+      setNovidades(previewSource.slice(0, COMMUNITY_PREVIEW_LIMIT));
     } catch {
       setNovidades([]);
       setUnreadCount(0);
@@ -316,153 +248,287 @@ export const HomeScreen: React.FC = () => {
     }
   }, [setUnreadCount]);
 
+  const loadDay = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const state = await getClockStateForDate(formatDateLocal(new Date()), user.id);
+      setDayState(state);
+    } catch {
+      setDayState(null);
+    }
+  }, [user?.id]);
+
   useFocusEffect(
     useCallback(() => {
       loadNovidades();
       void refreshTasks();
-    }, [loadNovidades, refreshTasks])
+      void loadDay();
+    }, [loadNovidades, refreshTasks, loadDay])
   );
 
-  const renderQuickAction = (item: QuickAction) => (
-    <TouchableOpacity
-      key={item.label}
-      style={[styles.shortcut, styles.shortcutCompact]}
-      onPress={item.onPress}
-      activeOpacity={0.75}
-    >
-      <View style={[styles.cardAccent, { backgroundColor: item.accentColor }]} />
-      <View style={styles.shortcutCompactBody}>
-        <View style={styles.shortcutIconWrap}>
-          <Ionicons name={item.icon} size={30} color={item.accentColor} />
-          {item.badgeCount && item.badgeCount > 0 ? (
-            <View style={styles.quickBadge}>
-              <Text style={styles.quickBadgeText}>
-                {item.badgeCount > 99 ? "99+" : item.badgeCount}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-        <Text style={styles.shortcutLine1Compact} numberOfLines={1}>
-          {item.label}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const nextShift = dayState?.nextPendingShift ?? dayState?.shifts[0] ?? null;
+  const clockedIn = !!dayState?.openAttendance;
+  const hoursLabel = formatMinutesLabel(dayWorkedMinutes(dayState, new Date()));
+  const nextShiftLabel = nextShift
+    ? formatTime12h(nextShift.start_time)
+    : "None";
+  const clockStatusLabel = clockedIn ? "Clocked in" : "Clocked out";
 
-  const renderBusinessCard = (card: BusinessCard) => (
-    <View key={card.id} style={styles.businessCard}>
-      <View style={[styles.cardAccent, { backgroundColor: card.accentColor }]} />
-      <View style={styles.businessCardBody}>
-        <View style={styles.businessCardHeader}>
-          <Ionicons name={card.headerIcon} size={22} color={card.accentColor} />
-          <View style={styles.businessCardTitles}>
-            <Text style={styles.businessCardTitle} numberOfLines={1}>
-              {card.title}
-            </Text>
-            {card.subtitle ? (
-              <Text style={styles.businessCardSubtitle} numberOfLines={1}>
-                {card.subtitle}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={styles.businessLinksRow}>
-          {card.links
-            .filter(
-              (link) =>
-                !link.requiredPermission ||
-                hasPermission(permissionsSet, roles, link.requiredPermission)
-            )
-            .map((link) => (
-            <TouchableOpacity
-              key={link.label}
-              style={styles.businessLink}
-              onPress={link.onPress}
-              activeOpacity={0.75}
-            >
-              <Ionicons name={link.icon} size={28} color={colors.textPrimary} />
-              <Text style={styles.businessLinkLabel} numberOfLines={1}>
-                {link.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
+  const renderSectionHeader = (title: string, onViewAll?: () => void) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {onViewAll ? (
+        <TouchableOpacity onPress={onViewAll} hitSlop={8}>
+          <Text style={styles.viewAll}>View all</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 
   return (
-    <ScreenLayout scroll={false} contentStyle={styles.layout}>
+    <ScreenLayout
+      scroll={false}
+      style={styles.screen}
+      contentStyle={styles.layout}
+    >
       <ScrollView showsVerticalScrollIndicator={false}>
-        <MKHomeStyleHeader
-          title={`Welcome, ${firstName}`}
-          subtitle="Quick shortcuts for your day"
-          onLeftPress={openMenu}
-        />
+        <View style={styles.topHeader}>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={openMenu}
+            activeOpacity={0.75}
+            hitSlop={8}
+          >
+            <Ionicons name="menu" size={22} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.greeting} numberOfLines={1} adjustsFontSizeToFit>
+            {greeting}
+          </Text>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() => navigation.navigate("Community")}
+            activeOpacity={0.75}
+            hitSlop={8}
+          >
+            <Ionicons
+              name="notifications-outline"
+              size={20}
+              color={colors.textPrimary}
+            />
+            {unreadCount > 0 ? <View style={styles.headerDot} /> : null}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.myDayCard}>
+          <View style={styles.myDayTop}>
+            <View style={styles.myDayTitles}>
+              <Text style={styles.myDayTitle}>My Day</Text>
+              <Text style={styles.myDayDate}>{todayLabel}</Text>
+            </View>
+            <View style={styles.statusPill}>
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: clockedIn ? HOME_GREEN : HOME_GREEN }
+                ]}
+              />
+              <Text style={styles.statusPillText}>{clockStatusLabel}</Text>
+            </View>
+          </View>
+
+          <View style={styles.myDayStats}>
+            <View style={styles.myDayStat}>
+              <View style={styles.myDayStatHead}>
+                <Ionicons name="calendar-outline" size={14} color={HOME_GREEN} />
+                <Text style={styles.myDayStatLabel}>Next shift</Text>
+              </View>
+              <Text style={styles.myDayStatValue}>{nextShiftLabel}</Text>
+            </View>
+            <View style={styles.myDayDivider} />
+            <View style={styles.myDayStat}>
+              <View style={styles.myDayStatHead}>
+                <Ionicons name="time-outline" size={14} color={HOME_GREEN} />
+                <Text style={styles.myDayStatLabel}>Today</Text>
+              </View>
+              <Text style={styles.myDayStatValue}>{hoursLabel}</Text>
+            </View>
+            <View style={styles.myDayDivider} />
+            <View style={styles.myDayStat}>
+              <View style={styles.myDayStatHead}>
+                <Ionicons name="enter-outline" size={14} color={HOME_GREEN} />
+                <Text style={styles.myDayStatLabel}>Clock status</Text>
+              </View>
+              <Text style={[styles.myDayStatValue, { color: HOME_GREEN }]}>
+                {clockStatusLabel}
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.clockButton}
+            onPress={() => navigation.navigate("Clock")}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="time-outline" size={18} color="#fff" />
+            <Text style={styles.clockButtonText}>
+              {clockedIn ? "Clock Out" : "Clock In"}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick actions</Text>
+          {renderSectionHeader("Quick Actions", openMenu)}
           <View style={styles.quickGrid}>
-            {quickActions.map(renderQuickAction)}
+            {quickActions.map((item) => (
+              <TouchableOpacity
+                key={item.label}
+                style={styles.quickAction}
+                onPress={item.onPress}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: item.tintBg }]}>
+                  <Ionicons name={item.icon} size={22} color={item.accentColor} />
+                </View>
+                <Text style={styles.quickLabel} numberOfLines={1}>
+                  {item.label}
+                </Text>
+                <Text style={styles.quickSubtitle} numberOfLines={1}>
+                  {item.subtitle}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
-        {visibleBusinessCards.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Work Areas</Text>
-            <View style={styles.businessCardsList}>
-              {visibleBusinessCards.map(renderBusinessCard)}
-            </View>
+        <View style={styles.section}>
+          {renderSectionHeader("Tasks", () => navigation.navigate("Tasks"))}
+          <View style={styles.tasksCard}>
+            <TouchableOpacity
+              style={styles.taskStat}
+              onPress={() => navigation.navigate("Tasks")}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.taskIcon, { backgroundColor: "#FFEDD5" }]}>
+                <Ionicons name="document-text-outline" size={18} color="#EA580C" />
+              </View>
+              <View>
+                <Text style={[styles.taskCount, { color: "#EA580C" }]}>
+                  {acceptedCount}
+                </Text>
+                <Text style={styles.taskLabel}>Open</Text>
+              </View>
+            </TouchableOpacity>
+            <View style={styles.taskDivider} />
+            <TouchableOpacity
+              style={styles.taskStat}
+              onPress={() => navigation.navigate("Tasks")}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.taskIcon, { backgroundColor: "#DCFCE7" }]}>
+                <Ionicons name="checkmark-circle-outline" size={18} color={HOME_GREEN} />
+              </View>
+              <View>
+                <Text style={[styles.taskCount, { color: HOME_GREEN }]}>
+                  {inProgressCount}
+                </Text>
+                <Text style={styles.taskLabel}>In Progress</Text>
+              </View>
+            </TouchableOpacity>
           </View>
-        ) : null}
+        </View>
 
         <View style={styles.section}>
-          <View style={styles.novidadesHeader}>
-            <Text style={styles.sectionTitle}>Community updates</Text>
-            {unreadCount > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </Text>
-              </View>
-            )}
-          </View>
-
+          {renderSectionHeader("Community Updates", () =>
+            navigation.navigate("Community")
+          )}
           {loadingNovidades ? (
             <View style={styles.novidadesLoading}>
-              <ActivityIndicator color={colors.primary} />
+              <ActivityIndicator color={HOME_GREEN} />
             </View>
           ) : novidades.length === 0 ? (
             <View style={styles.novidadesEmpty}>
-              <Text style={styles.novidadesEmptyText}>No new community posts</Text>
+              <Text style={styles.novidadesEmptyText}>No community posts yet</Text>
             </View>
           ) : (
             <View style={styles.novidadesList}>
-              {novidades.map((post) => (
-                <MKCard
-                  key={post.id}
-                  style={styles.novidadeCard}
-                  onPress={() => navigation.navigate("Community")}
-                  elevated
-                >
-                  <View style={styles.novidadeHeader}>
-                    <Text style={styles.novidadeTitle} numberOfLines={1}>
-                      {post.title}
-                    </Text>
-                    <View style={styles.unreadDot} />
-                  </View>
-                  <Text style={styles.novidadePreview} numberOfLines={2}>
-                    {stripHtmlToPlain(post.content)}
-                  </Text>
-                  <Text style={styles.novidadeMeta}>
-                    {post.author_name || "Unknown"} ·{" "}
-                    {new Date(post.created_at).toLocaleDateString()}
-                  </Text>
-                </MKCard>
-              ))}
+              {novidades.map((post, index) => {
+                const tint = communityAccent(post, index);
+                return (
+                  <TouchableOpacity
+                    key={post.id}
+                    style={[
+                      styles.novidadeRow,
+                      index === novidades.length - 1 && styles.novidadeRowLast
+                    ]}
+                    onPress={() => navigation.navigate("Community")}
+                    activeOpacity={0.75}
+                  >
+                    <View style={[styles.novidadeIcon, { backgroundColor: tint.bg }]}>
+                      <Ionicons name={tint.icon} size={18} color={tint.fg} />
+                    </View>
+                    <View style={styles.novidadeCopy}>
+                      <Text style={styles.novidadeTitle} numberOfLines={1}>
+                        {post.title}
+                      </Text>
+                      <Text style={styles.novidadePreview} numberOfLines={1}>
+                        {stripHtmlToPlain(post.content)}
+                      </Text>
+                      <Text style={styles.novidadeMeta}>
+                        {formatRelativeTime(post.created_at)}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={16}
+                      color={colors.textMuted}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           )}
+        </View>
+
+        <View style={styles.section}>
+          {renderSectionHeader("More tools")}
+          <View style={styles.moreCard}>
+            <TouchableOpacity style={styles.moreItem} onPress={openAssets}>
+              <View style={[styles.moreIcon, { backgroundColor: "#EDE9FE" }]}>
+                <Ionicons name="cube-outline" size={20} color="#7C3AED" />
+              </View>
+              <Text style={styles.moreLabel}>Assets</Text>
+            </TouchableOpacity>
+            <View style={styles.moreDivider} />
+            <TouchableOpacity
+              style={styles.moreItem}
+              onPress={() =>
+                goPlaceholder(
+                  "Policies",
+                  "Policies and training will be available here soon."
+                )
+              }
+            >
+              <View style={[styles.moreIcon, { backgroundColor: "#DBEAFE" }]}>
+                <Ionicons name="document-text-outline" size={20} color="#2563EB" />
+              </View>
+              <Text style={styles.moreLabel}>Policies</Text>
+            </TouchableOpacity>
+            <View style={styles.moreDivider} />
+            <TouchableOpacity
+              style={styles.moreItem}
+              onPress={() =>
+                goPlaceholder(
+                  "Directory",
+                  "The company directory will be available here soon."
+                )
+              }
+            >
+              <View style={[styles.moreIcon, { backgroundColor: "#CCFBF1" }]}>
+                <Ionicons name="people-outline" size={20} color="#0F766E" />
+              </View>
+              <Text style={styles.moreLabel}>Directory</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </ScreenLayout>
@@ -470,216 +536,323 @@ export const HomeScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: "#fff"
+  },
   layout: {
-    flex: 1
+    flex: 1,
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingBottom: spacing.md
   },
-  businessCardsList: {
-    gap: spacing.md
-  },
-  businessCard: {
+  topHeader: {
     flexDirection: "row",
-    backgroundColor: colors.card,
-    borderRadius: radius.card,
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.lg
+  },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: "hidden"
-  },
-  cardAccent: {
-    width: 4
-  },
-  businessCardBody: {
-    flex: 1,
-    padding: spacing.md,
-    gap: spacing.md
-  },
-  businessCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm
-  },
-  businessCardTitles: {
-    flex: 1,
-    minWidth: 0
-  },
-  businessCardTitle: {
-    ...typography.body,
-    fontFamily: typography.button.fontFamily,
-    color: colors.textPrimary
-  },
-  businessCardSubtitle: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginTop: 1
-  },
-  businessLinksRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm
-  },
-  businessLink: {
-    width: "31%",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-    backgroundColor: colors.background,
-    borderRadius: radius.control,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    minHeight: 88
-  },
-  businessLinkLabel: {
-    ...typography.bodySmall,
-    fontFamily: typography.button.fontFamily,
-    color: colors.textPrimary,
-    textAlign: "center"
-  },
-  shortcut: {
-    width: "47%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.card,
-    borderRadius: radius.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    minHeight: 72
-  },
-  shortcutCompact: {
-    width: "31%",
-    flexDirection: "row",
-    alignItems: "stretch",
-    overflow: "hidden",
-    padding: 0,
-    minHeight: 88
-  },
-  shortcutCompactBody: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    gap: spacing.xs
-  },
-  shortcutIconWrap: {
-    position: "relative",
     alignItems: "center",
     justifyContent: "center"
   },
-  quickBadge: {
-    position: "absolute",
-    top: -6,
-    right: -12,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: colors.card
-  },
-  quickBadgeText: {
-    color: "#fff",
-    fontSize: 10,
-    lineHeight: 12,
-    fontFamily: typography.button.fontFamily
-  },
-  shortcutLine1Compact: {
-    textTransform: "none",
-    letterSpacing: 0,
-    ...typography.bodySmall,
+  greeting: {
+    flex: 1,
+    textAlign: "center",
     fontFamily: typography.button.fontFamily,
-    color: colors.textPrimary,
-    textAlign: "center"
+    fontSize: 18,
+    lineHeight: 24,
+    color: colors.textPrimary
   },
-  section: {
+  headerDot: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary
+  },
+  myDayCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
+    ...shadows.card
+  },
+  myDayTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.md,
     marginBottom: spacing.lg
   },
-  sectionTitle: {
-    ...typography.bodySmall,
+  myDayTitles: {
+    flex: 1,
+    minWidth: 0
+  },
+  myDayTitle: {
     fontFamily: typography.button.fontFamily,
+    fontSize: 18,
+    lineHeight: 24,
+    color: colors.textPrimary
+  },
+  myDayDate: {
+    ...typography.caption,
     color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: spacing.sm
+    marginTop: 2
+  },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#ECFDF3",
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4
+  },
+  statusPillText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 12,
+    color: HOME_GREEN
+  },
+  myDayStats: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    marginBottom: spacing.lg
+  },
+  myDayStat: {
+    flex: 1,
+    minWidth: 0
+  },
+  myDayStatHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 6
+  },
+  myDayStatLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: colors.textMuted
+  },
+  myDayStatValue: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 15,
+    lineHeight: 20,
+    color: colors.textPrimary
+  },
+  myDayDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.sm
+  },
+  clockButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: HOME_GREEN,
+    borderRadius: 14,
+    paddingVertical: 14
+  },
+  clockButtonText: {
+    color: "#fff",
+    fontFamily: typography.button.fontFamily,
+    fontSize: 16
+  },
+  section: {
+    marginBottom: 22
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.md
+  },
+  sectionTitle: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 16,
+    lineHeight: 22,
+    color: colors.textPrimary
+  },
+  viewAll: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 13,
+    color: HOME_GREEN
   },
   quickGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm
+    justifyContent: "space-between",
+    rowGap: 12
   },
-  novidadesHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    marginBottom: spacing.sm
+  quickAction: {
+    width: "48.5%",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    ...shadows.card
   },
-  badge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.primary,
+  quickIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.xs
+    marginBottom: 12
   },
-  badgeText: {
-    ...typography.caption,
-    color: colors.card,
-    fontFamily: typography.button.fontFamily
+  quickLabel: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 14,
+    lineHeight: 18,
+    color: colors.textPrimary
+  },
+  quickSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMuted,
+    marginTop: 2
+  },
+  tasksCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    ...shadows.card
+  },
+  taskStat: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md
+  },
+  taskIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  taskDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 44,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.md
+  },
+  taskCount: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 22,
+    lineHeight: 26
+  },
+  taskLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMuted
   },
   novidadesLoading: {
     paddingVertical: spacing.lg,
     alignItems: "center"
   },
   novidadesEmpty: {
-    backgroundColor: colors.card,
-    borderRadius: radius.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: "#fff",
+    borderRadius: 16,
     padding: spacing.lg,
-    alignItems: "center"
+    alignItems: "center",
+    ...shadows.card
   },
   novidadesEmptyText: {
     ...typography.bodySmall,
     color: colors.textMuted
   },
   novidadesList: {
-    gap: spacing.sm
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
+    ...shadows.card
   },
-  novidadeCard: {
-    padding: spacing.md
-  },
-  novidadeHeader: {
+  novidadeRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-    marginBottom: spacing.xs
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border
+  },
+  novidadeRowLast: {
+    borderBottomWidth: 0
+  },
+  novidadeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  novidadeCopy: {
+    flex: 1,
+    minWidth: 0
   },
   novidadeTitle: {
-    ...typography.body,
     fontFamily: typography.button.fontFamily,
-    color: colors.textPrimary,
-    flex: 1
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.primary
+    fontSize: 14,
+    lineHeight: 18,
+    color: colors.textPrimary
   },
   novidadePreview: {
-    ...typography.bodySmall,
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.textMuted,
-    marginBottom: spacing.xs
+    marginTop: 2
   },
   novidadeMeta: {
-    ...typography.caption,
-    color: colors.textMuted
+    fontSize: 11,
+    lineHeight: 14,
+    color: colors.textMuted,
+    marginTop: 4
   },
+  moreCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    paddingVertical: 16,
+    ...shadows.card
+  },
+  moreItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: spacing.sm
+  },
+  moreDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 44,
+    backgroundColor: colors.border
+  },
+  moreIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  moreLabel: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 13,
+    color: colors.textPrimary
+  }
 });

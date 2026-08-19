@@ -10,6 +10,9 @@ from starlette.responses import Response
 def setup_logging() -> None:
     level = os.getenv("LOG_LEVEL", "INFO").upper()
     logging.basicConfig(format="%(message)s", level=getattr(logging, level, logging.INFO))
+    # Phone JPEGs (Samsung MPF / EXIF IFD) spam tag dumps at DEBUG via Pillow/exifread.
+    for noisy in ("exifread", "PIL", "PIL.TiffImagePlugin", "PIL.JpegImagePlugin"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,

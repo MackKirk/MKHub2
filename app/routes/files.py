@@ -37,6 +37,13 @@ from ..services.file_access_control import (
     infer_scope_from_storage_key,
     merge_confirm_scope,
 )
+from ..services.image_thumbnails import (
+    cache_lookup,
+    cache_store,
+    clamp_thumb_width,
+    render_thumbnail,
+    thumbnail_slot,
+)
 from ..storage.blob_provider import BlobStorageProvider
 from ..storage.local_provider import LocalStorageProvider
 from ..storage.provider import StorageProvider
@@ -1023,19 +1030,47 @@ def preview(
         return {"preview_url": url, "expires_in": 300}
 
 
-def _pil_image_for_png_thumbnail(im):
-    """Preserve alpha when generating PNG thumbnails (avoid black matte on transparent PNGs)."""
-    if im.mode == "RGBA":
-        return im
-    if im.mode == "LA":
-        return im.convert("RGBA")
-    if im.mode == "P":
-        if "transparency" in im.info:
-            return im.convert("RGBA")
-        return im.convert("RGB")
-    if im.mode != "RGB":
-        return im.convert("RGB")
-    return im
+def _read_storage_bytes_for_thumbnail(storage, fo: FileObject, file_id: str, logger) -> bytes:
+    """Load original file bytes without quadratic concatenation."""
+    if isinstance(storage, LocalStorageProvider):
+        file_path = storage._get_path(fo.key)
+        if not file_path.exists():
+            if fo.provider == "blob":
+                logger.warning(
+                    f"File {file_id} (key: {fo.key}) not found locally. "
+                    f"This file was stored in blob storage. "
+                    f"To access it locally, configure AZURE_BLOB_CONNECTION and AZURE_BLOB_CONTAINER environment variables."
+                )
+            raise HTTPException(status_code=404, detail="File not found")
+        return file_path.read_bytes()
+
+    url = storage.get_download_url(fo.key, expires_s=300)
+    if not url:
+        raise HTTPException(status_code=404, detail="File not available in blob storage")
+    max_bytes = int(settings.upload_max_mb) * 1024 * 1024
+    with httpx.stream("GET", url, timeout=30.0) as r:
+        if r.status_code == 404:
+            logger.warning(
+                "Thumbnail: blob missing (404) for file %s (key: %s)",
+                file_id,
+                fo.key,
+            )
+            raise HTTPException(status_code=404, detail="File not found in storage")
+        if 400 <= r.status_code < 500:
+            logger.warning(
+                "Thumbnail: upstream HTTP %s for file %s (key: %s)",
+                r.status_code,
+                file_id,
+                fo.key,
+            )
+            raise HTTPException(status_code=404, detail="File not available in storage")
+        r.raise_for_status()
+        buf = bytearray()
+        for chunk in r.iter_bytes(65536):
+            buf.extend(chunk)
+            if len(buf) > max_bytes:
+                raise HTTPException(status_code=413, detail="File too large to thumbnail")
+        return bytes(buf)
 
 
 @router.get("/{file_id}/thumbnail")
@@ -1046,6 +1081,7 @@ def thumbnail(
     user: User = Depends(get_current_user_bearer_or_query_token),
 ):
     import logging
+
     logger = logging.getLogger(__name__)
     
     fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
@@ -1053,171 +1089,45 @@ def thumbnail(
         raise HTTPException(status_code=404, detail="File not found")
     assert_can_read_file_object(user, db, fo)
 
-    target_w = max(80, min(1024, int(w or 200)))
+    target_w = clamp_thumb_width(w)
+    cached = cache_lookup(file_id, target_w, fo.size_bytes)
+    if cached is not None:
+        return Response(
+            content=cached.content,
+            media_type=cached.media_type,
+            headers={"Cache-Control": "private, max-age=86400"},
+        )
 
-    # Get the appropriate storage provider for this specific file
     storage = get_storage_for_file(fo)
-    
-    # Fetch and convert to small PNG
-    import io
-    import httpx
-    from PIL import Image as PILImage
-    
     try:
-        # For local storage, read file directly
-        if isinstance(storage, LocalStorageProvider):
-            file_path = storage._get_path(fo.key)
-            if not file_path.exists():
-                # File not found locally
-                # If this file was stored in blob storage, it won't be available locally
-                # unless Azure credentials are configured in local environment
-                if fo.provider == "blob":
-                    logger.warning(
-                        f"File {file_id} (key: {fo.key}) not found locally. "
-                        f"This file was stored in blob storage. "
-                        f"To access it locally, configure AZURE_BLOB_CONNECTION and AZURE_BLOB_CONTAINER environment variables."
-                    )
-                raise HTTPException(status_code=404, detail="File not found")
-            with open(file_path, "rb") as f:
-                file_content = f.read()
-        else:
-            # For blob storage, download from URL
-            url = storage.get_download_url(fo.key, expires_s=300)
-            if not url:
-                raise HTTPException(status_code=404, detail="File not available in blob storage")
-            # Download file from storage
-            with httpx.stream("GET", url, timeout=30.0) as r:
-                if r.status_code == 404:
-                    logger.warning(
-                        "Thumbnail: blob missing (404) for file %s (key: %s)",
-                        file_id,
-                        fo.key,
-                    )
-                    raise HTTPException(status_code=404, detail="File not found in storage")
-                if 400 <= r.status_code < 500:
-                    logger.warning(
-                        "Thumbnail: upstream HTTP %s for file %s (key: %s)",
-                        r.status_code,
-                        file_id,
-                        fo.key,
-                    )
-                    raise HTTPException(status_code=404, detail="File not available in storage")
-                r.raise_for_status()
-                # Read all content into bytes
-                file_content = b""
-                for chunk in r.iter_bytes():
-                    file_content += chunk
-        
-        # Check if file has content
-        if len(file_content) == 0:
-            raise ValueError("Downloaded file is empty")
-        
-        # Create buffer from bytes
-        buf = io.BytesIO(file_content)
-        buf.seek(0)
-        
-        # Try to detect if it's a HEIC file by extension or content type
-        is_heic = False
-        original_name = str(fo.key) if fo else ''
-        content_type = str(fo.content_type) if fo and fo.content_type else ''
-        
-        # Check by extension
-        if original_name.lower().endswith(('.heic', '.heif')):
-            is_heic = True
-        
-        # Check by content type
-        if 'heic' in content_type.lower() or 'heif' in content_type.lower():
-            is_heic = True
-        
-        # Check file signature (HEIC files start with ftyp box)
-        # HEIC files can have 'heic' or 'heif' in the first 20 bytes, or 'mif1'/'msf1' slightly later
-        if len(file_content) >= 20:
-            header = file_content[:20]
-            if header[:4] == b'ftyp':
-                # Check for HEIC/HEIF brand indicators in first 20 bytes
-                # 'heic'/'heif' typically appear around bytes 8-12, 'mif1'/'msf1' around bytes 16-20
-                if (b'heic' in header[4:20] or b'heif' in header[4:20] or 
-                    b'mif1' in header[4:20] or b'msf1' in header[4:20]):
-                    is_heic = True
-        
-        # Ensure pillow-heif is registered for HEIC files
-        if is_heic:
-            try:
-                from pillow_heif import register_heif_opener
-                register_heif_opener()
-            except Exception as heif_err:
-                logger.warning(f"Could not register HEIF opener: {heif_err}")
-        
-        # Open and process image
-        buf.seek(0)
-        try:
-            im = PILImage.open(buf)
-        except Exception as open_err:
-            # If opening failed, check if it might be a HEIC file that wasn't detected
-            # This can happen if the file signature check failed or content_type is wrong
-            error_msg = str(open_err).lower()
-            is_possibly_heic = (
-                is_heic or 
-                'cannot identify image file' in error_msg or
-                original_name.lower().endswith(('.heic', '.heif')) or
-                ('heic' in content_type.lower() or 'heif' in content_type.lower())
+        with thumbnail_slot():
+            cached = cache_lookup(file_id, target_w, fo.size_bytes)
+            if cached is not None:
+                return Response(
+                    content=cached.content,
+                    media_type=cached.media_type,
+                    headers={"Cache-Control": "private, max-age=86400"},
+                )
+            file_content = _read_storage_bytes_for_thumbnail(storage, fo, file_id, logger)
+            result = render_thumbnail(
+                file_content,
+                target_w,
+                original_name=str(fo.key or ""),
+                content_type=str(fo.content_type or ""),
             )
-            
-            if is_possibly_heic:
-                # Try to register pillow-heif and retry
-                try:
-                    from pillow_heif import register_heif_opener
-                    register_heif_opener()
-                    buf.seek(0)
-                    im = PILImage.open(buf)
-                    logger.info(f"Successfully opened HEIC file after re-registering opener: {original_name}")
-                except Exception as retry_err:
-                    # Try CLI fallback via heif-convert to JPEG, then open and continue
-                    try:
-                        import tempfile
-                        import subprocess
-                        with tempfile.TemporaryDirectory() as td:
-                            src_path = os.path.join(td, "in.heic")
-                            dst_path = os.path.join(td, "out.jpg")
-                            with open(src_path, "wb") as fsrc:
-                                fsrc.write(file_content)
-                            subprocess.run(["heif-convert", "-q", "90", src_path, dst_path], check=True, timeout=30)
-                            with open(dst_path, "rb") as fdst:
-                                jpeg_bytes = fdst.read()
-                        # Open the produced JPEG with PIL and proceed
-                        buf2 = io.BytesIO(jpeg_bytes)
-                        buf2.seek(0)
-                        im = PILImage.open(buf2)
-                        logger.info(f"Thumbnail: opened JPEG from heif-convert fallback for {original_name}")
-                    except Exception as cli_err:
-                        logger.error(f"Failed to open HEIC file after CLI fallback. File: {original_name}, Error: {cli_err}", exc_info=True)
-                        raise ValueError(f"Cannot open HEIC file. Make sure pillow-heif/libheif or heif-convert are installed. Error: {cli_err}")
-            else:
-                # For non-HEIC files, provide more details
-                raise ValueError(f"Cannot identify image file (size: {len(file_content)} bytes, content_type: {content_type}, key: {original_name}): {open_err}")
-        
-        try:
-            im = _pil_image_for_png_thumbnail(im)
-            # Resize to width maintaining aspect
-            scale = target_w / float(im.width)
-            target_h = int(im.height * scale)
-            im = im.resize((target_w, max(1, target_h)), PILImage.Resampling.LANCZOS)
-            out = io.BytesIO()
-            im.save(out, format="PNG", optimize=True)
-            png_bytes = out.getvalue()
-            return Response(
-                content=png_bytes,
-                media_type="image/png",
-                headers={"Cache-Control": "private, max-age=86400"},
-            )
-        finally:
-            im.close()
+        cache_store(file_id, target_w, fo.size_bytes, result)
+        return Response(
+            content=result.content,
+            media_type=result.media_type,
+            headers={"Cache-Control": "private, max-age=86400"},
+        )
     except HTTPException:
-        # Re-raise HTTPException (like 404) as-is, don't convert to 500
         raise
     except Exception as e:
-        # Log error for debugging but don't expose to client
-        logger.error(f"Thumbnail generation failed for file {file_id} (key: {fo.key if fo else 'unknown'}, content_type: {getattr(fo, 'content_type', 'unknown') if fo else 'unknown'}): {str(e)}", exc_info=True)
-        # Return 500 error instead of redirect - browsers can't handle redirects in img tags
+        logger.error(
+            f"Thumbnail generation failed for file {file_id} (key: {fo.key if fo else 'unknown'}, "
+            f"content_type: {getattr(fo, 'content_type', 'unknown') if fo else 'unknown'}): {str(e)}",
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail=f"Failed to generate thumbnail: {str(e)}")
 

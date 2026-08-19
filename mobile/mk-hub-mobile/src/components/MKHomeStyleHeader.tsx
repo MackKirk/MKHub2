@@ -10,15 +10,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 import { typography } from "../theme/typography";
-import { radius } from "../theme/radius";
-
-const HUB_MENU_BG = "#111827";
+import { shadows } from "../theme/radius";
 
 interface MKHomeStyleHeaderProps {
   title: string;
   subtitle?: string;
   leftIcon?: "menu" | "back";
   onLeftPress: () => void;
+  right?: React.ReactNode;
   style?: ViewStyle;
 }
 
@@ -27,6 +26,7 @@ export const MKHomeStyleHeader: React.FC<MKHomeStyleHeaderProps> = ({
   subtitle,
   leftIcon = "menu",
   onLeftPress,
+  right,
   style
 }) => {
   const iconName = leftIcon === "back" ? "arrow-back" : "menu";
@@ -34,12 +34,12 @@ export const MKHomeStyleHeader: React.FC<MKHomeStyleHeaderProps> = ({
   return (
     <View style={[styles.header, style]}>
       <TouchableOpacity
-        style={styles.leftButton}
+        style={styles.iconButton}
         onPress={onLeftPress}
         activeOpacity={0.75}
         hitSlop={8}
       >
-        <Ionicons name={iconName} size={22} color="#f3f4f6" />
+        <Ionicons name={iconName} size={22} color={colors.textPrimary} />
       </TouchableOpacity>
 
       <View style={styles.content}>
@@ -52,6 +52,8 @@ export const MKHomeStyleHeader: React.FC<MKHomeStyleHeaderProps> = ({
           </Text>
         ) : null}
       </View>
+
+      {right ? <View style={styles.right}>{right}</View> : null}
     </View>
   );
 };
@@ -59,25 +61,22 @@ export const MKHomeStyleHeader: React.FC<MKHomeStyleHeaderProps> = ({
 const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
-    alignItems: "stretch",
-    backgroundColor: colors.card,
-    borderRadius: radius.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: "hidden",
-    marginBottom: spacing.md
-  },
-  leftButton: {
-    width: 52,
-    backgroundColor: HUB_MENU_BG,
     alignItems: "center",
-    justifyContent: "center"
+    gap: spacing.md,
+    marginBottom: spacing.lg
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadows.card
   },
   content: {
     flex: 1,
     minWidth: 0,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
     justifyContent: "center"
   },
   title: {
@@ -88,5 +87,10 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textMuted,
     marginTop: 2
+  },
+  right: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm
   }
 });

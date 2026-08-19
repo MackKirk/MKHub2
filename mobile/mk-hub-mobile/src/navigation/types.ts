@@ -34,6 +34,7 @@ export type AppTabParamList = {
   Clock: undefined;
   Tasks: undefined;
   Community: undefined;
+  More: undefined;
 };
 
 export type RootStackParamList = {

@@ -15,8 +15,13 @@ export const colors = {
   
   // Status colors
   success: "#148F3C",
+  homeAccent: "#147D36",
   warning: "#FFB020",
-  error: "#D32F2F"
+  error: "#D32F2F",
+
+  // Surface / drawer
+  iconMutedBg: "#f3f4f6",
+  drawerActiveBg: "#fee2e2"
 };
 
 

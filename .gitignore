@@ -36,6 +36,7 @@ htmlcov/
 var/*.db
 var/*.sqlite
 var/storage/
+var/cache/
 
 # Environment variables
 .env
