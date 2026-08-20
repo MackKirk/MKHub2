@@ -17,12 +17,56 @@ PREDEFINED_JOBS_DICT: Dict[str, str] = {
 }
 
 
+def parse_reason_markers(reason_text: Optional[str]) -> Dict[str, Optional[str]]:
+    """Split attendance reason_text into JOB_TYPE / SERVICE_ITEM / HOURS_WORKED / notes."""
+    job_type: Optional[str] = None
+    service_item: Optional[str] = None
+    hours_worked: Optional[str] = None
+    notes_parts: List[str] = []
+    if reason_text:
+        for part in reason_text.split("|"):
+            if part.startswith("JOB_TYPE:"):
+                job_type = part.replace("JOB_TYPE:", "", 1).strip() or None
+            elif part.startswith("SERVICE_ITEM:"):
+                service_item = part.replace("SERVICE_ITEM:", "", 1).strip() or None
+            elif part.startswith("HOURS_WORKED:"):
+                hours_worked = part.replace("HOURS_WORKED:", "", 1).strip() or None
+            else:
+                notes_parts.append(part)
+    return {
+        "job_type": job_type,
+        "service_item": service_item,
+        "hours_worked": hours_worked,
+        "notes": "|".join(notes_parts) if notes_parts else "",
+    }
+
+
 def parse_job_type_from_reason_text(reason_text: Optional[str]) -> Optional[str]:
-    if not reason_text or not reason_text.startswith("JOB_TYPE:"):
-        return None
-    marker = reason_text.split("|", 1)[0]
-    job_type = marker.replace("JOB_TYPE:", "", 1).strip()
-    return job_type or None
+    return parse_reason_markers(reason_text)["job_type"]
+
+
+def parse_service_item_from_reason_text(reason_text: Optional[str]) -> Optional[str]:
+    return parse_reason_markers(reason_text)["service_item"]
+
+
+def compose_reason_text(
+    *,
+    job_type: Optional[str] = None,
+    service_item: Optional[str] = None,
+    hours_worked: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> Optional[str]:
+    parts: List[str] = []
+    if job_type:
+        parts.append(f"JOB_TYPE:{job_type}")
+    if service_item:
+        parts.append(f"SERVICE_ITEM:{service_item}")
+    if hours_worked:
+        parts.append(f"HOURS_WORKED:{hours_worked}")
+    n = (notes or "").strip()
+    if n:
+        parts.append(n)
+    return "|".join(parts) if parts else None
 
 
 def format_project_job_label(project: Union[Project, object]) -> str:

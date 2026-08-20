@@ -261,7 +261,26 @@ export default function Home() {
   return (
     <LoadingOverlay isLoading={showLoading} text="Loading dashboard…" minHeight="min-h-[50vh]">
     <AnimationReadyProvider loaded={!isLoading} delay={80}>
-    <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+    <div className={uiCx('relative w-full min-w-0 overflow-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      <div
+        className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+        aria-hidden
+      >
+        <div
+          className="absolute right-[-32%] bottom-[-8%] h-[min(48rem,95vw)] w-[min(48rem,95vw)] bg-[#c22033] opacity-[0.07]"
+          style={{
+            WebkitMaskImage: 'url(/assets/brand/globe.png)',
+            maskImage: 'url(/assets/brand/globe.png)',
+            WebkitMaskRepeat: 'no-repeat',
+            maskRepeat: 'no-repeat',
+            WebkitMaskSize: 'contain',
+            maskSize: 'contain',
+            WebkitMaskPosition: 'center',
+            maskPosition: 'center',
+          }}
+        />
+      </div>
+      <div className="relative z-[1] min-w-0">
       <AppPageHeader
         title="My Dashboard"
         icon={<LayoutDashboard className="h-4 w-4" />}
@@ -383,6 +402,7 @@ export default function Home() {
         onClose={closeConfig}
         onSave={handleSaveConfig}
       />
+    </div>
     </div>
     </AnimationReadyProvider>
     </LoadingOverlay>

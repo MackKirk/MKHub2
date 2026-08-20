@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -8,6 +9,7 @@ import {
   View
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { CommonActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
 import type { CompositeNavigationProp } from "@react-navigation/native";
@@ -16,23 +18,18 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../../hooks/useAuth";
 import { useCommunityBadge } from "../../hooks/useCommunityBadge";
 import { useTasksBadge } from "../../hooks/useTasksBadge";
-import { hasPermission } from "../../lib/permissions";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { getCommunityPosts } from "../../services/community";
 import type { CommunityPost } from "../../types/community";
 import { stripHtmlToPlain } from "../../utils/stripHtml";
+import { isImageContentType, resolveFileUrl } from "../../lib/fileUrls";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { typography } from "../../theme/typography";
-import { radius, shadows } from "../../theme/radius";
-import { formatDateLocal } from "../../lib/dateUtils";
-import {
-  formatMinutesLabel,
-  formatTime12h,
-  getClockStateForDate
-} from "../../services/shifts";
-import type { ClockDayState, ShiftAttendanceResponse } from "../../types/shifts";
+import { shadows } from "../../theme/radius";
 import type { AppTabParamList, HomeStackParamList, RootStackParamList } from "../../navigation/types";
+
+const GLOBE_BG = require("../../../assets/brand/globe.png");
 
 type HomeNav = CompositeNavigationProp<
   NativeStackNavigationProp<HomeStackParamList, "HomeMain">,
@@ -53,17 +50,16 @@ interface QuickAction {
 
 const COMMUNITY_PREVIEW_LIMIT = 2;
 const HOME_GREEN = colors.homeAccent;
+const QUICK_RAIL_WIDTH = 6;
 
-const COMMUNITY_TINTS: Array<{
-  bg: string;
-  fg: string;
-  icon: keyof typeof Ionicons.glyphMap;
-}> = [
-  { bg: "#DBEAFE", fg: "#2563EB", icon: "megaphone-outline" },
-  { bg: "#DCFCE7", fg: HOME_GREEN, icon: "calendar-outline" },
-  { bg: "#FEF3C7", fg: "#D97706", icon: "notifications-outline" },
-  { bg: "#EDE9FE", fg: "#7C3AED", icon: "chatbubbles-outline" }
-];
+function darkenHex(hex: string, amount = 0.28): string {
+  const raw = hex.replace("#", "");
+  const n = parseInt(raw, 16);
+  const r = Math.max(0, Math.round(((n >> 16) & 255) * (1 - amount)));
+  const g = Math.max(0, Math.round(((n >> 8) & 255) * (1 - amount)));
+  const b = Math.max(0, Math.round((n & 255) * (1 - amount)));
+  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
 
 function timeOfDayGreeting(date = new Date()): string {
   const hour = date.getHours();
@@ -72,11 +68,26 @@ function timeOfDayGreeting(date = new Date()): string {
   return "Good evening";
 }
 
-function communityAccent(post: CommunityPost, index: number) {
-  if (post.is_urgent) {
-    return { bg: "#FEE2E2", fg: "#DC2626", icon: "megaphone-outline" as const };
-  }
-  return COMMUNITY_TINTS[index % COMMUNITY_TINTS.length];
+function firstImageFromHtml(html?: string): string | null {
+  if (!html) return null;
+  const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return match?.[1] ?? null;
+}
+
+function postPreviewImage(
+  post: CommunityPost,
+  token: string | null
+): string | null {
+  if (post.photo_url) return resolveFileUrl(post.photo_url, token);
+  const fromHtml = firstImageFromHtml(post.content);
+  if (fromHtml) return resolveFileUrl(fromHtml, token);
+  const imageAtt = post.attachments?.find(
+    (att) =>
+      isImageContentType(null, att.original_name) ||
+      isImageContentType(null, att.url)
+  );
+  if (imageAtt?.url) return resolveFileUrl(imageAtt.url, token);
+  return null;
 }
 
 function formatRelativeTime(iso: string): string {
@@ -94,55 +105,15 @@ function formatRelativeTime(iso: string): string {
   });
 }
 
-function attendanceWorkedMinutes(
-  attendance: ShiftAttendanceResponse,
-  now: Date
-): number {
-  if (!attendance.clock_in_time) return 0;
-  const start = new Date(attendance.clock_in_time).getTime();
-  const end = attendance.clock_out_time
-    ? new Date(attendance.clock_out_time).getTime()
-    : now.getTime();
-  const raw = Math.max(0, Math.floor((end - start) / (1000 * 60)));
-  const breakMins = attendance.clock_out_time
-    ? attendance.break_minutes || 0
-    : 0;
-  return Math.max(0, raw - breakMins);
-}
-
-function dayWorkedMinutes(dayState: ClockDayState | null, now: Date): number {
-  if (!dayState) return 0;
-  const seen = new Set<string>();
-  let total = 0;
-  const add = (att: ShiftAttendanceResponse) => {
-    const key =
-      att.id ||
-      `${att.shift_id || "direct"}-${att.clock_in_time || ""}-${att.clock_out_time || ""}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    total += attendanceWorkedMinutes(att, now);
-  };
-  if (dayState.openAttendance) add(dayState.openAttendance);
-  for (const att of dayState.completeAttendances) add(att);
-  for (const att of dayState.attendances) {
-    if (!att.clock_in_time) continue;
-    add(att);
-  }
-  return total;
-}
-
 export const HomeScreen: React.FC = () => {
-  const { user, permissions, roles } = useAuth();
+  const { user, token } = useAuth();
   const navigation = useNavigation<HomeNav>();
   const { openMenu } = useHubMenu();
   const { unreadCount, setUnreadCount } = useCommunityBadge();
   const { acceptedCount, inProgressCount, refreshTasks } = useTasksBadge();
 
-  const permissionsSet = useMemo(() => new Set(permissions), [permissions]);
-
   const [novidades, setNovidades] = useState<CommunityPost[]>([]);
   const [loadingNovidades, setLoadingNovidades] = useState(false);
-  const [dayState, setDayState] = useState<ClockDayState | null>(null);
 
   const firstName =
     (user?.first_name && user.first_name.trim()) ||
@@ -150,11 +121,6 @@ export const HomeScreen: React.FC = () => {
     "there";
 
   const greeting = `${timeOfDayGreeting()}, ${firstName}`;
-  const todayLabel = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric"
-  });
 
   const goStack = useCallback(
     (screen: keyof HomeStackParamList, params?: object) => {
@@ -169,18 +135,6 @@ export const HomeScreen: React.FC = () => {
     },
     [goStack]
   );
-
-  const openAssets = useCallback(() => {
-    if (hasPermission(permissionsSet, roles, "fleet:access")) {
-      goStack("FleetMyAssets");
-      return;
-    }
-    if (hasPermission(permissionsSet, roles, "equipment:read")) {
-      goStack("FleetAssetsList", { listKind: "equipment", title: "Equipment" });
-      return;
-    }
-    goPlaceholder("Assets", "Company assets will be available here soon.");
-  }, [goPlaceholder, goStack, permissionsSet, roles]);
 
   const quickActions: QuickAction[] = useMemo(
     () => [
@@ -248,31 +202,12 @@ export const HomeScreen: React.FC = () => {
     }
   }, [setUnreadCount]);
 
-  const loadDay = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const state = await getClockStateForDate(formatDateLocal(new Date()), user.id);
-      setDayState(state);
-    } catch {
-      setDayState(null);
-    }
-  }, [user?.id]);
-
   useFocusEffect(
     useCallback(() => {
       loadNovidades();
       void refreshTasks();
-      void loadDay();
-    }, [loadNovidades, refreshTasks, loadDay])
+    }, [loadNovidades, refreshTasks])
   );
-
-  const nextShift = dayState?.nextPendingShift ?? dayState?.shifts[0] ?? null;
-  const clockedIn = !!dayState?.openAttendance;
-  const hoursLabel = formatMinutesLabel(dayWorkedMinutes(dayState, new Date()));
-  const nextShiftLabel = nextShift
-    ? formatTime12h(nextShift.start_time)
-    : "None";
-  const clockStatusLabel = clockedIn ? "Clocked in" : "Clocked out";
 
   const renderSectionHeader = (title: string, onViewAll?: () => void) => (
     <View style={styles.sectionHeader}>
@@ -291,7 +226,14 @@ export const HomeScreen: React.FC = () => {
       style={styles.screen}
       contentStyle={styles.layout}
     >
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <Image
+        source={GLOBE_BG}
+        style={styles.globeBg}
+        resizeMode="contain"
+        tintColor="#c22033"
+        pointerEvents="none"
+      />
+      <ScrollView showsVerticalScrollIndicator={false} style={styles.homeScroll}>
         <View style={styles.topHeader}>
           <TouchableOpacity
             style={styles.headerIconBtn}
@@ -319,63 +261,6 @@ export const HomeScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.myDayCard}>
-          <View style={styles.myDayTop}>
-            <View style={styles.myDayTitles}>
-              <Text style={styles.myDayTitle}>My Day</Text>
-              <Text style={styles.myDayDate}>{todayLabel}</Text>
-            </View>
-            <View style={styles.statusPill}>
-              <View
-                style={[
-                  styles.statusDot,
-                  { backgroundColor: clockedIn ? HOME_GREEN : HOME_GREEN }
-                ]}
-              />
-              <Text style={styles.statusPillText}>{clockStatusLabel}</Text>
-            </View>
-          </View>
-
-          <View style={styles.myDayStats}>
-            <View style={styles.myDayStat}>
-              <View style={styles.myDayStatHead}>
-                <Ionicons name="calendar-outline" size={14} color={HOME_GREEN} />
-                <Text style={styles.myDayStatLabel}>Next shift</Text>
-              </View>
-              <Text style={styles.myDayStatValue}>{nextShiftLabel}</Text>
-            </View>
-            <View style={styles.myDayDivider} />
-            <View style={styles.myDayStat}>
-              <View style={styles.myDayStatHead}>
-                <Ionicons name="time-outline" size={14} color={HOME_GREEN} />
-                <Text style={styles.myDayStatLabel}>Today</Text>
-              </View>
-              <Text style={styles.myDayStatValue}>{hoursLabel}</Text>
-            </View>
-            <View style={styles.myDayDivider} />
-            <View style={styles.myDayStat}>
-              <View style={styles.myDayStatHead}>
-                <Ionicons name="enter-outline" size={14} color={HOME_GREEN} />
-                <Text style={styles.myDayStatLabel}>Clock status</Text>
-              </View>
-              <Text style={[styles.myDayStatValue, { color: HOME_GREEN }]}>
-                {clockStatusLabel}
-              </Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.clockButton}
-            onPress={() => navigation.navigate("Clock")}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="time-outline" size={18} color="#fff" />
-            <Text style={styles.clockButtonText}>
-              {clockedIn ? "Clock Out" : "Clock In"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
         <View style={styles.section}>
           {renderSectionHeader("Quick Actions", openMenu)}
           <View style={styles.quickGrid}>
@@ -386,22 +271,30 @@ export const HomeScreen: React.FC = () => {
                 onPress={item.onPress}
                 activeOpacity={0.75}
               >
-                <View style={[styles.quickIcon, { backgroundColor: item.tintBg }]}>
-                  <Ionicons name={item.icon} size={22} color={item.accentColor} />
+                <LinearGradient
+                  colors={[darkenHex(item.accentColor), item.accentColor]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={styles.quickRail}
+                />
+                <View style={styles.quickBody}>
+                  <View style={[styles.quickIcon, { backgroundColor: item.tintBg }]}>
+                    <Ionicons name={item.icon} size={22} color={item.accentColor} />
+                  </View>
+                  <Text style={styles.quickLabel} numberOfLines={1}>
+                    {item.label}
+                  </Text>
+                  <Text style={styles.quickSubtitle} numberOfLines={1}>
+                    {item.subtitle}
+                  </Text>
                 </View>
-                <Text style={styles.quickLabel} numberOfLines={1}>
-                  {item.label}
-                </Text>
-                <Text style={styles.quickSubtitle} numberOfLines={1}>
-                  {item.subtitle}
-                </Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
         <View style={styles.section}>
-          {renderSectionHeader("Tasks", () => navigation.navigate("Tasks"))}
+          {renderSectionHeader("My tasks", () => navigation.navigate("Tasks"))}
           <View style={styles.tasksCard}>
             <TouchableOpacity
               style={styles.taskStat}
@@ -451,84 +344,39 @@ export const HomeScreen: React.FC = () => {
             </View>
           ) : (
             <View style={styles.novidadesList}>
-              {novidades.map((post, index) => {
-                const tint = communityAccent(post, index);
+              {novidades.map((post) => {
+                const imageUri = postPreviewImage(post, token);
                 return (
                   <TouchableOpacity
                     key={post.id}
-                    style={[
-                      styles.novidadeRow,
-                      index === novidades.length - 1 && styles.novidadeRowLast
-                    ]}
+                    style={styles.novidadeCard}
                     onPress={() => navigation.navigate("Community")}
                     activeOpacity={0.75}
                   >
-                    <View style={[styles.novidadeIcon, { backgroundColor: tint.bg }]}>
-                      <Ionicons name={tint.icon} size={18} color={tint.fg} />
-                    </View>
-                    <View style={styles.novidadeCopy}>
-                      <Text style={styles.novidadeTitle} numberOfLines={1}>
+                    {imageUri ? (
+                      <Image
+                        source={{ uri: imageUri }}
+                        style={styles.novidadeImage}
+                        resizeMode="cover"
+                      />
+                    ) : null}
+                    <View style={styles.novidadeBody}>
+                      <Text style={styles.novidadeTitle} numberOfLines={2}>
                         {post.title}
                       </Text>
-                      <Text style={styles.novidadePreview} numberOfLines={1}>
+                      <Text style={styles.novidadePreview} numberOfLines={4}>
                         {stripHtmlToPlain(post.content)}
                       </Text>
                       <Text style={styles.novidadeMeta}>
+                        {post.author_name ? `${post.author_name} · ` : ""}
                         {formatRelativeTime(post.created_at)}
                       </Text>
                     </View>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={16}
-                      color={colors.textMuted}
-                    />
                   </TouchableOpacity>
                 );
               })}
             </View>
           )}
-        </View>
-
-        <View style={styles.section}>
-          {renderSectionHeader("More tools")}
-          <View style={styles.moreCard}>
-            <TouchableOpacity style={styles.moreItem} onPress={openAssets}>
-              <View style={[styles.moreIcon, { backgroundColor: "#EDE9FE" }]}>
-                <Ionicons name="cube-outline" size={20} color="#7C3AED" />
-              </View>
-              <Text style={styles.moreLabel}>Assets</Text>
-            </TouchableOpacity>
-            <View style={styles.moreDivider} />
-            <TouchableOpacity
-              style={styles.moreItem}
-              onPress={() =>
-                goPlaceholder(
-                  "Policies",
-                  "Policies and training will be available here soon."
-                )
-              }
-            >
-              <View style={[styles.moreIcon, { backgroundColor: "#DBEAFE" }]}>
-                <Ionicons name="document-text-outline" size={20} color="#2563EB" />
-              </View>
-              <Text style={styles.moreLabel}>Policies</Text>
-            </TouchableOpacity>
-            <View style={styles.moreDivider} />
-            <TouchableOpacity
-              style={styles.moreItem}
-              onPress={() =>
-                goPlaceholder(
-                  "Directory",
-                  "The company directory will be available here soon."
-                )
-              }
-            >
-              <View style={[styles.moreIcon, { backgroundColor: "#CCFBF1" }]}>
-                <Ionicons name="people-outline" size={20} color="#0F766E" />
-              </View>
-              <Text style={styles.moreLabel}>Directory</Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </ScrollView>
     </ScreenLayout>
@@ -541,9 +389,23 @@ const styles = StyleSheet.create({
   },
   layout: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "transparent",
     paddingHorizontal: 16,
-    paddingBottom: spacing.md
+    paddingBottom: spacing.md,
+    overflow: "hidden",
+    position: "relative"
+  },
+  globeBg: {
+    position: "absolute",
+    width: 640,
+    height: 640,
+    right: -255,
+    bottom: -40,
+    opacity: 0.09
+  },
+  homeScroll: {
+    flex: 1,
+    zIndex: 1
   },
   topHeader: {
     flexDirection: "row",
@@ -578,99 +440,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: colors.primary
   },
-  myDayCard: {
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: spacing.lg,
-    marginBottom: spacing.xl,
-    ...shadows.card
-  },
-  myDayTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.md,
-    marginBottom: spacing.lg
-  },
-  myDayTitles: {
-    flex: 1,
-    minWidth: 0
-  },
-  myDayTitle: {
-    fontFamily: typography.button.fontFamily,
-    fontSize: 18,
-    lineHeight: 24,
-    color: colors.textPrimary
-  },
-  myDayDate: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginTop: 2
-  },
-  statusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#ECFDF3",
-    borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 6
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4
-  },
-  statusPillText: {
-    fontFamily: typography.button.fontFamily,
-    fontSize: 12,
-    color: HOME_GREEN
-  },
-  myDayStats: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    marginBottom: spacing.lg
-  },
-  myDayStat: {
-    flex: 1,
-    minWidth: 0
-  },
-  myDayStatHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginBottom: 6
-  },
-  myDayStatLabel: {
-    fontSize: 11,
-    lineHeight: 14,
-    color: colors.textMuted
-  },
-  myDayStatValue: {
-    fontFamily: typography.button.fontFamily,
-    fontSize: 15,
-    lineHeight: 20,
-    color: colors.textPrimary
-  },
-  myDayDivider: {
-    width: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.sm
-  },
-  clockButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: HOME_GREEN,
-    borderRadius: 14,
-    paddingVertical: 14
-  },
-  clockButtonText: {
-    color: "#fff",
-    fontFamily: typography.button.fontFamily,
-    fontSize: 16
-  },
   section: {
     marginBottom: 22
   },
@@ -699,11 +468,20 @@ const styles = StyleSheet.create({
   },
   quickAction: {
     width: "48.5%",
+    flexDirection: "row",
     backgroundColor: "#fff",
     borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 14,
+    overflow: "hidden",
     ...shadows.card
+  },
+  quickRail: {
+    width: QUICK_RAIL_WIDTH,
+    alignSelf: "stretch"
+  },
+  quickBody: {
+    flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 14
   },
   quickIcon: {
     width: 40,
@@ -779,80 +557,38 @@ const styles = StyleSheet.create({
     color: colors.textMuted
   },
   novidadesList: {
+    gap: spacing.md
+  },
+  novidadeCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
     overflow: "hidden",
     ...shadows.card
   },
-  novidadeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border
+  novidadeImage: {
+    width: "100%",
+    height: 180,
+    backgroundColor: colors.iconMutedBg
   },
-  novidadeRowLast: {
-    borderBottomWidth: 0
-  },
-  novidadeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  novidadeCopy: {
-    flex: 1,
-    minWidth: 0
+  novidadeBody: {
+    padding: spacing.md
   },
   novidadeTitle: {
     fontFamily: typography.button.fontFamily,
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 16,
+    lineHeight: 22,
     color: colors.textPrimary
   },
   novidadePreview: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textMuted,
+    marginTop: 6
+  },
+  novidadeMeta: {
     fontSize: 12,
     lineHeight: 16,
     color: colors.textMuted,
-    marginTop: 2
-  },
-  novidadeMeta: {
-    fontSize: 11,
-    lineHeight: 14,
-    color: colors.textMuted,
-    marginTop: 4
-  },
-  moreCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    paddingVertical: 16,
-    ...shadows.card
-  },
-  moreItem: {
-    flex: 1,
-    alignItems: "center",
-    gap: spacing.sm
-  },
-  moreDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 44,
-    backgroundColor: colors.border
-  },
-  moreIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  moreLabel: {
-    fontFamily: typography.button.fontFamily,
-    fontSize: 13,
-    color: colors.textPrimary
+    marginTop: 10
   }
 });

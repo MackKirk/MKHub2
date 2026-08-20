@@ -3,6 +3,7 @@ import { formatDateLocal } from "../lib/dateUtils";
 import type {
   AttendanceGpsPayload,
   ClockDayState,
+  ServiceItemOption,
   ShiftAttendanceResponse,
   ShiftSummary,
   TodayShiftInfo,
@@ -70,6 +71,42 @@ export function getJobTypeFromAttendance(
   return null;
 }
 
+export function getServiceItemFromAttendance(
+  a: ShiftAttendanceResponse
+): string | null {
+  if (a.service_item) return a.service_item;
+  if (!a.reason_text) return null;
+  for (const part of a.reason_text.split("|")) {
+    if (part.startsWith("SERVICE_ITEM:")) {
+      return part.replace("SERVICE_ITEM:", "").trim() || null;
+    }
+  }
+  return null;
+}
+
+export type { ServiceItemOption } from "../types/shifts";
+
+const FALLBACK_SERVICE_ITEMS: ServiceItemOption[] = [
+  { id: "regular", label: "Regular", value: "regular" }
+];
+
+export async function getServiceItems(): Promise<ServiceItemOption[]> {
+  try {
+    const response = await api.get<ServiceItemOption[]>(
+      "/dispatch/attendance/service-items"
+    );
+    const rows = response.data ?? [];
+    if (!rows.length) return FALLBACK_SERVICE_ITEMS;
+    return rows.map((row) => ({
+      id: String(row.id),
+      label: row.label || row.value || "Regular",
+      value: row.value || row.label || "regular"
+    }));
+  } catch {
+    return FALLBACK_SERVICE_ITEMS;
+  }
+}
+
 function findOpenAttendance(
   attendances: ShiftAttendanceResponse[]
 ): ShiftAttendanceResponse | null {
@@ -113,10 +150,10 @@ function findNextPendingShift(
   return null;
 }
 
-/** Local time rounded down to 5 minutes. */
+/** Local time rounded down to 15 minutes. */
 export function buildRoundedTimeHHMM(now = new Date()): string {
   const hours = now.getHours();
-  const minutes = Math.floor(now.getMinutes() / 5) * 5;
+  const minutes = Math.floor(now.getMinutes() / 15) * 15;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
@@ -259,16 +296,22 @@ export interface PostAttendancePayload {
   shift_id: string;
   type: "in" | "out";
   time_selected_local: string;
+  clock_out_time_local?: string;
   manual_break_minutes?: number;
   gps?: AttendanceGpsPayload;
+  reason_text?: string;
+  service_item?: string;
 }
 
 export interface PostDirectAttendancePayload {
   type: "in" | "out";
   time_selected_local: string;
+  clock_out_time_local?: string;
   job_type: string;
   manual_break_minutes?: number;
   gps?: AttendanceGpsPayload;
+  reason_text?: string;
+  service_item?: string;
 }
 
 export const postAttendance = async (
