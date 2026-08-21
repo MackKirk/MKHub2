@@ -394,6 +394,16 @@ def create_app() -> FastAPI:
                 except Exception as _e:
                     print(f"[startup] auto_task tables create_all (non-critical): {_e}")
 
+                try:
+                    from .models.models import DevicePushToken, HoursReminderEvent
+
+                    Base.metadata.create_all(
+                        bind=engine,
+                        tables=[DevicePushToken.__table__, HoursReminderEvent.__table__],
+                    )
+                except Exception as _e:
+                    print(f"[startup] hours reminder tables create_all (non-critical): {_e}")
+
                 if dialect != "postgresql" and "postgresql" not in dialect:
                     print("[startup] Skipping schema migrations (non-PostgreSQL). Production requires PostgreSQL.")
                 else:
@@ -3058,6 +3068,13 @@ def create_app() -> FastAPI:
             start_warranty_alerts_scheduler()
         except Exception as e:
             print(f"⚠️  Could not start warranty alerts scheduler: {e}")
+
+        try:
+            from .services.hours_reminder_scheduler import start_hours_reminder_scheduler
+
+            start_hours_reminder_scheduler()
+        except Exception as e:
+            print(f"⚠️  Could not start hours reminder scheduler: {e}")
 
         print("[startup] Application startup complete - server ready!")
 

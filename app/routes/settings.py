@@ -632,6 +632,11 @@ def delete_attendance(
             status_code=403,
             detail="You can only delete your own attendance records"
         )
+
+    from ..services.attendance_edit import HR_LOCK_MESSAGE, worker_can_edit_attendance
+
+    if not worker_can_edit_attendance(attendance, user):
+        raise HTTPException(status_code=403, detail=HR_LOCK_MESSAGE)
     
     # Get project_id from shift if attendance has a shift
     project_id = None
@@ -768,6 +773,11 @@ def update_attendance(
             status_code=403,
             detail="You can only update your own attendance records"
         )
+
+    from ..services.attendance_edit import HR_LOCK_MESSAGE, worker_can_edit_attendance
+
+    if not worker_can_edit_attendance(attendance, user):
+        raise HTTPException(status_code=403, detail=HR_LOCK_MESSAGE)
     
     # Get new times before updating to check for conflicts
     new_clock_in_time = attendance.clock_in_time

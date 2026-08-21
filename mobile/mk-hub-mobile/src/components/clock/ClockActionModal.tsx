@@ -24,7 +24,7 @@ import {
   PREDEFINED_JOBS
 } from "../../constants/predefinedJobs";
 import { searchProjects } from "../../services/projects";
-import { formatDateLocal } from "../../lib/dateUtils";
+import { buildMonthGrid, formatDateLocal } from "../../lib/dateUtils";
 import {
   buildRoundedTimeHHMM,
   buildTimeSelectedLocal,
@@ -34,8 +34,14 @@ import {
   getJobTypeFromAttendance,
   getServiceItemFromAttendance,
   getServiceItems,
+  getShifts,
+  isoToLocalHHMM,
+  composeAttendanceReasonText,
+  getNotesFromAttendance,
   postAttendance,
-  postDirectAttendance
+  postDirectAttendance,
+  updateAttendance,
+  deleteAttendance
 } from "../../services/shifts";
 import { toApiError } from "../../services/api";
 import type { AttendanceGpsPayload, ServiceItemOption, ShiftAttendanceResponse, ShiftSummary } from "../../types/shifts";
@@ -54,10 +60,11 @@ type ClockActionModalProps = {
   shifts: ShiftSummary[];
   openAttendance: ShiftAttendanceResponse | null;
   nextPendingShift: ShiftSummary | null;
+  editingAttendance?: ShiftAttendanceResponse | null;
   permissions: string[];
   roles: string[];
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (loggedDate?: string) => void;
 };
 
 function to12hParts(hhmm: string): { hour12: string; minute: string; amPm: "AM" | "PM" } {
@@ -92,6 +99,13 @@ function formatSheetDateLabel(selectedDate: string): string {
   });
 }
 
+function monthAnchorFromDate(dateStr: string): Date {
+  const [year, month] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, 1);
+}
+
+const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
+
 export const ClockActionModal: React.FC<ClockActionModalProps> = ({
   visible,
   clockType,
@@ -99,6 +113,7 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
   shifts,
   openAttendance,
   nextPendingShift,
+  editingAttendance = null,
   permissions,
   roles,
   onClose,
@@ -118,6 +133,13 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
   ]);
   const [selectedServiceItem, setSelectedServiceItem] = useState("regular");
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
+  const [entryDate, setEntryDate] = useState(selectedDate);
+  const [dateShifts, setDateShifts] = useState<ShiftSummary[]>(shifts);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [calendarAnchor, setCalendarAnchor] = useState(() =>
+    monthAnchorFromDate(selectedDate)
+  );
+  const todayStr = formatDateLocal(new Date());
 
   const roundedNow = buildRoundedTimeHHMM();
   const initial12 = to12hParts(roundedNow);
@@ -139,20 +161,27 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
   const [noteOpen, setNoteOpen] = useState(false);
 
   const lockedJobType = useMemo(() => {
+    if (editingAttendance) {
+      return getJobTypeFromAttendance(editingAttendance);
+    }
     if (!openAttendance) return null;
     if (openAttendance.shift_id) {
       const shift = shifts.find((s) => s.id === openAttendance.shift_id);
       return shift?.project_id ?? getJobTypeFromAttendance(openAttendance);
     }
     return getJobTypeFromAttendance(openAttendance);
-  }, [openAttendance, shifts]);
+  }, [editingAttendance, openAttendance, shifts]);
 
-  const isJobLocked = clockType === "out" && !!openAttendance;
+  const isEditing = Boolean(editingAttendance?.id);
+  const isJobLocked =
+    (clockType === "out" && !!openAttendance) ||
+    (isEditing && !!editingAttendance?.shift_id);
+  const isDateLocked = clockType === "out" && !isEditing;
 
   const shiftJobOptions: JobOption[] = useMemo(() => {
     const seen = new Set<string>();
     const options: JobOption[] = [];
-    for (const s of shifts) {
+    for (const s of dateShifts) {
       if (!s.project_id || seen.has(s.project_id)) continue;
       seen.add(s.project_id);
       options.push({
@@ -163,7 +192,7 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
       });
     }
     return options;
-  }, [shifts]);
+  }, [dateShifts]);
 
   const baseJobOptions: JobOption[] = useMemo(
     () => [
@@ -225,14 +254,14 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
     if (clockType === "out" && openAttendance?.clock_in_time) {
       startMs = new Date(openAttendance.clock_in_time).getTime();
     } else if (clockType === "in" && startTimeSet && startHour12 && startMinute) {
-      const [year, month, day] = selectedDate.split("-").map(Number);
+      const [year, month, day] = entryDate.split("-").map(Number);
       const startHHMM = from12hParts(startHour12, startMinute, startAmPm);
       const [hours, mins] = startHHMM.split(":").map(Number);
       startMs = new Date(year, month - 1, day, hours, mins, 0).getTime();
     }
     if (startMs == null) return null;
 
-    const [year, month, day] = selectedDate.split("-").map(Number);
+    const [year, month, day] = entryDate.split("-").map(Number);
     const endHHMM = from12hParts(endHour12, endMinute, endAmPm);
     const [hours, mins] = endHHMM.split(":").map(Number);
     const endMs = new Date(year, month - 1, day, hours, mins, 0).getTime();
@@ -251,7 +280,7 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
     endHour12,
     endMinute,
     endAmPm,
-    selectedDate,
+    entryDate,
     insertBreak,
     breakHours,
     breakMinutes
@@ -279,6 +308,7 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
     setNoteOpen(false);
     setSelectedServiceItem("regular");
     setServicePickerOpen(false);
+    setDatePickerOpen(false);
     setSubmitting(false);
   }, []);
 
@@ -309,16 +339,59 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
     if (clockType === "out") {
       setExpandedPanel("end");
     }
-    if (isJobLocked && lockedJobType) {
+    if (editingAttendance) {
+      const editDate = editingAttendance.clock_in_time
+        ? formatDateLocal(new Date(editingAttendance.clock_in_time))
+        : selectedDate;
+      setEntryDate(editDate);
+      setCalendarAnchor(monthAnchorFromDate(editDate));
+      if (editingAttendance.clock_in_time) {
+        const start12 = to12hParts(isoToLocalHHMM(editingAttendance.clock_in_time));
+        setStartHour12(start12.hour12);
+        setStartMinute(start12.minute);
+        setStartAmPm(start12.amPm);
+        setStartTimeSet(true);
+      }
+      if (editingAttendance.clock_out_time) {
+        const end12 = to12hParts(isoToLocalHHMM(editingAttendance.clock_out_time));
+        setEndHour12(end12.hour12);
+        setEndMinute(end12.minute);
+        setEndAmPm(end12.amPm);
+      }
+      const breakMins = editingAttendance.break_minutes || 0;
+      if (breakMins > 0) {
+        setInsertBreak(true);
+        setBreakHours(String(Math.floor(breakMins / 60)));
+        setBreakMinutes(String(breakMins % 60).padStart(2, "0"));
+      }
+      const job =
+        getJobTypeFromAttendance(editingAttendance) || lockedJobType || "0";
+      setSelectedJob(job);
+      setSelectedServiceItem(
+        getServiceItemFromAttendance(editingAttendance) || "regular"
+      );
+      setNote(getNotesFromAttendance(editingAttendance.reason_text));
+      setExpandedPanel(null);
+    } else if (isJobLocked && lockedJobType) {
       setSelectedJob(lockedJobType);
     } else if (clockType === "in" && nextPendingShift?.project_id) {
       setSelectedJob(nextPendingShift.project_id);
     } else if (clockType === "in") {
       setSelectedJob("0");
     }
-    const existingService =
-      openAttendance ? getServiceItemFromAttendance(openAttendance) : null;
-    setSelectedServiceItem(existingService || "regular");
+    if (!editingAttendance) {
+      const existingService =
+        openAttendance ? getServiceItemFromAttendance(openAttendance) : null;
+      setSelectedServiceItem(existingService || "regular");
+      const initialDate =
+        clockType === "out" && openAttendance?.clock_in_time
+          ? formatDateLocal(new Date(openAttendance.clock_in_time))
+          : selectedDate;
+      setEntryDate(initialDate);
+      setCalendarAnchor(monthAnchorFromDate(initialDate));
+    }
+    setDateShifts(shifts);
+    setDatePickerOpen(false);
     void captureGps();
     let cancelled = false;
     void getServiceItems().then((items) => {
@@ -348,9 +421,28 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
     openAttendance?.id,
     openAttendance?.reason_text,
     openAttendance?.service_item,
+    openAttendance?.clock_in_time,
+    editingAttendance?.id,
+    selectedDate,
     resetForm,
     captureGps
   ]);
+
+  useEffect(() => {
+    if (!visible || clockType !== "in") return;
+    let cancelled = false;
+    void getShifts(`${entryDate},${entryDate}`, { status: "scheduled" })
+      .then((rows) => {
+        if (cancelled) return;
+        setDateShifts(rows.filter((s) => s.status === "scheduled"));
+      })
+      .catch(() => {
+        if (!cancelled) setDateShifts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, clockType, entryDate]);
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -417,7 +509,7 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
 
     const startHHMM = from12hParts(startHour12 || "7", startMinute || "00", startAmPm);
     const endHHMM = from12hParts(endHour12, endMinute, endAmPm);
-    const [year, month, day] = selectedDate.split("-").map(Number);
+    const [year, month, day] = entryDate.split("-").map(Number);
     const now = new Date();
     const startDateTime = (() => {
       const [hours, mins] = startHHMM.split(":").map(Number);
@@ -469,12 +561,17 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
     }
 
     let targetShiftId: string | null = null;
-    if (clockType === "in") {
-      const matching = shifts.filter(
+    if (clockType === "in" && !isEditing) {
+      if (entryDate > todayStr) {
+        Alert.alert("Invalid date", "You cannot log hours for a future date.");
+        return;
+      }
+      const matching = dateShifts.filter(
         (s) =>
           String(s.project_id) === String(selectedJob) && s.status === "scheduled"
       );
       if (
+        entryDate === selectedDate &&
         nextPendingShift &&
         String(nextPendingShift.project_id) === String(selectedJob)
       ) {
@@ -484,22 +581,30 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
       }
     }
 
-    const startLocal = buildTimeSelectedLocal(selectedDate, startHHMM);
-    const endLocal = buildTimeSelectedLocal(selectedDate, endHHMM);
+    const startLocal = buildTimeSelectedLocal(entryDate, startHHMM);
+    const endLocal = buildTimeSelectedLocal(entryDate, endHHMM);
     const noteText = note.trim() || undefined;
     const breakLabel =
       insertBreak && breakTotal
         ? ` with ${Math.floor(breakTotal / 60)}h ${String(breakTotal % 60).padStart(2, "0")}m break`
         : "";
-    const confirmLabel =
-      clockType === "in"
-        ? `Log hours on ${formatShortDate(selectedDate)} from ${formatTime12h(startHHMM)} to ${formatTime12h(endHHMM)}${breakLabel}${
+    const confirmTitle = isEditing
+      ? "Save changes"
+      : clockType === "in"
+        ? "Confirm hours"
+        : "Confirm Clock Out";
+    const confirmLabel = isEditing
+      ? `Save changes to hours on ${formatShortDate(entryDate)} from ${formatTime12h(startHHMM)} to ${formatTime12h(endHHMM)}${breakLabel}${
+          selectedJobLabel && selectedJob ? ` for ${selectedJobLabel}` : ""
+        }?`
+      : clockType === "in"
+        ? `Log hours on ${formatShortDate(entryDate)} from ${formatTime12h(startHHMM)} to ${formatTime12h(endHHMM)}${breakLabel}${
             selectedJobLabel && selectedJob ? ` for ${selectedJobLabel}` : ""
           }?`
-        : `Clock out on ${formatShortDate(selectedDate)} at ${formatTime12h(endHHMM)}${breakLabel}?`;
+        : `Clock out on ${formatShortDate(entryDate)} at ${formatTime12h(endHHMM)}${breakLabel}?`;
 
     Alert.alert(
-      clockType === "in" ? "Confirm hours" : "Confirm Clock Out",
+      confirmTitle,
       confirmLabel,
       [
         { text: "Cancel", style: "cancel" },
@@ -509,7 +614,18 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
             try {
               setSubmitting(true);
               const gpsPayload = gps ?? undefined;
-              if (clockType === "out") {
+              if (isEditing && editingAttendance?.id) {
+                await updateAttendance(editingAttendance.id, {
+                  clock_in_time: startDateTime.toISOString(),
+                  clock_out_time: endDateTime.toISOString(),
+                  manual_break_minutes: breakTotal ?? 0,
+                  reason_text: composeAttendanceReasonText({
+                    jobType: selectedJob,
+                    serviceItem: selectedServiceItem,
+                    notes: noteText
+                  })
+                });
+              } else if (clockType === "out") {
                 if (!openAttendance) {
                   Alert.alert("Error", "No open clock-in found to clock out.");
                   return;
@@ -561,7 +677,7 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
                 });
               }
               resetForm();
-              onSuccess();
+              onSuccess(entryDate);
             } catch (err) {
               Alert.alert("Clock failed", toApiError(err).message);
             } finally {
@@ -572,6 +688,50 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
       ]
     );
   };
+
+  const handleDelete = () => {
+    if (!editingAttendance?.id) return;
+    Alert.alert(
+      "Delete hours",
+      "Delete this hours entry? This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setSubmitting(true);
+              await deleteAttendance(editingAttendance.id);
+              resetForm();
+              onSuccess(entryDate);
+            } catch (err) {
+              Alert.alert("Delete failed", toApiError(err).message);
+            } finally {
+              setSubmitting(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const calendarCells = useMemo(
+    () => buildMonthGrid(calendarAnchor),
+    [calendarAnchor]
+  );
+  const calendarMonthLabel = calendarAnchor.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric"
+  });
+  const canGoNextMonth = useMemo(() => {
+    const now = new Date();
+    return (
+      calendarAnchor.getFullYear() < now.getFullYear() ||
+      (calendarAnchor.getFullYear() === now.getFullYear() &&
+        calendarAnchor.getMonth() < now.getMonth())
+    );
+  }, [calendarAnchor]);
 
   if (!clockType) return null;
 
@@ -602,11 +762,19 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
             <View style={styles.header}>
               <View style={styles.headerCopy}>
                 <Text style={styles.headerKicker}>
-                  {clockType === "in" ? "Start, end and break" : "End shift"}
+                  {isEditing
+                    ? "Update start, end and break"
+                    : clockType === "in"
+                      ? "Start, end and break"
+                      : "End shift"}
                 </Text>
                 <View style={styles.headerTitleRow}>
                   <Text style={styles.headerTitle}>
-                    {clockType === "in" ? "Log hours" : "Clock Out"}
+                    {isEditing
+                      ? "Edit hours"
+                      : clockType === "in"
+                        ? "Log hours"
+                        : "Clock Out"}
                   </Text>
                   {workedHoursLabel ? (
                     <Text style={styles.headerHours}>{workedHoursLabel}</Text>
@@ -625,10 +793,22 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
               keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}
             >
+              <DetailCard
+                icon="calendar-outline"
+                label="Date"
+                value={formatSheetDateLabel(entryDate)}
+                right={
+                  isDateLocked ? undefined : (
+                    <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
+                  )
+                }
+                onPress={isDateLocked ? undefined : () => setDatePickerOpen(true)}
+              />
+
               {clockType === "in" ? (
                 <TimePickerCard
                   title="Start time"
-                  dateLabel={formatSheetDateLabel(selectedDate)}
+                  dateLabel={formatSheetDateLabel(entryDate)}
                   hour12={startHour12}
                   minute={startMinute}
                   amPm={startAmPm}
@@ -661,7 +841,7 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
 
               <TimePickerCard
                 title={clockType === "in" ? "End time" : "Clock Out"}
-                dateLabel={formatSheetDateLabel(selectedDate)}
+                dateLabel={formatSheetDateLabel(entryDate)}
                 hour12={endHour12}
                 minute={endMinute}
                 amPm={endAmPm}
@@ -800,6 +980,17 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
               </View>
             </ScrollView>
 
+            {isEditing ? (
+              <Pressable
+                style={styles.deleteBtn}
+                onPress={handleDelete}
+                disabled={submitting}
+              >
+                <Ionicons name="trash-outline" size={16} color={CLOCK_OUT} />
+                <Text style={styles.deleteText}>Delete hours</Text>
+              </Pressable>
+            ) : null}
+
             <View style={styles.footer}>
               <Pressable style={styles.cancelBtn} onPress={handleClose}>
                 <Text style={styles.cancelText}>Cancel</Text>
@@ -826,7 +1017,11 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
                   <>
                     <Ionicons name="checkmark-circle" size={18} color="#fff" />
                     <Text style={styles.submitText}>
-                      {clockType === "in" ? "Save hours" : "Clock Out"}
+                      {isEditing
+                        ? "Save changes"
+                        : clockType === "in"
+                          ? "Save hours"
+                          : "Clock Out"}
                     </Text>
                   </>
                 )}
@@ -940,6 +1135,115 @@ export const ClockActionModal: React.FC<ClockActionModalProps> = ({
               );
             }}
           />
+        </View>
+      </Modal>
+
+      <Modal
+        visible={datePickerOpen}
+        animationType="slide"
+        onRequestClose={() => setDatePickerOpen(false)}
+      >
+        <View style={[styles.pickerSheet, { paddingTop: insets.top }]}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Select date</Text>
+            <Pressable
+              onPress={() => setDatePickerOpen(false)}
+              hitSlop={12}
+              style={styles.closeBtn}
+            >
+              <Ionicons name="close" size={20} color={colors.textMuted} />
+            </Pressable>
+          </View>
+          <View style={styles.calendarMonthRow}>
+            <Pressable
+              onPress={() =>
+                setCalendarAnchor(
+                  (d) => new Date(d.getFullYear(), d.getMonth() - 1, 1)
+                )
+              }
+              hitSlop={8}
+              style={styles.calendarNavBtn}
+            >
+              <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
+            </Pressable>
+            <Text style={styles.calendarMonthLabel}>{calendarMonthLabel}</Text>
+            <Pressable
+              onPress={() => {
+                if (!canGoNextMonth) return;
+                setCalendarAnchor(
+                  (d) => new Date(d.getFullYear(), d.getMonth() + 1, 1)
+                );
+              }}
+              hitSlop={8}
+              style={[
+                styles.calendarNavBtn,
+                !canGoNextMonth && styles.calendarNavBtnDisabled
+              ]}
+              disabled={!canGoNextMonth}
+            >
+              <Ionicons
+                name="chevron-forward"
+                size={22}
+                color={canGoNextMonth ? colors.textPrimary : colors.border}
+              />
+            </Pressable>
+          </View>
+          {entryDate !== todayStr ? (
+            <Pressable
+              onPress={() => {
+                setEntryDate(todayStr);
+                setCalendarAnchor(monthAnchorFromDate(todayStr));
+                setDatePickerOpen(false);
+              }}
+              style={styles.calendarTodayBtn}
+            >
+              <Text style={styles.calendarTodayText}>Today</Text>
+            </Pressable>
+          ) : null}
+          <View style={styles.calendarWeekdays}>
+            {WEEKDAYS.map((day, index) => (
+              <Text key={`${day}-${index}`} style={styles.calendarWeekday}>
+                {day}
+              </Text>
+            ))}
+          </View>
+          <View style={styles.calendarGrid}>
+            {calendarCells.map(({ date, key }) => {
+              if (!date) {
+                return <View key={key} style={styles.calendarCell} />;
+              }
+              const dateKey = formatDateLocal(date);
+              const isFuture = dateKey > todayStr;
+              const isSelected = dateKey === entryDate;
+              const isToday = dateKey === todayStr;
+              return (
+                <Pressable
+                  key={key}
+                  style={[
+                    styles.calendarCell,
+                    isToday && !isSelected && styles.calendarCellToday,
+                    isSelected && styles.calendarCellSelected
+                  ]}
+                  disabled={isFuture}
+                  onPress={() => {
+                    setEntryDate(dateKey);
+                    setDatePickerOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.calendarDay,
+                      isFuture && styles.calendarDayDisabled,
+                      isToday && !isSelected && styles.calendarDayToday,
+                      isSelected && styles.calendarDaySelected
+                    ]}
+                  >
+                    {date.getDate()}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       </Modal>
     </Modal>
@@ -1397,6 +1701,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md
   },
+  deleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    minHeight: 44
+  },
+  deleteText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 15,
+    color: CLOCK_OUT
+  },
   cancelBtn: {
     flex: 1,
     borderWidth: 1,
@@ -1467,5 +1785,87 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: "center",
     marginTop: spacing.xl
+  },
+  calendarMonthRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md
+  },
+  calendarNavBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  calendarNavBtnDisabled: {
+    opacity: 0.4
+  },
+  calendarMonthLabel: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 16,
+    color: colors.textPrimary
+  },
+  calendarTodayBtn: {
+    alignSelf: "center",
+    marginBottom: spacing.md,
+    backgroundColor: "#ECFDF3",
+    borderRadius: radius.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 6
+  },
+  calendarTodayText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 13,
+    color: ACCENT
+  },
+  calendarWeekdays: {
+    flexDirection: "row",
+    paddingHorizontal: spacing.md
+  },
+  calendarWeekday: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 11,
+    letterSpacing: 0.4,
+    color: colors.textMuted,
+    marginBottom: 8
+  },
+  calendarGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: spacing.md
+  },
+  calendarCell: {
+    width: "14.2857%",
+    aspectRatio: 1,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  calendarCellToday: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: ACCENT
+  },
+  calendarCellSelected: {
+    borderRadius: 999,
+    backgroundColor: ACCENT
+  },
+  calendarDay: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 15,
+    color: colors.textPrimary
+  },
+  calendarDayToday: {
+    color: ACCENT
+  },
+  calendarDaySelected: {
+    color: "#fff"
+  },
+  calendarDayDisabled: {
+    color: colors.border
   }
 });

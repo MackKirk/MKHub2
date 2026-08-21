@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import uuid
 
 from ..db import get_db
-from ..models.models import Notification, User, Attendance, Project, EmployeeProfile
+from ..models.models import Notification, User, Attendance, Project, EmployeeProfile, DevicePushToken
 from ..auth.security import get_current_user
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -212,6 +212,57 @@ def get_unread_count(
             unread_count += 1
     
     return {"count": unread_count}
+
+
+@router.post("/device-token")
+def register_device_token(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Register or refresh an Expo push token for the current user."""
+    token = str(payload.get("token") or "").strip()
+    platform = str(payload.get("platform") or "").strip().lower() or None
+    if not token:
+        raise HTTPException(status_code=400, detail="token is required")
+    if platform and platform not in ("ios", "android"):
+        platform = None
+
+    now = datetime.now(timezone.utc)
+    existing = db.query(DevicePushToken).filter(DevicePushToken.token == token).first()
+    if existing:
+        existing.user_id = user.id
+        existing.platform = platform or existing.platform
+        existing.last_seen_at = now
+    else:
+        db.add(
+            DevicePushToken(
+                user_id=user.id,
+                token=token,
+                platform=platform,
+                last_seen_at=now,
+            )
+        )
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/device-token")
+def unregister_device_token(
+    token: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Remove an Expo push token (logout)."""
+    token = (token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="token is required")
+    db.query(DevicePushToken).filter(
+        DevicePushToken.user_id == user.id,
+        DevicePushToken.token == token,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("")

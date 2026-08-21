@@ -39,6 +39,7 @@ from ..services.service_items import (
     list_service_items,
     resolve_service_item_value,
 )
+from ..services.attendance_edit import attendance_edit_fields
 from ..services.notifications import send_shift_notification, send_attendance_notification
 from ..services.permissions import (
     is_admin, is_supervisor, is_worker,
@@ -2365,6 +2366,7 @@ def get_direct_attendances_for_date(
             "service_item": parse_service_item_from_reason_text(att.reason_text),
             "reason_text": att.reason_text,  # Include reason_text so frontend can extract job_type
             "break_minutes": att.break_minutes,  # Include break time
+            **attendance_edit_fields(att, user),
         })
     
     return result
@@ -2595,9 +2597,16 @@ def get_weekly_attendance_summary(
         
         # Get worker name for this attendance
         worker_name = worker_names_map.get(attendance.worker_id, "Employee")
+        worker_can_edit = attendance_edit_fields(attendance, user)["can_edit"]
         
         # Add event - each attendance is already a complete event
         daily_entries[date_str]["events"].append({
+            "attendance_id": str(attendance.id),
+            "shift_id": str(attendance.shift_id) if attendance.shift_id else None,
+            "status": attendance.status,
+            "approved_by": str(attendance.approved_by) if attendance.approved_by else None,
+            "can_edit": worker_can_edit,
+            "reason_text": attendance.reason_text,
             "clock_in": {
                 "id": str(attendance.id),
                 "time": attendance.clock_in_time.isoformat() if attendance.clock_in_time else None,
@@ -2713,6 +2722,13 @@ def get_weekly_attendance_summary(
                 day_gross_minutes += event_gross_minutes  # Gross (before break)
                 
                 events_list.append({
+                    "attendance_id": event.get("attendance_id"),
+                    "shift_id": event.get("shift_id"),
+                    "status": event.get("status"),
+                    "approved_by": event.get("approved_by"),
+                    "can_edit": event.get("can_edit", True),
+                    "reason_text": event.get("reason_text"),
+                    "service_item": event.get("service_item"),
                     "clock_in": None if is_hours_worked else clock_in_time_str,
                     "clock_out": None if is_hours_worked else clock_out_time_str,
                     "clock_in_status": clock_in_status,
@@ -2743,6 +2759,13 @@ def get_weekly_attendance_summary(
                     job_name = event["project_name"]
                 
                 events_list.append({
+                    "attendance_id": event.get("attendance_id"),
+                    "shift_id": event.get("shift_id"),
+                    "status": event.get("status"),
+                    "approved_by": event.get("approved_by"),
+                    "can_edit": event.get("can_edit", True),
+                    "reason_text": event.get("reason_text"),
+                    "service_item": event.get("service_item"),
                     "clock_in": clock_in_time_str,
                     "clock_out": None,
                     "clock_in_status": clock_in_status,
@@ -2770,6 +2793,13 @@ def get_weekly_attendance_summary(
                 result.append({
                     "date": date_str,
                     "day_name": current_date.strftime("%a").lower(),  # mon, tue, etc.
+                    "attendance_id": event_data.get("attendance_id"),
+                    "shift_id": event_data.get("shift_id"),
+                    "status": event_data.get("status"),
+                    "approved_by": event_data.get("approved_by"),
+                    "can_edit": event_data.get("can_edit", True),
+                    "reason_text": event_data.get("reason_text"),
+                    "service_item": event_data.get("service_item"),
                     "clock_in": event_data["clock_in"],
                     "clock_out": event_data["clock_out"],
                     "clock_in_status": event_data["clock_in_status"],
@@ -3314,6 +3344,7 @@ def get_shift_attendance(
             "approved_at": a.approved_at.isoformat() if a.approved_at else None,
             "rejected_at": a.rejected_at.isoformat() if a.rejected_at else None,
             "rejection_reason": a.rejection_reason,
+            **attendance_edit_fields(a, user),
         }
         
         # Add shift deleted information if applicable

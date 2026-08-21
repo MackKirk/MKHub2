@@ -32,6 +32,8 @@ export interface ShiftAttendanceResponse {
   job_type?: string | null;
   service_item?: string | null;
   break_minutes?: number | null;
+  approved_by?: string | null;
+  can_edit?: boolean;
 }
 
 export interface TodayShiftInfo {
@@ -62,6 +64,13 @@ export type TodayClockState = ClockDayState;
 export interface WeeklySummaryDay {
   date: string;
   day_name: string;
+  attendance_id?: string | null;
+  shift_id?: string | null;
+  status?: string | null;
+  approved_by?: string | null;
+  can_edit?: boolean;
+  reason_text?: string | null;
+  service_item?: string | null;
   clock_in: string | null;
   clock_out: string | null;
   clock_in_status: string | null;

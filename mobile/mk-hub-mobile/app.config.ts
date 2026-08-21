@@ -28,7 +28,15 @@ const defineConfig = (): ExpoConfig => ({
   plugins: [
     "expo-font",
     // Required for expo-secure-store native module with SDK 54
-    "expo-secure-store"
+    "expo-secure-store",
+    [
+      "expo-notifications",
+      {
+        icon: "./assets/icon.png",
+        color: "#d11616",
+        defaultChannel: "hours-reminders"
+      }
+    ]
   ],
   extra: {
     // Set EXPO_PUBLIC_API_BASE_URL to your MK Hub backend URL (see README).
