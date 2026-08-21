@@ -4,7 +4,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from collections import defaultdict
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
@@ -82,14 +82,28 @@ def build_certificate_page_pdf(
     document_hash_before_sign: str,
     requested_by: str,
     requested_at_utc: str,
-    signer_name: str,
-    signer_email: str,
-    signed_local: str,
-    signed_utc: str,
-    ip_address: str,
-    user_agent: str,
     acceptance_statement: str,
+    signers: Optional[List[Dict[str, Any]]] = None,
+    # Backward-compatible single-signer kwargs (onboarding / older callers)
+    signer_name: str = "",
+    signer_email: str = "",
+    signed_local: str = "",
+    signed_utc: str = "",
+    ip_address: str = "",
+    user_agent: str = "",
 ) -> bytes:
+    if not signers:
+        signers = [
+            {
+                "name": signer_name,
+                "email": signer_email,
+                "signed_local": signed_local,
+                "signed_utc": signed_utc,
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+            }
+        ]
+
     buf = io.BytesIO()
     w, h = letter
     c = canvas.Canvas(buf, pagesize=letter)
@@ -98,15 +112,25 @@ def build_certificate_page_pdf(
     c.setFont("Helvetica", 9)
     y = h - 80
     line = 14
+    bottom_margin = 50
+
+    def ensure_space(needed: float = line):
+        nonlocal y
+        if y - needed < bottom_margin:
+            c.showPage()
+            c.setFont("Helvetica", 9)
+            y = h - 50
 
     def block(title: str, lines: list[str]):
         nonlocal y
+        ensure_space(line * (2 + max(1, len(lines))))
         c.setFont("Helvetica-Bold", 10)
         c.drawString(50, y, title)
         y -= line
         c.setFont("Helvetica", 9)
         for t in lines:
             for chunk in _wrap(t, 90):
+                ensure_space(line)
                 c.drawString(50, y, chunk)
                 y -= line
         y -= 6
@@ -120,17 +144,26 @@ def build_certificate_page_pdf(
         ],
     )
     block("Assignment", [f"Assigned by: {requested_by}", f"Assigned at (UTC): {requested_at_utc}"])
-    block(
-        "Signature",
-        [
-            f"Signer: {signer_name}",
-            f"Email: {signer_email}",
-            f"Signed (local): {signed_local}",
-            f"Signed (UTC): {signed_utc}",
-            f"IP address: {ip_address}",
-            f"User agent: {(user_agent or '')[:200]}",
-        ],
-    )
+
+    multi = len(signers) > 1
+    for i, s in enumerate(signers, start=1):
+        role_lbl = (str(s.get("role_label") or "")).strip()
+        if multi:
+            title = f"Signature {i}" + (f" — {role_lbl}" if role_lbl else "")
+        else:
+            title = "Signature" + (f" — {role_lbl}" if role_lbl else "")
+        block(
+            title,
+            [
+                f"Signer: {s.get('name') or ''}",
+                f"Email: {s.get('email') or ''}",
+                f"Signed (local): {s.get('signed_local') or ''}",
+                f"Signed (UTC): {s.get('signed_utc') or ''}",
+                f"IP address: {s.get('ip_address') or 'unknown'}",
+                f"User agent: {(s.get('user_agent') or '')[:200]}",
+            ],
+        )
+
     block("Acceptance", [acceptance_statement or "I have read and agree to this document."])
     block(
         "Legal notice",
@@ -358,22 +391,7 @@ def make_signed_pdf_non_interactive(pdf_bytes: bytes) -> bytes:
         doc.close()
 
 
-def build_signed_pdf_with_certificate_from_merged(
-    merged_pdf_bytes: bytes,
-    *,
-    document_name: str,
-    document_id: str,
-    base_doc_hash: str,
-    requested_by: str,
-    requested_at: datetime,
-    signer_name: str,
-    signer_email: str,
-    signed_at: datetime,
-    ip_address: str,
-    user_agent: str,
-    acceptance_statement: str,
-    tz_name: str = "America/Vancouver",
-) -> Tuple[bytes, str]:
+def _format_signed_times(signed_at: datetime, tz_name: str = "America/Vancouver") -> Tuple[str, str]:
     try:
         from zoneinfo import ZoneInfo
 
@@ -385,24 +403,70 @@ def build_signed_pdf_with_certificate_from_merged(
     local = signed_at.astimezone(tz)
     signed_local = local.strftime("%Y-%m-%d %H:%M %Z")
     signed_utc = signed_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return signed_local, signed_utc
+
+
+def build_signed_pdf_with_certificate_from_merged(
+    merged_pdf_bytes: bytes,
+    *,
+    document_name: str,
+    document_id: str,
+    base_doc_hash: str,
+    requested_by: str,
+    requested_at: datetime,
+    acceptance_statement: str,
+    signers: Optional[List[Dict[str, Any]]] = None,
+    # Backward-compatible single-signer kwargs
+    signer_name: str = "",
+    signer_email: str = "",
+    signed_at: Optional[datetime] = None,
+    ip_address: str = "",
+    user_agent: str = "",
+    tz_name: str = "America/Vancouver",
+) -> Tuple[bytes, str]:
     req_utc = (
         requested_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         if requested_at.tzinfo
         else requested_at.replace(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     )
+
+    cert_signers: List[Dict[str, Any]] = list(signers or [])
+    if not cert_signers:
+        if signed_at is None:
+            signed_at = datetime.now(timezone.utc)
+        signed_local, signed_utc = _format_signed_times(signed_at, tz_name)
+        cert_signers = [
+            {
+                "name": signer_name,
+                "email": signer_email,
+                "signed_local": signed_local,
+                "signed_utc": signed_utc,
+                "ip_address": ip_address or "unknown",
+                "user_agent": user_agent or "",
+            }
+        ]
+    else:
+        # Normalize any signer entries that still have a datetime instead of formatted strings
+        normalized: List[Dict[str, Any]] = []
+        for s in cert_signers:
+            entry = dict(s)
+            sat = entry.pop("signed_at", None)
+            if sat is not None and (not entry.get("signed_local") or not entry.get("signed_utc")):
+                if isinstance(sat, datetime):
+                    sl, su = _format_signed_times(sat, tz_name)
+                    entry.setdefault("signed_local", sl)
+                    entry.setdefault("signed_utc", su)
+            normalized.append(entry)
+        cert_signers = normalized
+
     cert = build_certificate_page_pdf(
         document_name=document_name,
         document_id=document_id,
         document_hash_before_sign=base_doc_hash,
         requested_by=requested_by,
         requested_at_utc=req_utc,
-        signer_name=signer_name,
-        signer_email=signer_email,
-        signed_local=signed_local,
-        signed_utc=signed_utc,
-        ip_address=ip_address or "unknown",
-        user_agent=user_agent or "",
         acceptance_statement=acceptance_statement,
+        signers=cert_signers,
     )
     final = append_pdf_pages(merged_pdf_bytes, cert)
     final = make_signed_pdf_non_interactive(final)

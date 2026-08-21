@@ -1042,6 +1042,8 @@ class DocumentSignatureParticipant(Base):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
     signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    ip_address: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 

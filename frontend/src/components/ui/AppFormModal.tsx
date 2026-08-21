@@ -86,6 +86,7 @@ export type AppFormModalProps = {
    * On `layout="detail"`, also skips the default `max-h` + `overflow-y-auto` shell so nested
    * columns can scroll independently.
    */
+  scrollBody?: boolean;
   children: ReactNode;
 };
 
