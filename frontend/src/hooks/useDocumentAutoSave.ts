@@ -11,6 +11,7 @@ export type DocumentSaveStatus =
 export type DocumentAutoSaveSnapshot = {
   title: string;
   pages: unknown[];
+  signer_roles?: unknown[];
 };
 
 type UseDocumentAutoSaveOptions<T extends DocumentAutoSaveSnapshot> = {
@@ -29,7 +30,11 @@ type UseDocumentAutoSaveOptions<T extends DocumentAutoSaveSnapshot> = {
 };
 
 function serializeSnapshot(snapshot: DocumentAutoSaveSnapshot): string {
-  return JSON.stringify({ title: snapshot.title, pages: snapshot.pages });
+  return JSON.stringify({
+    title: snapshot.title,
+    pages: snapshot.pages,
+    signer_roles: snapshot.signer_roles ?? null,
+  });
 }
 
 export function useDocumentAutoSave<T extends DocumentAutoSaveSnapshot>({

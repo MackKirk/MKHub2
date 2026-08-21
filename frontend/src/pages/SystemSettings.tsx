@@ -21,8 +21,6 @@ import {
   uiRadius,
 } from '@/components/ui';
 import { useConfirm } from '@/components/ConfirmProvider';
-import DocumentTemplatesTab from '@/components/DocumentTemplatesTab';
-import DocumentTypesTab from '@/components/DocumentTypesTab';
 import SettingsLookupListsPanel from '@/components/settings/SettingsLookupListsPanel';
 import SettingsFilesAssetsPanel from '@/components/settings/SettingsFilesAssetsPanel';
 import SettingsAutoTasksPanel from '@/components/settings/SettingsAutoTasksPanel';
@@ -93,23 +91,6 @@ import {
   applyProjectLineAccessLevelToKeySet,
   type ProjectLinePermissionRow,
 } from '@/lib/projectLinePermissions';
-import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
-import { isAdminRole } from '@/lib/projectLinePermissionKeys';
-import {
-  canEditDocumentBackgroundsCard,
-  canEditDocumentTemplatesCard,
-  canEditFilesAssetsTab,
-  canEditLookupListsTab,
-  canEditPermissionTemplatesCard,
-  canEditTermsTemplatesCard,
-  canViewDocumentBackgroundsCard,
-  canViewDocumentTemplatesCard,
-  canViewFilesAssetsTab,
-  canViewLookupListsTab,
-  canViewPermissionTemplatesCard,
-  canViewTermsTemplatesCard,
-  canViewTemplatesTab,
-} from '@/lib/settingsPermissions';
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
@@ -144,10 +125,6 @@ export default function SystemSettings() {
   const canEditPermTpl = !!settingsPerms?.can_edit_permission_templates;
   const canViewTermsTpl = !!settingsPerms?.can_view_terms_templates;
   const canEditTermsTpl = !!settingsPerms?.can_edit_terms_templates;
-  const canViewDocBg = !!settingsPerms?.can_view_document_backgrounds;
-  const canEditDocBg = !!settingsPerms?.can_edit_document_backgrounds;
-  const canViewDocTpl = !!settingsPerms?.can_view_document_templates;
-  const canEditDocTpl = !!settingsPerms?.can_edit_document_templates;
   const canViewAutoTasks = !!settingsPerms?.can_view_auto_tasks;
   const canEditAutoTasks = !!settingsPerms?.can_edit_auto_tasks;
 
@@ -280,25 +257,7 @@ export default function SystemSettings() {
               ) : null}
             </div>
           ) : null}
-          {canViewDocBg ? (
-            <AppCard
-              title="Document creator — background templates"
-              subtitle="Page backgrounds (images) used when building documents in the Document creator (sidebar → Documents)."
-              className="min-w-0"
-            >
-              <DocumentTemplatesTab readOnly={!canEditDocBg} />
-            </AppCard>
-          ) : null}
-          {canViewDocTpl ? (
-            <AppCard
-              title="Document creator — document templates"
-              subtitle="Preset layouts (ordered pages with backgrounds and fields) offered when creating a new document."
-              className="min-w-0"
-            >
-              <DocumentTypesTab readOnly={!canEditDocTpl} />
-            </AppCard>
-          ) : null}
-          {!canViewPermTpl && !canViewTermsTpl && !canViewDocBg && !canViewDocTpl ? (
+          {!canViewPermTpl && !canViewTermsTpl ? (
             <AppCard>
               <AppEmptyState
                 title="No template access"

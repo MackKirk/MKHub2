@@ -41,6 +41,7 @@ const backendProxyPrefixes = [
   '/company-credit-cards',
   '/dispatch',
   '/document-creator',
+  '/document-signature-templates',
   '/employees',
   '/estimate',
   '/files',

@@ -91,6 +91,20 @@ export function withFileAccessTokenIfNeeded(url: string | null | undefined): str
   return withFileAccessToken(u);
 }
 
+/** Fetch a binary endpoint (PDF/PNG) with the session Bearer token. */
+export async function fetchAuthorizedBinary(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  const t = getToken();
+  const r = await fetch(url, {
+    headers: { Authorization: 'Bearer ' + (t || '') },
+    signal,
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error((err as { detail?: string }).detail || r.statusText || 'Request failed');
+  }
+  return r.arrayBuffer();
+}
+
 export async function api<T=any>(
   method: HttpMethod,
   path: string,

@@ -47,6 +47,11 @@ from .routes.chat import router as chat_router
 from .routes.notifications import router as notifications_router
 from .routes.company_files import router as company_files_router
 from .routes.document_creator import router as document_creator_router
+from .routes.document_signature_templates import router as document_signature_templates_router
+from .routes.document_signature_requests import (
+    me_router as document_signature_requests_me_router,
+    router as document_signature_requests_router,
+)
 from .routes.orders import router as orders_router
 from .routes.task_requests import router as task_requests_router
 from .routes.tasks_v2 import router as tasks_router
@@ -264,6 +269,9 @@ def create_app() -> FastAPI:
     app.include_router(community_router)
     app.include_router(company_files_router)
     app.include_router(document_creator_router)
+    app.include_router(document_signature_templates_router)
+    app.include_router(document_signature_requests_router)
+    app.include_router(document_signature_requests_me_router)
     app.include_router(orders_router)
     app.include_router(employee_management_router)
     app.include_router(permissions_router)
@@ -1496,6 +1504,180 @@ def create_app() -> FastAPI:
                     except Exception:
                         pass
                     print("[startup] document_types table ready")
+                    try:
+                        if not db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.columns "
+                                "WHERE table_schema = 'public' AND table_name = 'document_types' "
+                                "AND column_name = 'signer_roles' LIMIT 1"
+                            )
+                        ).fetchall():
+                            db.execute(text("ALTER TABLE document_types ADD COLUMN signer_roles JSON"))
+                            db.commit()
+                            print("[startup] Added document_types.signer_roles")
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] document_types.signer_roles (non-critical): {_e}")
+
+                    try:
+                        if db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_name = 'user_documents' LIMIT 1"
+                            )
+                        ).fetchall() and not db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.columns "
+                                "WHERE table_schema = 'public' AND table_name = 'user_documents' "
+                                "AND column_name = 'signer_roles' LIMIT 1"
+                            )
+                        ).fetchall():
+                            db.execute(text("ALTER TABLE user_documents ADD COLUMN signer_roles JSON"))
+                            db.commit()
+                            print("[startup] Added user_documents.signer_roles")
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] user_documents.signer_roles (non-critical): {_e}")
+
+                    rows = db.execute(
+                        text(
+                            "SELECT 1 FROM information_schema.tables WHERE table_name = 'document_signature_templates' LIMIT 1"
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import DocumentSignatureTemplate
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[DocumentSignatureTemplate.__table__],
+                        )
+                        db.commit()
+                        print("[startup] Created document_signature_templates table")
+
+                    rows = db.execute(
+                        text(
+                            "SELECT 1 FROM information_schema.tables WHERE table_name = 'document_signature_requests' LIMIT 1"
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import DocumentSignatureRequest
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[DocumentSignatureRequest.__table__],
+                        )
+                        db.commit()
+                        print("[startup] Created document_signature_requests table")
+
+                    if db.execute(
+                        text(
+                            "SELECT 1 FROM information_schema.tables WHERE table_name = 'document_signature_requests' LIMIT 1"
+                        )
+                    ).fetchall():
+                        if not db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.columns "
+                                "WHERE table_schema = 'public' AND table_name = 'document_signature_requests' "
+                                "AND column_name = 'current_pdf_file_id' LIMIT 1"
+                            )
+                        ).fetchall():
+                            db.execute(
+                                text(
+                                    "ALTER TABLE document_signature_requests "
+                                    "ADD COLUMN current_pdf_file_id UUID REFERENCES file_objects(id) ON DELETE SET NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "UPDATE document_signature_requests "
+                                    "SET current_pdf_file_id = source_pdf_file_id "
+                                    "WHERE current_pdf_file_id IS NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added document_signature_requests.current_pdf_file_id")
+
+                    if not db.execute(
+                        text(
+                            "SELECT 1 FROM information_schema.tables "
+                            "WHERE table_name = 'document_signature_participants' LIMIT 1"
+                        )
+                    ).fetchall():
+                        from .models.models import DocumentSignatureParticipant
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[DocumentSignatureParticipant.__table__],
+                        )
+                        db.commit()
+                        print("[startup] Created document_signature_participants table")
+                        # Backfill: one employee participant from legacy signer_user_id
+                        try:
+                            db.execute(
+                                text(
+                                    """
+                                    INSERT INTO document_signature_participants
+                                        (id, request_id, role, signer_user_id, sort_order, status, signed_at, created_at)
+                                    SELECT gen_random_uuid(), r.id, 'employee', r.signer_user_id, 0,
+                                           CASE WHEN r.status = 'signed' THEN 'signed' ELSE 'ready' END,
+                                           r.signed_at, COALESCE(r.created_at, NOW())
+                                    FROM document_signature_requests r
+                                    WHERE NOT EXISTS (
+                                        SELECT 1 FROM document_signature_participants p WHERE p.request_id = r.id
+                                    )
+                                    """
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Backfilled document_signature_participants from signer_user_id")
+                        except Exception as _e:
+                            db.rollback()
+                            print(f"[startup] document_signature_participants backfill (non-critical): {_e}")
+
+                    if db.execute(
+                        text(
+                            "SELECT 1 FROM information_schema.tables "
+                            "WHERE table_name = 'document_signature_participants' LIMIT 1"
+                        )
+                    ).fetchall():
+                        try:
+                            col = db.execute(
+                                text(
+                                    "SELECT character_maximum_length FROM information_schema.columns "
+                                    "WHERE table_schema = 'public' AND table_name = 'document_signature_participants' "
+                                    "AND column_name = 'role' LIMIT 1"
+                                )
+                            ).fetchone()
+                            if col and col[0] is not None and int(col[0]) < 64:
+                                db.execute(
+                                    text(
+                                        "ALTER TABLE document_signature_participants "
+                                        "ALTER COLUMN role TYPE VARCHAR(64)"
+                                    )
+                                )
+                                db.commit()
+                                print("[startup] Widened document_signature_participants.role to VARCHAR(64)")
+                        except Exception as _e:
+                            db.rollback()
+                            print(f"[startup] widen participants.role (non-critical): {_e}")
+                        try:
+                            if not db.execute(
+                                text(
+                                    "SELECT 1 FROM information_schema.columns "
+                                    "WHERE table_schema = 'public' AND table_name = 'document_signature_participants' "
+                                    "AND column_name = 'role_label' LIMIT 1"
+                                )
+                            ).fetchall():
+                                db.execute(
+                                    text(
+                                        "ALTER TABLE document_signature_participants "
+                                        "ADD COLUMN role_label VARCHAR(120)"
+                                    )
+                                )
+                                db.commit()
+                                print("[startup] Added document_signature_participants.role_label")
+                        except Exception as _e:
+                            db.rollback()
+                            print(f"[startup] participants.role_label (non-critical): {_e}")
 
                     # Onboarding (Step 2 documents, packages, signing)
                     rows = db.execute(

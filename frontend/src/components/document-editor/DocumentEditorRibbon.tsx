@@ -2,6 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { getOverlayRoot } from '@/lib/overlayRoot';
+import DocumentAutoFillTokenPicker from '@/components/document-editor/DocumentAutoFillTokenPicker';
+import { useDocumentAutoFillTokens } from '@/hooks/useDocumentAutoFillTokens';
+import { insertDocumentSignatureAtomAtCaret, insertDocumentDateAtomAtCaret, insertDocumentTextAtCaret } from '@/lib/documentAutoFillTokens';
+import type { DocumentSignerRoleDef } from '@/types/documentCreator';
 import {
   RibbonShell,
   RibbonGroup,
@@ -17,7 +21,10 @@ import {
   ExportPdfIcon,
   ImageAreaIcon,
   ImageIcon,
+  InitialsIcon,
+  DateFieldIcon,
   RedoIcon,
+  SignatureIcon,
   TextIcon,
   UndoIcon,
   ZoomIcon,
@@ -38,6 +45,8 @@ export type DocumentEditorRibbonProps = {
   showExportPdf: boolean;
   onExportPdf: () => void;
   isExportingPdf: boolean;
+  showSendForSignature?: boolean;
+  onSendForSignature?: () => void;
   showSaveTemplate: boolean;
   onSaveTemplate: () => void;
   onUndo: () => void;
@@ -56,6 +65,11 @@ export type DocumentEditorRibbonProps = {
   onAddText: () => void;
   onAddImage: () => void;
   onAddImagePlaceholder: () => void;
+  onAddInitials?: (assigneeRoleId: string) => void;
+  /** Document signers for insert chooser. */
+  signerRoles?: DocumentSignerRoleDef[];
+  /** Open name dialog then create signer + insert for this field kind. */
+  onRequestOtherSigner?: (kind: 'signature' | 'date' | 'initials', textElementId: string | null) => void;
   showBlock: boolean;
   onAddBlock?: () => void;
   layoutPanel: ReactNode;
@@ -69,6 +83,9 @@ export type DocumentEditorRibbonProps = {
   extraActions?: ReactNode;
   /** Optional element rendered directly below the close/back button (e.g. expand button). */
   closeSlotBelow?: ReactNode;
+  /** When a text box is being edited, Auto-fill inserts at the caret. */
+  textEditingElementId?: string | null;
+  projectId?: string | null;
 };
 
 const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
@@ -136,6 +153,8 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     showExportPdf,
     onExportPdf,
     isExportingPdf,
+    showSendForSignature = false,
+    onSendForSignature,
     showSaveTemplate,
     onSaveTemplate,
     onUndo,
@@ -148,6 +167,9 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     onAddText,
     onAddImage,
     onAddImagePlaceholder,
+    onAddInitials,
+    signerRoles = [],
+    onRequestOtherSigner,
     showBlock,
     onAddBlock,
     layoutPanel,
@@ -157,6 +179,8 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     onZoomChange,
     extraActions,
     closeSlotBelow,
+    textEditingElementId = null,
+    projectId = null,
   } = props;
 
   const [editingTitle, setEditingTitle] = useState(false);
@@ -173,6 +197,68 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
   const [tokensMenuPos, setTokensMenuPos] = useState({ top: 0, left: 0 });
   const tokensTriggerRef = useRef<HTMLButtonElement>(null);
   const tokensDropdownRef = useRef<HTMLDivElement>(null);
+  const { data: tokenValues } = useDocumentAutoFillTokens(projectId, !readOnly);
+
+  type RoleInsertKind = 'signature' | 'date' | 'initials';
+  const [roleMenu, setRoleMenu] = useState<{
+    kind: RoleInsertKind;
+    top: number;
+    left: number;
+    /** Captured before toolbar/menu blur clears inline editing. */
+    textElementId: string | null;
+  } | null>(null);
+  const roleMenuRef = useRef<HTMLDivElement>(null);
+
+  const openRoleChooser = (kind: RoleInsertKind, trigger: HTMLElement | null) => {
+    const textElementId = textEditingElementId;
+    if (!trigger) {
+      setRoleMenu({ kind, top: 80, left: 24, textElementId });
+      return;
+    }
+    const r = trigger.getBoundingClientRect();
+    const panelW = 168;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8));
+    setRoleMenu({ kind, top: r.bottom + 4, left, textElementId });
+  };
+
+  const pickRole = (roleId: string) => {
+    const kind = roleMenu?.kind;
+    const textId = roleMenu?.textElementId ?? textEditingElementId;
+    setRoleMenu(null);
+    if (!kind) return;
+    if (kind === 'initials') {
+      onAddInitials?.(roleId);
+      return;
+    }
+    if (!textId) {
+      toast.error(
+        kind === 'date'
+          ? 'Click inside a text box first, then insert Date at the cursor.'
+          : 'Click inside a text box first, then insert Signature at the cursor.',
+      );
+      return;
+    }
+    if (kind === 'date') insertDocumentDateAtomAtCaret(textId, { assignee: roleId });
+    else insertDocumentSignatureAtomAtCaret(textId, { assignee: roleId });
+  };
+
+  useEffect(() => {
+    if (!roleMenu) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (roleMenuRef.current?.contains(t)) return;
+      setRoleMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRoleMenu(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [roleMenu]);
 
   const repositionZoomMenu = useCallback(() => {
     if (!zoomMenuOpen || !zoomTriggerRef.current) return;
@@ -373,8 +459,87 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
             {showBlock && onAddBlock && (
               <RibbonLargeButton icon={<BlockIcon />} label="Block" onClick={onAddBlock} title="Insert block area" />
             )}
+            {onAddInitials && (
+              <RibbonLargeButton
+                icon={<InitialsIcon />}
+                label="Initials"
+                keepTextSelection
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => openRoleChooser('initials', e.currentTarget)}
+                title="Insert initials field — choose who signs"
+              />
+            )}
+            <RibbonLargeButton
+              icon={<DateFieldIcon />}
+              label="Date"
+              keepTextSelection
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => openRoleChooser('date', e.currentTarget)}
+              title={
+                textEditingElementId
+                  ? 'Insert date field at the cursor — choose who fills it'
+                  : 'Edit a text box first, then insert Date at the cursor'
+              }
+            />
+            <RibbonLargeButton
+              icon={<SignatureIcon />}
+              label="Signature"
+              keepTextSelection
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => openRoleChooser('signature', e.currentTarget)}
+              title={
+                textEditingElementId
+                  ? 'Insert signature field at the cursor — choose who signs'
+                  : 'Edit a text box first, then insert Signature at the cursor'
+              }
+            />
           </RibbonGroup>
         )}
+
+        {roleMenu &&
+          createPortal(
+            <div
+              ref={roleMenuRef}
+              className={ribbonPortalDropdownPanelClass}
+              style={{ position: 'fixed', top: roleMenu.top, left: roleMenu.left, zIndex: 100060, minWidth: 160 }}
+              role="menu"
+              data-document-keep-text-selection=""
+            >
+              <p className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Who signs
+              </p>
+              {(signerRoles.length ? signerRoles : []).map((role) => (
+                <button
+                  key={role.id}
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-2.5 py-1.5 text-left text-sm text-slate-800 hover:bg-slate-100"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pickRole(role.id)}
+                >
+                  {role.label}
+                </button>
+              ))}
+              {onRequestOtherSigner ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="block w-full border-t border-slate-100 px-2.5 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    const kind = roleMenu?.kind;
+                    const textElementId = roleMenu?.textElementId ?? textEditingElementId;
+                    setRoleMenu(null);
+                    if (!kind) return;
+                    onRequestOtherSigner(kind, textElementId);
+                  }}
+                >
+                  Other
+                </button>
+              ) : null}
+            </div>,
+            getOverlayRoot(),
+          )}
 
         {!readOnly && (
           <RibbonGroup label="Page">
@@ -382,7 +547,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
           </RibbonGroup>
         )}
 
-        {isTemplate && (
+        {!readOnly && (
           <RibbonGroup label="Variables">
             <div className="inline-flex items-center pb-0.5">
               <button
@@ -390,7 +555,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                 ref={tokensTriggerRef}
                 onClick={() => setTokensMenuOpen((v) => !v)}
                 className={ribbonDropdownTriggerClass}
-                title="Auto-fill tokens reference"
+                title="Auto-fill tokens"
                 aria-expanded={tokensMenuOpen}
                 aria-haspopup="dialog"
               >
@@ -401,52 +566,23 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                 createPortal(
                   <div
                     ref={tokensDropdownRef}
-                    className={`${ribbonPortalDropdownPanelClass} w-[320px]`}
+                    className="fixed z-[100060]"
                     style={{ top: tokensMenuPos.top, left: tokensMenuPos.left }}
-                    role="dialog"
-                    aria-label="Auto-fill tokens"
                   >
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-[13px] font-semibold text-slate-900">Auto-fill tokens</span>
-                      <button
-                        type="button"
-                        onClick={() => setTokensMenuOpen(false)}
-                        className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-                        aria-label="Close"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <p className="text-[12px] text-slate-500 mb-3 leading-snug">
-                      Use these tokens in text elements. When a document is created from a project, they are replaced automatically.
-                    </p>
-                    <table className="w-full text-[12px] border-collapse">
-                      <thead>
-                        <tr className="border-b border-slate-100">
-                          <th className="pb-1.5 text-left font-semibold text-slate-700">Token</th>
-                          <th className="pb-1.5 text-left font-semibold text-slate-700">Filled with</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {[
-                          { token: '<Project Name>', label: 'Project name' },
-                          { token: '<Project Address>', label: 'Project address' },
-                          { token: '<Customer Name>', label: 'Customer name' },
-                          { token: '<Customer Address>', label: 'Customer address' },
-                          { token: '<Reference Code>', label: 'Project code' },
-                          { token: '<Auto Date>', label: 'Date when page is added' },
-                        ].map(({ token, label }) => (
-                          <tr key={token}>
-                            <td className="py-1.5 pr-3">
-                              <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-800">
-                                {token}
-                              </code>
-                            </td>
-                            <td className="py-1.5 text-slate-600">{label}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <DocumentAutoFillTokenPicker
+                      tokens={tokenValues?.tokens ?? []}
+                      forceToken={isTemplate}
+                      onClose={() => setTokensMenuOpen(false)}
+                      onInsert={(text) => {
+                        if (textEditingElementId) {
+                          insertDocumentTextAtCaret(textEditingElementId, text);
+                        } else {
+                          void navigator.clipboard.writeText(text);
+                          toast.success('Copied to clipboard — click a text box, then Auto-fill to insert at the cursor.');
+                        }
+                        setTokensMenuOpen(false);
+                      }}
+                    />
                   </div>,
                   getOverlayRoot()
                 )}
@@ -535,20 +671,31 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
         )}
         </div>
         {/* Export / save status / extra actions stay outside the view-only blur — Export PDF works while viewing. */}
-        {(showExportPdf || saveStatus || mediaLoading || extraActions) && (
+        {(showExportPdf || showSendForSignature || saveStatus || mediaLoading || extraActions) && (
           <div className="ml-auto flex shrink-0 items-end gap-2 border-l border-slate-200/75 pl-2 sm:pl-2.5">
-            {(showExportPdf || saveStatus || mediaLoading) && (
+            {(showExportPdf || showSendForSignature || saveStatus || mediaLoading) && (
               <div className="flex min-h-[64px] flex-col items-center justify-end gap-1 py-1">
-                {showExportPdf ? (
-                  <RibbonCompactButton
-                    icon={<ExportPdfIcon className="w-4 h-4" />}
-                    label={isExportingPdf ? 'Exporting…' : 'Export PDF'}
-                    onClick={onExportPdf}
-                    disabled={isExportingPdf}
-                    title="Export PDF"
-                    variant="primary"
-                  />
-                ) : null}
+                <div className="flex items-end gap-1.5">
+                  {showSendForSignature && onSendForSignature ? (
+                    <RibbonCompactButton
+                      icon={<SignatureIcon className="w-4 h-4" />}
+                      label="Send for signature"
+                      onClick={onSendForSignature}
+                      title="Send for signature"
+                      variant="primary"
+                    />
+                  ) : null}
+                  {showExportPdf ? (
+                    <RibbonCompactButton
+                      icon={<ExportPdfIcon className="w-4 h-4" />}
+                      label={isExportingPdf ? 'Exporting…' : 'Export PDF'}
+                      onClick={onExportPdf}
+                      disabled={isExportingPdf}
+                      title="Export PDF"
+                      variant="primary"
+                    />
+                  ) : null}
+                </div>
                 <div className="flex items-center justify-center gap-1.5">
                   {mediaLoading ? (
                     <span

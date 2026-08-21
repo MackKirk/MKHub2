@@ -573,6 +573,19 @@ def _is_document_creator_blob(fo: FileObject) -> bool:
     return False
 
 
+def _is_document_signature_template_blob(fo: FileObject) -> bool:
+    cat = (str(fo.category_id).lower().strip() if fo.category_id else "")
+    if cat.startswith("document-signature-template"):
+        return True
+    key = (getattr(fo, "key", None) or "").replace("\\", "/").lower()
+    return "/document-signature-template" in key
+
+
+def _is_document_signature_request_blob(fo: FileObject) -> bool:
+    key = (getattr(fo, "key", None) or "").replace("\\", "/").lower()
+    return "/document-signature-request" in key or "/document-signature-signed" in key
+
+
 def _is_file_referenced_in_project_documents(
     db: Session, project_id: uuid.UUID, file_id: uuid.UUID
 ) -> bool:
@@ -767,6 +780,20 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
     # Misc document-creator uploads (no project_id on FileObject) used by the editor.
     if _is_document_creator_blob(fo) and _user_has_document_creator_api_read_permission(user):
         return
+
+    if _is_document_signature_template_blob(fo) and (
+        _has_permission(user, "documents:read") or _has_permission(user, "documents:write")
+    ):
+        return
+
+    if _is_document_signature_request_blob(fo):
+        # Signer / requester / anyone with documents:read may open request PDFs.
+        if fo.created_by and fo.created_by == user.id:
+            return
+        if fo.employee_id and fo.employee_id == user.id:
+            return
+        if _has_permission(user, "documents:read") or _has_permission(user, "documents:write"):
+            return
 
     _, _, _, cat_slug = infer_scope_from_storage_key(db, fo.key)
     if cat_slug == "form-template-reference":

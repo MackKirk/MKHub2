@@ -16,6 +16,12 @@ const LOGO_SRC = '/ui/assets/login/logo-light.svg';
 const CURSOR_PENCIL =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M2 18l4-4 10-10 2 2-10 10-4 4-2-2z' fill='none' stroke='%23222' stroke-width='1.5'/%3E%3C/svg%3E\") 2 18, crosshair";
 
+/**
+ * Capture pad height (CSS px). Shorter than before so the PNG aspect ratio is closer to
+ * document signature boxes (~5:1) — fills width better without stretching.
+ */
+const SIG_CAPTURE_HEIGHT_PX = 88;
+
 type FieldDef = {
   id: string;
   type: string;
@@ -32,6 +38,8 @@ type SigningContext = {
   signature_template: { version: number; fields: FieldDef[] } | null;
   page_sizes: { width: number; height: number }[];
   document_name: string;
+  signer_role?: string;
+  signer_role_label?: string;
 };
 
 type DocRow = {
@@ -56,12 +64,13 @@ function SigCanvas({
     if (!c) return;
     const rect = c.getBoundingClientRect();
     const ratio = window.devicePixelRatio || 1;
+    const h = SIG_CAPTURE_HEIGHT_PX;
     c.width = Math.floor(rect.width * ratio);
-    c.height = Math.floor(140 * ratio);
+    c.height = Math.floor(h * ratio);
     const ctx = c.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    ctx.clearRect(0, 0, rect.width, 140);
+    ctx.clearRect(0, 0, rect.width, h);
     ctx.strokeStyle = '#111';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
@@ -89,7 +98,7 @@ function SigCanvas({
     <canvas
       ref={canvasRef}
       className="w-full touch-none block border border-gray-200 rounded bg-transparent"
-      style={{ height: 140, cursor: CURSOR_PENCIL }}
+      style={{ height: SIG_CAPTURE_HEIGHT_PX, cursor: CURSOR_PENCIL }}
       onMouseDown={(e) => {
         drawing.current = true;
         last.current = pos(e);
@@ -142,7 +151,7 @@ function TypedSignatureCanvas({
     const c = canvasRef.current;
     if (!wrap || !c) return;
     const w = Math.max(260, wrap.clientWidth || 320);
-    const h = 140;
+    const h = SIG_CAPTURE_HEIGHT_PX;
     const ratio = window.devicePixelRatio || 1;
     c.width = Math.floor(w * ratio);
     c.height = Math.floor(h * ratio);
@@ -158,11 +167,11 @@ function TypedSignatureCanvas({
       }
       return;
     }
-    let size = 42;
+    let size = Math.min(40, Math.floor(h * 0.55));
     const fontStack =
       '"Segoe Script", "Brush Script MT", "Lucida Handwriting", "Dancing Script", "Apple Chancery", cursive';
     ctx.font = `${size}px ${fontStack}`;
-    while (ctx.measureText(t).width > w * 0.88 && size > 16) {
+    while (ctx.measureText(t).width > w * 0.88 && size > 14) {
       size -= 2;
       ctx.font = `${size}px ${fontStack}`;
     }
@@ -194,18 +203,31 @@ function TypedSignatureCanvas({
       <canvas
         ref={canvasRef}
         className="w-full block border border-gray-200 rounded-lg bg-transparent"
-        style={{ height: 140 }}
+        style={{ height: SIG_CAPTURE_HEIGHT_PX }}
       />
     </div>
   );
 }
 
-/** Local calendar date YYYY-MM-DD (for template date fields stamped at sign click). */
+/** Local calendar date YYYY-MM-DD (for template date fields). */
 function localDateYYYYMMDD(d = new Date()): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/** Display / PDF stamp for a YYYY-MM-DD value, e.g. March 1, 2024. */
+function formatSignDateLong(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((iso || '').trim());
+  if (!m) return (iso || '').trim();
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!y || !mo || !d) return iso.trim();
+  const dt = new Date(y, mo - 1, d);
+  if (Number.isNaN(dt.getTime())) return iso.trim();
+  return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 function fieldHasValue(f: FieldDef, values: Record<string, string | boolean>): boolean {
@@ -218,7 +240,10 @@ function fieldHasValue(f: FieldDef, values: Record<string, string | boolean>): b
     if (!raw) return !f.required;
     return parseCurrencyAmount(raw) !== null;
   }
-  if (f.type === 'date') return true;
+  if (f.type === 'date') {
+    const v = values[f.id];
+    return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.trim());
+  }
   const v = values[f.id];
   if (f.type === 'checkbox') {
     return v === true;
@@ -310,7 +335,7 @@ function renderTemplateFieldPreview(
   if (f.type === 'signature' || f.type === 'initials') {
     if (typeof v === 'string' && v.startsWith('data:image')) {
       return (
-        <img src={v} alt="" className="max-h-full max-w-full object-contain" draggable={false} />
+        <img src={v} alt="" className="h-full w-full object-contain object-center" draggable={false} />
       );
     }
     return null;
@@ -332,8 +357,9 @@ function renderTemplateFieldPreview(
   }
 
   if (f.type === 'date') {
-    const t = typeof v === 'string' ? v : '';
-    if (t.trim()) {
+    const raw = typeof v === 'string' ? v : '';
+    const t = /^\d{4}-\d{2}-\d{2}$/.test(raw.trim()) ? formatSignDateLong(raw.trim()) : raw.trim();
+    if (t) {
       return (
         <span className="block w-full truncate text-center font-medium text-gray-900" title={t}>
           {t}
@@ -341,8 +367,8 @@ function renderTemplateFieldPreview(
       );
     }
     return (
-      <span className="block w-full truncate text-center text-[0.7rem] italic text-gray-600" title="Filled when you sign">
-        Date on sign
+      <span className="block w-full truncate text-center text-[0.7rem] italic text-gray-600" title="Select a date">
+        Select date
       </span>
     );
   }
@@ -445,9 +471,29 @@ type Props = {
   signItem: DocRow;
   onClose: () => void;
   onSigned: () => void;
+  /** Override API paths (Document Builder inbox). Defaults to onboarding hire documents. */
+  endpoints?: {
+    contextPath: string;
+    previewPath: string;
+    signPath: string;
+    /** FormData key for the item id; omit / null for path-only sign endpoints. */
+    idFormField?: string | null;
+    queryKeyPrefix?: string;
+  };
 };
 
-export default function OnboardingSignModal({ signItem, onClose, onSigned }: Props) {
+export default function OnboardingSignModal({ signItem, onClose, onSigned, endpoints }: Props) {
+  const contextPath =
+    endpoints?.contextPath ?? `/auth/me/onboarding/documents/${signItem.id}/signing-context`;
+  const previewPath =
+    endpoints?.previewPath ?? `/auth/me/onboarding/documents/${signItem.id}/preview`;
+  const signPath = endpoints?.signPath ?? '/auth/me/onboarding/sign';
+  const idFormField =
+    endpoints && 'idFormField' in endpoints
+      ? endpoints.idFormField
+      : 'assignment_item_id';
+  const queryKeyPrefix = endpoints?.queryKeyPrefix ?? 'onb-sign';
+
   const [scale] = useState(1.15);
   const [agree, setAgree] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -458,9 +504,8 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
   const last = useRef<{ x: number; y: number } | null>(null);
 
   const { data: ctx, isLoading: ctxLoading } = useQuery({
-    queryKey: ['onb-signing-ctx', signItem.id],
-    queryFn: () =>
-      api<SigningContext>('GET', `/auth/me/onboarding/documents/${signItem.id}/signing-context`),
+    queryKey: [queryKeyPrefix, 'ctx', signItem.id],
+    queryFn: () => api<SigningContext>('GET', contextPath),
   });
 
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -469,7 +514,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
     let cancelled = false;
     (async () => {
       const t = getToken();
-      const r = await fetch(`/auth/me/onboarding/documents/${signItem.id}/preview`, {
+      const r = await fetch(previewPath, {
         headers: { Authorization: 'Bearer ' + (t || '') },
       });
       if (!r.ok || cancelled) return;
@@ -482,7 +527,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
     return () => {
       cancelled = true;
     };
-  }, [signItem.id]);
+  }, [signItem.id, previewPath]);
 
   const [fieldValues, setFieldValues] = useState<Record<string, string | boolean>>({});
   /** Uncommitted text while editing currency fields (before blur formats). */
@@ -499,7 +544,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
   const usesTemplate = Boolean(ctx?.uses_template && ctx.signature_template?.fields?.length);
 
   const { data: profileForPreview } = useQuery({
-    queryKey: ['onb-sign-profile-preview', signItem.id],
+    queryKey: [queryKeyPrefix, 'profile-preview', signItem.id],
     queryFn: () => api<ProfileBundle>('GET', '/auth/me/profile'),
     enabled: Boolean(!ctxLoading && usesTemplate && pdfDoc),
   });
@@ -529,6 +574,25 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
     });
   }, [profileForPreview, usesTemplate, ctx?.signature_template?.fields]);
 
+  // Default date fields to today so the signer can confirm or change before signing.
+  useEffect(() => {
+    if (!usesTemplate) return;
+    const flds = ctx?.signature_template?.fields ?? [];
+    if (!flds.some((f) => f.type === 'date')) return;
+    const today = localDateYYYYMMDD();
+    setFieldValues((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const f of flds) {
+        if (f.type !== 'date') continue;
+        if (typeof next[f.id] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(String(next[f.id]))) continue;
+        next[f.id] = today;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [usesTemplate, ctx?.signature_template?.fields, signItem.id]);
+
   useEffect(() => {
     setTemplateSigMode('draw');
   }, [selectedFieldId]);
@@ -538,12 +602,13 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
     if (!c) return;
     const rect = c.getBoundingClientRect();
     const ratio = window.devicePixelRatio || 1;
+    const h = SIG_CAPTURE_HEIGHT_PX;
     c.width = Math.floor(rect.width * ratio);
-    c.height = Math.floor(180 * ratio);
+    c.height = Math.floor(h * ratio);
     const ctx2 = c.getContext('2d');
     if (!ctx2) return;
     ctx2.setTransform(ratio, 0, 0, ratio, 0, 0);
-    ctx2.clearRect(0, 0, rect.width, 180);
+    ctx2.clearRect(0, 0, rect.width, h);
     ctx2.strokeStyle = '#111';
     ctx2.lineWidth = 2;
     ctx2.lineCap = 'round';
@@ -562,13 +627,13 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
     const ctx2 = c.getContext('2d');
     if (!ctx2) return;
     const w = c.width / (window.devicePixelRatio || 1);
-    const h = 180;
+    const h = SIG_CAPTURE_HEIGHT_PX;
     ctx2.clearRect(0, 0, w, h);
     const text = typedName.trim();
     if (!text) return;
-    let size = 48;
+    let size = Math.min(40, Math.floor(h * 0.55));
     ctx2.font = `${size}px "Segoe UI", cursive`;
-    while (ctx2.measureText(text).width > w * 0.85 && size > 16) {
+    while (ctx2.measureText(text).width > w * 0.85 && size > 14) {
       size -= 2;
       ctx2.font = `${size}px "Segoe UI", cursive`;
     }
@@ -638,7 +703,6 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
     setSubmitting(true);
     try {
       const fd = new FormData();
-      fd.append('assignment_item_id', signItem.id);
       fd.append('agreement', 'true');
       if (usesTemplate && ctx?.signature_template) {
         const tmplFields = ctx.signature_template.fields;
@@ -660,7 +724,9 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
         const fv: Record<string, unknown> = { ...fieldValues };
         for (const f of tmplFields) {
           if (f.type === 'date') {
-            fv[f.id] = signLocalDate;
+            const raw = String(fv[f.id] ?? '').trim();
+            const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : signLocalDate;
+            fv[f.id] = formatSignDateLong(iso);
           }
           if (f.type === 'value') {
             const raw =
@@ -682,7 +748,10 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
         fd.append('signature_base64', dataUrl);
         fd.append('field_values_json', '{}');
       }
-      const r = await fetch('/auth/me/onboarding/sign', {
+      if (idFormField) {
+        fd.append(idFormField, signItem.id);
+      }
+      const r = await fetch(signPath, {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + (getToken() || '') },
         body: fd,
@@ -749,7 +818,10 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
             <div className="min-w-0">
               <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">MK Hub · HR</p>
               <h2 className="text-base font-bold text-gray-900 truncate">Sign document</h2>
-              <p className="text-xs text-gray-500 truncate mt-0.5">{signItem.document_name}</p>
+              <p className="text-xs text-gray-500 truncate mt-0.5">
+                {signItem.document_name}
+                {ctx?.signer_role_label ? ` · ${ctx.signer_role_label}` : ''}
+              </p>
             </div>
           </div>
           <button
@@ -938,11 +1010,24 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
                   )}
 
                   {selectedField.type === 'date' && (
-                    <p className="text-xs text-gray-600 leading-relaxed rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
-                      This field is filled automatically with{' '}
-                      <span className="font-medium text-gray-800">today&apos;s date</span> in your time zone when you
-                      click <span className="font-medium">Sign document</span>. It cannot be edited.
-                    </p>
+                    <div className="space-y-2 mt-1">
+                      <input
+                        type="date"
+                        className={inputCls}
+                        value={
+                          typeof fieldValues[selectedField.id] === 'string'
+                            && /^\d{4}-\d{2}-\d{2}$/.test(String(fieldValues[selectedField.id]))
+                            ? String(fieldValues[selectedField.id])
+                            : localDateYYYYMMDD()
+                        }
+                        onChange={(e) =>
+                          setFieldValues((v) => ({ ...v, [selectedField.id]: e.target.value }))
+                        }
+                      />
+                      <p className="text-xs text-gray-500 leading-relaxed">
+                        Choose the date for this signature. Defaults to today; you can change it before signing.
+                      </p>
+                    </div>
                   )}
 
                   {selectedField.type === 'value' && (
@@ -1107,8 +1192,8 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
             <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50/80">
               <canvas
                 ref={canvasRef}
-                className="w-full h-[180px] touch-none block"
-                style={{ height: 180, cursor: CURSOR_PENCIL }}
+                className="w-full touch-none block"
+                style={{ height: SIG_CAPTURE_HEIGHT_PX, cursor: CURSOR_PENCIL }}
                 onMouseDown={onDown}
                 onMouseMove={onMove}
                 onMouseUp={onUp}

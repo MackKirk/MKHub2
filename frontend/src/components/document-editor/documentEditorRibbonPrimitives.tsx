@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { MouseEventHandler, ReactNode } from 'react';
 
 /** Shared motion for interactive editor chrome (microinteractions). */
 export const editorTransitionInteractive =
@@ -167,22 +167,29 @@ export function RibbonLargeButton({
   icon,
   label,
   onClick,
+  onMouseDown,
   disabled,
   title,
+  keepTextSelection,
 }: {
   icon: ReactNode;
   label: string;
-  onClick: () => void;
+  onClick: MouseEventHandler<HTMLButtonElement>;
+  onMouseDown?: MouseEventHandler<HTMLButtonElement>;
   disabled?: boolean;
   title?: string;
+  /** Freeze caret in the active text box when this control is pressed. */
+  keepTextSelection?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      onMouseDown={onMouseDown}
       disabled={disabled}
       title={title ?? label}
       aria-label={title ?? label}
+      {...(keepTextSelection ? { 'data-document-keep-text-selection': '' } : {})}
       className={`${largeBtnBase} ${
         disabled
           ? 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-400 opacity-60 shadow-none'

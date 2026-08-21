@@ -1,6 +1,284 @@
+/** Free-form signer role definition stored on the document. */
+export type DocumentSignerRoleDef = {
+  id: string;
+  label: string;
+  sortOrder: number;
+  fillsEmployeeTokens: boolean;
+};
+
+/** @deprecated Legacy enum keys — still accepted when loading old docs. */
+export type DocumentSignerRoleLegacyKey = 'employee' | 'company' | 'other';
+
+export const LEGACY_SIGNER_ROLE_IDS: Record<DocumentSignerRoleLegacyKey, string> = {
+  employee: '00000000-0000-4000-8000-000000000001',
+  company: '00000000-0000-4000-8000-000000000002',
+  other: '00000000-0000-4000-8000-000000000003',
+};
+
+const SIGNER_ROLE_PALETTE = [
+  { border: '#0ea5e9', bg: '#f0f9ff', text: '#0369a1' },
+  { border: '#f59e0b', bg: '#fffbeb', text: '#b45309' },
+  { border: '#8b5cf6', bg: '#f5f3ff', text: '#6d28d9' },
+  { border: '#10b981', bg: '#ecfdf5', text: '#047857' },
+  { border: '#ef4444', bg: '#fef2f2', text: '#b91c1c' },
+  { border: '#6366f1', bg: '#eef2ff', text: '#4338ca' },
+  { border: '#ec4899', bg: '#fdf2f8', text: '#be185d' },
+  { border: '#64748b', bg: '#f8fafc', text: '#334155' },
+] as const;
+
+export function newDocumentSignerRoleId(): string {
+  return crypto.randomUUID();
+}
+
+export function createDefaultSignerRoles(): DocumentSignerRoleDef[] {
+  return [
+    {
+      id: newDocumentSignerRoleId(),
+      label: 'Signer 1',
+      sortOrder: 0,
+      fillsEmployeeTokens: false,
+    },
+  ];
+}
+
+/** Next unique Other / Other1 / Other2… label for the document. */
+export function nextOtherSignerLabel(roles: DocumentSignerRoleDef[]): string {
+  const used = new Set(
+    normalizeSignerRolesList(roles).map((r) => r.label.trim().toLowerCase()),
+  );
+  if (!used.has('other')) return 'Other';
+  let n = 1;
+  while (used.has(`other${n}`)) n += 1;
+  return `Other${n}`;
+}
+
+/** Append a signer; default label Signer N. Label "Employee" sets fillsEmployeeTokens. */
+export function addSigner(
+  roles: DocumentSignerRoleDef[],
+  label?: string | null,
+): { roles: DocumentSignerRoleDef[]; signer: DocumentSignerRoleDef } {
+  const base = normalizeSignerRolesList(roles);
+  const nextNum = base.length + 1;
+  const trimmed = (label ?? '').trim().slice(0, 120);
+  const finalLabel = trimmed || `Signer ${nextNum}`;
+  const signer: DocumentSignerRoleDef = {
+    id: newDocumentSignerRoleId(),
+    label: finalLabel,
+    sortOrder: base.length,
+    fillsEmployeeTokens: /^employee$/i.test(finalLabel),
+  };
+  // Only one fills flag
+  const next = normalizeSignerRolesList([
+    ...base.map((r) =>
+      signer.fillsEmployeeTokens ? { ...r, fillsEmployeeTokens: false } : r,
+    ),
+    signer,
+  ]);
+  const created = next.find((r) => r.id === signer.id) ?? signer;
+  return { roles: next, signer: created };
+}
+
+export function normalizeSignerRoleDef(raw: unknown, index = 0): DocumentSignerRoleDef | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const id = String(o.id ?? '').trim() || newDocumentSignerRoleId();
+  const label = (String(o.label ?? '').trim() || `Signer ${index + 1}`).slice(0, 120);
+  const sortOrder = Number.isFinite(Number(o.sortOrder ?? o.sort_order))
+    ? Number(o.sortOrder ?? o.sort_order)
+    : index;
+  const fillsEmployeeTokens = Boolean(o.fillsEmployeeTokens ?? o.fills_employee_tokens);
+  return { id, label, sortOrder, fillsEmployeeTokens };
+}
+
+export function normalizeSignerRolesList(raw: unknown): DocumentSignerRoleDef[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const seen = new Set<string>();
+  const out: DocumentSignerRoleDef[] = [];
+  raw.forEach((item, i) => {
+    const role = normalizeSignerRoleDef(item, i);
+    if (!role || seen.has(role.id)) return;
+    seen.add(role.id);
+    out.push(role);
+  });
+  let foundFills = false;
+  for (const r of out) {
+    if (r.fillsEmployeeTokens) {
+      if (foundFills) r.fillsEmployeeTokens = false;
+      else foundFills = true;
+    }
+  }
+  out.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
+  out.forEach((r, i) => {
+    r.sortOrder = i;
+  });
+  return out;
+}
+
+/** Map legacy assignee keys / UUIDs to a role id. */
+export function normalizeDocumentAssigneeId(raw: unknown, roles?: DocumentSignerRoleDef[]): string {
+  const a = String(raw ?? '').trim();
+  if (!a) {
+    return roles?.[0]?.id ?? LEGACY_SIGNER_ROLE_IDS.employee;
+  }
+  const low = a.toLowerCase();
+  if (low === 'user') return LEGACY_SIGNER_ROLE_IDS.company;
+  if (low === 'employee' || low === 'company' || low === 'other') {
+    return LEGACY_SIGNER_ROLE_IDS[low];
+  }
+  if (roles?.some((r) => r.id === a)) return a;
+  // UUID-looking or any free id
+  return a;
+}
+
+export function signerRoleStyleForIndex(index: number): { border: string; bg: string; text: string } {
+  return SIGNER_ROLE_PALETTE[((index % SIGNER_ROLE_PALETTE.length) + SIGNER_ROLE_PALETTE.length) % SIGNER_ROLE_PALETTE.length];
+}
+
+export function signerRoleStyle(
+  roleId: unknown,
+  roles: DocumentSignerRoleDef[] | null | undefined,
+): { border: string; bg: string; text: string } {
+  const id = normalizeDocumentAssigneeId(roleId, roles ?? undefined);
+  const idx = (roles ?? []).findIndex((r) => r.id === id);
+  return signerRoleStyleForIndex(idx >= 0 ? idx : 0);
+}
+
+export function signerRoleLabel(
+  roleId: unknown,
+  roles: DocumentSignerRoleDef[] | null | undefined,
+): string {
+  const id = normalizeDocumentAssigneeId(roleId, roles ?? undefined);
+  const found = (roles ?? []).find((r) => r.id === id);
+  if (found) return found.label;
+  if (id === LEGACY_SIGNER_ROLE_IDS.employee) return 'Employee';
+  if (id === LEGACY_SIGNER_ROLE_IDS.company) return 'Company';
+  if (id === LEGACY_SIGNER_ROLE_IDS.other) return 'Other';
+  return 'Signer';
+}
+
+export function fieldLabelWithRole(
+  kind: 'Signature' | 'Date' | 'Initials',
+  assignee?: unknown,
+  roles?: DocumentSignerRoleDef[] | null,
+): string {
+  return `${kind} · ${signerRoleLabel(assignee, roles)}`;
+}
+
+/** Role ids present on pages, ordered by roles catalog sortOrder. */
+export function collectPresentSignerRoleIds(
+  pages: { elements?: DocElement[] }[] | null | undefined,
+  roles: DocumentSignerRoleDef[],
+): string[] {
+  const seen = new Set<string>();
+  for (const page of pages ?? []) {
+    for (const el of page.elements ?? []) {
+      if (el.type === 'initials' || el.type === 'date') {
+        seen.add(normalizeDocumentAssigneeId(el.assignee, roles));
+      }
+      if (el.type === 'text' && el.richLines) {
+        for (const line of el.richLines) {
+          for (const run of line) {
+            if (isInlineAtomRun(run)) {
+              seen.add(normalizeDocumentAssigneeId(run.assignee, roles));
+            }
+          }
+        }
+      }
+    }
+  }
+  const ordered = [...roles].sort((a, b) => a.sortOrder - b.sortOrder).filter((r) => seen.has(r.id));
+  const ids = ordered.map((r) => r.id);
+  for (const id of seen) {
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+/** Keep only signers that still have Signature / Date / Initials on the document. */
+export function pruneUnusedSigners(
+  roles: DocumentSignerRoleDef[],
+  pages: { elements?: DocElement[] }[] | null | undefined,
+): DocumentSignerRoleDef[] {
+  const normalized = normalizeSignerRolesList(roles);
+  const presentIds = collectPresentSignerRoleIds(pages, normalized);
+  if (presentIds.length === 0) return [];
+  const byId = new Map(normalized.map((r) => [r.id, r]));
+  return normalizeSignerRolesList(
+    presentIds.map((id, i) => {
+      const existing = byId.get(id);
+      if (existing) return existing;
+      return {
+        id,
+        label: `Signer ${i + 1}`,
+        sortOrder: i,
+        fillsEmployeeTokens: false,
+      };
+    }),
+  );
+}
+
+export function ensureSignerRolesForDocument(
+  signerRoles: unknown,
+  pages: { elements?: DocElement[] }[] | null | undefined,
+): DocumentSignerRoleDef[] {
+  let roles = normalizeSignerRolesList(signerRoles);
+  const presentLegacy = new Set<string>();
+  for (const page of pages ?? []) {
+    for (const el of page.elements ?? []) {
+      if (el.type === 'initials' || el.type === 'date') {
+        const a = String(el.assignee ?? '').toLowerCase();
+        if (a === 'user') presentLegacy.add('company');
+        else if (a === 'employee' || a === 'company' || a === 'other') presentLegacy.add(a);
+      }
+      if (el.type === 'text' && el.richLines) {
+        for (const line of el.richLines) {
+          for (const run of line) {
+            if (!isInlineAtomRun(run)) continue;
+            const a = String(run.assignee ?? '').toLowerCase();
+            if (a === 'user') presentLegacy.add('company');
+            else if (a === 'employee' || a === 'company' || a === 'other') presentLegacy.add(a);
+          }
+        }
+      }
+    }
+  }
+  if (roles.length === 0 && presentLegacy.size > 0) {
+    const keys: DocumentSignerRoleLegacyKey[] = ['employee', 'company', 'other'];
+    roles = keys
+      .filter((k) => presentLegacy.has(k))
+      .map((k, i) => ({
+        id: LEGACY_SIGNER_ROLE_IDS[k],
+        label: k === 'employee' ? 'Employee' : k === 'company' ? 'Company' : 'Other',
+        sortOrder: i,
+        fillsEmployeeTokens: k === 'employee',
+      }));
+  }
+  if (roles.length === 0) return [];
+  return normalizeSignerRolesList(roles);
+}
+
+/** Object-replacement char: one code unit per inline signature/date atom in `content`. */
+export const DOCUMENT_SIGNATURE_ATOM_CHAR = '\uFFFC';
+
+export type RichTextRunKind = 'text' | 'signature' | 'date';
+
 /** A single styled run of text within a line. Missing properties inherit from element-level defaults. */
 export type RichTextRun = {
+  /**
+   * Plain text for normal runs. Signature/date atoms use DOCUMENT_SIGNATURE_ATOM_CHAR (length 1)
+   * so caret/backspace offsets stay string-based.
+   */
   text: string;
+  /** Default `text`. Signature/date runs are atomic chips (never merge with neighbors). */
+  kind?: RichTextRunKind;
+  /** Stable id for signature/date atoms (UUID). */
+  atomId?: string;
+  /** Chip width in reference CSS px (same scale as fontSize). */
+  atomWidthPx?: number;
+  /** Chip height in reference CSS px. */
+  atomHeightPx?: number;
+  assignee?: string;
+  required?: boolean;
   bold?: boolean;
   italic?: boolean;
   /** Font size in reference px (same scale as DocElement.fontSize). */
@@ -9,16 +287,73 @@ export type RichTextRun = {
   fontFamily?: 'Montserrat' | 'Open Sans';
 };
 
+/** Any inline overlay chip (signature or date). */
+export function isInlineAtomRun(run: RichTextRun | null | undefined): boolean {
+  if (!run) return false;
+  if (run.kind === 'signature' || run.kind === 'date') return true;
+  return run.text === DOCUMENT_SIGNATURE_ATOM_CHAR && !!run.atomId;
+}
+
+export function isSignatureAtomRun(run: RichTextRun | null | undefined): boolean {
+  if (!run) return false;
+  if (run.kind === 'date') return false;
+  return run.kind === 'signature' || (run.text === DOCUMENT_SIGNATURE_ATOM_CHAR && !!run.atomId);
+}
+
+export function isDateAtomRun(run: RichTextRun | null | undefined): boolean {
+  return !!run && run.kind === 'date';
+}
+
+export function createSignatureAtomRun(opts?: {
+  atomId?: string;
+  atomWidthPx?: number;
+  atomHeightPx?: number;
+  assignee?: string;
+  required?: boolean;
+}): RichTextRun {
+  return {
+    text: DOCUMENT_SIGNATURE_ATOM_CHAR,
+    kind: 'signature',
+    atomId: opts?.atomId ?? crypto.randomUUID(),
+    atomWidthPx: opts?.atomWidthPx ?? 200,
+    atomHeightPx: opts?.atomHeightPx ?? 48,
+    assignee: normalizeDocumentAssigneeId(opts?.assignee),
+    required: opts?.required ?? true,
+  };
+}
+
+export function createDateAtomRun(opts?: {
+  atomId?: string;
+  atomWidthPx?: number;
+  atomHeightPx?: number;
+  assignee?: string;
+  required?: boolean;
+}): RichTextRun {
+  return {
+    text: DOCUMENT_SIGNATURE_ATOM_CHAR,
+    kind: 'date',
+    atomId: opts?.atomId ?? crypto.randomUUID(),
+    atomWidthPx: opts?.atomWidthPx ?? 140,
+    atomHeightPx: opts?.atomHeightPx ?? 32,
+    assignee: normalizeDocumentAssigneeId(opts?.assignee),
+    required: opts?.required ?? true,
+  };
+}
+
 /** Element that can be placed on a document page (Canva-style) */
 export type DocElement = {
   id: string;
-  type: 'text' | 'image' | 'block';
-  /** For text: the text content. For image: file_id (UUID string), empty = placeholder. Ignored for block. */
+  type: 'text' | 'image' | 'block' | 'initials' | 'date';
+  /** For text: the text content. For image: file_id (UUID string), empty = placeholder. Ignored for block/initials/date. */
   content: string;
   x_pct: number;
   y_pct: number;
   width_pct: number;
   height_pct: number;
+  /** Initials / date: who must complete the field (signer role id). */
+  assignee?: string;
+  /** Initials / date: whether the field is required when signing. */
+  required?: boolean;
   /** Text only */
   fontSize?: number;
   textAlign?: 'left' | 'center' | 'right';
@@ -170,5 +505,43 @@ export function createBlockElement(): DocElement {
     y_pct: 5,
     width_pct: 20,
     height_pct: 10,
+  };
+}
+
+/**
+ * Free initials field (page footer / margin). Not drawn as ink in the PDF —
+ * exported only as signature_template overlay metadata.
+ * Default: bottom-right-ish on A4 portrait (~80×32 ref px ≈ 8.8% × 3.8%).
+ */
+export function createInitialsElement(opts?: { assignee?: string }): DocElement {
+  return {
+    id: `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    type: 'initials',
+    content: '',
+    x_pct: 78,
+    y_pct: 92,
+    width_pct: 14,
+    height_pct: 4.5,
+    assignee: normalizeDocumentAssigneeId(opts?.assignee),
+    required: true,
+  };
+}
+
+/**
+ * Free date field for send-for-signature. Not drawn as ink in the PDF —
+ * exported only as signature_template overlay metadata (signer picks the date).
+ * Default: beside typical initials area on A4 portrait.
+ */
+export function createDateElement(opts?: { assignee?: string }): DocElement {
+  return {
+    id: `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    type: 'date',
+    content: '',
+    x_pct: 60,
+    y_pct: 92,
+    width_pct: 16,
+    height_pct: 4.5,
+    assignee: normalizeDocumentAssigneeId(opts?.assignee),
+    required: true,
   };
 }

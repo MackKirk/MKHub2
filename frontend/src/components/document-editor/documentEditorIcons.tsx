@@ -43,6 +43,44 @@ export function ImageAreaIcon({ className }: { className?: string }) {
   );
 }
 
+/** Free initials overlay field. */
+export function InitialsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <rect x="4" y="7" width="16" height="10" rx="2" strokeDasharray="3 2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 14c1.2-2 2.4-3 4-3s2.8 1 4 3" />
+      <text x="12" y="12.5" textAnchor="middle" fontSize="6" fontFamily="system-ui,sans-serif" fontWeight="700" fill="currentColor" stroke="none">
+        AB
+      </text>
+    </svg>
+  );
+}
+
+/** Free date overlay field (signer picks date). */
+export function DateFieldIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path strokeLinecap="round" d="M8 3v4M16 3v4M3 10h18" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01" />
+    </svg>
+  );
+}
+
+/** Inline signature chip insert. */
+export function SignatureIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4 17c2.5-4 4.5-6 7-6 1.8 0 2.8 1.2 4 2.5C16.5 15 18 16 20 15"
+      />
+      <path strokeLinecap="round" d="M4 19h16" />
+    </svg>
+  );
+}
+
 export function ExportPdfIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>

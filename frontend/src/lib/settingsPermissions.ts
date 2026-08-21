@@ -607,11 +607,7 @@ export function canViewTemplatesTab(permissions: Set<string>, isAdmin = false): 
 
     canViewPermissionTemplatesCard(permissions, isAdmin) ||
 
-    canViewTermsTemplatesCard(permissions, isAdmin) ||
-
-    canViewDocumentBackgroundsCard(permissions, isAdmin) ||
-
-    canViewDocumentTemplatesCard(permissions, isAdmin)
+    canViewTermsTemplatesCard(permissions, isAdmin)
 
   );
 

@@ -135,6 +135,12 @@ class TestSettingsPermissions(unittest.TestCase):
         self.assertTrue(can_write_setting_list(user, "terms-templates"))
         self.assertFalse(can_write_setting_list(user, "payment_terms"))
 
+    def test_document_template_permissions_do_not_open_settings_templates_tab(self):
+        payload = settings_permissions_payload(_user_with({"settings:document_templates:read": True}))
+        self.assertFalse(payload["can_view_templates_tab"])
+        self.assertFalse(payload["can_access_settings"])
+        self.assertTrue(payload["can_view_document_templates"])
+
     def test_document_template_permissions_do_not_cross_grant_backgrounds(self):
         user = _user_with({"settings:document_templates:read": True})
         self.assertTrue(can_read_document_templates(user))

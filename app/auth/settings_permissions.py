@@ -297,8 +297,6 @@ def settings_permissions_payload(user: User) -> dict[str, bool]:
         (
             can_view_permission_templates_card,
             can_view_terms_card,
-            can_view_backgrounds_card,
-            can_view_document_templates_card,
         )
     )
     return {

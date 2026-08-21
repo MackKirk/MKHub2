@@ -81,10 +81,11 @@ export type AppFormModalProps = {
   /** Backdrop z-index / layout when stacked on another modal (e.g. `z-[200]`). */
   overlayClassName?: string;
   /**
-   * When `false` (with a footer), children fill the body column without an inner scroll wrapper —
-   * use for layouts that pin actions above the footer (e.g. filter builder).
+   * When `false`, children fill the body column without an inner scroll wrapper —
+   * use for layouts that own their own panes (filter builder, signature template editor).
+   * On `layout="detail"`, also skips the default `max-h` + `overflow-y-auto` shell so nested
+   * columns can scroll independently.
    */
-  scrollBody?: boolean;
   children: ReactNode;
 };
 
@@ -234,10 +235,14 @@ export function AppFormModal({
       : 'w-full min-w-0 max-w-[720px]'
     : '';
 
+  const detailOwnsScroll = isDetailLayout && !scrollBody;
+
   const mainScrollClass = uiCx(
     'min-h-0 min-w-0',
     isDetailLayout
-      ? 'max-h-[min(68vh,40rem)] w-full overflow-y-auto overflow-x-visible'
+      ? detailOwnsScroll
+        ? 'flex w-full min-h-0 flex-1 flex-col overflow-hidden'
+        : 'max-h-[min(68vh,40rem)] w-full overflow-y-auto overflow-x-visible'
       : uiCx(
           'px-0.5 py-1',
           'max-h-[min(68vh,40rem)] overflow-y-auto overflow-x-visible',
@@ -280,7 +285,8 @@ export function AppFormModal({
         <div
           className={uiCx(
             'flex w-full min-h-0 flex-col',
-            hasQuickInfo && isExpanded && 'md:flex-row md:items-start md:gap-6',
+            detailOwnsScroll && 'flex-1 overflow-hidden',
+            hasQuickInfo && isExpanded && (detailOwnsScroll ? 'md:flex-row md:items-stretch' : 'md:flex-row md:items-start md:gap-6'),
           )}
         >
           <div className={uiCx(mainScrollClass, hasQuickInfo && isExpanded && 'md:min-w-0 md:flex-1')}>

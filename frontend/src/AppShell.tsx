@@ -38,6 +38,11 @@ type MenuCategory = {
   items: MenuItem[];
 };
 
+/** Document Builder editor: full-bleed under the hub header (not the document list). */
+function pathnameIsDocumentBuilderEditor(pathname: string): boolean {
+  return /^\/documents\/create\/[^/]+$/.test(pathname);
+}
+
 /** Personal → My Training: hub + course pages only (not /training/dashboard or /training/admin). */
 function pathnameIsLearnerTraining(pathname: string): boolean {
   if (pathname === '/training') return true;
@@ -157,6 +162,17 @@ const IconTruck = () => (
 const IconDocument = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+
+const IconPen = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+    />
   </svg>
 );
 
@@ -518,6 +534,12 @@ export default function AppShell({ children }: PropsWithChildren){
         permissionsSet.has('documents:move')
       );
     }
+    if (requiredPermission === 'settings:document_backgrounds:read') {
+      return has || permissionsSet.has('settings:document_backgrounds:write');
+    }
+    if (requiredPermission === 'settings:document_templates:read') {
+      return has || permissionsSet.has('settings:document_templates:write');
+    }
     if (requiredPermission === 'settings:access') {
       return canAccessSettingsMenu;
     }
@@ -684,6 +706,23 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'company-assets-work-orders', label: 'Work Orders', path: '/company-assets/work-orders', icon: <IconClipboard />, requiredPermission: 'fleet:equipment:work_orders:read' },
         { id: 'corporate-cards', label: 'Corporate Cards', path: '/company-assets/credit-cards', icon: <IconCreditCard />, requiredPermission: 'company_cards:read' },
         { id: 'fuel-cards', label: 'Fuel Cards', path: '/company-assets/fuel-cards', icon: <IconFuelPump />, requiredPermission: 'fuel_cards:read' },
+      ]
+    },
+    {
+      id: 'document-hub',
+      label: 'Documents',
+      icon: <IconDocument />,
+      items: [
+        ...((isAdmin ||
+          (me?.permissions || []).includes('settings:document_backgrounds:read') ||
+          (me?.permissions || []).includes('settings:document_backgrounds:write') ||
+          (me?.permissions || []).includes('settings:document_templates:read') ||
+          (me?.permissions || []).includes('settings:document_templates:write')) ? [
+          { id: 'document-hub-templates', label: 'Document Templates', path: '/documents/templates', icon: <IconDocument /> },
+        ] : []),
+        { id: 'document-hub-builder', label: 'Document Builder', path: '/documents/create', icon: <IconDocument />, requiredPermission: 'documents:read' },
+        { id: 'document-hub-to-sign', label: 'To sign', path: '/documents/to-sign', icon: <IconPen /> },
+        { id: 'document-hub-signature-editor', label: 'Signature Editor', path: '/documents/signature-editor', icon: <IconPen />, requiredPermission: 'documents:read' },
       ]
     },
     {
@@ -1544,32 +1583,38 @@ export default function AppShell({ children }: PropsWithChildren){
       </header>
 
       <main className="flex-1 min-w-0 flex flex-col min-h-0 overflow-hidden">
-        <div className="flex-1 min-h-0 overflow-auto">
-          <div className="p-5 min-h-full min-w-0">
-            {onboardingStatus?.has_pending &&
-              !onboardingStatus?.past_deadline &&
-              location.pathname !== '/onboarding/documents' && (
-                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">
-                  <span>
-                    You have {onboardingStatus.pending_count} required onboarding document
-                    {onboardingStatus.pending_count !== 1 ? 's' : ''} to sign
-                    {onboardingStatus.earliest_deadline
-                      ? ` (deadline ${new Date(onboardingStatus.earliest_deadline).toLocaleDateString()})`
-                      : ''}
-                    .
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/onboarding/documents')}
-                    className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-700 text-white text-sm font-medium hover:bg-amber-800"
-                  >
-                    Complete Documents
-                  </button>
-                </div>
-              )}
+        {pathnameIsDocumentBuilderEditor(location.pathname) ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {children}
           </div>
-        </div>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-auto">
+            <div className="p-5 min-h-full min-w-0">
+              {onboardingStatus?.has_pending &&
+                !onboardingStatus?.past_deadline &&
+                location.pathname !== '/onboarding/documents' && (
+                  <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      You have {onboardingStatus.pending_count} required onboarding document
+                      {onboardingStatus.pending_count !== 1 ? 's' : ''} to sign
+                      {onboardingStatus.earliest_deadline
+                        ? ` (deadline ${new Date(onboardingStatus.earliest_deadline).toLocaleDateString()})`
+                        : ''}
+                      .
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/onboarding/documents')}
+                      className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-700 text-white text-sm font-medium hover:bg-amber-800"
+                    >
+                      Complete Documents
+                    </button>
+                  </div>
+                )}
+              {children}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Init marker only — FAB is mounted on document.body by chat-widget.js */}

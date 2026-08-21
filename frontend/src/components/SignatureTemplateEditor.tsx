@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { api, getToken } from '@/lib/api';
 import { overlayPxToPdfRect, pdfRectToOverlayStyle, type PdfRect } from '@/lib/pdfCoordinates';
 import { onboardingSignatureTemplateQuickInfo } from '@/lib/formModalQuickInfo';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -44,7 +43,7 @@ export type TemplateField = {
   employee_info_key?: string;
 };
 
-type SigTemplatePayload = {
+export type SigTemplatePayload = {
   version: number;
   fields: Array<{
     id: string;
@@ -56,6 +55,16 @@ type SigTemplatePayload = {
     assignee: string;
     employee_info_key?: string;
   }>;
+};
+
+type Props = {
+  docId: string;
+  docName: string;
+  initialTemplate: SigTemplatePayload | null | undefined;
+  loadPdf: () => Promise<ArrayBuffer>;
+  saveTemplate: (payload: { signature_template: SigTemplatePayload }) => Promise<void>;
+  onClose: () => void;
+  onSaved: () => void;
 };
 
 function defaultFieldLabel(t: TemplateFieldType): string {
@@ -125,16 +134,8 @@ const ASSIGNEE_OPTIONS = [
   { value: 'user', label: 'User' },
 ];
 
-const SIG_TEMPLATE_DIALOG_COLLAPSED = '!max-w-[1400px] !w-[min(1400px,95vw)]';
-const SIG_TEMPLATE_DIALOG_EXPANDED = '!max-w-[calc(1400px+16rem+1.5rem)] !w-[min(calc(1400px+16rem+1.5rem),95vw)]';
-
-type Props = {
-  docId: string;
-  docName: string;
-  initialTemplate: SigTemplatePayload | null | undefined;
-  onClose: () => void;
-  onSaved: () => void;
-};
+const SIG_TEMPLATE_DIALOG_COLLAPSED = '!max-w-[1400px] !w-[min(1400px,95vw)] !h-[min(90vh,56rem)]';
+const SIG_TEMPLATE_DIALOG_EXPANDED = '!max-w-[calc(1400px+16rem+1.5rem)] !w-[min(calc(1400px+16rem+1.5rem),95vw)] !h-[min(90vh,56rem)]';
 
 const FIELD_TYPES: { type: TemplateFieldType; label: string }[] = [
   { type: 'employee_info', label: 'Employee info' },
@@ -186,7 +187,14 @@ function PdfPageCanvas({
   return <canvas ref={ref} className="block max-w-full" />;
 }
 
-export default function SignatureTemplateEditor({ docId, docName, initialTemplate, onClose, onSaved }: Props) {
+export default function SignatureTemplateEditor({
+  docName,
+  initialTemplate,
+  loadPdf,
+  saveTemplate,
+  onClose,
+  onSaved,
+}: Props) {
   const confirm = useConfirm();
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [pageHeights, setPageHeights] = useState<number[]>([]);
@@ -418,12 +426,7 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
       setLoading(true);
       setLoadErr(null);
       try {
-        const t = getToken();
-        const r = await fetch(`/onboarding/base-documents/${docId}/preview`, {
-          headers: { Authorization: 'Bearer ' + (t || '') },
-        });
-        if (!r.ok) throw new Error('Could not load PDF');
-        const buf = await r.arrayBuffer();
+        const buf = await loadPdf();
         const task = pdfjsLib.getDocument({ data: buf });
         const doc = await task.promise;
         if (cancelled) return;
@@ -447,7 +450,7 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
     return () => {
       cancelled = true;
     };
-  }, [docId]);
+  }, [loadPdf]);
 
   useEffect(() => {
     const root = scrollContainerRef.current;
@@ -564,7 +567,7 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
           })),
         },
       };
-      await api('PUT', `/onboarding/base-documents/${docId}`, payload);
+      await saveTemplate(payload);
       onSaved();
       onClose();
     } finally {
@@ -656,12 +659,61 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
         </div>
       }
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden md:flex-row">
-        <div className="flex min-h-[min(40vh,320px)] min-w-0 flex-1 flex-col md:min-h-0">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden md:flex-row md:items-stretch">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {!loading && !loadErr && pdf ? (
+            <div className={uiCx('mb-2 flex shrink-0 flex-wrap items-center gap-2 px-3 py-2', uiRadius.control, uiBorders.subtle, 'bg-white')}>
+              <span className={uiTypography.controlLabel}>Zoom</span>
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="min-w-8 px-2"
+                onClick={() => setScale((s) => Math.max(0.6, s - 0.1))}
+              >
+                −
+              </AppButton>
+              <span className={uiCx('tabular-nums', uiTypography.body)}>{Math.round(scale * 100)}%</span>
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="min-w-8 px-2"
+                onClick={() => setScale((s) => Math.min(2.5, s + 0.1))}
+              >
+                +
+              </AppButton>
+              <span className="mx-2 text-gray-300">|</span>
+              <span className={uiTypography.body}>Page</span>
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="min-w-8 px-2"
+                disabled={pageUi <= 1}
+                onClick={() => goPage(-1)}
+              >
+                ‹
+              </AppButton>
+              <span className={uiCx('tabular-nums', uiTypography.body)}>
+                {pageUi} / {numPages}
+              </span>
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="min-w-8 px-2"
+                disabled={pageUi >= numPages}
+                onClick={() => goPage(1)}
+              >
+                ›
+              </AppButton>
+            </div>
+          ) : null}
           <div
             ref={scrollContainerRef}
             className={uiCx(
-              'min-h-0 flex-1 overflow-y-auto bg-white p-2 sm:p-3',
+              'min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white p-2 sm:p-3',
               uiRadius.card,
               uiBorders.subtle,
             )}
@@ -674,54 +726,6 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
             ) : null}
             {!loading && !loadErr && pdf ? (
               <div className="mx-auto max-w-full space-y-6">
-                <div className={uiCx('flex flex-wrap items-center gap-2 px-3 py-2', uiRadius.control, uiBorders.subtle, 'bg-white')}>
-                  <span className={uiTypography.controlLabel}>Zoom</span>
-                  <AppButton
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="min-w-8 px-2"
-                    onClick={() => setScale((s) => Math.max(0.6, s - 0.1))}
-                  >
-                    −
-                  </AppButton>
-                  <span className={uiCx('tabular-nums', uiTypography.body)}>{Math.round(scale * 100)}%</span>
-                  <AppButton
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="min-w-8 px-2"
-                    onClick={() => setScale((s) => Math.min(2.5, s + 0.1))}
-                  >
-                    +
-                  </AppButton>
-                  <span className="mx-2 text-gray-300">|</span>
-                  <span className={uiTypography.body}>Page</span>
-                  <AppButton
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="min-w-8 px-2"
-                    disabled={pageUi <= 1}
-                    onClick={() => goPage(-1)}
-                  >
-                    ‹
-                  </AppButton>
-                  <span className={uiCx('tabular-nums', uiTypography.body)}>
-                    {pageUi} / {numPages}
-                  </span>
-                  <AppButton
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="min-w-8 px-2"
-                    disabled={pageUi >= numPages}
-                    onClick={() => goPage(1)}
-                  >
-                    ›
-                  </AppButton>
-                </div>
-
                 {Array.from({ length: numPages }, (_, pi) => {
                   const ph = pageLayouts[pi]?.heightPt || pageHeights[pi] || 792;
                   const cw = pageLayouts[pi]?.canvasW || 0;
@@ -784,8 +788,11 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
           </div>
         </div>
 
-        <aside className="flex w-full min-h-[min(36vh,280px)] shrink-0 flex-col md:w-80 md:min-h-0">
-          <AppCard className="flex min-h-0 flex-1 flex-col overflow-hidden" bodyClassName={uiCx(uiSpacing.cardPadding, 'flex min-h-0 flex-1 flex-col overflow-y-auto')}>
+        <aside className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden md:w-80">
+          <AppCard
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            bodyClassName={uiCx(uiSpacing.cardPadding, 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain')}
+          >
             <AppSectionHeader
               title="Signature setup"
               description="Add a field type to place it on the page you are viewing."

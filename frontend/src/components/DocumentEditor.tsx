@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,17 +14,27 @@ import DocumentPreview from '@/components/DocumentPreview';
 import DocumentPagesStrip from '@/components/DocumentPagesStrip';
 import { AddPageModal } from '@/components/AddPageModal';
 import ImagePicker, { type ImagePickerConfirmMeta } from '@/components/ImagePicker';
-import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
+import type { DocumentPage, DocElement, PageMargins, DocumentSignerRoleDef } from '@/types/documentCreator';
 import {
   createTextElement,
   createImageElement,
   createImagePlaceholder,
   createBlockElement,
+  createInitialsElement,
   sizeImageElementFrameForIntrinsicAspect,
+  ensureSignerRolesForDocument,
+  addSigner,
+  nextOtherSignerLabel,
+  pruneUnusedSigners,
+  collectPresentSignerRoleIds,
+  normalizeSignerRolesList,
 } from '@/types/documentCreator';
 import { readDocumentCreatorClipboard, writeDocumentCreatorClipboard } from '@/utils/documentCreatorClipboard';
 import OverlayPortal from '@/components/OverlayPortal';
 import DocumentEditorRibbon from '@/components/document-editor/DocumentEditorRibbon';
+import SendForSignatureModal from '@/components/SendForSignatureModal';
+import { insertDocumentSignatureAtomAtCaret, insertDocumentDateAtomAtCaret } from '@/lib/documentAutoFillTokens';
+import { AppButton, AppFormModal, AppInput, uiSpacing } from '@/components/ui';
 import {
   ribbonPortalDropdownPanelClass,
   editorSurfaceWorkspaceClass,
@@ -55,6 +65,8 @@ import {
   ChevronRightIcon,
   MiniLayersStackGlyph,
   ImageIcon,
+  InitialsIcon,
+  DateFieldIcon,
   LayerBackwardIcon,
   LayerForwardIcon,
   LayerToBackIcon,
@@ -104,6 +116,7 @@ const defaultPage = (): DocumentPage => ({ template_id: null, elements: [] });
 type EditorSnapshot = {
   title: string;
   pages: DocumentPage[];
+  signerRoles: DocumentSignerRoleDef[];
   currentPageIndex: number;
   selectedElementIds: string[];
 };
@@ -135,6 +148,8 @@ type DocumentEditorDocumentProps = {
   closeSlotBelow?: React.ReactNode;
   /** Pin ribbon to the Hub scrollport while the page scrolls (inline editor on project/opportunity). */
   stickyToolbar?: boolean;
+  /** Show Send for signature (Document Builder /documents/create only). */
+  enableSendForSignature?: boolean;
 };
 
 type DocumentEditorTemplateProps = {
@@ -181,6 +196,8 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const extraActions = !isTemplate ? (props as DocumentEditorDocumentProps).extraActions : undefined;
   const closeSlotBelow = !isTemplate ? (props as DocumentEditorDocumentProps).closeSlotBelow : undefined;
   const stickyToolbar = !isTemplate && !!(props as DocumentEditorDocumentProps).stickyToolbar;
+  const enableSendForSignature =
+    !isTemplate && !!(props as DocumentEditorDocumentProps).enableSendForSignature;
 
   const navigate = useNavigate();
   const navigateBackToDocumentCreate = useNavigateBack('/documents/create');
@@ -222,14 +239,27 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
 
   const [title, setTitle] = useState('New document');
   const [pages, setPages] = useState<DocumentPage[]>([defaultPage()]);
+  const [signerRoles, setSignerRoles] = useState<DocumentSignerRoleDef[]>([]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   /** Inline text edit active — block selecting other elements until Done / Escape. */
   const [textEditingElementId, setTextEditingElementId] = useState<string | null>(null);
+  const textEditingElementIdRef = useRef<string | null>(null);
+  textEditingElementIdRef.current = textEditingElementId;
   const [showAddPageModal, setShowAddPageModal] = useState(false);
   const [pagesPanelCollapsed, setPagesPanelCollapsed] = useState(false);
   const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [sendForSignatureOpen, setSendForSignatureOpen] = useState(false);
+  const [otherSignerModalOpen, setOtherSignerModalOpen] = useState(false);
+  const [otherSignerLabel, setOtherSignerLabel] = useState('');
+  const otherSignerPendingRef = useRef<{
+    kind?: 'signature' | 'date' | 'initials';
+    textElementId?: string | null;
+    resolve?: (id: string | null) => void;
+  } | null>(null);
+  /** Keep newly created signers in the catalog until their first field lands on the page. */
+  const retainSignerIdsRef = useRef<Set<string>>(new Set());
   const [pdfPreview, setPdfPreview] = useState<{ url: string; filename: string } | null>(null);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
@@ -310,6 +340,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const stateRef = useRef<EditorSnapshot>({
     title: 'New document',
     pages: [defaultPage()],
+    signerRoles: [],
     currentPageIndex: 0,
     selectedElementIds: [],
   });
@@ -331,6 +362,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     return {
       title: cur.title,
       pages: pagesClone,
+      signerRoles: JSON.parse(JSON.stringify(cur.signerRoles ?? [])) as DocumentSignerRoleDef[],
       currentPageIndex: cur.currentPageIndex,
       selectedElementIds: [...(cur.selectedElementIds ?? [])],
     };
@@ -347,6 +379,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const restoreSnapshot = useCallback((snap: EditorSnapshot) => {
     setTitle(snap.title);
     setPages(snap.pages);
+    setSignerRoles(snap.signerRoles ?? []);
     setCurrentPageIndex(snap.currentPageIndex);
     setSelectedElementIds(snap.selectedElementIds ?? []);
   }, []);
@@ -441,7 +474,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   }, [id, queryClient, leaveEditor]);
 
   const persistDocument = useCallback(
-    async (snapshot: EditorSnapshot) => {
+    async (snapshot: { title: string; pages: DocumentPage[]; signer_roles?: DocumentSignerRoleDef[] }) => {
       if (!id) return;
       if (!versionBaselineReady) {
         const pending = new Error('VERSION_BASELINE_PENDING');
@@ -462,6 +495,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           margins: p.margins ?? undefined,
           elements: p.elements ?? [],
         })),
+        signer_roles: snapshot.signer_roles ?? stateRef.current.signerRoles,
         expected_updated_at: expectedUpdatedAtRef.current,
         edit_lock_session_id: holdsEditLockRef.current ? editLockSessionIdRef.current : undefined,
       };
@@ -516,6 +550,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     getSnapshot: () => ({
       title: stateRef.current.title,
       pages: stateRef.current.pages,
+      signer_roles: stateRef.current.signerRoles,
     }),
     save: persistDocument,
     suppressRetryRef: suppressSaveRetryRef,
@@ -550,17 +585,24 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           elements: initialEls,
         },
       ]);
+      const templatePages = [
+        {
+          template_id: templateProps.templateId,
+          margins: templateProps.initialMargins ?? undefined,
+          elements: initialEls,
+        },
+      ];
+      const templateRoles = pruneUnusedSigners(
+        ensureSignerRolesForDocument(null, templatePages),
+        templatePages,
+      );
+      setSignerRoles(templateRoles);
       setCurrentPageIndex(0);
       setSelectedElementIds([]);
       stateRef.current = {
         title: '',
-        pages: [
-          {
-            template_id: templateProps.templateId,
-            margins: templateProps.initialMargins ?? undefined,
-            elements: initialEls,
-          },
-        ],
+        pages: templatePages,
+        signerRoles: templateRoles,
         currentPageIndex: 0,
         selectedElementIds: [],
       };
@@ -586,11 +628,20 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     if (doc.pages.length === 0) {
       const emptyPages: DocumentPage[] = [defaultPage()];
       const t = doc.title || 'New document';
+      const roles = pruneUnusedSigners(
+        ensureSignerRolesForDocument(
+          (doc as { signer_roles?: unknown }).signer_roles,
+          emptyPages,
+        ),
+        emptyPages,
+      );
       setTitle(t);
       setPages(emptyPages);
+      setSignerRoles(roles);
       stateRef.current = {
         title: t,
         pages: emptyPages,
+        signerRoles: roles,
         currentPageIndex: 0,
         selectedElementIds: [],
       };
@@ -602,7 +653,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         expectedUpdatedAtRef.current = doc.updated_at ?? null;
         setVersionBaselineReady(true);
       }
-      hydrateBaseline({ title: t, pages: emptyPages });
+      hydrateBaseline({ title: t, pages: emptyPages, signer_roles: roles });
       setIsDocHydrated(true);
       return;
     }
@@ -627,10 +678,19 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       return { ...base, elements: elements.length ? elements : [] };
     });
     setPages(converted);
+    const roles = pruneUnusedSigners(
+      ensureSignerRolesForDocument(
+        (doc as { signer_roles?: unknown }).signer_roles,
+        converted,
+      ),
+      converted,
+    );
+    setSignerRoles(roles);
     // Reset history on first load from server only (not on invalidate/refetch).
     stateRef.current = {
       title: doc.title || 'New document',
       pages: converted,
+      signerRoles: roles,
       currentPageIndex: 0,
       selectedElementIds: [],
     };
@@ -642,7 +702,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       expectedUpdatedAtRef.current = doc.updated_at ?? null;
       setVersionBaselineReady(true);
     }
-    hydrateBaseline({ title: doc.title || 'New document', pages: converted });
+    hydrateBaseline({ title: doc.title || 'New document', pages: converted, signer_roles: roles });
     setIsDocHydrated(true);
     requestAnimationFrame(() => scrollCanvasToTop());
   }, [doc, templates, id, bumpHistory, scrollCanvasToTop, hydrateBaseline, isPlaceholderData, isFetched]);
@@ -665,16 +725,39 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     stateRef.current = {
       title,
       pages,
+      signerRoles,
       currentPageIndex,
       selectedElementIds,
     };
-  }, [title, pages, currentPageIndex, selectedElementIds]);
+  }, [title, pages, signerRoles, currentPageIndex, selectedElementIds]);
+
+  // Signer names only stay in the chooser while at least one related field exists.
+  useEffect(() => {
+    if (!isDocHydrated || readOnly) return;
+    setSignerRoles((prev) => {
+      const presentIds = new Set(collectPresentSignerRoleIds(pages, prev));
+      const retain = retainSignerIdsRef.current;
+      for (const id of [...retain]) {
+        if (presentIds.has(id)) retain.delete(id);
+      }
+      const pruned = pruneUnusedSigners(prev, pages);
+      const extras = prev.filter((r) => retain.has(r.id) && !pruned.some((p) => p.id === r.id));
+      const next = extras.length ? normalizeSignerRolesList([...pruned, ...extras]) : pruned;
+      if (
+        next.length === prev.length &&
+        next.every((r, i) => r.id === prev[i]?.id && r.label === prev[i]?.label)
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, [pages, isDocHydrated, readOnly]);
 
   useEffect(() => {
     if (!isDocHydrated || isTemplate || readOnly) return;
     if (canvasGestureActiveRef.current) return;
     notifyEdited();
-  }, [title, pages, isDocHydrated, isTemplate, readOnly, notifyEdited]);
+  }, [title, pages, signerRoles, isDocHydrated, isTemplate, readOnly, notifyEdited]);
 
   const handleCanvasGestureChange = useCallback(
     (active: boolean) => {
@@ -1053,16 +1136,14 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           e.preventDefault();
           pushHistory();
           const removeIds = new Set(toRemove.map((el) => el.id));
-          setPages((prev) => {
-            const next = [...prev];
-            const idx = stateRef.current.currentPageIndex;
-            if (!next[idx]) return prev;
-            next[idx] = {
-              ...next[idx],
-              elements: (next[idx].elements ?? []).filter((el) => !removeIds.has(el.id)),
-            };
-            return next;
-          });
+          const idx = stateRef.current.currentPageIndex;
+          const nextPages = stateRef.current.pages.map((p, i) =>
+            i === idx
+              ? { ...p, elements: (p.elements ?? []).filter((el) => !removeIds.has(el.id)) }
+              : p,
+          );
+          setPages(nextPages);
+          setSignerRoles((prev) => pruneUnusedSigners(prev, nextPages));
           setSelectedElementIds([]);
         }
         return;
@@ -1490,12 +1571,94 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     handleUpdateElement(elementId, updater);
   }, [pushHistory, handleUpdateElement]);
 
+  const pruneSignersFromPages = useCallback((nextPages: DocumentPage[]) => {
+    setSignerRoles((prev) => pruneUnusedSigners(prev, nextPages));
+  }, []);
+
+  const closeOtherSignerModal = useCallback((id: string | null) => {
+    const pending = otherSignerPendingRef.current;
+    otherSignerPendingRef.current = null;
+    setOtherSignerModalOpen(false);
+    setOtherSignerLabel('');
+    pending?.resolve?.(id);
+  }, []);
+
+  const openOtherSignerModal = useCallback(
+    (opts?: { kind?: 'signature' | 'date' | 'initials'; textElementId?: string | null }) => {
+      return new Promise<string | null>((resolve) => {
+        const textElementId =
+          opts?.textElementId !== undefined ? opts.textElementId : textEditingElementIdRef.current;
+        if (opts?.kind === 'signature' || opts?.kind === 'date') {
+          if (!textElementId) {
+            toast.error(
+              opts.kind === 'date'
+                ? 'Click inside a text box first, then insert Date at the cursor.'
+                : 'Click inside a text box first, then insert Signature at the cursor.',
+            );
+            resolve(null);
+            return;
+          }
+        }
+        otherSignerPendingRef.current = {
+          kind: opts?.kind,
+          textElementId,
+          resolve,
+        };
+        setOtherSignerLabel('');
+        setOtherSignerModalOpen(true);
+      });
+    },
+    [],
+  );
+
+  const confirmOtherSignerModal = useCallback(() => {
+    const pending = otherSignerPendingRef.current;
+    const label =
+      otherSignerLabel.trim() || nextOtherSignerLabel(stateRef.current.signerRoles);
+    const kind = pending?.kind;
+    const textId = pending?.textElementId ?? textEditingElementIdRef.current;
+    pushHistory();
+    const { roles, signer } = addSigner(stateRef.current.signerRoles, label);
+    retainSignerIdsRef.current.add(signer.id);
+    // Flush roles before insert so signature chips paint with the real label (not "Signer").
+    flushSync(() => {
+      setSignerRoles(roles);
+      stateRef.current = { ...stateRef.current, signerRoles: roles };
+    });
+    if (kind === 'initials') {
+      const el = createInitialsElement({ assignee: signer.id });
+      setCurrentPageElements((prev) => [...prev, el]);
+      setSelectedElementIds([el.id]);
+      if (textEditingElementIdRef.current) notifyBlockedByTextEdit();
+    } else if (kind === 'date' && textId) {
+      insertDocumentDateAtomAtCaret(textId, { assignee: signer.id });
+    } else if (kind === 'signature' && textId) {
+      insertDocumentSignatureAtomAtCaret(textId, { assignee: signer.id });
+    } else if (kind === 'signature' || kind === 'date') {
+      retainSignerIdsRef.current.delete(signer.id);
+      toast.error(
+        kind === 'date'
+          ? 'Click inside a text box first, then insert Date at the cursor.'
+          : 'Click inside a text box first, then insert Signature at the cursor.',
+      );
+      closeOtherSignerModal(null);
+      return;
+    }
+    closeOtherSignerModal(signer.id);
+  }, [otherSignerLabel, pushHistory, setCurrentPageElements, closeOtherSignerModal, notifyBlockedByTextEdit]);
+
   const handleRemoveElement = useCallback((elementId: string) => {
     pushHistory();
     const pageIndex = findPageIndexForElement(elementId) ?? stateRef.current.currentPageIndex;
-    updateElementsAtPageIndex(pageIndex, (prev) => prev.filter((e) => e.id !== elementId));
+    const nextPages = stateRef.current.pages.map((p, i) =>
+      i === pageIndex
+        ? { ...p, elements: (p.elements ?? []).filter((e) => e.id !== elementId) }
+        : p,
+    );
+    setPages(nextPages);
+    pruneSignersFromPages(nextPages);
     setSelectedElementIds((prev) => prev.filter((id) => id !== elementId));
-  }, [findPageIndexForElement, updateElementsAtPageIndex, pushHistory]);
+  }, [findPageIndexForElement, pushHistory, pruneSignersFromPages]);
 
   const handleUpdateElementAtPage = useCallback(
     (pageIndex: number, elementId: string, updater: (e: DocElement) => DocElement) => {
@@ -1509,10 +1672,16 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const handleRemoveElementAtPage = useCallback(
     (pageIndex: number, elementId: string) => {
       pushHistory();
-      updateElementsAtPageIndex(pageIndex, (prev) => prev.filter((e) => e.id !== elementId));
+      const nextPages = stateRef.current.pages.map((p, i) =>
+        i === pageIndex
+          ? { ...p, elements: (p.elements ?? []).filter((e) => e.id !== elementId) }
+          : p,
+      );
+      setPages(nextPages);
+      pruneSignersFromPages(nextPages);
       setSelectedElementIds((prev) => prev.filter((id) => id !== elementId));
     },
-    [pushHistory, updateElementsAtPageIndex]
+    [pushHistory, pruneSignersFromPages]
   );
 
   const handleAlignSelected = useCallback(
@@ -1625,7 +1794,9 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     pushHistory();
     setPages((prev) => {
       if (prev.length <= 1) return prev;
-      return prev.filter((_, i) => i !== index);
+      const next = prev.filter((_, i) => i !== index);
+      setSignerRoles((roles) => pruneUnusedSigners(roles, next));
+      return next;
     });
     setCurrentPageIndex((prev) => {
       if (index < prev) return prev - 1;
@@ -2168,9 +2339,16 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         saveStatus={ribbonSaveStatus}
         mediaLoading={mediaLoading}
         isTemplate={!!isTemplate}
+        textEditingElementId={textEditingElementId}
+        projectId={projectId}
         showExportPdf={!isTemplate}
         onExportPdf={handleExportPdf}
         isExportingPdf={isExportingPdf}
+        showSendForSignature={enableSendForSignature && !readOnly}
+        onSendForSignature={() => {
+          finishTextEditing();
+          setSendForSignatureOpen(true);
+        }}
         showSaveTemplate={!!(isTemplate && templateProps)}
         onSaveTemplate={handleSaveTemplatePage}
         onUndo={undo}
@@ -2204,6 +2382,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           } else fileInputRef.current?.click();
         }}
         onAddImagePlaceholder={handleAddImagePlaceholder}
+        onAddInitials={(assigneeRoleId) => handleAddElement(createInitialsElement({ assignee: assigneeRoleId }))}
+        signerRoles={signerRoles}
+        onRequestOtherSigner={(kind, textElementId) => {
+          void openOtherSignerModal({ kind, textElementId });
+        }}
         showBlock={!!isTemplate}
         onAddBlock={isTemplate ? () => handleAddElement(createBlockElement()) : undefined}
         layoutPanel={ribbonLayoutPanel}
@@ -2269,6 +2452,8 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
               element={selectedElement}
               onUpdate={handleUpdateElementWithHistory}
               margins={selectionEffectiveMargins}
+              signerRoles={signerRoles}
+              onRequestOtherSigner={() => openOtherSignerModal()}
             />
           ) : undefined
         }
@@ -2278,6 +2463,53 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         closeSlotBelow={closeSlotBelow}
       />
       </div>
+      {enableSendForSignature && id ? (
+        <SendForSignatureModal
+          open={sendForSignatureOpen}
+          documentId={id}
+          documentTitle={title}
+          pages={pages}
+          signerRoles={signerRoles}
+          onClose={() => setSendForSignatureOpen(false)}
+          onSent={() => {
+            /* inbox is separate; toast already shown in modal */
+          }}
+          flushSave={flushSave}
+        />
+      ) : null}
+      <AppFormModal
+        open={otherSignerModalOpen}
+        onClose={() => closeOtherSignerModal(null)}
+        title="Other signer"
+        description="Name this signer. You can reuse them on as many signature fields as you need."
+        formWidth="default"
+        footer={
+          <div className="flex justify-end gap-2">
+            <AppButton variant="secondary" onClick={() => closeOtherSignerModal(null)}>
+              Cancel
+            </AppButton>
+            <AppButton variant="primary" onClick={confirmOtherSignerModal}>
+              Add
+            </AppButton>
+          </div>
+        }
+      >
+        <div className={uiSpacing.sectionStack}>
+          <AppInput
+            label="Signer name"
+            value={otherSignerLabel}
+            onChange={(e) => setOtherSignerLabel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                confirmOtherSignerModal();
+              }
+            }}
+            autoFocus
+            placeholder="Other"
+          />
+        </div>
+      </AppFormModal>
       {!readOnly && <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAddImage} />}
       {pdfPreview && (
         <OverlayPortal><div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -2380,6 +2612,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                     blockAreasVisible={true}
                     lockBlockElements={!isTemplate}
                     showElementOptionsPopover={false}
+                    signerRoles={signerRoles}
                     onCanvasWidthPxChange={setCanvasWidthPxForExport}
                     onBeginUserAction={readOnly ? undefined : pushHistory}
                     zoom={zoom}
@@ -2412,6 +2645,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                         ? undefined
                         : (files, position) => insertImagesFromFiles(files, { ...position, pageIndex })
                     }
+                    projectId={projectId}
                   />
                   ) : (
                     <div
@@ -2433,6 +2667,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
             blockAreasVisible={true}
             lockBlockElements={!isTemplate}
             showElementOptionsPopover={false}
+            signerRoles={signerRoles}
             onCanvasWidthPxChange={setCanvasWidthPxForExport}
             onBeginUserAction={readOnly ? undefined : pushHistory}
             zoom={zoom}
@@ -2459,6 +2694,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
             onReplaceImage={readOnly ? undefined : handleReplaceImage}
             onReplaceImageClick={readOnly ? undefined : (projectId ? openImagePickerForElement : undefined)}
             onInsertImages={readOnly ? undefined : insertImagesFromFiles}
+            projectId={projectId}
           />
         )}
         {!readOnly && layersPanelCollapsed && (
@@ -2510,16 +2746,33 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                   ? (el.content || 'Text').split('\n')[0].slice(0, 24)
                   : el.type === 'image'
                     ? (el.content ? 'Image' : 'Image area')
-                    : 'Blocked Area';
+                    : el.type === 'initials'
+                      ? 'Initials'
+                      : el.type === 'date'
+                        ? 'Date'
+                        : 'Blocked Area';
               const typeIcon =
                 el.type === 'text' ? (
                   <TextIcon className="h-3 w-3 text-slate-400" />
                 ) : el.type === 'image' ? (
                   <ImageIcon className="h-3 w-3 text-slate-400" />
+                ) : el.type === 'initials' ? (
+                  <InitialsIcon className="h-3 w-3 text-slate-400" />
+                ) : el.type === 'date' ? (
+                  <DateFieldIcon className="h-3 w-3 text-slate-400" />
                 ) : (
                   <BlockIcon className="h-3 w-3 text-slate-400" />
                 );
-              const typeLabel = el.type === 'text' ? 'Text' : el.type === 'image' ? 'Image' : 'Block';
+              const typeLabel =
+                el.type === 'text'
+                  ? 'Text'
+                  : el.type === 'image'
+                    ? 'Image'
+                    : el.type === 'initials'
+                      ? 'Initials'
+                      : el.type === 'date'
+                        ? 'Date'
+                        : 'Block';
               return (
                 <div
                   key={el.id}

@@ -1,11 +1,20 @@
 import { useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FileText } from 'lucide-react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import DocumentEditor from '@/components/DocumentEditor';
 import { ChooseDocumentTypeModal, type DocumentCreationSelection } from '@/components/ChooseDocumentTypeModal';
+import {
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppPageHeader,
+  uiCx,
+  uiSpacing,
+} from '@/components/ui';
 
 type UserDocument = {
   id: string;
@@ -121,54 +130,39 @@ export default function DocumentCreator() {
 
   if (!id) {
     return (
-      <div className="space-y-4">
-        {/* Header card - same style as Users */}
-        <div className="rounded-xl border bg-white p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
-                <DocumentIcon className="w-5 h-5 text-brand-red" />
-              </div>
-              <div>
-                <h5 className="text-sm font-semibold text-gray-900">Documents</h5>
-                <p className="text-xs text-gray-600 mt-0.5">
-                  Create and edit documents{documents.length > 0 ? ` (${documents.length} total)` : ''}. Background and
-                  document templates are in{' '}
-                  <Link to="/settings?section=templates" className="font-medium text-brand-red hover:underline">
-                    Settings → System settings → Templates
-                  </Link>
-                  .
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowChooseTypeModal(true)}
-                disabled={isSaving}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand-red text-white font-medium transition-colors hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span className="text-sm leading-none">+</span>
-                Create new document
-              </button>
-            </div>
-          </div>
-        </div>
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+        <AppPageHeader
+          title="Document Builder"
+          subtitle={
+            <>
+              Create and edit documents{documents.length > 0 ? ` (${documents.length} total)` : ''}. Background and
+              document templates are in{' '}
+              <Link to="/documents/templates" className="font-medium text-brand-red hover:underline">
+                Documents → Document Templates
+              </Link>
+              .
+            </>
+          }
+          icon={<FileText className="h-4 w-4" />}
+          actions={
+            <AppButton type="button" onClick={() => setShowChooseTypeModal(true)} disabled={isSaving}>
+              + Create new document
+            </AppButton>
+          }
+        />
 
-        <div className="rounded-xl border bg-white overflow-hidden">
+        <AppCard bodyClassName="!p-0">
           {documents.length === 0 ? (
-                <div className="p-8 text-center">
-                  <p className="text-xs text-gray-500 mb-4">No documents yet.</p>
-                  <button
-                    type="button"
-                    onClick={() => setShowChooseTypeModal(true)}
-                    disabled={isSaving}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand-red text-white font-medium hover:bg-[#aa1212] disabled:opacity-50"
-                  >
-                    + Create new document
-                  </button>
-                </div>
-              ) : (
+            <AppEmptyState
+              title="No documents yet."
+              description="Create a document from a template, a background, or a blank page."
+              action={
+                <AppButton type="button" onClick={() => setShowChooseTypeModal(true)} disabled={isSaving}>
+                  + Create new document
+                </AppButton>
+              }
+            />
+          ) : (
                 <div className="flex flex-col">
                   <div
                     className="grid grid-cols-[1fr_8rem_6rem] gap-2 sm:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-[10px] font-semibold text-gray-700"
@@ -242,7 +236,7 @@ export default function DocumentCreator() {
                   ))}
                 </div>
               )}
-        </div>
+        </AppCard>
         <ChooseDocumentTypeModal
           open={showChooseTypeModal}
           onClose={() => setShowChooseTypeModal(false)}
@@ -255,5 +249,9 @@ export default function DocumentCreator() {
     );
   }
 
-  return <DocumentEditor documentId={id} />;
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <DocumentEditor documentId={id} enableSendForSignature />
+    </div>
+  );
 }

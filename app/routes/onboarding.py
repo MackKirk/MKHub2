@@ -46,6 +46,7 @@ from ..services.onboarding_signature_template import (
     validate_field_values_for_signing,
 )
 from ..services.onboarding_storage import read_file_object_bytes, save_pdf_bytes_as_file_object
+from ..services.pdf_page_preview import inline_pdf_response, pdf_first_page_png
 from ..services.task_service import get_user_display
 from ..utils.pdf_hash import sha256_bytes
 
@@ -268,28 +269,8 @@ def thumbnail_base_document(
     fo = db.query(FileObject).filter(FileObject.id == bd.file_id).first()
     if not fo:
         raise HTTPException(404, "File not found")
-    data = read_file_object_bytes(db, fo)
-    try:
-        import fitz  # PyMuPDF
-    except ImportError:
-        raise HTTPException(503, "PDF thumbnails unavailable")
-    tw = max(80, min(480, int(w or 200)))
-    try:
-        doc = fitz.open(stream=data, filetype="pdf")
-    except Exception:
-        raise HTTPException(400, "Invalid PDF")
-    try:
-        if doc.page_count < 1:
-            raise HTTPException(400, "Empty PDF")
-        page = doc[0]
-        pw = float(page.rect.width) or 1.0
-        scale = tw / pw
-        mat = fitz.Matrix(scale, scale)
-        pix = page.get_pixmap(matrix=mat, alpha=False)
-        png = pix.tobytes("png")
-        return Response(content=png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
-    finally:
-        doc.close()
+    png = pdf_first_page_png(read_file_object_bytes(db, fo), w)
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
 
 
 @router.get("/base-documents/{doc_id}/preview")
@@ -305,13 +286,7 @@ def preview_base_document(doc_id: UUID, db: Session = Depends(get_db), user: Use
     fo = db.query(FileObject).filter(FileObject.id == bd.file_id).first()
     if not fo:
         raise HTTPException(404, "File not found")
-    data = read_file_object_bytes(db, fo)
-    safe = re.sub(r'[^\w\s.-]', "_", (bd.name or "document").strip())[:120] or "document"
-    return Response(
-        content=data,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{safe}.pdf"'},
-    )
+    return inline_pdf_response(read_file_object_bytes(db, fo), bd.name)
 
 
 @router.post("/base-documents")

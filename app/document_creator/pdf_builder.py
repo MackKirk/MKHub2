@@ -250,11 +250,12 @@ def _normalize_rich_lines_for_content(content: str, rich_lines: Optional[list]) 
     """
     Align richLines with content newlines. When many rich rows map to one content
     paragraph (soft-wrap artifact), merge them so PDF wraps like the browser block.
+    Always repair signature atoms (U+FFFC) so send-for-signature / PDF stay in sync.
     """
     content_norm = str(content or "").replace("\r\n", "\n")
     content_lines = content_norm.split("\n") if content_norm else [""]
     if not rich_lines or not isinstance(rich_lines, list):
-        return [[{"text": ln}] if ln else [{"text": ""}] for ln in content_lines]
+        return [_repair_line_runs_with_signature_atoms(None, ln) for ln in content_lines]
 
     def runs_plain(runs: list) -> str:
         return "".join(r.get("text", "") if isinstance(r, dict) else str(r) for r in runs)
@@ -267,15 +268,18 @@ def _normalize_rich_lines_for_content(content: str, rich_lines: Optional[list]) 
         for rl in rich_lines:
             if isinstance(rl, list):
                 merged.extend([r for r in rl if isinstance(r, dict)])
-        return [merged] if merged else [[{"text": content_norm}]]
+        return [_repair_line_runs_with_signature_atoms(merged, content_norm)]
 
     if len(rich_lines) == len(content_lines):
         return [
-            rl if isinstance(rl, list) else [{"text": content_lines[i]}]
+            _repair_line_runs_with_signature_atoms(
+                rl if isinstance(rl, list) else None,
+                content_lines[i],
+            )
             for i, rl in enumerate(rich_lines)
         ]
 
-    return [[{"text": ln}] if ln else [{"text": ""}] for ln in content_lines]
+    return [_repair_line_runs_with_signature_atoms(None, ln) for ln in content_lines]
 
 
 def _run_to_markup_fragment(
@@ -309,7 +313,121 @@ def _run_to_markup_fragment(
 
 
 # (font_name, font_size_pt, color, text)
+# Signature atoms use font_name SIG_ATOM_FONT; size is reserved width in points; text is \uFFFC.
 TextSegment = tuple[str, float, object, str]
+
+SIG_ATOM_FONT = "__SIG_ATOM__"
+SIG_ATOM_CHAR = "\ufffc"
+
+
+def _is_sig_atom_run(run: dict) -> bool:
+    """True for any inline overlay atom (signature or date) reserved with U+FFFC."""
+    kind = (run.get("kind") or "text")
+    if kind in ("signature", "date"):
+        return True
+    text = run.get("text") or ""
+    return text == SIG_ATOM_CHAR and bool(run.get("atomId") or run.get("atom_id"))
+
+
+def _atom_kind(run: dict) -> str:
+    kind = (run.get("kind") or "").strip().lower()
+    if kind == "date":
+        return "date"
+    return "signature"
+
+
+def _repair_line_runs_with_signature_atoms(runs: Optional[list], line_text: str) -> list[dict]:
+    """Rebuild runs for a line so each U+FFFC is a proper signature/date atom.
+
+    Recovers after editor bugs that merged typed text into atom runs or dropped kind/atomId.
+    """
+    line = (line_text or "").replace("\r\n", "\n")
+    existing_atoms: list[dict] = []
+    if isinstance(runs, list):
+        for r in runs:
+            if not isinstance(r, dict):
+                continue
+            if _is_sig_atom_run(r):
+                existing_atoms.append(dict(r))
+                continue
+            raw = str(r.get("text") or "")
+            if SIG_ATOM_CHAR in raw:
+                # Split mixed text+FFFC runs; keep atom-ish metadata when present.
+                existing_atoms.append(
+                    {
+                        "text": SIG_ATOM_CHAR,
+                        "kind": _atom_kind(r),
+                        "atomId": r.get("atomId") or r.get("atom_id") or str(uuid.uuid4()),
+                        "atomWidthPx": r.get("atomWidthPx") or r.get("atom_width_px") or (140 if _atom_kind(r) == "date" else 200),
+                        "atomHeightPx": r.get("atomHeightPx") or r.get("atom_height_px") or (32 if _atom_kind(r) == "date" else 48),
+                        "assignee": r.get("assignee") or "employee",
+                        "required": bool(r.get("required", True)),
+                    }
+                )
+
+    if SIG_ATOM_CHAR not in line:
+        if isinstance(runs, list) and runs:
+            cleaned = [r for r in runs if isinstance(r, dict)]
+            return cleaned if cleaned else ([{"text": line}] if line else [{"text": ""}])
+        return [{"text": line}] if line else [{"text": ""}]
+
+    out: list[dict] = []
+    buf = ""
+    atom_i = 0
+
+    def flush() -> None:
+        nonlocal buf
+        if buf:
+            out.append({"text": buf})
+            buf = ""
+
+    for ch in line:
+        if ch == SIG_ATOM_CHAR:
+            flush()
+            if atom_i < len(existing_atoms):
+                atom = dict(existing_atoms[atom_i])
+                atom_i += 1
+            else:
+                atom = {
+                    "text": SIG_ATOM_CHAR,
+                    "kind": "signature",
+                    "atomId": str(uuid.uuid4()),
+                    "atomWidthPx": 200,
+                    "atomHeightPx": 48,
+                    "assignee": "employee",
+                    "required": True,
+                }
+            atom["text"] = SIG_ATOM_CHAR
+            atom_kind = _atom_kind(atom)
+            atom["kind"] = atom_kind
+            if not (atom.get("atomId") or atom.get("atom_id")):
+                atom["atomId"] = str(uuid.uuid4())
+            if atom_kind == "date":
+                atom.setdefault("atomWidthPx", 140)
+                atom.setdefault("atomHeightPx", 32)
+            else:
+                atom.setdefault("atomWidthPx", 200)
+                atom.setdefault("atomHeightPx", 48)
+            out.append(atom)
+        else:
+            buf += ch
+    flush()
+    return out if out else [{"text": ""}]
+
+
+def _sig_atom_size_pt(run: dict, px_to_pt: float) -> tuple[float, float]:
+    kind = _atom_kind(run)
+    default_w = 140.0 if kind == "date" else 200.0
+    default_h = 32.0 if kind == "date" else 48.0
+    try:
+        w_px = float(run.get("atomWidthPx") or run.get("atom_width_px") or default_w)
+    except (TypeError, ValueError):
+        w_px = default_w
+    try:
+        h_px = float(run.get("atomHeightPx") or run.get("atom_height_px") or default_h)
+    except (TypeError, ValueError):
+        h_px = default_h
+    return max(8.0, w_px * px_to_pt), max(8.0, h_px * px_to_pt)
 
 
 def _runs_to_segments(
@@ -323,19 +441,41 @@ def _runs_to_segments(
     is_italic: bool,
     default_color,
 ) -> list[TextSegment]:
-    """Build drawable segments for one editor content line (preserves spaces)."""
+    """Build drawable segments for one editor content line (preserves spaces).
+
+    Signature atoms become invisible width reservations (not drawn as ink).
+    """
     line_norm = (line_text or "").replace("\r\n", "\n")
     if runs:
+        runs = _repair_line_runs_with_signature_atoms(runs, line_norm)
         runs_plain = "".join(r.get("text", "") if isinstance(r, dict) else str(r) for r in runs)
-        if runs_plain != line_norm:
+        has_sig_atoms = any(isinstance(r, dict) and _is_sig_atom_run(r) for r in runs)
+        # Content sometimes drops U+FFFC while richLines still hold signature chips.
+        # Prefer runs when they still carry atoms; otherwise rebuild from line text.
+        if runs_plain != line_norm and not has_sig_atoms and SIG_ATOM_CHAR in line_norm:
+            runs = _repair_line_runs_with_signature_atoms(None, line_norm)
+            runs_plain = "".join(r.get("text", "") if isinstance(r, dict) else str(r) for r in runs)
+            has_sig_atoms = any(isinstance(r, dict) and _is_sig_atom_run(r) for r in runs)
+        if runs_plain != line_norm and not has_sig_atoms:
+            # Last resort: strip atom char so PDF text does not show U+FFFC.
+            plain = line_norm.replace(SIG_ATOM_CHAR, "")
             fn = _pick_font(fonts_map, font_family, is_bold, is_italic)
             pt = max(1.0, font_size_px * px_to_pt)
-            return [(fn, pt, default_color, line_norm)]
+            return [(fn, pt, default_color, plain)] if plain else []
         out: list[TextSegment] = []
         for r in runs:
             if not isinstance(r, dict):
                 continue
+            if _is_sig_atom_run(r):
+                w_pt, h_pt = _sig_atom_size_pt(r, px_to_pt)
+                # size = width_pt; color slot = height_pt (float) for layout metrics.
+                out.append((SIG_ATOM_FONT, w_pt, h_pt, SIG_ATOM_CHAR))
+                continue
             text = r.get("text", "")
+            if not text:
+                continue
+            # Defensive: never draw object-replacement as a glyph.
+            text = str(text).replace(SIG_ATOM_CHAR, "").replace("\n", " ")
             if not text:
                 continue
             r_bold = r.get("bold") if r.get("bold") is not None else is_bold
@@ -345,18 +485,38 @@ def _runs_to_segments(
             r_font_pt = max(1.0, r_font_px * px_to_pt)
             r_font_name = _pick_font(fonts_map, r_family, bool(r_bold), bool(r_italic))
             r_color = _parse_hex_color(r.get("color")) if r.get("color") else default_color
-            out.append((r_font_name, r_font_pt, r_color, text.replace("\n", " ")))
+            out.append((r_font_name, r_font_pt, r_color, text))
         return out or [(_pick_font(fonts_map, font_family, is_bold, is_italic), max(1.0, font_size_px * px_to_pt), default_color, "")]
+    if SIG_ATOM_CHAR in line_norm:
+        return _runs_to_segments(
+            _repair_line_runs_with_signature_atoms(None, line_norm),
+            line_norm,
+            fonts_map,
+            font_family,
+            font_size_px,
+            px_to_pt,
+            is_bold,
+            is_italic,
+            default_color,
+        )
+    plain = line_norm
     fn = _pick_font(fonts_map, font_family, is_bold, is_italic)
     pt = max(1.0, font_size_px * px_to_pt)
-    return [(fn, pt, default_color, line_norm)]
+    return [(fn, pt, default_color, plain)] if plain else [(fn, pt, default_color, "")]
+
+
+def _segment_width(c: canvas.Canvas, font_name: str, size: float, text: str) -> float:
+    if font_name == SIG_ATOM_FONT:
+        return float(size) if size else 0.0
+    if not text:
+        return 0.0
+    return c.stringWidth(text, font_name, size)
 
 
 def _measure_segments(c: canvas.Canvas, segments: list[TextSegment]) -> float:
     total = 0.0
     for font_name, size, _color, text in segments:
-        if text:
-            total += c.stringWidth(text, font_name, size)
+        total += _segment_width(c, font_name, size, text)
     return total
 
 
@@ -370,12 +530,19 @@ def _line_box_metrics(
     is_italic: bool,
     fallback_pt: float,
 ) -> tuple[float, float, float, float]:
-    """Ascent, |descent|, line height, and half-leading (pt) — matches editor min-h 1.2em + CSS line box."""
+    """Ascent, |descent|, line height, and half-leading (pt).
+
+    Signature chips use vertical-align:middle (centered on the text line). Tall atoms
+    expand leading; text strut is centered via half-leading; field rects are centered
+    in the line box separately.
+    """
     max_pt = fallback_pt
     max_ascent = 0.0
     max_descent = 0.0
     fallback_font = _pick_font(fonts_map, font_family, is_bold, is_italic)
     for font_name, size, _color, text in segments:
+        if font_name == SIG_ATOM_FONT:
+            continue
         if size:
             max_pt = max(max_pt, size)
         a, d = _font_ascent_descent(font_name or fallback_font, size or fallback_pt)
@@ -386,13 +553,24 @@ def _line_box_metrics(
         max_descent = abs(max_descent)
     dominant_font = fallback_font
     for font_name, size, _color, text in segments:
+        if font_name == SIG_ATOM_FONT:
+            continue
         if text:
             dominant_font = font_name or dominant_font
             break
+    # Tall signature chips expand the line box; text stays centered via half-leading.
+    atom_h = 0.0
+    for font_name, size, color, text in segments:
+        if font_name == SIG_ATOM_FONT:
+            try:
+                atom_h = max(atom_h, float(color))
+            except (TypeError, ValueError):
+                atom_h = max(atom_h, fallback_pt * 1.6)
     leading = max(
         6.0,
         _font_line_height_pt(dominant_font, max_pt),
         max_ascent + max_descent + 0.5,
+        atom_h,
     )
     half_leading = max(0.0, (leading - max_ascent - max_descent) / 2.0)
     return max_ascent, max_descent, leading, half_leading
@@ -401,6 +579,10 @@ def _line_box_metrics(
 def _draw_segments_at(c: canvas.Canvas, x: float, baseline_y: float, segments: list[TextSegment]) -> None:
     cx = x
     for font_name, size, color, text in segments:
+        if font_name == SIG_ATOM_FONT:
+            # Reserve space for signature chip; do not draw ink.
+            cx += float(size) if size else 0.0
+            continue
         if not text:
             continue
         c.setFont(font_name, size)
@@ -426,11 +608,14 @@ def _aligned_line_start_x(
 
 
 def _tokenize_segments_for_wrap(segments: list[TextSegment]) -> list[TextSegment]:
-    """Split segments into word/whitespace tokens (whitespace preserved)."""
+    """Split segments into word/whitespace tokens (whitespace preserved). Atoms stay atomic."""
     import re
 
     tokens: list[TextSegment] = []
     for font_name, size, color, text in segments:
+        if font_name == SIG_ATOM_FONT:
+            tokens.append((font_name, size, color, text or SIG_ATOM_CHAR))
+            continue
         if not text:
             continue
         for m in re.finditer(r"\s+|\S+", text):
@@ -441,15 +626,17 @@ def _tokenize_segments_for_wrap(segments: list[TextSegment]) -> list[TextSegment
 def _break_segment_to_width(
     c: canvas.Canvas, font_name: str, size: float, color, text: str, max_width: float
 ) -> list[TextSegment]:
+    if font_name == SIG_ATOM_FONT:
+        return [(font_name, size, color, text or SIG_ATOM_CHAR)]
     if not text:
         return []
-    if c.stringWidth(text, font_name, size) <= max_width:
+    if _segment_width(c, font_name, size, text) <= max_width:
         return [(font_name, size, color, text)]
     chunks: list[TextSegment] = []
     buf = ""
     for ch in text:
         trial = buf + ch
-        if buf and c.stringWidth(trial, font_name, size) > max_width:
+        if buf and _segment_width(c, font_name, size, trial) > max_width:
             chunks.append((font_name, size, color, buf))
             buf = ch
         else:
@@ -484,7 +671,7 @@ def _wrap_segments_to_visual_rows(
             current_w = 0.0
 
     for font_name, size, color, token in tokens:
-        tw = c.stringWidth(token, font_name, size) if token else 0.0
+        tw = _segment_width(c, font_name, size, token)
         if tw > max_width:
             flush()
             for piece in _break_segment_to_width(c, font_name, size, color, token, max_width):
@@ -497,7 +684,14 @@ def _wrap_segments_to_visual_rows(
             current_w = tw
         else:
             last = current[-1]
-            if last[0] == font_name and last[1] == size and last[2] == color:
+            # Never merge signature atoms into neighboring text.
+            if (
+                font_name != SIG_ATOM_FONT
+                and last[0] != SIG_ATOM_FONT
+                and last[0] == font_name
+                and last[1] == size
+                and last[2] == color
+            ):
                 current[-1] = (font_name, size, color, last[3] + token)
             else:
                 current.append((font_name, size, color, token))
@@ -976,6 +1170,10 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                         c.translate(cx, cy)
                         c.rotate(-rotation_deg)
                         c.translate(-cx, -cy)
+                    if el_type in ("initials", "signature", "date"):
+                        # Overlay fields only — no ink in the exported PDF.
+                        c.restoreState()
+                        continue
                     if el_type == "text":
                         font_size_px = float(el.get("fontSize") or el.get("font_size", 11) or 11)
                         is_bold = el.get("fontWeight") == "bold"

@@ -32,7 +32,56 @@ EMPLOYEE_INFO_KEYS = frozenset(
         "country",
     }
 )
-VALID_ASSIGNEES = frozenset({"employee", "user"})
+VALID_ASSIGNEES = frozenset({"employee", "user", "company", "other"})
+
+
+def _assignee_is_document_role_id(raw: Any) -> bool:
+    """True if assignee looks like a free-form document role id (UUID)."""
+    s = (str(raw) if raw is not None else "").strip()
+    if not s:
+        return False
+    try:
+        UUID(s)
+        return True
+    except Exception:
+        return False
+
+
+def normalize_document_assignee(raw: Any) -> str:
+    """Normalize Document Builder field assignee to a role id string."""
+    from .document_signer_roles import normalize_field_assignee
+
+    return normalize_field_assignee(raw)
+
+
+def filter_fields_for_document_role(template: Optional[dict], role: str) -> List[dict]:
+    """Return overlay fields for one Document Builder signer role id."""
+    if not template or not isinstance(template.get("fields"), list):
+        return []
+    want = normalize_document_assignee(role)
+    out: List[dict] = []
+    for f in template["fields"]:
+        if not isinstance(f, dict):
+            continue
+        if normalize_document_assignee(f.get("assignee")) == want:
+            out.append(f)
+    return out
+
+
+def roles_present_in_template(template: Optional[dict]) -> List[str]:
+    """Unique role ids present on fields (order of first appearance)."""
+    if not template or not isinstance(template.get("fields"), list):
+        return []
+    seen = set()
+    out: List[str] = []
+    for f in template["fields"]:
+        if not isinstance(f, dict):
+            continue
+        rid = normalize_document_assignee(f.get("assignee"))
+        if rid not in seen:
+            seen.add(rid)
+            out.append(rid)
+    return out
 
 
 def signer_role_for_base_document(bd) -> str:
@@ -134,9 +183,21 @@ def validate_and_normalize_template(template: Any, pdf_bytes: bytes) -> dict:
         if x < -margin or y < -margin or x + w > pw + margin or y + h > ph + margin:
             raise HTTPException(400, f"fields[{idx}].rect outside page bounds")
 
-        assignee = (raw.get("assignee") or "employee").lower()
-        if assignee not in VALID_ASSIGNEES:
-            raise HTTPException(400, f"fields[{idx}].assignee must be employee or user")
+        assignee_raw = raw.get("assignee") or "employee"
+        assignee_str = str(assignee_raw).strip()
+        assignee_low = assignee_str.lower()
+        if assignee_low in VALID_ASSIGNEES:
+            assignee = assignee_low
+        elif _assignee_is_document_role_id(assignee_str):
+            # Document Builder free-form role ids
+            from .document_signer_roles import normalize_field_assignee
+
+            assignee = normalize_field_assignee(assignee_str)
+        else:
+            raise HTTPException(
+                400,
+                f"fields[{idx}].assignee must be employee, user, company, other, or a role id",
+            )
 
         field_name = (raw.get("field_name") or raw.get("label") or ftype).strip() or ftype
         required = bool(raw.get("required", False))

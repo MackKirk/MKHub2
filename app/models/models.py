@@ -942,6 +942,8 @@ class DocumentType(Base):
     category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     # Ordered list of { "template_id": "uuid", "label": "Cover", "margins?", "elements?" }. Each entry becomes one page.
     page_templates: Mapped[Optional[list]] = mapped_column(JSON)
+    # Free-form signer roles for Document Builder send-for-signature presets.
+    signer_roles: Mapped[Optional[list]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
@@ -956,6 +958,8 @@ class UserDocument(Base):
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True
     )
     pages: Mapped[Optional[dict]] = mapped_column(JSON)  # [{ "template_id": uuid, "areas_content": { "areaKey": value } }, ...]
+    # Free-form signer roles: [{ id, label, sortOrder, fillsEmployeeTokens }]
+    signer_roles: Mapped[Optional[list]] = mapped_column(JSON)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -965,6 +969,80 @@ class UserDocument(Base):
     )
     edit_lock_session_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     edit_lock_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DocumentSignatureTemplate(Base):
+    """PDF + overlay field template for Documents → Signature Editor (not hire onboarding)."""
+    __tablename__ = "document_signature_templates"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="RESTRICT"), nullable=False
+    )
+    content_hash: Mapped[Optional[str]] = mapped_column(String(128))
+    signature_template: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentSignatureRequest(Base):
+    """Send-for-signature envelope from Document Builder (snapshot PDF + overlay template)."""
+    __tablename__ = "document_signature_requests"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user_documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_pdf_file_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="RESTRICT"), nullable=False
+    )
+    # Latest PDF after each completed turn (starts equal to source).
+    current_pdf_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), nullable=True
+    )
+    signature_template: Mapped[Optional[dict]] = mapped_column(JSON)
+    # Denormalized: user whose turn is ready (or last signer). Prefer participants table.
+    signer_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    requested_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    signed_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), nullable=True
+    )
+    signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentSignatureParticipant(Base):
+    """One role assignment on a multi-signer document signature envelope."""
+    __tablename__ = "document_signature_participants"
+    __table_args__ = (UniqueConstraint("request_id", "role", name="uq_doc_sig_participant_role"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_signature_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(String(64), nullable=False)  # role id (UUID string)
+    role_label: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    signer_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
+    signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
 # Legacy Employee model removed in favor of EmployeeProfile linked to User

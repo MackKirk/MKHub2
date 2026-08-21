@@ -21,6 +21,9 @@ const RmProjectDetail = lazy(() => import('./pages/RmProjectDetail'));
 const RmOpportunityDetail = lazy(() => import('./pages/RmOpportunityDetail'));
 const CustomerDetail = lazy(() => import('./pages/CustomerDetail'));
 const DocumentCreator = lazy(() => import('./pages/DocumentCreator'));
+const DocumentsTemplatesPage = lazy(() => import('./pages/DocumentsTemplatesPage'));
+const DocumentsToSignPage = lazy(() => import('./pages/DocumentsToSignPage'));
+const SignatureEditorPage = lazy(() => import('./pages/SignatureEditorPage'));
 const FleetAssetDetail = lazy(() => import('./pages/FleetAssetDetail'));
 const WorkOrderDetail = lazy(() => import('./pages/WorkOrderDetail'));
 const Training = lazy(() => import('./pages/Training'));
@@ -221,8 +224,11 @@ export default function App(){
           <Route path="/rm-business" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><BusinessDashboard /></BusinessLineProvider></AppShell>} />
           <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />
           <Route path="/company-files" element={<AppShell><CompanyFiles/></AppShell>} />
+          <Route path="/documents/templates" element={<AppShell><DocumentsTemplatesPage/></AppShell>} />
+          <Route path="/documents/to-sign" element={<AppShell><DocumentsToSignPage/></AppShell>} />
           <Route path="/documents/create" element={<AppShell><DocumentCreator/></AppShell>} />
           <Route path="/documents/create/:id" element={<AppShell><DocumentCreator/></AppShell>} />
+          <Route path="/documents/signature-editor" element={<AppShell><SignatureEditorPage/></AppShell>} />
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
           <Route path="/users" element={<AppShell><Users/></AppShell>} />
           <Route path="/human-resources/overview" element={<AppShell><HrDataQualityOverview /></AppShell>} />

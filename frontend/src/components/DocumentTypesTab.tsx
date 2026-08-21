@@ -9,6 +9,8 @@ import type { DocElement, PageMargins } from '@/types/documentCreator';
 import { docElementRotationDeg, docElementRotateStyle } from '@/utils/documentElementGeometry';
 import { DocumentTypePageLayoutModal } from '@/components/DocumentTypePageLayoutModal';
 import OverlayPortal from '@/components/OverlayPortal';
+import DocumentAutoFillTokenPicker from '@/components/document-editor/DocumentAutoFillTokenPicker';
+import { useDocumentAutoFillTokens } from '@/hooks/useDocumentAutoFillTokens';
 
 const A4_ASPECT = 210 / 297;
 
@@ -83,6 +85,10 @@ function PageThumbnailSmall({
                       'repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(245,158,11,0.15) 2px, rgba(245,158,11,0.15) 4px)',
                   }}
                 />
+              ) : el.type === 'initials' ? (
+                <div className="w-full h-full bg-sky-400/40 border border-sky-500/50 rounded-sm" />
+              ) : el.type === 'date' ? (
+                <div className="w-full h-full bg-violet-400/40 border border-violet-500/50 rounded-sm" />
               ) : (
                 <div className="w-full h-full bg-gray-400/40 border border-gray-500/50 rounded-sm" />
               )}
@@ -142,6 +148,7 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
   const [tokensPopoverOpen, setTokensPopoverOpen] = useState(false);
   const tokensButtonRef = useRef<HTMLButtonElement>(null);
   const tokensPopoverRef = useRef<HTMLDivElement>(null);
+  const { data: tokenValues } = useDocumentAutoFillTokens(null, tokensPopoverOpen);
   const [dragOverPageIdx, setDragOverPageIdx] = useState<number | null>(null);
   const [dragInsertPosition, setDragInsertPosition] = useState<'above' | 'below' | null>(null);
 
@@ -198,6 +205,29 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
 
   const addPage = () => {
     setPages((prev) => [...prev, { template_id: '', label: '' }]);
+  };
+
+  const duplicatePage = (index: number) => {
+    setPages((prev) => {
+      const source = prev[index];
+      if (!source) return prev;
+      const stamp = Date.now();
+      const clonedElements: DocElement[] = JSON.parse(JSON.stringify(source.elements ?? []));
+      const newElements = clonedElements.map((el, i) => ({
+        ...el,
+        id: `el-${stamp}-${i}-${Math.random().toString(36).slice(2, 9)}`,
+      }));
+      const labelBase = source.label?.trim() || '';
+      const copy: PageTemplateRow = {
+        template_id: source.template_id,
+        label: labelBase ? `${labelBase} (copy)` : '',
+        margins: source.margins ? { ...source.margins } : undefined,
+        elements: newElements,
+      };
+      const next = [...prev];
+      next.splice(index + 1, 0, copy);
+      return next;
+    });
   };
 
   const removePage = async (index: number) => {
@@ -422,49 +452,18 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
             Auto-fill tokens
           </button>
           {tokensPopoverOpen && (
-            <div
-              ref={tokensPopoverRef}
-              className="absolute right-0 top-full mt-2 z-50 w-80 rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xl ring-1 ring-slate-900/5"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[13px] font-semibold text-slate-900">Auto-fill tokens</span>
-                <button
-                  type="button"
-                  onClick={() => setTokensPopoverOpen(false)}
-                  className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
-              </div>
-              <p className="text-[12px] text-slate-500 mb-3 leading-snug">
-                Use these tokens in text elements. When a document is created from a project, the tokens are automatically replaced with the project's data.
-              </p>
-              <table className="w-full text-[12px] border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="pb-1.5 text-left font-semibold text-slate-700">Token</th>
-                    <th className="pb-1.5 text-left font-semibold text-slate-700">Filled with</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {[
-                    { token: '<Project Name>', label: 'Project name' },
-                    { token: '<Project Address>', label: 'Project address' },
-                    { token: '<Customer Name>', label: 'Customer name' },
-                    { token: '<Customer Address>', label: 'Customer address' },
-                    { token: '<Reference Code>', label: 'Project code' },
-                    { token: '<Auto Date>', label: 'Date when page is added' },
-                  ].map(({ token, label }) => (
-                    <tr key={token}>
-                      <td className="py-1.5 pr-3">
-                        <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-800">{token}</code>
-                      </td>
-                      <td className="py-1.5 text-slate-600">{label}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div ref={tokensPopoverRef} className="absolute right-0 top-full z-50 mt-2">
+              <DocumentAutoFillTokenPicker
+                tokens={tokenValues?.tokens ?? []}
+                forceToken
+                onClose={() => setTokensPopoverOpen(false)}
+                description="Click a token to copy it. Paste into a text box in the page layout editor. Tokens stay in the template until a document is created with matching data."
+                onInsert={(text) => {
+                  void navigator.clipboard.writeText(text);
+                  toast.success('Copied to clipboard');
+                  setTokensPopoverOpen(false);
+                }}
+              />
             </div>
           )}
         </div>
@@ -695,6 +694,15 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                             aria-label="Edit layout"
                           >
                             <EditIcon />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => duplicatePage(idx)}
+                            className="p-2 rounded text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-transparent transition-colors"
+                            title="Duplicate page"
+                            aria-label="Duplicate page"
+                          >
+                            <DuplicateIcon />
                           </button>
                           <button
                             type="button"

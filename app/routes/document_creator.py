@@ -2,6 +2,7 @@
 Document Creator API: templates, user documents CRUD, export to PDF.
 """
 import copy
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Any
@@ -46,12 +47,14 @@ class DocumentCreate(BaseModel):
     document_type_id: Optional[str] = None
     project_id: Optional[str] = None
     pages: Optional[List[dict]] = None  # [{ template_id, areas_content }, ...]
+    signer_roles: Optional[List[dict]] = None
 
 
 class DocumentUpdate(BaseModel):
     title: Optional[str] = None
     project_id: Optional[str] = None  # set to "" to unlink from project
     pages: Optional[List[dict]] = None
+    signer_roles: Optional[List[dict]] = None
     # ISO timestamp from last GET/PATCH; required when changing title or pages (unless doc has never been saved).
     expected_updated_at: Optional[str] = None
     # Editor session that holds the soft lock; required with content changes when a lock is active.
@@ -163,11 +166,15 @@ def _template_to_out(t: DocumentTemplate) -> dict:
 
 
 def _doc_to_out(d: UserDocument, db: Optional[Session] = None) -> dict:
+    from ..services.document_signer_roles import ensure_document_signer_roles
+
     pages = d.pages
     # Repair display for docs created before richLines token substitution existed:
     # content may already be filled while richLines still hold <Project Name> etc.
     if db is not None:
         pages = _pages_with_project_tokens(pages, d.project_id, db, when=d.created_at)
+
+    signer_roles = ensure_document_signer_roles(getattr(d, "signer_roles", None), d.pages)
 
     out = {
         "id": str(d.id),
@@ -175,6 +182,7 @@ def _doc_to_out(d: UserDocument, db: Optional[Session] = None) -> dict:
         "document_type_id": str(d.document_type_id) if d.document_type_id else None,
         "project_id": str(d.project_id) if d.project_id else None,
         "pages": pages,
+        "signer_roles": signer_roles,
         "created_by": str(d.created_by) if d.created_by else None,
         "created_at": d.created_at.isoformat() if d.created_at else None,
         "updated_at": d.updated_at.isoformat() if d.updated_at else None,
@@ -242,6 +250,25 @@ _PLACEHOLDER_TOKENS: list[tuple[str, str]] = [
     ("<Reference Code>", "reference_code"),
     ("REFERENCE CODE", "reference_code"),
     ("<Auto Date>", "auto_date"),
+    ("<Employee Name>", "employee_name"),
+    ("<Employee Address>", "employee_address"),
+    ("<Employee Wage>", "employee_wage"),
+    ("<Employee Salary>", "employee_wage"),  # legacy alias
+    ("<Employee Hiring Date>", "employee_hiring_date"),
+]
+
+# Picker catalog (no legacy aliases). Labels must stay in sync with the frontend catalog.
+_TOKEN_CATALOG: list[dict[str, str]] = [
+    {"token": "<Project Name>", "key": "project_name", "label": "Project name", "group": "project"},
+    {"token": "<Project Address>", "key": "project_address", "label": "Project address", "group": "project"},
+    {"token": "<Customer Name>", "key": "customer_name", "label": "Customer name", "group": "project"},
+    {"token": "<Customer Address>", "key": "customer_address", "label": "Customer address", "group": "project"},
+    {"token": "<Reference Code>", "key": "reference_code", "label": "Project code", "group": "project"},
+    {"token": "<Auto Date>", "key": "auto_date", "label": "Date when page is added", "group": "project"},
+    {"token": "<Employee Name>", "key": "employee_name", "label": "Employee name", "group": "employee"},
+    {"token": "<Employee Address>", "key": "employee_address", "label": "Employee address", "group": "employee"},
+    {"token": "<Employee Wage>", "key": "employee_wage", "label": "Employee wage", "group": "employee"},
+    {"token": "<Employee Hiring Date>", "key": "employee_hiring_date", "label": "Employee hiring date", "group": "employee"},
 ]
 
 
@@ -279,6 +306,38 @@ def _format_address_lines(line1: Optional[str], line2: Optional[str] = None) -> 
     return "\n".join(lines)
 
 
+# Canadian postal (A1A 1A1) — signals address_line1 already has locality.
+_CA_POSTAL_RE = re.compile(r"\b[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d\b")
+_PROVINCE_ALIASES: dict[str, tuple[str, ...]] = {
+    "british columbia": ("bc",),
+    "bc": ("british columbia",),
+    "alberta": ("ab",),
+    "ab": ("alberta",),
+    "ontario": ("on",),
+    "on": ("ontario",),
+    "quebec": ("qc", "québec"),
+    "qc": ("quebec", "québec"),
+    "manitoba": ("mb",),
+    "mb": ("manitoba",),
+    "saskatchewan": ("sk",),
+    "sk": ("saskatchewan",),
+    "nova scotia": ("ns",),
+    "ns": ("nova scotia",),
+    "new brunswick": ("nb",),
+    "nb": ("new brunswick",),
+    "newfoundland and labrador": ("nl",),
+    "nl": ("newfoundland and labrador",),
+    "prince edward island": ("pe",),
+    "pe": ("prince edward island",),
+    "northwest territories": ("nt",),
+    "nt": ("northwest territories",),
+    "yukon": ("yt",),
+    "yt": ("yukon",),
+    "nunavut": ("nu",),
+    "nu": ("nunavut",),
+}
+
+
 def _format_customer_address(client: Client) -> str:
     """Primary client street address (line1/line2 only)."""
     return _format_address_lines(client.address_line1, client.address_line2)
@@ -308,9 +367,21 @@ def _format_auto_date(when: Optional[datetime] = None, tz_name: Optional[str] = 
 
 
 def _replace_tokens_in_text(content: str, values: dict) -> str:
+    """Replace tokens only when a non-empty value exists (keeps placeholders in templates)."""
     for token, key in _PLACEHOLDER_TOKENS:
-        content = content.replace(token, values.get(key, ""))
+        val = values.get(key)
+        if not val:
+            continue
+        content = content.replace(token, str(val))
     return content
+
+
+def _is_signature_atom_run(run: dict) -> bool:
+    kind = (run.get("kind") or "text")
+    if kind in ("signature", "date"):
+        return True
+    text = run.get("text") or ""
+    return text == "\ufffc" and bool(run.get("atomId") or run.get("atom_id"))
 
 
 def _substitute_project_tokens(elements: list, values: dict) -> list:
@@ -319,6 +390,7 @@ def _substitute_project_tokens(elements: list, values: dict) -> list:
         if el.get("type") != "text":
             continue
         if el.get("content"):
+            # Keep object-replacement chars for signature atoms; only replace known tokens.
             el["content"] = _replace_tokens_in_text(el["content"], values)
         # Main canvas prefers richLines over content when present — must substitute both.
         rich = el.get("richLines") or el.get("rich_lines")
@@ -327,27 +399,100 @@ def _substitute_project_tokens(elements: list, values: dict) -> list:
                 if not isinstance(line, list):
                     continue
                 for run in line:
-                    if isinstance(run, dict) and isinstance(run.get("text"), str):
-                        run["text"] = _replace_tokens_in_text(run["text"], values)
+                    if not isinstance(run, dict) or not isinstance(run.get("text"), str):
+                        continue
+                    if _is_signature_atom_run(run):
+                        continue
+                    run["text"] = _replace_tokens_in_text(run["text"], values)
     return elements
 
 
-def _pages_with_project_tokens(
-    pages: Any,
-    project_id: Optional[uuid.UUID],
-    db: Session,
-    *,
-    when: Optional[datetime] = None,
-) -> Any:
-    """Deep-copy pages and fill tokens. Auto Date uses `when` (e.g. doc created_at) or now."""
-    if not isinstance(pages, list):
-        return pages
-    token_values = _project_token_values(project_id, db, when=when)
-    pages = copy.deepcopy(pages)
-    for page in pages:
-        if isinstance(page, dict) and isinstance(page.get("elements"), list):
-            _substitute_project_tokens(page["elements"], token_values)
-    return pages
+def _format_employee_address(ep: EmployeeProfile) -> str:
+    """Single-line employee address for inline document tokens.
+
+    Prefer street lines when they already look complete (e.g. full Canadian one-liner
+    in address_line1). Avoid appending city/province/postal again — that duplicated
+    text and inserted hard newlines that left half-blank lines in the PDF.
+    """
+    street_parts: list[str] = []
+    for part in (
+        getattr(ep, "address_line1", None),
+        getattr(ep, "address_line2", None),
+    ):
+        text = _strip_trailing_country(part or "")
+        if text:
+            street_parts.append(text)
+    street = ", ".join(street_parts)
+
+    city = (getattr(ep, "city", None) or "").strip()
+    province = (getattr(ep, "province", None) or "").strip()
+    postal = (getattr(ep, "postal_code", None) or "").strip()
+    locality = ", ".join(p for p in (city, province, postal) if p)
+
+    if not street:
+        return locality
+    if not locality:
+        return street
+
+    street_cf = street.casefold()
+    # address_line1 often already stores "9552 198 St, Langley Twp, BC V1M 3CB"
+    if _CA_POSTAL_RE.search(street):
+        return street
+    if postal and postal.casefold() in street_cf:
+        return street
+    if city and city.casefold() in street_cf and province and (
+        province.casefold() in street_cf
+        or any(code in street_cf for code in _PROVINCE_ALIASES.get(province.casefold(), ()))
+    ):
+        return street
+    return f"{street}, {locality}"
+
+
+def _format_employee_wage(pay_rate: Optional[str]) -> str:
+    """Dollar + numeric amount only, e.g. '25.50 /hr' -> '$25.50'."""
+    raw = (pay_rate or "").strip()
+    if not raw:
+        return ""
+    m = re.search(r"\d[\d,]*(?:\.\d+)?", raw)
+    if not m:
+        return ""
+    return f"${m.group(0)}"
+
+
+def _employee_token_values(user_id: Optional[uuid.UUID], db: Session) -> dict:
+    """Resolve <Employee *> tokens from a user's EmployeeProfile."""
+    out = {
+        "employee_name": "",
+        "employee_address": "",
+        "employee_wage": "",
+        "employee_hiring_date": "",
+    }
+    if not user_id:
+        return out
+    ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
+    user = db.get(User, user_id)
+    if ep:
+        name = f"{(ep.first_name or '').strip()} {(ep.last_name or '').strip()}".strip()
+        if not name:
+            name = (ep.preferred_name or "").strip()
+        out["employee_name"] = name or (getattr(user, "username", None) or "")
+        out["employee_address"] = _format_employee_address(ep)
+        out["employee_wage"] = _format_employee_wage(getattr(ep, "pay_rate", None))
+        hire = getattr(ep, "hire_date", None)
+        if hire is not None:
+            if isinstance(hire, datetime):
+                out["employee_hiring_date"] = _format_auto_date(hire)
+            else:
+                # date / string fallback
+                try:
+                    out["employee_hiring_date"] = _format_auto_date(
+                        datetime(hire.year, hire.month, hire.day, tzinfo=timezone.utc)
+                    )
+                except Exception:
+                    out["employee_hiring_date"] = str(hire).strip()
+    elif user:
+        out["employee_name"] = (user.username or "").strip()
+    return out
 
 
 def _project_token_values(
@@ -355,8 +500,12 @@ def _project_token_values(
     db: Session,
     *,
     when: Optional[datetime] = None,
+    employee_user_id: Optional[uuid.UUID] = None,
 ) -> dict:
-    """Build token substitution dict. Always includes auto_date; project fields when available."""
+    """Build token substitution dict. Always includes auto_date; project fields when available.
+
+    When employee_user_id is set (e.g. send-for-signature), fill Employee * tokens from that user.
+    """
     tz_name = "America/Vancouver"
     values: dict = {
         "project_name": "",
@@ -365,6 +514,10 @@ def _project_token_values(
         "customer_address": "",
         "reference_code": "",
         "auto_date": "",
+        "employee_name": "",
+        "employee_address": "",
+        "employee_wage": "",
+        "employee_hiring_date": "",
     }
     if project_id:
         proj = db.get(Project, project_id)
@@ -387,7 +540,33 @@ def _project_token_values(
                 }
             )
     values["auto_date"] = _format_auto_date(when, tz_name=tz_name)
+    if employee_user_id:
+        values.update(_employee_token_values(employee_user_id, db))
     return values
+
+
+def _pages_with_project_tokens(
+    pages: Any,
+    project_id: Optional[uuid.UUID],
+    db: Session,
+    *,
+    when: Optional[datetime] = None,
+    employee_user_id: Optional[uuid.UUID] = None,
+) -> Any:
+    """Deep-copy pages and fill tokens. Auto Date uses `when` (e.g. doc created_at) or now.
+
+    When employee_user_id is set, also fill <Employee *> tokens from that user's profile.
+    """
+    if not isinstance(pages, list):
+        return pages
+    token_values = _project_token_values(
+        project_id, db, when=when, employee_user_id=employee_user_id
+    )
+    pages = copy.deepcopy(pages)
+    for page in pages:
+        if isinstance(page, dict) and isinstance(page.get("elements"), list):
+            _substitute_project_tokens(page["elements"], token_values)
+    return pages
 
 
 # --- Document types (preset page sequences) ---
@@ -412,6 +591,7 @@ def list_document_types(
             "description": t.description,
             "category": getattr(t, "category", None),
             "page_templates": t.page_templates or [],
+            "signer_roles": getattr(t, "signer_roles", None) or [],
             "created_at": t.created_at.isoformat() if t.created_at else None,
         }
         for t in types
@@ -423,6 +603,7 @@ class DocumentTypeCreate(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     page_templates: Optional[List[dict]] = None  # [{ "template_id": "uuid", "label": "Cover", "margins?", "elements?" }]
+    signer_roles: Optional[List[dict]] = None
 
 
 class DocumentTypeUpdate(BaseModel):
@@ -430,6 +611,7 @@ class DocumentTypeUpdate(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     page_templates: Optional[List[dict]] = None
+    signer_roles: Optional[List[dict]] = None
 
 
 @router.post("/document-types", response_model=dict)
@@ -444,11 +626,14 @@ def create_document_type(
     )),
 ):
     """Create a document type preset (ordered list of page templates)."""
+    from ..services.document_signer_roles import normalize_signer_roles_list
+
     doc_type = DocumentType(
         name=body.name or "Unnamed",
         description=body.description,
         category=body.category,
         page_templates=body.page_templates if body.page_templates is not None else [],
+        signer_roles=normalize_signer_roles_list(body.signer_roles) if body.signer_roles is not None else None,
     )
     db.add(doc_type)
     db.commit()
@@ -459,6 +644,7 @@ def create_document_type(
         "description": doc_type.description,
         "category": doc_type.category,
         "page_templates": doc_type.page_templates or [],
+        "signer_roles": getattr(doc_type, "signer_roles", None) or [],
         "created_at": doc_type.created_at.isoformat() if doc_type.created_at else None,
     }
 
@@ -491,6 +677,10 @@ def update_document_type(
         doc_type.category = body.category
     if body.page_templates is not None:
         doc_type.page_templates = body.page_templates
+    if body.signer_roles is not None:
+        from ..services.document_signer_roles import normalize_signer_roles_list
+
+        doc_type.signer_roles = normalize_signer_roles_list(body.signer_roles)
     db.commit()
     db.refresh(doc_type)
     return {
@@ -499,6 +689,7 @@ def update_document_type(
         "description": doc_type.description,
         "category": doc_type.category,
         "page_templates": doc_type.page_templates or [],
+        "signer_roles": getattr(doc_type, "signer_roles", None) or [],
         "created_at": doc_type.created_at.isoformat() if doc_type.created_at else None,
     }
 
@@ -555,6 +746,7 @@ def duplicate_document_type(
         description=doc_type.description,
         category=doc_type.category,
         page_templates=page_templates or [],
+        signer_roles=copy.deepcopy(getattr(doc_type, "signer_roles", None)) if getattr(doc_type, "signer_roles", None) else None,
     )
     db.add(new_type)
     db.commit()
@@ -565,6 +757,7 @@ def duplicate_document_type(
         "description": new_type.description,
         "category": new_type.category,
         "page_templates": new_type.page_templates or [],
+        "signer_roles": getattr(new_type, "signer_roles", None) or [],
         "created_at": new_type.created_at.isoformat() if new_type.created_at else None,
     }
 
@@ -633,6 +826,43 @@ def expand_document_type_pages(
     for page in pages:
         _substitute_project_tokens(page.get("elements", []), token_values)
     return pages
+
+
+@router.get("/token-values", response_model=dict)
+def get_token_values(
+    project_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions(
+        "documents:read",
+        "documents:write",
+        "business:projects:documents:read",
+        "business:projects:documents:write",
+        "settings:document_backgrounds:read",
+        "settings:document_backgrounds:write",
+        "settings:document_templates:read",
+        "settings:document_templates:write",
+    )),
+):
+    """Resolved auto-fill token previews for the editor picker. Empty value means insert the token."""
+    pid = None
+    if project_id:
+        try:
+            pid = uuid.UUID(project_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid project_id")
+    values = _project_token_values(pid, db)
+    return {
+        "tokens": [
+            {
+                "token": entry["token"],
+                "label": entry["label"],
+                "group": entry["group"],
+                "value": values.get(entry["key"]) or "",
+            }
+            for entry in _TOKEN_CATALOG
+        ]
+    }
 
 
 # --- Templates ---
@@ -804,7 +1034,7 @@ def list_documents(
     user: User = Depends(get_current_user),
     _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
 ):
-    """List documents. Optionally filter by project_id. With project docs permission, list all docs for that project."""
+    """List documents. With project_id, list that project's docs. Without it, list the caller's standalone (unlinked) docs."""
     from ..auth.security import _has_project_feature_permission
     if project_id:
         try:
@@ -819,15 +1049,15 @@ def list_documents(
                     UserDocument.project_id == pid,
                 )
         except ValueError:
-            q = db.query(UserDocument).filter(UserDocument.created_by == user.id)
+            q = db.query(UserDocument).filter(
+                UserDocument.created_by == user.id,
+                UserDocument.project_id.is_(None),
+            )
     else:
-        q = db.query(UserDocument).filter(UserDocument.created_by == user.id)
-        if project_id:
-            try:
-                pid = uuid.UUID(project_id)
-                q = q.filter(UserDocument.project_id == pid)
-            except ValueError:
-                pass
+        q = db.query(UserDocument).filter(
+            UserDocument.created_by == user.id,
+            UserDocument.project_id.is_(None),
+        )
     docs = q.order_by(
         UserDocument.updated_at.desc().nullslast(), UserDocument.created_at.desc()
     ).all()
@@ -842,8 +1072,15 @@ def create_document(
     _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
     """Create a new user document. If document_type_id is set, pages are built from that preset."""
+    from ..services.document_signer_roles import (
+        default_signer_roles,
+        ensure_document_signer_roles,
+        normalize_signer_roles_list,
+    )
+
     pages = body.pages if body.pages is not None else []
     dtype_id = None
+    type_signer_roles = None
     if body.document_type_id:
         try:
             dtype_id = uuid.UUID(body.document_type_id)
@@ -852,6 +1089,7 @@ def create_document(
         doc_type = db.query(DocumentType).filter(DocumentType.id == dtype_id).first()
         if not doc_type:
             raise HTTPException(status_code=404, detail="Document type not found")
+        type_signer_roles = getattr(doc_type, "signer_roles", None)
         pt_list = doc_type.page_templates or []
         if not isinstance(pt_list, list):
             pt_list = []
@@ -886,11 +1124,18 @@ def create_document(
     token_values = _project_token_values(pid, db, when=now)
     for page in pages:
         _substitute_project_tokens(page.get("elements", []), token_values)
+    if body.signer_roles is not None:
+        signer_roles = normalize_signer_roles_list(body.signer_roles) or default_signer_roles()
+    elif type_signer_roles:
+        signer_roles = ensure_document_signer_roles(type_signer_roles, pages)
+    else:
+        signer_roles = ensure_document_signer_roles(None, pages)
     doc = UserDocument(
         title=body.title or "Sem título",
         document_type_id=dtype_id,
         project_id=uuid.UUID(body.project_id) if body.project_id else None,
         pages=pages,
+        signer_roles=signer_roles,
         created_by=user.id,
     )
     db.add(doc)
@@ -1072,7 +1317,7 @@ def update_document(
     if not _can_access_document(user, doc, db, require_write=True):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    content_changing = body.title is not None or body.pages is not None
+    content_changing = body.title is not None or body.pages is not None or body.signer_roles is not None
     if content_changing:
         now = datetime.now(timezone.utc)
         if _edit_lock_active(doc, now):
@@ -1117,6 +1362,11 @@ def update_document(
         doc.project_id = uuid.UUID(body.project_id) if body.project_id else None
     if body.pages is not None:
         doc.pages = body.pages
+    if body.signer_roles is not None:
+        from ..services.document_signer_roles import ensure_document_signer_roles, normalize_signer_roles_list
+
+        roles = normalize_signer_roles_list(body.signer_roles)
+        doc.signer_roles = ensure_document_signer_roles(roles, body.pages if body.pages is not None else doc.pages)
     if content_changing or body.project_id is not None:
         doc.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -1183,3 +1433,63 @@ def export_document_pdf(
             "Content-Disposition": f'attachment; filename="{doc.title or "document"}.pdf"',
         },
     )
+
+
+@router.post("/documents/{document_id}/signature-template")
+def document_signature_template(
+    document_id: str,
+    body: Optional[ExportPdfOptions] = Body(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
+):
+    """
+    Build the filled PDF (same as export-pdf) and return validated signature_template
+    metadata for inline Signature atoms + free Initials elements.
+    Does not modify export-pdf behavior.
+    """
+    try:
+        did = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document id")
+    doc = db.query(UserDocument).filter(UserDocument.id == did).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not _can_access_document(user, doc, db, require_write=False):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    from ..document_creator.pdf_builder import build_pdf_bytes
+    from ..document_creator.signature_fields import build_signature_template_payload
+    from ..services.onboarding_signature_template import validate_and_normalize_template
+
+    original_pages = doc.pages
+    tokenized = _pages_with_project_tokens(original_pages, doc.project_id, db, when=doc.created_at)
+    doc.pages = tokenized
+    try:
+        try:
+            pdf_bytes = build_pdf_bytes(db, doc, canvas_width_px=(body.canvas_width_px if body else None))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+        raw = build_signature_template_payload(tokenized)
+        if not raw.get("fields"):
+            return {
+                "signature_template": {"version": 1, "fields": []},
+                "page_sizes": [],
+                "field_count": 0,
+            }
+        try:
+            normalized = validate_and_normalize_template(raw, pdf_bytes)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid signature template: {e}")
+        from ..services.onboarding_signature_template import get_pdf_page_sizes
+
+        sizes = get_pdf_page_sizes(pdf_bytes)
+        return {
+            "signature_template": normalized,
+            "page_sizes": [{"width": w, "height": h} for w, h in sizes],
+            "field_count": len(normalized.get("fields") or []),
+        }
+    finally:
+        doc.pages = original_pages

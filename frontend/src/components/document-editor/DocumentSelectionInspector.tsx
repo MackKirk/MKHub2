@@ -1,6 +1,11 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import type { DocElement, RichTextRun } from '@/types/documentCreator';
-import { DOCUMENT_EDITOR_FONTS, TEXT_STYLE_PRESETS } from '@/types/documentCreator';
+import {
+  DOCUMENT_EDITOR_FONTS,
+  TEXT_STYLE_PRESETS,
+  normalizeDocumentAssigneeId,
+  type DocumentSignerRoleDef,
+} from '@/types/documentCreator';
 import {
   AlignBottomIcon,
   AlignCenterIcon,
@@ -302,6 +307,39 @@ function activeInlineEditorRoot(elementId: string): HTMLElement | null {
   return shell?.querySelector<HTMLElement>(`[${TEXT_EDITOR_ROOT_ATTR}]`) ?? null;
 }
 
+/** When caret sits on/next to a signature/date chip, return its atom id + role. */
+function readAtomNearCaret(elementId: string): { atomId: string; role: string } | null {
+  const root = activeInlineEditorRoot(elementId);
+  if (!root) return null;
+  const sel = window.getSelection();
+  if (!sel?.anchorNode || !root.contains(sel.anchorNode)) return null;
+  const visit = (n: Node | null): HTMLElement | null => {
+    let cur: Node | null = n;
+    while (cur && cur !== root) {
+      if (cur instanceof HTMLElement && cur.hasAttribute('data-document-sig-atom')) return cur;
+      cur = cur.parentNode;
+    }
+    return null;
+  };
+  let host = visit(sel.anchorNode);
+  if (!host && sel.anchorNode instanceof HTMLElement) {
+    const prev = sel.anchorNode.previousElementSibling;
+    if (prev instanceof HTMLElement && prev.hasAttribute('data-document-sig-atom')) host = prev;
+  }
+  if (!host) {
+    const parent = sel.anchorNode.parentElement;
+    const prev = parent?.previousElementSibling;
+    if (prev instanceof HTMLElement && prev.hasAttribute('data-document-sig-atom')) host = prev;
+  }
+  if (!host) return null;
+  const atomId = host.getAttribute('data-document-sig-atom-id') || '';
+  if (!atomId) return null;
+  return {
+    atomId,
+    role: host.getAttribute('data-document-sig-atom-role') || 'employee',
+  };
+}
+
 function activeInlineEditorLineIndex(root: HTMLElement): number | null {
   const idx = Number(root.getAttribute(TEXT_EDITOR_ACTIVE_LINE_ATTR));
   return Number.isFinite(idx) ? idx : null;
@@ -429,10 +467,15 @@ export default function DocumentSelectionInspector({
   element,
   onUpdate,
   margins,
+  signerRoles = [],
+  onRequestOtherSigner,
 }: {
   element: DocElement | null;
   onUpdate: (id: string, updater: (el: DocElement) => DocElement) => void;
   margins?: PageMarginsPct | null;
+  signerRoles?: DocumentSignerRoleDef[];
+  /** Open name dialog; returns new signer id or null if cancelled. */
+  onRequestOtherSigner?: () => Promise<string | null>;
 }) {
   const selFmt = useSelectionFormatState(element?.id ?? null);
   const isEditing = element ? !!activeInlineEditorRoot(element.id) : false;
@@ -491,6 +534,8 @@ export default function DocumentSelectionInspector({
       ? (readSelectionLineAlign(element) ?? element.textAlign ?? 'left')
       : (element.textAlign ?? 'left');
 
+    const atomNear = isEditing ? readAtomNearCaret(id) : null;
+
     return (
       <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
         <Stack>
@@ -499,6 +544,46 @@ export default function DocumentSelectionInspector({
             <GeometryPxInput label="X" valuePx={geo.px.x} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('x', n)} />
             <GeometryPxInput label="Y" valuePx={geo.px.y} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('y', n)} />
           </StackRow>
+          {atomNear ? (
+            <StackRow>
+              <span className={editorToolbarMicroLabelClass}>Who</span>
+              <select
+                className={editorContextNativeSelectClass}
+                value={normalizeDocumentAssigneeId(atomNear.role, signerRoles)}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const apply = (next: string) => {
+                    const atomId = atomNear.atomId;
+                    onUpdate(id, (el) => {
+                      if (!el.richLines) return el;
+                      return {
+                        ...el,
+                        richLines: el.richLines.map((line) =>
+                          line.map((run) =>
+                            run.atomId === atomId ? { ...run, assignee: next } : run,
+                          ),
+                        ),
+                      };
+                    });
+                  };
+                  if (raw === '__other__') {
+                    void onRequestOtherSigner?.().then((next) => {
+                      if (next) apply(next);
+                    });
+                    return;
+                  }
+                  apply(raw);
+                }}
+              >
+                {signerRoles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+                {onRequestOtherSigner ? <option value="__other__">Other</option> : null}
+              </select>
+            </StackRow>
+          ) : null}
           <StackRow>
             <span className={editorToolbarMicroLabelClass}>Preset</span>
             <select
@@ -832,6 +917,50 @@ export default function DocumentSelectionInspector({
             {isLocked ? 'Unlock the image to adjust fit and position.' : 'Add an image to adjust fit and position.'}
           </p>
         </Cluster>
+      </div>
+    );
+  }
+
+  if (element.type === 'initials' || element.type === 'date') {
+    const roleId = normalizeDocumentAssigneeId(element.assignee, signerRoles);
+    return (
+      <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
+        <Stack>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Pos</span>
+            <GeometryPxInput label="X" valuePx={geo.px.x} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('x', n)} />
+            <GeometryPxInput label="Y" valuePx={geo.px.y} disabled={geo.positionLocked} onCommit={(n) => geo.applyField('y', n)} />
+          </StackRow>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Size</span>
+            <GeometryPxInput label="W" valuePx={geo.px.width} disabled={geo.locked} onCommit={(n) => geo.applyField('width', n)} />
+            <GeometryPxInput label="H" valuePx={geo.px.height} disabled={geo.locked} onCommit={(n) => geo.applyField('height', n)} />
+          </StackRow>
+          <StackRow>
+            <span className={editorToolbarMicroLabelClass}>Who</span>
+            <select
+              className={editorContextNativeSelectClass}
+              value={roleId}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === '__other__') {
+                  void onRequestOtherSigner?.().then((next) => {
+                    if (next) onUpdate(id, (el) => ({ ...el, assignee: next }));
+                  });
+                  return;
+                }
+                onUpdate(id, (el) => ({ ...el, assignee: raw }));
+              }}
+            >
+              {signerRoles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+              {onRequestOtherSigner ? <option value="__other__">Other</option> : null}
+            </select>
+          </StackRow>
+        </Stack>
       </div>
     );
   }

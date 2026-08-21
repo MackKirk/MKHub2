@@ -33,6 +33,8 @@ export type AlignKind = 'left' | 'right' | 'centerH' | 'top' | 'bottom' | 'cente
 function elementTypeLabel(el: DocElement): string {
   if (el.type === 'text') return 'Text';
   if (el.type === 'block') return 'Blocked Area';
+  if (el.type === 'initials') return 'Initials';
+  if (el.type === 'date') return 'Date';
   return el.content ? 'Image' : 'Image area';
 }
 

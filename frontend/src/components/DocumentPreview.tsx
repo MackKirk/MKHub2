@@ -1,8 +1,24 @@
 import { withFileAccessToken } from '@/lib/api';
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, Fragment, type RefObject, type DragEvent } from 'react';
-import type { DocElement, RichTextRun } from '@/types/documentCreator';
+import type { DocElement, RichTextRun, DocumentSignerRoleDef } from '@/types/documentCreator';
+import {
+  DOCUMENT_SIGNATURE_ATOM_CHAR,
+  createSignatureAtomRun,
+  createDateAtomRun,
+  fieldLabelWithRole,
+  isDateAtomRun,
+  isInlineAtomRun,
+  normalizeDocumentAssigneeId,
+  signerRoleStyle,
+} from '@/types/documentCreator';
 import { resolveImageFilesFromDataTransfer } from '@/utils/imageUploadHelpers';
 import toast from 'react-hot-toast';
+import OverlayPortal from '@/components/OverlayPortal';
+import {
+  DOCUMENT_TEXT_INSERT_ATOM_EVENT,
+  DOCUMENT_TEXT_INSERT_TEXT_EVENT,
+  type DocumentTextInsertAtomDetail,
+} from '@/lib/documentAutoFillTokens';
 import { ElementOptionsPopover } from '@/components/ElementOptionsPopover';
 import {
   editorCanvasScrollAreaClass,
@@ -88,6 +104,10 @@ type DocumentPreviewProps = {
   onBatchUpdateElements?: (updater: (els: DocElement[]) => DocElement[]) => void;
   /** Fired when a canvas drag/resize gesture starts or ends (for autosave/strip isolation). */
   onGestureChange?: (active: boolean) => void;
+  /** Optional project context for the canvas (unused for side token panel; ribbon handles tokens). */
+  projectId?: string | null;
+  /** Document signer roles for chip labels/colors. */
+  signerRoles?: DocumentSignerRoleDef[];
 };
 
 const A4_ASPECT = 210 / 297;
@@ -100,8 +120,9 @@ const DOCUMENT_PREVIEW_IMAGE_WIDTH_PX = 900;
 
 /** Ribbon strip below toolbar — keep focus in inline text editor when using formatting controls. */
 const DOCUMENT_EDITOR_FORMATTING_SELECTOR = '[data-document-editor-formatting]';
-/** Portaled editor panels (color, etc.) — same as formatting strip for “still editing” clicks. */
+/** Portaled editor panels (color, auto-fill picker, etc.) — same as formatting strip for “still editing” clicks. */
 const DOCUMENT_EDITOR_OVERLAY_SELECTOR = '[data-document-editor-overlay]';
+const DOCUMENT_AUTO_FILL_PICKER_SELECTOR = '[data-document-auto-fill-picker]';
 const INLINE_TEXT_EDITOR_ATTR = 'data-inline-text-editor';
 /** All text boxes on the canvas (edit or display) — used to allow switching edit target. */
 const DOCUMENT_TEXT_ELEMENT_ATTR = 'data-document-text-element';
@@ -117,8 +138,122 @@ const DOCUMENT_TEXT_APPLY_FORMAT_EVENT = 'document-text-apply-format';
 const DOCUMENT_TEXT_APPLY_LINE_ALIGN_EVENT = 'document-text-apply-line-align';
 const DOCUMENT_TEXT_FORMAT_STATE_ATTR = 'data-current-format';
 const TEXT_EDITOR_RUN_ATTR = 'data-document-text-run-index';
+const TEXT_EDITOR_SIG_ATOM_ATTR = 'data-document-sig-atom';
+const TEXT_EDITOR_SIG_ATOM_ID_ATTR = 'data-document-sig-atom-id';
+const TEXT_EDITOR_SIG_ATOM_KIND_ATTR = 'data-document-sig-atom-kind';
+const TEXT_EDITOR_SIG_ATOM_ROLE_ATTR = 'data-document-sig-atom-role';
+/** Zero-width caret landing pad after signature chips (stripped from logical text). */
+const TEXT_EDITOR_SIG_CARET_PAD_ATTR = 'data-document-sig-caret-pad';
+const SIG_ATOM_STYLE_ID = 'mkhub-document-sig-atom-style';
+const SIG_CARET_PAD_CHAR = '\u200b';
+
+function isSigAtomElement(node: Node | null | undefined): node is HTMLElement {
+  return !!node && node instanceof HTMLElement && node.hasAttribute(TEXT_EDITOR_SIG_ATOM_ATTR);
+}
+
+function isSigCaretPadElement(node: Node | null | undefined): node is HTMLElement {
+  return !!node && node instanceof HTMLElement && node.hasAttribute(TEXT_EDITOR_SIG_CARET_PAD_ATTR);
+}
+
+/** Logical line text from a line text span (excludes caret-pad ZWSP / nbsp normalize). */
+function logicalTextFromLineTextSpan(textSpan: HTMLElement): string {
+  let text = '';
+  const walk = (node: Node) => {
+    if (isSigCaretPadElement(node)) {
+      // Browser often types into the pad; keep that text, drop only the ZWSP marker.
+      text += (node.textContent ?? '').replaceAll(SIG_CARET_PAD_CHAR, '');
+      return;
+    }
+    if (node instanceof HTMLElement && node.hasAttribute('data-document-text-line-marker')) return;
+    if (isSigAtomElement(node)) {
+      text += DOCUMENT_SIGNATURE_ATOM_CHAR;
+      return;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+      text += (node.textContent ?? '').replaceAll(SIG_CARET_PAD_CHAR, '');
+      return;
+    }
+    node.childNodes.forEach(walk);
+  };
+  textSpan.childNodes.forEach(walk);
+  return text.replace(/\u00a0/g, ' ');
+}
+
+/** Logical length of a DOM node under a line text span (atoms = 1, pad ZWSP = 0). */
+function logicalDomLength(node: Node): number {
+  if (isSigCaretPadElement(node)) {
+    return (node.textContent ?? '').replaceAll(SIG_CARET_PAD_CHAR, '').length;
+  }
+  if (isSigAtomElement(node)) return 1;
+  if (node instanceof HTMLElement && node.hasAttribute('data-document-text-line-marker')) return 0;
+  if (node.nodeType === Node.TEXT_NODE) {
+    return (node.textContent ?? '').replaceAll(SIG_CARET_PAD_CHAR, '').length;
+  }
+  let n = 0;
+  node.childNodes.forEach((c) => {
+    n += logicalDomLength(c);
+  });
+  return n;
+}
+
+function ensureSignatureAtomStyles() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(SIG_ATOM_STYLE_ID)) return;
+  const el = document.createElement('style');
+  el.id = SIG_ATOM_STYLE_ID;
+  el.textContent = [
+    `[${TEXT_EDITOR_SIG_ATOM_ATTR}]{position:relative;}`,
+    `[${TEXT_EDITOR_SIG_ATOM_ATTR}]::after{`,
+    `content:attr(${TEXT_EDITOR_SIG_ATOM_KIND_ATTR});position:absolute;inset:0;display:flex;align-items:center;justify-content:center;`,
+    `font-size:10px;font-weight:600;font-family:system-ui,sans-serif;pointer-events:none;padding:0 4px;text-align:center;line-height:1.1;`,
+    `color:var(--sig-atom-label-color,#0369a1);`,
+    `}`,
+  ].join('');
+  document.head.appendChild(el);
+}
 /** Fired on `window` whenever the editor updates its data-current-format attribute so the inspector can re-read it. */
 const DOCUMENT_TEXT_FORMAT_STATE_CHANGED_EVENT = 'document-text-format-state-changed';
+
+type InsertAtomEvent = CustomEvent<DocumentTextInsertAtomDetail>;
+
+function lineHasSignatureAtoms(runs: RichTextRun[] | undefined): boolean {
+  return !!runs?.some((r) => isInlineAtomRun(r));
+}
+
+/** Rebuild runs from a plain line string while preserving signature/date atoms (matched by \\uFFFC order). */
+function reconcileRunsWithLine(existing: RichTextRun[] | undefined, line: string): RichTextRun[] {
+  if (existing && runsText(existing) === line) return existing;
+  const atoms = (existing ?? []).filter((r) => isInlineAtomRun(r));
+  if (atoms.length === 0 && !line.includes(DOCUMENT_SIGNATURE_ATOM_CHAR)) {
+    return [{ text: line }];
+  }
+  const out: RichTextRun[] = [];
+  let atomIdx = 0;
+  let buf = '';
+  const flush = () => {
+    if (buf) {
+      out.push({ text: buf });
+      buf = '';
+    }
+  };
+  for (const ch of line) {
+    if (ch === DOCUMENT_SIGNATURE_ATOM_CHAR) {
+      flush();
+      const atom = atoms[atomIdx++];
+      if (atom && isDateAtomRun(atom)) {
+        out.push({ ...atom, text: DOCUMENT_SIGNATURE_ATOM_CHAR, kind: 'date' });
+      } else if (atom) {
+        out.push({ ...atom, text: DOCUMENT_SIGNATURE_ATOM_CHAR, kind: 'signature' });
+      } else {
+        out.push(createSignatureAtomRun());
+      }
+    } else {
+      buf += ch;
+    }
+  }
+  flush();
+  return out.length > 0 ? out : [{ text: '' }];
+}
 
 /** Floating chips above text boxes — align with document editor segmented toolbar (h-8 track). */
 const DOCUMENT_PREVIEW_FLOATING_SEGMENT_BTN_CLASS =
@@ -147,6 +282,11 @@ type ApplyFormatEvent = CustomEvent<{
 type ApplyLineAlignEvent = CustomEvent<{
   elementId: string;
   align: 'left' | 'center' | 'right';
+}>;
+
+type InsertTextEvent = CustomEvent<{
+  elementId: string;
+  text: string;
 }>;
 
 function normalizeLineListStyle(style: DocElement['listStyle'] | null | undefined): LineListStyle | undefined {
@@ -185,6 +325,10 @@ function mergeAdjacentRuns(runs: RichTextRun[]): RichTextRun[] {
   for (let i = 1; i < runs.length; i++) {
     const prev = result[result.length - 1];
     const curr = runs[i];
+    if (isInlineAtomRun(prev) || isInlineAtomRun(curr)) {
+      result.push({ ...curr });
+      continue;
+    }
     if (formatsEqual(runFormat(prev), runFormat(curr))) {
       result[result.length - 1] = { ...prev, text: prev.text + curr.text };
     } else {
@@ -206,6 +350,10 @@ function splitRunsAt(runs: RichTextRun[], offset: number): [RichTextRun[], RichT
       left.push({ ...run });
     } else if (pos >= offset) {
       right.push({ ...run });
+    } else if (isInlineAtomRun(run)) {
+      // Atoms are atomic — never split the chip character.
+      if (offset <= pos) right.push({ ...run });
+      else left.push({ ...run });
     } else {
       const sp = offset - pos;
       if (sp > 0) left.push({ ...run, text: run.text.slice(0, sp) });
@@ -218,7 +366,7 @@ function splitRunsAt(runs: RichTextRun[], offset: number): [RichTextRun[], RichT
   return [left, right];
 }
 
-/** Delete characters [start, end) from a line's runs. */
+/** Delete characters [start, end) from a line's runs. Signature atoms are removed whole. */
 function deleteRangeFromLineRuns(runs: RichTextRun[], start: number, end: number): RichTextRun[] {
   if (start >= end) return runs;
   let pos = 0;
@@ -228,6 +376,8 @@ function deleteRangeFromLineRuns(runs: RichTextRun[], start: number, end: number
     const rEnd = pos + len;
     if (rEnd <= start || pos >= end) {
       result.push({ ...run });
+    } else if (isInlineAtomRun(run)) {
+      // Drop the whole atom if the delete range touches it.
     } else {
       const kept = run.text.slice(0, Math.max(0, start - pos)) + run.text.slice(Math.min(len, end - pos));
       if (kept.length > 0) result.push({ ...run, text: kept });
@@ -239,6 +389,7 @@ function deleteRangeFromLineRuns(runs: RichTextRun[], start: number, end: number
 
 /** Insert text at offset in a line's runs, inheriting format from adjacent run unless fmt overrides. */
 function insertIntoLineRuns(runs: RichTextRun[], offset: number, text: string, fmt?: RunFormat): RichTextRun[] {
+  if (!text) return runs;
   if (runs.length === 0) return [{ text, ...fmt }];
   let pos = 0;
   const result: RichTextRun[] = [];
@@ -248,6 +399,26 @@ function insertIntoLineRuns(runs: RichTextRun[], offset: number, text: string, f
     const len = run.text.length;
     if (!inserted && pos + len >= offset) {
       const inRun = offset - pos;
+      if (isInlineAtomRun(run)) {
+        // Never mutate atom text — typed chars must become a separate text run.
+        const inheritBefore =
+          fmt ?? (i > 0 && !isInlineAtomRun(runs[i - 1]) ? runFormat(runs[i - 1]) : {});
+        const inheritAfter =
+          fmt
+          ?? (i + 1 < runs.length && !isInlineAtomRun(runs[i + 1])
+            ? runFormat(runs[i + 1])
+            : {});
+        if (inRun <= 0) {
+          result.push({ text, ...inheritBefore });
+          result.push({ ...run, text: DOCUMENT_SIGNATURE_ATOM_CHAR });
+        } else {
+          result.push({ ...run, text: DOCUMENT_SIGNATURE_ATOM_CHAR });
+          result.push({ text, ...inheritAfter });
+        }
+        for (let j = i + 1; j < runs.length; j++) result.push({ ...runs[j] });
+        inserted = true;
+        break;
+      }
       const effectiveFmt = fmt ?? runFormat(run);
       if (formatsEqual(effectiveFmt, runFormat(run))) {
         result.push({ ...run, text: run.text.slice(0, inRun) + text + run.text.slice(inRun) });
@@ -264,17 +435,21 @@ function insertIntoLineRuns(runs: RichTextRun[], offset: number, text: string, f
   }
   if (!inserted) {
     const last = runs[runs.length - 1];
-    const effectiveFmt = fmt ?? runFormat(last);
-    if (formatsEqual(effectiveFmt, runFormat(last))) {
-      result[result.length - 1] = { ...last, text: last.text + text };
+    if (isInlineAtomRun(last)) {
+      result.push({ text, ...fmt });
     } else {
-      result.push({ text, ...effectiveFmt });
+      const effectiveFmt = fmt ?? runFormat(last);
+      if (formatsEqual(effectiveFmt, runFormat(last))) {
+        result[result.length - 1] = { ...last, text: last.text + text };
+      } else {
+        result.push({ text, ...effectiveFmt });
+      }
     }
   }
   return mergeAdjacentRuns(result);
 }
 
-/** Apply a format override to runs in [start, end). */
+/** Apply a format override to runs in [start, end). Signature atoms are left unchanged. */
 function applyFormatToLineRuns(runs: RichTextRun[], start: number, end: number, fmt: RunFormat): RichTextRun[] {
   if (start >= end) return runs;
   let pos = 0;
@@ -283,6 +458,8 @@ function applyFormatToLineRuns(runs: RichTextRun[], start: number, end: number, 
     const len = run.text.length;
     const rEnd = pos + len;
     if (rEnd <= start || pos >= end) {
+      result.push({ ...run });
+    } else if (isInlineAtomRun(run)) {
       result.push({ ...run });
     } else {
       if (pos < start) result.push({ ...run, text: run.text.slice(0, start - pos) });
@@ -343,10 +520,15 @@ function initRunsFromElement(el: DocElement): RichTextRun[][] {
     return lines.map((line, idx) => {
       const rl = el.richLines![idx];
       if (rl && rl.length > 0 && runsText(rl) === line) return rl;
+      if (line.includes(DOCUMENT_SIGNATURE_ATOM_CHAR)) return reconcileRunsWithLine(rl, line);
       return [{ text: line }];
     });
   }
-  return lines.map((line) => [{ text: line }]);
+  return lines.map((line) =>
+    line.includes(DOCUMENT_SIGNATURE_ATOM_CHAR)
+      ? reconcileRunsWithLine(undefined, line)
+      : [{ text: line }],
+  );
 }
 
 function runSpanInlineStyle(run: RichTextRun, elementFontSize: number): string {
@@ -414,7 +596,10 @@ function buildEditorHtml(
   styles: Array<LineListStyle | undefined>,
   runs: RichTextRun[][],
   elementFontSize: number,
+  displayScale = 1,
+  signerRoles: DocumentSignerRoleDef[] = [],
 ): string {
+  const scale = Number.isFinite(displayScale) && displayScale > 0 ? displayScale : 1;
   return lines
     .map((line, idx) => {
       const style = styles[idx];
@@ -423,17 +608,41 @@ function buildEditorHtml(
         ? `<span data-document-text-line-marker="true" contenteditable="false" style="margin-right:0.45em;min-width:1.35em;display:inline-block;text-align:right;user-select:none;-webkit-user-select:none">${markerText}</span>`
         : '';
       const lineRuns = runs[idx] ?? [{ text: line }];
-      const hasRichStyling = lineRuns.some((r) => runSpanInlineStyle(r, elementFontSize));
+      const hasRichStyling = lineRuns.some(
+        (r) => !isInlineAtomRun(r) && runSpanInlineStyle(r, elementFontSize),
+      );
+      const hasAtoms = lineRuns.some((r) => isInlineAtomRun(r));
       let textHtml: string;
-      if (!hasRichStyling && lineRuns.length === 1) {
+      if (!hasRichStyling && !hasAtoms && lineRuns.length === 1) {
         textHtml = escapeHtmlText(lineRuns[0].text) || '<br>';
       } else {
-        const allEmpty = lineRuns.every((r) => r.text === '');
+        const allEmpty = lineRuns.every((r) => r.text === '' && !isInlineAtomRun(r));
         if (allEmpty) {
           textHtml = '<br>';
         } else {
           textHtml = lineRuns
             .map((run, ri) => {
+              if (isInlineAtomRun(run)) {
+                const isDate = isDateAtomRun(run);
+                const roleId = normalizeDocumentAssigneeId(run.assignee, signerRoles);
+                const styleColors = signerRoleStyle(roleId, signerRoles);
+                const w = Math.max(24, (run.atomWidthPx ?? (isDate ? 140 : 200)) * scale);
+                const h = Math.max(16, (run.atomHeightPx ?? (isDate ? 32 : 48)) * scale);
+                const aid = escapeHtmlText(run.atomId || '');
+                const label = fieldLabelWithRole(isDate ? 'Date' : 'Signature', roleId, signerRoles);
+                return (
+                  `<span ${TEXT_EDITOR_RUN_ATTR}="${ri}" ${TEXT_EDITOR_SIG_ATOM_ATTR}="true" ${TEXT_EDITOR_SIG_ATOM_ID_ATTR}="${aid}" ` +
+                  `${TEXT_EDITOR_SIG_ATOM_KIND_ATTR}="${escapeHtmlText(label)}" ${TEXT_EDITOR_SIG_ATOM_ROLE_ATTR}="${escapeHtmlText(roleId)}" ` +
+                  `contenteditable="false" unselectable="on" title="${escapeHtmlText(label)}" ` +
+                  `style="display:inline-flex;align-items:center;justify-content:center;` +
+                  `vertical-align:middle;width:${w}px;height:${h}px;` +
+                  `box-sizing:border-box;margin:0 2px;border:1px dashed ${styleColors.border};border-radius:4px;` +
+                  `background:${styleColors.bg};color:transparent;font-size:1px;line-height:1;` +
+                  `--sig-atom-label-color:${styleColors.text};` +
+                  `user-select:none;-webkit-user-select:none;overflow:hidden;">${DOCUMENT_SIGNATURE_ATOM_CHAR}</span>` +
+                  `<span ${TEXT_EDITOR_SIG_CARET_PAD_ATTR}="true" aria-hidden="true">${SIG_CARET_PAD_CHAR}</span>`
+                );
+              }
               const s = runSpanInlineStyle(run, elementFontSize);
               const content = escapeHtmlText(run.text);
               return s
@@ -443,31 +652,90 @@ function buildEditorHtml(
             .join('') || '<br>';
         }
       }
-      const divStyle = style ? 'display:flex;align-items:baseline' : '';
+      const divStyle = style ? 'display:flex;align-items:center' : '';
       return `<div ${TEXT_EDITOR_LINE_ATTR}="${idx}" ${TEXT_EDITOR_LINE_STYLE_ATTR}="${style ?? 'none'}" style="${divStyle}">${markerHtml}<span ${TEXT_EDITOR_LINE_TEXT_ATTR}="true" style="${style ? 'flex:1;min-width:0' : ''}">${textHtml}</span></div>`;
     })
     .join('');
 }
 
-/** Walk DOM tree under `container` to find the text node at `offset` chars from the start.
- *  Skips marker spans. Returns null if offset exceeds total text length. */
+/** Walk DOM under `container` to find the text node at logical `offset` (sig pad ZWSP = 0 width). */
 function findTextNodeAt(container: Node, offset: number): { node: Node; pos: number } | null {
   if (container instanceof HTMLElement && container.hasAttribute('data-document-text-line-marker')) return null;
+  if (isSigCaretPadElement(container)) {
+    const raw = container.textContent ?? '';
+    const logical = raw.replaceAll(SIG_CARET_PAD_CHAR, '');
+    const textNode = container.firstChild ?? container;
+    if (offset <= logical.length) {
+      // Prefer placing at start of pad (ZWSP) when empty; otherwise map into typed text.
+      if (logical.length === 0) return { node: textNode, pos: 0 };
+      // Typed chars usually follow the ZWSP in the same text node.
+      const zwspPrefix = raw.startsWith(SIG_CARET_PAD_CHAR) ? 1 : 0;
+      return { node: textNode, pos: Math.min(zwspPrefix + offset, raw.length) };
+    }
+    return null;
+  }
+  if (isSigAtomElement(container)) {
+    return null;
+  }
   if (container.nodeType === Node.TEXT_NODE) {
-    const len = (container.textContent ?? '').length;
-    if (offset <= len) return { node: container, pos: offset };
+    const raw = container.textContent ?? '';
+    const logical = raw.replaceAll(SIG_CARET_PAD_CHAR, '');
+    if (offset <= logical.length) {
+      return { node: container, pos: Math.min(offset, raw.length) };
+    }
     return null;
   }
   let rem = offset;
   for (const child of Array.from(container.childNodes)) {
     if (child instanceof HTMLElement && child.hasAttribute('data-document-text-line-marker')) continue;
-    const len = (child.textContent ?? '').length;
-    if (rem <= len) {
-      const found = findTextNodeAt(child, rem);
-      if (found) return found;
-      break;
+    if (isSigCaretPadElement(child)) {
+      const padLogical = logicalDomLength(child);
+      if (rem <= padLogical || (rem === 0 && padLogical === 0)) {
+        return findTextNodeAt(child, rem);
+      }
+      rem -= padLogical;
+      continue;
     }
-    rem -= len;
+    if (isSigAtomElement(child)) {
+      if (rem === 0) {
+        let prev: Node | null = child.previousSibling;
+        while (prev && isSigCaretPadElement(prev) && logicalDomLength(prev) === 0) {
+          prev = prev.previousSibling;
+        }
+        if (prev && prev.nodeType === Node.TEXT_NODE) {
+          return { node: prev, pos: (prev.textContent ?? '').length };
+        }
+        if (prev && prev instanceof HTMLElement && !isSigAtomElement(prev)) {
+          const found = findTextNodeAt(prev, logicalDomLength(prev));
+          if (found) return found;
+        }
+        return { node: child, pos: 0 }; // caretSet → setStartBefore
+      }
+      if (rem === 1) {
+        const next = child.nextSibling;
+        if (isSigCaretPadElement(next)) {
+          return findTextNodeAt(next, 0);
+        }
+        return { node: child, pos: 1 }; // caretSet → setStartAfter
+      }
+      rem -= 1;
+      continue;
+    }
+    if (child.nodeType === Node.TEXT_NODE) {
+      const logical = (child.textContent ?? '').replaceAll(SIG_CARET_PAD_CHAR, '');
+      if (rem <= logical.length) return { node: child, pos: rem };
+      rem -= logical.length;
+      continue;
+    }
+    if (child instanceof HTMLElement) {
+      const childLogical = logicalDomLength(child);
+      if (rem <= childLogical) {
+        const found = findTextNodeAt(child, rem);
+        if (found) return found;
+        break;
+      }
+      rem -= childLogical;
+    }
   }
   return null;
 }
@@ -479,24 +747,44 @@ function imperativeCaretSet(root: HTMLElement, lineIdx: number, charOffset: numb
   const domSel = window.getSelection();
   if (!domSel) return;
   const found = findTextNodeAt(textSpan, charOffset);
-  let node: Node;
-  let pos: number;
-  if (found) {
-    node = found.node; pos = found.pos;
-  } else {
-    // Fallback: place at end of last text node
-    const walker = document.createTreeWalker(textSpan, NodeFilter.SHOW_TEXT);
-    let last: Text | null = null;
-    let cur: Node | null;
-    while ((cur = walker.nextNode())) last = cur as Text;
-    node = last ?? textSpan;
-    pos = last ? last.length : 0;
-  }
   try {
     const range = document.createRange();
-    const maxPos = node.nodeType === Node.TEXT_NODE ? (node.textContent ?? '').length : (node as HTMLElement).childNodes.length;
-    range.setStart(node, Math.min(pos, maxPos));
-    range.collapse(true);
+    if (found && isSigAtomElement(found.node)) {
+      if (found.pos <= 0) range.setStartBefore(found.node);
+      else range.setStartAfter(found.node);
+      range.collapse(true);
+    } else if (found) {
+      const maxPos =
+        found.node.nodeType === Node.TEXT_NODE
+          ? (found.node.textContent ?? '').length
+          : (found.node as HTMLElement).childNodes.length;
+      range.setStart(found.node, Math.min(found.pos, maxPos));
+      range.collapse(true);
+    } else {
+      const walker = document.createTreeWalker(textSpan, NodeFilter.SHOW_TEXT);
+      let last: Text | null = null;
+      let cur: Node | null;
+      while ((cur = walker.nextNode())) {
+        if (isSigCaretPadElement(cur.parentElement)) last = cur as Text;
+        else if (!(cur.textContent ?? '').includes(DOCUMENT_SIGNATURE_ATOM_CHAR) || !isSigAtomElement(cur.parentElement)) {
+          last = cur as Text;
+        } else {
+          last = cur as Text;
+        }
+      }
+      // Prefer last caret pad at end of line
+      const pads = textSpan.querySelectorAll(`[${TEXT_EDITOR_SIG_CARET_PAD_ATTR}]`);
+      const lastPad = pads.length ? pads[pads.length - 1] : null;
+      if (lastPad?.firstChild) {
+        range.setStart(lastPad.firstChild, 0);
+      } else if (last) {
+        range.setStart(last, last.length);
+      } else {
+        range.selectNodeContents(textSpan);
+        range.collapse(false);
+      }
+      range.collapse(true);
+    }
     domSel.removeAllRanges();
     domSel.addRange(range);
   } catch { /* ignore */ }
@@ -561,10 +849,46 @@ function imperativeSelectionRead(
     const lineEl = root.querySelector(`[${TEXT_EDITOR_LINE_ATTR}="${lineIdx}"]`);
     const textSpan = lineEl?.querySelector<HTMLElement>(`[${TEXT_EDITOR_LINE_TEXT_ATTR}]`);
     if (!textSpan || !node || !textSpan.contains(node)) return 0;
+
+    const padHost = isSigCaretPadElement(node)
+      ? node
+      : node.parentElement && isSigCaretPadElement(node.parentElement)
+        ? node.parentElement
+        : null;
+    if (padHost) {
+      const before = document.createRange();
+      before.selectNodeContents(textSpan);
+      before.setEndBefore(padHost);
+      const beforeLen = before.toString().replaceAll(SIG_CARET_PAD_CHAR, '').length;
+      const raw = padHost.textContent ?? '';
+      const zwspPrefix = raw.startsWith(SIG_CARET_PAD_CHAR) ? 1 : 0;
+      const offInTextNode = node.nodeType === Node.TEXT_NODE ? domOffset : 0;
+      const logicalInPad = Math.max(0, offInTextNode - zwspPrefix);
+      const padLogicalLen = raw.replaceAll(SIG_CARET_PAD_CHAR, '').length;
+      return beforeLen + Math.min(logicalInPad, padLogicalLen);
+    }
+
+    // Caret inside atom → snap to after (or before if offset 0).
+    const atomHost = isSigAtomElement(node)
+      ? node
+      : node.parentElement && isSigAtomElement(node.parentElement)
+        ? node.parentElement
+        : null;
+    if (atomHost) {
+      const range = document.createRange();
+      range.selectNodeContents(textSpan);
+      if (domOffset <= 0) range.setEndBefore(atomHost);
+      else range.setEndAfter(atomHost);
+      return range.toString().replaceAll(SIG_CARET_PAD_CHAR, '').length;
+    }
     const range = document.createRange();
     range.selectNodeContents(textSpan);
-    range.setEnd(node, domOffset);
-    return range.toString().length;
+    try {
+      range.setEnd(node, domOffset);
+    } catch {
+      return 0;
+    }
+    return range.toString().replaceAll(SIG_CARET_PAD_CHAR, '').length;
   };
 
   const anchorLineIdx = lineIdxForNode(sel.anchorNode);
@@ -584,11 +908,13 @@ function InlineTextEditor({
   textStyle,
   onCommit,
   onEscape,
+  signerRoles = [],
 }: {
   element: DocElement;
   textStyle: React.CSSProperties;
   onCommit: (snapshot: TextEditorSnapshot) => void;
   onEscape: () => void;
+  signerRoles?: DocumentSignerRoleDef[];
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   // All state lives in refs — no React re-renders inside this component.
@@ -597,7 +923,12 @@ function InlineTextEditor({
   const runsRef = useRef<RichTextRun[][]>(initRunsFromElement(element));
   const lineAlignsRef = useRef<('left' | 'center' | 'right')[]>([]);
   const pendingFormatRef = useRef<RunFormat | null>(null);
+  /** Caret position where pendingFormat was set — used so re-clicking the same spot doesn't drop Bold-off. */
+  const pendingFormatCaretRef = useRef<{ lineIndex: number; offset: number } | null>(null);
   const elementFontSizeRef = useRef(Math.max(8, Math.min(72, element.fontSize ?? 12)));
+  const displayScaleRef = useRef(1);
+  const signerRolesRef = useRef(signerRoles);
+  signerRolesRef.current = signerRoles;
   const activeLineRef = useRef(0);
   const composingRef = useRef(false);
   /** Selection saved just before each user input event (used to apply pending format in handleInput). */
@@ -677,15 +1008,42 @@ function InlineTextEditor({
     const runs = runsRef.current;
     const aligns = lineAlignsRef.current;
     const hasLineStyles = styles.some(Boolean);
-    const hasRichRuns = runs.some((lr) =>
-      lr.some((r) => r.bold !== undefined || r.italic !== undefined || r.fontSize !== undefined || r.color !== undefined || r.fontFamily !== undefined)
-    );
+    const contentHasSigAtom = lines.some((ln) => ln.includes(DOCUMENT_SIGNATURE_ATOM_CHAR));
+    const hasSigAtoms = runs.some((lr) => lr.some((r) => isInlineAtomRun(r)));
+    // Always persist richLines when signature chips exist (or content still has U+FFFC),
+    // even if formatting metadata was lost — send-for-signature depends on it.
+    const hasRichRuns =
+      hasSigAtoms ||
+      contentHasSigAtom ||
+      runs.some((lr) =>
+        lr.some(
+          (r) =>
+            r.bold !== undefined ||
+            r.italic !== undefined ||
+            r.fontSize !== undefined ||
+            r.color !== undefined ||
+            r.fontFamily !== undefined,
+        ),
+      );
     const defaultAlign = element.textAlign ?? 'left';
     const hasAligns = aligns.some((a) => a && a !== defaultAlign);
+    let content = lines.join('\n');
+    let richLinesOut: RichTextRun[][] | undefined = hasRichRuns ? runs : undefined;
+    if (hasSigAtoms && !contentHasSigAtom) {
+      // Keep content in sync with chips so extraction/PDF see U+FFFC.
+      content = runs
+        .map((lr) => lr.map((r) => (isInlineAtomRun(r) ? DOCUMENT_SIGNATURE_ATOM_CHAR : r.text ?? '')).join(''))
+        .join('\n');
+      richLinesOut = runs;
+    } else if (contentHasSigAtom && richLinesOut) {
+      richLinesOut = lines.map((ln, i) => reconcileRunsWithLine(richLinesOut![i] ?? [], ln));
+    } else if (contentHasSigAtom && !richLinesOut) {
+      richLinesOut = lines.map((ln) => reconcileRunsWithLine([], ln));
+    }
     onCommitRef.current({
-      content: lines.join('\n'),
+      content,
       lineListStyles: hasLineStyles ? styles.map((s) => s ?? 'none') : undefined,
-      richLines: hasRichRuns ? runs : undefined,
+      richLines: richLinesOut,
       lineTextAligns: hasAligns ? aligns : undefined,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -729,17 +1087,25 @@ function InlineTextEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Snapshot logical selection before inspector controls steal DOM selection / focus.
+  // Snapshot logical selection before inspector / ribbon controls steal DOM selection / focus.
   useEffect(() => {
     const inspectorAttr = '[data-document-inspector-keep-selection]';
+    const keepSelAttr = '[data-document-keep-text-selection]';
     const onMouseDownCapture = (e: MouseEvent) => {
       const root = rootRef.current;
       if (!root) return;
       const t = e.target as Node | null;
       if (!t || root.contains(t)) return;
-      if (!(t instanceof Element) || !t.closest(inspectorAttr)) return;
+      if (!(t instanceof Element)) return;
+      if (
+        !t.closest(inspectorAttr) &&
+        !t.closest(DOCUMENT_AUTO_FILL_PICKER_SELECTOR) &&
+        !t.closest(keepSelAttr)
+      ) {
+        return;
+      }
       const sel = imperativeSelectionRead(root, activeLineRef.current);
-      if (sel && !sel.collapsed) frozenSelForToolbarRef.current = sel;
+      if (sel) frozenSelForToolbarRef.current = sel;
     };
     const onSelectionChange = () => {
       const root = rootRef.current;
@@ -755,11 +1121,30 @@ function InlineTextEditor({
     };
   }, [element.id]);
 
+  useLayoutEffect(() => {
+    elementIdRef.current = element.id;
+    const refFs = Math.max(8, Math.min(72, element.fontSize ?? 12));
+    elementFontSizeRef.current = refFs;
+    const styled = typeof textStyle.fontSize === 'string' ? parseFloat(textStyle.fontSize) : Number(textStyle.fontSize);
+    displayScaleRef.current = Number.isFinite(styled) && styled > 0 ? styled / refFs : 1;
+  }, [element.id, element.fontSize, textStyle.fontSize]);
+
+  useLayoutEffect(() => {
+    ensureSignatureAtomStyles();
+  }, []);
+
   /** Rebuild innerHTML then restore focus + caret. */
   const repaint = useCallback((focusLineIdx?: number, focusOffset?: number, opts?: { skipSyncFormat?: boolean }) => {
     const root = rootRef.current;
     if (!root) return;
-    root.innerHTML = buildEditorHtml(linesRef.current, stylesRef.current, runsRef.current, elementFontSizeRef.current);
+    root.innerHTML = buildEditorHtml(
+      linesRef.current,
+      stylesRef.current,
+      runsRef.current,
+      elementFontSizeRef.current,
+      displayScaleRef.current,
+      signerRolesRef.current,
+    );
     root.setAttribute(TEXT_EDITOR_ACTIVE_LINE_ATTR, String(activeLineRef.current));
     if (focusLineIdx != null) {
       root.focus({ preventScroll: true });
@@ -769,6 +1154,17 @@ function InlineTextEditor({
       syncFormatState();
     }
   }, [syncFormatState]);
+
+  // Keep chip labels in sync when signer catalog changes (e.g. Other just added).
+  useLayoutEffect(() => {
+    signerRolesRef.current = signerRoles;
+    const root = rootRef.current;
+    if (!root) return;
+    const hasAtoms = runsRef.current.some((line) => line.some((r) => isInlineAtomRun(r)));
+    if (!hasAtoms) return;
+    const sel = imperativeSelectionRead(root, activeLineRef.current);
+    repaint(sel?.start.lineIndex, sel?.start.offset, { skipSyncFormat: true });
+  }, [signerRoles, repaint]);
 
   // ── Mount / element switch ────────────────────────────────────────────────
   useLayoutEffect(() => {
@@ -781,6 +1177,7 @@ function InlineTextEditor({
     elementFontSizeRef.current = Math.max(8, Math.min(72, element.fontSize ?? 12));
     activeLineRef.current = 0;
     pendingFormatRef.current = null;
+    pendingFormatCaretRef.current = null;
     frozenSelForToolbarRef.current = null;
     undoStackRef.current = [];
     typingSessionActiveRef.current = false;
@@ -833,15 +1230,19 @@ function InlineTextEditor({
         usedFrozen = true;
       }
 
-      // No selection: set pending format (will be applied to next typed characters).
+      // No selection: set pending format (will be applied to next typed/pasted characters).
       if (!sel || sel.collapsed) {
         pendingFormatRef.current = { ...(pendingFormatRef.current ?? {}), ...format };
+        pendingFormatCaretRef.current = sel
+          ? { lineIndex: sel.start.lineIndex, offset: sel.start.offset }
+          : { lineIndex: activeLineRef.current, offset: 0 };
         syncFormatState();
         return;
       }
       if (usedFrozen) frozenSelForToolbarRef.current = null;
 
       pendingFormatRef.current = null;
+      pendingFormatCaretRef.current = null;
 
       pushUndo();
       const { start, end } = sel;
@@ -963,7 +1364,12 @@ function InlineTextEditor({
       const fmt = lineText.length > 0
         ? getFormatAtOffset(curRuns, lineText.length - 1)
         : (curRuns.length > 0 ? runFormat(curRuns[0]) : {});
-      if (Object.keys(fmt).length > 0) pendingFormatRef.current = fmt;
+      if (Object.keys(fmt).length > 0) {
+        pendingFormatRef.current = fmt;
+        pendingFormatCaretRef.current = { lineIndex: start.lineIndex + 1, offset: 0 };
+      }
+    } else {
+      pendingFormatCaretRef.current = { lineIndex: start.lineIndex + 1, offset: 0 };
     }
 
     repaint(start.lineIndex + 1, 0);
@@ -1161,6 +1567,7 @@ function InlineTextEditor({
 
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       pendingFormatRef.current = null;
+      pendingFormatCaretRef.current = null;
       requestAnimationFrame(() => {
         const r = rootRef.current;
         if (!r) return;
@@ -1204,16 +1611,19 @@ function InlineTextEditor({
     if (lineDivs.length !== linesRef.current.length) {
       // Line count changed unexpectedly — resync everything.
       const nextLines = lineDivs.map((div) => {
+        const textSpan = div.querySelector<HTMLElement>(`[${TEXT_EDITOR_LINE_TEXT_ATTR}]`);
+        if (textSpan) return logicalTextFromLineTextSpan(textSpan);
         let text = '';
         div.childNodes.forEach((child) => {
           if (child instanceof HTMLElement && child.hasAttribute('data-document-text-line-marker')) return;
           text += child.textContent ?? '';
         });
-        return text.replace(/\u00a0/g, ' ');
+        return text.replaceAll(SIG_CARET_PAD_CHAR, '').replace(/\u00a0/g, ' ');
       });
       const nextRuns = nextLines.map((line, idx) => {
         const existing = runsRef.current[idx];
         if (existing && runsText(existing) === line) return existing;
+        if (lineHasSignatureAtoms(existing)) return reconcileRunsWithLine(existing, line);
         return [{ text: line }];
       });
       linesRef.current = nextLines;
@@ -1229,12 +1639,14 @@ function InlineTextEditor({
     // Read new text from each line.
     const prevLines = linesRef.current;
     const nextLines = lineDivs.map((div) => {
+      const textSpan = div.querySelector<HTMLElement>(`[${TEXT_EDITOR_LINE_TEXT_ATTR}]`);
+      if (textSpan) return logicalTextFromLineTextSpan(textSpan);
       let text = '';
       div.childNodes.forEach((child) => {
         if (child instanceof HTMLElement && child.hasAttribute('data-document-text-line-marker')) return;
         text += child.textContent ?? '';
       });
-      return text.replace(/\u00a0/g, ' ');
+      return text.replaceAll(SIG_CARET_PAD_CHAR, '').replace(/\u00a0/g, ' ');
     });
 
     // Sync runs, preserving rich-text structure on every keystroke.
@@ -1261,6 +1673,10 @@ function InlineTextEditor({
 
         if (insertedLen > 0) {
           const inserted = line.slice(insertOffset, insertOffset + insertedLen);
+          // Never treat atom char as typed text insertion into a text run.
+          if (inserted.includes(DOCUMENT_SIGNATURE_ATOM_CHAR)) {
+            return reconcileRunsWithLine(existing, line);
+          }
           const baseRuns = baseExists ? existing! : [{ text: prevLine }];
           const afterDelete = selEnd > insertOffset
             ? deleteRangeFromLineRuns(baseRuns, insertOffset, selEnd)
@@ -1281,6 +1697,9 @@ function InlineTextEditor({
           const insertOffset = Math.max(0, postSel.start.offset - insertedLen);
           if (insertOffset <= prevLine.length) {
             const inserted = line.slice(insertOffset, insertOffset + insertedLen);
+            if (inserted.includes(DOCUMENT_SIGNATURE_ATOM_CHAR)) {
+              return reconcileRunsWithLine(existing, line);
+            }
             const withFormat = insertIntoLineRuns(existing!, insertOffset, inserted, pending ?? undefined);
             if (pending !== null) needRepaint = true;
             return withFormat;
@@ -1288,7 +1707,10 @@ function InlineTextEditor({
         }
       }
 
-      // True fallback: plain run (IME composition end, unexpected DOM mutations, etc.)
+      // True fallback: preserve signature atoms when present.
+      if (lineHasSignatureAtoms(existing) || line.includes(DOCUMENT_SIGNATURE_ATOM_CHAR)) {
+        return reconcileRunsWithLine(existing, line);
+      }
       return [{ text: line }];
     });
 
@@ -1297,8 +1719,18 @@ function InlineTextEditor({
     root.setAttribute(TEXT_EDITOR_ACTIVE_LINE_ATTR, String(activeLineRef.current));
     doCommit();
 
-    if (needRepaint && postSel) {
-      // Re-render with formatted spans and restore cursor.
+    if (pending !== null && postSel) {
+      pendingFormatCaretRef.current = {
+        lineIndex: postSel.start.lineIndex,
+        offset: postSel.start.offset,
+      };
+    }
+
+    const sigLineChanged = nextLines.some(
+      (line, idx) => line !== (prevLines[idx] ?? '') && lineHasSignatureAtoms(nextRuns[idx]),
+    );
+    if ((needRepaint || sigLineChanged) && postSel) {
+      // Re-render so signature caret pads stay intact and typed text isn't trapped in the atom.
       repaint(postSel.start.lineIndex, postSel.start.offset);
     }
   }, [doCommit, pushUndoForTyping, repaint]);
@@ -1306,22 +1738,103 @@ function InlineTextEditor({
   const handlePointerUp = useCallback(() => {
     const root = rootRef.current;
     if (!root) return;
+    // If caret landed inside a contenteditable=false signature chip, snap to the pad after it.
+    const domSel = window.getSelection();
+    if (domSel?.rangeCount && domSel.isCollapsed) {
+      const anchor = domSel.anchorNode;
+      const atomHost = isSigAtomElement(anchor)
+        ? anchor
+        : anchor?.parentElement && isSigAtomElement(anchor.parentElement)
+          ? anchor.parentElement
+          : null;
+      if (atomHost) {
+        const pad = atomHost.nextSibling;
+        try {
+          const range = document.createRange();
+          if (isSigCaretPadElement(pad) && pad.firstChild) {
+            range.setStart(pad.firstChild, 0);
+          } else {
+            range.setStartAfter(atomHost);
+          }
+          range.collapse(true);
+          domSel.removeAllRanges();
+          domSel.addRange(range);
+        } catch { /* ignore */ }
+      }
+    }
     const sel = imperativeSelectionRead(root, activeLineRef.current);
     if (sel) {
       activeLineRef.current = sel.start.lineIndex;
       root.setAttribute(TEXT_EDITOR_ACTIVE_LINE_ATTR, String(activeLineRef.current));
     }
-    pendingFormatRef.current = null;
+    // Keep pending Bold/Italic when the user re-clicks the same caret (e.g. after
+    // turning Bold off in the ribbon). Only drop it when the caret actually moved.
+    const pendingAt = pendingFormatCaretRef.current;
+    if (pendingFormatRef.current && pendingAt && sel) {
+      const moved =
+        !sel.collapsed
+        || sel.start.lineIndex !== pendingAt.lineIndex
+        || sel.start.offset !== pendingAt.offset;
+      if (moved) {
+        pendingFormatRef.current = null;
+        pendingFormatCaretRef.current = null;
+      }
+    } else if (!pendingFormatRef.current) {
+      pendingFormatCaretRef.current = null;
+    }
     syncFormatState();
   }, [syncFormatState]);
 
-  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    pushUndo();
-    const root = e.currentTarget;
-    const sel = imperativeSelectionRead(root, activeLineRef.current);
+  const syncEditorStateFromDom = useCallback((root: HTMLElement) => {
+    const lineDivs = Array.from(root.querySelectorAll<HTMLElement>(`[${TEXT_EDITOR_LINE_ATTR}]`));
+    if (lineDivs.length === 0) return;
+    const domLines = lineDivs.map((div) => {
+      const textSpan = div.querySelector<HTMLElement>(`[${TEXT_EDITOR_LINE_TEXT_ATTR}]`);
+      if (textSpan) return logicalTextFromLineTextSpan(textSpan);
+      return (div.textContent ?? '').replaceAll(SIG_CARET_PAD_CHAR, '').replace(/\u00a0/g, ' ');
+    });
+    const domRuns = domLines.map((line, idx) => {
+      const existing = runsRef.current[idx];
+      if (existing && runsText(existing) === line) return existing;
+      if (lineHasSignatureAtoms(existing) || line.includes(DOCUMENT_SIGNATURE_ATOM_CHAR)) {
+        return reconcileRunsWithLine(existing, line);
+      }
+      return [{ text: line }];
+    });
+    linesRef.current = domLines;
+    runsRef.current = domRuns;
+    if (stylesRef.current.length < domLines.length) {
+      stylesRef.current = [
+        ...stylesRef.current,
+        ...Array.from({ length: domLines.length - stylesRef.current.length }, () => undefined),
+      ];
+    } else if (stylesRef.current.length > domLines.length) {
+      stylesRef.current = stylesRef.current.slice(0, domLines.length);
+    }
+    if (lineAlignsRef.current.length < domLines.length) {
+      lineAlignsRef.current = [
+        ...lineAlignsRef.current,
+        ...Array.from(
+          { length: domLines.length - lineAlignsRef.current.length },
+          () => 'left' as const,
+        ),
+      ];
+    } else if (lineAlignsRef.current.length > domLines.length) {
+      lineAlignsRef.current = lineAlignsRef.current.slice(0, domLines.length);
+    }
+  }, []);
+
+  const insertPlainText = useCallback((text: string) => {
+    const root = rootRef.current;
+    if (!root) return;
+    syncEditorStateFromDom(root);
+    const sel =
+      imperativeSelectionRead(root, activeLineRef.current)
+      ?? frozenSelForToolbarRef.current;
     if (!sel) return;
-    const pasted = e.clipboardData.getData('text/plain').replace(/\r\n/g, '\n');
+    frozenSelForToolbarRef.current = null;
+    pushUndo();
+    const pasted = text.replace(/\r\n/g, '\n');
     const parts = pasted.split('\n');
     const { start, end } = sel;
     const lines = linesRef.current;
@@ -1329,58 +1842,218 @@ function InlineTextEditor({
     const runs = runsRef.current;
     const aligns = lineAlignsRef.current;
 
-    // Delete selection first if any
-    let wLines = lines;
-    let wRuns = runs;
-    let wStyles = styles;
-    let wAligns = aligns;
+    let wLines = [...lines];
+    let wRuns = runs.map((r) => [...r]);
+    let wStyles = [...styles];
+    let wAligns = [...aligns];
+    let insertAt = Math.min(start.offset, (wLines[start.lineIndex] ?? '').length);
+    let lineIdx = start.lineIndex;
+
     if (!sel.collapsed) {
-      const sRuns = runs[start.lineIndex] ?? [{ text: lines[start.lineIndex] ?? '' }];
-      const eRuns = runs[end.lineIndex] ?? [{ text: lines[end.lineIndex] ?? '' }];
-      const [leftR] = splitRunsAt(sRuns, start.offset);
-      const [, rightR] = splitRunsAt(eRuns, end.offset);
+      const sRuns = wRuns[start.lineIndex] ?? [{ text: wLines[start.lineIndex] ?? '' }];
+      const eRuns = wRuns[end.lineIndex] ?? [{ text: wLines[end.lineIndex] ?? '' }];
+      const lineStart = wLines[start.lineIndex] ?? '';
+      const lineEnd = wLines[end.lineIndex] ?? '';
+      const baseS = runsText(sRuns) === lineStart ? sRuns : reconcileRunsWithLine(sRuns, lineStart);
+      const baseE = runsText(eRuns) === lineEnd ? eRuns : reconcileRunsWithLine(eRuns, lineEnd);
+      const [leftR] = splitRunsAt(baseS, start.offset);
+      const [, rightR] = splitRunsAt(baseE, end.offset);
       const merged = mergeAdjacentRuns([...leftR, ...rightR]);
-      const mergedText = `${(lines[start.lineIndex] ?? '').slice(0, start.offset)}${(lines[end.lineIndex] ?? '').slice(end.offset)}`;
-      wLines = [...lines.slice(0, start.lineIndex), mergedText, ...lines.slice(end.lineIndex + 1)];
-      wRuns = [...runs.slice(0, start.lineIndex), merged, ...runs.slice(end.lineIndex + 1)];
-      wStyles = [...styles.slice(0, start.lineIndex), styles[start.lineIndex], ...styles.slice(end.lineIndex + 1)];
-      wAligns = [...aligns.slice(0, start.lineIndex), aligns[start.lineIndex], ...aligns.slice(end.lineIndex + 1)];
+      const mergedText = `${lineStart.slice(0, start.offset)}${lineEnd.slice(end.offset)}`;
+      wLines = [...wLines.slice(0, start.lineIndex), mergedText, ...wLines.slice(end.lineIndex + 1)];
+      wRuns = [...wRuns.slice(0, start.lineIndex), merged, ...wRuns.slice(end.lineIndex + 1)];
+      wStyles = [...wStyles.slice(0, start.lineIndex), wStyles[start.lineIndex], ...wStyles.slice(end.lineIndex + 1)];
+      wAligns = [...wAligns.slice(0, start.lineIndex), wAligns[start.lineIndex], ...wAligns.slice(end.lineIndex + 1)];
+      insertAt = Math.min(start.offset, mergedText.length);
+      lineIdx = start.lineIndex;
     }
 
-    const before = (wLines[start.lineIndex] ?? '').slice(0, start.offset);
-    const after = (wLines[start.lineIndex] ?? '').slice(start.offset);
-    const pasteRuns = wRuns[start.lineIndex] ?? [{ text: wLines[start.lineIndex] ?? '' }];
-    const pasteFormat = getFormatAtOffset(pasteRuns, start.offset);
+    const lineText = wLines[lineIdx] ?? '';
+    insertAt = Math.min(insertAt, lineText.length);
+    const lineRunsRaw = wRuns[lineIdx] ?? [{ text: lineText }];
+    const lineRuns =
+      runsText(lineRunsRaw) === lineText
+        ? lineRunsRaw
+        : reconcileRunsWithLine(lineRunsRaw, lineText);
+    // Honor pending Bold/Italic (e.g. user turned Bold off then pasted) — same as typing.
+    const caretFmt = getFormatAtOffset(lineRuns, insertAt);
+    const pending = pendingFormatRef.current;
+    const pasteFormat = pending ? { ...caretFmt, ...pending } : caretFmt;
+    const [leftRuns, rightRuns] = splitRunsAt(lineRuns, insertAt);
 
-    const replacement = parts.length === 1
-      ? [`${before}${parts[0]}${after}`]
-      : [`${before}${parts[0]}`, ...parts.slice(1, -1), `${parts[parts.length - 1]}${after}`];
+    let replacementLines: string[];
+    let replacementRuns: RichTextRun[][];
 
-    // Build runs for pasted lines — each line inherits the format at the cursor position
-    const simpleRunsArr = replacement.map((lineText) => [{ text: lineText, ...pasteFormat }]);
+    if (parts.length === 1) {
+      const nextRunsLine = mergeAdjacentRuns([
+        ...(leftRuns.length && !(leftRuns.length === 1 && leftRuns[0].text === '') ? leftRuns : []),
+        { text: parts[0], ...pasteFormat },
+        ...(rightRuns.length && !(rightRuns.length === 1 && rightRuns[0].text === '') ? rightRuns : []),
+      ]);
+      replacementLines = [`${lineText.slice(0, insertAt)}${parts[0]}${lineText.slice(insertAt)}`];
+      replacementRuns = [nextRunsLine.length > 0 ? nextRunsLine : [{ text: parts[0], ...pasteFormat }]];
+    } else {
+      const firstRuns = mergeAdjacentRuns([
+        ...(leftRuns.length && !(leftRuns.length === 1 && leftRuns[0].text === '') ? leftRuns : []),
+        { text: parts[0], ...pasteFormat },
+      ]);
+      const lastRuns = mergeAdjacentRuns([
+        { text: parts[parts.length - 1], ...pasteFormat },
+        ...(rightRuns.length && !(rightRuns.length === 1 && rightRuns[0].text === '') ? rightRuns : []),
+      ]);
+      const midRuns = parts.slice(1, -1).map((p) => [{ text: p, ...pasteFormat }]);
+      replacementRuns = [
+        firstRuns.length > 0 ? firstRuns : [{ text: parts[0], ...pasteFormat }],
+        ...midRuns,
+        lastRuns.length > 0 ? lastRuns : [{ text: parts[parts.length - 1], ...pasteFormat }],
+      ];
+      replacementLines = [
+        `${lineText.slice(0, insertAt)}${parts[0]}`,
+        ...parts.slice(1, -1),
+        `${parts[parts.length - 1]}${lineText.slice(insertAt)}`,
+      ];
+    }
 
-    const nextLines = [...wLines.slice(0, start.lineIndex), ...replacement, ...wLines.slice(start.lineIndex + 1)];
-    const nextRuns = [...wRuns.slice(0, start.lineIndex), ...simpleRunsArr, ...wRuns.slice(start.lineIndex + 1)];
+    const nextLines = [...wLines.slice(0, lineIdx), ...replacementLines, ...wLines.slice(lineIdx + 1)];
+    const nextRuns = [...wRuns.slice(0, lineIdx), ...replacementRuns, ...wRuns.slice(lineIdx + 1)];
     const nextStyles = nextLines.map((_, idx) => {
-      if (idx < start.lineIndex) return wStyles[idx];
-      if (idx < start.lineIndex + replacement.length) return wStyles[start.lineIndex];
-      return wStyles[idx - replacement.length + 1];
+      if (idx < lineIdx) return wStyles[idx];
+      if (idx < lineIdx + replacementLines.length) return wStyles[lineIdx];
+      return wStyles[idx - replacementLines.length + 1];
     });
     const nextAligns = nextLines.map((_, idx) => {
-      if (idx < start.lineIndex) return wAligns[idx];
-      if (idx < start.lineIndex + replacement.length) return wAligns[start.lineIndex];
-      return wAligns[idx - replacement.length + 1];
+      if (idx < lineIdx) return wAligns[idx];
+      if (idx < lineIdx + replacementLines.length) return wAligns[lineIdx] ?? 'left';
+      return wAligns[idx - replacementLines.length + 1] ?? 'left';
     });
 
     linesRef.current = nextLines;
     runsRef.current = nextRuns;
     stylesRef.current = nextStyles;
     lineAlignsRef.current = nextAligns;
-    const nextActive = start.lineIndex + replacement.length - 1;
+    const nextActive = lineIdx + replacementLines.length - 1;
     activeLineRef.current = nextActive;
-    repaint(nextActive, replacement[replacement.length - 1].length - after.length);
+    const caretInLast =
+      replacementLines.length === 1
+        ? insertAt + parts[0].length
+        : (parts[parts.length - 1] ?? '').length;
+    if (pendingFormatRef.current) {
+      pendingFormatCaretRef.current = { lineIndex: nextActive, offset: caretInLast };
+    }
+    repaint(nextActive, caretInLast);
     doCommit();
-  }, [doCommit, pushUndo, repaint]);
+  }, [doCommit, pushUndo, repaint, syncEditorStateFromDom]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const { elementId, text } = (event as InsertTextEvent).detail ?? {};
+      if (elementId !== element.id || typeof text !== 'string' || !text) return;
+      insertPlainText(text);
+    };
+    window.addEventListener(DOCUMENT_TEXT_INSERT_TEXT_EVENT, handler);
+    return () => window.removeEventListener(DOCUMENT_TEXT_INSERT_TEXT_EVENT, handler);
+  }, [element.id, insertPlainText]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as InsertAtomEvent).detail;
+      if (!detail || detail.elementId !== element.id || (detail.kind !== 'signature' && detail.kind !== 'date')) return;
+      const root = rootRef.current;
+      if (!root) return;
+
+      syncEditorStateFromDom(root);
+
+      const lines = linesRef.current;
+      const fallbackLine = Math.max(0, Math.min(activeLineRef.current, Math.max(0, lines.length - 1)));
+      const fallbackOffset = (lines[fallbackLine] ?? '').length;
+      const sel =
+        imperativeSelectionRead(root, activeLineRef.current)
+        ?? frozenSelForToolbarRef.current
+        ?? {
+            start: { lineIndex: fallbackLine, offset: fallbackOffset },
+            end: { lineIndex: fallbackLine, offset: fallbackOffset },
+            collapsed: true,
+          };
+      frozenSelForToolbarRef.current = null;
+      pushUndo();
+      const { start, end } = sel;
+      const runs = runsRef.current;
+      const styles = stylesRef.current;
+      const aligns = lineAlignsRef.current;
+
+      let wLines = lines;
+      let wRuns = runs;
+      let wStyles = styles;
+      let wAligns = aligns;
+      let insertAt = Math.min(start.offset, (lines[start.lineIndex] ?? '').length);
+      let lineIdx = start.lineIndex;
+
+      if (!sel.collapsed) {
+        const sRuns = runs[start.lineIndex] ?? [{ text: lines[start.lineIndex] ?? '' }];
+        const eRuns = runs[end.lineIndex] ?? [{ text: lines[end.lineIndex] ?? '' }];
+        const [leftR] = splitRunsAt(sRuns, start.offset);
+        const [, rightR] = splitRunsAt(eRuns, end.offset);
+        const merged = mergeAdjacentRuns([...leftR, ...rightR]);
+        const mergedText = `${(lines[start.lineIndex] ?? '').slice(0, start.offset)}${(lines[end.lineIndex] ?? '').slice(end.offset)}`;
+        wLines = [...lines.slice(0, start.lineIndex), mergedText, ...lines.slice(end.lineIndex + 1)];
+        wRuns = [...runs.slice(0, start.lineIndex), merged, ...runs.slice(end.lineIndex + 1)];
+        wStyles = [...styles.slice(0, start.lineIndex), styles[start.lineIndex], ...styles.slice(end.lineIndex + 1)];
+        wAligns = [...aligns.slice(0, start.lineIndex), aligns[start.lineIndex], ...aligns.slice(end.lineIndex + 1)];
+        insertAt = Math.min(start.offset, mergedText.length);
+        lineIdx = start.lineIndex;
+      }
+
+      const atom =
+        detail.kind === 'date'
+          ? createDateAtomRun({
+              atomWidthPx: detail.atomWidthPx,
+              atomHeightPx: detail.atomHeightPx,
+              assignee: detail.assignee,
+              required: detail.required,
+            })
+          : createSignatureAtomRun({
+              atomWidthPx: detail.atomWidthPx,
+              atomHeightPx: detail.atomHeightPx,
+              assignee: detail.assignee,
+              required: detail.required,
+            });
+      const lineText = wLines[lineIdx] ?? '';
+      insertAt = Math.min(insertAt, lineText.length);
+      const lineRuns = wRuns[lineIdx] ?? [{ text: lineText }];
+      // Prefer runs that match line text; if stale, rebuild from line + known atoms.
+      const baseRuns =
+        runsText(lineRuns) === lineText
+          ? lineRuns
+          : reconcileRunsWithLine(lineRuns, lineText);
+      const [leftRuns, rightRuns] = splitRunsAt(baseRuns, insertAt);
+      const nextRunsLine = mergeAdjacentRuns([
+        ...(leftRuns.length && !(leftRuns.length === 1 && leftRuns[0].text === '') ? leftRuns : []),
+        atom,
+        ...(rightRuns.length && !(rightRuns.length === 1 && rightRuns[0].text === '') ? rightRuns : []),
+      ]);
+      const nextLineText = `${lineText.slice(0, insertAt)}${DOCUMENT_SIGNATURE_ATOM_CHAR}${lineText.slice(insertAt)}`;
+
+      const nextLines = [...wLines];
+      nextLines[lineIdx] = nextLineText;
+      const nextRuns = [...wRuns];
+      nextRuns[lineIdx] = nextRunsLine.length > 0 ? nextRunsLine : [atom];
+
+      linesRef.current = nextLines;
+      runsRef.current = nextRuns;
+      stylesRef.current = wStyles;
+      lineAlignsRef.current = wAligns;
+      activeLineRef.current = lineIdx;
+      repaint(lineIdx, insertAt + 1);
+      doCommit();
+    };
+    window.addEventListener(DOCUMENT_TEXT_INSERT_ATOM_EVENT, handler);
+    return () => window.removeEventListener(DOCUMENT_TEXT_INSERT_ATOM_EVENT, handler);
+  }, [doCommit, element.id, pushUndo, repaint, syncEditorStateFromDom]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    insertPlainText(e.clipboardData.getData('text/plain'));
+  }, [insertPlainText]);
 
   const handleCut = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
     const root = e.currentTarget;
@@ -1917,6 +2590,8 @@ export default function DocumentPreview({
   onInsertImages,
   onBatchUpdateElements,
   onGestureChange,
+  projectId = null,
+  signerRoles = [],
 }: DocumentPreviewProps) {
   /** No mutation callbacks wired up (view-only mode) — hard-block selection, drag, resize, and hover affordances. */
   const isViewOnly = !onUpdateElement && !onBatchUpdateElements;
@@ -2062,6 +2737,7 @@ export default function DocumentPreview({
       if (t.closest(`[${INLINE_TEXT_EDITOR_ATTR}="${editingElementId}"]`)) return;
       if (t.closest(DOCUMENT_EDITOR_FORMATTING_SELECTOR)) return;
       if (t.closest(DOCUMENT_EDITOR_OVERLAY_SELECTOR)) return;
+      if (t.closest(DOCUMENT_AUTO_FILL_PICKER_SELECTOR)) return;
       if (t.closest(DOCUMENT_TEXT_EDIT_TOOLBAR_SELECTOR)) return;
       const otherTextBox = t.closest(`[${DOCUMENT_TEXT_ELEMENT_ATTR}]`);
       if (otherTextBox instanceof HTMLElement) {
@@ -2968,6 +3644,7 @@ export default function DocumentPreview({
                           <InlineTextEditor
                             element={el}
                             textStyle={textStyle}
+                            signerRoles={signerRoles}
                             onCommit={(snapshot) =>
                               onUpdateElement?.(el.id, (prev) => ({
                                 ...prev,
@@ -2992,7 +3669,7 @@ export default function DocumentPreview({
                               return (
                                 <div
                                   key={idx}
-                                  className={listStyle ? 'flex min-h-[1.2em] items-baseline' : 'min-h-[1.2em]'}
+                                  className={listStyle ? 'flex min-h-[1.2em] items-center' : 'min-h-[1.2em]'}
                                   style={{ textAlign: lineAlign }}
                                 >
                                   {listStyle && (
@@ -3002,6 +3679,31 @@ export default function DocumentPreview({
                                   )}
                                   <span className={listStyle ? 'min-w-0 flex-1' : undefined}>
                                     {lineRuns.map((run, ri) => {
+                                      if (isInlineAtomRun(run)) {
+                                        const isDate = isDateAtomRun(run);
+                                        const roleId = normalizeDocumentAssigneeId(run.assignee, signerRoles);
+                                        const styleColors = signerRoleStyle(roleId, signerRoles);
+                                        const scale = canvasWidthPx / REFERENCE_CANVAS_WIDTH_PX;
+                                        const w = Math.max(24, (run.atomWidthPx ?? (isDate ? 140 : 200)) * scale);
+                                        const h = Math.max(16, (run.atomHeightPx ?? (isDate ? 32 : 48)) * scale);
+                                        const label = fieldLabelWithRole(isDate ? 'Date' : 'Signature', roleId, signerRoles);
+                                        return (
+                                          <span
+                                            key={run.atomId || ri}
+                                            title={label}
+                                            className="mx-0.5 inline-flex items-center justify-center rounded border border-dashed text-[10px] font-semibold align-middle px-0.5 text-center leading-tight"
+                                            style={{
+                                              width: w,
+                                              height: h,
+                                              borderColor: styleColors.border,
+                                              background: styleColors.bg,
+                                              color: styleColors.text,
+                                            }}
+                                          >
+                                            {label}
+                                          </span>
+                                        );
+                                      }
                                       const rs = runDisplayStyle(run, refFontSize);
                                       return Object.keys(rs).length > 0
                                         ? <span key={ri} style={rs}>{run.text || '\u00a0'}</span>
@@ -3022,7 +3724,7 @@ export default function DocumentPreview({
                               return (
                                 <div
                                   key={idx}
-                                  className={style ? 'flex min-h-[1.2em] items-baseline' : 'min-h-[1.2em]'}
+                                  className={style ? 'flex min-h-[1.2em] items-center' : 'min-h-[1.2em]'}
                                 >
                                   {style && (
                                     <span className="mr-[0.45em] inline-block min-w-[1.35em] shrink-0 select-none text-right">
@@ -3056,6 +3758,38 @@ export default function DocumentPreview({
                       Blocked Area
                     </span>
                   </div>
+                ) : el.type === 'initials' ? (
+                  (() => {
+                    const roleId = normalizeDocumentAssigneeId(el.assignee, signerRoles);
+                    const styleColors = signerRoleStyle(roleId, signerRoles);
+                    const label = fieldLabelWithRole('Initials', roleId, signerRoles);
+                    return (
+                      <div
+                        className="pointer-events-none flex h-full w-full items-center justify-center rounded-md border border-dashed"
+                        style={{ borderColor: styleColors.border, background: styleColors.bg }}
+                      >
+                        <span className="text-[11px] font-semibold tracking-wide" style={{ color: styleColors.text }}>
+                          {label}
+                        </span>
+                      </div>
+                    );
+                  })()
+                ) : el.type === 'date' ? (
+                  (() => {
+                    const roleId = normalizeDocumentAssigneeId(el.assignee, signerRoles);
+                    const styleColors = signerRoleStyle(roleId, signerRoles);
+                    const label = fieldLabelWithRole('Date', roleId, signerRoles);
+                    return (
+                      <div
+                        className="pointer-events-none flex h-full w-full items-center justify-center rounded-md border border-dashed"
+                        style={{ borderColor: styleColors.border, background: styleColors.bg }}
+                      >
+                        <span className="text-[11px] font-semibold tracking-wide" style={{ color: styleColors.text }}>
+                          {label}
+                        </span>
+                      </div>
+                    );
+                  })()
                 ) : isImagePlaceholder ? (
                   <div className="pointer-events-none flex h-full w-full items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50/90">
                     <span className="text-[11px] font-medium text-slate-500">Image area</span>

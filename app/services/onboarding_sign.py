@@ -44,7 +44,16 @@ def overlay_signature_on_pdf(
     try:
         sig_path.write(signature_png_bytes)
         sig_path.close()
-        can.drawImage(ImageReader(sig_path.name), x, y, width=w, height=h, preserveAspectRatio=True, mask="auto")
+        can.drawImage(
+            ImageReader(sig_path.name),
+            x,
+            y,
+            width=w,
+            height=h,
+            preserveAspectRatio=True,
+            anchor="c",
+            mask="auto",
+        )
     finally:
         try:
             os.unlink(sig_path.name)
@@ -229,6 +238,7 @@ def _merge_overlay_page_fields(
                     width=w,
                     height=h,
                     preserveAspectRatio=True,
+                    anchor="c",
                     mask="auto",
                 )
             finally:
