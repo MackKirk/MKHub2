@@ -247,7 +247,7 @@ export const TasksScreen: React.FC = () => {
   return (
     <ScreenLayout scroll={false}>
       <MKHomeStyleHeader
-        title="Tasks"
+        title="My Tasks"
         subtitle={subtitle}
         onLeftPress={openMenu}
       />

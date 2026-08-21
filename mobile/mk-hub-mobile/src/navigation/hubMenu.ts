@@ -52,7 +52,7 @@ export const HUB_MENU_CATEGORIES: HubMenuCategory[] = [
       },
       {
         id: "tasks",
-        label: "Tasks",
+        label: "My Tasks",
         icon: "checkmark-done-outline",
         target: { type: "tab", screen: "Tasks" }
       },

@@ -28,6 +28,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useTasksBadge } from "../hooks/useTasksBadge";
 import { useCommunityBadge } from "../hooks/useCommunityBadge";
 import { hasPermission } from "../lib/permissions";
+import { LinearGradient } from "expo-linear-gradient";
 import { HUB_MENU_CATEGORIES, type HubMenuItem } from "./hubMenu";
 import { spacing } from "../theme/spacing";
 import { typography } from "../theme/typography";
@@ -62,6 +63,9 @@ export const useHubMenu = (): HubMenuContextValue => {
 };
 
 const DRAWER_WIDTH = 300;
+const ACCENT_RAIL_WIDTH = 8;
+const BRAND_RED = "#a31414";
+const BRAND_RED_DARK = "#7f1010";
 
 const ROUTE_TO_ITEM: Record<string, string> = {
   HomeMain: "home",
@@ -221,12 +225,26 @@ export const HubMenuProvider: React.FC<{ children: React.ReactNode }> = ({
               styles.panel,
               {
                 width: DRAWER_WIDTH,
-                paddingTop: Math.max(insets.top, spacing.md),
-                paddingBottom: Math.max(insets.bottom, spacing.md),
                 transform: [{ translateX: slide }]
               }
             ]}
           >
+            <LinearGradient
+              colors={[BRAND_RED_DARK, BRAND_RED, BRAND_RED_DARK]}
+              locations={[0, 0.45, 1]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.accentRail}
+            />
+            <View
+              style={[
+                styles.panelBody,
+                {
+                  paddingTop: Math.max(insets.top, spacing.md),
+                  paddingBottom: Math.max(insets.bottom, spacing.md)
+                }
+              ]}
+            >
             <View style={styles.brand}>
               <Text style={styles.brandTitle}>MK HUB</Text>
               <TouchableOpacity
@@ -322,6 +340,7 @@ export const HubMenuProvider: React.FC<{ children: React.ReactNode }> = ({
 
               <Text style={styles.version}>MK Hub v{appVersion}</Text>
             </View>
+            </View>
           </Animated.View>
           <Pressable style={styles.backdrop} onPress={closeMenu} />
         </View>
@@ -341,7 +360,16 @@ const styles = StyleSheet.create({
   },
   panel: {
     backgroundColor: colors.card,
+    height: "100%",
+    flexDirection: "row",
+    overflow: "hidden"
+  },
+  accentRail: {
+    width: ACCENT_RAIL_WIDTH,
     height: "100%"
+  },
+  panelBody: {
+    flex: 1
   },
   brand: {
     flexDirection: "row",

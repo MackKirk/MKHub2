@@ -55,6 +55,7 @@ const LIST_DESCRIPTIONS: Record<string, string> = {
   report_categories: 'Categories for project notes and reports.',
   training_matrix_slots: 'Columns on the training matrix (slug + cell type).',
   timesheet: 'Default break length, eligible employees, and geofence radius.',
+  service_items: 'Codes used when logging hours (Regular now; overtime and others later).',
 };
 
 type ListGroupId = 'statuses' | 'organization' | 'training' | 'operations' | 'other';
@@ -79,7 +80,7 @@ function groupForList(name: string): ListGroupId {
   const n = name.toLowerCase();
   if (n.includes('status')) return 'statuses';
   if (n === 'training_matrix_slots') return 'training';
-  if (n === 'timesheet') return 'operations';
+  if (n === 'timesheet' || n === 'service_items') return 'operations';
   if (
     n.includes('division') ||
     n === 'payment_terms' ||

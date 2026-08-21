@@ -26,6 +26,25 @@ class TestAttendanceJobLabels(unittest.TestCase):
             "0",
         )
         self.assertIsNone(parse_job_type_from_reason_text("other"))
+        self.assertEqual(
+            parse_job_type_from_reason_text("JOB_TYPE:0|SERVICE_ITEM:regular|note"),
+            "0",
+        )
+
+    def test_parse_and_compose_service_item(self):
+        from app.services.attendance_job_labels import (
+            compose_reason_text,
+            parse_service_item_from_reason_text,
+        )
+
+        composed = compose_reason_text(
+            job_type="0",
+            service_item="regular",
+            notes="late start",
+        )
+        self.assertEqual(composed, "JOB_TYPE:0|SERVICE_ITEM:regular|late start")
+        self.assertEqual(parse_service_item_from_reason_text(composed), "regular")
+        self.assertIsNone(parse_service_item_from_reason_text("JOB_TYPE:0|note"))
 
     def test_format_project_job_label(self):
         project = _ProjectStub(name="2770 Bentall Street - WO 11285", code="MK-00332/00179-2026")

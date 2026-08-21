@@ -1,68 +1,127 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Image,
   ImageBackground,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View
 } from "react-native";
-import Constants from "expo-constants";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import LogoLight from "../../../assets/login/logo-light.svg";
 import { useAuth } from "../../hooks/useAuth";
 import { MKButton } from "../../components/MKButton";
+import { resolveFileUrl } from "../../lib/fileUrls";
 import { api, toApiError } from "../../services/api";
 import { colors } from "../../theme/colors";
 import { radius, shadows } from "../../theme/radius";
 import { spacing } from "../../theme/spacing";
 import { fontFamily, typography } from "../../theme/typography";
 
-const HERO_SUBTITLE =
-  "Mack Kirk Operations Hub — customers, proposals, inventory, and projects in one secure place.";
+const IDENTIFIER_KEY = "MK_HUB_LOGIN_IDENTIFIER";
+const BRAND_RED = "#a31414";
+const BRAND_RED_DARK = "#7f1010";
+const LOGO_VIEWBOX = "0 80 1768.52 920";
+const LOGO_ASPECT = 1768.52 / 920;
+const LOGIN_ERROR_CREDENTIALS = "Incorrect username or password.";
+const LOGIN_ERROR_DEACTIVATED =
+  "This account has been deactivated. Please contact your company administration.";
+const LOGIN_ERROR_GENERIC = "Login failed. Please try again.";
+
+function loginErrorMessage(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("too many login attempts") || lower.includes("too many requests")) {
+    return raw;
+  }
+  if (!raw || lower === "unauthorized" || lower === "invalid credentials") {
+    return LOGIN_ERROR_CREDENTIALS;
+  }
+  if (
+    lower.includes("deactivated") ||
+    lower.includes("not active") ||
+    lower.includes("inactive")
+  ) {
+    return LOGIN_ERROR_DEACTIVATED;
+  }
+  return raw || LOGIN_ERROR_GENERIC;
+}
 
 export const LoginScreen: React.FC = () => {
   const { login, isLoading } = useAuth();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const logoWidth = Math.round(Math.min(340, windowWidth * 0.82) * 0.7);
+  const logoHeight = Math.round(logoWidth / LOGO_ASPECT);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [backgroundFailed, setBackgroundFailed] = useState(false);
+  const [panelPhotoFailed, setPanelPhotoFailed] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotIdentifier, setForgotIdentifier] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotSubmitting, setForgotSubmitting] = useState(false);
 
-  const apiBaseUrl =
-    (Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined)?.apiBaseUrl ??
-    "https://mkhub.example.com";
-  const backgroundUri = `${apiBaseUrl.replace(/\/$/, "")}/ui/assets/login/background.jpg`;
+  const backgroundUri = resolveFileUrl("/ui/assets/login/background.jpg", null);
+  const panelPhotoUri = resolveFileUrl("/ui/assets/login/panel-photo.jpg", null);
+  const privacyUrl = resolveFileUrl("/privacy-policy", null);
 
   const backgroundSource = useMemo(
-    () => (backgroundFailed ? undefined : { uri: backgroundUri }),
+    () =>
+      backgroundFailed || !backgroundUri ? undefined : { uri: backgroundUri },
     [backgroundFailed, backgroundUri]
   );
+  const panelPhotoSource = useMemo(
+    () =>
+      panelPhotoFailed || !panelPhotoUri ? undefined : { uri: panelPhotoUri },
+    [panelPhotoFailed, panelPhotoUri]
+  );
+
+  useEffect(() => {
+    void AsyncStorage.getItem(IDENTIFIER_KEY).then((saved) => {
+      if (saved) {
+        setIdentifier(saved);
+        setRememberMe(true);
+      }
+    });
+  }, []);
+
+  const persistIdentifier = async (value: string, remember: boolean) => {
+    if (remember && value.trim()) {
+      await AsyncStorage.setItem(IDENTIFIER_KEY, value.trim());
+    } else {
+      await AsyncStorage.removeItem(IDENTIFIER_KEY);
+    }
+  };
 
   const handleSubmit = async () => {
     setError(null);
-    if (!identifier || !password) {
-      setError("Please enter both email and password.");
+    if (!identifier.trim() || !password) {
+      setError(LOGIN_ERROR_CREDENTIALS);
       return;
     }
     try {
-      await login(identifier, password);
+      await persistIdentifier(identifier, rememberMe);
+      await login(identifier.trim(), password);
     } catch (err) {
       const apiError = toApiError(err);
-      const errorMessage =
-        apiError.message || "Login failed. Please check your credentials and try again.";
-      setError(errorMessage);
-      Alert.alert("Login Failed", errorMessage);
+      setError(loginErrorMessage(apiError.message));
     }
   };
 
@@ -90,37 +149,61 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
-  const renderBackground = (children: React.ReactNode) => {
-    if (backgroundSource) {
-      return (
-        <ImageBackground
-          source={backgroundSource}
-          style={styles.background}
-          imageStyle={styles.backgroundImage}
-          onError={() => setBackgroundFailed(true)}
-        >
-          <View style={styles.backgroundOverlay} />
-          {children}
-        </ImageBackground>
-      );
-    }
-
-    return (
-      <LinearGradient
-        colors={["#0b0b0c", "#1a1a1c", "#0b0b0c"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.background}
-      >
-        <View style={styles.backgroundOverlay} />
-        {children}
-      </LinearGradient>
-    );
-  };
-
   return (
     <View style={styles.root}>
-      {renderBackground(
+      <StatusBar barStyle="light-content" />
+      <LinearGradient
+        colors={[BRAND_RED_DARK, BRAND_RED]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.hero}
+      >
+        {panelPhotoSource ? (
+          <Image
+            source={panelPhotoSource}
+            style={styles.panelPhoto}
+            resizeMode="cover"
+            onError={() => setPanelPhotoFailed(true)}
+          />
+        ) : null}
+        <LinearGradient
+          colors={["rgba(127,16,16,0.2)", "transparent", "rgba(92,12,12,0.7)"]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+        <LogoLight
+          width={logoWidth}
+          height={logoHeight}
+          viewBox={LOGO_VIEWBOX}
+          preserveAspectRatio="xMidYMid meet"
+          accessibilityLabel="Mack Kirk logo"
+          style={styles.logo}
+        />
+      </LinearGradient>
+
+      <View style={styles.formPane}>
+        {backgroundSource ? (
+          <ImageBackground
+            source={backgroundSource}
+            style={StyleSheet.absoluteFill}
+            imageStyle={styles.formBgImage}
+            onError={() => setBackgroundFailed(true)}
+          />
+        ) : null}
+        <LinearGradient
+          colors={[
+            "rgba(255,255,255,0.70)",
+            "rgba(255,255,255,0.45)",
+            "rgba(247,244,243,0.55)"
+          ]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -128,85 +211,153 @@ export const LoginScreen: React.FC = () => {
           <ScrollView
             contentContainerStyle={[
               styles.scrollContent,
-              {
-                paddingTop: insets.top + spacing.lg,
-                paddingBottom: insets.bottom + spacing.lg
-              }
+              { paddingBottom: insets.bottom + spacing.xl }
             ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.card}>
-              <LinearGradient
-                colors={["#7f1010", "#a31414"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.hero}
-              >
-                <View style={styles.brandRow}>
-                  <LogoLight width={44} height={26} accessibilityLabel="Mack Kirk logo" />
-                  <Text style={styles.brandName}>MKHub</Text>
-                </View>
-                <Text style={styles.heroTitle}>Welcome back!</Text>
-                <Text style={styles.heroSubtitle}>{HERO_SUBTITLE}</Text>
-              </LinearGradient>
+            <View style={styles.formInner}>
+              <Text style={styles.title}>MKHub Sign in</Text>
+              <Text style={styles.subtitle}>
+                Enter your credentials to continue.
+              </Text>
 
-              <View style={styles.formSection}>
-                <Text style={styles.formTitle}>Sign in</Text>
-
-                <View style={styles.fieldGroup}>
-                  <TextInput
-                    style={[styles.input, error ? styles.inputError : null]}
-                    placeholder="Email or username"
-                    placeholderTextColor={colors.textMuted}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="email-address"
-                    textContentType="username"
-                    autoComplete="username"
-                    value={identifier}
-                    onChangeText={setIdentifier}
-                    returnKeyType="next"
-                  />
-                </View>
-
-                <View style={styles.fieldGroup}>
-                  <TextInput
-                    style={[styles.input, error ? styles.inputError : null]}
-                    placeholder="Password"
-                    placeholderTextColor={colors.textMuted}
-                    secureTextEntry
-                    textContentType="password"
-                    autoComplete="password"
-                    value={password}
-                    onChangeText={setPassword}
-                    returnKeyType="done"
-                    onSubmitEditing={handleSubmit}
-                  />
-                  {error ? <Text style={styles.errorText}>{error}</Text> : null}
-                </View>
-
-                <MKButton
-                  title={isLoading ? "Signing in…" : "Login"}
-                  onPress={handleSubmit}
-                  loading={isLoading}
-                  style={styles.loginButton}
+              <Text style={styles.label}>Email or username</Text>
+              <View style={[styles.inputWrap, error ? styles.inputWrapError : null]}>
+                <Ionicons
+                  name="person-outline"
+                  size={18}
+                  color={colors.textMuted}
                 />
+                <TextInput
+                  style={styles.input}
+                  placeholder="you@company.com"
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  textContentType="username"
+                  autoComplete="username"
+                  value={identifier}
+                  onChangeText={(value) => {
+                    setIdentifier(value);
+                    if (error) setError(null);
+                  }}
+                  onBlur={() => {
+                    if (rememberMe) void persistIdentifier(identifier, true);
+                  }}
+                  returnKeyType="next"
+                />
+              </View>
 
-                <TouchableOpacity
-                  style={styles.forgotLinkWrap}
-                  onPress={() => setForgotOpen(true)}
-                  accessibilityRole="button"
+              <Text style={styles.label}>Password</Text>
+              <View style={[styles.inputWrap, error ? styles.inputWrapError : null]}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={18}
+                  color={colors.textMuted}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter your password"
+                  placeholderTextColor={colors.textMuted}
+                  secureTextEntry={!showPassword}
+                  textContentType="password"
+                  autoComplete="password"
+                  value={password}
+                  onChangeText={(value) => {
+                    setPassword(value);
+                    if (error) setError(null);
+                  }}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSubmit}
+                />
+                <Pressable
+                  onPress={() => setShowPassword((v) => !v)}
+                  hitSlop={8}
+                  accessibilityLabel={
+                    showPassword ? "Hide password" : "Show password"
+                  }
                 >
-                  <Text style={styles.forgotLink}>Forgot your password? Click here</Text>
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={18}
+                    color={colors.textMuted}
+                  />
+                </Pressable>
+              </View>
+
+              <View style={styles.rowBetween}>
+                <Pressable
+                  style={styles.rememberRow}
+                  onPress={() => {
+                    const next = !rememberMe;
+                    setRememberMe(next);
+                    void persistIdentifier(identifier, next);
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      rememberMe && styles.checkboxChecked
+                    ]}
+                  >
+                    {rememberMe ? (
+                      <Ionicons name="checkmark" size={12} color="#fff" />
+                    ) : null}
+                  </View>
+                  <Text style={styles.rememberText}>Remember me</Text>
+                </Pressable>
+                <TouchableOpacity onPress={() => setForgotOpen(true)}>
+                  <Text style={styles.forgotLink}>Forgot password?</Text>
+                </TouchableOpacity>
+              </View>
+
+              {error ? (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
+
+              <TouchableOpacity
+                style={[styles.signInBtn, isLoading && styles.signInBtnDisabled]}
+                onPress={handleSubmit}
+                disabled={isLoading}
+                activeOpacity={0.85}
+              >
+                {isLoading ? (
+                  <>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.signInText}>Signing in…</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="log-in-outline" size={18} color="#fff" />
+                    <Text style={styles.signInText}>Sign in</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.privacyWrap}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (privacyUrl) void Linking.openURL(privacyUrl);
+                  }}
+                >
+                  <Text style={styles.privacyLink}>Privacy Policy</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-      )}
+      </View>
 
-      <Modal visible={forgotOpen} transparent animationType="fade" onRequestClose={closeForgotModal}>
+      <Modal
+        visible={forgotOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closeForgotModal}
+      >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Password Recovery</Text>
@@ -215,16 +366,23 @@ export const LoginScreen: React.FC = () => {
                 <Text style={styles.modalDescription}>
                   Enter your email or username to receive a password reset link.
                 </Text>
-                <Text style={styles.modalLabel}>Email or Username</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your email or username"
-                  placeholderTextColor={colors.textMuted}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  value={forgotIdentifier}
-                  onChangeText={setForgotIdentifier}
-                />
+                <Text style={styles.label}>Email or Username</Text>
+                <View style={styles.inputWrap}>
+                  <Ionicons
+                    name="person-outline"
+                    size={18}
+                    color={colors.textMuted}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter your email or username"
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={forgotIdentifier}
+                    onChangeText={setForgotIdentifier}
+                  />
+                </View>
                 <View style={styles.modalActions}>
                   <MKButton
                     title="Cancel"
@@ -242,13 +400,19 @@ export const LoginScreen: React.FC = () => {
               </>
             ) : (
               <>
-                <Text style={styles.modalSuccess}>Password reset email sent</Text>
+                <Text style={styles.modalSuccess}>
+                  ✓ Password reset email sent
+                </Text>
                 <Text style={styles.modalDescription}>
-                  If the email or username exists in our system, you will receive an email with
-                  instructions to reset your password.
+                  If the email or username exists in our system, you will receive
+                  an email with instructions to reset your password.
                 </Text>
                 <View style={styles.modalActions}>
-                  <MKButton title="Close" onPress={closeForgotModal} style={styles.modalClose} />
+                  <MKButton
+                    title="Close"
+                    onPress={closeForgotModal}
+                    style={styles.modalClose}
+                  />
                 </View>
               </>
             )}
@@ -261,110 +425,167 @@ export const LoginScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1
+    flex: 1,
+    backgroundColor: "#f7f4f3"
   },
   flex: {
     flex: 1
   },
-  background: {
-    flex: 1
+  hero: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden"
   },
-  backgroundImage: {
-    resizeMode: "cover"
-  },
-  backgroundOverlay: {
+  panelPhoto: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.4)"
+    opacity: 0.28,
+    mixBlendMode: "luminosity"
+  },
+  logo: {
+    zIndex: 1
+  },
+  formPane: {
+    flex: 1,
+    overflow: "hidden"
+  },
+  formBgImage: {
+    resizeMode: "cover"
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: "center",
-    paddingHorizontal: spacing.lg
+    paddingHorizontal: 20,
+    paddingTop: spacing.lg,
+    justifyContent: "flex-start"
   },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.xl,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.cardElevated
+  formInner: {
+    width: "100%",
+    maxWidth: 400,
+    alignSelf: "center"
   },
-  hero: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl
-  },
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm
-  },
-  brandName: {
+  title: {
     fontFamily: fontFamily.bold,
-    fontSize: 22,
-    color: "#ffffff",
-    letterSpacing: 0.2
+    fontSize: 20,
+    lineHeight: 28,
+    color: colors.textPrimary
   },
-  heroTitle: {
-    fontFamily: fontFamily.bold,
-    fontSize: 30,
-    lineHeight: 36,
-    color: "#ffffff",
-    marginTop: spacing.xl
-  },
-  heroSubtitle: {
-    fontFamily: fontFamily.regular,
-    fontSize: 16,
-    lineHeight: 24,
-    color: "rgba(255, 255, 255, 0.9)",
-    marginTop: spacing.md
-  },
-  formSection: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl
-  },
-  formTitle: {
-    ...typography.titleSmall,
+  subtitle: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    marginTop: 4,
     marginBottom: spacing.lg
   },
-  fieldGroup: {
-    marginBottom: spacing.md
+  label: {
+    fontFamily: fontFamily.bold,
+    fontSize: 13,
+    color: colors.textPrimary,
+    marginBottom: 6
   },
-  input: {
+  inputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.control,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    backgroundColor: "#fff",
+    marginBottom: spacing.md,
+    minHeight: 48
+  },
+  inputWrapError: {
+    borderColor: "#fecaca"
+  },
+  input: {
+    flex: 1,
     fontSize: 16,
     fontFamily: fontFamily.regular,
     color: colors.textPrimary,
-    backgroundColor: "#ffffff"
+    paddingVertical: spacing.sm
   },
-  inputError: {
-    borderColor: colors.error
+  rowBetween: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.md
   },
-  errorText: {
-    marginTop: spacing.xs,
-    fontSize: 12,
-    fontFamily: fontFamily.regular,
-    color: colors.error
+  rememberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
   },
-  loginButton: {
-    marginTop: spacing.sm
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff"
   },
-  forgotLinkWrap: {
-    marginTop: spacing.lg,
-    alignItems: "center"
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
+  },
+  rememberText: {
+    ...typography.bodySmall,
+    color: colors.textBody
   },
   forgotLink: {
+    fontFamily: fontFamily.bold,
+    fontSize: 13,
+    color: colors.primary
+  },
+  errorBox: {
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2",
+    borderRadius: radius.control,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md
+  },
+  errorText: {
+    fontSize: 13,
     fontFamily: fontFamily.regular,
-    fontSize: 14,
+    color: "#991b1b"
+  },
+  signInBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: colors.primary,
+    borderRadius: radius.xl,
+    minHeight: 48,
+    ...shadows.buttonPrimary
+  },
+  signInBtnDisabled: {
+    opacity: 0.75
+  },
+  signInText: {
+    color: "#fff",
+    ...typography.button
+  },
+  privacyWrap: {
+    marginTop: spacing.xl,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    alignItems: "center"
+  },
+  privacyLink: {
+    fontSize: 12,
+    fontFamily: fontFamily.regular,
     color: colors.textMuted,
     textDecorationLine: "underline"
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
     justifyContent: "center",
     paddingHorizontal: spacing.lg
   },
@@ -383,11 +604,6 @@ const styles = StyleSheet.create({
     color: colors.textBody,
     marginBottom: spacing.lg
   },
-  modalLabel: {
-    ...typography.bodySmall,
-    fontFamily: fontFamily.bold,
-    marginBottom: spacing.xs
-  },
   modalSuccess: {
     fontFamily: fontFamily.bold,
     fontSize: 16,
@@ -398,7 +614,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: spacing.sm,
-    marginTop: spacing.lg
+    marginTop: spacing.sm
   },
   modalActionButton: {
     flex: 1

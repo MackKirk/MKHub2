@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,26 +7,20 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
-import { radius } from "../../theme/radius";
-import { MKBadge } from "../../components/MKBadge";
-import { MKCard } from "../../components/MKCard";
-import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
+import { radius, shadows } from "../../theme/radius";
 import { ScreenLayout } from "../../components/ScreenLayout";
-import { ClockActionTile } from "../../components/clock/ClockActionTile";
 import { ClockActionModal } from "../../components/clock/ClockActionModal";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
 import { useAuth } from "../../hooks/useAuth";
 import { typography } from "../../theme/typography";
 import { formatDateLocal } from "../../lib/dateUtils";
-import {
-  formatJobPickerLine,
-  getPredefinedJob
-} from "../../constants/predefinedJobs";
 import {
   addDays,
   formatClockTimestamp,
@@ -34,7 +28,6 @@ import {
   formatShortDate,
   formatTime12h,
   getClockStateForDate,
-  getJobTypeFromAttendance,
   getWeekStartSunday,
   getWeeklyAttendanceSummary
 } from "../../services/shifts";
@@ -45,29 +38,25 @@ import type {
   WeeklySummary
 } from "../../types/shifts";
 
-function attendanceBadgeVariant(
-  status: string
-): "success" | "warning" | "danger" {
-  if (status === "approved") return "success";
-  if (status === "pending") return "warning";
-  return "danger";
+const ACCENT = colors.homeAccent;
+const CLOCK_OUT = "#a31414";
+const TIMESHEET_BLUE = "#2563EB";
+const RAIL_WIDTH = 6;
+
+function darkenHex(hex: string, amount = 0.28): string {
+  const raw = hex.replace("#", "");
+  const n = parseInt(raw, 16);
+  const r = Math.max(0, Math.round(((n >> 16) & 255) * (1 - amount)));
+  const g = Math.max(0, Math.round(((n >> 8) & 255) * (1 - amount)));
+  const b = Math.max(0, Math.round((n & 255) * (1 - amount)));
+  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
 }
 
-function resolveJobName(
-  attendance: ShiftAttendanceResponse,
-  dayState: ClockDayState
-): string | null {
-  if (attendance.shift_id) {
-    const shift =
-      dayState.allShifts.find((s) => s.id === attendance.shift_id) ||
-      dayState.shifts.find((s) => s.id === attendance.shift_id);
-    if (shift?.project_name) return shift.project_name;
-  }
-  const jobType = getJobTypeFromAttendance(attendance);
-  if (!jobType) return null;
-  const pre = getPredefinedJob(jobType);
-  if (pre) return formatJobPickerLine(pre);
-  return jobType;
+function formatHoursMinutes(totalMinutes: number): string {
+  const mins = Math.max(0, Math.floor(totalMinutes));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
 }
 
 export const ClockScreen: React.FC = () => {
@@ -83,7 +72,8 @@ export const ClockScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [clockType, setClockType] = useState<"in" | "out" | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [showDateNav, setShowDateNav] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   const weekStartStr = useMemo(() => formatDateLocal(weekStart), [weekStart]);
 
@@ -126,14 +116,9 @@ export const ClockScreen: React.FC = () => {
   const canClockIn = !hasOpenClockIn;
 
   useEffect(() => {
-    if (!hasOpenClockIn) return;
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(interval);
-  }, [hasOpenClockIn]);
-
-  useEffect(() => {
-    setExpandedIds(new Set());
-  }, [selectedDate]);
+  }, []);
 
   const attendanceWorkedMinutes = useCallback(
     (attendance: ShiftAttendanceResponse, now: Date): number => {
@@ -170,10 +155,9 @@ export const ClockScreen: React.FC = () => {
       pushUnique(att);
     }
 
-    // Also include any other open/partial rows from raw list (deduped)
     for (const att of dayState.attendances) {
       if (!att.clock_in_time && !att.clock_out_time) continue;
-      if (att.clock_in_time && att.clock_out_time) continue; // already via complete
+      if (att.clock_in_time && att.clock_out_time) continue;
       pushUnique(att);
     }
 
@@ -206,38 +190,14 @@ export const ClockScreen: React.FC = () => {
     return formatMinutesLabel(mins);
   }, [hasOpenClockIn, openAttendance, currentTime, attendanceWorkedMinutes]);
 
-  const toggleExpanded = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const formatTimerClock = (totalSeconds: number): string => {
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-    if (hasOpenClockIn) {
-      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-    }
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  };
-
-  const dateLabel = useMemo(() => {
-    const d = new Date(`${selectedDate}T00:00:00`);
-    return d.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "short",
-      day: "numeric"
-    });
-  }, [selectedDate]);
-
   const weekRangeLabel = useMemo(() => {
-    if (!weeklySummary) return "";
-    return `${formatShortDate(weeklySummary.week_start)} - ${formatShortDate(weeklySummary.week_end)}`;
-  }, [weeklySummary]);
+    if (weeklySummary) {
+      return `${formatShortDate(weeklySummary.week_start)} – ${formatShortDate(weeklySummary.week_end)}`;
+    }
+    const end = new Date(weekStart);
+    end.setDate(end.getDate() + 6);
+    return `${formatShortDate(weekStartStr)} – ${formatShortDate(formatDateLocal(end))}`;
+  }, [weeklySummary, weekStart, weekStartStr]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -259,17 +219,73 @@ export const ClockScreen: React.FC = () => {
     setWeekStart(next);
   };
   const goCurrentWeek = () => setWeekStart(getWeekStartSunday());
+  const isCurrentWeek = weekStartStr === formatDateLocal(getWeekStartSunday());
+
+  const nextShift = dayState?.nextPendingShift ?? null;
+  const shiftSubtitle = hasOpenClockIn
+    ? workingDurationLive
+      ? `Working for ${workingDurationLive}`
+      : "Open session"
+    : nextShift
+      ? `Next shift ${formatTime12h(nextShift.start_time)}`
+      : "Log start, end and break";
+  const clockStatusLabel = hasOpenClockIn ? "Clocked in" : "Clocked out";
+  const hoursTodayLabel = formatHoursMinutes(Math.floor(dayTotalSecondsLive / 60));
+  const isToday = selectedDate === todayStr;
+  const todayTag = isToday ? "TODAY" : formatShortDate(selectedDate).toUpperCase();
+  const heroRail = hasOpenClockIn ? ACCENT : CLOCK_OUT;
+  const weekHoursLabel = useMemo(() => {
+    if (!weeklySummary) return "0h 00m";
+    const todayDay = weeklySummary.days.find((day) => day.date === todayStr);
+    if (!todayDay) return weeklySummary.total_hours_formatted || "0h 00m";
+    const withoutToday = Math.max(
+      0,
+      (weeklySummary.total_minutes || 0) - (todayDay.hours_worked_minutes || 0)
+    );
+    const todayMinutes =
+      selectedDate === todayStr
+        ? Math.floor(dayTotalSecondsLive / 60)
+        : todayDay.hours_worked_minutes || 0;
+    return formatHoursMinutes(withoutToday + todayMinutes);
+  }, [weeklySummary, todayStr, selectedDate, dayTotalSecondsLive]);
+
+  const infoBanner = hasOpenClockIn
+    ? "You have an open clock-in. Clock out to close this period."
+    : nextShift
+      ? `Next scheduled shift: ${nextShift.project_name || "Unknown"} (${formatTime12h(nextShift.start_time)} – ${formatTime12h(nextShift.end_time)})`
+      : "At the end of the day, log your start time, end time, and any break.";
+
+  const header = (
+    <View style={styles.topHeader}>
+      <TouchableOpacity
+        style={styles.headerIconBtn}
+        onPress={openMenu}
+        activeOpacity={0.75}
+        hitSlop={8}
+      >
+        <Ionicons name="menu" size={22} color={colors.textPrimary} />
+      </TouchableOpacity>
+      <Text style={styles.headerTitle} numberOfLines={1}>
+        Clock In / Out
+      </Text>
+      <TouchableOpacity
+        style={styles.headerIconBtn}
+        onPress={() => setShowDateNav((v) => !v)}
+        activeOpacity={0.75}
+        hitSlop={8}
+      >
+        <Ionicons name="calendar-outline" size={20} color={colors.textPrimary} />
+        {!isToday ? <View style={styles.headerDot} /> : null}
+      </TouchableOpacity>
+    </View>
+  );
 
   if (loading && !dayState) {
     return (
-      <ScreenLayout scroll={false}>
-        <MKHomeStyleHeader
-          title="Clock In / Out"
-          subtitle={dateLabel}
-          onLeftPress={openMenu}
-        />
+      <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.layout}>
+        {header}
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={ACCENT} />
           <Text style={styles.loadingText}>Loading attendance…</Text>
         </View>
       </ScreenLayout>
@@ -277,316 +293,254 @@ export const ClockScreen: React.FC = () => {
   }
 
   return (
-    <ScreenLayout scroll={false}>
-      <MKHomeStyleHeader
-        title="Clock In / Out"
-        subtitle="Track your work hours"
-        onLeftPress={openMenu}
-      />
+    <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.layout}>
+      {header}
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={ACCENT}
+          />
         }
         showsVerticalScrollIndicator={false}
       >
-        <MKCard style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Clock Actions</Text>
-            <View style={styles.dateNav}>
-              <Pressable onPress={goPrevDay} hitSlop={8} style={styles.navBtn}>
-                <Ionicons name="chevron-back" size={18} color={colors.textPrimary} />
-              </Pressable>
-              <Pressable onPress={goToday} style={styles.todayBtn}>
-                <Text style={styles.todayBtnText}>
-                  {selectedDate === todayStr ? "Today" : formatShortDate(selectedDate)}
+        {showDateNav ? (
+          <View style={styles.dateNav}>
+            <Pressable onPress={goPrevDay} hitSlop={8} style={styles.navBtn}>
+              <Ionicons name="chevron-back" size={16} color={colors.textPrimary} />
+            </Pressable>
+            <Pressable onPress={goToday} style={styles.todayBtn}>
+              <Text style={styles.todayBtnText}>
+                {isToday ? "Today" : formatShortDate(selectedDate)}
+              </Text>
+            </Pressable>
+            <Pressable onPress={goNextDay} hitSlop={8} style={styles.navBtn}>
+              <Ionicons name="chevron-forward" size={16} color={colors.textPrimary} />
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={styles.todayCard}>
+          <LinearGradient
+            colors={[darkenHex(heroRail), heroRail]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.cardRail}
+          />
+          <View style={styles.todayBody}>
+            <View style={styles.todayTagRow}>
+              <View style={styles.todayTagChip}>
+                <Ionicons name="calendar-outline" size={12} color={ACCENT} />
+                <Text style={styles.todayTag}>{todayTag}</Text>
+              </View>
+              <View
+                style={[
+                  styles.statusChip,
+                  hasOpenClockIn ? styles.statusChipIn : styles.statusChipOut
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statusDot,
+                    { backgroundColor: hasOpenClockIn ? ACCENT : CLOCK_OUT }
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.statusChipText,
+                    { color: hasOpenClockIn ? ACCENT : CLOCK_OUT }
+                  ]}
+                >
+                  {clockStatusLabel}
                 </Text>
-              </Pressable>
-              <Pressable onPress={goNextDay} hitSlop={8} style={styles.navBtn}>
-                <Ionicons name="chevron-forward" size={18} color={colors.textPrimary} />
-              </Pressable>
+              </View>
             </View>
-          </View>
 
-          <View style={styles.actionsStack}>
-            <ClockActionTile
-              kind="in"
-              enabled={canClockIn}
-              onPress={() => setClockType("in")}
-              hint={
-                hasOpenClockIn
-                  ? "You must clock out first"
-                  : dayState?.nextPendingShift
-                    ? `Next: ${dayState.nextPendingShift.project_name || "Shift"}`
-                    : "No shift required — pick a job"
-              }
-            />
-            <ClockActionTile
-              kind="out"
-              enabled={canClockOut}
-              onPress={() => setClockType("out")}
-              hint={
-                !hasOpenClockIn
-                  ? "No open clock-in"
-                  : workingDurationLive
-                    ? `Working for ${workingDurationLive}`
-                    : "End your current session"
-              }
-            />
-          </View>
-        </MKCard>
-
-        <MKCard style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>
-            {selectedDate === todayStr
-              ? "Today Status"
-              : `Status — ${formatShortDate(selectedDate)}`}
-          </Text>
-
-          <View style={[styles.totalTimerCard, hasOpenClockIn && styles.totalTimerCardLive]}>
-            <Text style={styles.totalTimerLabel}>
-              {hasOpenClockIn ? "Hours worked (live)" : "Total hours worked"}
-            </Text>
-            <Text style={styles.totalTimerValue}>
-              {formatTimerClock(dayTotalSecondsLive)}
-            </Text>
-            <Text style={styles.totalTimerSub}>
-              {attendancesToShow.length === 0
-                ? "No entries yet"
-                : `${attendancesToShow.length} entr${attendancesToShow.length === 1 ? "y" : "ies"} · ${formatMinutesLabel(Math.floor(dayTotalSecondsLive / 60))}`}
-              {hasOpenClockIn ? " · clocked in" : ""}
-            </Text>
-          </View>
-
-          {attendancesToShow.length === 0 ? (
-            <Text style={styles.emptyText}>No attendance records for this date.</Text>
-          ) : (
-            <View style={styles.entriesList}>
-              {attendancesToShow.map((attendance, index) => {
-                const id = `${attendance.id || "att"}-${index}`;
-                const expandKey = attendance.id || id;
-                const expanded = expandedIds.has(expandKey);
-                const isOpen = !attendance.clock_out_time;
-                const isComplete = !!(
-                  attendance.clock_in_time && attendance.clock_out_time
-                );
-                const jobName = dayState
-                  ? resolveJobName(attendance, dayState)
-                  : null;
-                const workedMins = attendanceWorkedMinutes(
-                  attendance,
-                  currentTime
-                );
-                const inLabel = formatClockTimestamp(attendance.clock_in_time);
-                const outLabel = isOpen
-                  ? "Now"
-                  : formatClockTimestamp(attendance.clock_out_time);
-
-                return (
-                  <View key={id} style={styles.entryCard}>
-                    <Pressable
-                      onPress={() => toggleExpanded(expandKey)}
-                      style={styles.entryHeader}
-                    >
-                      <View
-                        style={[
-                          styles.entryDot,
-                          {
-                            backgroundColor: isOpen
-                              ? colors.success
-                              : colors.textMuted
-                          }
-                        ]}
-                      />
-                      <View style={styles.entryMain}>
-                        <Text style={styles.entryTimeRange}>
-                          {inLabel} – {outLabel}
-                        </Text>
-                        <Text style={styles.entryJob} numberOfLines={1}>
-                          {jobName || (isOpen ? "Open session" : "Completed")}
-                        </Text>
-                      </View>
-                      <Text style={styles.entryDuration}>
-                        {formatMinutesLabel(workedMins)}
-                      </Text>
-                      <Ionicons
-                        name={expanded ? "chevron-up" : "chevron-down"}
-                        size={16}
-                        color={colors.textMuted}
-                      />
-                    </Pressable>
-
-                    {expanded ? (
-                      <View style={styles.entryDetails}>
-                        <View style={styles.metaRow}>
-                          <Text style={styles.metaLabel}>Status</Text>
-                          <Text
-                            style={[
-                              styles.metaValue,
-                              {
-                                color: isOpen
-                                  ? colors.success
-                                  : colors.textBody
-                              }
-                            ]}
-                          >
-                            {isOpen ? "Clocked In" : "Completed"}
-                          </Text>
-                        </View>
-                        {attendance.clock_in_time ? (
-                          <View style={styles.metaRow}>
-                            <Text style={styles.metaLabel}>Clock-in</Text>
-                            <Text style={styles.metaValue}>{inLabel}</Text>
-                          </View>
-                        ) : null}
-                        {isComplete && attendance.clock_out_time ? (
-                          <View style={styles.metaRow}>
-                            <Text style={styles.metaLabel}>Clock-out</Text>
-                            <Text style={styles.metaValue}>{outLabel}</Text>
-                          </View>
-                        ) : null}
-                        {isComplete ? (
-                          <View style={styles.metaRow}>
-                            <Text style={styles.metaLabel}>Break</Text>
-                            <Text style={styles.metaValue}>
-                              {formatMinutesLabel(attendance.break_minutes || 0)}
-                            </Text>
-                          </View>
-                        ) : null}
-                        <View style={styles.metaRow}>
-                          <Text style={styles.metaLabel}>Worked</Text>
-                          <Text style={styles.metaValue}>
-                            {formatMinutesLabel(workedMins)}
-                          </Text>
-                        </View>
-                        {attendance.status ? (
-                          <View style={styles.metaRow}>
-                            <Text style={styles.metaLabel}>Approval</Text>
-                            <MKBadge
-                              variant={attendanceBadgeVariant(attendance.status)}
-                            >
-                              {attendance.status}
-                            </MKBadge>
-                          </View>
-                        ) : null}
-                        {jobName ? (
-                          <View style={styles.jobHint}>
-                            <Ionicons
-                              name="briefcase-outline"
-                              size={14}
-                              color="#3b82f6"
-                            />
-                            <Text style={styles.jobHintText}>Job: {jobName}</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                    ) : null}
-                  </View>
-                );
-              })}
+            <View style={styles.hoursToday}>
+              <View style={[styles.summaryIcon, { backgroundColor: "#ECFDF3" }]}>
+                <Ionicons name="time-outline" size={18} color={ACCENT} />
+              </View>
+              <View style={styles.summaryCopy}>
+                <Text style={styles.summaryValue}>{hoursTodayLabel}</Text>
+                <Text style={styles.summaryLabel}>
+                  {isToday ? "Hours today" : formatShortDate(selectedDate)}
+                </Text>
+              </View>
             </View>
-          )}
 
-          <View style={styles.noticeBox}>
-            {hasOpenClockIn ? (
-              <Text style={styles.noticeText}>
-                You have an open clock-in. Clock out to close this period.
+            <Text style={styles.statusSub} numberOfLines={1}>
+              {shiftSubtitle}
+            </Text>
+
+            <Pressable
+              style={[
+                styles.clockBtn,
+                { backgroundColor: hasOpenClockIn ? CLOCK_OUT : ACCENT },
+                !canClockIn && !canClockOut && styles.clockBtnDisabled
+              ]}
+              disabled={!canClockIn && !canClockOut}
+              onPress={() => setClockType(canClockOut ? "out" : "in")}
+            >
+              <Ionicons
+                name={hasOpenClockIn ? "stop" : "play"}
+                size={16}
+                color="#fff"
+              />
+              <Text style={styles.clockBtnText}>
+                {hasOpenClockIn ? "Clock Out" : "Log hours"}
               </Text>
-            ) : dayState?.nextPendingShift ? (
-              <Text style={styles.noticeText}>
-                Next scheduled shift:{" "}
-                {dayState.nextPendingShift.project_name || "Unknown"} (
-                {formatTime12h(dayState.nextPendingShift.start_time)} –{" "}
-                {formatTime12h(dayState.nextPendingShift.end_time)})
-              </Text>
-            ) : dayState && dayState.shifts.length > 0 ? (
-              <Text style={styles.noticeText}>
-                All scheduled shifts are completed for this date.
-              </Text>
-            ) : (
-              <Text style={styles.noticeText}>
-                No scheduled shifts for this date. You can still clock in with a job.
-              </Text>
-            )}
+            </Pressable>
           </View>
-        </MKCard>
+        </View>
 
-        <MKCard style={styles.sectionCard}>
+        <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Weekly Summary</Text>
-            <View style={styles.dateNav}>
-              <Pressable onPress={goPrevWeek} hitSlop={8} style={styles.navBtn}>
-                <Ionicons name="chevron-back" size={18} color={colors.textPrimary} />
-              </Pressable>
-              <Pressable onPress={goCurrentWeek} style={styles.todayBtn}>
-                <Text style={styles.todayBtnText}>Today</Text>
-              </Pressable>
-              <Pressable onPress={goNextWeek} hitSlop={8} style={styles.navBtn}>
-                <Ionicons name="chevron-forward" size={18} color={colors.textPrimary} />
-              </Pressable>
-            </View>
+            <Pressable onPress={goPrevWeek} hitSlop={4} style={styles.weekNavBtn}>
+              <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
+            </Pressable>
+            <Pressable
+              onPress={goCurrentWeek}
+              style={[
+                styles.weekRangeBtn,
+                isCurrentWeek && styles.weekRangeBtnCurrent
+              ]}
+            >
+              <Text
+                style={[
+                  styles.weekRange,
+                  isCurrentWeek && styles.weekRangeCurrent
+                ]}
+                numberOfLines={1}
+              >
+                {weekRangeLabel}
+              </Text>
+              {isCurrentWeek ? (
+                <Text style={styles.weekNowHint}>this week</Text>
+              ) : null}
+            </Pressable>
+            <Pressable onPress={goNextWeek} hitSlop={4} style={styles.weekNavBtn}>
+              <Ionicons name="chevron-forward" size={22} color={colors.textPrimary} />
+            </Pressable>
           </View>
 
           {weeklySummary ? (
-            <>
-              <Text style={styles.weekRange}>{weekRangeLabel}</Text>
+            <View style={styles.weekCard}>
               <View style={styles.metricsGrid}>
-                <Metric
-                  label="Total Hours"
-                  value={weeklySummary.total_hours_formatted || "0h 00m"}
+                <WeekMetric
+                  icon="time-outline"
+                  label="Total hours"
+                  value={weekHoursLabel}
+                  tint="#ECFDF3"
+                  accent={ACCENT}
                 />
-                <Metric
-                  label="Break Time"
-                  value={weeklySummary.total_break_formatted || "0h 00m"}
-                />
-                <Metric
-                  label="Regular Hours"
+                <WeekMetric
+                  icon="briefcase-outline"
+                  label="Regular"
                   value={weeklySummary.reg_hours_formatted || "0h 00m"}
+                  tint="#DBEAFE"
+                  accent={TIMESHEET_BLUE}
                 />
-                <Metric label="Overtime" value="0h 00m" />
+                <WeekMetric
+                  icon="flash-outline"
+                  label="Overtime"
+                  value="0h 00m"
+                  tint="#FFEDD5"
+                  accent="#EA580C"
+                />
+                <WeekMetric
+                  icon="cafe-outline"
+                  label="Breaks"
+                  value={weeklySummary.total_break_formatted || "0h 00m"}
+                  tint="#F3F4F6"
+                  accent={colors.textMuted}
+                />
               </View>
 
-              <Text style={styles.breakdownTitle}>Daily Breakdown</Text>
-              {weeklySummary.days.map((day, index) => {
-                const hasHours =
+              {weeklySummary.days.some(
+                (day) =>
                   day.clock_in ||
                   day.clock_out ||
-                  (day.hours_worked_minutes && day.hours_worked_minutes > 0);
-                if (!hasHours) return null;
-                const inT = day.clock_in ? formatClockTimestamp(day.clock_in) : null;
-                const outT = day.clock_out ? formatClockTimestamp(day.clock_out) : null;
-                const range =
-                  inT && outT ? `${inT} – ${outT}` : inT ? `${inT} – --:--` : null;
-                const uniqueKey = `${day.date}-${day.clock_in || "no-in"}-${day.clock_out || "no-out"}-${index}`;
-                return (
-                  <Pressable
-                    key={uniqueKey}
-                    style={styles.dayRow}
-                    onPress={() => setSelectedDate(day.date)}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.dayName}>
-                        {day.day_name} · {formatShortDate(day.date)}
-                      </Text>
-                      {range ? <Text style={styles.dayRange}>{range}</Text> : null}
-                      {day.job_name ? (
-                        <Text style={styles.dayJob} numberOfLines={1}>
-                          {day.job_name}
+                  (day.hours_worked_minutes && day.hours_worked_minutes > 0)
+              ) ? (
+                <View style={styles.breakdown}>
+                  {weeklySummary.days.map((day, index) => {
+                    const hasHours =
+                      day.clock_in ||
+                      day.clock_out ||
+                      (day.hours_worked_minutes && day.hours_worked_minutes > 0);
+                    if (!hasHours) return null;
+                    const inT = day.clock_in
+                      ? formatClockTimestamp(day.clock_in)
+                      : null;
+                    const outT = day.clock_out
+                      ? formatClockTimestamp(day.clock_out)
+                      : null;
+                    const range =
+                      inT && outT
+                        ? `${inT} – ${outT}`
+                        : inT
+                          ? `${inT} – --:--`
+                          : null;
+                    const uniqueKey = `${day.date}-${day.clock_in || "no-in"}-${day.clock_out || "no-out"}-${index}`;
+                    return (
+                      <Pressable
+                        key={uniqueKey}
+                        style={styles.dayRow}
+                        onPress={() => setSelectedDate(day.date)}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.dayName}>
+                            {day.day_name} · {formatShortDate(day.date)}
+                          </Text>
+                          {range ? (
+                            <Text style={styles.dayRange}>{range}</Text>
+                          ) : null}
+                          {day.job_name ? (
+                            <Text style={styles.dayJob} numberOfLines={1}>
+                              {day.job_name}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text style={styles.dayHours}>
+                          {day.hours_worked_formatted || "0h 00m"}
                         </Text>
-                      ) : null}
-                    </View>
-                    <Text style={styles.dayHours}>
-                      {day.hours_worked_formatted || "0h"}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
           ) : (
             <Text style={styles.emptyText}>No weekly summary available.</Text>
           )}
-        </MKCard>
+        </View>
+
+        <View style={styles.infoBanner}>
+          <View style={styles.infoIcon}>
+            <Ionicons name="information-circle" size={18} color={ACCENT} />
+          </View>
+          <Text style={styles.infoBannerText}>{infoBanner}</Text>
+        </View>
+
+        <View style={styles.timesheetLink}>
+          <LinearGradient
+            colors={[darkenHex(TIMESHEET_BLUE), TIMESHEET_BLUE]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.cardRail}
+          />
+          <View style={styles.timesheetBody}>
+            <View style={styles.timesheetIcon}>
+              <Ionicons name="time-outline" size={18} color={TIMESHEET_BLUE} />
+            </View>
+            <Text style={styles.timesheetLinkText}>View timesheet</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </View>
+        </View>
       </ScrollView>
 
       <ClockActionModal
@@ -608,18 +562,71 @@ export const ClockScreen: React.FC = () => {
   );
 };
 
-const Metric: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+const WeekMetric: React.FC<{
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  tint: string;
+  accent: string;
+}> = ({ icon, label, value, tint, accent }) => (
   <View style={styles.metric}>
-    <Text style={styles.metricLabel}>{label}</Text>
-    <Text style={styles.metricValue}>{value}</Text>
+    <View style={[styles.metricIcon, { backgroundColor: tint }]}>
+      <Ionicons name={icon} size={16} color={accent} />
+    </View>
+    <View style={styles.metricCopy}>
+      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={styles.metricLabel}>{label}</Text>
+    </View>
   </View>
 );
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: "#fff"
+  },
+  layout: {
+    flex: 1,
+    backgroundColor: "transparent",
+    paddingHorizontal: 16,
+    paddingBottom: spacing.md
+  },
   scroll: { flex: 1 },
   content: {
     paddingBottom: spacing.xxl,
     gap: spacing.md
+  },
+  topHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.lg
+  },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: typography.button.fontFamily,
+    fontSize: 18,
+    lineHeight: 24,
+    color: colors.textPrimary
+  },
+  headerDot: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary
   },
   loadingContainer: {
     flex: 1,
@@ -631,208 +638,276 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textMuted
   },
-  sectionCard: {
+  dateNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm
+  },
+  navBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  todayBtn: {
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  todayBtnText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 13,
+    color: colors.textPrimary
+  },
+  todayCard: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
+    ...shadows.card
+  },
+  cardRail: {
+    width: RAIL_WIDTH,
+    alignSelf: "stretch"
+  },
+  todayBody: {
+    flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 16
+  },
+  todayTagRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm
+  },
+  todayTagChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
+  },
+  todayTag: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    color: ACCENT
+  },
+  statusChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 5
+  },
+  statusChipIn: {
+    backgroundColor: "#ECFDF3"
+  },
+  statusChipOut: {
+    backgroundColor: "#FEE2E2"
+  },
+  statusChipText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 11
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4
+  },
+  summaryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  summaryCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  summaryValue: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 22,
+    lineHeight: 26,
+    color: colors.textPrimary
+  },
+  summaryLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMuted,
+    marginTop: 2
+  },
+  clockBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 12,
+    minHeight: 48,
+    paddingVertical: 14,
+    marginTop: spacing.md
+  },
+  clockBtnDisabled: {
+    opacity: 0.5
+  },
+  clockBtnText: {
+    color: "#fff",
+    fontFamily: typography.button.fontFamily,
+    fontSize: 16
+  },
+  hoursToday: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: spacing.md
+  },
+  statusSub: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    marginTop: spacing.sm
+  },
+  timesheetLink: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
+    ...shadows.card
+  },
+  timesheetBody: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 14
+  },
+  timesheetIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#DBEAFE",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  timesheetLinkText: {
+    flex: 1,
+    fontFamily: typography.button.fontFamily,
+    fontSize: 14,
+    color: colors.textPrimary
+  },
+  section: {
     gap: spacing.md
   },
   sectionHeader: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm
+    alignItems: "center"
   },
-  sectionTitle: {
-    ...typography.subtitle,
-    color: colors.textPrimary
-  },
-  dateNav: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs
-  },
-  navBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.control,
-    borderWidth: 1,
-    borderColor: colors.border,
+  weekRangeBtn: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    paddingVertical: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.card
+    borderRadius: 12,
+    overflow: "hidden"
   },
-  todayBtn: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.control,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.card
+  weekRangeBtnCurrent: {
+    backgroundColor: "#ECFDF3",
+    minHeight: 56,
+    paddingBottom: 18
   },
-  todayBtnText: {
-    ...typography.caption,
-    color: colors.textPrimary,
-    fontFamily: typography.button.fontFamily
-  },
-  actionsStack: {
-    gap: spacing.sm
+  weekNowHint: {
+    position: "absolute",
+    right: 8,
+    bottom: 4,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 0.3,
+    color: ACCENT
   },
   emptyText: {
-    ...typography.bodySmall,
-    color: colors.textMuted
-  },
-  totalTimerCard: {
-    alignItems: "center",
-    backgroundColor: "#f9fafb",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.xl,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.md,
-    gap: spacing.xs
-  },
-  totalTimerCardLive: {
-    backgroundColor: "#ecfdf5",
-    borderColor: "#bbf7d0"
-  },
-  totalTimerLabel: {
-    ...typography.caption,
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.6
-  },
-  totalTimerValue: {
-    fontFamily: typography.title.fontFamily,
-    fontSize: 40,
-    lineHeight: 48,
-    letterSpacing: 1,
-    color: colors.textPrimary
-  },
-  totalTimerSub: {
     ...typography.bodySmall,
     color: colors.textMuted,
     textAlign: "center"
   },
-  entriesList: {
-    gap: spacing.sm
-  },
-  entryCard: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.card,
-    backgroundColor: colors.card,
-    overflow: "hidden"
-  },
-  entryHeader: {
-    flexDirection: "row",
+  weekNavBtn: {
+    width: 48,
+    height: 48,
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md
-  },
-  entryDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4
-  },
-  entryMain: {
-    flex: 1,
-    gap: 2
-  },
-  entryTimeRange: {
-    ...typography.bodySmall,
-    color: colors.textPrimary,
-    fontFamily: typography.button.fontFamily
-  },
-  entryJob: {
-    ...typography.caption,
-    color: colors.textMuted
-  },
-  entryDuration: {
-    ...typography.bodySmall,
-    color: colors.textPrimary,
-    fontFamily: typography.button.fontFamily
-  },
-  entryDetails: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.md
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md
-  },
-  metaLabel: {
-    ...typography.caption,
-    color: colors.textMuted,
-    textTransform: "uppercase"
-  },
-  metaValue: {
-    ...typography.body,
-    color: colors.textPrimary,
-    fontFamily: typography.button.fontFamily
-  },
-  jobHint: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs
-  },
-  jobHintText: {
-    ...typography.bodySmall,
-    color: colors.textBody,
-    flex: 1
-  },
-  noticeBox: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.md
-  },
-  noticeText: {
-    ...typography.bodySmall,
-    color: colors.textMuted
+    justifyContent: "center"
   },
   weekRange: {
-    ...typography.caption,
-    color: colors.textMuted,
-    textAlign: "center",
-    textTransform: "uppercase"
+    fontFamily: typography.button.fontFamily,
+    fontSize: 16,
+    lineHeight: 22,
+    color: colors.textPrimary,
+    textAlign: "center"
+  },
+  weekRangeCurrent: {
+    color: ACCENT
+  },
+  weekCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    paddingVertical: 8,
+    ...shadows.card
   },
   metricsGrid: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.md
+    flexWrap: "wrap"
   },
   metric: {
-    width: "47%",
-    gap: 2
+    width: "50%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  metricIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  metricCopy: {
+    flex: 1,
+    minWidth: 0
   },
   metricLabel: {
-    ...typography.caption,
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    fontSize: 10
+    fontSize: 11,
+    lineHeight: 14,
+    color: colors.textMuted
   },
   metricValue: {
-    ...typography.body,
-    color: colors.textPrimary,
-    fontFamily: typography.button.fontFamily
-  },
-  breakdownTitle: {
-    ...typography.caption,
-    color: colors.textBody,
-    textTransform: "uppercase",
     fontFamily: typography.button.fontFamily,
-    marginTop: spacing.sm
+    fontSize: 14,
+    lineHeight: 18,
+    color: colors.textPrimary
+  },
+  breakdown: {
+    marginTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border
   },
   dayRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border
   },
   dayName: {
@@ -851,8 +926,31 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   dayHours: {
-    ...typography.body,
+    ...typography.bodySmall,
     color: colors.textPrimary,
     fontFamily: typography.button.fontFamily
+  },
+  infoBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    backgroundColor: "#ECFDF3",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14
+  },
+  infoIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  infoBannerText: {
+    flex: 1,
+    ...typography.bodySmall,
+    color: ACCENT,
+    paddingTop: 6
   }
 });

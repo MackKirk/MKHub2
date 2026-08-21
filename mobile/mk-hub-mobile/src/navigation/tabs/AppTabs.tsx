@@ -158,7 +158,7 @@ export const AppTabs: React.FC = () => {
         name="Tasks"
         component={TasksScreen}
         options={{
-          tabBarLabel: "Tasks",
+          tabBarLabel: "My Tasks",
           tabBarIcon: ({ color, size, focused }) => (
             <TabGlyph
               focused={focused}

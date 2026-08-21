@@ -27,9 +27,17 @@ from ..services.time_rules import (
 from ..services.audit import create_audit_log, compute_diff
 from ..services.attendance_job_labels import (
     collect_project_ids_from_job_types,
+    compose_reason_text,
     load_projects_by_id,
     parse_job_type_from_reason_text,
+    parse_reason_markers,
+    parse_service_item_from_reason_text,
     resolve_job_label,
+)
+from ..services.service_items import (
+    DEFAULT_VALUE as DEFAULT_SERVICE_ITEM,
+    list_service_items,
+    resolve_service_item_value,
 )
 from ..services.notifications import send_shift_notification, send_attendance_notification
 from ..services.permissions import (
@@ -40,6 +48,37 @@ from ..services.task_service import create_task_item, complete_tasks_for_origin
 from ..services.project_utils import sanitize_division_onsite_leads
 
 router = APIRouter(prefix="/dispatch", tags=["dispatch"])
+
+
+def _apply_service_item_to_reason(
+    db: Session,
+    existing_reason: Optional[str],
+    payload: dict,
+    *,
+    job_type: Optional[str] = None,
+    update_notes: bool = True,
+) -> Optional[str]:
+    """Keep JOB_TYPE / SERVICE_ITEM / HOURS_WORKED markers when updating notes."""
+    markers = parse_reason_markers(existing_reason)
+    resolved_job = job_type if job_type is not None else markers["job_type"]
+    raw_si = payload.get("service_item")
+    if raw_si is not None and str(raw_si).strip():
+        resolved_si = resolve_service_item_value(db, str(raw_si))
+        if not resolved_si:
+            raise HTTPException(status_code=400, detail="Invalid service item")
+    else:
+        resolved_si = markers["service_item"] or DEFAULT_SERVICE_ITEM
+
+    notes = markers["notes"] or ""
+    if update_notes and "reason_text" in payload:
+        notes = (payload.get("reason_text") or "").strip()
+
+    return compose_reason_text(
+        job_type=resolved_job,
+        service_item=resolved_si,
+        hours_worked=markers["hours_worked"],
+        notes=notes,
+    )
 
 
 def get_user_role(user: User, db: Session) -> str:
@@ -1208,10 +1247,44 @@ def create_attendance(
         
         # NEW MODEL: Single record per event (clock_in_time and clock_out_time in same record)
         if attendance_type == "in":
+            clock_out_utc = None
+            clock_out_local_str = payload.get("clock_out_time_local")
+            if clock_out_local_str:
+                try:
+                    clock_out_local = datetime.fromisoformat(clock_out_local_str.replace("Z", "+00:00"))
+                except Exception:
+                    raise HTTPException(status_code=400, detail="Invalid clock_out_time_local format")
+                clock_out_local = round_to_5_minutes(clock_out_local)
+                if clock_out_local.tzinfo is not None:
+                    clock_out_local = clock_out_local.replace(tzinfo=None)
+                clock_out_utc = local_to_utc(clock_out_local, project_timezone)
+                if clock_out_utc.tzinfo is None:
+                    from pytz import UTC
+                    clock_out_utc = clock_out_utc.replace(tzinfo=UTC)
+                if not is_authorized_supervisor:
+                    max_future = time_entered_utc + timedelta(minutes=4)
+                    if clock_out_utc > max_future:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time."
+                        )
+                if clock_out_utc <= time_selected_utc:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Clock-out time must be after clock-in time. Please select a valid time."
+                    )
+                manual_break = payload.get("manual_break_minutes")
+                total_minutes = int((clock_out_utc - time_selected_utc).total_seconds() / 60)
+                if manual_break is not None and manual_break >= total_minutes:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Break time cannot be greater than or equal to the total attendance time."
+                    )
+
             # Check for conflicts before creating attendance
-            from ..routes.settings import check_attendance_conflict
+            from ..routes.settings import check_attendance_conflict, calculate_break_minutes
             conflict_error = check_attendance_conflict(
-                db, worker_id, time_selected_utc, None, exclude_attendance_id=None, timezone_str=project_timezone
+                db, worker_id, time_selected_utc, clock_out_utc, exclude_attendance_id=None, timezone_str=project_timezone
             )
             if conflict_error:
                 logger.warning(f"Attendance conflict detected: {conflict_error}")
@@ -1219,8 +1292,15 @@ def create_attendance(
                     status_code=400,
                     detail=conflict_error  # Message already includes "Cannot create attendance:" prefix
                 )
-            
-            # Create new attendance record with clock-in (break_minutes will be calculated when clock-out is added)
+
+            break_minutes = None
+            if clock_out_utc:
+                break_minutes = calculate_break_minutes(
+                    db, worker_id, time_selected_utc, clock_out_utc,
+                    manual_break_minutes=payload.get("manual_break_minutes")
+                )
+
+            # Create new attendance record with clock-in (and clock-out when logged together)
             attendance = Attendance(
                 shift_id=shift_id,
                 worker_id=worker_id,
@@ -1230,14 +1310,17 @@ def create_attendance(
                 clock_in_gps_lng=gps_lng_float,
                 clock_in_gps_accuracy_m=gps_accuracy_float,
                 clock_in_mocked_flag=mocked_flag,
-                clock_out_time=None,
-                clock_out_entered_utc=None,
+                clock_out_time=clock_out_utc,
+                clock_out_entered_utc=time_entered_utc if clock_out_utc else None,
+                clock_out_gps_lat=gps_lat_float if clock_out_utc else None,
+                clock_out_gps_lng=gps_lng_float if clock_out_utc else None,
+                clock_out_gps_accuracy_m=gps_accuracy_float if clock_out_utc else None,
                 status=status,
                 source=source,
                 created_by=user.id,
-                reason_text=reason_text if reason_text else None,
+                reason_text=_apply_service_item_to_reason(db, None, payload),
                 attachments=payload.get("attachments"),
-                break_minutes=None,  # Will be calculated when clock-out is added
+                break_minutes=break_minutes,
                 # Legacy fields (required for database NOT NULL constraint)
                 mocked_flag=mocked_flag,
             )
@@ -1306,9 +1389,14 @@ def create_attendance(
                     existing_attendance.status = "pending"
                 else:
                     existing_attendance.status = status
-                # Update reason_text if provided
-                if reason_text:
-                    existing_attendance.reason_text = reason_text
+                # Update notes / service item without dropping JOB_TYPE or SERVICE_ITEM markers
+                if reason_text or payload.get("service_item"):
+                    existing_attendance.reason_text = _apply_service_item_to_reason(
+                        db,
+                        existing_attendance.reason_text,
+                        payload,
+                        update_notes=bool(reason_text),
+                    )
                 attendance = existing_attendance
                 db.commit()
                 db.refresh(attendance)
@@ -1341,7 +1429,7 @@ def create_attendance(
                     status=status,
                     source=source,
                     created_by=user.id,
-                    reason_text=reason_text if reason_text else None,
+                    reason_text=_apply_service_item_to_reason(db, None, payload),
                     attachments=payload.get("attachments"),
                     # Legacy fields (required for database NOT NULL constraint)
                     mocked_flag=mocked_flag,
@@ -1858,13 +1946,11 @@ def create_direct_attendance(
         if str(worker_id) != str(user.id) and not is_admin(user, db):
             raise HTTPException(status_code=403, detail="You can only create direct attendance for yourself")
         
-        # Check if user has permission to edit clock in/out time
-        # If user doesn't have permission and time is different, use current time automatically
+        # Workers log start + end at the end of the day, so their own selected times are kept.
         from datetime import timezone, timedelta
         time_entered_utc = datetime.now(timezone.utc)
-        time_diff = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)  # Difference in minutes
-        
-        # If time is more than 4 minutes different from current time, check unrestricted permission
+        time_diff = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)
+
         is_own_attendance = str(worker_id) == str(user.id)
         if time_diff > 4:
             from ..auth.security import _has_permission
@@ -1872,18 +1958,7 @@ def create_direct_attendance(
                 _has_permission(user, "hr:timesheet:unrestricted_clock") or
                 _has_permission(user, "timesheet:unrestricted_clock")
             )
-            
-            # If user doesn't have unrestricted permission and is doing personal clock-in/out, use current time
-            if not has_unrestricted and is_own_attendance:
-                logger.info(
-                    f"User {user.id} doesn't have unrestricted clock permission, using current time instead of {time_selected_utc} (direct attendance)"
-                )
-                time_selected_utc = time_entered_utc
-                # Recalculate time_selected_local from the updated UTC time
-                from ..services.time_rules import local_to_utc, utc_to_local
-                time_selected_local = utc_to_local(time_selected_utc, settings.tz_default)
-            elif not has_unrestricted and not is_own_attendance:
-                # For non-personal clock-in/out without permission, still block
+            if not has_unrestricted and not is_own_attendance:
                 logger.warning(
                     f"User {user.id} attempted to set time {time_selected_utc} (current: {time_entered_utc}) "
                     f"without unrestricted clock permission (direct attendance for another worker)"
@@ -1892,6 +1967,13 @@ def create_direct_attendance(
                     status_code=403,
                     detail="You do not have permission to edit clock in/out time. Contact an administrator to enable time editing."
                 )
+
+        max_future = time_entered_utc + timedelta(minutes=4)
+        if is_own_attendance and time_selected_utc > max_future:
+            raise HTTPException(
+                status_code=400,
+                detail="Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time."
+            )
         
         # Validate worker exists
         worker = db.query(User).filter(User.id == worker_id).first()
@@ -1960,23 +2042,49 @@ def create_direct_attendance(
         gps_lng = gps.get("lng") if gps else None
         gps_accuracy_m = gps.get("accuracy_m") if gps else None
         
-        # Store job_type in reason_text as a marker (since we don't have a separate field)
-        # Format: "JOB_TYPE:{job_type}" if reason_text is empty, otherwise append
-        reason_text = payload.get("reason_text", "").strip() if payload.get("reason_text") else ""
-        job_marker = f"JOB_TYPE:{job_type}"
-        if reason_text:
-            final_reason = f"{job_marker}|{reason_text}"
-        else:
-            final_reason = job_marker
+        # Store job_type + service item in reason_text as markers
+        final_reason = _apply_service_item_to_reason(db, None, payload, job_type=job_type)
         
         # NEW MODEL: Single record per event
         time_entered_utc = datetime.now(timezone.utc)
         
         if attendance_type == "in":
+            clock_out_utc = None
+            clock_out_local_str = payload.get("clock_out_time_local")
+            if clock_out_local_str:
+                try:
+                    clock_out_local = datetime.fromisoformat(clock_out_local_str.replace("Z", "+00:00"))
+                except Exception:
+                    raise HTTPException(status_code=400, detail="Invalid clock_out_time_local format")
+                clock_out_local = round_to_5_minutes(clock_out_local)
+                if clock_out_local.tzinfo is not None:
+                    clock_out_local = clock_out_local.replace(tzinfo=None)
+                clock_out_utc = local_to_utc(clock_out_local, settings.tz_default)
+                if clock_out_utc.tzinfo is None:
+                    from pytz import UTC
+                    clock_out_utc = clock_out_utc.replace(tzinfo=UTC)
+                if is_own_attendance and clock_out_utc > max_future:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time."
+                    )
+                if clock_out_utc <= time_selected_utc:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Clock-out time must be after clock-in time. Please select a valid time."
+                    )
+                manual_break = payload.get("manual_break_minutes")
+                total_minutes = int((clock_out_utc - time_selected_utc).total_seconds() / 60)
+                if manual_break is not None and manual_break >= total_minutes:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Break time cannot be greater than or equal to the total attendance time."
+                    )
+
             # Check for conflicts before creating attendance
-            from ..routes.settings import check_attendance_conflict
+            from ..routes.settings import check_attendance_conflict, calculate_break_minutes
             conflict_error = check_attendance_conflict(
-                db, uuid.UUID(worker_id), time_selected_utc, None, exclude_attendance_id=None, timezone_str=settings.tz_default
+                db, uuid.UUID(worker_id), time_selected_utc, clock_out_utc, exclude_attendance_id=None, timezone_str=settings.tz_default
             )
             if conflict_error:
                 logger.warning(f"Attendance conflict detected: {conflict_error}")
@@ -1984,8 +2092,15 @@ def create_direct_attendance(
                     status_code=400,
                     detail=conflict_error  # Message already includes "Cannot create attendance:" prefix
                 )
-            
-            # Create new attendance record with clock-in
+
+            break_minutes = None
+            if clock_out_utc:
+                break_minutes = calculate_break_minutes(
+                    db, uuid.UUID(worker_id), time_selected_utc, clock_out_utc,
+                    manual_break_minutes=payload.get("manual_break_minutes")
+                )
+
+            # Create new attendance record with clock-in (and clock-out when logged together)
             attendance = Attendance(
                 shift_id=None,  # NO SHIFT - completely independent
                 worker_id=worker_id,
@@ -1995,12 +2110,16 @@ def create_direct_attendance(
                 clock_in_gps_lng=gps_lng,
                 clock_in_gps_accuracy_m=gps_accuracy_m,
                 clock_in_mocked_flag=gps.get("mocked", False) if gps else False,
-                clock_out_time=None,
-                clock_out_entered_utc=None,
+                clock_out_time=clock_out_utc,
+                clock_out_entered_utc=time_entered_utc if clock_out_utc else None,
+                clock_out_gps_lat=gps_lat if clock_out_utc else None,
+                clock_out_gps_lng=gps_lng if clock_out_utc else None,
+                clock_out_gps_accuracy_m=gps_accuracy_m if clock_out_utc else None,
                 status=status,
                 source="app",
                 created_by=user.id,
                 reason_text=final_reason,  # Store job_type here as marker
+                break_minutes=break_minutes,
                 # Legacy fields (required for database NOT NULL constraint)
                 mocked_flag=gps.get("mocked", False) if gps else False,
             )
@@ -2044,18 +2163,16 @@ def create_direct_attendance(
                 clock_in_attendance.status = "pending"
             else:
                 clock_in_attendance.status = status
-            # Update reason_text if provided (preserve job_type marker)
-            if reason_text:
-                # Preserve job_type marker, update reason part
-                existing_reason = clock_in_attendance.reason_text or ""
-                if existing_reason.startswith("JOB_TYPE:"):
-                    parts = existing_reason.split("|", 1)
-                    if len(parts) > 1:
-                        clock_in_attendance.reason_text = f"{parts[0]}|{reason_text}"
-                    else:
-                        clock_in_attendance.reason_text = f"{parts[0]}|{reason_text}"
-                else:
-                    clock_in_attendance.reason_text = final_reason
+            # Update notes / service item without dropping JOB_TYPE or SERVICE_ITEM markers
+            reason_text = (payload.get("reason_text") or "").strip()
+            if reason_text or payload.get("service_item"):
+                clock_in_attendance.reason_text = _apply_service_item_to_reason(
+                    db,
+                    clock_in_attendance.reason_text,
+                    payload,
+                    job_type=job_type,
+                    update_notes=bool(reason_text),
+                )
             # Auto-approve if today and not already approved
             if status == "approved" and clock_in_attendance.status == "approved":
                 if not clock_in_attendance.approved_at:
@@ -2149,6 +2266,15 @@ def create_direct_attendance(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
+@router.get("/attendance/service-items")
+def get_attendance_service_items(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Service items for logging hours. Regular is seeded; more can be added in Settings."""
+    return list_service_items(db)
+
+
 @router.get("/attendance/direct/{date}")
 def get_direct_attendances_for_date(
     date: str,
@@ -2236,6 +2362,7 @@ def get_direct_attendances_for_date(
             "job_type": job_type,
             "job_name": job_name,
             "project_name": project_name,
+            "service_item": parse_service_item_from_reason_text(att.reason_text),
             "reason_text": att.reason_text,  # Include reason_text so frontend can extract job_type
             "break_minutes": att.break_minutes,  # Include break time
         })
@@ -2485,6 +2612,7 @@ def get_weekly_attendance_summary(
             } if attendance.clock_out_time else None,
             "job_type": job_type,
             "project_name": project_name,
+            "service_item": parse_service_item_from_reason_text(attendance.reason_text),
             "hours_worked": hours_worked,
             "break_minutes": final_break_minutes,
             "worker_id": str(attendance.worker_id),
@@ -3175,6 +3303,7 @@ def get_shift_attendance(
             "status": a.status,
             "source": a.source,
             "reason_text": a.reason_text,
+            "service_item": parse_service_item_from_reason_text(a.reason_text),
             "break_minutes": a.break_minutes,  # Include break time
             # GPS data from clock-in (or clock-out if clock-in doesn't exist)
             "gps_lat": float(a.clock_in_gps_lat) if a.clock_in_gps_lat else (float(a.clock_out_gps_lat) if a.clock_out_gps_lat else None),

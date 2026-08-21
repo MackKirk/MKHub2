@@ -59,6 +59,7 @@ DROPDOWN_SETTINGS_LIST_NAMES = frozenset(
         "lead_sources",
         "report_categories",
         "timesheet",
+        "service_items",
     }
 )
 
@@ -240,6 +241,13 @@ def can_read_list_in_settings_bundle(user: User, list_name: str) -> bool:
             or _has_permission(user, "hr:users:view:timesheet")
             or _has_permission(user, "hr:attendance:write")
             or _has_permission(user, "hr:attendance:read")
+        )
+    if list_name == "service_items":
+        return (
+            _has_permission(user, "hr:attendance:write")
+            or _has_permission(user, "hr:attendance:read")
+            or _has_permission(user, "hr:users:edit:timesheet")
+            or _has_permission(user, "hr:users:view:timesheet")
         )
     return (
         _has_permission(user, "business:customers:read")

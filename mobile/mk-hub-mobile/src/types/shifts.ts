@@ -30,6 +30,7 @@ export interface ShiftAttendanceResponse {
   source?: string | null;
   reason_text?: string | null;
   job_type?: string | null;
+  service_item?: string | null;
   break_minutes?: number | null;
 }
 
@@ -90,4 +91,10 @@ export interface AttendanceGpsPayload {
   lng: number;
   accuracy_m: number;
   mocked?: boolean;
+}
+
+export interface ServiceItemOption {
+  id: string;
+  label: string;
+  value: string;
 }

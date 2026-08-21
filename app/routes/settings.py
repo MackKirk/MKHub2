@@ -36,6 +36,7 @@ from ..services.training_matrix_slots import (
 )
 from ..services.organization_logos import ensure_organization_logos_list
 from ..services.certificate_background_library import ensure_certificate_backgrounds_list
+from ..services.service_items import ensure_service_items_list
 from ..auth.security import require_permissions, get_current_user
 from ..auth.security import User as UserType
 from ..config import settings
@@ -318,6 +319,7 @@ def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(
         ensure_training_matrix_slots(db)
         ensure_organization_logos_list(db)
         ensure_certificate_backgrounds_list(db)
+        ensure_service_items_list(db)
 
     rows = db.query(SettingList).all()
     for lst in rows:
@@ -344,6 +346,7 @@ def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(
         out.setdefault("project_statuses", [])
         out.setdefault("lead_sources", [])
         out.setdefault("timesheet", [])
+        out.setdefault("service_items", [])
         out.setdefault("report_categories", [])
         out.setdefault("terms-templates", [])
 
@@ -361,6 +364,7 @@ def get_settings_admin_bundle(db: Session = Depends(get_db), user: UserType = De
     ensure_training_matrix_slots(db)
     ensure_organization_logos_list(db)
     ensure_certificate_backgrounds_list(db)
+    ensure_service_items_list(db)
 
     out: dict = {}
     rows = db.query(SettingList).all()
