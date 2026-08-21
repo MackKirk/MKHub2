@@ -113,8 +113,9 @@ class Settings(BaseSettings):
     pdf_image_jpeg_quality_thumb: int = Field(default=70, alias="PDF_IMAGE_JPEG_QUALITY_THUMB")
 
     # Document creator (project documents) PDF: embed rasters near the on-page size instead of full camera resolution.
-    pdf_document_raster_dpi: float = Field(default=160.0, alias="PDF_DOCUMENT_RASTER_DPI")
-    pdf_document_jpeg_quality: int = Field(default=82, alias="PDF_DOCUMENT_JPEG_QUALITY")
+    # Prefer ≥200 DPI + no chroma subsample so full-page template backgrounds (text-as-image) stay sharp when signing.
+    pdf_document_raster_dpi: float = Field(default=220.0, alias="PDF_DOCUMENT_RASTER_DPI")
+    pdf_document_jpeg_quality: int = Field(default=88, alias="PDF_DOCUMENT_JPEG_QUALITY")
     pdf_document_raster_max_side_px: int = Field(default=4096, alias="PDF_DOCUMENT_RASTER_MAX_SIDE_PX")
 
     class Config:

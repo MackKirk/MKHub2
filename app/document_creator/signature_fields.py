@@ -52,10 +52,10 @@ def _collect_initials_fields(
         if not isinstance(el, dict) or (el.get("type") or "") != "initials":
             continue
         try:
-            x_pct = float(el.get("x_pct", 78))
-            y_pct = float(el.get("y_pct", 92))
-            w_pct = float(el.get("width_pct", 14))
-            h_pct = float(el.get("height_pct", 4.5))
+            x_pct = float(el.get("x_pct", 84))
+            y_pct = float(el.get("y_pct", 91))
+            w_pct = float(el.get("width_pct", 8))
+            h_pct = float(el.get("height_pct", 5.5))
         except (TypeError, ValueError):
             continue
         out.append(

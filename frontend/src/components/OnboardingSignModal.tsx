@@ -6,11 +6,19 @@ import toast from 'react-hot-toast';
 import { api, getToken } from '@/lib/api';
 import { formatCurrencyAmount, parseCurrencyAmount } from '@/lib/currencyFormat';
 import { pdfRectToOverlayStyle, type PdfRect } from '@/lib/pdfCoordinates';
-import OverlayPortal from '@/components/OverlayPortal';
+import {
+  AppButton,
+  AppCheckbox,
+  AppFormModal,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiTypography,
+} from '@/components/ui';
+import { signDocumentQuickInfo } from '@/lib/formModalQuickInfo';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-
-const LOGO_SRC = '/ui/assets/login/logo-light.svg';
 
 /** Pencil cursor for freehand drawing (replaces default crosshair). */
 const CURSOR_PENCIL =
@@ -21,6 +29,10 @@ const CURSOR_PENCIL =
  * document signature boxes (~5:1) — fills width better without stretching.
  */
 const SIG_CAPTURE_HEIGHT_PX = 88;
+
+const SIGN_DIALOG_COLLAPSED = '!max-w-[1400px] !w-[min(1400px,95vw)] !h-[min(90vh,56rem)]';
+const SIGN_DIALOG_EXPANDED =
+  '!max-w-[calc(1400px+16rem+1.5rem)] !w-[min(calc(1400px+16rem+1.5rem),95vw)] !h-[min(90vh,56rem)]';
 
 type FieldDef = {
   id: string;
@@ -449,22 +461,54 @@ function PdfPageView({
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     let cancelled = false;
+    let renderTask: { cancel: () => void; promise: Promise<void> } | null = null;
     (async () => {
       const page = await pdf.getPage(pageIndex + 1);
+      // CSS / overlay scale (PDF points → CSS pixels). Bitmap uses a separate HiDPI factor.
       const viewport = page.getViewport({ scale });
       const canvas = ref.current;
       if (!canvas || cancelled) return;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { alpha: false });
       if (!ctx) return;
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+
+      // Windows 125%/150% often reports fractional DPR; ceil + floor of 2× avoids soft upscales.
+      const rawDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+      const outputScale = Math.min(3, Math.max(2, Math.ceil(rawDpr)));
+
+      const cssW = Math.floor(viewport.width);
+      const cssH = Math.floor(viewport.height);
+      canvas.width = Math.floor(cssW * outputScale);
+      canvas.height = Math.floor(cssH * outputScale);
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const transform = outputScale !== 1 ? ([outputScale, 0, 0, outputScale, 0, 0] as const) : null;
+      renderTask = page.render({
+        canvasContext: ctx,
+        viewport,
+        ...(transform ? { transform: [...transform] } : {}),
+      });
+      try {
+        await renderTask.promise;
+      } catch (err) {
+        // Cancelled supersedes are expected when scale/page changes quickly.
+        if (cancelled) return;
+        throw err;
+      }
     })();
     return () => {
       cancelled = true;
+      try {
+        renderTask?.cancel();
+      } catch {
+        /* ignore */
+      }
     };
   }, [pdf, pageIndex, scale]);
-  return <canvas ref={ref} className="block max-w-full border border-gray-100 bg-white" />;
+  return <canvas ref={ref} className="block border border-gray-100 bg-white" />;
 }
 
 type Props = {
@@ -494,7 +538,8 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
       : 'assignment_item_id';
   const queryKeyPrefix = endpoints?.queryKeyPrefix ?? 'onb-sign';
 
-  const [scale] = useState(1.15);
+  const [scale, setScale] = useState(1.35);
+  const pdfScrollRef = useRef<HTMLDivElement>(null);
   const [agree, setAgree] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mode, setMode] = useState<'draw' | 'type'>('draw');
@@ -542,6 +587,49 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
   }, []);
 
   const usesTemplate = Boolean(ctx?.uses_template && ctx.signature_template?.fields?.length);
+
+  // Fit page width to the viewer pane so we do not upscale a tiny canvas in CSS.
+  useEffect(() => {
+    if (!pdfDoc || ctxLoading || !usesTemplate) return;
+    let cancelled = false;
+    let ro: ResizeObserver | null = null;
+    let raf = 0;
+
+    const measure = async (el: HTMLElement) => {
+      try {
+        const page = await pdfDoc.getPage(1);
+        if (cancelled) return;
+        const base = page.getViewport({ scale: 1 });
+        const pad = 28;
+        const avail = Math.max(320, el.clientWidth - pad);
+        const next = Math.min(2.5, Math.max(1.2, avail / base.width));
+        setScale((prev) => {
+          const rounded = Math.round(next * 100) / 100;
+          return Math.abs(prev - rounded) < 0.02 ? prev : rounded;
+        });
+      } catch {
+        /* ignore measure failures */
+      }
+    };
+
+    const attach = () => {
+      const el = pdfScrollRef.current;
+      if (!el) {
+        raf = requestAnimationFrame(attach);
+        return;
+      }
+      void measure(el);
+      ro = new ResizeObserver(() => void measure(el));
+      ro.observe(el);
+    };
+    raf = requestAnimationFrame(attach);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+    };
+  }, [pdfDoc, usesTemplate, ctxLoading]);
 
   const { data: profileForPreview } = useQuery({
     queryKey: [queryKeyPrefix, 'profile-preview', signItem.id],
@@ -801,70 +889,84 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
 
   const templateSplitLayout = !ctxLoading && usesTemplate && pdfDoc;
 
+  const description = (
+    <>
+      <span className="block truncate" title={signItem.document_name}>
+        {signItem.document_name}
+        {ctx?.signer_role_label ? ` · ${ctx.signer_role_label}` : ''}
+      </span>
+      {signItem.subject_label ? (
+        <span className="block">
+          Sent in connection with the onboarding of {signItem.subject_label}.
+        </span>
+      ) : null}
+    </>
+  );
+
   return (
-    <OverlayPortal>
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80"
-      onClick={() => !submitting && onClose()}
+    <AppFormModal
+      open
+      onClose={() => {
+        if (!submitting) onClose();
+      }}
+      title="Sign document"
+      description={description}
+      layout="detail"
+      size="lg"
+      dialogClassName={SIGN_DIALOG_COLLAPSED}
+      dialogClassNameExpanded={SIGN_DIALOG_EXPANDED}
+      quickInfo={signDocumentQuickInfo}
+      scrollBody={false}
+      overlayClassName="z-[60]"
+      bodyClassName="!p-4 flex min-h-0 flex-1 flex-col overflow-hidden"
+      footer={
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <AppCheckbox
+            label="I have read and agree to this document"
+            checked={agree}
+            onChange={setAgree}
+            disabled={submitting}
+          />
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" disabled={submitting} onClick={onClose}>
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              loading={submitting}
+              disabled={submitting || ctxLoading}
+              onClick={() => void doSign()}
+            >
+              Sign document
+            </AppButton>
+          </div>
+        </div>
+      }
     >
       <div
-        className="bg-white rounded-lg border border-gray-200 shadow-xl w-[min(96vw,1440px)] max-w-[1440px] max-h-[95vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+        className={uiCx(
+          'flex min-h-0 flex-1 flex-col',
+          templateSplitLayout ? 'overflow-hidden' : 'overflow-y-auto',
+        )}
       >
-        <div className="flex-shrink-0 px-4 py-3 sm:px-5 sm:py-4 border-b border-gray-200 bg-white flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <img src={LOGO_SRC} alt="" className="h-10 w-auto max-w-[140px] object-contain object-left shrink-0" />
-            <div className="hidden sm:block h-9 w-px bg-gray-200 shrink-0" aria-hidden />
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">MK Hub · HR</p>
-              <h2 className="text-base font-bold text-gray-900 truncate">Sign document</h2>
-              <p className="text-xs text-gray-500 truncate mt-0.5">
-                {signItem.document_name}
-                {ctx?.signer_role_label ? ` · ${ctx.signer_role_label}` : ''}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            disabled={submitting}
-            onClick={onClose}
-            className="text-xl font-bold text-gray-400 hover:text-gray-700 w-8 h-8 shrink-0 rounded-lg hover:bg-gray-100 disabled:opacity-50"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        <div
-          className={`flex-1 min-h-0 px-4 py-4 sm:px-5 sm:py-5 bg-gray-50 ${
-            templateSplitLayout ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'
-          }`}
-        >
-          {signItem.subject_label && (
-            <p className="text-[11px] text-gray-600 mb-4 leading-snug rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-sm shrink-0">
-              This document was sent to you in connection with the onboarding of{' '}
-              <span className="font-semibold text-gray-800">{signItem.subject_label}</span>.
-            </p>
-          )}
-
           {ctxLoading && (
-            <div className="flex flex-col items-center justify-center py-16 text-sm text-gray-500">
-              <img src={LOGO_SRC} alt="" className="h-10 w-auto opacity-30 mb-3 object-contain" />
+            <div className={uiCx(uiTypography.body, 'flex flex-1 items-center justify-center py-16 text-gray-500')}>
               Loading signing options…
             </div>
           )}
 
           {!ctxLoading && usesTemplate && pdfDoc && (
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-              <p className="shrink-0 text-xs text-gray-700 rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-2.5">
-                <span className="font-semibold text-amber-950">Tip:</span> click each highlighted area on the PDF to fill or
-                sign it in the panel on the right (checkboxes toggle directly on the document). Required fields are marked
-                with *.
-              </p>
-
-              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:flex-row">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:flex-row">
                 <div className="flex min-h-[min(40vh,320px)] flex-1 min-w-0 flex-col lg:min-h-0">
-                  <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm p-2 sm:p-3">
+                  <div
+                    ref={pdfScrollRef}
+                    className={uiCx(
+                      'min-h-0 flex-1 overflow-auto bg-white p-2 sm:p-3',
+                      uiRadius.card,
+                      uiBorders.subtle,
+                    )}
+                  >
                     {Array.from({ length: pdfDoc.numPages }, (_, pi) => {
                       const ph = pageSizes[pi]?.height ?? 792;
                       const fieldsHere = fields.filter((f) => f.page_index === pi);
@@ -952,10 +1054,16 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                 </div>
 
                 <aside className="flex w-full min-h-[min(36vh,280px)] shrink-0 flex-col lg:w-[min(100%,440px)] xl:w-[460px] lg:min-h-0">
-                  <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div
+                    className={uiCx(
+                      'flex min-h-0 flex-1 flex-col overflow-y-auto bg-white',
+                      uiRadius.card,
+                      uiBorders.subtle,
+                    )}
+                  >
                   {!selectedField && (
                     <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
-                      <p className="text-xs text-gray-500 leading-relaxed">
+                      <p className={uiCx(uiTypography.helper, 'leading-relaxed')}>
                         Select a highlighted area on the document to fill or sign it here.
                       </p>
                     </div>
@@ -965,19 +1073,15 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                     <div className="p-4 sm:p-5 text-sm">
                   <div className="flex justify-between items-start gap-3 mb-3">
                     <div className="min-w-0">
-                      <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Selected field</div>
+                      <div className={uiTypography.overline}>Selected field</div>
                       <div className="font-semibold text-gray-900 mt-0.5 break-words">
                         {selectedField.field_name}
                         {selectedField.required ? <span className="text-red-600"> *</span> : null}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      className="text-xs font-medium text-gray-600 hover:text-gray-900 px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 shrink-0"
-                      onClick={() => setSelectedFieldId(null)}
-                    >
+                    <AppButton type="button" variant="secondary" size="sm" onClick={() => setSelectedFieldId(null)}>
                       Done
-                    </button>
+                    </AppButton>
                   </div>
 
                   {selectedField.type === 'employee_info' && (
@@ -1153,13 +1257,12 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                   )}
                   </div>
                 </aside>
-              </div>
             </div>
           )}
 
         {!ctxLoading && !usesTemplate && (
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-4 sm:p-5 space-y-3">
-            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Your signature</div>
+          <div className={uiCx('bg-white p-4 sm:p-5 space-y-3', uiRadius.card, uiBorders.subtle)}>
+            <div className={uiTypography.overline}>Your signature</div>
             <div className="flex gap-1 border-b border-gray-200 pb-3">
               <button
                 type="button"
@@ -1218,40 +1321,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
             </button>
           </div>
         )}
-
-        </div>
-
-        <div className="flex-shrink-0 border-t border-gray-200 bg-white px-4 py-4 sm:px-5">
-          <label className="flex items-start gap-2.5 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              className="mt-0.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-              checked={agree}
-              onChange={(e) => setAgree(e.target.checked)}
-            />
-            <span>I have read and agree to this document</span>
-          </label>
-          <div className="flex gap-3 mt-4 justify-end flex-wrap">
-            <button
-              type="button"
-              disabled={submitting}
-              className="px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={submitting || ctxLoading}
-              onClick={() => void doSign()}
-              className="px-5 py-2.5 text-sm font-medium rounded-lg text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm disabled:opacity-50 hover:opacity-95"
-            >
-              {submitting ? 'Signing…' : 'Sign document'}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
-    </OverlayPortal>
+    </AppFormModal>
   );
 }

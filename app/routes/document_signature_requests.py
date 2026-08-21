@@ -17,6 +17,7 @@ from ..db import get_db
 from ..models.models import (
     DocumentSignatureParticipant,
     DocumentSignatureRequest,
+    EmployeeDocument,
     EmployeeProfile,
     FileObject,
     Notification,
@@ -40,9 +41,11 @@ from ..services.onboarding_signature_template import (
 from ..services.document_signer_roles import (
     employee_token_user_from_assignments,
     ensure_document_signer_roles,
+    hr_documents_owner_user_id,
     order_role_ids_present,
     role_label_map,
 )
+from ..services.onboarding_assign import get_or_create_hr_documents_folder
 from ..services.onboarding_storage import read_file_object_bytes
 from ..services.task_service import get_user_display
 from ..storage.local_provider import LocalStorageProvider
@@ -215,6 +218,35 @@ def _parse_assignments(payload: dict, required_roles: List[str]) -> dict:
     return out
 
 
+def _parse_signing_order(payload: dict, required_roles: List[str]) -> List[str]:
+    """
+    Optional signing_order: permutation of required_roles.
+    If omitted/empty, return required_roles unchanged (catalog order).
+    """
+    raw = payload.get("signing_order")
+    if raw is None or raw == []:
+        return list(required_roles)
+    if not isinstance(raw, list):
+        raise HTTPException(400, "signing_order must be a list of signer ids")
+    ordered = [str(x).strip() for x in raw if str(x).strip()]
+    if not ordered:
+        return list(required_roles)
+    required_set = set(required_roles)
+    ordered_set = set(ordered)
+    if len(ordered) != len(ordered_set):
+        raise HTTPException(400, "signing_order must not contain duplicates")
+    if ordered_set != required_set:
+        missing = required_set - ordered_set
+        extra = ordered_set - required_set
+        parts = []
+        if missing:
+            parts.append(f"missing {sorted(missing)}")
+        if extra:
+            parts.append(f"unknown {sorted(extra)}")
+        raise HTTPException(400, "signing_order must list each required signer exactly once (" + "; ".join(parts) + ")")
+    return ordered
+
+
 def _participant_for_user(
     db: Session, request_id: UUID, user_id: UUID
 ) -> Optional[DocumentSignatureParticipant]:
@@ -296,6 +328,7 @@ def send_for_signature(
     if not required_roles:
         raise HTTPException(400, "No signer roles found on signature fields")
 
+    required_roles = _parse_signing_order(payload or {}, required_roles)
     assignments = _parse_assignments(payload or {}, required_roles)
     for role, uid in assignments.items():
         lbl = labels.get(role, role)
@@ -339,7 +372,9 @@ def send_for_signature(
             if isinstance(f, dict):
                 f["assignee"] = normalize_document_assignee(f.get("assignee"))
         present = set(roles_present_in_template(normalized))
-        required_roles = order_role_ids_present(roles_catalog, present)
+        catalog_order = order_role_ids_present(roles_catalog, present)
+        # Re-apply client signing_order against fields still present after normalize
+        required_roles = _parse_signing_order(payload or {}, catalog_order)
         for role in required_roles:
             if role not in assignments:
                 raise HTTPException(400, f"assignments.{role} required")
@@ -379,7 +414,6 @@ def send_for_signature(
     db.add(row)
     db.flush()
 
-    sort_index = {r["id"]: r["sortOrder"] for r in roles_catalog}
     for idx, role in enumerate(required_roles):
         status = "ready" if idx == 0 else "pending"
         db.add(
@@ -388,7 +422,7 @@ def send_for_signature(
                 role=role,
                 role_label=(labels.get(role) or role)[:120],
                 signer_user_id=assignments[role],
-                sort_order=sort_index.get(role, idx),
+                sort_order=idx,
                 status=status,
                 created_at=now,
             )
@@ -608,17 +642,47 @@ async def me_sign(
     remaining = [p for p in parts if p.status in ("pending", "ready") and p.id != part.id]
     is_last = len(remaining) == 0
 
+    client_ip = _client_ip(request)
+    client_ua = (request.headers.get("user-agent") or "")[:512]
+
     safe_name = re.sub(r"[^\w\s.-]", "", row.display_name)[:80] or "document"
 
     if is_last:
-        signer_name = (
-            f"{(ep.first_name or '')} {(ep.last_name or '')}".strip()
-            if ep
-            else (user.username or "")
-        )
-        email = user.email_personal or ""
+        # Record this turn before building the certificate so all participants are included.
+        part.status = "signed"
+        part.signed_at = now
+        part.ip_address = client_ip or None
+        part.user_agent = client_ua or None
+
         requested_by = (get_user_display(db, row.requested_by_id) or "").strip() or "Document sender"
         acceptance = "I have read and agree to this document."
+
+        cert_signers = []
+        for p in sorted(parts, key=lambda x: x.sort_order):
+            if p.status != "signed":
+                continue
+            su = db.query(User).filter(User.id == p.signer_user_id).first()
+            pep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == p.signer_user_id).first()
+            pname = (
+                f"{(pep.first_name or '')} {(pep.last_name or '')}".strip()
+                if pep
+                else ((su.username if su else "") or "")
+            )
+            if not pname:
+                pname = (get_user_display(db, p.signer_user_id) or "").strip() or "Signer"
+            pemail = (su.email_personal if su else None) or ""
+            sat = p.signed_at or now
+            cert_signers.append(
+                {
+                    "name": pname,
+                    "email": pemail,
+                    "role_label": _participant_role_label(p),
+                    "signed_at": sat,
+                    "ip_address": (p.ip_address or client_ip or "unknown"),
+                    "user_agent": (p.user_agent or client_ua or ""),
+                }
+            )
+
         final_pdf, _cert_hash = build_signed_pdf_with_certificate_from_merged(
             merged,
             document_name=row.display_name,
@@ -626,28 +690,38 @@ async def me_sign(
             base_doc_hash=base_hash,
             requested_by=requested_by,
             requested_at=row.created_at or now,
-            signer_name=signer_name,
-            signer_email=email or "",
-            signed_at=now,
-            ip_address=_client_ip(request),
-            user_agent=request.headers.get("user-agent") or "",
             acceptance_statement=acceptance,
+            signers=cert_signers,
         )
         fname = f"{safe_name}_signed_{now.strftime('%Y%m%d')}.pdf"
+        doc = db.query(UserDocument).filter(UserDocument.id == row.user_document_id).first()
+        roles_catalog = ensure_document_signer_roles(
+            getattr(doc, "signer_roles", None) if doc else None,
+            getattr(doc, "pages", None) if doc else None,
+        )
+        hr_owner_id = hr_documents_owner_user_id(parts, roles_catalog) or user.id
         signed_fo = save_document_signature_pdf(
             db,
             final_pdf,
             original_name=fname,
             category="document-signature-signed",
-            owner_user_id=user.id,
+            owner_user_id=hr_owner_id,
             created_by_id=user.id,
+        )
+        folder = get_or_create_hr_documents_folder(db, hr_owner_id, user.id)
+        db.add(
+            EmployeeDocument(
+                user_id=hr_owner_id,
+                doc_type=f"folder:{folder.id}",
+                title=f"{row.display_name} (signed {now.strftime('%Y-%m-%d')}).pdf",
+                file_id=signed_fo.id,
+                created_by=user.id,
+            )
         )
         row.signed_file_id = signed_fo.id
         row.current_pdf_file_id = signed_fo.id
         row.signed_at = now
         row.status = "completed"
-        part.status = "signed"
-        part.signed_at = now
         row.updated_at = now
         db.commit()
         db.refresh(row)
@@ -665,6 +739,8 @@ async def me_sign(
     )
     part.status = "signed"
     part.signed_at = now
+    part.ip_address = client_ip or None
+    part.user_agent = client_ua or None
     row.current_pdf_file_id = current_fo.id
     row.status = "in_progress"
     row.updated_at = now

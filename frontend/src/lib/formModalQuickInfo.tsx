@@ -1856,6 +1856,34 @@ export const userSalaryEntryQuickInfo = formModalQuickInfo({
   ),
 });
 
+/** Sign document — PDF field signing (onboarding + Documents to sign). */
+export const signDocumentQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Review the PDF and complete every highlighted field assigned to you — for example a signature, initials, date, or
+      checkbox — before submitting the signed document.
+    </>
+  ),
+  howToUse: (
+    <>
+      Click a highlighted area on the PDF to fill or sign it in the panel on the right. Checkboxes toggle directly on the
+      document. Required fields are marked with *. Check {uiLabel('I have read and agree to this document')} when you are
+      ready.
+    </>
+  ),
+  behavior: (
+    <>
+      Only fields assigned to your turn are editable. After you sign, the next person in the signing order (if any) is
+      notified. Your signature and agreement are stored with the completed PDF.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Sign document')} submits your fields and agreement. {uiLabel('Cancel')} closes without signing.
+    </>
+  ),
+});
+
 /** HR Onboarding — signature template editor (base document PDF). */
 export const onboardingSignatureTemplateQuickInfo = formModalQuickInfo({
   purpose: (
@@ -2188,6 +2216,35 @@ export const autoTaskRouteQuickInfo = formModalQuickInfo({
   actions: (
     <>
       {uiLabel('Save')} updates this auto task. {uiLabel('Cancel')} closes without saving.
+    </>
+  ),
+});
+
+/** Send for signature — Document Builder. */
+export const sendForSignatureQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Send this document for electronic signature. Each person on the list fills only their Signature, Initials, and
+      Date fields — for example, an employee first, then a company representative.
+    </>
+  ),
+  howToUse: (
+    <>
+      For each numbered signer, search and pick a user. Drag the handle on the left to change who signs first (1 → 2 →
+      …). The order in this list is the signing turn order.
+    </>
+  ),
+  behavior: (
+    <>
+      Signing is sequential: the next person is notified only after the previous one finishes. The PDF accumulates each
+      signature until the last person completes. If a signer is labeled {uiLabel('Employee')}, that person’s profile
+      fills Employee auto-fill tokens in the document.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Send')} saves the document if needed, creates the signature request, and notifies the first signer.{' '}
+      {uiLabel('Cancel')} closes without sending.
     </>
   ),
 });

@@ -168,7 +168,7 @@ def _resize_pil_for_document_pdf_display(
         return work
     dpi = float(settings.pdf_document_raster_dpi)
     cap = int(settings.pdf_document_raster_max_side_px)
-    oversample = 1.12
+    oversample = 1.25
     dw_pt = max(1.0, float(display_width_pt))
     dh_pt = max(1.0, float(display_height_pt))
     max_w = max(1, int(round(dw_pt * dpi * oversample / 72.0)))
@@ -227,7 +227,8 @@ def pil_image_to_raster_bytes_for_document_pdf(
         quality=quality,
         optimize=True,
         progressive=True,
-        subsampling=2,
+        # 4:2:0 (subsampling=2) softens text edges on page backgrounds; keep full chroma.
+        subsampling=0,
     )
     return output.getvalue(), False
 

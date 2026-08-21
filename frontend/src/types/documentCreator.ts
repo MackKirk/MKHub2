@@ -511,17 +511,18 @@ export function createBlockElement(): DocElement {
 /**
  * Free initials field (page footer / margin). Not drawn as ink in the PDF —
  * exported only as signature_template overlay metadata.
- * Default: bottom-right-ish on A4 portrait (~80×32 ref px ≈ 8.8% × 3.8%).
+ * Default: compact near-square on A4 portrait (~8% × 5.5% ≈ square CSS aspect).
+ * Callers should run {@link placeElementOutsideBlockedAreas} before inserting.
  */
 export function createInitialsElement(opts?: { assignee?: string }): DocElement {
   return {
     id: `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     type: 'initials',
     content: '',
-    x_pct: 78,
-    y_pct: 92,
-    width_pct: 14,
-    height_pct: 4.5,
+    x_pct: 84,
+    y_pct: 91,
+    width_pct: 8,
+    height_pct: 5.5,
     assignee: normalizeDocumentAssigneeId(opts?.assignee),
     required: true,
   };
@@ -544,4 +545,97 @@ export function createDateElement(opts?: { assignee?: string }): DocElement {
     assignee: normalizeDocumentAssigneeId(opts?.assignee),
     required: true,
   };
+}
+
+function rectsOverlapPct(
+  x1: number,
+  y1: number,
+  w1: number,
+  h1: number,
+  x2: number,
+  y2: number,
+  w2: number,
+  h2: number,
+): boolean {
+  return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
+}
+
+function contentBoundsForSize(margins: PageMargins | null | undefined, w: number, h: number) {
+  const L = margins?.left_pct ?? 0;
+  const R = margins?.right_pct ?? 0;
+  const T = margins?.top_pct ?? 0;
+  const B = margins?.bottom_pct ?? 0;
+  return {
+    minX: L,
+    maxX: Math.max(L, 100 - R - w),
+    minY: T,
+    maxY: Math.max(T, 100 - B - h),
+  };
+}
+
+function overlapsBlockedZones(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  blocks: DocElement[],
+  excludeId?: string,
+): boolean {
+  return blocks.some(
+    (b) =>
+      b.type === 'block' &&
+      b.id !== excludeId &&
+      rectsOverlapPct(x, y, w, h, b.x_pct ?? 0, b.y_pct ?? 0, b.width_pct ?? 10, b.height_pct ?? 10),
+  );
+}
+
+/**
+ * Move an element into the unlocked content area and off any block (locked) zones.
+ * Prefers the element's current preferred position when valid; otherwise searches upward
+ * then a coarse grid within the content bounds.
+ */
+export function placeElementOutsideBlockedAreas(
+  el: DocElement,
+  pageElements: DocElement[] | null | undefined,
+  margins: PageMargins | null | undefined,
+): DocElement {
+  const w = el.width_pct ?? 8;
+  const h = el.height_pct ?? 5.5;
+  const blocks = (pageElements ?? []).filter((e) => e.type === 'block' && e.id !== el.id);
+  const b = contentBoundsForSize(margins, w, h);
+
+  const clamp = (x: number, y: number) => ({
+    x_pct: Math.max(b.minX, Math.min(b.maxX, x)),
+    y_pct: Math.max(b.minY, Math.min(b.maxY, y)),
+  });
+
+  const tryPos = (x: number, y: number) => {
+    const p = clamp(x, y);
+    if (!overlapsBlockedZones(p.x_pct, p.y_pct, w, h, blocks, el.id)) return p;
+    return null;
+  };
+
+  // 1) Preferred (clamped into content / out of margin stripes)
+  const preferred = tryPos(el.x_pct ?? 78, el.y_pct ?? 92);
+  if (preferred) return { ...el, ...preferred };
+
+  // 2) Walk up from preferred X (common when default sits in bottom margin / footer block)
+  const startX = Math.max(b.minX, Math.min(b.maxX, el.x_pct ?? 78));
+  for (let y = Math.min(b.maxY, el.y_pct ?? 92); y >= b.minY; y -= 1.5) {
+    const hit = tryPos(startX, y);
+    if (hit) return { ...el, ...hit };
+  }
+
+  // 3) Coarse grid: bottom-right → top-left within content
+  const stepX = Math.max(2, w * 0.5);
+  const stepY = Math.max(2, h * 0.5);
+  for (let y = b.maxY; y >= b.minY - 0.01; y -= stepY) {
+    for (let x = b.maxX; x >= b.minX - 0.01; x -= stepX) {
+      const hit = tryPos(x, y);
+      if (hit) return { ...el, ...hit };
+    }
+  }
+
+  // 4) Last resort: top-left of content area (may still overlap if page is fully blocked)
+  return { ...el, x_pct: b.minX, y_pct: b.minY };
 }

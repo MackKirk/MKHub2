@@ -26,6 +26,7 @@ import {
   addSigner,
   nextOtherSignerLabel,
   pruneUnusedSigners,
+  placeElementOutsideBlockedAreas,
   collectPresentSignerRoleIds,
   normalizeSignerRolesList,
 } from '@/types/documentCreator';
@@ -1554,10 +1555,23 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
 
   const handleAddElement = useCallback((el: DocElement) => {
     pushHistory();
-    setCurrentPageElements((prev) => [...prev, el]);
-    setSelectedElementIds([el.id]);
+    const pageEls = stateRef.current.pages[stateRef.current.currentPageIndex]?.elements ?? [];
+    const page = stateRef.current.pages[stateRef.current.currentPageIndex];
+    const tmpl = templates.find((t) => t.id === (page?.template_id ?? ''));
+    const margins: PageMargins = {
+      left_pct: page?.margins?.left_pct ?? tmpl?.margins?.left_pct ?? 0,
+      right_pct: page?.margins?.right_pct ?? tmpl?.margins?.right_pct ?? 0,
+      top_pct: page?.margins?.top_pct ?? tmpl?.margins?.top_pct ?? 0,
+      bottom_pct: page?.margins?.bottom_pct ?? tmpl?.margins?.bottom_pct ?? 0,
+    };
+    const placed =
+      el.type === 'initials' || el.type === 'date'
+        ? placeElementOutsideBlockedAreas(el, pageEls, margins)
+        : el;
+    setCurrentPageElements((prev) => [...prev, placed]);
+    setSelectedElementIds([placed.id]);
     if (textEditingElementId) notifyBlockedByTextEdit();
-  }, [setCurrentPageElements, pushHistory, textEditingElementId, notifyBlockedByTextEdit]);
+  }, [setCurrentPageElements, pushHistory, textEditingElementId, notifyBlockedByTextEdit, templates]);
 
   const handleUpdateElement = useCallback((elementId: string, updater: (e: DocElement) => DocElement) => {
     const pageIndex = findPageIndexForElement(elementId) ?? stateRef.current.currentPageIndex;
@@ -1627,8 +1641,18 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     });
     if (kind === 'initials') {
       const el = createInitialsElement({ assignee: signer.id });
-      setCurrentPageElements((prev) => [...prev, el]);
-      setSelectedElementIds([el.id]);
+      const pageEls = stateRef.current.pages[stateRef.current.currentPageIndex]?.elements ?? [];
+      const page = stateRef.current.pages[stateRef.current.currentPageIndex];
+      const tmpl = templates.find((t) => t.id === (page?.template_id ?? ''));
+      const margins: PageMargins = {
+        left_pct: page?.margins?.left_pct ?? tmpl?.margins?.left_pct ?? 0,
+        right_pct: page?.margins?.right_pct ?? tmpl?.margins?.right_pct ?? 0,
+        top_pct: page?.margins?.top_pct ?? tmpl?.margins?.top_pct ?? 0,
+        bottom_pct: page?.margins?.bottom_pct ?? tmpl?.margins?.bottom_pct ?? 0,
+      };
+      const placed = placeElementOutsideBlockedAreas(el, pageEls, margins);
+      setCurrentPageElements((prev) => [...prev, placed]);
+      setSelectedElementIds([placed.id]);
       if (textEditingElementIdRef.current) notifyBlockedByTextEdit();
     } else if (kind === 'date' && textId) {
       insertDocumentDateAtomAtCaret(textId, { assignee: signer.id });
@@ -1645,7 +1669,14 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       return;
     }
     closeOtherSignerModal(signer.id);
-  }, [otherSignerLabel, pushHistory, setCurrentPageElements, closeOtherSignerModal, notifyBlockedByTextEdit]);
+  }, [
+    otherSignerLabel,
+    pushHistory,
+    setCurrentPageElements,
+    closeOtherSignerModal,
+    notifyBlockedByTextEdit,
+    templates,
+  ]);
 
   const handleRemoveElement = useCallback((elementId: string) => {
     pushHistory();

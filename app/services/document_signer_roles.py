@@ -263,6 +263,38 @@ def employee_token_user_from_assignments(
     return None
 
 
+def hr_documents_owner_user_id(
+    participants: List[Any],
+    roles_catalog: Optional[List[dict]] = None,
+) -> Optional[Any]:
+    """
+    User whose HR Documents folder receives the completed signed PDF.
+
+    Prefer fillsEmployeeTokens / label Employee; else lowest sort_order participant.
+    """
+    if not participants:
+        return None
+    ordered = sorted(participants, key=lambda p: int(getattr(p, "sort_order", 0) or 0))
+    fills_ids = {
+        str(r["id"])
+        for r in (roles_catalog or [])
+        if r.get("fillsEmployeeTokens") and r.get("id")
+    }
+    for p in ordered:
+        role = str(getattr(p, "role", "") or "")
+        if role in fills_ids:
+            uid = getattr(p, "signer_user_id", None)
+            if uid is not None:
+                return uid
+    for p in ordered:
+        label = (str(getattr(p, "role_label", None) or "")).strip()
+        if label.lower() == "employee":
+            uid = getattr(p, "signer_user_id", None)
+            if uid is not None:
+                return uid
+    return getattr(ordered[0], "signer_user_id", None)
+
+
 def order_role_ids_present(roles: List[dict], present_ids: set) -> List[str]:
     ordered = [r["id"] for r in sorted(roles, key=lambda x: x["sortOrder"]) if r["id"] in present_ids]
     # Any present ids not in catalog go last

@@ -1688,6 +1688,44 @@ def create_app() -> FastAPI:
                         except Exception as _e:
                             db.rollback()
                             print(f"[startup] participants.role_label (non-critical): {_e}")
+                        try:
+                            if not db.execute(
+                                text(
+                                    "SELECT 1 FROM information_schema.columns "
+                                    "WHERE table_schema = 'public' AND table_name = 'document_signature_participants' "
+                                    "AND column_name = 'ip_address' LIMIT 1"
+                                )
+                            ).fetchall():
+                                db.execute(
+                                    text(
+                                        "ALTER TABLE document_signature_participants "
+                                        "ADD COLUMN ip_address VARCHAR(100)"
+                                    )
+                                )
+                                db.commit()
+                                print("[startup] Added document_signature_participants.ip_address")
+                        except Exception as _e:
+                            db.rollback()
+                            print(f"[startup] participants.ip_address (non-critical): {_e}")
+                        try:
+                            if not db.execute(
+                                text(
+                                    "SELECT 1 FROM information_schema.columns "
+                                    "WHERE table_schema = 'public' AND table_name = 'document_signature_participants' "
+                                    "AND column_name = 'user_agent' LIMIT 1"
+                                )
+                            ).fetchall():
+                                db.execute(
+                                    text(
+                                        "ALTER TABLE document_signature_participants "
+                                        "ADD COLUMN user_agent VARCHAR(512)"
+                                    )
+                                )
+                                db.commit()
+                                print("[startup] Added document_signature_participants.user_agent")
+                        except Exception as _e:
+                            db.rollback()
+                            print(f"[startup] participants.user_agent (non-critical): {_e}")
 
                     # Onboarding (Step 2 documents, packages, signing)
                     rows = db.execute(
