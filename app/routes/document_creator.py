@@ -13,11 +13,24 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from ..db import get_db
-from ..models.models import DocumentTemplate, DocumentType, UserDocument, User, FileObject, Project, Client, ClientSite, EmployeeProfile
-from ..auth.security import get_current_user, require_permissions
+from ..models.models import DocumentTemplate, DocumentType, UserDocument, User, FileObject, Project, Client, ClientSite, EmployeeProfile, DocumentSignatureRequest
+from ..auth.security import get_current_user, require_permissions, _has_permission, _user_is_admin
 
 
 router = APIRouter(prefix="/document-creator", tags=["document-creator"])
+
+_HR_USER_DOC_READ_PERMS = (
+    "documents:read",
+    "business:projects:documents:read",
+    "hr:users:view:general",
+    "users:read",
+)
+_HR_USER_DOC_WRITE_PERMS = (
+    "documents:write",
+    "business:projects:documents:write",
+    "hr:users:edit:general",
+    "users:write",
+)
 
 
 # --- Schemas ---
@@ -46,6 +59,7 @@ class DocumentCreate(BaseModel):
     title: str
     document_type_id: Optional[str] = None
     project_id: Optional[str] = None
+    subject_user_id: Optional[str] = None  # HR user-scoped builder; mutually exclusive with project_id
     pages: Optional[List[dict]] = None  # [{ template_id, areas_content }, ...]
     signer_roles: Optional[List[dict]] = None
 
@@ -53,6 +67,7 @@ class DocumentCreate(BaseModel):
 class DocumentUpdate(BaseModel):
     title: Optional[str] = None
     project_id: Optional[str] = None  # set to "" to unlink from project
+    subject_user_id: Optional[str] = None  # set to "" to unlink from subject user
     pages: Optional[List[dict]] = None
     signer_roles: Optional[List[dict]] = None
     # ISO timestamp from last GET/PATCH; required when changing title or pages (unless doc has never been saved).
@@ -165,6 +180,27 @@ def _template_to_out(t: DocumentTemplate) -> dict:
     }
 
 
+def _can_view_subject_user_docs(user: User) -> bool:
+    if _user_is_admin(user):
+        return True
+    return any(_has_permission(user, p) for p in ("hr:users:view:general", "users:read", "documents:read"))
+
+
+def _can_edit_subject_user_docs(user: User) -> bool:
+    if _user_is_admin(user):
+        return True
+    return any(_has_permission(user, p) for p in ("hr:users:edit:general", "users:write", "documents:write"))
+
+
+def _parse_optional_uuid(value: Optional[str], *, field: str) -> Optional[uuid.UUID]:
+    if value is None or value == "":
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid {field}")
+
+
 def _doc_to_out(d: UserDocument, db: Optional[Session] = None) -> dict:
     from ..services.document_signer_roles import ensure_document_signer_roles
 
@@ -172,7 +208,13 @@ def _doc_to_out(d: UserDocument, db: Optional[Session] = None) -> dict:
     # Repair display for docs created before richLines token substitution existed:
     # content may already be filled while richLines still hold <Project Name> etc.
     if db is not None:
-        pages = _pages_with_project_tokens(pages, d.project_id, db, when=d.created_at)
+        pages = _pages_with_project_tokens(
+            pages,
+            d.project_id,
+            db,
+            when=d.created_at,
+            employee_user_id=getattr(d, "subject_user_id", None),
+        )
 
     signer_roles = ensure_document_signer_roles(getattr(d, "signer_roles", None), d.pages)
 
@@ -181,6 +223,7 @@ def _doc_to_out(d: UserDocument, db: Optional[Session] = None) -> dict:
         "title": d.title,
         "document_type_id": str(d.document_type_id) if d.document_type_id else None,
         "project_id": str(d.project_id) if d.project_id else None,
+        "subject_user_id": str(d.subject_user_id) if getattr(d, "subject_user_id", None) else None,
         "pages": pages,
         "signer_roles": signer_roles,
         "created_by": str(d.created_by) if d.created_by else None,
@@ -215,6 +258,7 @@ def _doc_to_summary(d: UserDocument) -> dict:
         "title": d.title,
         "document_type_id": str(d.document_type_id) if d.document_type_id else None,
         "project_id": str(d.project_id) if d.project_id else None,
+        "subject_user_id": str(d.subject_user_id) if getattr(d, "subject_user_id", None) else None,
         "page_count": len(pages),
         "pages": pages[:_LIST_PREVIEW_PAGE_LIMIT],
         "created_by": str(d.created_by) if d.created_by else None,
@@ -580,6 +624,8 @@ def list_document_types(
         "business:projects:documents:read",
         "settings:document_templates:read",
         "settings:document_templates:write",
+        "hr:users:view:general",
+        "users:read",
     )),
 ):
     """List document type presets (e.g. cover + back cover + content page)."""
@@ -766,13 +812,17 @@ def duplicate_document_type(
 def expand_document_type_pages(
     document_type_id: str,
     project_id: Optional[str] = Query(None, description="When set, substitute project tokens in text elements."),
+    subject_user_id: Optional[str] = Query(None, description="When set, substitute employee tokens from that user."),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions(*_HR_USER_DOC_READ_PERMS)),
 ):
     """Expand a document type into a list of pages (template_id, margins, elements) with cloned element ids.
     Use when adding pages from a template to an existing document. Uses template default_elements when entry has no elements.
-    When project_id is provided, placeholder tokens in text elements are replaced with the project's data."""
+    When project_id is provided, placeholder tokens in text elements are replaced with the project's data.
+    When subject_user_id is provided, employee tokens are filled from that user's profile."""
+    if project_id and subject_user_id:
+        raise HTTPException(status_code=400, detail="project_id and subject_user_id are mutually exclusive")
     try:
         dtid = uuid.UUID(document_type_id)
     except ValueError:
@@ -816,13 +866,11 @@ def expand_document_type_pages(
             )
         margins = entry_margins if entry_margins is not None else getattr(template, "margins", None)
         pages.append({"template_id": str(tuid), "margins": margins, "elements": elements})
-    # Auto-fill tokens (project fields + Auto Date at expand time)
+    # Auto-fill tokens (project / employee fields + Auto Date at expand time)
     now = datetime.now(timezone.utc)
-    try:
-        pid = uuid.UUID(project_id) if project_id else None
-    except ValueError:
-        pid = None
-    token_values = _project_token_values(pid, db, when=now)
+    pid = _parse_optional_uuid(project_id, field="project_id")
+    sid = _parse_optional_uuid(subject_user_id, field="subject_user_id")
+    token_values = _project_token_values(pid, db, when=now, employee_user_id=sid)
     for page in pages:
         _substitute_project_tokens(page.get("elements", []), token_values)
     return pages
@@ -831,6 +879,7 @@ def expand_document_type_pages(
 @router.get("/token-values", response_model=dict)
 def get_token_values(
     project_id: Optional[str] = Query(None),
+    subject_user_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
@@ -842,16 +891,16 @@ def get_token_values(
         "settings:document_backgrounds:write",
         "settings:document_templates:read",
         "settings:document_templates:write",
+        "hr:users:view:general",
+        "users:read",
     )),
 ):
     """Resolved auto-fill token previews for the editor picker. Empty value means insert the token."""
-    pid = None
-    if project_id:
-        try:
-            pid = uuid.UUID(project_id)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid project_id")
-    values = _project_token_values(pid, db)
+    if project_id and subject_user_id:
+        raise HTTPException(status_code=400, detail="project_id and subject_user_id are mutually exclusive")
+    pid = _parse_optional_uuid(project_id, field="project_id")
+    sid = _parse_optional_uuid(subject_user_id, field="subject_user_id")
+    values = _project_token_values(pid, db, employee_user_id=sid)
     return {
         "tokens": [
             {
@@ -878,6 +927,8 @@ def list_templates(
         "settings:document_backgrounds:write",
         "settings:document_templates:read",
         "settings:document_templates:write",
+        "hr:users:view:general",
+        "users:read",
     )),
 ):
     """List all document templates (name, id, thumbnail via background_file_id)."""
@@ -1030,13 +1081,28 @@ def delete_template(
 @router.get("/documents", response_model=List[dict])
 def list_documents(
     project_id: Optional[str] = None,
+    subject_user_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions(*_HR_USER_DOC_READ_PERMS)),
 ):
-    """List documents. With project_id, list that project's docs. Without it, list the caller's standalone (unlinked) docs."""
+    """List documents. With project_id or subject_user_id, list scoped docs. Otherwise caller's standalone docs."""
     from ..auth.security import _has_project_feature_permission
-    if project_id:
+
+    if project_id and subject_user_id:
+        raise HTTPException(status_code=400, detail="project_id and subject_user_id are mutually exclusive")
+
+    if subject_user_id:
+        if not _can_view_subject_user_docs(user):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        sid = _parse_optional_uuid(subject_user_id, field="subject_user_id")
+        if not sid:
+            raise HTTPException(status_code=400, detail="Invalid subject_user_id")
+        subject = db.get(User, sid)
+        if not subject:
+            raise HTTPException(status_code=404, detail="Subject user not found")
+        q = db.query(UserDocument).filter(UserDocument.subject_user_id == sid)
+    elif project_id:
         try:
             pid = uuid.UUID(project_id)
             proj = db.query(Project).filter(Project.id == pid).first()
@@ -1054,6 +1120,7 @@ def list_documents(
                 UserDocument.project_id.is_(None),
             )
     else:
+        # Creator's hub Document Builder: include docs later linked to a subject user on send.
         q = db.query(UserDocument).filter(
             UserDocument.created_by == user.id,
             UserDocument.project_id.is_(None),
@@ -1069,7 +1136,7 @@ def create_document(
     body: DocumentCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(*_HR_USER_DOC_WRITE_PERMS)),
 ):
     """Create a new user document. If document_type_id is set, pages are built from that preset."""
     from ..services.document_signer_roles import (
@@ -1077,6 +1144,17 @@ def create_document(
         ensure_document_signer_roles,
         normalize_signer_roles_list,
     )
+
+    if body.project_id and body.subject_user_id:
+        raise HTTPException(status_code=400, detail="project_id and subject_user_id are mutually exclusive")
+
+    pid = _parse_optional_uuid(body.project_id, field="project_id")
+    sid = _parse_optional_uuid(body.subject_user_id, field="subject_user_id")
+    if sid is not None:
+        if not _can_edit_subject_user_docs(user):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        if not db.get(User, sid):
+            raise HTTPException(status_code=404, detail="Subject user not found")
 
     pages = body.pages if body.pages is not None else []
     dtype_id = None
@@ -1115,13 +1193,9 @@ def create_document(
             entry_elements = entry.get("elements") if isinstance(entry.get("elements"), list) else []
             elements = _clone_elements_with_new_ids(entry_elements, f"p{idx}") if entry_elements else []
             pages.append({"template_id": str(tuid), "margins": entry_margins, "elements": elements})
-    # Auto-fill tokens (project fields + Auto Date at document create time)
+    # Auto-fill tokens (project / employee fields + Auto Date at document create time)
     now = datetime.now(timezone.utc)
-    try:
-        pid = uuid.UUID(body.project_id) if body.project_id else None
-    except ValueError:
-        pid = None
-    token_values = _project_token_values(pid, db, when=now)
+    token_values = _project_token_values(pid, db, when=now, employee_user_id=sid)
     for page in pages:
         _substitute_project_tokens(page.get("elements", []), token_values)
     if body.signer_roles is not None:
@@ -1133,7 +1207,8 @@ def create_document(
     doc = UserDocument(
         title=body.title or "Sem título",
         document_type_id=dtype_id,
-        project_id=uuid.UUID(body.project_id) if body.project_id else None,
+        project_id=pid,
+        subject_user_id=sid,
         pages=pages,
         signer_roles=signer_roles,
         created_by=user.id,
@@ -1151,12 +1226,15 @@ def _can_access_document(
     require_write: bool = False,
 ) -> bool:
     """True if user can access (read or write) this document."""
-    from ..auth.security import _has_project_feature_permission, _user_is_admin
+    from ..auth.security import _has_project_feature_permission
 
     if _user_is_admin(user):
         return True
     if doc.created_by == user.id:
         return True
+    subject_id = getattr(doc, "subject_user_id", None)
+    if subject_id:
+        return _can_edit_subject_user_docs(user) if require_write else _can_view_subject_user_docs(user)
     if not doc.project_id:
         return False
     proj = db.query(Project).filter(Project.id == doc.project_id).first()
@@ -1172,7 +1250,7 @@ def get_document(
     document_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions(*_HR_USER_DOC_READ_PERMS)),
 ):
     """Get document by id. Owner or user with project documents permission can access."""
     try:
@@ -1193,7 +1271,7 @@ def acquire_document_edit_lock(
     body: DocumentEditLockBody,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(*_HR_USER_DOC_WRITE_PERMS)),
 ):
     """Acquire or renew an exclusive edit lock for this session."""
     session_id = (body.session_id or "").strip()
@@ -1237,7 +1315,7 @@ def heartbeat_document_edit_lock(
     body: DocumentEditLockBody,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(*_HR_USER_DOC_WRITE_PERMS)),
 ):
     """Renew edit lock lease for the holding session."""
     session_id = (body.session_id or "").strip()
@@ -1276,7 +1354,7 @@ def release_document_edit_lock(
     session_id: str = Query(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(*_HR_USER_DOC_WRITE_PERMS)),
 ):
     """Release edit lock if held by this session."""
     session_id = (session_id or "").strip()
@@ -1304,7 +1382,7 @@ def update_document(
     body: DocumentUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(*_HR_USER_DOC_WRITE_PERMS)),
 ):
     """Update document. Owner or user with project documents write permission can update."""
     try:
@@ -1360,6 +1438,14 @@ def update_document(
         doc.title = body.title
     if body.project_id is not None:
         doc.project_id = uuid.UUID(body.project_id) if body.project_id else None
+    if body.subject_user_id is not None:
+        if body.subject_user_id == "":
+            doc.subject_user_id = None
+        else:
+            sid = _parse_optional_uuid(body.subject_user_id, field="subject_user_id")
+            doc.subject_user_id = sid
+    if getattr(doc, "project_id", None) and getattr(doc, "subject_user_id", None):
+        raise HTTPException(status_code=400, detail="project_id and subject_user_id are mutually exclusive")
     if body.pages is not None:
         doc.pages = body.pages
     if body.signer_roles is not None:
@@ -1367,7 +1453,7 @@ def update_document(
 
         roles = normalize_signer_roles_list(body.signer_roles)
         doc.signer_roles = ensure_document_signer_roles(roles, body.pages if body.pages is not None else doc.pages)
-    if content_changing or body.project_id is not None:
+    if content_changing or body.project_id is not None or body.subject_user_id is not None:
         doc.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(doc)
@@ -1379,7 +1465,7 @@ def delete_document(
     document_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
+    _=Depends(require_permissions(*_HR_USER_DOC_WRITE_PERMS)),
 ):
     """Delete a document. Owner or user with project documents write permission can delete."""
     try:
@@ -1391,6 +1477,18 @@ def delete_document(
         raise HTTPException(status_code=404, detail="Document not found")
     if not _can_access_document(user, doc, db, require_write=True):
         raise HTTPException(status_code=403, detail="Forbidden")
+    existing = (
+        db.query(DocumentSignatureRequest)
+        .filter(DocumentSignatureRequest.user_document_id == did)
+        .limit(1)
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete this document because it has signature request history. "
+            "Signature records must be preserved.",
+        )
     db.delete(doc)
     db.commit()
     return {"ok": True}
@@ -1402,7 +1500,7 @@ def export_document_pdf(
     body: Optional[ExportPdfOptions] = Body(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions(*_HR_USER_DOC_READ_PERMS)),
 ):
     """Generate PDF for the document and return file."""
     try:
@@ -1418,7 +1516,13 @@ def export_document_pdf(
     try:
         from ..document_creator.pdf_builder import build_pdf_bytes
         original_pages = doc.pages
-        doc.pages = _pages_with_project_tokens(original_pages, doc.project_id, db, when=doc.created_at)
+        doc.pages = _pages_with_project_tokens(
+            original_pages,
+            doc.project_id,
+            db,
+            when=doc.created_at,
+            employee_user_id=getattr(doc, "subject_user_id", None),
+        )
         try:
             pdf_bytes = build_pdf_bytes(db, doc, canvas_width_px=(body.canvas_width_px if body else None))
         finally:
@@ -1441,7 +1545,7 @@ def document_signature_template(
     body: Optional[ExportPdfOptions] = Body(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
+    _=Depends(require_permissions(*_HR_USER_DOC_READ_PERMS)),
 ):
     """
     Build the filled PDF (same as export-pdf) and return validated signature_template
@@ -1463,7 +1567,13 @@ def document_signature_template(
     from ..services.onboarding_signature_template import validate_and_normalize_template
 
     original_pages = doc.pages
-    tokenized = _pages_with_project_tokens(original_pages, doc.project_id, db, when=doc.created_at)
+    tokenized = _pages_with_project_tokens(
+        original_pages,
+        doc.project_id,
+        db,
+        when=doc.created_at,
+        employee_user_id=getattr(doc, "subject_user_id", None),
+    )
     doc.pages = tokenized
     try:
         try:

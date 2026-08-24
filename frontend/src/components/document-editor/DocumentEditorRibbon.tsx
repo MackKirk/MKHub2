@@ -86,6 +86,7 @@ export type DocumentEditorRibbonProps = {
   /** When a text box is being edited, Auto-fill inserts at the caret. */
   textEditingElementId?: string | null;
   projectId?: string | null;
+  subjectUserId?: string | null;
 };
 
 const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
@@ -181,6 +182,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     closeSlotBelow,
     textEditingElementId = null,
     projectId = null,
+    subjectUserId = null,
   } = props;
 
   const [editingTitle, setEditingTitle] = useState(false);
@@ -197,7 +199,7 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
   const [tokensMenuPos, setTokensMenuPos] = useState({ top: 0, left: 0 });
   const tokensTriggerRef = useRef<HTMLButtonElement>(null);
   const tokensDropdownRef = useRef<HTMLDivElement>(null);
-  const { data: tokenValues } = useDocumentAutoFillTokens(projectId, !readOnly);
+  const { data: tokenValues } = useDocumentAutoFillTokens(projectId, !readOnly, subjectUserId);
 
   type RoleInsertKind = 'signature' | 'date' | 'initials';
   const [roleMenu, setRoleMenu] = useState<{

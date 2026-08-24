@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import {
   computeIsProfileComplete,
   isExemptFromProfileWizardRedirect,
-  matchesOnboardingDocumentsRedirectExempt,
+  matchesSignatureRestrictedExempt,
 } from '@/lib/profileCompleteness';
 import ChangelogNewsPanel from '@/components/ChangelogNewsPanel';
 import NotificationBell from '@/components/NotificationBell';
@@ -29,7 +29,17 @@ type MenuItem = {
   category?: string;
   requiredPermission?: string;  // Permission required to see this item
   children?: MenuItem[];
+  badgeCount?: number;
 };
+
+function NavBadge({ count }: { count?: number }) {
+  if (!count || count <= 0) return null;
+  return (
+    <span className="ml-auto inline-flex min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
 
 type MenuCategory = {
   id: string;
@@ -350,18 +360,57 @@ export default function AppShell({ children }: PropsWithChildren){
     retry: false,
   });
 
+  const { data: signatureStatus, isLoading: signatureStatusLoading } = useQuery({
+    queryKey: ['me-signature-status'],
+    queryFn: async () => {
+      try {
+        return await api<{
+          has_pending: boolean;
+          pending_count: number;
+          action_required_count?: number;
+          overdue_count: number;
+          blocked: boolean;
+          status_available: boolean;
+          earliest_deadline: string | null;
+        }>('GET', '/auth/me/signature-status');
+      } catch {
+        return {
+          has_pending: false,
+          pending_count: 0,
+          action_required_count: 0,
+          overdue_count: 0,
+          blocked: false,
+          status_available: false,
+          earliest_deadline: null,
+        };
+      }
+    },
+    enabled: !!userId && isProfileComplete,
+    retry: false,
+  });
+
+  const signatureBadgeCount =
+    signatureStatus?.action_required_count ?? signatureStatus?.pending_count ?? 0;
+
   const onboardingBlocked =
     isProfileComplete &&
     onboardingStatus?.past_deadline &&
     onboardingStatus?.has_pending;
 
-  // Redirect when onboarding documents overdue
+  const signatureBlocked =
+    isProfileComplete &&
+    signatureStatus?.status_available !== false &&
+    !!signatureStatus?.blocked;
+
+  const hubAccessBlocked = signatureBlocked || onboardingBlocked;
+
+  // Redirect when signatures overdue / Hub access restricted (Phase 4A)
   useEffect(() => {
-    if (!isProfileComplete || !onboardingBlocked) return;
+    if (!isProfileComplete || !hubAccessBlocked) return;
     const path = location.pathname;
-    if (matchesOnboardingDocumentsRedirectExempt(path)) return;
-    navigate('/onboarding/documents', { replace: true });
-  }, [isProfileComplete, onboardingBlocked, location.pathname, navigate]);
+    if (matchesSignatureRestrictedExempt(path)) return;
+    navigate('/personal/signatures', { replace: true });
+  }, [isProfileComplete, hubAccessBlocked, location.pathname, navigate]);
   
   // Redirect to onboarding wizard if profile incomplete (same exempt paths as before)
   useEffect(() => {
@@ -566,6 +615,13 @@ export default function AppShell({ children }: PropsWithChildren){
     if (item.id === 'system-settings') {
       return canAccessSettingsMenu;
     }
+    if (item.id === 'document-hub-signature-requests') {
+      return (
+        hasPermission('documents:signatures:manage') ||
+        hasPermission('hr:onboarding:read') ||
+        hasPermission('hr:onboarding:write')
+      );
+    }
     if (hasPermission(item.requiredPermission)) return true;
     return Array.isArray(item.children) && item.children.some(canSeeMenuItem);
   };
@@ -621,6 +677,13 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
         { id: 'my-reviews', label: 'My Reviews', path: '/reviews/my', icon: <IconStar /> },
         { id: 'my-training', label: 'My Training', path: '/training', icon: <IconAcademic /> },
+        {
+          id: 'signatures',
+          label: 'Signatures',
+          path: '/personal/signatures',
+          icon: <IconPen />,
+          badgeCount: signatureBadgeCount,
+        },
       ]
     },
     {
@@ -721,7 +784,12 @@ export default function AppShell({ children }: PropsWithChildren){
           { id: 'document-hub-templates', label: 'Document Templates', path: '/documents/templates', icon: <IconDocument /> },
         ] : []),
         { id: 'document-hub-builder', label: 'Document Builder', path: '/documents/create', icon: <IconDocument />, requiredPermission: 'documents:read' },
-        { id: 'document-hub-to-sign', label: 'To sign', path: '/documents/to-sign', icon: <IconPen /> },
+        {
+          id: 'document-hub-signature-requests',
+          label: 'Signature Requests',
+          path: '/documents/signature-requests',
+          icon: <IconClipboard />,
+        },
         { id: 'document-hub-signature-editor', label: 'Signature Editor', path: '/documents/signature-editor', icon: <IconPen />, requiredPermission: 'documents:read' },
       ]
     },
@@ -800,12 +868,33 @@ export default function AppShell({ children }: PropsWithChildren){
       ]
     },
   ];
-  }, [me, isProfileComplete]);
+  }, [me, isProfileComplete, signatureBadgeCount]);
+
+  const effectiveMenuCategories: MenuCategory[] = useMemo(() => {
+    if (!signatureBlocked) return menuCategories;
+    return [
+      {
+        id: 'personal',
+        label: 'Personal',
+        icon: <IconUser />,
+        items: [
+          {
+            id: 'signatures',
+            label: 'Signatures',
+            path: '/personal/signatures',
+            icon: <IconPen />,
+            badgeCount: signatureBadgeCount,
+          },
+          { id: 'profile', label: 'Profile', path: '/profile', icon: <IconUser /> },
+        ],
+      },
+    ];
+  }, [signatureBlocked, menuCategories, signatureBadgeCount]);
 
   const globalSearchLocalSections: GlobalSearchSection[] = useMemo(() => {
     // Pages built from the same menu config (respecting permissions).
     const items: GlobalSearchItem[] = [];
-    for (const cat of menuCategories) {
+    for (const cat of effectiveMenuCategories) {
       for (const it of cat.items || []) {
         if (hasPermission(it.requiredPermission)) {
           items.push({
@@ -845,7 +934,7 @@ export default function AppShell({ children }: PropsWithChildren){
       return true;
     });
     return unique.length ? [{ id: 'pages', label: 'Pages', items: unique }] : [];
-  }, [menuCategories, permissionsSet, isAdmin, canAccessSettingsMenu]);
+  }, [effectiveMenuCategories, permissionsSet, isAdmin, canAccessSettingsMenu]);
 
   const canSeeGlobalSearchItem = useMemo(() => {
     return (item: GlobalSearchItem) => {
@@ -997,8 +1086,8 @@ export default function AppShell({ children }: PropsWithChildren){
   };
 
   const activeCategory = useMemo(() => {
-    return menuCategories.find(cat => isCategoryActive(cat));
-  }, [location.pathname, location.search, menuCategories, currentProject, isViewingOpportunity, onConstructionOpp, onRmOpp]);
+    return effectiveMenuCategories.find(cat => isCategoryActive(cat));
+  }, [location.pathname, location.search, effectiveMenuCategories, currentProject, isViewingOpportunity, onConstructionOpp, onRmOpp]);
 
   // When opening the menu, select the category for the current route (if it has a sub-panel)
   useEffect(() => {
@@ -1022,7 +1111,7 @@ export default function AppShell({ children }: PropsWithChildren){
   };
 
   const visibleMenuCategories = useMemo(() => {
-    return menuCategories.filter((category) => {
+    return effectiveMenuCategories.filter((category) => {
       if (category.id === 'services') {
         if (!canAccessProjectLineMenu(permissionsSet, 'construction', isAdmin)) return false;
       }
@@ -1049,7 +1138,7 @@ export default function AppShell({ children }: PropsWithChildren){
       return visibleItems.length > 0;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [menuCategories, permissionsSet, isAdmin, canAccessSettingsMenu]);
+  }, [effectiveMenuCategories, permissionsSet, isAdmin, canAccessSettingsMenu]);
 
   const selectedNavCategory = useMemo(
     () => visibleMenuCategories.find((c) => c.id === activeNavCategoryId) ?? null,
@@ -1135,7 +1224,7 @@ export default function AppShell({ children }: PropsWithChildren){
     meLoading ||
     meProfileLoading ||
     (userId && emergencyContactsLoading) ||
-    (!!userId && isProfileComplete && onboardingStatusLoading);
+    (!!userId && isProfileComplete && (onboardingStatusLoading || signatureStatusLoading));
 
   const needsWizardRedirectWhileInShell =
     !!meProfile &&
@@ -1144,8 +1233,8 @@ export default function AppShell({ children }: PropsWithChildren){
 
   const needsDocumentsRedirectWhileInShell =
     isProfileComplete &&
-    onboardingBlocked &&
-    !matchesOnboardingDocumentsRedirectExempt(location.pathname);
+    hubAccessBlocked &&
+    !matchesSignatureRestrictedExempt(location.pathname);
 
   useEffect(() => {
     const { body, documentElement } = document;
@@ -1424,7 +1513,8 @@ export default function AppShell({ children }: PropsWithChildren){
                                   }
                                 >
                                   <span className="flex-shrink-0 opacity-80">{item.icon}</span>
-                                  <span className="text-sm font-medium">{item.label}</span>
+                                  <span className="text-sm font-medium flex-1">{item.label}</span>
+                                  <NavBadge count={item.badgeCount} />
                                 </NavLink>
                               ) : (
                                 <div
@@ -1434,7 +1524,8 @@ export default function AppShell({ children }: PropsWithChildren){
                                   )}
                                 >
                                   <span className="flex-shrink-0 opacity-80">{item.icon}</span>
-                                  <span className="text-sm font-medium">{item.label}</span>
+                                  <span className="text-sm font-medium flex-1">{item.label}</span>
+                                  <NavBadge count={item.badgeCount} />
                                 </div>
                               )}
                               {visibleChildren.map((child) => {
@@ -1488,7 +1579,8 @@ export default function AppShell({ children }: PropsWithChildren){
                               return (
                                 <>
                                   <span className={uiCx('flex-shrink-0', on ? 'opacity-100' : 'opacity-70')}>{item.icon}</span>
-                                  <span className="text-sm font-medium">{item.label}</span>
+                                  <span className="text-sm font-medium flex-1">{item.label}</span>
+                                  <NavBadge count={item.badgeCount} />
                                 </>
                               );
                             }}
@@ -1590,27 +1682,32 @@ export default function AppShell({ children }: PropsWithChildren){
         ) : (
           <div className="flex-1 min-h-0 overflow-auto">
             <div className="p-5 min-h-full min-w-0">
-              {onboardingStatus?.has_pending &&
-                !onboardingStatus?.past_deadline &&
-                location.pathname !== '/onboarding/documents' && (
+              {signatureStatus?.has_pending &&
+                !signatureStatus?.blocked &&
+                location.pathname !== '/personal/signatures' && (
                   <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">
                     <span>
-                      You have {onboardingStatus.pending_count} required onboarding document
-                      {onboardingStatus.pending_count !== 1 ? 's' : ''} to sign
-                      {onboardingStatus.earliest_deadline
-                        ? ` (deadline ${new Date(onboardingStatus.earliest_deadline).toLocaleDateString()})`
+                      You have {signatureStatus.pending_count} document
+                      {signatureStatus.pending_count !== 1 ? 's' : ''} to sign
+                      {signatureStatus.earliest_deadline
+                        ? ` (deadline ${new Date(signatureStatus.earliest_deadline).toLocaleDateString()})`
                         : ''}
                       .
                     </span>
                     <button
                       type="button"
-                      onClick={() => navigate('/onboarding/documents')}
+                      onClick={() => navigate('/personal/signatures')}
                       className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-700 text-white text-sm font-medium hover:bg-amber-800"
                     >
-                      Complete Documents
+                      View Signatures
                     </button>
                   </div>
                 )}
+              {signatureBlocked && location.pathname === '/personal/signatures' && (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+                  Your Hub access is restricted until overdue signatures are completed.
+                </div>
+              )}
               {children}
             </div>
           </div>

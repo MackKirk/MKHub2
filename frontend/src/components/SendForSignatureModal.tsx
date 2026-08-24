@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { GripVertical } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import {
   DndContext,
   KeyboardSensor,
@@ -21,6 +22,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
 import {
   AppButton,
+  AppCheckbox,
   AppFormModal,
   AppUserSelect,
   uiSpacing,
@@ -42,7 +44,13 @@ type Props = {
   onClose: () => void;
   onSent: () => void;
   flushSave: () => Promise<boolean>;
+  /** When set (user Document Builder), Employee signer is fixed to this user. */
+  lockedSubjectUserId?: string | null;
 };
+
+function isEmployeeSigner(signer: DocumentSignerRoleDef): boolean {
+  return Boolean(signer.fillsEmployeeTokens) || /^employee$/i.test(signer.label);
+}
 
 function SortableSignerRow({
   signer,
@@ -50,15 +58,18 @@ function SortableSignerRow({
   value,
   onChange,
   disabled,
+  locked,
 }: {
   signer: DocumentSignerRoleDef;
   index: number;
   value: string;
   onChange: (userId: string) => void;
   disabled?: boolean;
+  locked?: boolean;
 }) {
+  const rowDisabled = Boolean(disabled || locked);
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
-    useSortable({ id: signer.id, disabled });
+    useSortable({ id: signer.id, disabled: rowDisabled });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -77,7 +88,7 @@ function SortableSignerRow({
         ref={setActivatorNodeRef}
         className="shrink-0 cursor-grab touch-none rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
         aria-label={`Drag to reorder ${signer.label}`}
-        disabled={disabled}
+        disabled={rowDisabled}
         {...listeners}
         {...attributes}
       >
@@ -90,8 +101,13 @@ function SortableSignerRow({
           value={value}
           onChange={onChange}
           placeholder="Search users…"
+          disabled={rowDisabled}
           fieldHint={
-            /^employee$/i.test(signer.label) ? 'Employee auto-fill tokens use this user.' : undefined
+            locked
+              ? 'Fixed to this employee — cannot be changed for user-scoped documents.'
+              : isEmployeeSigner(signer)
+                ? 'Employee auto-fill tokens use this user.'
+                : undefined
           }
         />
       </div>
@@ -108,6 +124,7 @@ export default function SendForSignatureModal({
   onClose,
   onSent,
   flushSave,
+  lockedSubjectUserId = null,
 }: Props) {
   const roleIds = useMemo(
     () => collectPresentSignerRoleIds(pages, signerRoles),
@@ -128,16 +145,39 @@ export default function SendForSignatureModal({
         .sort((a, b) => a.sortOrder - b.sortOrder),
     [roleIds, signerRoles],
   );
-  const hasEmployeeLabeled = signersNeeded.some((r) => /^employee$/i.test(r.label));
+  const hasEmployeeLabeled = signersNeeded.some((r) => isEmployeeSigner(r));
   const [orderedSigners, setOrderedSigners] = useState<DocumentSignerRoleDef[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
+  const [signingDeadlineDays, setSigningDeadlineDays] = useState<string>('7');
+  const [blockHubAccess, setBlockHubAccess] = useState(false);
+  const [messageToSigners, setMessageToSigners] = useState('');
   const [sending, setSending] = useState(false);
+
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<{ permissions?: string[]; roles?: string[] }>('GET', '/auth/me'),
+    enabled: open,
+  });
+  const canBlockAccess =
+    (me?.roles || []).includes('admin') ||
+    (me?.permissions || []).includes('documents:signatures:block_access');
 
   useEffect(() => {
     if (!open) return;
-    setAssignments({});
+    const initial: Record<string, string> = {};
+    if (lockedSubjectUserId) {
+      for (const signer of signersNeeded) {
+        if (isEmployeeSigner(signer)) {
+          initial[signer.id] = lockedSubjectUserId;
+        }
+      }
+    }
+    setAssignments(initial);
     setOrderedSigners(signersNeeded.map((s) => ({ ...s })));
-  }, [open, documentId, signersNeeded]);
+    setSigningDeadlineDays('7');
+    setBlockHubAccess(false);
+    setMessageToSigners('');
+  }, [open, documentId, signersNeeded, lockedSubjectUserId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -181,14 +221,26 @@ export default function SendForSignatureModal({
         toast.error('Could not save the document before sending.');
         return;
       }
-      const body: Record<string, string> = {};
-      for (const r of orderedSigners) {
-        body[r.id] = assignments[r.id]!;
-      }
-      await api('POST', `/document-creator/documents/${documentId}/send-for-signature`, {
-        assignments: body,
+      const body: Record<string, unknown> = {
+        assignments: {},
         signing_order: orderedSigners.map((s) => s.id),
-      });
+      };
+      for (const r of orderedSigners) {
+        const locked = Boolean(lockedSubjectUserId) && isEmployeeSigner(r);
+        (body.assignments as Record<string, string>)[r.id] = locked
+          ? lockedSubjectUserId!
+          : assignments[r.id]!;
+      }
+      const days = parseInt(signingDeadlineDays, 10);
+      if (!Number.isNaN(days) && days >= 1) {
+        body.signing_deadline_days = days;
+      }
+      if (blockHubAccess && canBlockAccess) {
+        body.block_hub_access = true;
+      }
+      const msg = messageToSigners.trim();
+      if (msg) body.message_to_signers = msg;
+      await api('POST', `/document-creator/documents/${documentId}/send-for-signature`, body);
       toast.success('Sent for signature.');
       setAssignments({});
       onSent();
@@ -232,24 +284,65 @@ export default function SendForSignatureModal({
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={orderedSigners.map((s) => s.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-2.5">
-                {orderedSigners.map((signer, idx) => (
-                  <SortableSignerRow
-                    key={signer.id}
-                    signer={signer}
-                    index={idx}
-                    value={assignments[signer.id] || ''}
-                    onChange={(v) => setAssignments((prev) => ({ ...prev, [signer.id]: v }))}
-                    disabled={sending}
-                  />
-                ))}
+                {orderedSigners.map((signer, idx) => {
+                  const locked =
+                    Boolean(lockedSubjectUserId) && isEmployeeSigner(signer);
+                  return (
+                    <SortableSignerRow
+                      key={signer.id}
+                      signer={signer}
+                      index={idx}
+                      value={assignments[signer.id] || ''}
+                      onChange={(v) => {
+                        if (locked) return;
+                        setAssignments((prev) => ({ ...prev, [signer.id]: v }));
+                      }}
+                      disabled={sending}
+                      locked={locked}
+                    />
+                  );
+                })}
               </div>
             </SortableContext>
           </DndContext>
         )}
+        <div className="flex items-center gap-3 text-sm">
+          <span className="font-medium text-gray-700">Signing deadline (days per turn)</span>
+          <input
+            type="number"
+            min={1}
+            className="w-20 shrink-0 rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            value={signingDeadlineDays}
+            onChange={(e) => setSigningDeadlineDays(e.target.value)}
+            disabled={sending}
+            aria-label="Signing deadline in days per turn"
+          />
+        </div>
+        {canBlockAccess ? (
+          <AppCheckbox
+            label="Block Hub access if overdue"
+            fieldHint="Requires a signing deadline."
+            checked={blockHubAccess}
+            onChange={setBlockHubAccess}
+            disabled={sending}
+          />
+        ) : null}
+        <label className="block text-sm">
+          <span className="font-medium text-gray-700">Message to signers (optional)</span>
+          <textarea
+            className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-[72px]"
+            value={messageToSigners}
+            onChange={(e) => setMessageToSigners(e.target.value)}
+            disabled={sending}
+            maxLength={4000}
+          />
+        </label>
         <p className={uiTypography.helper}>
           Each person only fills their fields. The PDF accumulates signatures until the last signer finishes.
           {hasEmployeeLabeled
-            ? ' A signer labeled “Employee” fills Employee auto-fill tokens.'
+            ? lockedSubjectUserId
+              ? ' The Employee signer is fixed to this user and cannot be changed.'
+              : ' A signer labeled “Employee” fills Employee auto-fill tokens.'
             : ''}
         </p>
       </div>

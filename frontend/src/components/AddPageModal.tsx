@@ -30,6 +30,8 @@ type AddPageModalProps = {
   onAddPages: (pages: DocumentPage[]) => void;
   /** When set, placeholder tokens in template elements are replaced with this project's data */
   projectId?: string | null;
+  /** When set, employee tokens are filled from this user's profile */
+  subjectUserId?: string | null;
 };
 
 function TemplateIcon({ className }: { className?: string }) {
@@ -57,6 +59,7 @@ export function AddPageModal({
   onAddPage,
   onAddPages,
   projectId,
+  subjectUserId,
 }: AddPageModalProps) {
   const [tab, setTab] = useState<'template' | 'background'>('template');
 
@@ -79,7 +82,10 @@ export function AddPageModal({
       return;
     }
     try {
-      const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+      const params = new URLSearchParams();
+      if (projectId) params.set('project_id', projectId);
+      if (subjectUserId) params.set('subject_user_id', subjectUserId);
+      const qs = params.toString() ? `?${params.toString()}` : '';
       const pages = await api<DocumentPage[]>(
         'GET',
         `/document-creator/document-types/${docTypeId}/expand-pages${qs}`,

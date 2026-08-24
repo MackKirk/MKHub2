@@ -78,6 +78,10 @@ class Settings(BaseSettings):
 
     # Feature flags
     feature_flags_json: str = Field(default="{}", alias="FEATURE_FLAGS")
+    signature_restricted_mode: bool = Field(default=False, alias="SIGNATURE_RESTRICTED_MODE")
+    signature_builder_blocking_enabled: bool = Field(
+        default=False, alias="SIGNATURE_BUILDER_BLOCKING_ENABLED"
+    )
 
     # Rate limit
     rate_limit: str = Field(default="100/minute")
