@@ -334,6 +334,77 @@ export const postDirectAttendance = async (
   return response.data ?? {};
 };
 
+export interface UpdateAttendancePayload {
+  clock_in_time?: string;
+  clock_out_time?: string;
+  manual_break_minutes?: number;
+  reason_text?: string;
+}
+
+export const updateAttendance = async (
+  attendanceId: string,
+  payload: UpdateAttendancePayload
+): Promise<{ status?: string }> => {
+  const response = await api.put<{ status?: string }>(
+    `/settings/attendance/${attendanceId}`,
+    payload
+  );
+  return response.data ?? {};
+};
+
+export const deleteAttendance = async (
+  attendanceId: string
+): Promise<{ status?: string }> => {
+  const response = await api.delete<{ status?: string }>(
+    `/settings/attendance/${attendanceId}`
+  );
+  return response.data ?? {};
+};
+
+export function isAttendanceHrLocked(
+  attendance: { status?: string | null; approved_by?: string | null; can_edit?: boolean },
+  userId?: string | null
+): boolean {
+  if (typeof attendance.can_edit === "boolean") return !attendance.can_edit;
+  const status = (attendance.status || "").toLowerCase();
+  if (status !== "approved" || !attendance.approved_by || !userId) return false;
+  return String(attendance.approved_by) !== String(userId);
+}
+
+export function getNotesFromAttendance(reasonText?: string | null): string {
+  if (!reasonText) return "";
+  return reasonText
+    .split("|")
+    .filter(
+      (part) =>
+        !part.startsWith("JOB_TYPE:") &&
+        !part.startsWith("SERVICE_ITEM:") &&
+        !part.startsWith("HOURS_WORKED:")
+    )
+    .join("|")
+    .trim();
+}
+
+export function composeAttendanceReasonText(opts: {
+  jobType?: string | null;
+  serviceItem?: string | null;
+  notes?: string | null;
+}): string | undefined {
+  const parts: string[] = [];
+  if (opts.jobType) parts.push(`JOB_TYPE:${opts.jobType}`);
+  if (opts.serviceItem) parts.push(`SERVICE_ITEM:${opts.serviceItem}`);
+  const notes = (opts.notes || "").trim();
+  if (notes) parts.push(notes);
+  return parts.length ? parts.join("|") : undefined;
+}
+
+export function isoToLocalHHMM(iso: string): string {
+  const d = new Date(iso);
+  const hours = d.getHours();
+  const minutes = String(Math.floor(d.getMinutes() / 15) * 15).padStart(2, "0");
+  return `${String(hours).padStart(2, "0")}:${minutes}`;
+}
+
 export function resolveAttendanceJobLabel(
   attendance: ShiftAttendanceResponse,
   shifts: ShiftSummary[],

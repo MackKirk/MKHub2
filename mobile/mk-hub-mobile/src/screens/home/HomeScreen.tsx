@@ -17,6 +17,7 @@ import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../../hooks/useAuth";
 import { useCommunityBadge } from "../../hooks/useCommunityBadge";
+import { useStartupAlerts } from "../../hooks/useStartupAlerts";
 import { useTasksBadge } from "../../hooks/useTasksBadge";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { getCommunityPosts } from "../../services/community";
@@ -110,6 +111,7 @@ export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<HomeNav>();
   const { openMenu } = useHubMenu();
   const { unreadCount, setUnreadCount } = useCommunityBadge();
+  const { openNotifications, notificationUnread } = useStartupAlerts();
   const { acceptedCount, inProgressCount, refreshTasks } = useTasksBadge();
 
   const [novidades, setNovidades] = useState<CommunityPost[]>([]);
@@ -248,7 +250,7 @@ export const HomeScreen: React.FC = () => {
           </Text>
           <TouchableOpacity
             style={styles.headerIconBtn}
-            onPress={() => navigation.navigate("Community")}
+            onPress={openNotifications}
             activeOpacity={0.75}
             hitSlop={8}
           >
@@ -257,7 +259,13 @@ export const HomeScreen: React.FC = () => {
               size={20}
               color={colors.textPrimary}
             />
-            {unreadCount > 0 ? <View style={styles.headerDot} /> : null}
+            {notificationUnread > 0 ? (
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>
+                  {notificationUnread > 99 ? "99+" : notificationUnread}
+                </Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         </View>
 
@@ -439,6 +447,24 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.primary
+  },
+  headerBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  headerBadgeText: {
+    fontFamily: typography.buttonSmall.fontFamily,
+    fontSize: 9,
+    lineHeight: 11,
+    color: "#fff"
   },
   section: {
     marginBottom: 22

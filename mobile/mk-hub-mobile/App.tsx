@@ -11,6 +11,7 @@ import {
 import { AuthProvider } from "./src/hooks/useAuth";
 import { TasksProvider } from "./src/hooks/useTasksBadge";
 import { CommunityBadgeProvider } from "./src/hooks/useCommunityBadge";
+import { StartupAlertsProvider } from "./src/hooks/useStartupAlerts";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import {
   HubMenuProvider,
@@ -39,8 +40,10 @@ export default function App() {
           <CommunityBadgeProvider>
             <NavigationContainer ref={navigationRef}>
               <HubMenuProvider>
-                <StatusBar barStyle="dark-content" />
-                <RootNavigator />
+                <StartupAlertsProvider>
+                  <StatusBar barStyle="dark-content" />
+                  <RootNavigator />
+                </StartupAlertsProvider>
               </HubMenuProvider>
             </NavigationContainer>
           </CommunityBadgeProvider>

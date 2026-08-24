@@ -2697,6 +2697,33 @@ class UserNotificationPreference(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
+class DevicePushToken(Base):
+    """Expo push tokens registered by the mobile app."""
+    __tablename__ = "device_push_tokens"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    platform: Mapped[Optional[str]] = mapped_column(String(20))  # ios|android
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class HoursReminderEvent(Base):
+    """Idempotency for 6 PM hours-reminder pushes (one per user per local date)."""
+    __tablename__ = "hours_reminder_events"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    reminder_date: Mapped[date] = mapped_column(Date, nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "reminder_date", name="uq_hours_reminder_user_date"),
+        Index("ix_hours_reminder_events_date", "reminder_date"),
+    )
+
+
 class ConsentLog(Base):
     """Consent tracking for policies"""
     __tablename__ = "consent_logs"

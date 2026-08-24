@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useFocusEffect } from "@react-navigation/native";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { radius, shadows } from "../../theme/radius";
@@ -29,13 +30,17 @@ import {
   formatTime12h,
   getClockStateForDate,
   getWeekStartSunday,
-  getWeeklyAttendanceSummary
+  getWeeklyAttendanceSummary,
+  isAttendanceHrLocked
 } from "../../services/shifts";
 import { toApiError } from "../../services/api";
+import { consumeClockLogRequest } from "../../lib/clockNavigation";
+import { syncHoursReminder } from "../../lib/hoursReminderNotifications";
 import type {
   ClockDayState,
   ShiftAttendanceResponse,
-  WeeklySummary
+  WeeklySummary,
+  WeeklySummaryDay
 } from "../../types/shifts";
 
 const ACCENT = colors.homeAccent;
@@ -59,6 +64,12 @@ function formatHoursMinutes(totalMinutes: number): string {
   return `${h}h ${String(m).padStart(2, "0")}m`;
 }
 
+function capitalizeWeekday(name: string): string {
+  const trimmed = (name || "").trim();
+  if (!trimmed) return "";
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+}
+
 export const ClockScreen: React.FC = () => {
   const { user, permissions, roles } = useAuth();
   const { openMenu } = useHubMenu();
@@ -71,6 +82,8 @@ export const ClockScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [clockType, setClockType] = useState<"in" | "out" | null>(null);
+  const [editingAttendance, setEditingAttendance] =
+    useState<ShiftAttendanceResponse | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showDateNav, setShowDateNav] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -105,6 +118,20 @@ export const ClockScreen: React.FC = () => {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const pending = consumeClockLogRequest();
+      if (!pending) return;
+      setSelectedDate(pending.date);
+      const [y, m, d] = pending.date.split("-").map(Number);
+      setWeekStart(getWeekStartSunday(new Date(y, m - 1, d)));
+      if (pending.openLog) {
+        setEditingAttendance(null);
+        setClockType("in");
+      }
+    }, [])
+  );
 
   const openAttendance = dayState?.openAttendance ?? null;
   const hasOpenClockIn = !!openAttendance;
@@ -199,6 +226,59 @@ export const ClockScreen: React.FC = () => {
     return `${formatShortDate(weekStartStr)} – ${formatShortDate(formatDateLocal(end))}`;
   }, [weeklySummary, weekStart, weekStartStr]);
 
+  const closeClockModal = () => {
+    setClockType(null);
+    setEditingAttendance(null);
+  };
+
+  const weeklyDayToAttendance = useCallback(
+    (day: WeeklySummaryDay): ShiftAttendanceResponse | null => {
+      if (!day.attendance_id) return null;
+      return {
+        id: day.attendance_id,
+        shift_id: day.shift_id ?? null,
+        worker_id: user?.id ?? "",
+        type: "in",
+        clock_in_time: day.clock_in,
+        clock_out_time: day.clock_out,
+        time_selected_utc: day.clock_in,
+        status: day.status || day.clock_in_status || "pending",
+        reason_text: day.reason_text,
+        job_type: day.job_type,
+        service_item: day.service_item,
+        break_minutes: day.break_minutes,
+        approved_by: day.approved_by,
+        can_edit: day.can_edit
+      };
+    },
+    [user?.id]
+  );
+
+  const openRecordForEdit = useCallback(
+    (day: WeeklySummaryDay) => {
+      if (!day.clock_out || !day.attendance_id) {
+        setSelectedDate(day.date);
+        return;
+      }
+      if (isAttendanceHrLocked(day, user?.id)) {
+        Alert.alert(
+          "Hours locked",
+          "These hours were approved by HR and can no longer be edited. Please ask HR to make any changes."
+        );
+        return;
+      }
+      const record = weeklyDayToAttendance(day);
+      if (!record) {
+        setSelectedDate(day.date);
+        return;
+      }
+      setSelectedDate(day.date);
+      setEditingAttendance(record);
+      setClockType("in");
+    },
+    [user?.id, weeklyDayToAttendance]
+  );
+
   const onRefresh = () => {
     setRefreshing(true);
     loadAll();
@@ -228,8 +308,8 @@ export const ClockScreen: React.FC = () => {
       : "Open session"
     : nextShift
       ? `Next shift ${formatTime12h(nextShift.start_time)}`
-      : "Log start, end and break";
-  const clockStatusLabel = hasOpenClockIn ? "Clocked in" : "Clocked out";
+      : null;
+  const clockStatusLabel = hasOpenClockIn ? "Clocked in" : null;
   const hoursTodayLabel = formatHoursMinutes(Math.floor(dayTotalSecondsLive / 60));
   const isToday = selectedDate === todayStr;
   const todayTag = isToday ? "TODAY" : formatShortDate(selectedDate).toUpperCase();
@@ -337,27 +417,14 @@ export const ClockScreen: React.FC = () => {
                 <Ionicons name="calendar-outline" size={12} color={ACCENT} />
                 <Text style={styles.todayTag}>{todayTag}</Text>
               </View>
-              <View
-                style={[
-                  styles.statusChip,
-                  hasOpenClockIn ? styles.statusChipIn : styles.statusChipOut
-                ]}
-              >
-                <View
-                  style={[
-                    styles.statusDot,
-                    { backgroundColor: hasOpenClockIn ? ACCENT : CLOCK_OUT }
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.statusChipText,
-                    { color: hasOpenClockIn ? ACCENT : CLOCK_OUT }
-                  ]}
-                >
-                  {clockStatusLabel}
-                </Text>
-              </View>
+              {clockStatusLabel ? (
+                <View style={[styles.statusChip, styles.statusChipIn]}>
+                  <View style={[styles.statusDot, { backgroundColor: ACCENT }]} />
+                  <Text style={[styles.statusChipText, { color: ACCENT }]}>
+                    {clockStatusLabel}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.hoursToday}>
@@ -372,9 +439,11 @@ export const ClockScreen: React.FC = () => {
               </View>
             </View>
 
-            <Text style={styles.statusSub} numberOfLines={1}>
-              {shiftSubtitle}
-            </Text>
+            {shiftSubtitle ? (
+              <Text style={styles.statusSub} numberOfLines={1}>
+                {shiftSubtitle}
+              </Text>
+            ) : null}
 
             <Pressable
               style={[
@@ -383,7 +452,10 @@ export const ClockScreen: React.FC = () => {
                 !canClockIn && !canClockOut && styles.clockBtnDisabled
               ]}
               disabled={!canClockIn && !canClockOut}
-              onPress={() => setClockType(canClockOut ? "out" : "in")}
+              onPress={() => {
+                setEditingAttendance(null);
+                setClockType(canClockOut ? "out" : "in");
+              }}
             >
               <Ionicons
                 name={hasOpenClockIn ? "stop" : "play"}
@@ -490,24 +562,34 @@ export const ClockScreen: React.FC = () => {
                       <Pressable
                         key={uniqueKey}
                         style={styles.dayRow}
-                        onPress={() => setSelectedDate(day.date)}
+                        onPress={() => openRecordForEdit(day)}
                       >
                         <View style={{ flex: 1 }}>
                           <Text style={styles.dayName}>
-                            {day.day_name} · {formatShortDate(day.date)}
+                            {capitalizeWeekday(day.day_name)} · {formatShortDate(day.date)}
                           </Text>
                           {range ? (
                             <Text style={styles.dayRange}>{range}</Text>
-                          ) : null}
-                          {day.job_name ? (
-                            <Text style={styles.dayJob} numberOfLines={1}>
-                              {day.job_name}
-                            </Text>
                           ) : null}
                         </View>
                         <Text style={styles.dayHours}>
                           {day.hours_worked_formatted || "0h 00m"}
                         </Text>
+                        {day.clock_out && day.attendance_id ? (
+                          <Ionicons
+                            name={
+                              isAttendanceHrLocked(day, user?.id)
+                                ? "lock-closed-outline"
+                                : "create-outline"
+                            }
+                            size={16}
+                            color={
+                              isAttendanceHrLocked(day, user?.id)
+                                ? colors.textMuted
+                                : ACCENT
+                            }
+                          />
+                        ) : null}
                       </Pressable>
                     );
                   })}
@@ -550,11 +632,22 @@ export const ClockScreen: React.FC = () => {
         shifts={dayState?.shifts ?? []}
         openAttendance={openAttendance}
         nextPendingShift={dayState?.nextPendingShift ?? null}
+        editingAttendance={editingAttendance}
         permissions={permissions}
         roles={roles}
-        onClose={() => setClockType(null)}
-        onSuccess={() => {
-          setClockType(null);
+        onClose={closeClockModal}
+        onSuccess={(loggedDate) => {
+          closeClockModal();
+          const today = formatDateLocal(new Date());
+          if (!loggedDate || loggedDate === today) {
+            void syncHoursReminder(true);
+          }
+          if (loggedDate && loggedDate !== selectedDate) {
+            setSelectedDate(loggedDate);
+            const [y, m, d] = loggedDate.split("-").map(Number);
+            setWeekStart(getWeekStartSunday(new Date(y, m - 1, d)));
+            return;
+          }
           loadAll();
         }}
       />
@@ -710,9 +803,6 @@ const styles = StyleSheet.create({
   },
   statusChipIn: {
     backgroundColor: "#ECFDF3"
-  },
-  statusChipOut: {
-    backgroundColor: "#FEE2E2"
   },
   statusChipText: {
     fontFamily: typography.button.fontFamily,
@@ -911,24 +1001,23 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border
   },
   dayName: {
-    ...typography.bodySmall,
-    color: colors.textPrimary,
-    fontFamily: typography.button.fontFamily
+    fontFamily: typography.button.fontFamily,
+    fontSize: 16,
+    lineHeight: 22,
+    color: colors.textPrimary
   },
   dayRange: {
-    ...typography.caption,
+    fontFamily: typography.body.fontFamily,
+    fontSize: 14,
+    lineHeight: 20,
     color: colors.textMuted,
     marginTop: 2
   },
-  dayJob: {
-    ...typography.caption,
-    color: colors.textBody,
-    marginTop: 2
-  },
   dayHours: {
-    ...typography.bodySmall,
-    color: colors.textPrimary,
-    fontFamily: typography.button.fontFamily
+    fontFamily: typography.button.fontFamily,
+    fontSize: 16,
+    lineHeight: 22,
+    color: colors.textPrimary
   },
   infoBanner: {
     flexDirection: "row",
