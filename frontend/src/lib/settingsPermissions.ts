@@ -24,8 +24,6 @@ export const SETTINGS_CHILD_READ_KEYS = [
   SETTINGS_FILES_ASSETS_READ,
   SETTINGS_PERMISSION_TEMPLATES_READ,
   SETTINGS_TERMS_TEMPLATES_READ,
-  SETTINGS_DOCUMENT_BACKGROUNDS_READ,
-  SETTINGS_DOCUMENT_TEMPLATES_READ,
   SETTINGS_AUTO_TASKS_READ,
 ] as const;
 
@@ -34,8 +32,6 @@ export const SETTINGS_CHILD_WRITE_KEYS = [
   SETTINGS_FILES_ASSETS_WRITE,
   SETTINGS_PERMISSION_TEMPLATES_WRITE,
   SETTINGS_TERMS_TEMPLATES_WRITE,
-  SETTINGS_DOCUMENT_BACKGROUNDS_WRITE,
-  SETTINGS_DOCUMENT_TEMPLATES_WRITE,
   SETTINGS_AUTO_TASKS_WRITE,
 ] as const;
 
@@ -206,58 +202,6 @@ export function buildSettingsPermissionRows(areaPerms: PermDef[]): ScopedPermiss
       readKey: SETTINGS_TERMS_TEMPLATES_READ,
 
       writeKey: termsWrite?.key,
-
-      indent: true,
-
-    });
-
-  }
-
-
-
-  const bgRead = byKey.get(SETTINGS_DOCUMENT_BACKGROUNDS_READ);
-
-  const bgWrite = byKey.get(SETTINGS_DOCUMENT_BACKGROUNDS_WRITE);
-
-  if (bgRead) {
-
-    rows.push({
-
-      id: bgRead.id,
-
-      label: bgRead.label,
-
-      description: bgRead.description,
-
-      readKey: SETTINGS_DOCUMENT_BACKGROUNDS_READ,
-
-      writeKey: bgWrite?.key,
-
-      indent: true,
-
-    });
-
-  }
-
-
-
-  const docTplRead = byKey.get(SETTINGS_DOCUMENT_TEMPLATES_READ);
-
-  const docTplWrite = byKey.get(SETTINGS_DOCUMENT_TEMPLATES_WRITE);
-
-  if (docTplRead) {
-
-    rows.push({
-
-      id: docTplRead.id,
-
-      label: docTplRead.label,
-
-      description: docTplRead.description,
-
-      readKey: SETTINGS_DOCUMENT_TEMPLATES_READ,
-
-      writeKey: docTplWrite?.key,
 
       indent: true,
 
@@ -524,53 +468,45 @@ export function canEditTermsTemplatesCard(permissions: Set<string>, isAdmin = fa
 
 
 export function canViewDocumentBackgroundsCard(permissions: Set<string>, isAdmin = false): boolean {
-
-  return canViewGranular(
-
-    permissions,
-
-    isAdmin,
-
-    SETTINGS_DOCUMENT_BACKGROUNDS_READ,
-
-    SETTINGS_DOCUMENT_BACKGROUNDS_WRITE,
-
+  if (isAdmin) return true;
+  return (
+    hasPerm(permissions, 'document_hub:backgrounds:read') ||
+    hasPerm(permissions, 'document_hub:backgrounds:write') ||
+    hasPerm(permissions, SETTINGS_DOCUMENT_BACKGROUNDS_READ) ||
+    hasPerm(permissions, SETTINGS_DOCUMENT_BACKGROUNDS_WRITE)
   );
-
 }
 
 
 
 export function canEditDocumentBackgroundsCard(permissions: Set<string>, isAdmin = false): boolean {
-
-  return canEditGranular(permissions, isAdmin, SETTINGS_DOCUMENT_BACKGROUNDS_WRITE);
-
+  if (isAdmin) return true;
+  return (
+    hasPerm(permissions, 'document_hub:backgrounds:write') ||
+    hasPerm(permissions, SETTINGS_DOCUMENT_BACKGROUNDS_WRITE)
+  );
 }
 
 
 
 export function canViewDocumentTemplatesCard(permissions: Set<string>, isAdmin = false): boolean {
-
-  return canViewGranular(
-
-    permissions,
-
-    isAdmin,
-
-    SETTINGS_DOCUMENT_TEMPLATES_READ,
-
-    SETTINGS_DOCUMENT_TEMPLATES_WRITE,
-
+  if (isAdmin) return true;
+  return (
+    hasPerm(permissions, 'document_hub:templates:read') ||
+    hasPerm(permissions, 'document_hub:templates:write') ||
+    hasPerm(permissions, SETTINGS_DOCUMENT_TEMPLATES_READ) ||
+    hasPerm(permissions, SETTINGS_DOCUMENT_TEMPLATES_WRITE)
   );
-
 }
 
 
 
 export function canEditDocumentTemplatesCard(permissions: Set<string>, isAdmin = false): boolean {
-
-  return canEditGranular(permissions, isAdmin, SETTINGS_DOCUMENT_TEMPLATES_WRITE);
-
+  if (isAdmin) return true;
+  return (
+    hasPerm(permissions, 'document_hub:templates:write') ||
+    hasPerm(permissions, SETTINGS_DOCUMENT_TEMPLATES_WRITE)
+  );
 }
 
 

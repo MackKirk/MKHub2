@@ -294,10 +294,8 @@ def _legacy_full_settings_access(perm_map: dict) -> bool:
         "settings:permission_templates:write",
         "settings:terms_templates:read",
         "settings:terms_templates:write",
-        "settings:document_backgrounds:read",
-        "settings:document_backgrounds:write",
-        "settings:document_templates:read",
-        "settings:document_templates:write",
+        "settings:auto_tasks:read",
+        "settings:auto_tasks:write",
     )
     children_in_map = [k for k in child_keys if k in perm_map]
     return not children_in_map
@@ -319,10 +317,8 @@ def _settings_access_effective(perm_map: dict) -> bool:
         "settings:permission_templates:write",
         "settings:terms_templates:read",
         "settings:terms_templates:write",
-        "settings:document_backgrounds:read",
-        "settings:document_backgrounds:write",
-        "settings:document_templates:read",
-        "settings:document_templates:write",
+        "settings:auto_tasks:read",
+        "settings:auto_tasks:write",
     )
     children_in_map = [k for k in child_keys if k in perm_map]
     if not children_in_map:
@@ -340,10 +336,8 @@ def _any_settings_child_granted(perm_map: dict) -> bool:
         "settings:permission_templates:write",
         "settings:terms_templates:read",
         "settings:terms_templates:write",
-        "settings:document_backgrounds:read",
-        "settings:document_backgrounds:write",
-        "settings:document_templates:read",
-        "settings:document_templates:write",
+        "settings:auto_tasks:read",
+        "settings:auto_tasks:write",
     )
     return any(is_granted_perm_value(perm_map.get(k)) for k in child_keys)
 
@@ -517,6 +511,56 @@ def _perm_matches_map(perm_map: dict, perm: str) -> bool:
             is_granted_perm_value(perm_map.get("documents:move"))
             or is_granted_perm_value(perm_map.get("documents:write"))
         )
+    # Documents hub: granular keys (+ settings/manage aliases). Company Files documents:* does not open the hub.
+    if perm == "document_hub:builder:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("document_hub:builder:read"))
+            or is_granted_perm_value(perm_map.get("document_hub:builder:write"))
+        )
+    if perm == "document_hub:builder:write":
+        return bool(is_granted_perm_value(perm_map.get("document_hub:builder:write")))
+    if perm == "document_hub:signature_editor:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("document_hub:signature_editor:read"))
+            or is_granted_perm_value(perm_map.get("document_hub:signature_editor:write"))
+        )
+    if perm == "document_hub:signature_editor:write":
+        return bool(is_granted_perm_value(perm_map.get("document_hub:signature_editor:write")))
+    if perm == "document_hub:signature_requests:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("document_hub:signature_requests:read"))
+            or is_granted_perm_value(perm_map.get("document_hub:signature_requests:write"))
+            or is_granted_perm_value(perm_map.get("documents:signatures:manage"))
+        )
+    if perm == "document_hub:signature_requests:write":
+        return bool(
+            is_granted_perm_value(perm_map.get("document_hub:signature_requests:write"))
+            or is_granted_perm_value(perm_map.get("documents:signatures:manage"))
+        )
+    if perm == "document_hub:backgrounds:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("document_hub:backgrounds:read"))
+            or is_granted_perm_value(perm_map.get("document_hub:backgrounds:write"))
+            or is_granted_perm_value(perm_map.get("settings:document_backgrounds:read"))
+            or is_granted_perm_value(perm_map.get("settings:document_backgrounds:write"))
+        )
+    if perm == "document_hub:backgrounds:write":
+        return bool(
+            is_granted_perm_value(perm_map.get("document_hub:backgrounds:write"))
+            or is_granted_perm_value(perm_map.get("settings:document_backgrounds:write"))
+        )
+    if perm == "document_hub:templates:read":
+        return bool(
+            is_granted_perm_value(perm_map.get("document_hub:templates:read"))
+            or is_granted_perm_value(perm_map.get("document_hub:templates:write"))
+            or is_granted_perm_value(perm_map.get("settings:document_templates:read"))
+            or is_granted_perm_value(perm_map.get("settings:document_templates:write"))
+        )
+    if perm == "document_hub:templates:write":
+        return bool(
+            is_granted_perm_value(perm_map.get("document_hub:templates:write"))
+            or is_granted_perm_value(perm_map.get("settings:document_templates:write"))
+        )
     if perm == "equipment:read":
         return bool(
             is_granted_perm_value(perm_map.get("fleet:equipment:read"))
@@ -668,6 +712,9 @@ def _has_permission(user: User, perm: str) -> bool:
                     if not _hr_area_unlocked(perm_map):
                         return False
                 elif area == 'settings' and perm != 'settings:access':
+                    pass
+                elif area == 'document_hub':
+                    # Documents hub uses granular keys only (no document_hub:access gate)
                     pass
                 # Equipment API uses equipment:read/write; those are granted via fleet:equipment:* + company assets
                 elif area == 'equipment' and perm in ('equipment:read', 'equipment:write'):

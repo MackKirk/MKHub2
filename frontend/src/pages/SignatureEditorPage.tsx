@@ -4,7 +4,10 @@ import { PenLine } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, fetchAuthorizedBinary } from '@/lib/api';
 import { isAdminRole } from '@/lib/projectLinePermissionKeys';
-import { canAddDocuments } from '@/lib/documentsPermissions';
+import {
+  canEditSignatureEditor,
+  canViewSignatureEditor,
+} from '@/lib/documentHubPermissions';
 import PdfSignatureDocumentLibrary, {
   type PdfSignatureLibraryDoc,
 } from '@/components/PdfSignatureDocumentLibrary';
@@ -23,8 +26,8 @@ export default function SignatureEditorPage() {
   });
   const isAdmin = isAdminRole(me?.roles);
   const perms = new Set((me?.permissions || []).map(String));
-  const canEdit = canAddDocuments(isAdmin, perms);
-  const canView = isAdmin || perms.has('documents:read') || canEdit;
+  const canEdit = canEditSignatureEditor(isAdmin, perms);
+  const canView = canViewSignatureEditor(isAdmin, perms);
 
   const { data: documents = [] } = useQuery({
     queryKey: ['document-signature-templates'],

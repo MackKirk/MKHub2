@@ -14,20 +14,20 @@ export const FORM_MODAL_COMFORTABLE_DIALOG_EXPANDED =
 const FORM_MODAL_COMFORTABLE_FORM_INNER = 'w-full md:w-[30rem] md:max-w-[30rem]';
 /** Wide shell: form column + padding; expands with gap + quick-info column when ? is open. */
 export const FORM_MODAL_WIDE_DIALOG_COLLAPSED =
-  '!w-[calc(720px+2rem)] !max-w-[calc(720px+2rem)]';
+  '!w-[calc(880px+2rem)] !max-w-[calc(880px+2rem)]';
 export const FORM_MODAL_WIDE_DIALOG_EXPANDED =
-  '!w-[calc(720px+1.5rem+16rem+2rem)] !max-w-[calc(720px+1.5rem+16rem+2rem)]';
+  '!w-[calc(880px+1.5rem+16rem+2rem)] !max-w-[calc(880px+1.5rem+16rem+2rem)]';
 
 /**
  * Wide wizard (e.g. New Customer): dialog `max-w` is the outer shell; form column fills body
  * (like 26rem form inside max-w-md). Expanded shell adds quick-info column beside fixed form width.
  */
 /** Wide wizard shell (New Customer / New Opportunity). Dialog max-width includes AppModal body padding. */
-const FORM_MODAL_WIDE_DIALOG_MAX = '720px';
+const FORM_MODAL_WIDE_DIALOG_MAX = '880px';
 /** Form column width when quick info is open (absolute aside sits beside this). */
-const FORM_MODAL_WIDE_FORM_MAX = '720px';
+const FORM_MODAL_WIDE_FORM_MAX = '880px';
 const FORM_MODAL_WIDE_FORM_COLUMN = 'w-full min-w-0 max-w-full md:shrink-0';
-/** Collapsed wide body fills padded dialog; fixed 720px lives on the form column via max-width, not forced width. */
+/** Collapsed wide body fills padded dialog; fixed 880px lives on the form column via max-width, not forced width. */
 const DETAIL_MODAL_COLLAPSED_MAX = '!max-w-4xl';
 const DETAIL_MODAL_EXPANDED_MAX = '!max-w-[calc(56rem+16rem)]';
 
@@ -72,7 +72,7 @@ export type AppFormModalProps = {
   dialogClassName?: string;
   /** When set with `dialogClassName`, used while quick info is open (modal expands outward). */
   dialogClassNameExpanded?: string;
-  /** `wide` = 720px dialog + quick-info aside. `comfortable` = between default and wide (contacts). */
+  /** `wide` = 880px dialog + quick-info aside. `comfortable` = between default and wide (contacts). */
   formWidth?: 'default' | 'wide' | 'comfortable';
   /** Overrides default body wrapper classes on AppModal. */
   bodyClassName?: string;
@@ -232,8 +232,8 @@ export function AppFormModal({
 
   const wideFormScrollClass = isWideForm
     ? isExpanded
-      ? 'w-full min-w-0 md:w-[720px] md:max-w-[720px] md:shrink-0'
-      : 'w-full min-w-0 max-w-[720px]'
+      ? 'w-full min-w-0 md:w-[880px] md:max-w-[880px] md:shrink-0'
+      : 'w-full min-w-0 max-w-[880px]'
     : '';
 
   const detailOwnsScroll = isDetailLayout && !scrollBody;
@@ -246,7 +246,11 @@ export function AppFormModal({
         : 'max-h-[min(68vh,40rem)] w-full overflow-y-auto overflow-x-visible'
       : uiCx(
           'px-0.5 py-1',
-          'max-h-[min(68vh,40rem)] overflow-y-auto overflow-x-visible',
+          useFormBodyFill
+            ? 'overflow-hidden'
+            : useFormBodySplit
+              ? 'flex max-h-[min(68vh,40rem)] flex-col overflow-hidden'
+              : 'max-h-[min(68vh,40rem)] overflow-y-auto overflow-x-visible',
           !useFormBodySplit &&
             !useFormBodyFill &&
             'pb-4',

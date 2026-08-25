@@ -245,6 +245,30 @@ class TestSubjectUserDocumentList(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.status_code, 400)
 
+    def test_hub_list_excludes_subject_user_scoped_docs(self):
+        """GET /documents without filters returns only standalone (no project, no subject)."""
+        from app.routes.document_creator import list_documents
+        from app.models.models import UserDocument
+
+        user = MagicMock()
+        user.id = uuid.uuid4()
+        db = MagicMock()
+        q = MagicMock()
+        db.query.return_value = q
+        q.filter.return_value = q
+        q.order_by.return_value = q
+        q.all.return_value = []
+
+        list_documents(project_id=None, subject_user_id=None, db=db, user=user)
+
+        db.query.assert_called_once_with(UserDocument)
+        filter_args = q.filter.call_args[0]
+        self.assertEqual(len(filter_args), 3)
+        clauses = " ".join(str(c) for c in filter_args)
+        self.assertIn("project_id IS NULL", clauses)
+        self.assertIn("subject_user_id IS NULL", clauses)
+        self.assertIn("created_by", clauses)
+
     def test_summary_includes_subject_user_id(self):
         from app.routes.document_creator import _doc_to_summary
 

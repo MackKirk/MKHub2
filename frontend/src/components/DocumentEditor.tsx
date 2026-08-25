@@ -739,7 +739,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     };
   }, [title, pages, signerRoles, currentPageIndex, selectedElementIds]);
 
-  // Signer names only stay in the chooser while at least one related field exists.
+  // Employee + Company always stay in the chooser; extra signers prune when unused.
   useEffect(() => {
     if (!isDocHydrated || readOnly) return;
     setSignerRoles((prev) => {
@@ -2421,11 +2421,19 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           } else fileInputRef.current?.click();
         }}
         onAddImagePlaceholder={handleAddImagePlaceholder}
-        onAddInitials={(assigneeRoleId) => handleAddElement(createInitialsElement({ assignee: assigneeRoleId }))}
+        onAddInitials={
+          projectId
+            ? undefined
+            : (assigneeRoleId) => handleAddElement(createInitialsElement({ assignee: assigneeRoleId }))
+        }
         signerRoles={signerRoles}
-        onRequestOtherSigner={(kind, textElementId) => {
-          void openOtherSignerModal({ kind, textElementId });
-        }}
+        onRequestOtherSigner={
+          projectId
+            ? undefined
+            : (kind, textElementId) => {
+                void openOtherSignerModal({ kind, textElementId });
+              }
+        }
         showBlock={!!isTemplate}
         onAddBlock={isTemplate ? () => handleAddElement(createBlockElement()) : undefined}
         layoutPanel={ribbonLayoutPanel}

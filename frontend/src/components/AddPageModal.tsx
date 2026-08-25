@@ -117,6 +117,7 @@ export function AddPageModal({
       title="Add page(s)"
       description="Add pages from a document template or a single background."
       formWidth="wide"
+      scrollBody={false}
       footer={
         <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
           <AppButton variant="secondary" size="sm" type="button" onClick={onClose}>

@@ -78,6 +78,33 @@ class TestFreeFormSignerRoles(unittest.TestCase):
         ]
         ensured = ensure_document_signer_roles(None, pages)
         self.assertTrue(any(r["id"] == LEGACY_STABLE_IDS["company"] for r in ensured))
+        # Employee is always present even when only company fields exist on the page.
+        self.assertTrue(any(r["id"] == LEGACY_STABLE_IDS["employee"] for r in ensured))
+
+    def test_ensure_always_includes_employee_and_company(self):
+        from app.services.document_signer_roles import (
+            LEGACY_STABLE_IDS,
+            default_signer_roles,
+            ensure_document_signer_roles,
+        )
+
+        defaults = default_signer_roles()
+        self.assertEqual(
+            {r["id"] for r in defaults},
+            {LEGACY_STABLE_IDS["employee"], LEGACY_STABLE_IDS["company"]},
+        )
+        empty_pages_roles = ensure_document_signer_roles(None, [{"elements": []}])
+        ids = {r["id"] for r in empty_pages_roles}
+        self.assertIn(LEGACY_STABLE_IDS["employee"], ids)
+        self.assertIn(LEGACY_STABLE_IDS["company"], ids)
+        custom = ensure_document_signer_roles(
+            [{"id": str(uuid.uuid4()), "label": "Vendor", "sortOrder": 0, "fillsEmployeeTokens": False}],
+            None,
+        )
+        labels = {str(r["label"]).strip().lower() for r in custom}
+        self.assertIn("employee", labels)
+        self.assertIn("company", labels)
+        self.assertIn("vendor", labels)
 
     def test_order_role_ids_follows_sort_order(self):
         from app.services.document_signer_roles import order_role_ids_present

@@ -370,8 +370,23 @@ function UserLabel({ id, fallback }:{ id:string, fallback:string }){
 
 export default function UserInfo(){
   const { userId } = useParams();
-  const [sp] = useSearchParams();
-  const tabParam = sp.get('tab') as ('personal'|'job'|'docs'|'timesheet'|'loans'|'training'|'assets'|'reports'|'reviews'|'permissions'|'activity') | null;
+  const [sp, setSearchParams] = useSearchParams();
+  const tabParam = sp.get('tab') as
+    | (
+        | 'personal'
+        | 'job'
+        | 'docs'
+        | 'document_builder'
+        | 'timesheet'
+        | 'loans'
+        | 'training'
+        | 'assets'
+        | 'reports'
+        | 'reviews'
+        | 'permissions'
+        | 'activity'
+      )
+    | null;
   const [tab, setTab] = useState<typeof tabParam | 'personal'>(tabParam || 'personal');
   const confirm = useConfirm();
   const queryClient = useQueryClient();
@@ -739,6 +754,17 @@ export default function UserInfo(){
     
     // Check if there are unsaved changes before switching tabs
     const hasUnsaved = dirty || permissionsDirty || divisionsDirty;
+    const goToTab = (nextTab: typeof tabParam | 'personal') => {
+      setTab(nextTab);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('tab', nextTab);
+          return next;
+        },
+        { replace: true },
+      );
+    };
     
     if (hasUnsaved && tab !== newTab) {
       const result = await confirm({
@@ -753,7 +779,7 @@ export default function UserInfo(){
       if (result === 'confirm') {
         // Save before leaving
         await saveAll();
-        setTab(newTab);
+        goToTab(newTab);
       } else if (result === 'discard') {
         // Discard changes and leave
         setPending({});
@@ -761,12 +787,12 @@ export default function UserInfo(){
         setPermissionsDirty(false);
         setDivisionsDirty(false);
         setSelectedDivisions((u?.divisions || []).map((d: any) => String(d.id)));
-        setTab(newTab);
+        goToTab(newTab);
       }
       // If cancelled, do nothing (stay on current tab)
     } else {
       // No unsaved changes, proceed normally
-      setTab(newTab);
+      goToTab(newTab);
     }
   };
 

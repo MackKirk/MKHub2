@@ -36,7 +36,7 @@ class TestSignatureAdminPermissions(unittest.TestCase):
         user = MagicMock()
         user.roles = []
         with patch("app.services.signature_admin._has_permission") as hp:
-            hp.side_effect = lambda u, p: p == "documents:read"
+            hp.side_effect = lambda u, p: p == "document_hub:signature_requests:read"
             self.assertTrue(can_view_builder_signature_admin(user))
             self.assertFalse(can_view_onboarding_signature_admin(user))
 
@@ -44,6 +44,23 @@ class TestSignatureAdminPermissions(unittest.TestCase):
             db.query.return_value.order_by.return_value.limit.return_value.all.return_value = []
             rows = list_admin_signature_requests(db, user)
             self.assertEqual(rows, [])
+
+    def test_legacy_manage_implies_builder_signature_admin(self):
+        from app.services.signature_admin import (
+            can_manage_builder_signature_admin,
+            can_view_builder_signature_admin,
+        )
+
+        user = MagicMock()
+        user.roles = []
+        with patch("app.services.signature_admin._has_permission") as hp:
+            # Simulate security aliases: manage satisfies signature_requests:write/read checks
+            hp.side_effect = lambda u, p: p in (
+                "document_hub:signature_requests:read",
+                "document_hub:signature_requests:write",
+            )
+            self.assertTrue(can_view_builder_signature_admin(user))
+            self.assertTrue(can_manage_builder_signature_admin(user))
 
     def test_hr_only_can_view_onboarding_not_builder(self):
         from app.services.signature_admin import (
@@ -133,6 +150,7 @@ class TestSignatureAdminAggregation(unittest.TestCase):
             with patch("app.services.signature_admin.settings") as s:
                 s.signature_builder_blocking_enabled = False
                 out = _builder_admin_row(db, row, datetime.now(timezone.utc))
+                managed = _builder_admin_row(db, row, datetime.now(timezone.utc), can_manage=True)
 
         self.assertEqual(out["source"], "document_builder")
         self.assertEqual(out["signed_count"], 1)
@@ -140,6 +158,8 @@ class TestSignatureAdminAggregation(unittest.TestCase):
         self.assertTrue(out["is_overdue"])
         self.assertTrue(out["block_on_overdue"])
         self.assertFalse(out["has_access_blocker"])
+        self.assertFalse(out["admin_actions_available"])
+        self.assertTrue(managed["admin_actions_available"])
 
     def test_onboarding_admin_row_single_participant(self):
         from app.models.models import OnboardingAssignment, OnboardingAssignmentItem

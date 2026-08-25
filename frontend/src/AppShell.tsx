@@ -18,6 +18,12 @@ import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/component
 import HubChatLauncher from '@/components/HubChatLauncher';
 import { canAccessProjectLineMenu, isAdminRole } from '@/lib/projectLinePermissionKeys';
 import { hasAnySettingsPermission } from '@/lib/settingsPermissions';
+import {
+  canViewDocumentBuilder,
+  canViewDocumentHubTemplates,
+  canViewSignatureEditor,
+  canViewSignatureRequests,
+} from '@/lib/documentHubPermissions';
 import { usePageViewTracker } from '@/lib/usePageViewTracker';
 import { AppUserAvatar, uiCx, uiDropdown } from '@/components/ui';
 
@@ -583,11 +589,30 @@ export default function AppShell({ children }: PropsWithChildren){
         permissionsSet.has('documents:move')
       );
     }
+    if (requiredPermission === 'document_hub:builder:read') {
+      return canViewDocumentBuilder(isAdmin, permissionsSet);
+    }
+    if (requiredPermission === 'document_hub:signature_editor:read') {
+      return canViewSignatureEditor(isAdmin, permissionsSet);
+    }
+    if (requiredPermission === 'document_hub:backgrounds:read') {
+      return has || canViewDocumentHubTemplates(isAdmin, permissionsSet);
+    }
     if (requiredPermission === 'settings:document_backgrounds:read') {
-      return has || permissionsSet.has('settings:document_backgrounds:write');
+      return (
+        has ||
+        permissionsSet.has('settings:document_backgrounds:write') ||
+        permissionsSet.has('document_hub:backgrounds:read') ||
+        permissionsSet.has('document_hub:backgrounds:write')
+      );
     }
     if (requiredPermission === 'settings:document_templates:read') {
-      return has || permissionsSet.has('settings:document_templates:write');
+      return (
+        has ||
+        permissionsSet.has('settings:document_templates:write') ||
+        permissionsSet.has('document_hub:templates:read') ||
+        permissionsSet.has('document_hub:templates:write')
+      );
     }
     if (requiredPermission === 'settings:access') {
       return canAccessSettingsMenu;
@@ -616,11 +641,16 @@ export default function AppShell({ children }: PropsWithChildren){
       return canAccessSettingsMenu;
     }
     if (item.id === 'document-hub-signature-requests') {
-      return (
-        hasPermission('documents:signatures:manage') ||
-        hasPermission('hr:onboarding:read') ||
-        hasPermission('hr:onboarding:write')
-      );
+      return canViewSignatureRequests(isAdmin, permissionsSet);
+    }
+    if (item.id === 'document-hub-templates') {
+      return canViewDocumentHubTemplates(isAdmin, permissionsSet);
+    }
+    if (item.id === 'document-hub-builder') {
+      return canViewDocumentBuilder(isAdmin, permissionsSet);
+    }
+    if (item.id === 'document-hub-signature-editor') {
+      return canViewSignatureEditor(isAdmin, permissionsSet);
     }
     if (hasPermission(item.requiredPermission)) return true;
     return Array.isArray(item.children) && item.children.some(canSeeMenuItem);
@@ -776,21 +806,15 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Documents',
       icon: <IconDocument />,
       items: [
-        ...((isAdmin ||
-          (me?.permissions || []).includes('settings:document_backgrounds:read') ||
-          (me?.permissions || []).includes('settings:document_backgrounds:write') ||
-          (me?.permissions || []).includes('settings:document_templates:read') ||
-          (me?.permissions || []).includes('settings:document_templates:write')) ? [
-          { id: 'document-hub-templates', label: 'Document Templates', path: '/documents/templates', icon: <IconDocument /> },
-        ] : []),
-        { id: 'document-hub-builder', label: 'Document Builder', path: '/documents/create', icon: <IconDocument />, requiredPermission: 'documents:read' },
+        { id: 'document-hub-builder', label: 'Document Builder', path: '/documents/create', icon: <IconDocument /> },
         {
           id: 'document-hub-signature-requests',
           label: 'Signature Requests',
           path: '/documents/signature-requests',
           icon: <IconClipboard />,
         },
-        { id: 'document-hub-signature-editor', label: 'Signature Editor', path: '/documents/signature-editor', icon: <IconPen />, requiredPermission: 'documents:read' },
+        { id: 'document-hub-signature-editor', label: 'Signature Editor', path: '/documents/signature-editor', icon: <IconPen /> },
+        { id: 'document-hub-templates', label: 'Document Templates', path: '/documents/templates', icon: <IconDocument /> },
       ]
     },
     {
@@ -1107,6 +1131,7 @@ export default function AppShell({ children }: PropsWithChildren){
 
   const categoryHasSubPanel = (category: MenuCategory) => {
     const visibleCount = category.items.filter(canSeeMenuItem).length;
+    if (category.id === 'document-hub') return visibleCount >= 1;
     return visibleCount > 1 || category.id === 'sales';
   };
 
@@ -1217,7 +1242,8 @@ export default function AppShell({ children }: PropsWithChildren){
       const first = category.items.find((it) => hasPermission(it.requiredPermission));
       return first?.path || '/users';
     }
-    return category.items[0]?.path || '#';
+    const firstVisible = category.items.find((it) => canSeeMenuItem(it));
+    return firstVisible?.path || category.items[0]?.path || '#';
   };
 
   const showHubLoadingGate =

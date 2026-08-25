@@ -40,6 +40,7 @@ import { ProductPermissionsGrid } from '@/components/ProductPermissionsGrid';
 import { FleetPermissionsPanel } from '@/components/FleetPermissionsPanel';
 import { CompanyAssetsPermissionsPanel } from '@/components/CompanyAssetsPermissionsPanel';
 import { DocumentsPermissionsPanel } from '@/components/DocumentsPermissionsPanel';
+import { DocumentHubPermissionsPanel } from '@/components/DocumentHubPermissionsPanel';
 import { HrPermissionsPanel } from '@/components/HrPermissionsPanel';
 import { TrainingPermissionsPanel } from '@/components/TrainingPermissionsPanel';
 import { ProjectLinePermissionsGrid } from '@/components/ProjectLinePermissionsGrid';
@@ -74,6 +75,11 @@ import {
   syncDocumentsAccessInKeySet,
   type DocumentsAccessLevel,
 } from '@/lib/documentsPermissions';
+import {
+  applyDocumentHubAccessLevelToKeySet,
+  filterDocumentHubAreaPermissions,
+  type DocumentHubAccessLevel,
+} from '@/lib/documentHubPermissions';
 import {
   applyHrAccessLevelToKeySet,
   applyHrWriteOnlyToKeySet,
@@ -362,6 +368,16 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
           label: 'Company Files',
           description: 'Company files library — view, upload, move, and delete.',
           permissions: filterDocumentsAreaPermissions(cat.permissions || []),
+        });
+      } else if (cat.name === 'document_hub') {
+        processed.push({
+          ...cat,
+          id: 'document_hub',
+          name: 'document_hub',
+          label: 'Documents',
+          description:
+            'Document Builder, Signature Requests, Signature Editor, and document templates.',
+          permissions: filterDocumentHubAreaPermissions(cat.permissions || []),
         });
       } else if (cat.name === 'training') {
         processed.push({
@@ -858,6 +874,29 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
                           onAccessLevelChange={(readKey, writeKey, level: DocumentsAccessLevel) => {
                             onChange(
                               applyDocumentsAccessLevelToKeySet(
+                                selectedKeys,
+                                allKeys,
+                                readKey,
+                                writeKey,
+                                level
+                              )
+                            );
+                          }}
+                        />
+                      );
+                    })()
+                  ) : cat.name === 'document_hub' ? (
+                    (() => {
+                      const allKeys = (cat.permissions || []).map((p) => p.key);
+                      const permRecord = Object.fromEntries([...selectedKeys].map((k) => [k, true]));
+                      return (
+                        <DocumentHubPermissionsPanel
+                          areaPerms={subPermissions}
+                          permissions={permRecord}
+                          canEdit={!disabled}
+                          onAccessLevelChange={(readKey, writeKey, level: DocumentHubAccessLevel) => {
+                            onChange(
+                              applyDocumentHubAccessLevelToKeySet(
                                 selectedKeys,
                                 allKeys,
                                 readKey,

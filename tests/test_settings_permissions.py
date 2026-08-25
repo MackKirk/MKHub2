@@ -78,6 +78,18 @@ class _FakeDb:
     def __init__(self, query_map=None):
         self.query_map = query_map or {}
 
+    def add(self, _obj):
+        return None
+
+    def commit(self):
+        return None
+
+    def flush(self):
+        return None
+
+    def refresh(self, _obj):
+        return None
+
     def query(self, model):
         return self.query_map.get(model, _FakeQuery())
 
@@ -191,6 +203,7 @@ class TestSettingsPermissions(unittest.TestCase):
             get_settings_admin_bundle(db=_FakeDb(), user=_user_with({}))
         self.assertEqual(ctx.exception.status_code, 403)
 
+    @patch("app.routes.settings.ensure_service_items_list")
     @patch("app.routes.settings.ensure_standard_file_categories")
     @patch("app.routes.settings.ensure_training_matrix_slots")
     @patch("app.routes.settings.ensure_organization_logos_list")
@@ -201,6 +214,7 @@ class TestSettingsPermissions(unittest.TestCase):
         _mock_logos,
         _mock_training,
         _mock_standard,
+        _mock_service_items,
     ):
         db = _FakeDb({SettingList: _FakeQuery(all_rows=[])})
         result = get_settings_admin_bundle(

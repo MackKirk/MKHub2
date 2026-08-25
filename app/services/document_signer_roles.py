@@ -19,14 +19,48 @@ def new_role_id() -> str:
 
 
 def default_signer_roles() -> List[dict]:
+    """Baseline catalog: Employee + Company (stable legacy ids)."""
     return [
         {
-            "id": new_role_id(),
-            "label": "Signer 1",
+            "id": LEGACY_STABLE_IDS["employee"],
+            "label": LEGACY_LABELS["employee"],
             "sortOrder": 0,
+            "fillsEmployeeTokens": True,
+        },
+        {
+            "id": LEGACY_STABLE_IDS["company"],
+            "label": LEGACY_LABELS["company"],
+            "sortOrder": 1,
             "fillsEmployeeTokens": False,
-        }
+        },
     ]
+
+
+def ensure_employee_company_roles(roles: List[dict]) -> List[dict]:
+    """Guarantee Employee and Company slots exist in the catalog."""
+    roles = normalize_signer_roles_list(roles)
+    by_id = {r["id"] for r in roles}
+    labels = {str(r.get("label") or "").strip().lower() for r in roles}
+    out = list(roles)
+    for key in ("employee", "company"):
+        rid = LEGACY_STABLE_IDS[key]
+        if rid in by_id or key in labels:
+            continue
+        out.append(
+            {
+                "id": rid,
+                "label": LEGACY_LABELS[key],
+                "sortOrder": len(out),
+                "fillsEmployeeTokens": key == "employee",
+            }
+        )
+    out = normalize_signer_roles_list(out)
+    if not any(r.get("fillsEmployeeTokens") for r in out):
+        for r in out:
+            if r["id"] == LEGACY_STABLE_IDS["employee"] or str(r.get("label") or "").strip().lower() == "employee":
+                r["fillsEmployeeTokens"] = True
+                break
+    return out
 
 
 def normalize_signer_role_def(raw: Any, *, index: int = 0) -> Optional[dict]:
@@ -201,10 +235,12 @@ def ensure_document_signer_roles(signer_roles: Any, pages: Any) -> List[dict]:
     assignees = collect_assignees_from_pages(pages)
     if roles:
         # Merge any field assignees not in catalog
-        return synthesize_roles_from_assignees(assignees, roles)
-    if assignees:
-        return synthesize_roles_from_assignees(assignees, None)
-    return default_signer_roles()
+        result = synthesize_roles_from_assignees(assignees, roles)
+    elif assignees:
+        result = synthesize_roles_from_assignees(assignees, None)
+    else:
+        result = default_signer_roles()
+    return ensure_employee_company_roles(result)
 
 
 def rewrite_pages_assignees_to_role_ids(pages: Any, roles: List[dict]) -> Any:
