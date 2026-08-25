@@ -1766,12 +1766,12 @@ class EmployeeReport(Base):
     )
     
     # Basic information
-    report_type: Mapped[str] = mapped_column(String(50), nullable=False)  # Fine, Warning, Suspension, Behavior Note, Other
+    report_type: Mapped[str] = mapped_column(String(50), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     occurrence_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Data da ocorrência
     severity: Mapped[str] = mapped_column(String(20), nullable=False, default="Medium")  # Low, Medium, High
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="Open")  # Open, Under Review, Closed
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="Pending Review")
     
     # Type-specific fields
     # For Fine

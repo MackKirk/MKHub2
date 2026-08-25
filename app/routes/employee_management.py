@@ -3051,7 +3051,7 @@ def create_report(
         description=payload.get("description"),
         occurrence_date=occurrence_date,
         severity=payload.get("severity", "Medium"),
-        status=payload.get("status", "Open"),
+        status=payload.get("status", "Pending Review"),
         vehicle=payload.get("vehicle"),
         ticket_number=payload.get("ticket_number"),
         fine_amount=Decimal(str(payload.get("fine_amount"))) if payload.get("fine_amount") else None,

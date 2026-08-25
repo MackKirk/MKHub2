@@ -119,11 +119,26 @@ const REPORT_TYPE_OPTIONS = [
   { value: 'Suspension', label: 'Suspension' },
   { value: 'Behavior Note', label: 'Behavior Note' },
   { value: 'Other', label: 'Other' },
+  { value: 'Near Miss', label: 'Near Miss' },
+  { value: 'First Aid', label: 'First Aid' },
+  { value: 'Medical Aid / Health Care', label: 'Medical Aid / Health Care' },
+  { value: 'Modified / Restricted Work', label: 'Modified / Restricted Work' },
+  { value: 'Time-Loss Injury', label: 'Time-Loss Injury' },
+  { value: 'Occupational Disease / Illness', label: 'Occupational Disease / Illness' },
+  { value: 'Serious Incident', label: 'Serious Incident' },
+  { value: 'Property / Equipment Damage', label: 'Property / Equipment Damage' },
+  { value: 'Environmental / Hazardous Material Incident', label: 'Environmental / Hazardous Material Incident' },
+  { value: 'Fatality', label: 'Fatality' },
 ];
 
 const REPORT_STATUS_OPTIONS = [
+  { value: 'Pending Review', label: 'Pending Review' },
   { value: 'Open', label: 'Open' },
   { value: 'Under Review', label: 'Under Review' },
+  { value: 'Accepted', label: 'Accepted' },
+  { value: 'Denied', label: 'Denied' },
+  { value: 'No Claim Required', label: 'No Claim Required' },
+  { value: 'Under Appeal / Review', label: 'Under Appeal / Review' },
   { value: 'Closed', label: 'Closed' },
 ];
 
@@ -142,8 +157,16 @@ function reportSeverityVariant(severity: string): ReportBadgeVariant {
 }
 
 function reportStatusVariant(status: string): ReportBadgeVariant {
-  if (status === 'Closed') return 'neutral';
-  if (status === 'Under Review') return 'info';
+  if (status === 'Closed' || status === 'No Claim Required') return 'neutral';
+  if (status === 'Accepted') return 'success';
+  if (status === 'Denied') return 'danger';
+  if (
+    status === 'Under Review' ||
+    status === 'Under Appeal / Review' ||
+    status === 'Pending Review'
+  ) {
+    return 'info';
+  }
   return 'warning';
 }
 
@@ -631,7 +654,7 @@ function CreateReportModal({
   const [description, setDescription] = useState('');
   const [occurrenceDate, setOccurrenceDate] = useState(formatDateLocal(new Date()));
   const [severity, setSeverity] = useState('Medium');
-  const [status, setStatus] = useState('Open');
+  const [status, setStatus] = useState('Pending Review');
   
   // Fine-specific fields
   const [vehicle, setVehicle] = useState('');
@@ -689,7 +712,7 @@ function CreateReportModal({
     setDescription('');
     setOccurrenceDate(formatDateLocal(new Date()));
     setSeverity('Medium');
-    setStatus('Open');
+    setStatus('Pending Review');
     setVehicle('');
     setTicketNumber('');
     setFineAmount('');
@@ -1068,7 +1091,7 @@ function CreateReportModal({
             value={status}
             options={REPORT_STATUS_OPTIONS}
             onChange={(e) => setStatus(e.target.value)}
-            fieldHint="Status\n\nOpen, under review, or closed workflow state."
+            fieldHint="Status\n\nWorkflow state: pending review, accepted, denied, closed, and related claim statuses."
           />
         </div>
         <AppMultiSelect

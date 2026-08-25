@@ -5,6 +5,7 @@ import {
   Dimensions,
   Image,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,9 +15,13 @@ import {
 import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { getProjectFilePreviewKind } from "../lib/filePreview";
+import {
+  buildPdfJsViewerHtml,
+  getProjectFilePreviewKind
+} from "../lib/filePreview";
 import {
   downloadProjectFileToCache,
+  readCachedFileAsBase64,
   resolvePreviewUrl,
   shareLocalFile
 } from "../services/files";
@@ -43,6 +48,10 @@ export const MKProjectFilePreviewModal: React.FC<MKProjectFilePreviewModalProps>
 }) => {
   const insets = useSafeAreaInsets();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [pdfHtml, setPdfHtml] = useState<string | null>(null);
+  const [cachedPdf, setCachedPdf] = useState<Awaited<
+    ReturnType<typeof downloadProjectFileToCache>
+  > | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<"download" | "share" | null>(null);
@@ -53,6 +62,8 @@ export const MKProjectFilePreviewModal: React.FC<MKProjectFilePreviewModalProps>
   useEffect(() => {
     if (!visible || !file) {
       setPreviewUrl(null);
+      setPdfHtml(null);
+      setCachedPdf(null);
       setPreviewError(null);
       setLoadingPreview(false);
       return;
@@ -60,6 +71,8 @@ export const MKProjectFilePreviewModal: React.FC<MKProjectFilePreviewModalProps>
 
     if (previewKind === "other") {
       setPreviewUrl(null);
+      setPdfHtml(null);
+      setCachedPdf(null);
       setPreviewError(null);
       setLoadingPreview(false);
       return;
@@ -68,17 +81,36 @@ export const MKProjectFilePreviewModal: React.FC<MKProjectFilePreviewModalProps>
     let cancelled = false;
     setLoadingPreview(true);
     setPreviewError(null);
+    setPdfHtml(null);
+    setPreviewUrl(null);
+    setCachedPdf(null);
 
-    resolvePreviewUrl(
-      file.file_object_id,
-      token,
-      previewKind === "pdf" ? "pdf" : "image"
-    )
-      .then((url) => {
-        if (!cancelled) {
-          setPreviewUrl(url);
+    const loadPreview = async () => {
+      if (previewKind === "pdf") {
+        const localFile = await downloadProjectFileToCache({
+          fileObjectId: file.file_object_id,
+          originalName: file.original_name,
+          token
+        });
+        if (cancelled) return;
+        setCachedPdf(localFile);
+
+        if (Platform.OS === "ios") {
+          setPreviewUrl(localFile.uri);
+          return;
         }
-      })
+
+        const base64 = await readCachedFileAsBase64(localFile);
+        if (cancelled) return;
+        setPdfHtml(buildPdfJsViewerHtml(base64));
+        return;
+      }
+
+      const url = await resolvePreviewUrl(file.file_object_id, token, "image");
+      if (!cancelled) setPreviewUrl(url);
+    };
+
+    loadPreview()
       .catch((err) => {
         if (!cancelled) {
           setPreviewError(toApiError(err).message);
@@ -101,11 +133,13 @@ export const MKProjectFilePreviewModal: React.FC<MKProjectFilePreviewModalProps>
 
       try {
         setBusyAction(action);
-        const localFile = await downloadProjectFileToCache({
-          fileObjectId: file.file_object_id,
-          originalName: file.original_name,
-          token
-        });
+        const localFile =
+          cachedPdf ??
+          (await downloadProjectFileToCache({
+            fileObjectId: file.file_object_id,
+            originalName: file.original_name,
+            token
+          }));
 
         await shareLocalFile(localFile, {
           mimeType: file.content_type,
@@ -121,7 +155,7 @@ export const MKProjectFilePreviewModal: React.FC<MKProjectFilePreviewModalProps>
         setBusyAction(null);
       }
     },
-    [file, token, displayName]
+    [file, token, displayName, cachedPdf]
   );
 
   if (!file) return null;
@@ -174,12 +208,24 @@ export const MKProjectFilePreviewModal: React.FC<MKProjectFilePreviewModalProps>
                 resizeMode="contain"
               />
             </ScrollView>
-          ) : previewKind === "pdf" && previewUrl ? (
+          ) : previewKind === "pdf" && (pdfHtml || previewUrl) ? (
             <WebView
-              source={{ uri: previewUrl }}
+              source={
+                pdfHtml
+                  ? { html: pdfHtml, baseUrl: "https://cdnjs.cloudflare.com/" }
+                  : { uri: previewUrl as string }
+              }
               style={styles.webView}
               originWhitelist={["*"]}
+              javaScriptEnabled
+              domStorageEnabled
+              allowFileAccess
+              allowFileAccessFromFileURLs
+              allowUniversalAccessFromFileURLs
+              mixedContentMode="always"
+              scalesPageToFit
               startInLoadingState
+              onFileDownload={() => undefined}
               renderLoading={() => (
                 <View style={styles.webViewLoading}>
                   <ActivityIndicator size="large" color={colors.primary} />

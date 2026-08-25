@@ -419,8 +419,8 @@ export function employeeReportDetailQuickInfo(opts: { isWorker: boolean; canEdit
 /** Field hints for employee Reports tab filters (`Title\\n\\nBody`). */
 export const USER_REPORTS_FIELD_HINTS = {
   search: 'Search\n\nMatches title, description, or ticket number.',
-  type: 'Type\n\nFine, warning, suspension, behavior note, or other.',
-  status: 'Status\n\nOpen, under review, or closed.',
+  type: 'Type\n\nHR notes (fine, warning, etc.) and incident/injury report types (near miss, first aid, time-loss, and others).',
+  status: 'Status\n\nPending review, accepted, denied, no claim required, closed, under appeal, or legacy open/under review.',
   severity: 'Severity\n\nLow, medium, or high priority.',
   from_date: 'From date\n\nEarliest occurrence date to include.',
   to_date: 'To date\n\nLatest occurrence date to include.',

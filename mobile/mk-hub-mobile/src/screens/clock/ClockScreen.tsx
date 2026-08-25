@@ -26,7 +26,6 @@ import { formatDateLocal } from "../../lib/dateUtils";
 import {
   addDays,
   formatClockTimestamp,
-  formatMinutesLabel,
   formatShortDate,
   formatTime12h,
   getClockStateForDate,
@@ -45,6 +44,7 @@ import type {
 } from "../../types/shifts";
 
 const GLOBE_BG = require("../../../assets/brand/globe.png");
+const CLOCK_WATERMARK = require("../../../assets/brand/clock-watermark.png");
 const ACCENT = colors.homeAccent;
 const CLOCK_OUT = "#a31414";
 const TIMESHEET_BLUE = "#2563EB";
@@ -142,28 +142,11 @@ export const ClockScreen: React.FC = () => {
     (!!openAttendance?.status
       ? openAttendance.status === "approved" || openAttendance.status === "pending"
       : true);
-  const canClockIn = !hasOpenClockIn;
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
-
-  const attendanceWorkedMinutes = useCallback(
-    (attendance: ShiftAttendanceResponse, now: Date): number => {
-      if (!attendance.clock_in_time) return 0;
-      const start = new Date(attendance.clock_in_time).getTime();
-      const end = attendance.clock_out_time
-        ? new Date(attendance.clock_out_time).getTime()
-        : now.getTime();
-      const raw = Math.max(0, Math.floor((end - start) / (1000 * 60)));
-      const breakMins = attendance.clock_out_time
-        ? attendance.break_minutes || 0
-        : 0;
-      return Math.max(0, raw - breakMins);
-    },
-    []
-  );
 
   const attendancesToShow = useMemo(() => {
     if (!dayState) return [] as ShiftAttendanceResponse[];
@@ -212,12 +195,6 @@ export const ClockScreen: React.FC = () => {
     }
     return totalSec;
   }, [attendancesToShow, currentTime]);
-
-  const workingDurationLive = useMemo(() => {
-    if (!hasOpenClockIn || !openAttendance?.clock_in_time) return null;
-    const mins = attendanceWorkedMinutes(openAttendance, currentTime);
-    return formatMinutesLabel(mins);
-  }, [hasOpenClockIn, openAttendance, currentTime, attendanceWorkedMinutes]);
 
   const weekRangeLabel = useMemo(() => {
     if (weeklySummary) {
@@ -304,18 +281,7 @@ export const ClockScreen: React.FC = () => {
   const isCurrentWeek = weekStartStr === formatDateLocal(getWeekStartSunday());
 
   const nextShift = dayState?.nextPendingShift ?? null;
-  const shiftSubtitle = hasOpenClockIn
-    ? workingDurationLive
-      ? `Working for ${workingDurationLive}`
-      : "Open session"
-    : nextShift
-      ? `Next shift ${formatTime12h(nextShift.start_time)}`
-      : null;
-  const clockStatusLabel = hasOpenClockIn ? "Clocked in" : null;
-  const hoursTodayLabel = formatHoursMinutes(Math.floor(dayTotalSecondsLive / 60));
   const isToday = selectedDate === todayStr;
-  const todayTag = isToday ? "TODAY" : formatShortDate(selectedDate).toUpperCase();
-  const heroRail = hasOpenClockIn ? ACCENT : CLOCK_OUT;
   const weekHoursLabel = useMemo(() => {
     if (!weeklySummary) return "0h 00m";
     const todayDay = weeklySummary.days.find((day) => day.date === todayStr);
@@ -369,7 +335,7 @@ export const ClockScreen: React.FC = () => {
           source={GLOBE_BG}
           style={styles.globeBg}
           resizeMode="contain"
-          tintColor="#c22033"
+          tintColor={colors.textMuted}
           pointerEvents="none"
         />
         {header}
@@ -387,7 +353,7 @@ export const ClockScreen: React.FC = () => {
         source={GLOBE_BG}
         style={styles.globeBg}
         resizeMode="contain"
-        tintColor="#c22033"
+        tintColor={colors.textMuted}
         pointerEvents="none"
       />
       {header}
@@ -420,70 +386,45 @@ export const ClockScreen: React.FC = () => {
           </View>
         ) : null}
 
-        <View style={styles.todayCard}>
+        <Pressable
+          onPress={() => {
+            setEditingAttendance(null);
+            setClockType("in");
+          }}
+          style={({ pressed }) => [styles.logBtnWrap, pressed && styles.logBtnPressed]}
+        >
           <LinearGradient
-            colors={[darkenHex(heroRail), heroRail]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={styles.cardRail}
-          />
-          <View style={styles.todayBody}>
-            <View style={styles.todayTagRow}>
-              <View style={styles.todayTagChip}>
-                <Ionicons name="calendar-outline" size={12} color={ACCENT} />
-                <Text style={styles.todayTag}>{todayTag}</Text>
-              </View>
-              {clockStatusLabel ? (
-                <View style={[styles.statusChip, styles.statusChipIn]}>
-                  <View style={[styles.statusDot, { backgroundColor: ACCENT }]} />
-                  <Text style={[styles.statusChipText, { color: ACCENT }]}>
-                    {clockStatusLabel}
-                  </Text>
-                </View>
-              ) : null}
+            colors={["#22C55E", ACCENT, "#0E5A27"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.logBtn}
+          >
+            <Image
+              source={CLOCK_WATERMARK}
+              style={styles.logBtnWatermark}
+              resizeMode="contain"
+              pointerEvents="none"
+            />
+            <View style={styles.logBtnIcon}>
+              <Ionicons name="stopwatch" size={22} color={ACCENT} />
             </View>
+            <Text style={styles.logBtnText}>Log hours</Text>
+            <Ionicons name="arrow-forward" size={20} color="#fff" />
+          </LinearGradient>
+        </Pressable>
 
-            <View style={styles.hoursToday}>
-              <View style={[styles.summaryIcon, { backgroundColor: "#ECFDF3" }]}>
-                <Ionicons name="time-outline" size={18} color={ACCENT} />
-              </View>
-              <View style={styles.summaryCopy}>
-                <Text style={styles.summaryValue}>{hoursTodayLabel}</Text>
-                <Text style={styles.summaryLabel}>
-                  {isToday ? "Hours today" : formatShortDate(selectedDate)}
-                </Text>
-              </View>
-            </View>
-
-            {shiftSubtitle ? (
-              <Text style={styles.statusSub} numberOfLines={1}>
-                {shiftSubtitle}
-              </Text>
-            ) : null}
-
-            <Pressable
-              style={[
-                styles.clockBtn,
-                { backgroundColor: hasOpenClockIn ? CLOCK_OUT : ACCENT },
-                !canClockIn && !canClockOut && styles.clockBtnDisabled
-              ]}
-              disabled={!canClockIn && !canClockOut}
-              onPress={() => {
-                setEditingAttendance(null);
-                setClockType(canClockOut ? "out" : "in");
-              }}
-            >
-              <Ionicons
-                name={hasOpenClockIn ? "stop" : "play"}
-                size={16}
-                color="#fff"
-              />
-              <Text style={styles.clockBtnText}>
-                {hasOpenClockIn ? "Clock Out" : "Log hours"}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
+        {hasOpenClockIn && canClockOut ? (
+          <Pressable
+            style={styles.clockOutBtn}
+            onPress={() => {
+              setEditingAttendance(null);
+              setClockType("out");
+            }}
+          >
+            <Ionicons name="log-out-outline" size={18} color={CLOCK_OUT} />
+            <Text style={styles.clockOutBtnText}>Clock out</Text>
+          </Pressable>
+        ) : null}
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -788,7 +729,63 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textPrimary
   },
-  todayCard: {
+  logBtnWrap: {
+    borderRadius: 18,
+    overflow: "hidden",
+    ...shadows.cardElevated
+  },
+  logBtnPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.985 }]
+  },
+  logBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 84,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    overflow: "hidden"
+  },
+  logBtnWatermark: {
+    position: "absolute",
+    right: -28,
+    bottom: -48,
+    width: 136,
+    height: 136,
+    opacity: 0.3
+  },
+  logBtnIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  logBtnText: {
+    flex: 1,
+    color: "#fff",
+    fontFamily: typography.button.fontFamily,
+    fontSize: 18
+  },
+  clockOutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    backgroundColor: "#FEF2F2"
+  },
+  clockOutBtnText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 15,
+    color: CLOCK_OUT
+  },
+  timesheetLink: {
     flexDirection: "row",
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -798,107 +795,6 @@ const styles = StyleSheet.create({
   cardRail: {
     width: RAIL_WIDTH,
     alignSelf: "stretch"
-  },
-  todayBody: {
-    flex: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 16
-  },
-  todayTagRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm
-  },
-  todayTagChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6
-  },
-  todayTag: {
-    fontFamily: typography.button.fontFamily,
-    fontSize: 11,
-    letterSpacing: 0.8,
-    color: ACCENT
-  },
-  statusChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5
-  },
-  statusChipIn: {
-    backgroundColor: "#ECFDF3"
-  },
-  statusChipText: {
-    fontFamily: typography.button.fontFamily,
-    fontSize: 11
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4
-  },
-  summaryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  summaryCopy: {
-    flex: 1,
-    minWidth: 0
-  },
-  summaryValue: {
-    fontFamily: typography.button.fontFamily,
-    fontSize: 22,
-    lineHeight: 26,
-    color: colors.textPrimary
-  },
-  summaryLabel: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.textMuted,
-    marginTop: 2
-  },
-  clockBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderRadius: 12,
-    minHeight: 48,
-    paddingVertical: 14,
-    marginTop: spacing.md
-  },
-  clockBtnDisabled: {
-    opacity: 0.5
-  },
-  clockBtnText: {
-    color: "#fff",
-    fontFamily: typography.button.fontFamily,
-    fontSize: 16
-  },
-  hoursToday: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: spacing.md
-  },
-  statusSub: {
-    ...typography.bodySmall,
-    color: colors.textMuted,
-    marginTop: spacing.sm
-  },
-  timesheetLink: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    overflow: "hidden",
-    ...shadows.card
   },
   timesheetBody: {
     flex: 1,

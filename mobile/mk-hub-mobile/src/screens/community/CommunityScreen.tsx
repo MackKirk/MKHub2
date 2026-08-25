@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,7 +18,9 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
+import type { RouteProp } from "@react-navigation/native";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../../theme/colors";
 import { typography } from "../../theme/typography";
@@ -38,6 +40,7 @@ import {
 } from "../../services/community";
 import { toApiError } from "../../services/api";
 import type { CommunityPost, CommunityComment } from "../../types/community";
+import type { AppTabParamList } from "../../navigation/types";
 import { stripHtmlToPlain } from "../../utils/stripHtml";
 import { isImageContentType, resolveFileUrl } from "../../lib/fileUrls";
 
@@ -75,6 +78,40 @@ function postDownloadAttachments(
     ];
   }
   return [];
+}
+
+function urlsMatch(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  const strip = (value: string) => value.split("?")[0].replace(/\/$/, "");
+  const left = strip(a);
+  const right = strip(b);
+  return left === right || left.endsWith(right) || right.endsWith(left);
+}
+
+function isImageFile(name: string, url: string): boolean {
+  return isImageContentType(null, name) || isImageContentType(null, url);
+}
+
+function htmlToReadableText(html: string): string {
+  return String(html || "")
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function firstImageFromHtml(html?: string): string | null {
@@ -130,6 +167,10 @@ export const CommunityScreen: React.FC = () => {
   const { openMenu } = useHubMenu();
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
+  const navigation =
+    useNavigation<BottomTabNavigationProp<AppTabParamList, "Community">>();
+  const route = useRoute<RouteProp<AppTabParamList, "Community">>();
+  const pendingPostIdRef = useRef<string | null>(null);
   const { unreadCount, refreshUnread, markOneReadLocally } = useCommunityBadge();
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(false);
@@ -146,6 +187,26 @@ export const CommunityScreen: React.FC = () => {
     if (unreadCount === 0) return "You're all caught up";
     return unreadCount === 1 ? "1 unread post" : `${unreadCount} unread posts`;
   }, [unreadCount]);
+
+  const detailBannerUri = selectedPost
+    ? postPreviewImage(selectedPost, token)
+    : null;
+  const detailBodyText = selectedPost
+    ? htmlToReadableText(selectedPost.content)
+    : "";
+  const detailAttachments = selectedPost
+    ? postDownloadAttachments(selectedPost).filter((att) => {
+        const uri = resolveFileUrl(att.url, token);
+        if (detailBannerUri && uri && urlsMatch(detailBannerUri, uri)) return false;
+        if (
+          selectedPost.photo_url &&
+          urlsMatch(att.url, selectedPost.photo_url)
+        ) {
+          return false;
+        }
+        return true;
+      })
+    : [];
 
   const loadPosts = useCallback(async () => {
     try {
@@ -166,29 +227,20 @@ export const CommunityScreen: React.FC = () => {
     }, [loadPosts])
   );
 
+  useEffect(() => {
+    const postId = route.params?.postId;
+    if (!postId) return;
+    pendingPostIdRef.current = postId;
+    navigation.setParams({ postId: undefined });
+  }, [route.params?.postId, navigation]);
+
   const closeDetail = () => {
     setSelectedPost(null);
     setComments([]);
     setCommentText("");
   };
 
-  const handlePostPress = async (post: CommunityPost) => {
-    setSelectedPost(post);
-    if (post.is_unread) {
-      try {
-        await markPostViewed(post.id);
-        setPosts((prev) =>
-          prev.map((p) => (p.id === post.id ? { ...p, is_unread: false } : p))
-        );
-        markOneReadLocally();
-      } catch {
-        // Silent fail
-      }
-    }
-    void loadComments(post.id);
-  };
-
-  const loadComments = async (postId: string) => {
+  const loadComments = useCallback(async (postId: string) => {
     try {
       setLoadingComments(true);
       const data = await getPostComments(postId);
@@ -198,7 +250,58 @@ export const CommunityScreen: React.FC = () => {
     } finally {
       setLoadingComments(false);
     }
-  };
+  }, []);
+
+  const handlePostPress = useCallback(
+    async (post: CommunityPost) => {
+      setSelectedPost(post);
+      if (post.is_unread) {
+        try {
+          await markPostViewed(post.id);
+          setPosts((prev) =>
+            prev.map((p) => (p.id === post.id ? { ...p, is_unread: false } : p))
+          );
+          markOneReadLocally();
+        } catch {
+          // Silent fail
+        }
+      }
+      void loadComments(post.id);
+    },
+    [loadComments, markOneReadLocally]
+  );
+
+  useEffect(() => {
+    const postId = pendingPostIdRef.current;
+    if (!postId || loading) return;
+
+    const fromList = posts.find((item) => item.id === postId);
+    if (fromList) {
+      pendingPostIdRef.current = null;
+      void handlePostPress(fromList);
+      return;
+    }
+
+    let cancelled = false;
+    void getCommunityPosts("all")
+      .then((data) => {
+        if (cancelled || pendingPostIdRef.current !== postId) return;
+        const found = (Array.isArray(data) ? data : []).find(
+          (item) => item.id === postId
+        );
+        pendingPostIdRef.current = null;
+        setFilter("all");
+        setPosts(Array.isArray(data) ? data : []);
+        if (found) void handlePostPress(found);
+      })
+      .catch(() => {
+        pendingPostIdRef.current = null;
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [handlePostPress, loading, posts]);
 
   const handleConfirmRead = async (post: CommunityPost) => {
     if (!post.requires_read_confirmation || post.user_has_confirmed) return;
@@ -430,7 +533,7 @@ export const CommunityScreen: React.FC = () => {
         source={GLOBE_BG}
         style={styles.globeBg}
         resizeMode="contain"
-        tintColor="#c22033"
+        tintColor={colors.textMuted}
         pointerEvents="none"
       />
 
@@ -557,7 +660,7 @@ export const CommunityScreen: React.FC = () => {
               source={GLOBE_BG}
               style={styles.globeBg}
               resizeMode="contain"
-              tintColor="#c22033"
+              tintColor={colors.textMuted}
               pointerEvents="none"
             />
             <View
@@ -581,74 +684,164 @@ export const CommunityScreen: React.FC = () => {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              <View style={styles.detailCard}>
-                <View style={styles.postHeader}>
-                  {resolveFileUrl(selectedPost.author_avatar, token) ? (
-                    <Image
-                      source={{
-                        uri: resolveFileUrl(selectedPost.author_avatar, token) as string
-                      }}
-                      style={styles.avatar}
-                    />
-                  ) : (
-                    <View style={styles.avatarPlaceholder}>
-                      <Text style={styles.avatarText}>
-                        {(selectedPost.author_name || "U")[0].toUpperCase()}
+              <View style={styles.detailPostCard}>
+                {detailBannerUri ? (
+                  <Image
+                    source={{ uri: detailBannerUri }}
+                    style={styles.detailBanner}
+                    resizeMode="cover"
+                  />
+                ) : null}
+                <View style={styles.detailInner}>
+                  <View style={styles.postHeader}>
+                    {resolveFileUrl(selectedPost.author_avatar, token) ? (
+                      <Image
+                        source={{
+                          uri: resolveFileUrl(
+                            selectedPost.author_avatar,
+                            token
+                          ) as string
+                        }}
+                        style={styles.avatar}
+                      />
+                    ) : (
+                      <View style={styles.avatarPlaceholder}>
+                        <Text style={styles.avatarText}>
+                          {(selectedPost.author_name || "U")[0].toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.postAuthorInfo}>
+                      <Text style={styles.postAuthor}>
+                        {selectedPost.author_name || "Unknown"}
+                      </Text>
+                      <Text style={styles.postDate}>
+                        {formatRelativeTime(selectedPost.created_at)}
                       </Text>
                     </View>
-                  )}
-                  <View style={styles.postAuthorInfo}>
-                    <Text style={styles.postAuthor}>
-                      {selectedPost.author_name || "Unknown"}
-                    </Text>
-                    <Text style={styles.postDate}>
-                      {formatRelativeTime(selectedPost.created_at)}
-                    </Text>
+                  </View>
+                  <Text style={styles.detailTitle}>{selectedPost.title}</Text>
+                  {detailBodyText ? (
+                    <Text style={styles.detailBody}>{detailBodyText}</Text>
+                  ) : null}
+
+                  {selectedPost.tags && selectedPost.tags.length > 0 ? (
+                    <View style={styles.tagsRow}>
+                      {selectedPost.tags.slice(0, 4).map((tag) => (
+                        <View
+                          key={tag}
+                          style={[
+                            styles.tag,
+                            tag === "Urgent" && styles.tagUrgent,
+                            tag === "Required" && styles.tagRequired
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.tagText,
+                              (tag === "Urgent" || tag === "Required") &&
+                                styles.tagTextStrong
+                            ]}
+                          >
+                            {tag}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {detailAttachments.length > 0 ? (
+                    <View style={styles.attachmentsBlock}>
+                      {detailAttachments.map((att) => {
+                        const uri = resolveFileUrl(att.url, token);
+                        const image = isImageFile(att.name, att.url);
+                        return (
+                          <Pressable
+                            key={att.key}
+                            style={
+                              image
+                                ? styles.attachmentImageWrap
+                                : styles.downloadBtn
+                            }
+                            onPress={() => {
+                              if (uri) void Linking.openURL(uri);
+                            }}
+                          >
+                            {image && uri ? (
+                              <Image
+                                source={{ uri }}
+                                style={styles.attachmentImage}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <>
+                                <View style={styles.downloadIconWrap}>
+                                  <Ionicons
+                                    name="document-outline"
+                                    size={18}
+                                    color={ACCENT}
+                                  />
+                                </View>
+                                <View style={styles.downloadCopy}>
+                                  <Text
+                                    style={styles.downloadBtnText}
+                                    numberOfLines={1}
+                                  >
+                                    {att.name}
+                                  </Text>
+                                  <Text style={styles.downloadHint}>Download</Text>
+                                </View>
+                                <Ionicons
+                                  name="download-outline"
+                                  size={16}
+                                  color={colors.textMuted}
+                                />
+                              </>
+                            )}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+
+                  <View style={styles.detailFooter}>
+                    <Pressable
+                      style={styles.footerButton}
+                      onPress={() => void handleLike(selectedPost)}
+                      hitSlop={8}
+                    >
+                      <Ionicons
+                        name={
+                          selectedPost.user_has_liked ? "heart" : "heart-outline"
+                        }
+                        size={18}
+                        color={
+                          selectedPost.user_has_liked
+                            ? colors.primary
+                            : colors.textMuted
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.footerText,
+                          selectedPost.user_has_liked && styles.footerTextLiked
+                        ]}
+                      >
+                        {selectedPost.likes_count}
+                      </Text>
+                    </Pressable>
+                    <View style={styles.footerButton}>
+                      <Ionicons
+                        name="chatbubble-outline"
+                        size={16}
+                        color={colors.textMuted}
+                      />
+                      <Text style={styles.footerText}>
+                        {selectedPost.comments_count}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-                <Text style={styles.detailTitle}>{selectedPost.title}</Text>
-                <Text style={styles.detailBody}>
-                  {stripHtmlToPlain(selectedPost.content)}
-                </Text>
-
-                {postDownloadAttachments(selectedPost).map((att) => (
-                  <Pressable
-                    key={att.key}
-                    style={styles.downloadBtn}
-                    onPress={() => {
-                      const url = resolveFileUrl(att.url, token);
-                      if (url) void Linking.openURL(url);
-                    }}
-                  >
-                    <Ionicons name="download-outline" size={16} color={ACCENT} />
-                    <Text style={styles.downloadBtnText} numberOfLines={1}>
-                      {att.name}
-                    </Text>
-                  </Pressable>
-                ))}
-
-                <Pressable
-                  style={styles.footerButton}
-                  onPress={() => void handleLike(selectedPost)}
-                >
-                  <Ionicons
-                    name={selectedPost.user_has_liked ? "heart" : "heart-outline"}
-                    size={18}
-                    color={
-                      selectedPost.user_has_liked
-                        ? colors.primary
-                        : colors.textMuted
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.footerText,
-                      selectedPost.user_has_liked && styles.footerTextLiked
-                    ]}
-                  >
-                    {selectedPost.likes_count}
-                  </Text>
-                </Pressable>
               </View>
 
               {selectedPost.requires_read_confirmation ? (
@@ -1044,6 +1237,21 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     gap: spacing.md
   },
+  detailPostCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
+    ...shadows.card
+  },
+  detailBanner: {
+    width: "100%",
+    height: 180,
+    backgroundColor: colors.iconMutedBg
+  },
+  detailInner: {
+    padding: 16,
+    gap: 12
+  },
   detailCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -1059,27 +1267,61 @@ const styles = StyleSheet.create({
   },
   detailBody: {
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 24,
     color: colors.textBody
   },
+  attachmentsBlock: {
+    gap: 10
+  },
+  attachmentImageWrap: {
+    overflow: "hidden",
+    borderRadius: 12,
+    backgroundColor: colors.iconMutedBg
+  },
+  attachmentImage: {
+    width: "100%",
+    height: 200
+  },
   downloadBtn: {
-    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "#fff",
+    backgroundColor: "#F8FAFC",
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    maxWidth: "100%"
+    paddingVertical: 10
+  },
+  downloadIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  downloadCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2
   },
   downloadBtnText: {
     fontFamily: typography.button.fontFamily,
     fontSize: 13,
-    color: ACCENT,
-    flexShrink: 1
+    color: colors.textPrimary
+  },
+  downloadHint: {
+    fontSize: 12,
+    color: ACCENT
+  },
+  detailFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    paddingTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border
   },
   confirmPrompt: {
     fontSize: 14,

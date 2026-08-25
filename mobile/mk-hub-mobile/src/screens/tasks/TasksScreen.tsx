@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Image,
+  ImageSourcePropType,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -46,6 +47,9 @@ import type { AppTabParamList, RootStackParamList } from "../../navigation/types
 import type { TaskItem } from "../../types/tasks";
 
 const GLOBE_BG = require("../../../assets/brand/globe.png");
+const TASK_TODO_WATERMARK = require("../../../assets/brand/task-todo-watermark.png");
+const TASK_PROGRESS_WATERMARK = require("../../../assets/brand/task-progress-watermark.png");
+const TASK_DONE_WATERMARK = require("../../../assets/brand/task-done-watermark.png");
 
 type FilterKey = "open" | "accepted" | "in_progress" | "blocked" | "done" | "all";
 type TasksNav = CompositeNavigationProp<
@@ -177,7 +181,7 @@ export const TasksScreen: React.FC = () => {
         source={GLOBE_BG}
         style={styles.globeBg}
         resizeMode="contain"
-        tintColor="#c22033"
+        tintColor={colors.textMuted}
         pointerEvents="none"
       />
       <View style={styles.topHeader}>
@@ -224,6 +228,7 @@ export const TasksScreen: React.FC = () => {
                   color="#EA580C"
                   bg="#FFEDD5"
                   icon="document-text-outline"
+                  watermark={TASK_TODO_WATERMARK}
                   active={filter === "accepted"}
                   onPress={() => setFilter("accepted")}
                 />
@@ -233,6 +238,7 @@ export const TasksScreen: React.FC = () => {
                   color="#2563EB"
                   bg="#DBEAFE"
                   icon="play-circle-outline"
+                  watermark={TASK_PROGRESS_WATERMARK}
                   active={filter === "in_progress"}
                   onPress={() => setFilter("in_progress")}
                 />
@@ -242,6 +248,7 @@ export const TasksScreen: React.FC = () => {
                   color={colors.homeAccent}
                   bg="#DCFCE7"
                   icon="checkmark-circle-outline"
+                  watermark={TASK_DONE_WATERMARK}
                   active={filter === "done"}
                   onPress={() => setFilter("done")}
                 />
@@ -329,10 +336,20 @@ const StatCard: React.FC<{
   color: string;
   bg: string;
   icon: keyof typeof Ionicons.glyphMap;
+  watermark?: ImageSourcePropType;
   active: boolean;
   onPress: () => void;
-}> = ({ label, count, color, bg, icon, active, onPress }) => (
+}> = ({ label, count, color, bg, icon, watermark, active, onPress }) => (
   <Pressable onPress={onPress} style={[styles.statCard, active && styles.statCardActive]}>
+    {watermark ? (
+      <Image
+        source={watermark}
+        style={styles.statWatermark}
+        resizeMode="contain"
+        tintColor={color}
+        pointerEvents="none"
+      />
+    ) : null}
     <View style={[styles.statIcon, { backgroundColor: bg }]}>
       <Ionicons name={icon} size={16} color={color} />
     </View>
@@ -484,11 +501,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     alignItems: "flex-start",
     gap: 4,
+    overflow: "hidden",
     ...shadows.card
   },
   statCardActive: {
     borderWidth: 1.5,
     borderColor: colors.homeAccent
+  },
+  statWatermark: {
+    position: "absolute",
+    right: -26,
+    bottom: -18,
+    width: 88,
+    height: 88,
+    opacity: 0.09
   },
   statIcon: {
     width: 28,

@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  ImageSourcePropType,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,7 +23,6 @@ import { useTasksBadge } from "../../hooks/useTasksBadge";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { getCommunityPosts } from "../../services/community";
 import type { CommunityPost } from "../../types/community";
-import { stripHtmlToPlain } from "../../utils/stripHtml";
 import { isImageContentType, resolveFileUrl } from "../../lib/fileUrls";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
@@ -31,6 +31,10 @@ import { shadows } from "../../theme/radius";
 import type { AppTabParamList, HomeStackParamList, RootStackParamList } from "../../navigation/types";
 
 const GLOBE_BG = require("../../../assets/brand/globe.png");
+const CLOCK_WATERMARK = require("../../../assets/brand/clock-watermark.png");
+const CALENDAR_WATERMARK = require("../../../assets/brand/calendar-watermark.png");
+const TIMEOFF_WATERMARK = require("../../../assets/brand/timeoff-watermark.png");
+const MEDKIT_WATERMARK = require("../../../assets/brand/medkit-watermark.png");
 
 type HomeNav = CompositeNavigationProp<
   NativeStackNavigationProp<HomeStackParamList, "HomeMain">,
@@ -46,6 +50,7 @@ interface QuickAction {
   icon: keyof typeof Ionicons.glyphMap;
   accentColor: string;
   tintBg: string;
+  watermark?: ImageSourcePropType;
   onPress: () => void;
 }
 
@@ -139,6 +144,7 @@ export const HomeScreen: React.FC = () => {
         icon: "time-outline",
         accentColor: "#166534",
         tintBg: "#DCFCE7",
+        watermark: CLOCK_WATERMARK,
         onPress: () => navigation.navigate("Clock")
       },
       {
@@ -147,6 +153,7 @@ export const HomeScreen: React.FC = () => {
         icon: "calendar-outline",
         accentColor: "#2563EB",
         tintBg: "#DBEAFE",
+        watermark: CALENDAR_WATERMARK,
         onPress: () => goStack("Schedule")
       },
       {
@@ -155,6 +162,7 @@ export const HomeScreen: React.FC = () => {
         icon: "sunny-outline",
         accentColor: "#EA580C",
         tintBg: "#FFEDD5",
+        watermark: TIMEOFF_WATERMARK,
         onPress: () => goStack("TimeOff", { mode: "vacation" })
       },
       {
@@ -163,6 +171,7 @@ export const HomeScreen: React.FC = () => {
         icon: "medkit-outline",
         accentColor: "#DC2626",
         tintBg: "#FEE2E2",
+        watermark: MEDKIT_WATERMARK,
         onPress: () => goStack("TimeOff", { mode: "sick" })
       }
     ],
@@ -217,10 +226,14 @@ export const HomeScreen: React.FC = () => {
         source={GLOBE_BG}
         style={styles.globeBg}
         resizeMode="contain"
-        tintColor="#c22033"
+        tintColor={colors.textMuted}
         pointerEvents="none"
       />
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.homeScroll}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={styles.homeScroll}
+        contentContainerStyle={styles.homeScrollContent}
+      >
         <View style={styles.topHeader}>
           <TouchableOpacity
             style={styles.headerIconBtn}
@@ -271,6 +284,15 @@ export const HomeScreen: React.FC = () => {
                   style={styles.quickRail}
                 />
                 <View style={styles.quickBody}>
+                  {item.watermark ? (
+                    <Image
+                      source={item.watermark}
+                      style={styles.quickWatermark}
+                      resizeMode="contain"
+                      tintColor={item.accentColor}
+                      pointerEvents="none"
+                    />
+                  ) : null}
                   <View style={[styles.quickIcon, { backgroundColor: item.tintBg }]}>
                     <Ionicons name={item.icon} size={22} color={item.accentColor} />
                   </View>
@@ -323,7 +345,14 @@ export const HomeScreen: React.FC = () => {
           </View>
         </View>
 
-        <View style={styles.section}>
+        <View style={styles.communityPanel}>
+          <LinearGradient
+            colors={[darkenHex(HOME_GREEN), HOME_GREEN]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.communityRail}
+          />
+          <View style={styles.communityBody}>
           {renderSectionHeader("Community Updates", () =>
             navigation.navigate("Community")
           )}
@@ -338,38 +367,89 @@ export const HomeScreen: React.FC = () => {
           ) : (
             <View style={styles.novidadesList}>
               {novidades.map((post) => {
-                const imageUri = postPreviewImage(post, token);
+                const avatarUri = resolveFileUrl(post.author_avatar, token);
+                const bannerUri = postPreviewImage(post, token);
                 return (
                   <TouchableOpacity
                     key={post.id}
                     style={styles.novidadeCard}
-                    onPress={() => navigation.navigate("Community")}
+                    onPress={() =>
+                      navigation.navigate("Community", { postId: post.id })
+                    }
                     activeOpacity={0.75}
                   >
-                    {imageUri ? (
+                    {bannerUri ? (
                       <Image
-                        source={{ uri: imageUri }}
-                        style={styles.novidadeImage}
+                        source={{ uri: bannerUri }}
+                        style={styles.novidadeBanner}
                         resizeMode="cover"
                       />
                     ) : null}
                     <View style={styles.novidadeBody}>
-                      <Text style={styles.novidadeTitle} numberOfLines={2}>
-                        {post.title}
-                      </Text>
-                      <Text style={styles.novidadePreview} numberOfLines={4}>
-                        {stripHtmlToPlain(post.content)}
-                      </Text>
-                      <Text style={styles.novidadeMeta}>
-                        {post.author_name ? `${post.author_name} · ` : ""}
-                        {formatRelativeTime(post.created_at)}
-                      </Text>
+                      {avatarUri ? (
+                        <Image
+                          source={{ uri: avatarUri }}
+                          style={styles.novidadeAvatar}
+                        />
+                      ) : (
+                        <View style={styles.novidadeAvatarFallback}>
+                          <Text style={styles.novidadeAvatarText}>
+                            {(post.author_name || "U")[0].toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.novidadeCopy}>
+                        <Text style={styles.novidadeTitle} numberOfLines={2}>
+                          {post.title}
+                        </Text>
+                        <Text style={styles.novidadeDate}>
+                          {formatRelativeTime(post.created_at)}
+                        </Text>
+                        <View style={styles.novidadeFooter}>
+                          <View style={styles.novidadeFooterItem}>
+                            <Ionicons
+                              name={post.user_has_liked ? "heart" : "heart-outline"}
+                              size={15}
+                              color={
+                                post.user_has_liked
+                                  ? colors.primary
+                                  : colors.textMuted
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.novidadeFooterText,
+                                post.user_has_liked && styles.novidadeFooterLiked
+                              ]}
+                            >
+                              {post.likes_count ?? 0}
+                            </Text>
+                          </View>
+                          <View style={styles.novidadeFooterItem}>
+                            <Ionicons
+                              name="chatbubble-outline"
+                              size={14}
+                              color={colors.textMuted}
+                            />
+                            <Text style={styles.novidadeFooterText}>
+                              {post.comments_count ?? 0}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={16}
+                            color={colors.textMuted}
+                            style={styles.novidadeChevron}
+                          />
+                        </View>
+                      </View>
                     </View>
                   </TouchableOpacity>
                 );
               })}
             </View>
           )}
+          </View>
         </View>
       </ScrollView>
     </ScreenLayout>
@@ -399,6 +479,10 @@ const styles = StyleSheet.create({
   homeScroll: {
     flex: 1,
     zIndex: 1
+  },
+  homeScrollContent: {
+    flexGrow: 1,
+    paddingBottom: 0
   },
   topHeader: {
     flexDirection: "row",
@@ -492,7 +576,16 @@ const styles = StyleSheet.create({
   quickBody: {
     flex: 1,
     paddingVertical: 16,
-    paddingHorizontal: 14
+    paddingHorizontal: 14,
+    overflow: "hidden"
+  },
+  quickWatermark: {
+    position: "absolute",
+    right: -34,
+    bottom: -22,
+    width: 108,
+    height: 108,
+    opacity: 0.09
   },
   quickIcon: {
     width: 40,
@@ -556,50 +649,112 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     alignItems: "center"
   },
-  novidadesEmpty: {
+  communityPanel: {
+    flexGrow: 1,
+    flexDirection: "row",
+    marginTop: 6,
+    marginBottom: spacing.sm,
     backgroundColor: "#fff",
     borderRadius: 16,
-    padding: spacing.lg,
-    alignItems: "center",
+    overflow: "hidden",
     ...shadows.card
+  },
+  communityRail: {
+    width: QUICK_RAIL_WIDTH,
+    alignSelf: "stretch"
+  },
+  communityBody: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 14
+  },
+  novidadesEmpty: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: spacing.md,
+    alignItems: "center"
   },
   novidadesEmptyText: {
     ...typography.bodySmall,
     color: colors.textMuted
   },
   novidadesList: {
-    gap: spacing.md
+    gap: spacing.sm
   },
   novidadeCard: {
     backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 12,
     overflow: "hidden",
     ...shadows.card
   },
-  novidadeImage: {
+  novidadeBanner: {
     width: "100%",
-    height: 180,
+    height: 72,
     backgroundColor: colors.iconMutedBg
   },
   novidadeBody: {
-    padding: spacing.md
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10
+  },
+  novidadeAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18
+  },
+  novidadeAvatarFallback: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#DCFCE7",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  novidadeAvatarText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 13,
+    color: HOME_GREEN
+  },
+  novidadeCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4
   },
   novidadeTitle: {
     fontFamily: typography.button.fontFamily,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 18,
     color: colors.textPrimary
   },
-  novidadePreview: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.textMuted,
-    marginTop: 6
+  novidadeDate: {
+    fontSize: 11,
+    color: colors.textMuted
   },
-  novidadeMeta: {
+  novidadeFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginTop: 2
+  },
+  novidadeFooterItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4
+  },
+  novidadeFooterText: {
     fontSize: 12,
-    lineHeight: 16,
-    color: colors.textMuted,
-    marginTop: 10
+    color: colors.textMuted
+  },
+  novidadeFooterLiked: {
+    color: colors.primary,
+    fontFamily: typography.button.fontFamily
+  },
+  novidadeChevron: {
+    marginLeft: "auto"
   }
 });

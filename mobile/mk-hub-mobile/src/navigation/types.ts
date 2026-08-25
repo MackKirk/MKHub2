@@ -37,7 +37,7 @@ export type AppTabParamList = {
   Home: NavigatorScreenParams<HomeStackParamList> | undefined;
   Clock: undefined;
   Tasks: undefined;
-  Community: undefined;
+  Community: { postId?: string } | undefined;
   More: undefined;
 };
 

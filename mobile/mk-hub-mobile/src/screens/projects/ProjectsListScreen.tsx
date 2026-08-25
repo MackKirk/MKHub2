@@ -342,7 +342,7 @@ export const ProjectsListScreen: React.FC = () => {
         source={GLOBE_BG}
         style={styles.globeBg}
         resizeMode="contain"
-        tintColor="#c22033"
+        tintColor={colors.textMuted}
         pointerEvents="none"
       />
 

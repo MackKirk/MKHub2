@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -41,6 +42,7 @@ import type {
 } from "../../types/timeOff";
 import { TimeOffRequestModal } from "./TimeOffRequestModal";
 
+const GLOBE_BG = require("../../../assets/brand/globe.png");
 const VACATION_ACCENT = "#EA580C";
 const SICK_ACCENT = "#DC2626";
 const RAIL_WIDTH = 6;
@@ -173,6 +175,13 @@ export const TimeOffScreen: React.FC = () => {
 
   return (
     <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.layout}>
+      <Image
+        source={GLOBE_BG}
+        style={styles.globeBg}
+        resizeMode="contain"
+        tintColor={colors.textMuted}
+        pointerEvents="none"
+      />
       <View style={styles.topHeader}>
         <TouchableOpacity
           style={styles.headerIconBtn}
@@ -349,13 +358,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "transparent",
     paddingHorizontal: 16,
-    paddingBottom: spacing.md
+    paddingBottom: spacing.md,
+    overflow: "hidden",
+    position: "relative"
+  },
+  globeBg: {
+    position: "absolute",
+    width: 640,
+    height: 640,
+    right: -255,
+    bottom: -40,
+    opacity: 0.06
   },
   topHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    marginBottom: spacing.lg
+    marginBottom: spacing.lg,
+    zIndex: 1
   },
   headerIconBtn: {
     width: 40,
@@ -375,9 +395,9 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: colors.textPrimary
   },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", zIndex: 1 },
   loadingText: { marginTop: spacing.md, ...typography.bodySmall, color: colors.textMuted },
-  scroll: { flex: 1 },
+  scroll: { flex: 1, zIndex: 1 },
   content: { paddingBottom: spacing.xxl, gap: spacing.md },
   heroCard: {
     flexDirection: "row",

@@ -16,6 +16,30 @@ export interface FileDownloadResponse {
   expires_in?: number;
 }
 
+function uint8ToBase64(bytes: Uint8Array): string {
+  const chunk = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+export async function readCachedFileAsBase64(file: File): Promise<string> {
+  const asFile = file as File & {
+    base64?: () => string | Promise<string>;
+    bytes?: () => Uint8Array | Promise<Uint8Array>;
+  };
+  if (typeof asFile.base64 === "function") {
+    return asFile.base64.call(file);
+  }
+  if (typeof asFile.bytes === "function") {
+    const bytes = await asFile.bytes.call(file);
+    return uint8ToBase64(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+  }
+  throw new Error("Could not read file for preview.");
+}
+
 export function getShareableFileUri(file: File): string {
   if (Platform.OS === "android" && file.contentUri) {
     return file.contentUri;

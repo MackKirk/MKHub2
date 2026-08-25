@@ -16,7 +16,8 @@ import {
   getProjectDocuments,
   type ProjectDocument
 } from "../services/documents";
-import { shareLocalFile } from "../services/files";
+import { shareLocalFile, readCachedFileAsBase64 } from "../services/files";
+import { buildPdfJsViewerHtml } from "../lib/filePreview";
 import { toApiError } from "../services/api";
 import { MKCard } from "./MKCard";
 import { MKButton } from "./MKButton";
@@ -41,7 +42,7 @@ export const MKProjectDocumentsSection: React.FC<MKProjectDocumentsSectionProps>
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewDoc, setPreviewDoc] = useState<ProjectDocument | null>(null);
-  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [pdfHtml, setPdfHtml] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [previewFile, setPreviewFile] = useState<Awaited<
@@ -72,10 +73,11 @@ export const MKProjectDocumentsSection: React.FC<MKProjectDocumentsSectionProps>
     try {
       setPreviewDoc(doc);
       setLoadingPreview(true);
-      setPreviewUri(null);
+      setPdfHtml(null);
       const file = await exportDocumentPdfToCache(doc.id, doc.title);
       setPreviewFile(file);
-      setPreviewUri(file.uri);
+      const base64 = await readCachedFileAsBase64(file);
+      setPdfHtml(buildPdfJsViewerHtml(base64));
     } catch (err) {
       setPreviewDoc(null);
       Alert.alert("Could not open document", toApiError(err).message);
@@ -86,7 +88,7 @@ export const MKProjectDocumentsSection: React.FC<MKProjectDocumentsSectionProps>
 
   const closePreview = () => {
     setPreviewDoc(null);
-    setPreviewUri(null);
+    setPdfHtml(null);
     setPreviewFile(null);
   };
 
@@ -168,8 +170,21 @@ export const MKProjectDocumentsSection: React.FC<MKProjectDocumentsSectionProps>
                 <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={styles.loadingText}>Generating PDF preview...</Text>
               </View>
-            ) : previewUri ? (
-              <WebView source={{ uri: previewUri }} style={styles.webView} />
+            ) : pdfHtml ? (
+              <WebView
+                source={{ html: pdfHtml, baseUrl: "https://cdnjs.cloudflare.com/" }}
+                style={styles.webView}
+                originWhitelist={["*"]}
+                javaScriptEnabled
+                domStorageEnabled
+                mixedContentMode="always"
+                startInLoadingState
+                renderLoading={() => (
+                  <View style={styles.center}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                  </View>
+                )}
+              />
             ) : null}
           </View>
 

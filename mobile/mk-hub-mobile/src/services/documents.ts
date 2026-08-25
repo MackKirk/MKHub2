@@ -29,10 +29,21 @@ export async function exportDocumentPdfToCache(
     { responseType: "arraybuffer", timeout: 120000 }
   );
 
+  const bytes = new Uint8Array(response.data);
+  const looksLikePdf =
+    bytes.length >= 5 &&
+    bytes[0] === 0x25 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x44 &&
+    bytes[3] === 0x46;
+  if (!looksLikePdf) {
+    throw new Error("Could not generate a PDF for this document.");
+  }
+
   const safeName = `${sanitizeFileName(title || "document")}.pdf`;
   const destination = new File(Paths.cache, `${Date.now()}_${safeName}`);
   if (destination.exists) destination.delete();
   destination.create({ overwrite: true });
-  destination.write(new Uint8Array(response.data));
+  destination.write(bytes);
   return destination;
 }
