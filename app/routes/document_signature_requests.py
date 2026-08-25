@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from ..auth.security import get_current_user, require_permissions
+from ..auth.security import get_current_user, require_permissions, _has_permission
 from ..db import get_db
 from ..models.models import (
     DocumentSignatureParticipant,
@@ -47,7 +47,9 @@ from ..services.document_signer_roles import (
 )
 from ..services.onboarding_assign import get_or_create_hr_documents_folder
 from ..services.onboarding_storage import read_file_object_bytes
+from ..services.signature_compliance import set_participant_turn_deadline
 from ..services.task_service import get_user_display
+from ..services.audit import create_audit_log
 from ..storage.local_provider import LocalStorageProvider
 from ..utils.pdf_hash import sha256_bytes
 
@@ -61,6 +63,29 @@ def _participant_role_label(p: DocumentSignatureParticipant) -> str:
     if getattr(p, "role_label", None):
         return str(p.role_label)
     return ROLE_LABEL.get(p.role, p.role)
+
+
+def _parse_signing_settings(payload: dict, user: User) -> tuple[Optional[int], bool, Optional[str]]:
+    raw_days = payload.get("signing_deadline_days")
+    signing_deadline_days: Optional[int] = None
+    if raw_days is not None and str(raw_days).strip() != "":
+        signing_deadline_days = int(raw_days)
+        if signing_deadline_days < 1:
+            raise HTTPException(400, "signing_deadline_days must be >= 1")
+    block_hub_access = bool(payload.get("block_hub_access", False))
+    if block_hub_access:
+        if not _has_permission(user, "documents:signatures:block_access"):
+            raise HTTPException(403, "Forbidden: missing permission (documents:signatures:block_access)")
+        if signing_deadline_days is None:
+            raise HTTPException(400, "signing_deadline_days required when block_hub_access is enabled")
+    message = payload.get("message_to_signers")
+    if message is not None:
+        message = str(message).strip()[:4000] or None
+    return signing_deadline_days, block_hub_access, message
+
+
+def _signature_notification_link() -> str:
+    return "/personal/signatures"
 
 
 def _client_ip(request: Request) -> str:
@@ -140,6 +165,8 @@ def _request_dict(
             "sort_order": p.sort_order,
             "status": p.status,
             "signed_at": p.signed_at.isoformat() if p.signed_at else None,
+            "available_at": p.available_at.isoformat() if getattr(p, "available_at", None) and p.available_at else None,
+            "deadline_at": p.deadline_at.isoformat() if getattr(p, "deadline_at", None) and p.deadline_at else None,
         }
         for p in parts
     ]
@@ -148,6 +175,10 @@ def _request_dict(
         "user_document_id": str(row.user_document_id),
         "display_name": row.display_name,
         "status": row.status,
+        "signing_deadline_days": getattr(row, "signing_deadline_days", None),
+        "block_hub_access": bool(getattr(row, "block_hub_access", False)),
+        "message_to_signers": getattr(row, "message_to_signers", None),
+        "cancelled_at": row.cancelled_at.isoformat() if getattr(row, "cancelled_at", None) and row.cancelled_at else None,
         "signer_user_id": str(row.signer_user_id),
         "signer_name": signer,
         "requested_by_id": str(row.requested_by_id) if row.requested_by_id else None,
@@ -192,6 +223,20 @@ def _can_access_doc_write(user: User, doc: UserDocument, db: Session) -> bool:
         return False
     line = getattr(proj, "business_line", None)
     return _has_project_feature_permission(user, line, "documents", "write")
+
+
+def link_standalone_doc_to_employee_subject(doc: UserDocument, employee_user_id: Optional[UUID]) -> bool:
+    """
+    When sending from the hub Document Builder, attach the doc to the Employee assignee's
+    user profile Document Builder (subject_user_id). Skip project-scoped docs.
+    Returns True if subject_user_id was set/updated.
+    """
+    if not employee_user_id:
+        return False
+    if getattr(doc, "project_id", None):
+        return False
+    doc.subject_user_id = employee_user_id
+    return True
 
 
 def _parse_assignments(payload: dict, required_roles: List[str]) -> dict:
@@ -338,6 +383,9 @@ def send_for_signature(
     emp_uid = employee_token_user_from_assignments(roles_catalog, assignments)
     employee_user_id = emp_uid  # may be None → no employee token fill
 
+    # Link standalone hub docs to the Employee assignee's profile Document Builder.
+    link_standalone_doc_to_employee_subject(doc, employee_user_id)
+
     original_pages = doc.pages
     tokenized = _pages_with_project_tokens(
         original_pages,
@@ -388,6 +436,8 @@ def send_for_signature(
     first_role = required_roles[0]
     first_signer_id = assignments[first_role]
 
+    signing_deadline_days, block_hub_access, message_to_signers = _parse_signing_settings(payload or {}, user)
+
     safe_title = re.sub(r"[^\w\s.-]", "", (doc.title or "document"))[:80] or "document"
     fname = f"{safe_title}_for_signature.pdf"
     source_fo = save_document_signature_pdf(
@@ -408,25 +458,31 @@ def send_for_signature(
         requested_by_id=user.id,
         status="pending",
         display_name=(doc.title or "Document").strip() or "Document",
+        signing_deadline_days=signing_deadline_days,
+        block_hub_access=block_hub_access,
+        message_to_signers=message_to_signers,
         created_at=now,
         updated_at=now,
     )
     db.add(row)
     db.flush()
 
+    first_part: Optional[DocumentSignatureParticipant] = None
     for idx, role in enumerate(required_roles):
         status = "ready" if idx == 0 else "pending"
-        db.add(
-            DocumentSignatureParticipant(
-                request_id=row.id,
-                role=role,
-                role_label=(labels.get(role) or role)[:120],
-                signer_user_id=assignments[role],
-                sort_order=idx,
-                status=status,
-                created_at=now,
-            )
+        part = DocumentSignatureParticipant(
+            request_id=row.id,
+            role=role,
+            role_label=(labels.get(role) or role)[:120],
+            signer_user_id=assignments[role],
+            sort_order=idx,
+            status=status,
+            created_at=now,
         )
+        if idx == 0:
+            set_participant_turn_deadline(part, row, now=now)
+            first_part = part
+        db.add(part)
 
     disp = (doc.title or "Document").strip() or "Document"
     role_lbl = labels.get(first_role) or first_role
@@ -439,7 +495,7 @@ def send_for_signature(
                 "title": "Document to sign",
                 "message": f'"{disp}" is waiting for your signature ({role_lbl}).',
                 "type": "default",
-                "link": "/documents/to-sign",
+                "link": _signature_notification_link(),
                 "read": False,
                 "metadata": {
                     "request_id": str(row.id),
@@ -453,6 +509,21 @@ def send_for_signature(
     )
     db.commit()
     db.refresh(row)
+    try:
+        create_audit_log(
+            db,
+            entity_type="document_signature_request",
+            entity_id=str(row.id),
+            action="signature_request.created",
+            actor_id=str(user.id),
+            changes_json={
+                "signing_deadline_days": signing_deadline_days,
+                "block_hub_access": block_hub_access,
+            },
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
     return _request_dict(row, db)
 
 
@@ -481,6 +552,133 @@ def list_document_signature_requests(
         .all()
     )
     return [_request_dict(r, db) for r in rows]
+
+
+@router.get("/signature-requests")
+def list_all_signature_requests(
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:read", "business:projects:documents:read")),
+):
+    q = db.query(DocumentSignatureRequest).order_by(DocumentSignatureRequest.created_at.desc())
+    if status:
+        q = q.filter(DocumentSignatureRequest.status == status)
+    rows = q.limit(500).all()
+    return [_request_dict(r, db) for r in rows]
+
+
+def _get_request_or_404(db: Session, request_id: UUID) -> DocumentSignatureRequest:
+    row = db.query(DocumentSignatureRequest).filter(DocumentSignatureRequest.id == request_id).first()
+    if not row:
+        raise HTTPException(404, "Signature request not found")
+    return row
+
+
+@router.post("/signature-requests/{request_id}/cancel")
+def cancel_signature_request(
+    request_id: UUID,
+    payload: Optional[dict] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:signatures:manage")),
+):
+    row = _get_request_or_404(db, request_id)
+    if row.status in ("completed", "cancelled"):
+        raise HTTPException(400, "Request cannot be cancelled")
+    now = datetime.now(timezone.utc)
+    prev_status = row.status
+    row.status = "cancelled"
+    row.cancelled_at = now
+    row.cancelled_by_id = user.id
+    row.updated_at = now
+    create_audit_log(
+        db,
+        entity_type="document_signature_request",
+        entity_id=str(row.id),
+        action="signature_request.cancelled",
+        actor_id=str(user.id),
+        context={"reason": (payload or {}).get("reason")},
+        changes_json={"status": {"before": prev_status, "after": "cancelled"}},
+    )
+    db.commit()
+    return _request_dict(row, db)
+
+
+@router.post("/signature-requests/{request_id}/extend-deadline")
+def extend_signature_deadline(
+    request_id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:signatures:manage")),
+):
+    from datetime import timedelta
+
+    row = _get_request_or_404(db, request_id)
+    if row.status in ("completed", "cancelled"):
+        raise HTTPException(400, "Request is not active")
+    extra_days = payload.get("extend_days")
+    new_deadline_str = payload.get("deadline_at")
+    ready_part = (
+        db.query(DocumentSignatureParticipant)
+        .filter(
+            DocumentSignatureParticipant.request_id == row.id,
+            DocumentSignatureParticipant.status == "ready",
+        )
+        .first()
+    )
+    if not ready_part:
+        raise HTTPException(400, "No signer is currently ready")
+    before = ready_part.deadline_at.isoformat() if ready_part.deadline_at else None
+    now = datetime.now(timezone.utc)
+    if new_deadline_str:
+        try:
+            parsed = datetime.fromisoformat(str(new_deadline_str).replace("Z", "+00:00"))
+            ready_part.deadline_at = parsed
+        except Exception:
+            raise HTTPException(400, "Invalid deadline_at")
+    elif extra_days is not None:
+        base = ready_part.deadline_at or now
+        if base.tzinfo is None:
+            base = base.replace(tzinfo=timezone.utc)
+        ready_part.deadline_at = base + timedelta(days=int(extra_days))
+    else:
+        raise HTTPException(400, "extend_days or deadline_at required")
+    row.updated_at = now
+    create_audit_log(
+        db,
+        entity_type="document_signature_request",
+        entity_id=str(row.id),
+        action="signature_request.deadline_extended",
+        actor_id=str(user.id),
+        changes_json={"participant_deadline_at": {"before": before, "after": ready_part.deadline_at.isoformat()}},
+    )
+    db.commit()
+    return _request_dict(row, db)
+
+
+@router.post("/signature-requests/{request_id}/disable-blocking")
+def disable_signature_blocking(
+    request_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:signatures:manage")),
+):
+    row = _get_request_or_404(db, request_id)
+    before = bool(row.block_hub_access)
+    row.block_hub_access = False
+    row.updated_at = datetime.now(timezone.utc)
+    create_audit_log(
+        db,
+        entity_type="document_signature_request",
+        entity_id=str(row.id),
+        action="signature_request.blocking_disabled",
+        actor_id=str(user.id),
+        changes_json={"block_hub_access": {"before": before, "after": False}},
+    )
+    db.commit()
+    return _request_dict(row, db)
 
 
 @me_router.get("")
@@ -608,7 +806,30 @@ async def me_sign(
     if agreement.lower() not in ("true", "1", "yes", "on"):
         raise HTTPException(400, "You must agree to sign")
     row, part = _row_for_participant_user(db, request_id, user.id)
+    if row.status == "cancelled":
+        raise HTTPException(400, "This signature request was cancelled")
     if part.status != "ready" or row.status not in ("pending", "in_progress"):
+        raise HTTPException(400, "Invalid or already signed")
+
+    part = (
+        db.query(DocumentSignatureParticipant)
+        .filter(
+            DocumentSignatureParticipant.request_id == request_id,
+            DocumentSignatureParticipant.id == part.id,
+            DocumentSignatureParticipant.status == "ready",
+        )
+        .with_for_update()
+        .first()
+    )
+    if not part:
+        raise HTTPException(400, "Invalid or already signed")
+    row = (
+        db.query(DocumentSignatureRequest)
+        .filter(DocumentSignatureRequest.id == request_id)
+        .with_for_update()
+        .first()
+    )
+    if not row or row.status not in ("pending", "in_progress"):
         raise HTTPException(400, "Invalid or already signed")
 
     fo = db.query(FileObject).filter(FileObject.id == _current_pdf_id(row)).first()
@@ -752,6 +973,7 @@ async def me_sign(
     if next_parts:
         nxt = next_parts[0]
         nxt.status = "ready"
+        set_participant_turn_deadline(nxt, row, now=now)
         row.signer_user_id = nxt.signer_user_id
         disp = (row.display_name or "Document").strip() or "Document"
         role_lbl = _participant_role_label(nxt)
@@ -764,7 +986,7 @@ async def me_sign(
                     "title": "Document to sign",
                     "message": f'"{disp}" is waiting for your signature ({role_lbl}).',
                     "type": "default",
-                    "link": "/documents/to-sign",
+                    "link": _signature_notification_link(),
                     "read": False,
                     "metadata": {
                         "request_id": str(row.id),

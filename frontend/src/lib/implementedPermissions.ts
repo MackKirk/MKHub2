@@ -102,6 +102,8 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'documents:write',
   'documents:delete',
   'documents:move',
+  'documents:signatures:block_access',
+  'documents:signatures:manage',
   'fleet:access',
   'fleet:dashboard:read',
   'fleet:vehicles:read',

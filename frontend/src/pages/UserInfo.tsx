@@ -23,6 +23,7 @@ import { CanadianDriversLicenseSection } from '@/components/CanadianDriversLicen
 import { UserEmployeeReviewsSection } from '@/components/users/UserEmployeeReviewsTabEnhanced';
 import { UserInfoHero, UserInfoHeroSkeleton } from '@/components/users/UserInfoHero';
 import UserDocumentsTabEnhanced from '@/components/users/UserDocumentsTabEnhanced';
+import UserDocumentBuilderTab from '@/components/users/UserDocumentBuilderTab';
 import { EmployeeTrainingSection } from '@/components/users/EmployeeTrainingTabEnhanced';
 import { UserAssetsSection } from '@/components/users/UserAssetsTabEnhanced';
 import {
@@ -98,6 +99,7 @@ const USER_TAB_LABELS: Record<string, string> = {
   personal: 'Personal',
   job: 'Job',
   docs: 'Docs',
+  document_builder: 'Document Builder',
   timesheet: 'Timesheet',
   loans: 'Loans',
   training: 'Training',
@@ -542,6 +544,7 @@ export default function UserInfo(){
       personal: !!(canViewGeneral || canSelfEdit),
       job: !!canViewGeneral,
       docs: !!canViewGeneral,
+      document_builder: !!canViewGeneral,
       timesheet: !!canViewTimesheet,
       loans: !!canViewLoans,
       training: !!canViewTraining,
@@ -1070,7 +1073,7 @@ export default function UserInfo(){
   const userTabItems = useMemo(
     () =>
       ([
-        ...(canViewGeneral || canSelfEdit ? (['personal', 'job', 'docs'] as const) : []),
+        ...(canViewGeneral || canSelfEdit ? (['personal', 'job', 'docs', 'document_builder'] as const) : []),
         ...(canViewTimesheet || canSelfEdit ? (['timesheet'] as const) : []),
         ...(canViewLoans ? (['loans'] as const) : []),
         ...(canViewTraining ? (['training'] as const) : []),
@@ -1235,6 +1238,9 @@ export default function UserInfo(){
                 </div>
               )}
               {tab==='docs' && canViewGeneral && <UserDocumentsTabEnhanced userId={String(userId)} canEdit={canEditGeneral} />}
+              {tab==='document_builder' && canViewGeneral && (
+                <UserDocumentBuilderTab userId={String(userId)} canEdit={canEditGeneral} />
+              )}
               {tab==='timesheet' && canViewTimesheet && <TimesheetBlock userId={String(userId)} canEdit={canEditTimesheet} />}
               {tab==='loans' && canViewLoans && <UserLoans userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab==='training' && canViewTraining && (

@@ -87,6 +87,18 @@ def seed_documents_permissions():
                 "description": "Granted with Edit Company Files (hidden in UI)",
                 "sort_index": 5,
             },
+            {
+                "key": "documents:signatures:block_access",
+                "label": "Signature — Block Hub Access",
+                "description": "Allow enabling Hub access blocking on overdue Document Builder signatures",
+                "sort_index": 6,
+            },
+            {
+                "key": "documents:signatures:manage",
+                "label": "Signature Requests — Manage",
+                "description": "Cancel, extend deadlines, and disable blocking on signature requests",
+                "sort_index": 7,
+            },
         ]
 
         for perm_data in documents_permissions:

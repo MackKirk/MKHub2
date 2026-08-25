@@ -49,6 +49,12 @@ export function matchesOnboardingDocumentsRedirectExempt(pathname: string): bool
   return onboardingDocPaths.some((p) => pathname === p || pathname.startsWith(p + '/'));
 }
 
+/** Paths reachable while Hub access is restricted (signatures overdue). */
+export function matchesSignatureRestrictedExempt(pathname: string): boolean {
+  const paths = ['/personal/signatures', '/profile', '/onboarding/documents'];
+  return paths.some((p) => pathname === p || pathname.startsWith(p + '/'));
+}
+
 /**
  * After auth, pick the first route to open without flashing the hub.
  * Mirrors AppShell redirect rules.
@@ -71,22 +77,35 @@ export async function resolvePostAuthDestination(requestedPath: string): Promise
     return '/onboarding';
   }
 
-  let status: { has_pending: boolean; past_deadline: boolean } = {
+  let status: { has_pending: boolean; past_deadline: boolean; blocked?: boolean; status_available?: boolean } = {
     has_pending: false,
     past_deadline: false,
+    blocked: false,
+    status_available: true,
   };
   try {
-    status = await api<{ has_pending: boolean; past_deadline: boolean }>(
-      'GET',
-      '/auth/me/onboarding/status'
-    );
+    status = await api<{
+      has_pending: boolean;
+      past_deadline?: boolean;
+      blocked?: boolean;
+      status_available?: boolean;
+    }>('GET', '/auth/me/signature-status');
   } catch {
-    // same fallback as AppShell query
+    try {
+      status = await api<{ has_pending: boolean; past_deadline: boolean }>(
+        'GET',
+        '/auth/me/onboarding/status'
+      );
+    } catch {
+      // same fallback as AppShell query
+    }
   }
 
-  const blocked = status.past_deadline && status.has_pending;
-  if (blocked && !matchesOnboardingDocumentsRedirectExempt(requestedPath)) {
-    return '/onboarding/documents';
+  const blocked =
+    (status.blocked && status.status_available !== false) ||
+    (status.past_deadline && status.has_pending);
+  if (blocked && !matchesSignatureRestrictedExempt(requestedPath)) {
+    return '/personal/signatures';
   }
 
   return requestedPath;

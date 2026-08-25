@@ -948,7 +948,7 @@ class DocumentType(Base):
 
 
 class UserDocument(Base):
-    """User-created document instance (document creator). Can be linked to a project/opportunity."""
+    """User-created document instance (document creator). Can be linked to a project/opportunity or a subject user."""
     __tablename__ = "user_documents"
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -956,6 +956,10 @@ class UserDocument(Base):
     document_type_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # optional, for future document types
     project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True
+    )
+    # Employee the document is about (HR user builder); mutually exclusive with project_id.
+    subject_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     pages: Mapped[Optional[dict]] = mapped_column(JSON)  # [{ "template_id": uuid, "areas_content": { "areaKey": value } }, ...]
     # Free-form signer roles: [{ id, label, sortOrder, fillsEmployeeTokens }]
@@ -1020,6 +1024,13 @@ class DocumentSignatureRequest(Base):
     signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    signing_deadline_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    block_hub_access: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    message_to_signers: Mapped[Optional[str]] = mapped_column(String(4000), nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class DocumentSignatureParticipant(Base):
@@ -1045,6 +1056,8 @@ class DocumentSignatureParticipant(Base):
     ip_address: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    available_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    deadline_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # Legacy Employee model removed in favor of EmployeeProfile linked to User

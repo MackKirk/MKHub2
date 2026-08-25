@@ -43,7 +43,7 @@ from .routes.quotes import router as quotes_router
 from .routes.users import router as users_router
 from .routes.estimate import router as estimate_router
 from .routes.reviews import router as reviews_router
-from .routes.chat import router as chat_router
+from .routes.chat import router as chat_router, ws_router as chat_ws_router
 from .routes.notifications import router as notifications_router
 from .routes.company_files import router as company_files_router
 from .routes.document_creator import router as document_creator_router
@@ -52,6 +52,10 @@ from .routes.document_signature_requests import (
     me_router as document_signature_requests_me_router,
     router as document_signature_requests_router,
 )
+from .routes.signature_compliance import router as signature_compliance_router
+from .routes.signature_admin import router as signature_admin_router
+from .auth.hub_access import require_hub_access
+from fastapi import Depends
 from .routes.orders import router as orders_router
 from .routes.task_requests import router as task_requests_router
 from .routes.tasks_v2 import router as tasks_router
@@ -243,56 +247,60 @@ def create_app() -> FastAPI:
             )
         return response
 
-    # Routers
-    app.include_router(auth_router)
-    app.include_router(files_router)
-    app.include_router(projects_router)
-    app.include_router(clients_router)
-    app.include_router(employees_router)
-    app.include_router(calendar_router)
-    app.include_router(auto_tasks_router)
-    app.include_router(settings_router)
-    app.include_router(integrations_router)
-    app.include_router(inventory_router)
+    # Routers — hub access dependency (deny-by-default when SIGNATURE_RESTRICTED_MODE=true)
+    _hub = [Depends(require_hub_access)]
+    app.include_router(auth_router, dependencies=_hub)
+    app.include_router(signature_compliance_router, dependencies=_hub)
+    app.include_router(signature_admin_router, dependencies=_hub)
+    app.include_router(files_router, dependencies=_hub)
+    app.include_router(projects_router, dependencies=_hub)
+    app.include_router(clients_router, dependencies=_hub)
+    app.include_router(employees_router, dependencies=_hub)
+    app.include_router(calendar_router, dependencies=_hub)
+    app.include_router(auto_tasks_router, dependencies=_hub)
+    app.include_router(settings_router, dependencies=_hub)
+    app.include_router(integrations_router, dependencies=_hub)
+    app.include_router(inventory_router, dependencies=_hub)
     from .routes.subcontractors import router as subcontractors_router
 
-    app.include_router(subcontractors_router)
-    app.include_router(proposals_router)
-    app.include_router(quotes_router)
-    app.include_router(users_router)
-    app.include_router(estimate_router)
-    app.include_router(reviews_router)
-    app.include_router(chat_router)
-    app.include_router(notifications_router)
-    app.include_router(task_requests_router)
-    app.include_router(tasks_router)
-    app.include_router(community_router)
-    app.include_router(company_files_router)
-    app.include_router(document_creator_router)
-    app.include_router(document_signature_templates_router)
-    app.include_router(document_signature_requests_router)
-    app.include_router(document_signature_requests_me_router)
-    app.include_router(orders_router)
-    app.include_router(employee_management_router)
-    app.include_router(permissions_router)
-    app.include_router(fleet_router)
-    app.include_router(company_credit_cards_router)
-    app.include_router(fuel_cards_router)
-    app.include_router(safety_router)
-    app.include_router(form_custom_lists_router)
-    app.include_router(form_templates_router)
-    app.include_router(training_router)
-    app.include_router(bug_report_router)
-    app.include_router(search_router)
-    app.include_router(admin_system_router)
-    app.include_router(onboarding_router)
-    app.include_router(onboarding_me_router)
-    app.include_router(offboarding_router)
-    app.include_router(print_shop_router)
-    app.include_router(print_shop_supplies_router)
-    app.include_router(inbound_email_router)
+    app.include_router(subcontractors_router, dependencies=_hub)
+    app.include_router(proposals_router, dependencies=_hub)
+    app.include_router(quotes_router, dependencies=_hub)
+    app.include_router(users_router, dependencies=_hub)
+    app.include_router(estimate_router, dependencies=_hub)
+    app.include_router(reviews_router, dependencies=_hub)
+    app.include_router(chat_router, dependencies=_hub)
+    app.include_router(chat_ws_router)
+    app.include_router(notifications_router, dependencies=_hub)
+    app.include_router(task_requests_router, dependencies=_hub)
+    app.include_router(tasks_router, dependencies=_hub)
+    app.include_router(community_router, dependencies=_hub)
+    app.include_router(company_files_router, dependencies=_hub)
+    app.include_router(document_creator_router, dependencies=_hub)
+    app.include_router(document_signature_templates_router, dependencies=_hub)
+    app.include_router(document_signature_requests_router, dependencies=_hub)
+    app.include_router(document_signature_requests_me_router, dependencies=_hub)
+    app.include_router(orders_router, dependencies=_hub)
+    app.include_router(employee_management_router, dependencies=_hub)
+    app.include_router(permissions_router, dependencies=_hub)
+    app.include_router(fleet_router, dependencies=_hub)
+    app.include_router(company_credit_cards_router, dependencies=_hub)
+    app.include_router(fuel_cards_router, dependencies=_hub)
+    app.include_router(safety_router, dependencies=_hub)
+    app.include_router(form_custom_lists_router, dependencies=_hub)
+    app.include_router(form_templates_router, dependencies=_hub)
+    app.include_router(training_router, dependencies=_hub)
+    app.include_router(bug_report_router, dependencies=_hub)
+    app.include_router(search_router, dependencies=_hub)
+    app.include_router(admin_system_router, dependencies=_hub)
+    app.include_router(onboarding_router, dependencies=_hub)
+    app.include_router(onboarding_me_router, dependencies=_hub)
+    app.include_router(offboarding_router, dependencies=_hub)
+    app.include_router(print_shop_router, dependencies=_hub)
+    app.include_router(print_shop_supplies_router, dependencies=_hub)
+    app.include_router(inbound_email_router, dependencies=_hub)
     from .routes import dispatch
-    app.include_router(dispatch.router)
+    app.include_router(dispatch.router, dependencies=_hub)
     # Legacy UI redirects to new React routes (exact paths)
     legacy_map = {
         "/ui/login.html": "/login",
@@ -1491,6 +1499,39 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Added project_id column to user_documents table")
 
+                    try:
+                        if db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_name = 'user_documents' LIMIT 1"
+                            )
+                        ).fetchall() and not db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.columns "
+                                "WHERE table_schema = 'public' AND table_name = 'user_documents' "
+                                "AND column_name = 'subject_user_id' LIMIT 1"
+                            )
+                        ).fetchall():
+                            db.execute(
+                                text(
+                                    "ALTER TABLE user_documents ADD COLUMN subject_user_id UUID NULL "
+                                    "REFERENCES users(id) ON DELETE SET NULL"
+                                )
+                            )
+                            try:
+                                db.execute(
+                                    text(
+                                        "CREATE INDEX IF NOT EXISTS idx_user_documents_subject_user_id "
+                                        "ON user_documents(subject_user_id)"
+                                    )
+                                )
+                            except Exception:
+                                pass
+                            db.commit()
+                            print("[startup] Added subject_user_id column to user_documents table")
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] user_documents.subject_user_id (non-critical): {_e}")
+
                     # Create document_types table
                     db.execute(text("""
                         CREATE TABLE IF NOT EXISTS document_types (
@@ -1726,6 +1767,86 @@ def create_app() -> FastAPI:
                         except Exception as _e:
                             db.rollback()
                             print(f"[startup] participants.user_agent (non-critical): {_e}")
+
+                    # Signature reform — additive columns only (P.14)
+                    if db.execute(
+                        text(
+                            "SELECT 1 FROM information_schema.tables WHERE table_name = 'document_signature_requests' LIMIT 1"
+                        )
+                    ).fetchall():
+                        sig_req_cols = [
+                            ("signing_deadline_days", "INTEGER"),
+                            ("block_hub_access", "BOOLEAN NOT NULL DEFAULT FALSE"),
+                            ("message_to_signers", "VARCHAR(4000)"),
+                            ("cancelled_at", "TIMESTAMPTZ"),
+                            ("cancelled_by_id", "UUID REFERENCES users(id) ON DELETE SET NULL"),
+                        ]
+                        for col_name, col_type in sig_req_cols:
+                            try:
+                                if not db.execute(
+                                    text(
+                                        "SELECT 1 FROM information_schema.columns "
+                                        "WHERE table_schema = 'public' AND table_name = 'document_signature_requests' "
+                                        f"AND column_name = '{col_name}' LIMIT 1"
+                                    )
+                                ).fetchall():
+                                    db.execute(
+                                        text(
+                                            f"ALTER TABLE document_signature_requests ADD COLUMN {col_name} {col_type}"
+                                        )
+                                    )
+                                    db.commit()
+                                    print(f"[startup] Added document_signature_requests.{col_name}")
+                            except Exception as _e:
+                                db.rollback()
+                                print(f"[startup] document_signature_requests.{col_name} (non-critical): {_e}")
+
+                    if db.execute(
+                        text(
+                            "SELECT 1 FROM information_schema.tables "
+                            "WHERE table_name = 'document_signature_participants' LIMIT 1"
+                        )
+                    ).fetchall():
+                        for col_name, col_type in [
+                            ("available_at", "TIMESTAMPTZ"),
+                            ("deadline_at", "TIMESTAMPTZ"),
+                        ]:
+                            try:
+                                if not db.execute(
+                                    text(
+                                        "SELECT 1 FROM information_schema.columns "
+                                        "WHERE table_schema = 'public' AND table_name = 'document_signature_participants' "
+                                        f"AND column_name = '{col_name}' LIMIT 1"
+                                    )
+                                ).fetchall():
+                                    db.execute(
+                                        text(
+                                            f"ALTER TABLE document_signature_participants ADD COLUMN {col_name} {col_type}"
+                                        )
+                                    )
+                                    db.commit()
+                                    print(f"[startup] Added document_signature_participants.{col_name}")
+                            except Exception as _e:
+                                db.rollback()
+                                print(f"[startup] document_signature_participants.{col_name} (non-critical): {_e}")
+                        try:
+                            if not db.execute(
+                                text(
+                                    "SELECT 1 FROM pg_indexes WHERE indexname = 'ix_doc_sig_part_signer_ready'"
+                                )
+                            ).fetchall():
+                                db.execute(
+                                    text(
+                                        "CREATE INDEX ix_doc_sig_part_signer_ready "
+                                        "ON document_signature_participants (signer_user_id, status) "
+                                        "WHERE status = 'ready'"
+                                    )
+                                )
+                                db.commit()
+                                print("[startup] Created ix_doc_sig_part_signer_ready")
+                        except Exception as _e:
+                            db.rollback()
+                            print(f"[startup] ix_doc_sig_part_signer_ready (non-critical): {_e}")
 
                     # Onboarding (Step 2 documents, packages, signing)
                     rows = db.execute(

@@ -9,10 +9,17 @@ type TokenValuesResponse = {
   tokens: DocumentAutoFillTokenValue[];
 };
 
-export function useDocumentAutoFillTokens(projectId?: string | null, enabled = true) {
-  const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+export function useDocumentAutoFillTokens(
+  projectId?: string | null,
+  enabled = true,
+  subjectUserId?: string | null,
+) {
+  const params = new URLSearchParams();
+  if (projectId) params.set('project_id', projectId);
+  if (subjectUserId) params.set('subject_user_id', subjectUserId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
   return useQuery({
-    queryKey: ['document-creator-token-values', projectId ?? null],
+    queryKey: ['document-creator-token-values', projectId ?? null, subjectUserId ?? null],
     queryFn: () => api<TokenValuesResponse>('GET', `/document-creator/token-values${qs}`),
     enabled,
     staleTime: 30_000,

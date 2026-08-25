@@ -294,7 +294,7 @@ def create_resend_assignment_items(
                     "title": "Document to sign",
                     "message": f'"{disp}" is waiting for your signature.',
                     "type": "default",
-                    "link": "/onboarding/documents",
+                    "link": "/personal/signatures",
                     "read": False,
                 },
                 status="pending",

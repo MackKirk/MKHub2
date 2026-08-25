@@ -20,6 +20,8 @@ from ..services.chat_hub import hub
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+# WebSocket routes cannot use router-level HTTP dependencies (require_hub_access).
+ws_router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 def _user_basic(u: User, ep: Optional[EmployeeProfile]) -> dict:
@@ -409,7 +411,7 @@ def get_unread_count(db: Session = Depends(get_db), me: User = Depends(get_curre
     return {"total": int(count)}
 
 
-@router.websocket("/ws/chat")
+@ws_router.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket, token: Optional[str] = None):
     # Do NOT use Depends(get_db) here: the session would be held for the entire
     # WebSocket lifetime (minutes/hours per user), exhausting the connection pool.

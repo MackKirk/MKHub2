@@ -44,6 +44,10 @@ services:
         generateValue: true
       - key: TZ_DEFAULT
         value: "America/Vancouver"
+      - key: SIGNATURE_BUILDER_BLOCKING_ENABLED
+        value: "true"
+      - key: SIGNATURE_RESTRICTED_MODE
+        value: "true"
       - key: GOOGLE_PLACES_API_KEY
         sync: false
       - key: VITE_GOOGLE_MAPS_API_KEY

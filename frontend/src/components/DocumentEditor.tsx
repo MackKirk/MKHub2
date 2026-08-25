@@ -140,6 +140,8 @@ function legacyToElements(areas_content: Record<string, string> | undefined, are
 type DocumentEditorDocumentProps = {
   documentId: string;
   projectId?: string | null;
+  /** HR user the document is about — drives employee autofill tokens */
+  subjectUserId?: string | null;
   onClose?: () => void;
   /** When true, document is view-only: no editing, no add page, no save. */
   readOnly?: boolean;
@@ -182,6 +184,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const isTemplate = isTemplateMode(props);
   const documentId = !isTemplate ? props.documentId : undefined;
   const projectId = !isTemplate ? props.projectId : undefined;
+  const subjectUserId = !isTemplate ? (props as DocumentEditorDocumentProps).subjectUserId : undefined;
   const onClose = props.onClose;
   const templateProps = isTemplate ? props : null;
   const propReadOnly = !isTemplate && !!(props as DocumentEditorDocumentProps).readOnly;
@@ -419,6 +422,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
 
       const listKeys: Array<unknown[]> = [['document-creator-documents']];
       if (projectId) listKeys.push(['document-creator-documents', projectId]);
+      if (subjectUserId) listKeys.push(['document-creator-documents', 'subject', subjectUserId]);
       for (const key of listKeys) {
         const list = queryClient.getQueryData<UserDocument[]>(key);
         const item = list?.find((d) => d.id === id);
@@ -523,6 +527,9 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         if (projectId) {
           queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
         }
+        if (subjectUserId) {
+          queryClient.invalidateQueries({ queryKey: ['document-creator-documents', 'subject', subjectUserId] });
+        }
       } catch (e: unknown) {
         if (e instanceof Error && (e as Error & { silent?: boolean }).silent) {
           throw e;
@@ -535,7 +542,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         throw e;
       }
     },
-    [id, projectId, queryClient, versionBaselineReady, handleNewerVersionConflict],
+    [id, projectId, subjectUserId, queryClient, versionBaselineReady, handleNewerVersionConflict],
   );
 
   const {
@@ -2372,6 +2379,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         isTemplate={!!isTemplate}
         textEditingElementId={textEditingElementId}
         projectId={projectId}
+        subjectUserId={subjectUserId}
         showExportPdf={!isTemplate}
         onExportPdf={handleExportPdf}
         isExportingPdf={isExportingPdf}
@@ -2501,6 +2509,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           documentTitle={title}
           pages={pages}
           signerRoles={signerRoles}
+          lockedSubjectUserId={subjectUserId}
           onClose={() => setSendForSignatureOpen(false)}
           onSent={() => {
             /* inbox is separate; toast already shown in modal */
@@ -2937,6 +2946,7 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         onAddPage={handleAddPageWithTemplate}
         onAddPages={handleAddPages}
         projectId={projectId}
+        subjectUserId={subjectUserId}
       />
       )}
       {!isTemplate && projectId && imagePickerOpen && (

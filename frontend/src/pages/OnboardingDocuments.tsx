@@ -48,8 +48,16 @@ function PageShell({ children }: { children: React.ReactNode }) {
             </button>
             <button
               type="button"
-              onClick={() => navigate('/home', { replace: true })}
-              className="px-3 py-2 text-xs font-medium text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] rounded-lg hover:opacity-95 shadow-sm"
+              onClick={() => {
+                if (canLeaveToHome) navigate('/home', { replace: true });
+              }}
+              disabled={!canLeaveToHome}
+              title={canLeaveToHome ? undefined : 'Complete required signatures before returning to the Hub'}
+              className={`px-3 py-2 text-xs font-medium rounded-lg shadow-sm ${
+                canLeaveToHome
+                  ? 'text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:opacity-95'
+                  : 'text-gray-400 bg-gray-100 border border-gray-200 cursor-not-allowed'
+              }`}
             >
               Home
             </button>
