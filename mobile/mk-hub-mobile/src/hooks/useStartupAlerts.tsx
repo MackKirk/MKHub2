@@ -98,7 +98,12 @@ async function fetchPending(userId: string): Promise<PendingSnapshot> {
   ]);
 
   const [grouped, signatures, onboarding, ...summaries] = await Promise.all([
-    getMyTasks().catch(() => ({ accepted: [], in_progress: [], done: [] })),
+    getMyTasks().catch(() => ({
+      accepted: [],
+      in_progress: [],
+      blocked: [],
+      done: []
+    })),
     getPendingSignatureRequests(),
     getPendingOnboardingDocuments(),
     ...[...weeks].map((weekStart) =>

@@ -4,6 +4,7 @@ from sqlalchemy import func, or_, and_
 from typing import Optional, List
 from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 import uuid as uuid_lib
 import os
 
@@ -16,8 +17,19 @@ from ..models.models import (
     EmployeeReport, ReportAttachment, ReportComment,
     EmployeeDocument, EmployeeFolder,
 )
-from ..auth.security import require_permissions, require_roles, get_current_user
-from ..services.bamboohr_client import BambooHRClient
+from ..auth.security import (
+    require_permissions,
+    require_roles,
+    get_current_user,
+    _has_permission,
+    _user_is_admin,
+)
+from ..config import settings
+from ..services.bamboohr_client import (
+    BambooHRClient,
+    extract_time_off_request_employee_id,
+    normalize_time_off_status,
+)
 
 
 router = APIRouter(prefix="/employees", tags=["employee-management"])
@@ -997,8 +1009,12 @@ def _get_bamboohr_id_for_user(db: Session, client: BambooHRClient, user: User) -
     Uses directory data first to match by email when available, so we only call get_employee once
     for the matching employee instead of for every employee.
     """
-    email = (user.email_personal or user.email_corporate or "").strip().lower()
-    if not email:
+    hub_emails = {
+        (user.email_personal or "").strip().lower(),
+        (user.email_corporate or "").strip().lower(),
+    }
+    hub_emails.discard("")
+    if not hub_emails:
         return None
     directory = client.get_employees_directory()
     employees = directory if isinstance(directory, list) else (directory.get("employees", []) if isinstance(directory, dict) else [])
@@ -1006,13 +1022,13 @@ def _get_bamboohr_id_for_user(db: Session, client: BambooHRClient, user: User) -
         return None
 
     def _email_matches(emp_dict: dict) -> bool:
-        """Check if any email field in emp_dict matches the user email."""
+        """Check if any email field in emp_dict matches any Hub email for this user."""
         for key in ("workEmail", "email", "homeEmail", "personalEmail"):
             val = emp_dict.get(key)
-            if isinstance(val, str) and val.strip().lower() == email:
+            if isinstance(val, str) and val.strip().lower() in hub_emails:
                 return True
         for key, val in emp_dict.items():
-            if isinstance(val, str) and "@" in val and val.strip().lower() == email:
+            if isinstance(val, str) and "@" in val and val.strip().lower() in hub_emails:
                 return True
         return False
 
@@ -1039,11 +1055,8 @@ def _get_bamboohr_id_for_user(db: Session, client: BambooHRClient, user: User) -
             continue
         try:
             emp_data = client.get_employee(emp_id)
-            emp_email = (
-                (emp_data.get("homeEmail") or emp_data.get("personalEmail") or emp_data.get("workEmail") or emp_data.get("email")) or ""
-            ).strip().lower()
-            if emp_email == email:
-                bamboohr_employee = dict(emp_data)
+            if _email_matches(emp_data if isinstance(emp_data, dict) else {}):
+                bamboohr_employee = dict(emp_data) if isinstance(emp_data, dict) else {"id": emp_id}
                 bamboohr_employee["id"] = emp_id
                 return (emp_id, bamboohr_employee)
         except Exception:
@@ -1350,22 +1363,65 @@ def _ensure_default_time_off_entitlement(db: Session, policy_name: str) -> float
     except Exception:
         return None
 
+
+TIME_OFF_READ_PERMS = (
+    "users:read",
+    "hr:users:read",
+    "hr:users:view:job",
+    "hr:users:view:general",
+)
+TIME_OFF_WRITE_PERMS = (
+    "users:write",
+    "hr:users:edit:job",
+    "hr:users:edit:general",
+)
+
+
+def _is_sick_leave_policy(policy_name: Optional[str]) -> bool:
+    if not policy_name:
+        return False
+    value = policy_name.lower().strip()
+    return value in {"sick leave", "sick"} or "sick" in value
+
+
+def _has_any_time_off_perm(user: User, perms: tuple) -> bool:
+    if _user_is_admin(user):
+        return True
+    return any(_has_permission(user, perm) for perm in perms)
+
+
+def _resolve_time_off_user_id(user_id: str, current_user: User, *, write: bool) -> str:
+    if user_id in {"me", "self"}:
+        user_id = str(current_user.id)
+    if str(current_user.id) == str(user_id):
+        return user_id
+    needed = TIME_OFF_WRITE_PERMS if write else TIME_OFF_READ_PERMS
+    if not _has_any_time_off_perm(current_user, needed):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return user_id
+
+
+def _company_now() -> datetime:
+    tz_name = getattr(settings, "tz_default", None) or "America/Vancouver"
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo("America/Vancouver")
+    return datetime.now(tz)
+
+
 @router.get("/{user_id}/time-off/balance")
 def get_time_off_balance(
     user_id: str,
     year: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:job", "hr:users:view:general"))
 ):
     """Get time off balance for a user"""
+    user_id = _resolve_time_off_user_id(user_id, current_user, write=False)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    # Check if user can view their own balance or has permission
-    if str(current_user.id) != user_id and not _:
-        raise HTTPException(status_code=403, detail="Not authorized")
     
     query = db.query(TimeOffBalance).filter(TimeOffBalance.user_id == user.id)
     if year:
@@ -1399,35 +1455,16 @@ def sync_time_off_balance(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Get user's email to find BambooHR employee
     email = user.email_personal or user.email_corporate
     if not email:
         raise HTTPException(status_code=400, detail="User has no email address to match with BambooHR")
     
     try:
         client = BambooHRClient()
-        directory = client.get_employees_directory()
-        employees = directory if isinstance(directory, list) else (directory.get("employees", []) if isinstance(directory, dict) else [])
-        
-        bamboohr_id = None
-        for emp in employees:
-            emp_id = str(emp.get("id", ""))
-            try:
-                emp_data = client.get_employee(emp_id)
-                emp_email = (
-                    emp_data.get("homeEmail") or
-                    emp_data.get("personalEmail") or
-                    emp_data.get("workEmail") or
-                    emp_data.get("email")
-                )
-                if emp_email and emp_email.strip().lower() == email.strip().lower():
-                    bamboohr_id = emp_id
-                    break
-            except Exception:
-                continue
-        
-        if not bamboohr_id:
+        result = _get_bamboohr_id_for_user(db, client, user)
+        if not result:
             raise HTTPException(status_code=404, detail=f"Employee not found in BambooHR for email: {email}")
+        bamboohr_id, _ = result
         
         # Get time off balance from BambooHR
         balance_data = client.get_time_off_balance(bamboohr_id)
@@ -1671,16 +1708,12 @@ def get_time_off_requests(
     status: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:job", "hr:users:view:general"))
 ):
     """Get time off requests for a user"""
+    user_id = _resolve_time_off_user_id(user_id, current_user, write=False)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    # Check if user can view their own requests or has permission
-    if str(current_user.id) != user_id and not _:
-        raise HTTPException(status_code=403, detail="Not authorized")
     
     query = db.query(TimeOffRequest).filter(TimeOffRequest.user_id == user.id)
     if status:
@@ -1709,16 +1742,12 @@ def create_time_off_request(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general", "users:write"))
 ):
     """Create a new time off request"""
+    user_id = _resolve_time_off_user_id(user_id, current_user, write=True)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    # Users can create requests for themselves, or admins/HR can create for others
-    if str(current_user.id) != user_id and not _:
-        raise HTTPException(status_code=403, detail="You can only create time off requests for yourself, or you need admin/HR permissions to create requests for others")
     
     # Validate required fields
     policy_name = payload.get("policy_name")
@@ -1738,6 +1767,24 @@ def create_time_off_request(
     
     if end_date < start_date:
         raise HTTPException(status_code=400, detail="end_date must be after start_date")
+
+    notes_text = (notes or "").strip() if isinstance(notes, str) else ""
+    is_sick_leave = _is_sick_leave_policy(policy_name)
+    is_self_request = str(current_user.id) == str(user.id)
+
+    if is_sick_leave and not notes_text:
+        raise HTTPException(
+            status_code=400,
+            detail="A justification is required for sick leave.",
+        )
+
+    if is_self_request and not is_sick_leave:
+        earliest = (_company_now() + timedelta(hours=24)).date()
+        if start_date < earliest:
+            raise HTTPException(
+                status_code=400,
+                detail="Time off must be requested at least 24 hours in advance.",
+            )
     
     # Calculate hours if not provided
     if not hours:
@@ -1749,7 +1796,6 @@ def create_time_off_request(
     
     # Check if user has enough balance
     # For "Sick Leave", allow request even without sufficient balance
-    is_sick_leave = policy_name and policy_name.lower().strip() in ["sick leave", "sick"]
     current_year = datetime.now().year
     balance = db.query(TimeOffBalance).filter(
         TimeOffBalance.user_id == user.id,
@@ -1778,7 +1824,7 @@ def create_time_off_request(
         start_date=start_date,
         end_date=end_date,
         hours=hours,
-        notes=notes,
+        notes=notes_text or None,
         status="pending",
         requested_at=datetime.now(timezone.utc),
         created_at=datetime.now(timezone.utc)
@@ -1800,9 +1846,9 @@ def update_time_off_request(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:write", "hr:users:edit:job", "hr:users:edit:general"))
 ):
     """Update time off request (approve/reject/cancel)"""
+    user_id = _resolve_time_off_user_id(user_id, current_user, write=True)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -1819,11 +1865,19 @@ def update_time_off_request(
     new_status = payload.get("status")
     review_notes = payload.get("review_notes")
     
-    if new_status == "cancelled" and str(current_user.id) == user_id:
+    is_self = str(current_user.id) == str(user_id)
+    can_manage = _has_any_time_off_perm(current_user, TIME_OFF_WRITE_PERMS)
+
+    if new_status == "cancelled" and is_self:
+        if request.status != "pending":
+            raise HTTPException(
+                status_code=400,
+                detail="Only pending requests can be cancelled",
+            )
         # User can cancel their own request
         request.status = "cancelled"
         request.updated_at = datetime.now(timezone.utc)
-    elif new_status in ["approved", "rejected"] and _:
+    elif new_status in ["approved", "rejected"] and can_manage:
         # Admin can approve/reject
         request.status = new_status
         request.reviewed_at = datetime.now(timezone.utc)
@@ -1858,16 +1912,12 @@ def get_time_off_history(
     year: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:job", "hr:users:view:general"))
 ):
     """Get time off history/transactions for a user"""
+    user_id = _resolve_time_off_user_id(user_id, current_user, write=False)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    # Check if user can view their own history or has permission
-    if str(current_user.id) != user_id and not _:
-        raise HTTPException(status_code=403, detail="Not authorized")
     
     query = db.query(TimeOffHistory).filter(TimeOffHistory.user_id == user.id)
     if policy_name:
@@ -2209,35 +2259,16 @@ def sync_time_off_history(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Get user's email to find BambooHR employee
     email = user.email_personal or user.email_corporate
     if not email:
         raise HTTPException(status_code=400, detail="User has no email address to match with BambooHR")
     
     try:
         client = BambooHRClient()
-        directory = client.get_employees_directory()
-        employees = directory if isinstance(directory, list) else (directory.get("employees", []) if isinstance(directory, dict) else [])
-        
-        bamboohr_id = None
-        for emp in employees:
-            emp_id = str(emp.get("id", ""))
-            try:
-                emp_data = client.get_employee(emp_id)
-                emp_email = (
-                    emp_data.get("homeEmail") or
-                    emp_data.get("personalEmail") or
-                    emp_data.get("workEmail") or
-                    emp_data.get("email")
-                )
-                if emp_email and emp_email.strip().lower() == email.strip().lower():
-                    bamboohr_id = emp_id
-                    break
-            except Exception:
-                continue
-        
-        if not bamboohr_id:
+        result = _get_bamboohr_id_for_user(db, client, user)
+        if not result:
             raise HTTPException(status_code=404, detail=f"Employee not found in BambooHR for email: {email}")
+        bamboohr_id, _ = result
         
         # Try to get time off balance history from BambooHR
         history_data = client.get_time_off_balance_history(bamboohr_id)
@@ -2260,8 +2291,11 @@ def sync_time_off_history(
                     if isinstance(requests_data, list):
                         for req in requests_data:
                             if isinstance(req, dict):
+                                req_employee_id = extract_time_off_request_employee_id(req)
+                                if req_employee_id != str(bamboohr_id):
+                                    continue
                                 # Only process approved requests
-                                status = req.get("status", "").lower()
+                                status = normalize_time_off_status(req.get("status"))
                                 if status in ["approved", "used", "taken", "approvedpaid", "approvedunpaid"]:
                                     req_id = req.get("id") or req.get("requestId") or req.get("request_id")
                                     # Extract request details
@@ -2289,7 +2323,10 @@ def sync_time_off_history(
                                     
                                     # Determine if amount is in days or hours
                                     days = 0.0
-                                    unit = req.get("unit", "").lower()
+                                    unit_raw = req.get("unit", "")
+                                    if isinstance(unit_raw, dict):
+                                        unit_raw = unit_raw.get("name") or unit_raw.get("_text") or ""
+                                    unit = str(unit_raw or "").lower()
                                     
                                     # Check for explicit hours field
                                     if "hours" in req and req["hours"] is not None:
@@ -2518,6 +2555,23 @@ def sync_time_off_history(
                 return datetime(1900, 1, 1).date()
         
         transactions_sorted = sorted(transactions, key=get_trans_date)
+
+        incoming_sync_ids = set()
+        for trans in transactions_sorted:
+            if not isinstance(trans, dict):
+                continue
+            tid = trans.get("id") or trans.get("transactionId") or trans.get("transaction_id")
+            if tid:
+                incoming_sync_ids.add(str(tid))
+        if incoming_sync_ids:
+            stale_rows = db.query(TimeOffHistory).filter(
+                TimeOffHistory.user_id == user.id,
+                TimeOffHistory.bamboohr_transaction_id.isnot(None),
+            ).all()
+            for row in stale_rows:
+                tid = row.bamboohr_transaction_id or ""
+                if tid.startswith(("req:", "entitlement:")) and tid not in incoming_sync_ids:
+                    db.delete(row)
         
         # Track running balance per policy
         # Initialize with current balance from TimeOffBalance (convert hours to days)

@@ -45,6 +45,18 @@ export const HUB_MENU_CATEGORIES: HubMenuCategory[] = [
         target: { type: "stack", screen: "Schedule" }
       },
       {
+        id: "time-off",
+        label: "Time Off",
+        icon: "sunny-outline",
+        target: { type: "stack", screen: "TimeOff", params: { mode: "vacation" } }
+      },
+      {
+        id: "sick-leave",
+        label: "Sick Leave",
+        icon: "medkit-outline",
+        target: { type: "stack", screen: "TimeOff", params: { mode: "sick" } }
+      },
+      {
         id: "clock",
         label: "Clock In/Out",
         icon: "time-outline",
@@ -63,10 +75,11 @@ export const HUB_MENU_CATEGORIES: HubMenuCategory[] = [
         target: { type: "tab", screen: "Community" }
       },
       {
-        id: "upload",
-        label: "Upload to Project",
-        icon: "camera-outline",
-        target: { type: "stack", screen: "Upload" }
+        id: "fleet-my-assets",
+        label: "My Assets",
+        icon: "person-circle-outline",
+        requiredPermission: "fleet:access",
+        target: { type: "stack", screen: "FleetMyAssets" }
       }
     ]
   },
@@ -159,17 +172,24 @@ export const HUB_MENU_CATEGORIES: HubMenuCategory[] = [
     ]
   },
   {
+    id: "human-resources",
+    label: "Human Resources",
+    icon: "people-circle-outline",
+    items: [
+      {
+        id: "users",
+        label: "Users",
+        icon: "people-outline",
+        requiredPermission: "hr:users:read",
+        target: { type: "stack", screen: "UsersList" }
+      }
+    ]
+  },
+  {
     id: "fleet",
     label: "Fleet Shop",
     icon: "car-outline",
     items: [
-      {
-        id: "fleet-my-assets",
-        label: "My Assets",
-        icon: "person-circle-outline",
-        requiredPermission: "fleet:access",
-        target: { type: "stack", screen: "FleetMyAssets" }
-      },
       {
         id: "fleet-work-orders",
         label: "Work Orders",

@@ -1509,6 +1509,7 @@ def get_project(
         "business_line": getattr(p, "business_line", None) or BUSINESS_LINE_CONSTRUCTION,
         "image_file_object_id": str(getattr(p, 'image_file_object_id', None)) if getattr(p, 'image_file_object_id', None) else None,
         "image_manually_set": getattr(p, 'image_manually_set', False),
+        "cover_image_url": _resolve_project_cover_url(db, p, width=800),
         "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
         **project_billing_response_fields(p),
         "billing_differs_from_customer": _billing_differs_from_customer(p, client),
@@ -6906,6 +6907,25 @@ def _build_users_display_map(db: Session, user_ids: list) -> dict[str, dict]:
         )
         users_map[str(user_row.id)] = {"name": name or None, "profile_photo_file_id": avatar_file_id}
     return users_map
+
+
+def _resolve_project_cover_url(db: Session, p, *, width: int = 400) -> str:
+    """Same cover priority as opportunity/project list cards."""
+    pid = str(p.id)
+    if getattr(p, "image_manually_set", False) and getattr(p, "image_file_object_id", None):
+        return f"/files/{str(p.image_file_object_id)}/thumbnail?w={width}"
+    cover_images = _load_legacy_cover_images(db, [p.id])
+    if pid in cover_images:
+        cover_file = cover_images[pid]
+        timestamp = cover_file.uploaded_at.isoformat() if cover_file.uploaded_at else None
+        timestamp_param = f"&t={timestamp}" if timestamp else ""
+        return f"/files/{cover_file.file_object_id}/thumbnail?w={width}{timestamp_param}"
+    if getattr(p, "image_file_object_id", None):
+        return f"/files/{str(p.image_file_object_id)}/thumbnail?w={width}"
+    _, proposal_cover_by_project = _load_latest_proposals_by_project(db, [p.id])
+    if pid in proposal_cover_by_project:
+        return f"/files/{proposal_cover_by_project[pid]}/thumbnail?w={width}"
+    return "/ui/assets/placeholders/project.png"
 
 
 def _load_legacy_cover_images(db: Session, project_ids: list) -> dict[str, ClientFile]:

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -43,6 +44,7 @@ import type {
   WeeklySummaryDay
 } from "../../types/shifts";
 
+const GLOBE_BG = require("../../../assets/brand/globe.png");
 const ACCENT = colors.homeAccent;
 const CLOCK_OUT = "#a31414";
 const TIMESHEET_BLUE = "#2563EB";
@@ -363,6 +365,13 @@ export const ClockScreen: React.FC = () => {
   if (loading && !dayState) {
     return (
       <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.layout}>
+        <Image
+          source={GLOBE_BG}
+          style={styles.globeBg}
+          resizeMode="contain"
+          tintColor="#c22033"
+          pointerEvents="none"
+        />
         {header}
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={ACCENT} />
@@ -374,6 +383,13 @@ export const ClockScreen: React.FC = () => {
 
   return (
     <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.layout}>
+      <Image
+        source={GLOBE_BG}
+        style={styles.globeBg}
+        resizeMode="contain"
+        tintColor="#c22033"
+        pointerEvents="none"
+      />
       {header}
       <ScrollView
         ref={scrollRef}
@@ -681,9 +697,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "transparent",
     paddingHorizontal: 16,
-    paddingBottom: spacing.md
+    paddingBottom: spacing.md,
+    overflow: "hidden",
+    position: "relative"
   },
-  scroll: { flex: 1 },
+  globeBg: {
+    position: "absolute",
+    width: 640,
+    height: 640,
+    right: -255,
+    bottom: -40,
+    opacity: 0.06
+  },
+  scroll: { flex: 1, zIndex: 1 },
   content: {
     paddingBottom: spacing.xxl,
     gap: spacing.md
@@ -692,7 +718,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    marginBottom: spacing.lg
+    marginBottom: spacing.lg,
+    zIndex: 1
   },
   headerIconBtn: {
     width: 40,
@@ -724,7 +751,8 @@ const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
-    alignItems: "center"
+    alignItems: "center",
+    zIndex: 1
   },
   loadingText: {
     marginTop: spacing.md,

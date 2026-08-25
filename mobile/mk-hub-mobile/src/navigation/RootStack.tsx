@@ -6,6 +6,8 @@ import { SafetyInspectionScreen } from "../screens/business/SafetyInspectionScre
 import { CustomerDetailScreen } from "../screens/customers/CustomerDetailScreen";
 import { FleetAssetDetailScreen } from "../screens/fleet/FleetAssetDetailScreen";
 import { FleetWorkOrderDetailScreen } from "../screens/fleet/FleetWorkOrderDetailScreen";
+import { TaskDetailScreen } from "../screens/tasks/TaskDetailScreen";
+import { UserDetailScreen } from "../screens/users/UserDetailScreen";
 import type { RootStackParamList } from "./types";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -19,6 +21,8 @@ export const RootStackNavigator: React.FC = () => {
       <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} />
       <Stack.Screen name="FleetAssetDetail" component={FleetAssetDetailScreen} />
       <Stack.Screen name="FleetWorkOrderDetail" component={FleetWorkOrderDetailScreen} />
+      <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
+      <Stack.Screen name="UserDetail" component={UserDetailScreen} />
     </Stack.Navigator>
   );
 };

@@ -3,88 +3,75 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "@react-navigation/native";
-import { colors } from "../../theme/colors";
-import { spacing } from "../../theme/spacing";
-import { radius } from "../../theme/radius";
-import { MKBadge } from "../../components/MKBadge";
-import { MKCard } from "../../components/MKCard";
-import { MKButton } from "../../components/MKButton";
-import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
+import { LinearGradient } from "expo-linear-gradient";
+import {
+  CommonActions,
+  useFocusEffect,
+  useNavigation,
+  type CompositeNavigationProp
+} from "@react-navigation/native";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ScreenLayout } from "../../components/ScreenLayout";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
 import { useTasksBadge } from "../../hooks/useTasksBadge";
-import { typography } from "../../theme/typography";
-import { concludeTask, startTask } from "../../services/tasks";
+import {
+  formatDue,
+  primaryAction,
+  priorityMeta,
+  sourceLabel,
+  statusMeta
+} from "../../lib/taskUi";
+import {
+  applyTaskUpdate,
+  blockTask,
+  concludeTask,
+  startTask,
+  unblockTask
+} from "../../services/tasks";
 import { toApiError } from "../../services/api";
-import type { TaskGroupedResponse, TaskItem } from "../../types/tasks";
-import type { ProjectStatusBadgeVariant } from "../../lib/projectUi";
+import { colors } from "../../theme/colors";
+import { spacing } from "../../theme/spacing";
+import { radius, shadows } from "../../theme/radius";
+import { typography } from "../../theme/typography";
+import type { AppTabParamList, RootStackParamList } from "../../navigation/types";
+import type { TaskItem } from "../../types/tasks";
 
-type FilterKey = "open" | "accepted" | "in_progress" | "done" | "all";
+const GLOBE_BG = require("../../../assets/brand/globe.png");
 
-type ListRow =
-  | { type: "header"; key: string; title: string; count: number }
-  | { type: "task"; key: string; task: TaskItem };
+type FilterKey = "open" | "accepted" | "in_progress" | "blocked" | "done" | "all";
+type TasksNav = CompositeNavigationProp<
+  BottomTabNavigationProp<AppTabParamList, "Tasks">,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
-const FILTERS: Array<{ key: FilterKey; label: string }> = [
-  { key: "open", label: "Open" },
-  { key: "accepted", label: "To Do" },
-  { key: "in_progress", label: "In Progress" },
-  { key: "done", label: "Done" },
-  { key: "all", label: "All" }
-];
+const RAIL_WIDTH = 6;
+const PRIORITY_RANK: Record<string, number> = {
+  urgent: 0,
+  high: 1,
+  normal: 2,
+  low: 3
+};
 
-function statusBadgeVariant(status: string): ProjectStatusBadgeVariant {
-  if (status === "accepted") return "warning";
-  if (status === "in_progress") return "info";
-  if (status === "done") return "success";
-  return "neutral";
-}
-
-function statusLabel(status: string): string {
-  if (status === "accepted") return "To Do";
-  if (status === "in_progress") return "In Progress";
-  if (status === "done") return "Done";
-  return status.replace("_", " ");
-}
-
-function applyTaskUpdate(
-  grouped: TaskGroupedResponse,
-  updated: TaskItem
-): TaskGroupedResponse {
-  const next: TaskGroupedResponse = {
-    accepted: [],
-    in_progress: [],
-    done: []
-  };
-  const all = [
-    ...(grouped.accepted ?? []),
-    ...(grouped.in_progress ?? []),
-    ...(grouped.done ?? [])
-  ];
-  let found = false;
-  for (const task of all) {
-    const value = task.id === updated.id ? updated : task;
-    if (task.id === updated.id) found = true;
-    const bucket = value.status as keyof TaskGroupedResponse;
-    if (!next[bucket]) next[bucket] = [];
-    next[bucket].push(value);
-  }
-  if (!found) {
-    const bucket = updated.status as keyof TaskGroupedResponse;
-    if (!next[bucket]) next[bucket] = [];
-    next[bucket].push(updated);
-  }
-  return next;
+function sortTasks(tasks: TaskItem[]): TaskItem[] {
+  return [...tasks].sort((a, b) => {
+    const pa = PRIORITY_RANK[(a.priority || "normal").toLowerCase()] ?? 2;
+    const pb = PRIORITY_RANK[(b.priority || "normal").toLowerCase()] ?? 2;
+    if (pa !== pb) return pa - pb;
+    return (a.due_date || "9999").localeCompare(b.due_date || "9999");
+  });
 }
 
 export const TasksScreen: React.FC = () => {
+  const navigation = useNavigation<TasksNav>();
   const { openMenu } = useHubMenu();
   const {
     grouped,
@@ -105,21 +92,62 @@ export const TasksScreen: React.FC = () => {
     }, [refreshTasks])
   );
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await refreshTasks();
-    setRefreshing(false);
+  const blockedCount = grouped?.blocked?.length ?? 0;
+  const doneCount = grouped?.done?.length ?? 0;
+
+  const list = useMemo(() => {
+    const data = grouped ?? {
+      accepted: [],
+      in_progress: [],
+      blocked: [],
+      done: []
+    };
+    const buckets: Record<FilterKey, TaskItem[]> = {
+      accepted: sortTasks(data.accepted ?? []),
+      in_progress: sortTasks(data.in_progress ?? []),
+      blocked: sortTasks(data.blocked ?? []),
+      done: sortTasks(data.done ?? []),
+      open: sortTasks([
+        ...(data.accepted ?? []),
+        ...(data.in_progress ?? []),
+        ...(data.blocked ?? [])
+      ]),
+      all: sortTasks([
+        ...(data.accepted ?? []),
+        ...(data.in_progress ?? []),
+        ...(data.blocked ?? []),
+        ...(data.done ?? [])
+      ])
+    };
+    return buckets[filter];
+  }, [grouped, filter]);
+
+  const subtitle = useMemo(() => {
+    if (openCount === 0) return "You're all caught up";
+    const parts: string[] = [];
+    if (acceptedCount > 0) parts.push(`${acceptedCount} to do`);
+    if (inProgressCount > 0) parts.push(`${inProgressCount} in progress`);
+    if (blockedCount > 0) parts.push(`${blockedCount} paused`);
+    return parts.join(" · ");
+  }, [openCount, acceptedCount, inProgressCount, blockedCount]);
+
+  const openTask = (task: TaskItem) => {
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: "TaskDetail",
+        params: { taskId: task.id, task }
+      })
+    );
   };
 
-  const handleQuickAction = async (task: TaskItem) => {
+  const runAction = async (task: TaskItem, action: string) => {
     try {
       setActingId(task.id);
       let updated: TaskItem | null = null;
-      if (task.status === "accepted" && task.permissions.can_start) {
-        updated = await startTask(task.id);
-      } else if (task.status === "in_progress" && task.permissions.can_conclude) {
-        updated = await concludeTask(task.id);
-      }
+      if (action === "start") updated = await startTask(task.id);
+      else if (action === "done") updated = await concludeTask(task.id);
+      else if (action === "pause") updated = await blockTask(task.id);
+      else if (action === "resume") updated = await unblockTask(task.id);
       if (updated && grouped) {
         setGroupedFromLocal(applyTaskUpdate(grouped, updated));
       } else {
@@ -132,205 +160,159 @@ export const TasksScreen: React.FC = () => {
     }
   };
 
-  const listRows = useMemo((): ListRow[] => {
-    const data = grouped ?? { accepted: [], in_progress: [], done: [] };
-    if (filter === "accepted") {
-      return buildRows([
-        { key: "accepted", title: "To Do", data: data.accepted ?? [] }
-      ]);
-    }
-    if (filter === "in_progress") {
-      return buildRows([
-        {
-          key: "in_progress",
-          title: "In Progress",
-          data: data.in_progress ?? []
-        }
-      ]);
-    }
-    if (filter === "done") {
-      return buildRows([{ key: "done", title: "Done", data: data.done ?? [] }]);
-    }
-    if (filter === "open") {
-      return buildRows([
-        { key: "accepted", title: "To Do", data: data.accepted ?? [] },
-        {
-          key: "in_progress",
-          title: "In Progress",
-          data: data.in_progress ?? []
-        }
-      ]);
-    }
-    return buildRows([
-      { key: "accepted", title: "To Do", data: data.accepted ?? [] },
-      {
-        key: "in_progress",
-        title: "In Progress",
-        data: data.in_progress ?? []
-      },
-      { key: "done", title: "Done", data: data.done ?? [] }
-    ]);
-  }, [grouped, filter]);
-
-  const subtitle = useMemo(() => {
-    if (openCount === 0) return "No open tasks";
-    const parts: string[] = [];
-    if (acceptedCount > 0) parts.push(`${acceptedCount} to do`);
-    if (inProgressCount > 0) parts.push(`${inProgressCount} in progress`);
-    return parts.join(" · ");
-  }, [openCount, acceptedCount, inProgressCount]);
-
-  const renderTask = (task: TaskItem) => {
-    const actionLabel =
-      task.status === "accepted" && task.permissions.can_start
-        ? "Start"
-        : task.status === "in_progress" && task.permissions.can_conclude
-          ? "Mark Done"
-          : "";
-
-    return (
-      <MKCard style={styles.taskCard}>
-        <View style={styles.taskHeader}>
-          <Text style={styles.taskTitle}>{task.title}</Text>
-          <MKBadge variant={statusBadgeVariant(task.status)}>
-            {statusLabel(task.status)}
-          </MKBadge>
-        </View>
-
-        {task.description ? (
-          <Text style={styles.taskDescription} numberOfLines={2}>
-            {task.description}
-          </Text>
-        ) : null}
-
-        <View style={styles.metaBlock}>
-          {task.project?.name ? (
-            <View style={styles.metaRow}>
-              <Ionicons name="folder-outline" size={14} color={colors.textMuted} />
-              <Text style={styles.metaText} numberOfLines={1}>
-                {task.project.name}
-              </Text>
-            </View>
-          ) : null}
-          {task.due_date ? (
-            <View style={styles.metaRow}>
-              <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
-              <Text style={styles.metaText}>
-                Due {new Date(task.due_date).toLocaleDateString()}
-              </Text>
-            </View>
-          ) : null}
-          {task.priority ? (
-            <View style={styles.metaRow}>
-              <Ionicons name="flag-outline" size={14} color={colors.textMuted} />
-              <Text style={styles.metaText}>{task.priority}</Text>
-            </View>
-          ) : null}
-        </View>
-
-        {actionLabel ? (
-          <View style={styles.taskAction}>
-            <MKButton
-              title={actionLabel}
-              onPress={() => handleQuickAction(task)}
-              loading={actingId === task.id}
-              disabled={actingId === task.id}
-              variant={task.status === "in_progress" ? "primary" : "secondary"}
-              style={styles.actionButton}
-            />
-          </View>
-        ) : null}
-      </MKCard>
-    );
-  };
+  const filters: Array<{ key: FilterKey; label: string; count: number }> = [
+    { key: "open", label: "Open", count: openCount },
+    { key: "accepted", label: "To Do", count: acceptedCount },
+    { key: "in_progress", label: "In Progress", count: inProgressCount },
+    ...(blockedCount > 0
+      ? [{ key: "blocked" as const, label: "Paused", count: blockedCount }]
+      : []),
+    { key: "done", label: "Done", count: doneCount },
+    { key: "all", label: "All", count: openCount + doneCount }
+  ];
 
   return (
-    <ScreenLayout scroll={false}>
-      <MKHomeStyleHeader
-        title="My Tasks"
-        subtitle={subtitle}
-        onLeftPress={openMenu}
+    <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.layout}>
+      <Image
+        source={GLOBE_BG}
+        style={styles.globeBg}
+        resizeMode="contain"
+        tintColor="#c22033"
+        pointerEvents="none"
       />
-
-      <View style={styles.summaryRow}>
-        <SummaryPill
-          label="To Do"
-          count={acceptedCount}
-          tone="warning"
-          active={filter === "accepted"}
-          onPress={() => setFilter("accepted")}
-        />
-        <SummaryPill
-          label="In Progress"
-          count={inProgressCount}
-          tone="info"
-          active={filter === "in_progress"}
-          onPress={() => setFilter("in_progress")}
-        />
-        <SummaryPill
-          label="Open"
-          count={openCount}
-          tone="danger"
-          active={filter === "open"}
-          onPress={() => setFilter("open")}
-        />
-      </View>
-
-      <View style={styles.filterRow}>
-        {FILTERS.map((f) => {
-          const active = filter === f.key;
-          return (
-            <Pressable
-              key={f.key}
-              onPress={() => setFilter(f.key)}
-              style={[styles.filterChip, active && styles.filterChipActive]}
-            >
-              <Text
-                style={[styles.filterChipText, active && styles.filterChipTextActive]}
-              >
-                {f.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.topHeader}>
+        <Pressable style={styles.headerIconBtn} onPress={openMenu} hitSlop={8}>
+          <Ionicons name="menu" size={22} color={colors.textPrimary} />
+        </Pressable>
+        <View style={styles.headerCopy}>
+          <Text style={styles.headerTitle}>My Tasks</Text>
+          <Text style={styles.headerSubtitle}>{subtitle}</Text>
+        </View>
+        <Pressable
+          style={styles.headerIconBtn}
+          onPress={() => {
+            void refreshTasks();
+          }}
+          hitSlop={8}
+        >
+          <Ionicons name="refresh-outline" size={20} color={colors.textMuted} />
+        </Pressable>
       </View>
 
       {loading && !grouped ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={colors.homeAccent} />
           <Text style={styles.loadingText}>Loading tasks…</Text>
         </View>
       ) : (
         <FlatList
-          data={listRows}
-          keyExtractor={(row) => row.key}
+          data={list}
+          keyExtractor={(item) => item.id}
+          style={styles.list}
           refreshing={refreshing}
-          onRefresh={onRefresh}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => {
-            if (item.type === "header") {
-              return (
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>{item.title}</Text>
-                  <Text style={styles.sectionCount}>{item.count}</Text>
-                </View>
-              );
-            }
-            return renderTask(item.task);
+          onRefresh={() => {
+            setRefreshing(true);
+            void refreshTasks().finally(() => setRefreshing(false));
           }}
+          contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            <View style={styles.headerBlock}>
+              <View style={styles.statsRow}>
+                <StatCard
+                  label="To Do"
+                  count={acceptedCount}
+                  color="#EA580C"
+                  bg="#FFEDD5"
+                  icon="document-text-outline"
+                  active={filter === "accepted"}
+                  onPress={() => setFilter("accepted")}
+                />
+                <StatCard
+                  label="In Progress"
+                  count={inProgressCount}
+                  color="#2563EB"
+                  bg="#DBEAFE"
+                  icon="play-circle-outline"
+                  active={filter === "in_progress"}
+                  onPress={() => setFilter("in_progress")}
+                />
+                <StatCard
+                  label="Done"
+                  count={doneCount}
+                  color={colors.homeAccent}
+                  bg="#DCFCE7"
+                  icon="checkmark-circle-outline"
+                  active={filter === "done"}
+                  onPress={() => setFilter("done")}
+                />
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterRow}
+              >
+                {filters.map((item) => {
+                  const active = filter === item.key;
+                  return (
+                    <Pressable
+                      key={item.key}
+                      onPress={() => setFilter(item.key)}
+                      style={[styles.filterChip, active && styles.filterChipActive]}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          active && styles.filterChipTextActive
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                      <View
+                        style={[
+                          styles.filterCount,
+                          active && styles.filterCountActive
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.filterCountText,
+                            active && styles.filterCountTextActive
+                          ]}
+                        >
+                          {item.count}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <TaskCard
+              task={item}
+              busy={actingId === item.id}
+              onPress={() => openTask(item)}
+              onAction={(action) => {
+                void runAction(item, action);
+              }}
+            />
+          )}
           ListEmptyComponent={
             !loading ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons
-                  name="checkmark-circle-outline"
-                  size={56}
-                  color={colors.textMuted}
-                />
-                <Text style={styles.empty}>No tasks here</Text>
-                <Text style={styles.emptySubtext}>
-                  {filter === "open" || filter === "accepted" || filter === "in_progress"
-                    ? "You're all caught up on open work."
-                    : "Nothing to show for this filter."}
+              <View style={styles.emptyWrap}>
+                <View style={styles.emptyIcon}>
+                  <Ionicons
+                    name="checkmark-done-outline"
+                    size={28}
+                    color={colors.homeAccent}
+                  />
+                </View>
+                <Text style={styles.emptyTitle}>No tasks here</Text>
+                <Text style={styles.emptyText}>
+                  {filter === "done"
+                    ? "Finished work will show up here."
+                    : "You're all caught up on this list."}
                 </Text>
               </View>
             ) : null
@@ -341,182 +323,305 @@ export const TasksScreen: React.FC = () => {
   );
 };
 
-function buildRows(
-  sections: Array<{ key: string; title: string; data: TaskItem[] }>
-): ListRow[] {
-  const rows: ListRow[] = [];
-  for (const section of sections) {
-    if (section.data.length === 0) continue;
-    rows.push({
-      type: "header",
-      key: `header-${section.key}`,
-      title: section.title,
-      count: section.data.length
-    });
-    for (const task of section.data) {
-      rows.push({ type: "task", key: task.id, task });
-    }
-  }
-  return rows;
-}
-
-const SummaryPill: React.FC<{
+const StatCard: React.FC<{
   label: string;
   count: number;
-  tone: "warning" | "info" | "danger";
+  color: string;
+  bg: string;
+  icon: keyof typeof Ionicons.glyphMap;
   active: boolean;
   onPress: () => void;
-}> = ({ label, count, tone, active, onPress }) => {
-  const toneColor =
-    tone === "warning" ? "#a16207" : tone === "info" ? "#1d4ed8" : colors.primary;
+}> = ({ label, count, color, bg, icon, active, onPress }) => (
+  <Pressable onPress={onPress} style={[styles.statCard, active && styles.statCardActive]}>
+    <View style={[styles.statIcon, { backgroundColor: bg }]}>
+      <Ionicons name={icon} size={16} color={color} />
+    </View>
+    <Text style={[styles.statCount, { color }]}>{count}</Text>
+    <Text style={styles.statLabel}>{label}</Text>
+  </Pressable>
+);
+
+const TaskCard: React.FC<{
+  task: TaskItem;
+  busy: boolean;
+  onPress: () => void;
+  onAction: (action: string) => void;
+}> = ({ task, busy, onPress, onAction }) => {
+  const status = statusMeta(task.status);
+  const priority = priorityMeta(task.priority);
+  const due = formatDue(task.due_date);
+  const action = primaryAction(task);
+
   return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.summaryPill, active && styles.summaryPillActive]}
-    >
-      <Text style={[styles.summaryCount, { color: toneColor }]}>{count}</Text>
-      <Text style={styles.summaryLabel}>{label}</Text>
+    <Pressable onPress={onPress} style={styles.taskCard}>
+      <LinearGradient
+        colors={[...status.rail]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.taskRail}
+      />
+      <View style={styles.taskBody}>
+        <View style={styles.taskTop}>
+          <Text style={styles.taskTitle} numberOfLines={2}>
+            {task.title}
+          </Text>
+          <View style={[styles.statusChip, { backgroundColor: status.bg }]}>
+            <Text style={[styles.statusChipText, { color: status.color }]}>
+              {status.label}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.metaRow}>
+          <View style={[styles.priorityDot, { backgroundColor: priority.color }]} />
+          <Text style={styles.metaText}>{priority.label}</Text>
+          <Text style={styles.metaDot}>·</Text>
+          <Text style={styles.metaText}>{sourceLabel(task)}</Text>
+          {due ? (
+            <>
+              <Text style={styles.metaDot}>·</Text>
+              <Text style={[styles.metaText, due.overdue && styles.overdue]}>
+                {due.overdue ? `Overdue ${due.label}` : `Due ${due.label}`}
+              </Text>
+            </>
+          ) : null}
+        </View>
+        {task.project?.name ? (
+          <View style={styles.projectRow}>
+            <Ionicons name="folder-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.projectText} numberOfLines={1}>
+              {task.project.name}
+            </Text>
+          </View>
+        ) : null}
+        <View style={styles.cardFooter}>
+          {action ? (
+            <Pressable
+              onPress={(event) => {
+                event.stopPropagation();
+                onAction(action.key);
+              }}
+              disabled={busy}
+              style={styles.cardAction}
+            >
+              {busy ? (
+                <ActivityIndicator size="small" color={colors.homeAccent} />
+              ) : (
+                <Text style={styles.cardActionText}>{action.label}</Text>
+              )}
+            </Pressable>
+          ) : (
+            <View />
+          )}
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </View>
+      </View>
     </Pressable>
   );
 };
 
 const styles = StyleSheet.create({
-  summaryRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginBottom: spacing.md
-  },
-  summaryPill: {
+  screen: { backgroundColor: "#fff" },
+  layout: {
     flex: 1,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.card,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
+    backgroundColor: "transparent",
+    paddingHorizontal: 16,
+    paddingBottom: spacing.md,
+    overflow: "hidden",
+    position: "relative"
+  },
+  globeBg: {
+    position: "absolute",
+    width: 640,
+    height: 640,
+    right: -255,
+    bottom: -40,
+    opacity: 0.06
+  },
+  topHeader: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: 2
+    gap: spacing.md,
+    marginBottom: spacing.md,
+    zIndex: 1
   },
-  summaryPillActive: {
-    borderColor: colors.primary,
-    backgroundColor: "#fef2f2"
-  },
-  summaryCount: {
-    fontFamily: typography.title.fontFamily,
-    fontSize: 22,
-    lineHeight: 28
-  },
-  summaryLabel: {
-    ...typography.caption,
-    color: colors.textMuted,
-    textTransform: "uppercase"
-  },
-  filterRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-    marginBottom: spacing.md
-  },
-  filterChip: {
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.card
+    alignItems: "center",
+    justifyContent: "center"
   },
-  filterChipActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary
+  headerCopy: { flex: 1, minWidth: 0 },
+  headerTitle: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 18,
+    lineHeight: 24,
+    color: colors.textPrimary
   },
-  filterChipText: {
-    ...typography.caption,
-    color: colors.textBody,
-    fontFamily: typography.button.fontFamily
+  headerSubtitle: {
+    marginTop: 1,
+    fontSize: 12,
+    color: colors.textMuted
   },
-  filterChipTextActive: {
-    color: "#fff"
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center"
-  },
+  loadingWrap: { flex: 1, justifyContent: "center", alignItems: "center", zIndex: 1 },
+  list: { flex: 1, zIndex: 1 },
   loadingText: {
     marginTop: spacing.md,
     ...typography.bodySmall,
     color: colors.textMuted
   },
-  listContent: {
-    paddingBottom: spacing.xxl,
-    flexGrow: 1
+  listContent: { paddingBottom: spacing.xxl, flexGrow: 1, gap: spacing.md },
+  headerBlock: { gap: spacing.md, marginBottom: spacing.sm },
+  statsRow: { flexDirection: "row", gap: spacing.sm },
+  statCard: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: "flex-start",
+    gap: 4,
+    ...shadows.card
   },
-  sectionHeader: {
+  statCardActive: {
+    borderWidth: 1.5,
+    borderColor: colors.homeAccent
+  },
+  statIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  statCount: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 22,
+    lineHeight: 26
+  },
+  statLabel: { fontSize: 11, color: colors.textMuted },
+  filterRow: { gap: spacing.sm, paddingRight: spacing.sm },
+  filterChip: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm
+    gap: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "#fff",
+    paddingLeft: 12,
+    paddingRight: 6,
+    paddingVertical: 7
   },
-  sectionTitle: {
-    ...typography.caption,
-    color: colors.textMuted,
-    textTransform: "uppercase",
+  filterChipActive: {
+    backgroundColor: colors.homeAccent,
+    borderColor: colors.homeAccent
+  },
+  filterChipText: {
     fontFamily: typography.button.fontFamily,
-    letterSpacing: 0.6
+    fontSize: 12,
+    color: colors.textBody
   },
-  sectionCount: {
-    ...typography.caption,
+  filterChipTextActive: { color: "#fff" },
+  filterCount: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6
+  },
+  filterCountActive: { backgroundColor: "rgba(255,255,255,0.22)" },
+  filterCountText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 11,
     color: colors.textMuted
   },
+  filterCountTextActive: { color: "#fff" },
   taskCard: {
-    marginBottom: spacing.md,
-    gap: spacing.sm
-  },
-  taskHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
+    ...shadows.card
+  },
+  taskRail: { width: RAIL_WIDTH, alignSelf: "stretch" },
+  taskBody: { flex: 1, padding: 14, gap: 8 },
+  taskTop: {
+    flexDirection: "row",
     alignItems: "flex-start",
+    justifyContent: "space-between",
     gap: spacing.sm
   },
   taskTitle: {
     flex: 1,
-    ...typography.subtitle
+    fontFamily: typography.button.fontFamily,
+    fontSize: 15,
+    lineHeight: 20,
+    color: colors.textPrimary
   },
-  taskDescription: {
-    ...typography.bodySmall,
-    color: colors.textBody
-  },
-  metaBlock: {
-    gap: spacing.xs
-  },
-  metaRow: {
+  statusChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs
+    gap: 4,
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 4
   },
-  metaText: {
-    ...typography.bodySmall,
-    color: colors.textMuted,
-    flex: 1
+  statusChipText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 11
   },
-  taskAction: {
-    marginTop: spacing.xs
+  metaRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
+  priorityDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
+  metaText: { fontSize: 12, color: colors.textMuted },
+  metaDot: { marginHorizontal: 6, color: colors.textMuted },
+  overdue: { color: "#DC2626", fontFamily: typography.button.fontFamily },
+  projectRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  projectText: { flex: 1, fontSize: 12, color: colors.textMuted },
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 4
   },
-  actionButton: {
-    paddingVertical: spacing.sm
+  cardAction: {
+    alignSelf: "flex-start",
+    borderRadius: 10,
+    backgroundColor: "#ECFDF3",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 88,
+    alignItems: "center"
   },
-  emptyContainer: {
+  cardActionText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 13,
+    color: colors.homeAccent
+  },
+  emptyWrap: {
     alignItems: "center",
     paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.xl,
     gap: spacing.sm
   },
-  empty: {
-    ...typography.subtitle,
-    textAlign: "center"
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: "#ECFDF3",
+    alignItems: "center",
+    justifyContent: "center"
   },
-  emptySubtext: {
+  emptyTitle: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 16,
+    color: colors.textPrimary
+  },
+  emptyText: {
     ...typography.bodySmall,
     color: colors.textMuted,
     textAlign: "center"

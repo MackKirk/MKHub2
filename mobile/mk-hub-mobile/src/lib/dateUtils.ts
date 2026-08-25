@@ -1,3 +1,8 @@
+/** YYYY-MM-DD of now + 24 hours, in local timezone */
+export function earliestTimeOffDate(from = new Date()): string {
+  return formatDateLocal(new Date(from.getTime() + 24 * 60 * 60 * 1000));
+}
+
 /** YYYY-MM-DD in local timezone */
 export function formatDateLocal(date: Date): string {
   const y = date.getFullYear();

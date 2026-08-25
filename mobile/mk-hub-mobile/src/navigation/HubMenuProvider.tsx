@@ -73,8 +73,10 @@ const ROUTE_TO_ITEM: Record<string, string> = {
   Tasks: "tasks",
   Community: "community",
   Schedule: "schedule",
-  Upload: "upload",
+  TimeOff: "time-off",
   CustomersList: "customers-list",
+  UsersList: "users",
+  UserDetail: "users",
   FleetMyAssets: "fleet-my-assets",
   FleetWorkOrders: "fleet-work-orders",
   FleetSchedule: "fleet-schedule",
@@ -94,6 +96,10 @@ function currentMenuItemId(): string | null {
       return params.listKind === "opportunities" ? "rm-opportunities" : "rm-projects";
     }
     return params?.listKind === "opportunities" ? "opportunities" : "projects";
+  }
+  if (route.name === "TimeOff") {
+    const params = route.params as { mode?: string } | undefined;
+    return params?.mode === "sick" ? "sick-leave" : "time-off";
   }
   if (route.name === "FleetAssetsList") {
     const params = route.params as { listKind?: string } | undefined;

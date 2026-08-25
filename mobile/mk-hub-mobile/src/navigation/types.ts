@@ -3,16 +3,19 @@ import type { CustomerDetailTabKey } from "../types/customers";
 import type { FleetAssetDetailTabKey, FleetListKind, WorkOrderDetailTabKey } from "../types/fleet";
 import type { ProjectListItem, ProjectListKind } from "../types/projects";
 import type { ProjectQuickTab } from "../components/MKProjectCard";
+import type { TaskItem } from "../types/tasks";
+
+export type TimeOffMode = "vacation" | "sick";
 
 export type HomeStackParamList = {
   HomeMain: undefined;
   Schedule: undefined;
+  TimeOff: { mode?: TimeOffMode };
   ProjectsList: {
     listKind: ProjectListKind;
     businessLine?: string;
     title: string;
   };
-  Upload: undefined;
   Placeholder: { title: string; message?: string };
   FleetMyAssets: undefined;
   FleetAssetsList: {
@@ -24,6 +27,7 @@ export type HomeStackParamList = {
   FleetInspections: undefined;
   CompanyCreditCards: undefined;
   CustomersList: undefined;
+  UsersList: undefined;
   FleetInspectionDetail: {
     scheduleId: string;
   };
@@ -61,5 +65,13 @@ export type RootStackParamList = {
     customerId: string;
     title?: string;
     initialTab?: CustomerDetailTabKey;
+  };
+  TaskDetail: {
+    taskId: string;
+    task?: TaskItem;
+  };
+  UserDetail: {
+    userId: string;
+    title?: string;
   };
 };

@@ -16,6 +16,7 @@ console.log("[API] Base URL:", API_BASE_URL);
 
 export interface ApiErrorShape {
   message: string;
+  status?: number;
 }
 
 export const toApiError = (error: unknown): ApiErrorShape => {
@@ -29,7 +30,7 @@ export const toApiError = (error: unknown): ApiErrorShape => {
     if (!status) {
       return { message: "Connection error, please try again." };
     }
-    return { message: detail };
+    return { message: detail, status };
   }
   return { message: "Unexpected error, please try again." };
 };

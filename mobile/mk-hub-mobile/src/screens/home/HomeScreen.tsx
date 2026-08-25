@@ -131,13 +131,6 @@ export const HomeScreen: React.FC = () => {
     [navigation]
   );
 
-  const goPlaceholder = useCallback(
-    (title: string, message: string) => {
-      goStack("Placeholder", { title, message });
-    },
-    [goStack]
-  );
-
   const quickActions: QuickAction[] = useMemo(
     () => [
       {
@@ -162,11 +155,7 @@ export const HomeScreen: React.FC = () => {
         icon: "sunny-outline",
         accentColor: "#EA580C",
         tintBg: "#FFEDD5",
-        onPress: () =>
-          goPlaceholder(
-            "Time Off",
-            "Time-off requests will be available here soon."
-          )
+        onPress: () => goStack("TimeOff", { mode: "vacation" })
       },
       {
         label: "Sick Leave",
@@ -174,14 +163,10 @@ export const HomeScreen: React.FC = () => {
         icon: "medkit-outline",
         accentColor: "#DC2626",
         tintBg: "#FEE2E2",
-        onPress: () =>
-          goPlaceholder(
-            "Sick Leave",
-            "Sick leave reporting will be available here soon."
-          )
+        onPress: () => goStack("TimeOff", { mode: "sick" })
       }
     ],
-    [goPlaceholder, goStack, navigation]
+    [goStack, navigation]
   );
 
   const loadNovidades = useCallback(async () => {

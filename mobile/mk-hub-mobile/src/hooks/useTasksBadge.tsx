@@ -26,6 +26,7 @@ const TasksContext = createContext<TasksContextValue | undefined>(undefined);
 const EMPTY: TaskGroupedResponse = {
   accepted: [],
   in_progress: [],
+  blocked: [],
   done: []
 };
 

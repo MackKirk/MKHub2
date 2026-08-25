@@ -40,3 +40,28 @@ export function getProjectStatusBadgeVariant(
 
   return "neutral";
 }
+
+export function getProjectStatusRail(
+  status?: string | null
+): readonly [string, string] {
+  const variant = getProjectStatusBadgeVariant(status);
+  if (variant === "success") return ["#166534", "#4ADE80"];
+  if (variant === "warning") return ["#D97706", "#FBBF24"];
+  if (variant === "danger") return ["#B91C1C", "#F87171"];
+  if (variant === "info") return ["#1D4ED8", "#60A5FA"];
+  return ["#6B7280", "#D1D5DB"];
+}
+
+export function resolveProjectCoverPath(project: {
+  cover_image_url?: string | null;
+  image_file_object_id?: string | null;
+}): string | null {
+  const cover = project.cover_image_url?.trim() || "";
+  if (cover.startsWith("http://") || cover.startsWith("https://") || cover.includes("/files/")) {
+    return cover;
+  }
+  if (project.image_file_object_id) {
+    return `/files/${project.image_file_object_id}/thumbnail?w=800`;
+  }
+  return null;
+}
