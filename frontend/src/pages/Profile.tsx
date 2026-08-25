@@ -798,6 +798,10 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       toast.error('Please fill in all required fields');
       return;
     }
+    if (policyName.toLowerCase().includes('sick') && !notes.trim()) {
+      toast.error('A justification is required for sick leave');
+      return;
+    }
     
     setSubmitting(true);
     try {

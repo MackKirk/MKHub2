@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   FlatList,
+  Image,
+  Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,9 +22,8 @@ import {
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { useHubMenu } from "../../navigation/HubMenuProvider";
+import { useAuth } from "../../hooks/useAuth";
 import { ScreenLayout } from "../../components/ScreenLayout";
-import { MKHomeStyleHeader } from "../../components/MKHomeStyleHeader";
-import { MKQuickFilterBar } from "../../components/MKQuickFilterBar";
 import { MKProjectListRow } from "../../components/MKProjectListRow";
 import { MKProjectFiltersModal } from "../../components/MKProjectFiltersModal";
 import {
@@ -42,6 +43,7 @@ import {
 } from "../../services/settings";
 import { toApiError } from "../../services/api";
 import { filterProjectDivisionsForBusinessLine } from "../../lib/businessLine";
+import { resolveFileUrl } from "../../lib/fileUrls";
 import {
   hasAdvancedFilters,
   resolveQuickStatusFiltersForListKind,
@@ -54,13 +56,16 @@ import {
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { typography } from "../../theme/typography";
-import { radius } from "../../theme/radius";
+import { radius, shadows } from "../../theme/radius";
 import type {
   AppTabParamList,
   HomeStackParamList,
   RootStackParamList
 } from "../../navigation/types";
 import type { ProjectListItem } from "../../types/projects";
+
+const GLOBE_BG = require("../../../assets/brand/globe.png");
+const ACCENT = colors.homeAccent;
 
 type ProjectsListRoute = RouteProp<HomeStackParamList, "ProjectsList">;
 type ProjectsListNav = CompositeNavigationProp<
@@ -102,6 +107,7 @@ export const ProjectsListScreen: React.FC = () => {
   const route = useRoute<ProjectsListRoute>();
   const navigation = useNavigation<ProjectsListNav>();
   const { openMenu } = useHubMenu();
+  const { token } = useAuth();
   const { listKind, businessLine, title } = route.params;
 
   const [query, setQuery] = useState("");
@@ -321,86 +327,181 @@ export const ProjectsListScreen: React.FC = () => {
     );
   };
 
-  const searchPlaceholder =
-    listKind === "opportunities"
-      ? "Search by opportunity name, code, or client..."
-      : "Search by project name, code, or client...";
+  const searchPlaceholder = "Search name, code, or client…";
+  const isOpportunity = listKind === "opportunities";
+  const subtitle =
+    total === 1
+      ? isOpportunity
+        ? "1 opportunity"
+        : "1 project"
+      : `${total} ${isOpportunity ? "opportunities" : "projects"}`;
 
   return (
-    <ScreenLayout scroll={false} contentStyle={styles.layout}>
-      <MKHomeStyleHeader
-        title={title}
-        subtitle={total > 0 ? `${total} total` : undefined}
-        onLeftPress={openMenu}
+    <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.layout}>
+      <Image
+        source={GLOBE_BG}
+        style={styles.globeBg}
+        resizeMode="contain"
+        tintColor="#c22033"
+        pointerEvents="none"
       />
 
-      <View style={styles.filterCard}>
-        <View style={styles.searchRow}>
-          <View style={styles.searchWrap}>
-            <Ionicons name="search" size={18} color={colors.textMuted} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder={searchPlaceholder}
-              placeholderTextColor={colors.textMuted}
-              value={query}
-              onChangeText={setQuery}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-          <TouchableOpacity
-            style={styles.filtersBtn}
-            onPress={() => setFilterModalOpen(true)}
-          >
-            <Ionicons
-              name="options-outline"
-              size={18}
-              color={colors.textBody}
-            />
-            <Text style={styles.filtersBtnText}>Filters</Text>
-          </TouchableOpacity>
+      <View style={styles.topHeader}>
+        <Pressable style={styles.headerIconBtn} onPress={openMenu} hitSlop={8}>
+          <Ionicons name="menu" size={22} color={colors.textPrimary} />
+        </Pressable>
+        <View style={styles.headerCopy}>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {title}
+          </Text>
+          <Text style={styles.headerSubtitle}>{subtitle}</Text>
         </View>
-
-        {hasActiveFilters ? (
-          <TouchableOpacity style={styles.clearLink} onPress={clearAllFilters}>
-            <Text style={styles.clearLinkText}>Clear filters</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        <View style={styles.quickFiltersDivider} />
-        <MKQuickFilterBar
-          relatedToMe={relatedToMe}
-          onRelatedToMeChange={handleRelatedToMeChange}
-          options={quickFilterOptions}
-          selectedStatusId={quickStatusId}
-          onSelectStatusId={handleSelectQuickStatus}
-        />
+        <Pressable
+          style={styles.headerIconBtn}
+          onPress={() => setFilterModalOpen(true)}
+          hitSlop={8}
+        >
+          <Ionicons name="options-outline" size={20} color={colors.textMuted} />
+          {hasActiveFilters ? <View style={styles.headerDot} /> : null}
+        </Pressable>
       </View>
+
+      <View style={styles.searchWrap}>
+        <Ionicons name="search" size={18} color={colors.textMuted} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder={searchPlaceholder}
+          placeholderTextColor={colors.textMuted}
+          value={query}
+          onChangeText={setQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {query ? (
+          <Pressable onPress={() => setQuery("")} hitSlop={8}>
+            <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      {hasActiveFilters ? (
+        <Pressable onPress={clearAllFilters} style={styles.clearLink}>
+          <Text style={styles.clearLinkText}>Clear filters</Text>
+        </Pressable>
+      ) : null}
 
       {loading && items.length === 0 ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={ACCENT} />
+          <Text style={styles.loadingText}>
+            {isOpportunity ? "Loading opportunities…" : "Loading projects…"}
+          </Text>
         </View>
       ) : (
         <FlatList
           data={items}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => load(query, true)}
-              tintColor={colors.primary}
+              tintColor={ACCENT}
             />
           }
+          ListHeaderComponent={
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterRow}
+            >
+              <Pressable
+                onPress={() => handleRelatedToMeChange(!relatedToMe)}
+                style={[styles.filterChip, relatedToMe && styles.filterChipActive]}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    relatedToMe && styles.filterChipTextActive
+                  ]}
+                >
+                  Related to me
+                </Text>
+              </Pressable>
+              {quickFilterOptions.map((item) => {
+                const active = quickStatusId === item.statusId;
+                return (
+                  <Pressable
+                    key={item.key}
+                    onPress={() =>
+                      handleSelectQuickStatus(active ? undefined : item.statusId)
+                    }
+                    style={[
+                      styles.filterChip,
+                      typeof item.count === "number" && styles.filterChipCounted,
+                      active && styles.filterChipActive
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        active && styles.filterChipTextActive
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                    {typeof item.count === "number" ? (
+                      <View
+                        style={[
+                          styles.filterCount,
+                          active && styles.filterCountActive
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.filterCountText,
+                            active && styles.filterCountTextActive
+                          ]}
+                        >
+                          {item.count}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          }
           ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={styles.empty}>No items found</Text>
+            <View style={styles.emptyWrap}>
+              <View style={styles.emptyIcon}>
+                <Ionicons
+                  name={isOpportunity ? "document-text-outline" : "folder-open-outline"}
+                  size={28}
+                  color={ACCENT}
+                />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {isOpportunity ? "No opportunities here" : "No projects here"}
+              </Text>
+              <Text style={styles.emptyText}>
+                {hasActiveFilters || query
+                  ? "Try a different search or clear the filters."
+                  : isOpportunity
+                    ? "New opportunities will show up here."
+                    : "Projects matching this view will show up here."}
+              </Text>
             </View>
           }
           renderItem={({ item }) => (
             <MKProjectListRow
               project={item}
+              imageUri={
+                item.cover_image_url && item.cover_image_url.includes("/files/")
+                  ? resolveFileUrl(item.cover_image_url, token)
+                  : null
+              }
               onPress={() => openProject(item)}
             />
           )}
@@ -425,81 +526,166 @@ export const ProjectsListScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  screen: { backgroundColor: "#fff" },
   layout: {
-    flex: 1
+    flex: 1,
+    backgroundColor: "transparent",
+    paddingHorizontal: 16,
+    paddingBottom: spacing.md,
+    overflow: "hidden",
+    position: "relative"
   },
-  filterCard: {
-    backgroundColor: colors.card,
+  globeBg: {
+    position: "absolute",
+    width: 640,
+    height: 640,
+    right: -255,
+    bottom: -40,
+    opacity: 0.06
+  },
+  topHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.md,
+    zIndex: 1
+  },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.card,
-    padding: spacing.md,
-    marginBottom: spacing.md
+    alignItems: "center",
+    justifyContent: "center"
   },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: spacing.sm
+  headerDot: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary
+  },
+  headerCopy: { flex: 1, minWidth: 0 },
+  headerTitle: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 18,
+    lineHeight: 24,
+    color: colors.textPrimary
+  },
+  headerSubtitle: {
+    marginTop: 1,
+    fontSize: 12,
+    color: colors.textMuted
   },
   searchWrap: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    backgroundColor: colors.background,
+    backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.control,
-    paddingHorizontal: spacing.md,
-    minHeight: 44
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    marginBottom: spacing.sm,
+    zIndex: 1,
+    ...shadows.card
   },
   searchInput: {
     flex: 1,
-    ...typography.body,
-    paddingVertical: spacing.sm,
+    fontSize: 14,
+    paddingVertical: 10,
     color: colors.textPrimary
-  },
-  filtersBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.control,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.background,
-    minHeight: 44
-  },
-  filtersBtnText: {
-    ...typography.bodySmall,
-    color: colors.textBody,
-    fontFamily: typography.button.fontFamily
   },
   clearLink: {
     alignSelf: "flex-start",
-    marginTop: spacing.sm
+    marginBottom: spacing.sm,
+    zIndex: 1
   },
   clearLinkText: {
-    ...typography.bodySmall,
-    color: colors.primary
+    fontFamily: typography.button.fontFamily,
+    fontSize: 12,
+    color: ACCENT
   },
-  quickFiltersDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginTop: spacing.md
+  list: { flex: 1, zIndex: 1 },
+  listContent: { paddingBottom: spacing.xxl, flexGrow: 1, gap: spacing.md },
+  filterRow: { gap: spacing.sm, paddingRight: spacing.sm, marginBottom: spacing.sm },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "#fff",
+    paddingLeft: 12,
+    paddingRight: 12,
+    paddingVertical: 7
   },
-  list: {
-    paddingBottom: spacing.xxl,
-    gap: spacing.sm
+  filterChipCounted: { paddingRight: 6 },
+  filterChipActive: {
+    backgroundColor: ACCENT,
+    borderColor: ACCENT
   },
+  filterChipText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 12,
+    color: colors.textBody
+  },
+  filterChipTextActive: { color: "#fff" },
+  filterCount: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6
+  },
+  filterCountActive: { backgroundColor: "rgba(255,255,255,0.22)" },
+  filterCountText: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 11,
+    color: colors.textMuted
+  },
+  filterCountTextActive: { color: "#fff" },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl
+    padding: spacing.xl,
+    zIndex: 1
   },
-  empty: {
-    ...typography.body,
+  loadingText: {
+    marginTop: spacing.md,
+    ...typography.bodySmall,
     color: colors.textMuted
+  },
+  emptyWrap: {
+    alignItems: "center",
+    paddingVertical: spacing.xxl,
+    gap: spacing.sm
+  },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: "#ECFDF3",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  emptyTitle: {
+    fontFamily: typography.button.fontFamily,
+    fontSize: 16,
+    color: colors.textPrimary
+  },
+  emptyText: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
+    textAlign: "center"
   }
 });

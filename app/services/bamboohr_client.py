@@ -9,6 +9,70 @@ from typing import Optional, Dict, List, Any
 from ..config import settings
 
 
+def _normalize_bamboohr_id(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        return _normalize_bamboohr_id(
+            value.get("id")
+            or value.get("employeeId")
+            or value.get("employee_id")
+            or value.get("_text")
+        )
+    return str(value).strip()
+
+
+def extract_time_off_request_employee_id(req: Dict[str, Any]) -> str:
+    """Return the BambooHR employee id from a time-off request payload."""
+    if not isinstance(req, dict):
+        return ""
+    return _normalize_bamboohr_id(
+        req.get("employeeId")
+        or req.get("employee_id")
+        or req.get("employeeID")
+        or req.get("employee")
+    )
+
+
+def normalize_time_off_status(status: Any) -> str:
+    """BambooHR may return status as a string or as {"status": "approved", ...}."""
+    if isinstance(status, dict):
+        status = status.get("status") or status.get("_text") or status.get("name") or ""
+    return str(status or "").strip().lower()
+
+
+def coerce_time_off_requests_payload(result: Any) -> List[Dict[str, Any]]:
+    """Normalize BambooHR time-off request responses into a list of dicts."""
+    if not result:
+        return []
+    if isinstance(result, list):
+        return [r for r in result if isinstance(r, dict)]
+    if isinstance(result, dict):
+        for key in ("requests", "request", "data"):
+            if key not in result:
+                continue
+            val = result[key]
+            if isinstance(val, list):
+                return [r for r in val if isinstance(r, dict)]
+            if isinstance(val, dict):
+                return [val]
+        if any(k in result for k in ("employeeId", "employee_id", "start", "startDate", "id")):
+            return [result]
+    return []
+
+
+def filter_time_off_requests_for_employee(
+    requests: List[Dict[str, Any]], employee_id: str
+) -> List[Dict[str, Any]]:
+    target = str(employee_id or "").strip()
+    if not target:
+        return []
+    return [
+        req for req in requests
+        if extract_time_off_request_employee_id(req) == target
+    ]
+
+
 class BambooHRClient:
     """Client for interacting with BambooHR API"""
     
@@ -411,86 +475,83 @@ class BambooHRClient:
         return self._request("GET", f"/reports/{report_id}?format={format}")
     
     def get_time_off_requests(self, employee_id: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Get time off requests"""
+        """Get time off requests, always scoped to employee_id when provided."""
         import logging
-        from datetime import datetime, timedelta
+        from datetime import datetime
         logger = logging.getLogger(__name__)
-        
-        # If no dates provided, use current year
+
+        now = datetime.now()
         if not start_date or not end_date:
-            now = datetime.now()
+            # History sync needs more than the current year. Company-wide
+            # listings stay on the current year to avoid huge payloads.
+            if employee_id:
+                merged: List[Dict[str, Any]] = []
+                seen_ids: set[str] = set()
+                for year in range(now.year - 10, now.year + 1):
+                    year_start = f"{year}-01-01"
+                    year_end = f"{year}-12-31"
+                    chunk = self._fetch_time_off_requests_range(employee_id, year_start, year_end, logger)
+                    for req in filter_time_off_requests_for_employee(chunk, employee_id):
+                        req_id = str(req.get("id") or "")
+                        key = req_id or f"{req.get('start')}:{req.get('end')}:{extract_time_off_request_employee_id(req)}"
+                        if key in seen_ids:
+                            continue
+                        seen_ids.add(key)
+                        merged.append(req)
+                return merged
             start_date = f"{now.year}-01-01"
             end_date = f"{now.year}-12-31"
-        
-        # Try different endpoint formats
+
+        requests = self._fetch_time_off_requests_range(employee_id, start_date, end_date, logger)
+        if employee_id:
+            requests = filter_time_off_requests_for_employee(requests, employee_id)
+        return requests
+
+    def _fetch_time_off_requests_range(
+        self,
+        employee_id: Optional[str],
+        start_date: str,
+        end_date: str,
+        logger,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch BambooHR time-off requests for a date range.
+
+        BambooHR's GET /time_off/requests is a company-wide report. employeeId is
+        optional and some fallback URLs ignore it entirely — so callers MUST filter
+        by employee after a successful response. An empty list is a valid result
+        (this employee has no requests) and must not fall through to unfiltered
+        company-wide data.
+        """
+        json_headers = {"Accept": "application/json"}
         endpoints = []
         if employee_id:
             endpoints = [
                 f"/time_off/requests?employeeId={employee_id}&start={start_date}&end={end_date}",
-                f"/time_off/requests?employeeId={employee_id}",
-                f"/employees/{employee_id}/time_off/requests?start={start_date}&end={end_date}",
-                f"/employees/{employee_id}/time_off/requests",
-                f"/time_off/requests?employee={employee_id}&start={start_date}&end={end_date}",
             ]
-        else:
-            endpoints = [
-                f"/time_off/requests?start={start_date}&end={end_date}",
-                "/time_off/requests"
-            ]
-        
+        endpoints.append(f"/time_off/requests?start={start_date}&end={end_date}")
+
         last_error = None
         for endpoint in endpoints:
             try:
-                result = self._request("GET", endpoint)
-                if result:
-                    # Handle different response formats
-                    if isinstance(result, list):
-                        return result
-                    elif isinstance(result, dict):
-                        if "requests" in result:
-                            requests = result["requests"]
-                            return requests if isinstance(requests, list) else [requests]
-                        elif "data" in result:
-                            data = result["data"]
-                            return data if isinstance(data, list) else [data]
-                        else:
-                            return [result]
-                    return result if result else []
+                result = self._request("GET", endpoint, headers=json_headers)
+                parsed = coerce_time_off_requests_payload(result)
+                if employee_id:
+                    parsed = filter_time_off_requests_for_employee(parsed, employee_id)
+                return parsed
             except httpx.HTTPStatusError as e:
-                if e.response.status_code == 404:
-                    logger.debug(f"Endpoint {endpoint} returned 404")
-                elif e.response.status_code == 400:
-                    logger.debug(f"Endpoint {endpoint} returned 400: {e.response.text}")
-                else:
-                    logger.debug(f"Endpoint {endpoint} returned {e.response.status_code}")
                 last_error = e
+                logger.debug(f"Endpoint {endpoint} returned {e.response.status_code}")
                 continue
             except Exception as e:
                 last_error = e
                 logger.debug(f"Failed to get time off requests from {endpoint}: {str(e)}")
                 continue
-        
-        # If all endpoints fail and we have employee_id, try getting all requests and filtering
-        if employee_id and last_error:
-            try:
-                logger.info(f"Trying to get all time off requests and filter by employee {employee_id}")
-                all_requests = self._request("GET", "/time_off/requests")
-                if all_requests:
-                    if isinstance(all_requests, list):
-                        # Filter by employee_id
-                        filtered = [req for req in all_requests if isinstance(req, dict) and str(req.get("employeeId", "")) == str(employee_id)]
-                        if filtered:
-                            return filtered
-                    elif isinstance(all_requests, dict):
-                        requests_list = all_requests.get("requests", []) if isinstance(all_requests.get("requests"), list) else []
-                        if requests_list:
-                            filtered = [req for req in requests_list if isinstance(req, dict) and str(req.get("employeeId", "")) == str(employee_id)]
-                            if filtered:
-                                return filtered
-            except Exception as e:
-                logger.debug(f"Failed to get all requests: {str(e)}")
-        
-        logger.warning(f"Could not retrieve time off requests for employee {employee_id}. Last error: {str(last_error) if last_error else 'Unknown'}")
+
+        logger.warning(
+            f"Could not retrieve time off requests for employee {employee_id}. "
+            f"Last error: {str(last_error) if last_error else 'Unknown'}"
+        )
         return []
     
     def get_time_off_policies(self) -> List[Dict[str, Any]]:
@@ -626,8 +687,8 @@ class BambooHRClient:
                                 except:
                                     pass  # If we can't parse date, include it anyway
                             
-                            status = req.get("status", "").lower()
-                            if status in ["approved", "taken", "approvedpaid", "approvedunpaid"]:
+                            status = normalize_time_off_status(req.get("status"))
+                            if status in ["approved", "taken", "used", "approvedpaid", "approvedunpaid"]:
                                 policy_name = req.get("policyName") or req.get("policy") or req.get("type") or req.get("name") or "Time Off"
                                 
                                 # Log the request to understand the structure
@@ -649,7 +710,10 @@ class BambooHRClient:
                                     try:
                                         amount = float(req["amount"])
                                         # Check if there's a unit field to determine if it's days or hours
-                                        unit = req.get("unit", "").lower()
+                                        unit_raw = req.get("unit", "")
+                                        if isinstance(unit_raw, dict):
+                                            unit_raw = unit_raw.get("name") or unit_raw.get("_text") or ""
+                                        unit = str(unit_raw or "").lower()
                                         if unit == "hours" or "hour" in unit:
                                             hours = abs(amount)
                                         else:

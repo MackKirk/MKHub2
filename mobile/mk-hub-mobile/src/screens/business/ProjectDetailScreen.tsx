@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,7 +15,6 @@ import { useHubMenu } from "../../navigation/HubMenuProvider";
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ScreenLayout } from "../../components/ScreenLayout";
-import { MKPageHeader } from "../../components/MKPageHeader";
 import { MKCard } from "../../components/MKCard";
 import { MKProjectGeneralInfo } from "../../components/MKProjectGeneralInfo";
 import { MKProjectEventCalendar } from "../../components/MKProjectEventCalendar";
@@ -102,6 +103,8 @@ const ALL_TABS: Array<{ key: DetailTabKey; label: string; icon: keyof typeof Ion
   { key: "pricing", label: "Pricing", icon: "cash-outline" },
   { key: "safety", label: "Safety", icon: "shield-checkmark-outline" }
 ];
+
+const GLOBE_BG = require("../../../assets/brand/globe.png");
 
 export const ProjectDetailScreen: React.FC = () => {
   const navigation = useNavigation<ProjectDetailNav>();
@@ -243,7 +246,14 @@ export const ProjectDetailScreen: React.FC = () => {
     }
   }, [activeTab, proposalData, loadingProposalData, loadProposalData]);
 
-  const displayedProject = project ?? initialProject;
+  const displayedProject: ProjectDetail | ProjectListItem = {
+    ...initialProject,
+    ...(project ?? {}),
+    cover_image_url:
+      project?.cover_image_url || initialProject.cover_image_url || null,
+    image_file_object_id:
+      project?.image_file_object_id || initialProject.image_file_object_id || null
+  };
   const isBidding = displayedProject.is_bidding === true;
   const businessLine = displayedProject.business_line ?? null;
   const permissionsSet = useMemo(() => new Set(permissions), [permissions]);
@@ -329,13 +339,6 @@ export const ProjectDetailScreen: React.FC = () => {
               employeeLookup={employeeLookup}
               loading={loadingOverviewExtras}
             />
-
-            {project?.description ? (
-              <MKCard style={styles.sectionCard} elevated={true}>
-                <Text style={styles.sectionTitle}>Description</Text>
-                <Text style={styles.bodyText}>{project.description}</Text>
-              </MKCard>
-            ) : null}
           </View>
         );
       case "notes":
@@ -408,13 +411,22 @@ export const ProjectDetailScreen: React.FC = () => {
     const noSection =
       /no project section permissions/i.test(accessDeniedMessage) || !canOpenSections;
     return (
-      <ScreenLayout scroll={false} contentStyle={styles.screenContent}>
-        <MKPageHeader
-          title="Access denied"
-          subtitle="You cannot open this project"
-          onBack={() => navigation.goBack()}
-          onMenu={openMenu}
-        />
+      <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.screenContent}>
+        <View style={styles.topHeader}>
+          <Pressable
+            style={styles.headerIconBtn}
+            onPress={() => navigation.goBack()}
+            hitSlop={8}
+          >
+            <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+          </Pressable>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            Access denied
+          </Text>
+          <Pressable style={styles.headerIconBtn} onPress={openMenu} hitSlop={8}>
+            <Ionicons name="menu" size={22} color={colors.textPrimary} />
+          </Pressable>
+        </View>
         <MKCard style={styles.sectionCard} elevated>
           <Text style={styles.sectionTitle}>
             {noSection
@@ -432,7 +444,30 @@ export const ProjectDetailScreen: React.FC = () => {
   }
 
   return (
-    <ScreenLayout scroll={false} contentStyle={styles.screenContent}>
+    <ScreenLayout scroll={false} style={styles.screen} contentStyle={styles.screenContent}>
+      <Image
+        source={GLOBE_BG}
+        style={styles.globeBg}
+        resizeMode="contain"
+        tintColor="#c22033"
+        pointerEvents="none"
+      />
+      <View style={styles.topHeader}>
+        <Pressable
+          style={styles.headerIconBtn}
+          onPress={() => navigation.goBack()}
+          hitSlop={8}
+        >
+          <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+        </Pressable>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {displayedProject.is_bidding ? "Opportunity" : "Project"}
+        </Text>
+        <Pressable style={styles.headerIconBtn} onPress={openMenu} hitSlop={8}>
+          <Ionicons name="menu" size={22} color={colors.textPrimary} />
+        </Pressable>
+      </View>
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[
@@ -444,13 +479,6 @@ export const ProjectDetailScreen: React.FC = () => {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <MKPageHeader
-          title={displayedProject.is_bidding ? "Opportunity" : "Project"}
-          subtitle={displayedProject.code || undefined}
-          onBack={() => navigation.goBack()}
-          onMenu={openMenu}
-        />
-
         <MKProjectGeneralInfo
           project={displayedProject}
           detail={project}
@@ -501,15 +529,54 @@ const formatCurrency = (value?: number | null): string => {
 };
 
 const styles = StyleSheet.create({
+  screen: { backgroundColor: "#fff" },
   screenContent: {
     flex: 1,
-    paddingBottom: 0
+    paddingBottom: 0,
+    backgroundColor: "transparent",
+    paddingHorizontal: 16,
+    overflow: "hidden",
+    position: "relative"
+  },
+  globeBg: {
+    position: "absolute",
+    width: 640,
+    height: 640,
+    right: -255,
+    bottom: -40,
+    opacity: 0.06
+  },
+  topHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.md,
+    zIndex: 1
+  },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: typography.button.fontFamily,
+    fontSize: 18,
+    lineHeight: 24,
+    color: colors.textPrimary
   },
   bottomTabBar: {
     marginHorizontal: -spacing.xl
   },
   scrollView: {
-    flex: 1
+    flex: 1,
+    zIndex: 1
   },
   scrollContent: {
     flexGrow: 1

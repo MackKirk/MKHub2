@@ -264,4 +264,74 @@ export function canViewFleetWorkOrderTab(
   );
 }
 
+export type HrUserTabKey = "personal" | "job" | "permissions";
+
+/** Matches web UserInfo: admin, users:read (legacy), or specific hr:users:view:* */
+export function canViewHrUserTab(
+  permissions: Set<string>,
+  roles: readonly string[] | null | undefined,
+  tab: HrUserTabKey
+): boolean {
+  if (isAdminRole(roles)) return true;
+  if (permissions.has("users:read")) return true;
+  if (tab === "personal") {
+    return (
+      permissions.has("hr:users:view:general") ||
+      permissions.has("hr:users:edit:general")
+    );
+  }
+  if (tab === "job") {
+    return (
+      permissions.has("hr:users:view:general") ||
+      permissions.has("hr:users:view:job") ||
+      permissions.has("hr:users:edit:job") ||
+      permissions.has("hr:users:view:job:compensation")
+    );
+  }
+  return (
+    permissions.has("hr:users:view:permissions") ||
+    permissions.has("hr:users:edit:permissions")
+  );
+}
+
+export function canOpenHrUserProfile(
+  permissions: Set<string>,
+  roles: readonly string[] | null | undefined
+): boolean {
+  if (isAdminRole(roles)) return true;
+  if (permissions.has("users:read")) return true;
+  return (
+    canViewHrUserTab(permissions, roles, "personal") ||
+    canViewHrUserTab(permissions, roles, "job") ||
+    canViewHrUserTab(permissions, roles, "permissions")
+  );
+}
+
+export function canEditHrUserPermissions(
+  permissions: Set<string>,
+  roles: readonly string[] | null | undefined
+): boolean {
+  if (isAdminRole(roles)) return true;
+  return (
+    permissions.has("hr:users:edit:permissions") ||
+    permissions.has("users:write")
+  );
+}
+
+export function canManageHrUserRoles(
+  permissions: Set<string>,
+  roles: readonly string[] | null | undefined
+): boolean {
+  if (isAdminRole(roles)) return true;
+  return permissions.has("hr:users:write") || permissions.has("users:write");
+}
+
+export function canViewHrJobCompensation(
+  permissions: Set<string>,
+  roles: readonly string[] | null | undefined
+): boolean {
+  if (isAdminRole(roles)) return true;
+  return permissions.has("hr:users:view:job:compensation");
+}
+
 export { BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS };
