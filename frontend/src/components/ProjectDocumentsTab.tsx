@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useLayoutEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useRef, useCallback, useLayoutEffect, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -129,6 +130,7 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
 ) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const [searchParams, setSearchParams] = useSearchParams();
   const documentEditorRef = useRef<DocumentEditorHandle>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [exportingId, setExportingId] = useState<string | null>(null);
@@ -136,6 +138,21 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
   const [modalDocumentId, setModalDocumentId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showChooseTypeModal, setShowChooseTypeModal] = useState(false);
+
+  const docFromUrl = searchParams.get('doc');
+  useEffect(() => {
+    if (!docFromUrl) return;
+    setModalDocumentId(docFromUrl);
+    setShowModal(true);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('doc');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [docFromUrl, setSearchParams]);
 
   const inlineEditorOpen = !!(showModal && modalDocumentId && !isExpanded);
   const { shellRef: inlineEditorShellRef, heightPx: inlineEditorHeightPx } =

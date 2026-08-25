@@ -8,8 +8,10 @@ import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { api } from '@/lib/api';
+import { canManageSignatureRequests } from '@/lib/documentHubPermissions';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { employeesDirectoryQueryKey, fetchEmployeesDirectory } from '@/lib/employeesQuery';
+import { isAdminRole } from '@/lib/projectLinePermissionKeys';
 import {
   AppBadge,
   AppButton,
@@ -314,6 +316,14 @@ export default function SignatureRequestsAdminPage() {
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [selected, setSelected] = useState<AdminSignatureRow | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<{ roles?: string[]; permissions?: string[] }>('GET', '/auth/me'),
+  });
+  const isAdmin = isAdminRole(me?.roles);
+  const permSet = useMemo(() => new Set((me?.permissions || []).map(String)), [me?.permissions]);
+  const canManageActions = canManageSignatureRequests(isAdmin, permSet);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQ(q), 350);
@@ -808,7 +818,9 @@ export default function SignatureRequestsAdminPage() {
         }
         formWidth="wide"
         footer={
-          selectedFromList?.source === 'document_builder' && selectedFromList.admin_actions_available ? (
+          selectedFromList?.source === 'document_builder' &&
+          selectedFromList.admin_actions_available &&
+          canManageActions ? (
             <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-end')}>
               <AppButton type="button" variant="secondary" size="sm" disabled={busy} onClick={() => void handleExtend()}>
                 Extend +3 days

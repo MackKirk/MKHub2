@@ -30,7 +30,8 @@ export function SettingsPermissionsPanel({
   );
   const templateRows = buildSettingsPermissionRows(areaPerms).filter(
     (r) =>
-      r.readKey !== 'settings:lookup_lists:read' && r.readKey !== 'settings:files_assets:read',
+      r.readKey === 'settings:permission_templates:read' ||
+      r.readKey === 'settings:terms_templates:read',
   );
 
   return (

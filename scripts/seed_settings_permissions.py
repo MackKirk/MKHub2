@@ -118,40 +118,16 @@ def seed_settings_permissions():
                 "sort_index": 8,
             },
             {
-                "key": "settings:document_backgrounds:read",
-                "label": "Document creator — background templates",
-                "description": "View page background images for the Document creator.",
-                "sort_index": 9,
-            },
-            {
-                "key": "settings:document_backgrounds:write",
-                "label": "Document creator — background templates",
-                "description": "Upload, edit, and delete document background templates.",
-                "sort_index": 10,
-            },
-            {
-                "key": "settings:document_templates:read",
-                "label": "Document creator — document templates",
-                "description": "View preset document layouts offered when creating documents.",
-                "sort_index": 11,
-            },
-            {
-                "key": "settings:document_templates:write",
-                "label": "Document creator — document templates",
-                "description": "Create, edit, duplicate, and delete document template presets.",
-                "sort_index": 12,
-            },
-            {
                 "key": "settings:auto_tasks:read",
                 "label": "Auto tasks",
                 "description": "View automatic task triggers and who receives them.",
-                "sort_index": 13,
+                "sort_index": 9,
             },
             {
                 "key": "settings:auto_tasks:write",
                 "label": "Auto tasks",
                 "description": "Configure who receives automatic tasks and expected completion time.",
-                "sort_index": 14,
+                "sort_index": 10,
             },
         ]
 
@@ -178,6 +154,18 @@ def seed_settings_permissions():
                 )
                 db.add(permission)
                 print(f"Created permission: {perm_data['key']}")
+
+        # Document backgrounds/templates moved to document_hub — keep defs but deactivate.
+        for key in (
+            "settings:document_backgrounds:read",
+            "settings:document_backgrounds:write",
+            "settings:document_templates:read",
+            "settings:document_templates:write",
+        ):
+            permission = db.query(PermissionDefinition).filter(PermissionDefinition.key == key).first()
+            if permission:
+                permission.is_active = False
+                print(f"Deactivated legacy Settings key: {key}")
 
         db.commit()
         print("\nSuccessfully seeded Settings permissions!")

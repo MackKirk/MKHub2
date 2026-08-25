@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useLayoutEffect } from 'react';
+import { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -105,6 +106,7 @@ type UserDocumentBuilderTabProps = {
 export default function UserDocumentBuilderTab({ userId, canEdit = true }: UserDocumentBuilderTabProps) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const [searchParams, setSearchParams] = useSearchParams();
   const documentEditorRef = useRef<DocumentEditorHandle>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [exportingId, setExportingId] = useState<string | null>(null);
@@ -114,6 +116,21 @@ export default function UserDocumentBuilderTab({ userId, canEdit = true }: UserD
   const [showChooseTypeModal, setShowChooseTypeModal] = useState(false);
 
   const listQueryKey = ['document-creator-documents', 'subject', userId] as const;
+
+  const docFromUrl = searchParams.get('doc');
+  useEffect(() => {
+    if (!docFromUrl) return;
+    setModalDocumentId(docFromUrl);
+    setShowModal(true);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('doc');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [docFromUrl, setSearchParams]);
 
   const inlineEditorOpen = !!(showModal && modalDocumentId && !isExpanded);
   const { shellRef: inlineEditorShellRef, heightPx: inlineEditorHeightPx } =

@@ -20,13 +20,13 @@ from ..auth.security import get_current_user, require_permissions, _has_permissi
 router = APIRouter(prefix="/document-creator", tags=["document-creator"])
 
 _HR_USER_DOC_READ_PERMS = (
-    "documents:read",
+    "document_hub:builder:read",
     "business:projects:documents:read",
     "hr:users:view:general",
     "users:read",
 )
 _HR_USER_DOC_WRITE_PERMS = (
-    "documents:write",
+    "document_hub:builder:write",
     "business:projects:documents:write",
     "hr:users:edit:general",
     "users:write",
@@ -183,13 +183,19 @@ def _template_to_out(t: DocumentTemplate) -> dict:
 def _can_view_subject_user_docs(user: User) -> bool:
     if _user_is_admin(user):
         return True
-    return any(_has_permission(user, p) for p in ("hr:users:view:general", "users:read", "documents:read"))
+    return any(
+        _has_permission(user, p)
+        for p in ("document_hub:builder:read", "hr:users:view:general", "users:read")
+    )
 
 
 def _can_edit_subject_user_docs(user: User) -> bool:
     if _user_is_admin(user):
         return True
-    return any(_has_permission(user, p) for p in ("hr:users:edit:general", "users:write", "documents:write"))
+    return any(
+        _has_permission(user, p)
+        for p in ("document_hub:builder:write", "hr:users:edit:general", "users:write")
+    )
 
 
 def _parse_optional_uuid(value: Optional[str], *, field: str) -> Optional[uuid.UUID]:
@@ -620,6 +626,7 @@ def list_document_types(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
+        "document_hub:templates:read",
         "documents:read",
         "business:projects:documents:read",
         "settings:document_templates:read",
@@ -666,6 +673,7 @@ def create_document_type(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
+        "document_hub:templates:write",
         "documents:write",
         "business:projects:documents:write",
         "settings:document_templates:write",
@@ -702,6 +710,7 @@ def update_document_type(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
+        "document_hub:templates:write",
         "documents:write",
         "business:projects:documents:write",
         "settings:document_templates:write",
@@ -746,6 +755,7 @@ def delete_document_type(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
+        "document_hub:templates:write",
         "documents:write",
         "business:projects:documents:write",
         "settings:document_templates:write",
@@ -770,6 +780,7 @@ def duplicate_document_type(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
+        "document_hub:templates:write",
         "documents:write",
         "business:projects:documents:write",
         "settings:document_templates:write",
@@ -883,6 +894,9 @@ def get_token_values(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
+        "document_hub:builder:read",
+        "document_hub:backgrounds:read",
+        "document_hub:templates:read",
         "documents:read",
         "documents:write",
         "business:projects:documents:read",
@@ -921,6 +935,8 @@ def list_templates(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
+        "document_hub:backgrounds:read",
+        "document_hub:templates:read",
         "documents:read",
         "business:projects:documents:read",
         "settings:document_backgrounds:read",
@@ -942,6 +958,8 @@ def get_template(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
+        "document_hub:backgrounds:read",
+        "document_hub:templates:read",
         "documents:read",
         "business:projects:documents:read",
         "settings:document_backgrounds:read",
@@ -983,6 +1001,7 @@ def create_template(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
+        "document_hub:backgrounds:write",
         "documents:write",
         "business:projects:documents:write",
         "settings:document_backgrounds:write",
@@ -1018,6 +1037,7 @@ def update_template(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
+        "document_hub:backgrounds:write",
         "documents:write",
         "business:projects:documents:write",
         "settings:document_backgrounds:write",
@@ -1058,6 +1078,7 @@ def delete_template(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
+        "document_hub:backgrounds:write",
         "documents:write",
         "business:projects:documents:write",
         "settings:document_backgrounds:write",
@@ -1120,10 +1141,11 @@ def list_documents(
                 UserDocument.project_id.is_(None),
             )
     else:
-        # Creator's hub Document Builder: include docs later linked to a subject user on send.
+        # Creator's hub Document Builder: only true standalone docs (no project, no subject user).
         q = db.query(UserDocument).filter(
             UserDocument.created_by == user.id,
             UserDocument.project_id.is_(None),
+            UserDocument.subject_user_id.is_(None),
         )
     docs = q.order_by(
         UserDocument.updated_at.desc().nullslast(), UserDocument.created_at.desc()

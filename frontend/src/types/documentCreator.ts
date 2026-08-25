@@ -33,12 +33,62 @@ export function newDocumentSignerRoleId(): string {
 export function createDefaultSignerRoles(): DocumentSignerRoleDef[] {
   return [
     {
-      id: newDocumentSignerRoleId(),
-      label: 'Signer 1',
+      id: LEGACY_SIGNER_ROLE_IDS.employee,
+      label: 'Employee',
       sortOrder: 0,
+      fillsEmployeeTokens: true,
+    },
+    {
+      id: LEGACY_SIGNER_ROLE_IDS.company,
+      label: 'Company',
+      sortOrder: 1,
       fillsEmployeeTokens: false,
     },
   ];
+}
+
+/** True when this role is a core Employee/Company slot (by stable id or label). */
+export function isCoreEmployeeOrCompanySigner(role: DocumentSignerRoleDef): boolean {
+  if (role.id === LEGACY_SIGNER_ROLE_IDS.employee || role.id === LEGACY_SIGNER_ROLE_IDS.company) {
+    return true;
+  }
+  const label = role.label.trim().toLowerCase();
+  return label === 'employee' || label === 'company';
+}
+
+/** Always keep Employee + Company in the catalog (insert menu / document defaults). */
+export function ensureCoreEmployeeCompanyRoles(
+  roles: DocumentSignerRoleDef[] | null | undefined,
+): DocumentSignerRoleDef[] {
+  const normalized = normalizeSignerRolesList(roles ?? []);
+  const byId = new Set(normalized.map((r) => r.id));
+  const labels = new Set(normalized.map((r) => r.label.trim().toLowerCase()));
+  const next = [...normalized];
+  if (!byId.has(LEGACY_SIGNER_ROLE_IDS.employee) && !labels.has('employee')) {
+    next.push({
+      id: LEGACY_SIGNER_ROLE_IDS.employee,
+      label: 'Employee',
+      sortOrder: next.length,
+      fillsEmployeeTokens: true,
+    });
+  }
+  if (!byId.has(LEGACY_SIGNER_ROLE_IDS.company) && !labels.has('company')) {
+    next.push({
+      id: LEGACY_SIGNER_ROLE_IDS.company,
+      label: 'Company',
+      sortOrder: next.length,
+      fillsEmployeeTokens: false,
+    });
+  }
+  // Prefer Employee for fillsEmployeeTokens when present and none flagged.
+  const out = normalizeSignerRolesList(next);
+  if (!out.some((r) => r.fillsEmployeeTokens)) {
+    const emp = out.find(
+      (r) => r.id === LEGACY_SIGNER_ROLE_IDS.employee || r.label.trim().toLowerCase() === 'employee',
+    );
+    if (emp) emp.fillsEmployeeTokens = true;
+  }
+  return out;
 }
 
 /** Next unique Other / Other1 / Other2… label for the document. */
@@ -194,27 +244,17 @@ export function collectPresentSignerRoleIds(
   return ids;
 }
 
-/** Keep only signers that still have Signature / Date / Initials on the document. */
+/** Keep unused custom signers pruned; always retain Employee + Company. */
 export function pruneUnusedSigners(
   roles: DocumentSignerRoleDef[],
   pages: { elements?: DocElement[] }[] | null | undefined,
 ): DocumentSignerRoleDef[] {
   const normalized = normalizeSignerRolesList(roles);
-  const presentIds = collectPresentSignerRoleIds(pages, normalized);
-  if (presentIds.length === 0) return [];
-  const byId = new Map(normalized.map((r) => [r.id, r]));
-  return normalizeSignerRolesList(
-    presentIds.map((id, i) => {
-      const existing = byId.get(id);
-      if (existing) return existing;
-      return {
-        id,
-        label: `Signer ${i + 1}`,
-        sortOrder: i,
-        fillsEmployeeTokens: false,
-      };
-    }),
+  const presentIds = new Set(collectPresentSignerRoleIds(pages, normalized));
+  const kept = normalized.filter(
+    (r) => presentIds.has(r.id) || isCoreEmployeeOrCompanySigner(r),
   );
+  return ensureCoreEmployeeCompanyRoles(kept);
 }
 
 export function ensureSignerRolesForDocument(
@@ -253,8 +293,8 @@ export function ensureSignerRolesForDocument(
         fillsEmployeeTokens: k === 'employee',
       }));
   }
-  if (roles.length === 0) return [];
-  return normalizeSignerRolesList(roles);
+  if (roles.length === 0) roles = createDefaultSignerRoles();
+  return ensureCoreEmployeeCompanyRoles(roles);
 }
 
 /** Object-replacement char: one code unit per inline signature/date atom in `content`. */

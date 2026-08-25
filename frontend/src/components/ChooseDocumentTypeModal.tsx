@@ -187,6 +187,7 @@ export function ChooseDocumentTypeModal({
         description="Choose a document template, background, or start blank."
         quickInfo={projectDocumentsChooseTypeQuickInfo}
         formWidth="wide"
+        scrollBody={false}
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
             <AppButton variant="secondary" size="sm" type="button" onClick={onClose}>

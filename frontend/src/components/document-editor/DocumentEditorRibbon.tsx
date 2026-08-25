@@ -461,7 +461,8 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
             {showBlock && onAddBlock && (
               <RibbonLargeButton icon={<BlockIcon />} label="Block" onClick={onAddBlock} title="Insert block area" />
             )}
-            {onAddInitials && (
+            {/* Signature fields are for hub/user docs only — not project-scoped builders. */}
+            {!projectId && onAddInitials && (
               <RibbonLargeButton
                 icon={<InitialsIcon />}
                 label="Initials"
@@ -471,30 +472,34 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                 title="Insert initials field — choose who signs"
               />
             )}
-            <RibbonLargeButton
-              icon={<DateFieldIcon />}
-              label="Date"
-              keepTextSelection
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => openRoleChooser('date', e.currentTarget)}
-              title={
-                textEditingElementId
-                  ? 'Insert date field at the cursor — choose who fills it'
-                  : 'Edit a text box first, then insert Date at the cursor'
-              }
-            />
-            <RibbonLargeButton
-              icon={<SignatureIcon />}
-              label="Signature"
-              keepTextSelection
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => openRoleChooser('signature', e.currentTarget)}
-              title={
-                textEditingElementId
-                  ? 'Insert signature field at the cursor — choose who signs'
-                  : 'Edit a text box first, then insert Signature at the cursor'
-              }
-            />
+            {!projectId && (
+              <>
+                <RibbonLargeButton
+                  icon={<DateFieldIcon />}
+                  label="Date"
+                  keepTextSelection
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => openRoleChooser('date', e.currentTarget)}
+                  title={
+                    textEditingElementId
+                      ? 'Insert date field at the cursor — choose who fills it'
+                      : 'Edit a text box first, then insert Date at the cursor'
+                  }
+                />
+                <RibbonLargeButton
+                  icon={<SignatureIcon />}
+                  label="Signature"
+                  keepTextSelection
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => openRoleChooser('signature', e.currentTarget)}
+                  title={
+                    textEditingElementId
+                      ? 'Insert signature field at the cursor — choose who signs'
+                      : 'Edit a text box first, then insert Signature at the cursor'
+                  }
+                />
+              </>
+            )}
           </RibbonGroup>
         )}
 

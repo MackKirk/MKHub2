@@ -581,7 +581,7 @@ def cancel_signature_request(
     payload: Optional[dict] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:signatures:manage")),
+    _=Depends(require_permissions("document_hub:signature_requests:write")),
 ):
     row = _get_request_or_404(db, request_id)
     if row.status in ("completed", "cancelled"):
@@ -611,7 +611,7 @@ def extend_signature_deadline(
     payload: dict,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:signatures:manage")),
+    _=Depends(require_permissions("document_hub:signature_requests:write")),
 ):
     from datetime import timedelta
 
@@ -663,7 +663,7 @@ def disable_signature_blocking(
     request_id: UUID,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:signatures:manage")),
+    _=Depends(require_permissions("document_hub:signature_requests:write")),
 ):
     row = _get_request_or_404(db, request_id)
     before = bool(row.block_hub_access)

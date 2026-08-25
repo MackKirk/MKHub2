@@ -36,9 +36,8 @@ def can_view_builder_signature_admin(user: User) -> bool:
     if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
         return True
     return (
-        _has_permission(user, "documents:signatures:manage")
-        or _has_permission(user, "documents:read")
-        or _has_permission(user, "business:projects:documents:read")
+        _has_permission(user, "document_hub:signature_requests:read")
+        or _has_permission(user, "document_hub:signature_requests:write")
     )
 
 
@@ -57,7 +56,7 @@ def can_view_onboarding_signature_admin(user: User) -> bool:
 def can_manage_builder_signature_admin(user: User) -> bool:
     if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
         return True
-    return _has_permission(user, "documents:signatures:manage")
+    return _has_permission(user, "document_hub:signature_requests:write")
 
 
 def _participant_admin_dict(
@@ -96,7 +95,13 @@ def _participant_admin_dict(
     }
 
 
-def _builder_admin_row(db: Session, row: DocumentSignatureRequest, now: datetime) -> dict:
+def _builder_admin_row(
+    db: Session,
+    row: DocumentSignatureRequest,
+    now: datetime,
+    *,
+    can_manage: bool = False,
+) -> dict:
     parts = (
         db.query(DocumentSignatureParticipant)
         .filter(DocumentSignatureParticipant.request_id == row.id)
@@ -130,7 +135,7 @@ def _builder_admin_row(db: Session, row: DocumentSignatureRequest, now: datetime
         "message_to_signers": getattr(row, "message_to_signers", None),
         "cancelled_at": row.cancelled_at.isoformat() if getattr(row, "cancelled_at", None) and row.cancelled_at else None,
         "participants": participants,
-        "admin_actions_available": row.status in ("pending", "in_progress"),
+        "admin_actions_available": bool(can_manage) and row.status in ("pending", "in_progress"),
     }
 
 
@@ -300,6 +305,7 @@ def list_admin_signature_requests(
     rows: List[dict] = []
 
     if include_builder and (not source or source == "document_builder"):
+        can_manage = can_manage_builder_signature_admin(user)
         q = db.query(DocumentSignatureRequest).order_by(DocumentSignatureRequest.created_at.desc())
         if status:
             q = q.filter(DocumentSignatureRequest.status == status)
@@ -322,7 +328,7 @@ def list_admin_signature_requests(
             if dt:
                 q = q.filter(DocumentSignatureRequest.created_at <= dt)
         for row in q.limit(limit).all():
-            built = _builder_admin_row(db, row, now)
+            built = _builder_admin_row(db, row, now, can_manage=can_manage)
             if _matches_filters(built, filters=filters, now=now) and _matches_search(built, search):
                 rows.append(built)
 

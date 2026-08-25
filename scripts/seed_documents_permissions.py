@@ -87,18 +87,6 @@ def seed_documents_permissions():
                 "description": "Granted with Edit Company Files (hidden in UI)",
                 "sort_index": 5,
             },
-            {
-                "key": "documents:signatures:block_access",
-                "label": "Signature — Block Hub Access",
-                "description": "Allow enabling Hub access blocking on overdue Document Builder signatures",
-                "sort_index": 6,
-            },
-            {
-                "key": "documents:signatures:manage",
-                "label": "Signature Requests — Manage",
-                "description": "Cancel, extend deadlines, and disable blocking on signature requests",
-                "sort_index": 7,
-            },
         ]
 
         for perm_data in documents_permissions:
@@ -120,6 +108,13 @@ def seed_documents_permissions():
                 )
                 db.add(permission)
                 print(f"Created permission: {perm_data['key']}")
+
+        # Signature admin keys live under document_hub (seed_document_hub_permissions.py).
+        for legacy_key in ("documents:signatures:block_access", "documents:signatures:manage"):
+            legacy = db.query(PermissionDefinition).filter(PermissionDefinition.key == legacy_key).first()
+            if legacy and legacy.category_id == category.id and legacy_key == "documents:signatures:manage":
+                # Leave row for aliases; hub seed deactivates. Do not re-activate here.
+                pass
 
         db.commit()
         print(f"\nSuccessfully seeded Company Files permissions!")

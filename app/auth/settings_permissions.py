@@ -20,6 +20,10 @@ DOCUMENT_BACKGROUNDS_READ = "settings:document_backgrounds:read"
 DOCUMENT_BACKGROUNDS_WRITE = "settings:document_backgrounds:write"
 DOCUMENT_TEMPLATES_READ = "settings:document_templates:read"
 DOCUMENT_TEMPLATES_WRITE = "settings:document_templates:write"
+DOCUMENT_HUB_BACKGROUNDS_READ = "document_hub:backgrounds:read"
+DOCUMENT_HUB_BACKGROUNDS_WRITE = "document_hub:backgrounds:write"
+DOCUMENT_HUB_TEMPLATES_READ = "document_hub:templates:read"
+DOCUMENT_HUB_TEMPLATES_WRITE = "document_hub:templates:write"
 AUTO_TASKS_READ = "settings:auto_tasks:read"
 AUTO_TASKS_WRITE = "settings:auto_tasks:write"
 
@@ -69,8 +73,6 @@ SETTINGS_CHILD_READ_KEYS = frozenset(
         FILES_ASSETS_READ,
         PERMISSION_TEMPLATES_READ,
         TERMS_TEMPLATES_READ,
-        DOCUMENT_BACKGROUNDS_READ,
-        DOCUMENT_TEMPLATES_READ,
         AUTO_TASKS_READ,
     }
 )
@@ -81,8 +83,6 @@ SETTINGS_CHILD_WRITE_KEYS = frozenset(
         FILES_ASSETS_WRITE,
         PERMISSION_TEMPLATES_WRITE,
         TERMS_TEMPLATES_WRITE,
-        DOCUMENT_BACKGROUNDS_WRITE,
-        DOCUMENT_TEMPLATES_WRITE,
         AUTO_TASKS_WRITE,
     }
 )
@@ -167,30 +167,30 @@ def can_read_document_backgrounds(user: User) -> bool:
     if _user_is_admin(user):
         return True
     return (
-        _has_permission(user, DOCUMENT_BACKGROUNDS_READ)
-        or _has_permission(user, DOCUMENT_BACKGROUNDS_WRITE)
+        _has_permission(user, DOCUMENT_HUB_BACKGROUNDS_READ)
+        or _has_permission(user, DOCUMENT_HUB_BACKGROUNDS_WRITE)
     )
 
 
 def can_write_document_backgrounds(user: User) -> bool:
     if _user_is_admin(user):
         return True
-    return _has_permission(user, DOCUMENT_BACKGROUNDS_WRITE)
+    return _has_permission(user, DOCUMENT_HUB_BACKGROUNDS_WRITE)
 
 
 def can_read_document_templates(user: User) -> bool:
     if _user_is_admin(user):
         return True
     return (
-        _has_permission(user, DOCUMENT_TEMPLATES_READ)
-        or _has_permission(user, DOCUMENT_TEMPLATES_WRITE)
+        _has_permission(user, DOCUMENT_HUB_TEMPLATES_READ)
+        or _has_permission(user, DOCUMENT_HUB_TEMPLATES_WRITE)
     )
 
 
 def can_write_document_templates(user: User) -> bool:
     if _user_is_admin(user):
         return True
-    return _has_permission(user, DOCUMENT_TEMPLATES_WRITE)
+    return _has_permission(user, DOCUMENT_HUB_TEMPLATES_WRITE)
 
 
 def can_read_auto_tasks(user: User) -> bool:

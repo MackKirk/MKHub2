@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText } from 'lucide-react';
@@ -6,7 +6,21 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import DocumentEditor from '@/components/DocumentEditor';
-import { ChooseDocumentTypeModal, type DocumentCreationSelection } from '@/components/ChooseDocumentTypeModal';
+import {
+  CreateDocumentWizardModal,
+  type CreateDocumentWizardResult,
+} from '@/components/CreateDocumentWizardModal';
+import {
+  buildDocumentCreatePayload,
+  documentsTabPathForProject,
+  userDocumentBuilderPath,
+  type ProjectRouteMeta,
+} from '@/lib/documentCreateScope';
+import {
+  canEditDocumentBuilder,
+  canViewDocumentBuilder,
+} from '@/lib/documentHubPermissions';
+import { isAdminRole } from '@/lib/projectLinePermissionKeys';
 import {
   AppButton,
   AppCard,
@@ -66,16 +80,27 @@ export default function DocumentCreator() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [isSaving, setIsSaving] = useState(false);
-  const [showChooseTypeModal, setShowChooseTypeModal] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const { data: me, isFetched: meFetched } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<{ roles?: string[]; permissions?: string[] }>('GET', '/auth/me'),
+  });
+  const isAdmin = isAdminRole(me?.roles);
+  const permSet = useMemo(() => new Set((me?.permissions || []).map(String)), [me?.permissions]);
+  const canView = canViewDocumentBuilder(isAdmin, permSet);
+  const canEdit = canEditDocumentBuilder(isAdmin, permSet);
 
   const { data: documents = [] } = useQuery({
     queryKey: ['document-creator-documents'],
     queryFn: () => api<UserDocument[]>('GET', '/document-creator/documents'),
+    enabled: meFetched && canView,
   });
 
   const handleDeleteDocument = useCallback(
     async (docId: string, docTitle: string) => {
+      if (!canEdit) return;
       const ok = await confirm({
         title: 'Delete document',
         message: `Delete "${docTitle || 'Untitled document'}"? This cannot be undone.`,
@@ -95,29 +120,34 @@ export default function DocumentCreator() {
         setDeletingId(null);
       }
     },
-    [confirm, queryClient, id, navigate]
+    [canEdit, confirm, queryClient, id, navigate]
   );
 
   const handleCreateNewDocument = useCallback(
-    async (selection: DocumentCreationSelection) => {
+    async (result: CreateDocumentWizardResult) => {
+      if (!canEdit) return;
       setIsSaving(true);
       try {
-        const payload: {
-          title: string;
-          document_type_id?: string;
-          pages?: { template_id: string | null; elements: never[] }[];
-        } = {
-          title: 'Untitled document',
-        };
-        if (selection.kind === 'preset') {
-          payload.document_type_id = selection.documentTypeId;
-        } else if (selection.kind === 'background') {
-          payload.pages = [{ template_id: selection.templateId, elements: [] }];
-        } else {
-          payload.pages = [{ template_id: null, elements: [] }];
-        }
+        const payload = buildDocumentCreatePayload(result.selection, result.scope);
         const created = await api<UserDocument>('POST', '/document-creator/documents', payload);
         queryClient.invalidateQueries({ queryKey: ['document-creator-documents'] });
+        setShowWizard(false);
+
+        if (result.scope.kind === 'project') {
+          queryClient.invalidateQueries({
+            queryKey: ['document-creator-documents', result.scope.projectId],
+          });
+          const project = await api<ProjectRouteMeta>('GET', `/projects/${result.scope.projectId}`);
+          navigate(documentsTabPathForProject(project, created.id));
+          return;
+        }
+        if (result.scope.kind === 'user') {
+          queryClient.invalidateQueries({
+            queryKey: ['document-creator-documents', 'subject', result.scope.userId],
+          });
+          navigate(userDocumentBuilderPath(result.scope.userId, created.id));
+          return;
+        }
         navigate(`/documents/create/${created.id}`);
       } catch (e: any) {
         toast.error(e?.message || 'Failed to create document.');
@@ -125,18 +155,49 @@ export default function DocumentCreator() {
         setIsSaving(false);
       }
     },
-    [navigate, queryClient]
+    [canEdit, navigate, queryClient]
   );
 
+  if (!meFetched) {
+    return (
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+        <AppPageHeader title="Document Builder" icon={<FileText className="h-4 w-4" />} />
+        <AppCard>
+          <AppEmptyState title="Loading…" description="Checking your permissions." />
+        </AppCard>
+      </div>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+        <AppPageHeader title="Document Builder" icon={<FileText className="h-4 w-4" />} />
+        <AppCard>
+          <AppEmptyState
+            title="No access"
+            description="You do not have permission to view the Document Builder."
+          />
+        </AppCard>
+      </div>
+    );
+  }
+
   if (!id) {
+    const createButton = canEdit ? (
+      <AppButton type="button" onClick={() => setShowWizard(true)} disabled={isSaving}>
+        + Create new document
+      </AppButton>
+    ) : null;
+
     return (
       <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
         <AppPageHeader
           title="Document Builder"
           subtitle={
             <>
-              Create and edit documents{documents.length > 0 ? ` (${documents.length} total)` : ''}. Background and
-              document templates are in{' '}
+              {canEdit ? 'Create and edit documents' : 'View documents'}
+              {documents.length > 0 ? ` (${documents.length} total)` : ''}. Background and document templates are in{' '}
               <Link to="/documents/templates" className="font-medium text-brand-red hover:underline">
                 Documents → Document Templates
               </Link>
@@ -144,114 +205,116 @@ export default function DocumentCreator() {
             </>
           }
           icon={<FileText className="h-4 w-4" />}
-          actions={
-            <AppButton type="button" onClick={() => setShowChooseTypeModal(true)} disabled={isSaving}>
-              + Create new document
-            </AppButton>
-          }
+          actions={createButton}
         />
 
         <AppCard bodyClassName="!p-0">
           {documents.length === 0 ? (
             <AppEmptyState
               title="No documents yet."
-              description="Create a document from a template, a background, or a blank page."
-              action={
-                <AppButton type="button" onClick={() => setShowChooseTypeModal(true)} disabled={isSaving}>
-                  + Create new document
-                </AppButton>
+              description={
+                canEdit
+                  ? 'Create a document from a template, a background, or a blank page.'
+                  : 'No documents to view yet.'
               }
+              action={createButton ?? undefined}
             />
           ) : (
-                <div className="flex flex-col">
-                  <div
-                    className="grid grid-cols-[1fr_8rem_6rem] gap-2 sm:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-[10px] font-semibold text-gray-700"
-                    aria-hidden
-                  >
-                    <div>Document</div>
-                    <div>Updated</div>
-                    <div className="text-right">Actions</div>
-                  </div>
-                  {documents.map((d) => (
-                    <div
-                      key={d.id}
-                      onClick={() => {
-                        void queryClient.prefetchQuery({
-                          queryKey: ['document-creator-doc', d.id],
-                          queryFn: () => api<UserDocument>('GET', `/document-creator/documents/${d.id}`),
-                          staleTime: 30_000,
-                        });
-                        navigate(`/documents/create/${d.id}`);
-                      }}
-                      onMouseEnter={() => {
-                        void queryClient.prefetchQuery({
-                          queryKey: ['document-creator-doc', d.id],
-                          queryFn: () => api<UserDocument>('GET', `/document-creator/documents/${d.id}`),
-                          staleTime: 30_000,
-                        });
-                      }}
-                      className="group grid grid-cols-[1fr_8rem_6rem] gap-2 sm:gap-4 items-center px-4 py-2.5 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors"
-                    >
-                      <div className="min-w-0 flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                          <DocumentIcon className="w-4 h-4 text-gray-500" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-gray-900 truncate group-hover:text-brand-red transition-colors">
-                            {d.title || 'Untitled document'}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-xs text-gray-600 truncate">
-                        {formatDate(d.updated_at)}
-                      </div>
-                      <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/documents/create/${d.id}`);
-                          }}
-                          className="p-2 rounded text-gray-500 hover:text-brand-red hover:bg-brand-red/10 border border-transparent hover:border-brand-red/20 transition-colors"
-                          title="Edit"
-                          aria-label="Edit"
-                        >
-                          <EditIcon />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteDocument(d.id, d.title);
-                          }}
-                          disabled={deletingId === d.id}
-                          className="p-2 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors disabled:opacity-50"
-                          title="Delete"
-                          aria-label="Delete"
-                        >
-                          <TrashIcon />
-                        </button>
+            <div className="flex flex-col">
+              <div
+                className="grid grid-cols-[1fr_8rem_6rem] gap-2 sm:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-[10px] font-semibold text-gray-700"
+                aria-hidden
+              >
+                <div>Document</div>
+                <div>Updated</div>
+                <div className="text-right">Actions</div>
+              </div>
+              {documents.map((d) => (
+                <div
+                  key={d.id}
+                  onClick={() => {
+                    void queryClient.prefetchQuery({
+                      queryKey: ['document-creator-doc', d.id],
+                      queryFn: () => api<UserDocument>('GET', `/document-creator/documents/${d.id}`),
+                      staleTime: 30_000,
+                    });
+                    navigate(`/documents/create/${d.id}`);
+                  }}
+                  onMouseEnter={() => {
+                    void queryClient.prefetchQuery({
+                      queryKey: ['document-creator-doc', d.id],
+                      queryFn: () => api<UserDocument>('GET', `/document-creator/documents/${d.id}`),
+                      staleTime: 30_000,
+                    });
+                  }}
+                  className="group grid grid-cols-[1fr_8rem_6rem] gap-2 sm:gap-4 items-center px-4 py-2.5 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  <div className="min-w-0 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                      <DocumentIcon className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate group-hover:text-brand-red transition-colors">
+                        {d.title || 'Untitled document'}
                       </div>
                     </div>
-                  ))}
+                  </div>
+                  <div className="text-xs text-gray-600 truncate">{formatDate(d.updated_at)}</div>
+                  <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/documents/create/${d.id}`);
+                      }}
+                      className="p-2 rounded text-gray-500 hover:text-brand-red hover:bg-brand-red/10 border border-transparent hover:border-brand-red/20 transition-colors"
+                      title={canEdit ? 'Edit' : 'View'}
+                      aria-label={canEdit ? 'Edit' : 'View'}
+                    >
+                      <EditIcon />
+                    </button>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteDocument(d.id, d.title);
+                        }}
+                        disabled={deletingId === d.id}
+                        className="p-2 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors disabled:opacity-50"
+                        title="Delete"
+                        aria-label="Delete"
+                      >
+                        <TrashIcon />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-              )}
+              ))}
+            </div>
+          )}
         </AppCard>
-        <ChooseDocumentTypeModal
-          open={showChooseTypeModal}
-          onClose={() => setShowChooseTypeModal(false)}
-          onSelect={(selection) => {
-            setShowChooseTypeModal(false);
-            handleCreateNewDocument(selection);
-          }}
-        />
+        {canEdit ? (
+          <CreateDocumentWizardModal
+            open={showWizard}
+            onClose={() => setShowWizard(false)}
+            onComplete={(result) => {
+              void handleCreateNewDocument(result);
+            }}
+            creating={isSaving}
+          />
+        ) : null}
       </div>
     );
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <DocumentEditor documentId={id} enableSendForSignature />
+      <DocumentEditor
+        documentId={id}
+        readOnly={!canEdit}
+        enableSendForSignature={canEdit}
+      />
     </div>
   );
 }

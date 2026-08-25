@@ -42,6 +42,7 @@ import {
   type CompanyAssetsAccessLevel,
 } from '@/lib/companyAssetsPermissions';
 import { DocumentsPermissionsPanel } from '@/components/DocumentsPermissionsPanel';
+import { DocumentHubPermissionsPanel } from '@/components/DocumentHubPermissionsPanel';
 import CompanyFilesCategoriesModal from '@/components/CompanyFilesCategoriesModal';
 import {
   applyDocumentsAccessLevel,
@@ -56,6 +57,11 @@ import {
   type CompanyFilesCategoryConfigState,
   type DocumentsAccessLevel,
 } from '@/lib/documentsPermissions';
+import {
+  applyDocumentHubAccessLevel,
+  filterDocumentHubAreaPermissions,
+  type DocumentHubAccessLevel,
+} from '@/lib/documentHubPermissions';
 import {
   applyHrAccessLevel,
   applyHrWriteOnlyLevel,
@@ -679,6 +685,13 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     []
   );
 
+  const handleDocumentHubAccessLevel = useCallback(
+    (readKey: string, writeKey: string | undefined, level: DocumentHubAccessLevel) => {
+      setPermissions((prev) => applyDocumentHubAccessLevel(prev, readKey, writeKey, level));
+    },
+    []
+  );
+
   const handleHrAccessLevel = useCallback(
     (readKey: string, writeKey: string | undefined, level: HrAccessLevel) => {
       setPermissions((prev) => syncHrAccess(applyHrAccessLevel(prev, readKey, writeKey, level)));
@@ -1145,6 +1158,19 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                   },
                   permissions: filterDocumentsAreaPermissions(cat.permissions),
                 });
+              } else if (cat.category.name === 'document_hub') {
+                processedCategories.push({
+                  ...cat,
+                  category: {
+                    ...cat.category,
+                    name: 'document_hub',
+                    label: 'Documents',
+                    id: 'document_hub',
+                    description:
+                      'Document Builder, Signature Requests, Signature Editor, and document templates.',
+                  },
+                  permissions: filterDocumentHubAreaPermissions(cat.permissions),
+                });
               } else if (cat.category.name === 'training') {
                 processedCategories.push({
                   ...cat,
@@ -1390,6 +1416,13 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                         onConfigureCategories={
                           canEdit ? () => setShowCompanyFilesCategoriesModal(true) : undefined
                         }
+                      />
+                    ) : cat.category.name === 'document_hub' ? (
+                      <DocumentHubPermissionsPanel
+                        areaPerms={subPermissions}
+                        permissions={permissions}
+                        canEdit={canEdit}
+                        onAccessLevelChange={handleDocumentHubAccessLevel}
                       />
                     ) : cat.category.name === 'construction' ? (
                       <div className="space-y-4">

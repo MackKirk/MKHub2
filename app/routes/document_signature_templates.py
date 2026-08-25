@@ -32,7 +32,7 @@ def _row_dict(row: DocumentSignatureTemplate) -> dict:
 def list_templates(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read")),
+    _=Depends(require_permissions("document_hub:signature_editor:read")),
 ):
     rows = (
         db.query(DocumentSignatureTemplate)
@@ -48,7 +48,7 @@ def thumbnail(
     w: int = 200,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read")),
+    _=Depends(require_permissions("document_hub:signature_editor:read")),
 ):
     row = db.query(DocumentSignatureTemplate).filter(DocumentSignatureTemplate.id == doc_id).first()
     if not row:
@@ -65,7 +65,7 @@ def preview(
     doc_id: UUID,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:read")),
+    _=Depends(require_permissions("document_hub:signature_editor:read")),
 ):
     row = db.query(DocumentSignatureTemplate).filter(DocumentSignatureTemplate.id == doc_id).first()
     if not row:
@@ -81,7 +81,7 @@ def create_template(
     payload: dict,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write")),
+    _=Depends(require_permissions("document_hub:signature_editor:write")),
 ):
     name = (payload.get("name") or "").strip()
     if not name:
@@ -112,7 +112,7 @@ def update_template(
     payload: dict,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write")),
+    _=Depends(require_permissions("document_hub:signature_editor:write")),
 ):
     row = db.query(DocumentSignatureTemplate).filter(DocumentSignatureTemplate.id == doc_id).first()
     if not row:
@@ -139,7 +139,7 @@ def delete_template(
     doc_id: UUID,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:write")),
+    _=Depends(require_permissions("document_hub:signature_editor:write")),
 ):
     row = db.query(DocumentSignatureTemplate).filter(DocumentSignatureTemplate.id == doc_id).first()
     if not row:

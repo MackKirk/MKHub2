@@ -326,7 +326,7 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
     }
   };
 
-  const menuDoc = menuOpenId ? documents.find((x) => x.id === menuOpenId) : null;
+  const menuDoc = !readOnly && menuOpenId ? documents.find((x) => x.id === menuOpenId) : null;
 
   return (
     <>
@@ -368,36 +368,32 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
             >
               Edit Signature Template
             </button>
-            {!readOnly ? (
-              <>
-                <div className="my-1 border-t border-gray-100" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={uiCx(uiDropdown.option, 'text-red-600 hover:bg-red-50')}
-                  onClick={async () => {
-                    setMenuOpenId(null);
-                    setMenuAnchor(null);
-                    const result = await askConfirm({
-                      title: 'Delete document',
-                      message: deleteConfirmMessage
-                        ? deleteConfirmMessage(menuDoc)
-                        : `Delete "${menuDoc.name}"?`,
-                      confirmText: 'Delete',
-                      cancelText: 'Cancel',
-                    });
-                    if (result !== 'confirm') return;
-                    try {
-                      await onDelete(menuDoc);
-                    } catch (err: unknown) {
-                      toast.error(err instanceof Error ? err.message : 'Delete failed');
-                    }
-                  }}
-                >
-                  Delete
-                </button>
-              </>
-            ) : null}
+            <div className="my-1 border-t border-gray-100" />
+            <button
+              type="button"
+              role="menuitem"
+              className={uiCx(uiDropdown.option, 'text-red-600 hover:bg-red-50')}
+              onClick={async () => {
+                setMenuOpenId(null);
+                setMenuAnchor(null);
+                const result = await askConfirm({
+                  title: 'Delete document',
+                  message: deleteConfirmMessage
+                    ? deleteConfirmMessage(menuDoc)
+                    : `Delete "${menuDoc.name}"?`,
+                  confirmText: 'Delete',
+                  cancelText: 'Cancel',
+                });
+                if (result !== 'confirm') return;
+                try {
+                  await onDelete(menuDoc);
+                } catch (err: unknown) {
+                  toast.error(err instanceof Error ? err.message : 'Delete failed');
+                }
+              }}
+            >
+              Delete
+            </button>
           </div>,
           document.body,
         )}
@@ -437,34 +433,36 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
                 'border border-gray-200 bg-white hover:border-gray-300',
               )}
             >
-              <div className="absolute right-1 top-1 z-50 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                <AppTooltip content="Document actions">
-                  <AppButton
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-auto min-h-0 p-1"
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpenId === d.id}
-                    aria-label="Document actions"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const btn = e.currentTarget as HTMLButtonElement;
-                      if (menuOpenId === d.id) {
-                        setMenuOpenId(null);
-                        setMenuAnchor(null);
-                      } else {
-                        menuButtonRef.current = btn;
-                        const rect = btn.getBoundingClientRect();
-                        setMenuAnchor(clampMenuPosition(rect));
-                        setMenuOpenId(d.id);
-                      }
-                    }}
-                  >
-                    <Settings className="h-3.5 w-3.5" aria-hidden />
-                  </AppButton>
-                </AppTooltip>
-              </div>
+              {!readOnly ? (
+                <div className="absolute right-1 top-1 z-50 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <AppTooltip content="Document actions">
+                    <AppButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto min-h-0 p-1"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpenId === d.id}
+                      aria-label="Document actions"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const btn = e.currentTarget as HTMLButtonElement;
+                        if (menuOpenId === d.id) {
+                          setMenuOpenId(null);
+                          setMenuAnchor(null);
+                        } else {
+                          menuButtonRef.current = btn;
+                          const rect = btn.getBoundingClientRect();
+                          setMenuAnchor(clampMenuPosition(rect));
+                          setMenuOpenId(d.id);
+                        }
+                      }}
+                    >
+                      <Settings className="h-3.5 w-3.5" aria-hidden />
+                    </AppButton>
+                  </AppTooltip>
+                </div>
+              ) : null}
               <div
                 role="button"
                 tabIndex={0}
