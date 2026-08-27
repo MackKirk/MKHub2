@@ -261,7 +261,7 @@ export default function Home() {
   return (
     <LoadingOverlay isLoading={showLoading} text="Loading dashboard…" minHeight="min-h-[50vh]">
     <AnimationReadyProvider loaded={!isLoading} delay={80}>
-    <div className={uiCx('relative w-full min-w-0 overflow-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+    <div className={uiCx('relative w-full min-w-0 overflow-hidden', 'min-h-full bg-gray-50')}>
       <div
         className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
         aria-hidden
@@ -280,7 +280,7 @@ export default function Home() {
           }}
         />
       </div>
-      <div className="relative z-[1] min-w-0">
+      <div className={uiCx('relative z-[1] min-w-0', uiSpacing.pageStack)}>
       <AppPageHeader
         title="My Dashboard"
         icon={<LayoutDashboard className="h-4 w-4" />}
