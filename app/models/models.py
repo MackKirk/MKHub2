@@ -973,6 +973,13 @@ class UserDocument(Base):
     )
     edit_lock_session_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     edit_lock_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Envelope-only docs created when sending from Signature Editor (hidden from hub list).
+    signature_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_signature_templates.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
 
 class DocumentSignatureTemplate(Base):

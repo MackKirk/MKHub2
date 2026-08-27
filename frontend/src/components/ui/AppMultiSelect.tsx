@@ -5,7 +5,7 @@ import { sortByLabel } from '@/lib/sortOptions';
 import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
 import { SelectDropdownCheckbox } from './SelectDropdownCheckbox';
-import { uiCx, uiDropdown, uiTypography, uiUserSelect } from './tokens';
+import { uiCx, uiDropdown, uiLayout, uiTypography, uiUserSelect } from './tokens';
 import { comboboxMenuStyle, useComboboxDropdown } from './useComboboxDropdown';
 
 export type AppMultiSelectOption = {
@@ -31,6 +31,8 @@ export type AppMultiSelectProps = {
   /** Icon in searchable mode (default Search). Pass null to hide. */
   leftIcon?: ReactNode;
   showSelectedChips?: boolean;
+  /** Shows Select all / Clear next to the label. */
+  showSelectAll?: boolean;
   triggerClassName?: string;
   className?: string;
 };
@@ -86,6 +88,7 @@ export function AppMultiSelect({
   searchable = false,
   leftIcon,
   showSelectedChips = true,
+  showSelectAll = false,
   triggerClassName,
   className,
 }: AppMultiSelectProps) {
@@ -124,6 +127,14 @@ export function AppMultiSelect({
     }
     onChange([...value, optionValue]);
   };
+
+  const selectAllVisible = () => {
+    const ids = filteredOptions.map((o) => o.value);
+    if (ids.length === 0) return;
+    onChange(Array.from(new Set([...value, ...ids])));
+  };
+
+  const clearSelection = () => onChange([]);
 
   const menuPosition = comboboxMenuStyle(menuRect);
 
@@ -186,18 +197,46 @@ export function AppMultiSelect({
   const comboboxPlaceholder = open ? placeholder : closedPlaceholder;
   const showLeftIcon = leftIcon !== undefined ? leftIcon : searchable ? <Search className="h-4 w-4" /> : null;
 
+  const selectAllActions =
+    showSelectAll && !disabled && options.length > 0 ? (
+      <div className={uiCx(uiLayout.actionsRow, 'shrink-0 gap-2')}>
+        <button
+          type="button"
+          className="text-xs font-medium text-brand-red hover:underline disabled:opacity-50"
+          disabled={filteredOptions.length === 0}
+          onClick={selectAllVisible}
+        >
+          Select all
+        </button>
+        {value.length > 0 ? (
+          <button
+            type="button"
+            className="text-xs font-medium text-gray-600 hover:underline"
+            onClick={clearSelection}
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+    ) : null;
+
   const labelRow = label ? (
-    <AppControlLabelRow
-      label={
-        <>
-          {label}
-          {value.length > 0 ? (
-            <span className="ml-1 font-normal normal-case text-gray-500">({value.length} selected)</span>
-          ) : null}
-        </>
-      }
-      fieldHint={fieldHint ? <AppFieldHint hint={fieldHint} /> : undefined}
-    />
+    <div className={uiCx('flex items-center justify-between gap-2')}>
+      <AppControlLabelRow
+        label={
+          <>
+            {label}
+            {value.length > 0 ? (
+              <span className="ml-1 font-normal normal-case text-gray-500">({value.length} selected)</span>
+            ) : null}
+          </>
+        }
+        fieldHint={fieldHint ? <AppFieldHint hint={fieldHint} /> : undefined}
+      />
+      {selectAllActions}
+    </div>
+  ) : selectAllActions ? (
+    <div className="flex justify-end">{selectAllActions}</div>
   ) : null;
 
   const chipsRow =

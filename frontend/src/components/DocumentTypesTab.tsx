@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
-import type { DocumentTypePreset } from '@/components/ChooseDocumentTypeModal';
+import type { DocumentTypePreset } from '@/components/DocumentTypePicker';
 import { getDocumentTypeCategories } from '@/lib/documentTypeGrouping';
 import type { DocElement, PageMargins } from '@/types/documentCreator';
 import { docElementRotationDeg, docElementRotateStyle } from '@/utils/documentElementGeometry';

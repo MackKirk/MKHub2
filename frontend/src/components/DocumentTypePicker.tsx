@@ -7,6 +7,7 @@ import {
   UNCATEGORIZED_CATEGORY_KEY,
 } from '@/lib/documentTypeGrouping';
 import { DocumentPagePreviewThumbnails } from '@/components/DocumentPagePreviewThumbnails';
+import { isMultiPageTemplate } from '@/lib/documentTemplateUtils';
 import type { DocElement, DocumentPage, PageMargins } from '@/types/documentCreator';
 import { AppInput, uiCx, uiSpacing, uiTypography } from '@/components/ui';
 
@@ -39,7 +40,7 @@ export const GRID_CLASS = 'grid grid-cols-2 sm:grid-cols-3 gap-3.5';
 /** Fixed picker body so switching categories does not resize the modal (sized for a full “All” view). */
 export const PICKER_BODY_HEIGHT_CLASS = 'h-[min(64vh,36rem)]';
 
-function previewPagesFromDocumentType(
+export function previewPagesFromDocumentType(
   documentType: DocumentTypePreset,
   templates: BackgroundTemplate[],
 ): DocumentPage[] {
@@ -91,7 +92,12 @@ function DocumentTypeGridCard({
   onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className={GRID_CARD_CLASS} title={name}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={GRID_CARD_CLASS}
+      title={name}
+    >
       <div className="w-full bg-gray-50 flex items-center justify-center py-4 px-2 min-h-[200px]">
         <DocumentPagePreviewThumbnails
           pages={pages}
@@ -124,13 +130,23 @@ function TemplateGrid({
   documentTypes,
   templates,
   onSelect,
+  onPick,
   showBlank = false,
 }: {
   documentTypes: DocumentTypePreset[];
   templates: BackgroundTemplate[];
   onSelect: (documentTypeId: string | null) => void;
+  onPick?: (documentTypeId: string) => void;
   showBlank?: boolean;
 }) {
+  const handleCardClick = (dt: DocumentTypePreset) => {
+    if (onPick && isMultiPageTemplate(dt)) {
+      onPick(dt.id);
+      return;
+    }
+    onSelect(dt.id);
+  };
+
   return (
     <div className={GRID_CLASS}>
       {showBlank && <BlankGridCard onClick={() => onSelect(null)} />}
@@ -141,7 +157,7 @@ function TemplateGrid({
           subtitle={dt.description || `${(dt.page_templates || []).length} page(s)`}
           pages={previewPagesFromDocumentType(dt, templates)}
           templates={templates}
-          onClick={() => onSelect(dt.id)}
+          onClick={() => handleCardClick(dt)}
         />
       ))}
     </div>
@@ -178,7 +194,7 @@ function CategoryNavButton({
       className={uiCx(
         base,
         selected
-          ? 'border-brand-red bg-red-50 text-brand-red font-semibold'
+          ? 'border-brand-red bg-red-50 text-brand-red font-semibold ring-1 ring-inset ring-brand-red/30'
           : 'border-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-900',
       )}
     >
@@ -195,6 +211,8 @@ export type DocumentTypePickerProps = {
   backgroundTemplates: BackgroundTemplate[];
   isLoading?: boolean;
   onSelect: (documentTypeId: string | null) => void;
+  /** When set, multi-page templates call onPick to open the options step. */
+  onPick?: (documentTypeId: string) => void;
   showBlank?: boolean;
   designSystem?: boolean;
 };
@@ -204,6 +222,7 @@ export function DocumentTypePicker({
   backgroundTemplates,
   isLoading = false,
   onSelect,
+  onPick,
   showBlank = true,
   designSystem = true,
 }: DocumentTypePickerProps) {
@@ -280,6 +299,8 @@ export function DocumentTypePicker({
     );
   }
 
+  const gridPickProps = { onPick };
+
   const emptyOrSearchMiss = (
     <div className={designSystem ? uiSpacing.sectionStack : 'space-y-4'}>
       {showBlank && (
@@ -288,6 +309,7 @@ export function DocumentTypePicker({
           templates={backgroundTemplates}
           onSelect={onSelect}
           showBlank
+          {...gridPickProps}
         />
       )}
       <p
@@ -310,6 +332,7 @@ export function DocumentTypePicker({
           templates={backgroundTemplates}
           onSelect={onSelect}
           showBlank
+          {...gridPickProps}
         />
       )}
       {groupedCategories.map(([categoryName, list]) => (
@@ -319,6 +342,7 @@ export function DocumentTypePicker({
             documentTypes={list}
             templates={backgroundTemplates}
             onSelect={onSelect}
+            {...gridPickProps}
           />
         </div>
       ))}
@@ -329,6 +353,7 @@ export function DocumentTypePicker({
             documentTypes={uncategorized}
             templates={backgroundTemplates}
             onSelect={onSelect}
+            {...gridPickProps}
           />
         </div>
       )}
@@ -341,6 +366,7 @@ export function DocumentTypePicker({
       templates={backgroundTemplates}
       onSelect={onSelect}
       showBlank={showBlank}
+      {...gridPickProps}
     />
   );
 

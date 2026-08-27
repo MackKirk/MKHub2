@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { buildDocumentCreatePayload } from '@/lib/documentCreateScope';
 import { ChooseDocumentTypeModal, type DocumentCreationSelection } from '@/components/ChooseDocumentTypeModal';
 import { DocumentPagePreviewThumbnails } from '@/components/DocumentPagePreviewThumbnails';
 import DocumentEditor, { type DocumentEditorHandle } from '@/components/DocumentEditor';
@@ -138,21 +139,25 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
   const [modalDocumentId, setModalDocumentId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showChooseTypeModal, setShowChooseTypeModal] = useState(false);
+  const [promptRenameOnOpen, setPromptRenameOnOpen] = useState(false);
 
   const docFromUrl = searchParams.get('doc');
+  const renameFromUrl = searchParams.get('rename');
   useEffect(() => {
     if (!docFromUrl) return;
     setModalDocumentId(docFromUrl);
     setShowModal(true);
+    if (renameFromUrl === '1') setPromptRenameOnOpen(true);
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete('doc');
+        next.delete('rename');
         return next;
       },
       { replace: true },
     );
-  }, [docFromUrl, setSearchParams]);
+  }, [docFromUrl, renameFromUrl, setSearchParams]);
 
   const inlineEditorOpen = !!(showModal && modalDocumentId && !isExpanded);
   const { shellRef: inlineEditorShellRef, heightPx: inlineEditorHeightPx } =
@@ -218,23 +223,12 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
   const handleCreateNew = async (selection: DocumentCreationSelection) => {
     setIsCreating(true);
     try {
-      const payload: {
-        title: string;
-        project_id: string;
-        document_type_id?: string;
-        pages?: { template_id: string | null; elements: never[] }[];
-      } = { title: 'Untitled document', project_id: projectId };
-      if (selection.kind === 'preset') {
-        payload.document_type_id = selection.documentTypeId;
-      } else if (selection.kind === 'background') {
-        payload.pages = [{ template_id: selection.templateId, elements: [] }];
-      } else {
-        payload.pages = [{ template_id: null, elements: [] }];
-      }
+      const payload = buildDocumentCreatePayload(selection, { kind: 'project', projectId });
       const created = await api<UserDocument>('POST', '/document-creator/documents', payload);
       queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
       queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
       setModalDocumentId(created.id);
+      setPromptRenameOnOpen(true);
       setShowModal(true);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to create document.');
@@ -308,6 +302,7 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
 
   const handleCloseModal = () => {
     setShowModal(false);
+    setPromptRenameOnOpen(false);
     setModalDocumentId(null);
     setIsExpanded(false);
     queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
@@ -357,7 +352,7 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
         <button
           type="button"
           onClick={() => handleEdit(doc)}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded text-left focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:ring-offset-1"
+          className="flex min-w-0 flex-1 items-center gap-3 rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40 focus-visible:ring-offset-1"
         >
           <DocumentPagePreviewThumbnails
             pages={(Array.isArray(doc.pages) ? doc.pages : []) as DocumentPage[]}
@@ -460,6 +455,7 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
       open={showChooseTypeModal}
       onClose={() => setShowChooseTypeModal(false)}
       designSystem={designSystem}
+      projectId={projectId}
       onSelect={(selection) => {
         setShowChooseTypeModal(false);
         handleCreateNew(selection);
@@ -540,6 +536,7 @@ const ProjectDocumentsTab = forwardRef<ProjectDocumentsTabHandle, ProjectDocumen
           projectId={projectId}
           onClose={handleCloseModal}
           readOnly={!canEditDocuments}
+          promptRenameOnOpen={promptRenameOnOpen}
           closeSlotBelow={isExpanded ? compressButton : expandButton}
           stickyToolbar={!isExpanded}
         />

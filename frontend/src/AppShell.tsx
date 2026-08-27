@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import {
   computeIsProfileComplete,
   isExemptFromProfileWizardRedirect,
+  isHubAccessBlockedFromStatus,
   matchesSignatureRestrictedExempt,
 } from '@/lib/profileCompleteness';
 import ChangelogNewsPanel from '@/components/ChangelogNewsPanel';
@@ -12,6 +13,7 @@ import NotificationBell from '@/components/NotificationBell';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import { useConfirm } from '@/components/ConfirmProvider';
 import FixedBugReportButton from '@/components/FixedBugReportButton';
+import HubAccessRestrictedBanner from '@/components/personal/HubAccessRestrictedBanner';
 import HubTodayCalendar from '@/components/HubTodayCalendar';
 import InstallPrompt from '@/components/InstallPrompt';
 import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
@@ -331,16 +333,23 @@ export default function AppShell({ children }: PropsWithChildren){
   const userId = me?.id ? String(me.id) : '';
   
   // Check emergency contacts
-  const { data: emergencyContactsData, isLoading: emergencyContactsLoading } = useQuery({ 
-    queryKey:['emergency-contacts', userId], 
-    queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`),
-    enabled: !!userId
+  const {
+    data: emergencyContactsData,
+    isLoading: emergencyContactsLoading,
+    isSuccess: emergencyContactsSuccess,
+  } = useQuery({
+    queryKey: ['emergency-contacts', userId],
+    queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`),
+    enabled: !!userId,
+    retry: false,
   });
 
   const isProfileComplete = useMemo(
     () =>
-      computeIsProfileComplete(meProfile, emergencyContactsData, userId, emergencyContactsLoading),
-    [meProfile, emergencyContactsData, userId, emergencyContactsLoading]
+      computeIsProfileComplete(meProfile, emergencyContactsData, userId, emergencyContactsLoading, {
+        contactsKnown: !userId || emergencyContactsSuccess,
+      }),
+    [meProfile, emergencyContactsData, userId, emergencyContactsLoading, emergencyContactsSuccess],
   );
 
   const { data: onboardingStatus, isLoading: onboardingStatusLoading } = useQuery({
@@ -362,7 +371,7 @@ export default function AppShell({ children }: PropsWithChildren){
         };
       }
     },
-    enabled: !!userId && isProfileComplete,
+    enabled: !!userId,
     retry: false,
   });
 
@@ -391,36 +400,42 @@ export default function AppShell({ children }: PropsWithChildren){
         };
       }
     },
-    enabled: !!userId && isProfileComplete,
+    enabled: !!userId,
     retry: false,
   });
 
   const signatureBadgeCount =
     signatureStatus?.action_required_count ?? signatureStatus?.pending_count ?? 0;
 
-  const onboardingBlocked =
-    isProfileComplete &&
-    onboardingStatus?.past_deadline &&
-    onboardingStatus?.has_pending;
+  const onboardingBlocked = !!(
+    onboardingStatus?.past_deadline && onboardingStatus?.has_pending
+  );
 
-  const signatureBlocked =
-    isProfileComplete &&
-    signatureStatus?.status_available !== false &&
-    !!signatureStatus?.blocked;
+  const signatureBlocked = isHubAccessBlockedFromStatus(signatureStatus);
 
   const hubAccessBlocked = signatureBlocked || onboardingBlocked;
 
-  // Redirect when signatures overdue / Hub access restricted (Phase 4A)
+  // Signature / hub lock takes priority over onboarding wizard.
   useEffect(() => {
-    if (!isProfileComplete || !hubAccessBlocked) return;
+    if (signatureStatusLoading || onboardingStatusLoading) return;
+    if (!hubAccessBlocked) return;
     const path = location.pathname;
     if (matchesSignatureRestrictedExempt(path)) return;
     navigate('/personal/signatures', { replace: true });
-  }, [isProfileComplete, hubAccessBlocked, location.pathname, navigate]);
-  
-  // Redirect to onboarding wizard if profile incomplete (same exempt paths as before)
+  }, [
+    hubAccessBlocked,
+    signatureStatusLoading,
+    onboardingStatusLoading,
+    location.pathname,
+    navigate,
+  ]);
+
+  // Redirect to onboarding only when required fields are truly missing (contacts list succeeded).
   useEffect(() => {
     if (meLoading || meProfileLoading || (userId && emergencyContactsLoading)) return;
+    if (signatureStatusLoading || onboardingStatusLoading) return;
+    if (hubAccessBlocked) return;
+    if (userId && !emergencyContactsSuccess) return;
     if (
       meProfile &&
       !isProfileComplete &&
@@ -428,7 +443,20 @@ export default function AppShell({ children }: PropsWithChildren){
     ) {
       navigate('/onboarding', { replace: true });
     }
-  }, [meProfile, isProfileComplete, location.pathname, navigate, meLoading, meProfileLoading, emergencyContactsLoading, userId]);
+  }, [
+    meProfile,
+    isProfileComplete,
+    location.pathname,
+    navigate,
+    meLoading,
+    meProfileLoading,
+    emergencyContactsLoading,
+    emergencyContactsSuccess,
+    userId,
+    hubAccessBlocked,
+    signatureStatusLoading,
+    onboardingStatusLoading,
+  ]);
   
   const displayName = (meProfile?.profile?.preferred_name) || ([meProfile?.profile?.first_name, meProfile?.profile?.last_name].filter(Boolean).join(' ') || meProfile?.user?.username || 'User');
   const userMenuUser = useMemo(
@@ -895,7 +923,7 @@ export default function AppShell({ children }: PropsWithChildren){
   }, [me, isProfileComplete, signatureBadgeCount]);
 
   const effectiveMenuCategories: MenuCategory[] = useMemo(() => {
-    if (!signatureBlocked) return menuCategories;
+    if (!hubAccessBlocked) return menuCategories;
     return [
       {
         id: 'personal',
@@ -909,11 +937,10 @@ export default function AppShell({ children }: PropsWithChildren){
             icon: <IconPen />,
             badgeCount: signatureBadgeCount,
           },
-          { id: 'profile', label: 'Profile', path: '/profile', icon: <IconUser /> },
         ],
       },
     ];
-  }, [signatureBlocked, menuCategories, signatureBadgeCount]);
+  }, [hubAccessBlocked, menuCategories, signatureBadgeCount]);
 
   const globalSearchLocalSections: GlobalSearchSection[] = useMemo(() => {
     // Pages built from the same menu config (respecting permissions).
@@ -1113,14 +1140,21 @@ export default function AppShell({ children }: PropsWithChildren){
     return effectiveMenuCategories.find(cat => isCategoryActive(cat));
   }, [location.pathname, location.search, effectiveMenuCategories, currentProject, isViewingOpportunity, onConstructionOpp, onRmOpp]);
 
+  const categoryHasSubPanel = (category: MenuCategory) => {
+    const visibleCount = category.items.filter(canSeeMenuItem).length;
+    if (category.id === 'document-hub') return visibleCount >= 1;
+    if (hubAccessBlocked && category.id === 'personal' && visibleCount >= 1) return true;
+    return visibleCount > 1 || category.id === 'sales';
+  };
+
   // When opening the menu, select the category for the current route (if it has a sub-panel)
   useEffect(() => {
     if (!navOpen) return;
     const cat = activeCategory;
-    if (cat) {
-      const visibleCount = cat.items.filter(canSeeMenuItem).length;
-      const hasSubPanel = visibleCount > 1 || cat.id === 'sales';
-      setActiveNavCategoryId(hasSubPanel ? cat.id : null);
+    if (cat && categoryHasSubPanel(cat)) {
+      setActiveNavCategoryId(cat.id);
+    } else if (hubAccessBlocked) {
+      setActiveNavCategoryId('personal');
     } else {
       setActiveNavCategoryId(null);
     }
@@ -1128,12 +1162,6 @@ export default function AppShell({ children }: PropsWithChildren){
   }, [navOpen]);
 
   const closeNav = () => setNavOpen(false);
-
-  const categoryHasSubPanel = (category: MenuCategory) => {
-    const visibleCount = category.items.filter(canSeeMenuItem).length;
-    if (category.id === 'document-hub') return visibleCount >= 1;
-    return visibleCount > 1 || category.id === 'sales';
-  };
 
   const visibleMenuCategories = useMemo(() => {
     return effectiveMenuCategories.filter((category) => {
@@ -1250,15 +1278,16 @@ export default function AppShell({ children }: PropsWithChildren){
     meLoading ||
     meProfileLoading ||
     (userId && emergencyContactsLoading) ||
-    (!!userId && isProfileComplete && (onboardingStatusLoading || signatureStatusLoading));
+    (!!userId && (onboardingStatusLoading || signatureStatusLoading));
 
   const needsWizardRedirectWhileInShell =
     !!meProfile &&
+    !hubAccessBlocked &&
+    (!!userId ? emergencyContactsSuccess : true) &&
     !isProfileComplete &&
     !isExemptFromProfileWizardRedirect(location.pathname);
 
   const needsDocumentsRedirectWhileInShell =
-    isProfileComplete &&
     hubAccessBlocked &&
     !matchesSignatureRestrictedExempt(location.pathname);
 
@@ -1639,7 +1668,7 @@ export default function AppShell({ children }: PropsWithChildren){
           >
             <ChangelogNewsPanel />
             <span className="h-5 w-px shrink-0 self-center rounded-full bg-white/12" aria-hidden />
-            <NotificationBell />
+            <NotificationBell hubAccessBlocked={hubAccessBlocked} />
             <span className="h-5 w-px shrink-0 self-center rounded-full bg-white/12" aria-hidden />
             <FixedBugReportButton />
           </div>
@@ -1673,14 +1702,16 @@ export default function AppShell({ children }: PropsWithChildren){
                 >
                   My Information
                 </Link>
-                <Link
-                  to="/reviews/my"
-                  role="menuitem"
-                  onClick={() => setOpen(false)}
-                  className={uiCx(uiDropdown.option, 'block w-full whitespace-nowrap !text-right')}
-                >
-                  My reviews
-                </Link>
+                {!hubAccessBlocked ? (
+                  <Link
+                    to="/reviews/my"
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                    className={uiCx(uiDropdown.option, 'block w-full whitespace-nowrap !text-right')}
+                  >
+                    My reviews
+                  </Link>
+                ) : null}
                 <div className="my-1 border-t border-gray-100" aria-hidden />
                 <button
                   type="button"
@@ -1729,11 +1760,11 @@ export default function AppShell({ children }: PropsWithChildren){
                     </button>
                   </div>
                 )}
-              {signatureBlocked && location.pathname === '/personal/signatures' && (
-                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-                  Your Hub access is restricted until overdue signatures are completed.
-                </div>
-              )}
+              {hubAccessBlocked &&
+                location.pathname !== '/personal/signatures' &&
+                location.pathname !== '/profile' && (
+                  <HubAccessRestrictedBanner className="mb-4" showSignNow />
+                )}
               {children}
             </div>
           </div>

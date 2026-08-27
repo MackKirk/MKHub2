@@ -11,6 +11,7 @@ import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useDocumentAutoSave, type DocumentSaveStatus } from '@/hooks/useDocumentAutoSave';
 import { useDocumentMediaLoading } from '@/hooks/useDocumentMediaLoading';
 import DocumentPreview from '@/components/DocumentPreview';
+import RenameDocumentModal from '@/components/RenameDocumentModal';
 import DocumentPagesStrip from '@/components/DocumentPagesStrip';
 import { AddPageModal } from '@/components/AddPageModal';
 import ImagePicker, { type ImagePickerConfirmMeta } from '@/components/ImagePicker';
@@ -153,6 +154,8 @@ type DocumentEditorDocumentProps = {
   stickyToolbar?: boolean;
   /** Show Send for signature (Document Builder /documents/create only). */
   enableSendForSignature?: boolean;
+  /** First open after scoped create — prompt to confirm/edit auto-generated title. */
+  promptRenameOnOpen?: boolean;
 };
 
 type DocumentEditorTemplateProps = {
@@ -202,6 +205,8 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const stickyToolbar = !isTemplate && !!(props as DocumentEditorDocumentProps).stickyToolbar;
   const enableSendForSignature =
     !isTemplate && !!(props as DocumentEditorDocumentProps).enableSendForSignature;
+  const promptRenameOnOpen =
+    !isTemplate && !!(props as DocumentEditorDocumentProps).promptRenameOnOpen;
 
   const navigate = useNavigate();
   const navigateBackToDocumentCreate = useNavigateBack('/documents/create');
@@ -213,6 +218,10 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const [bgMenuPos, setBgMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   /** After initial GET for a document id, ignore refetches (e.g. post-save invalidate) so undo/redo is not cleared. */
   const serverDocHydratedForIdRef = useRef<string | null>(null);
+  const renamePromptShownRef = useRef(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renameSaving, setRenameSaving] = useState(false);
   const [isDocHydrated, setIsDocHydrated] = useState(false);
   const id = documentId;
   /** Soft-lock session id for this editor mount (exclusive editing). */
@@ -578,6 +587,10 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     setLockForcedReadOnly(false);
     setLockBannerHolder(null);
     setEditLockStatus(isTemplate ? 'idle' : 'pending');
+    renamePromptShownRef.current = false;
+    setShowRenameModal(false);
+    setRenameError(null);
+    setRenameSaving(false);
   }, [id, isTemplate, propReadOnly]);
 
   useEffect(() => {
@@ -727,6 +740,42 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       serverDocHydratedForIdRef.current = id;
     }
   }, [doc, id, isDocHydrated, isPlaceholderData, isFetched, versionBaselineReady]);
+
+  useEffect(() => {
+    if (!promptRenameOnOpen || readOnly || !isDocHydrated || renamePromptShownRef.current) return;
+    renamePromptShownRef.current = true;
+    setShowRenameModal(true);
+  }, [promptRenameOnOpen, readOnly, isDocHydrated]);
+
+  const handleRenameCancel = useCallback(() => {
+    setShowRenameModal(false);
+    setRenameError(null);
+  }, []);
+
+  const handleRenameSave = useCallback(
+    async (newTitle: string) => {
+      setRenameSaving(true);
+      setRenameError(null);
+      const snapshot = { ...stateRef.current, title: newTitle };
+      try {
+        setTitle(newTitle);
+        stateRef.current = snapshot;
+        await persistDocument(snapshot);
+        setShowRenameModal(false);
+      } catch (e: unknown) {
+        if (e instanceof ApiError && getApiErrorCode(e) === 'document_title_taken') {
+          setRenameError('A document with this name already exists in this project or user folder.');
+          return;
+        }
+        if (e instanceof Error && (e as Error & { silent?: boolean }).silent) {
+          return;
+        }
+      } finally {
+        setRenameSaving(false);
+      }
+    },
+    [persistDocument],
+  );
 
   // Keep ref updated for history snapshots
   useEffect(() => {
@@ -2558,6 +2607,16 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           />
         </div>
       </AppFormModal>
+      {!isTemplate && (
+        <RenameDocumentModal
+          open={showRenameModal}
+          initialTitle={title}
+          saving={renameSaving}
+          error={renameError}
+          onSave={handleRenameSave}
+          onCancel={handleRenameCancel}
+        />
+      )}
       {!readOnly && <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAddImage} />}
       {pdfPreview && (
         <OverlayPortal><div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">

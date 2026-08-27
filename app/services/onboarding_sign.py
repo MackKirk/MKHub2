@@ -12,6 +12,21 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 
 from ..utils.pdf_hash import sha256_bytes
+from .time_rules import utc_to_local
+
+_DEFAULT_TZ = "America/Vancouver"
+
+
+def _utc_signed_at(signed_at: datetime) -> datetime:
+    if signed_at.tzinfo is None:
+        return signed_at.replace(tzinfo=timezone.utc)
+    return signed_at.astimezone(timezone.utc)
+
+
+def _local_signed_at(signed_at: datetime, tz_name: str) -> datetime:
+    """Convert signed_at (UTC) to company local time via pytz (reliable on Windows)."""
+    name = (tz_name or _DEFAULT_TZ).strip() or _DEFAULT_TZ
+    return utc_to_local(_utc_signed_at(signed_at), name)
 
 
 def _page_size(page) -> tuple[float, float]:
@@ -65,6 +80,8 @@ def overlay_signature_on_pdf(
     can.save()
     packet.seek(0)
     overlay_pdf = PdfReader(packet)
+    if not overlay_pdf.pages:
+        return pdf_bytes
     writer = PdfWriter()
     for i, page in enumerate(reader.pages):
         if i == page_index:
@@ -333,6 +350,9 @@ def _merge_overlay_page_fields(
     can.save()
     packet.seek(0)
     overlay_pdf = PdfReader(packet)
+    # ReportLab emits 0 pages when nothing was drawn (all fields skipped).
+    if not overlay_pdf.pages:
+        return pdf_bytes
     writer = PdfWriter()
     for i, page in enumerate(reader.pages):
         if i == page_index:
@@ -391,18 +411,11 @@ def make_signed_pdf_non_interactive(pdf_bytes: bytes) -> bytes:
         doc.close()
 
 
-def _format_signed_times(signed_at: datetime, tz_name: str = "America/Vancouver") -> Tuple[str, str]:
-    try:
-        from zoneinfo import ZoneInfo
-
-        tz = ZoneInfo(tz_name)
-    except Exception:
-        tz = timezone.utc
-    if signed_at.tzinfo is None:
-        signed_at = signed_at.replace(tzinfo=timezone.utc)
-    local = signed_at.astimezone(tz)
+def _format_signed_times(signed_at: datetime, tz_name: str = _DEFAULT_TZ) -> Tuple[str, str]:
+    utc = _utc_signed_at(signed_at)
+    local = _local_signed_at(utc, tz_name)
     signed_local = local.strftime("%Y-%m-%d %H:%M %Z")
-    signed_utc = signed_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    signed_utc = utc.strftime("%Y-%m-%d %H:%M:%S UTC")
     return signed_local, signed_utc
 
 
@@ -422,7 +435,7 @@ def build_signed_pdf_with_certificate_from_merged(
     signed_at: Optional[datetime] = None,
     ip_address: str = "",
     user_agent: str = "",
-    tz_name: str = "America/Vancouver",
+    tz_name: str = _DEFAULT_TZ,
 ) -> Tuple[bytes, str]:
     req_utc = (
         requested_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -489,17 +502,9 @@ def build_signed_pdf_with_certificate(
     ip_address: str,
     user_agent: str,
     acceptance_statement: str,
-    tz_name: str = "America/Vancouver",
+    tz_name: str = _DEFAULT_TZ,
 ) -> Tuple[bytes, str]:
-    try:
-        from zoneinfo import ZoneInfo
-
-        tz = ZoneInfo(tz_name)
-    except Exception:
-        tz = timezone.utc
-    if signed_at.tzinfo is None:
-        signed_at = signed_at.replace(tzinfo=timezone.utc)
-    local = signed_at.astimezone(tz)
+    local = _local_signed_at(signed_at, tz_name)
     display_dt = local.strftime("%Y-%m-%d %H:%M %Z")
     pi = int(placement.get("page_index", -1))
     x = float(placement.get("x", 350))

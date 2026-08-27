@@ -2,13 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useQuery } from '@tanstack/react-query';
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, getToken } from '@/lib/api';
 import { formatCurrencyAmount, parseCurrencyAmount } from '@/lib/currencyFormat';
 import { pdfRectToOverlayStyle, type PdfRect } from '@/lib/pdfCoordinates';
 import {
+  fieldHasValue,
+  fieldScrollTopPx,
+  getNextUnfilledFieldId,
+  getUnfilledFields,
+} from '@/lib/signatureFieldNavigation';
+import {
   AppButton,
   AppCheckbox,
+  AppDatePicker,
   AppFormModal,
   uiBorders,
   uiCx,
@@ -242,27 +250,10 @@ function formatSignDateLong(iso: string): string {
   return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
-function fieldHasValue(f: FieldDef, values: Record<string, string | boolean>): boolean {
-  if (f.type === 'employee_info') {
-    const v = values[f.id];
-    return typeof v === 'string' && v.trim().length > 0;
-  }
-  if (f.type === 'value') {
-    const raw = String(values[f.id] ?? '').trim();
-    if (!raw) return !f.required;
-    return parseCurrencyAmount(raw) !== null;
-  }
-  if (f.type === 'date') {
-    const v = values[f.id];
-    return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.trim());
-  }
-  const v = values[f.id];
-  if (f.type === 'checkbox') {
-    return v === true;
-  }
-  if (v === undefined || v === null) return false;
-  if (typeof v === 'string') return v.trim().length > 0;
-  return false;
+function isEmployeeInfoDateField(f: FieldDef): boolean {
+  if (f.type !== 'employee_info') return false;
+  const key = (f.employee_info_key || 'full_name').toLowerCase();
+  return key === 'hire_date' || key === 'date_of_birth';
 }
 
 type ProfileBundle = {
@@ -868,6 +859,64 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
     return m;
   }, [fieldValues, currencyDraft]);
 
+  const unfilledFields = useMemo(
+    () => getUnfilledFields(fields, fieldValuesWithCurrencyDraft, pageSizes),
+    [fields, fieldValuesWithCurrencyDraft, pageSizes],
+  );
+  const unfilledCount = unfilledFields.length;
+
+  const scrollToField = useCallback(
+    (field: FieldDef) => {
+      const container = pdfScrollRef.current;
+      if (!container) return;
+      const pageHeight = pageSizes[field.page_index]?.height ?? 792;
+      const overlay = pdfRectToOverlayStyle(field.rect, pageHeight, scale);
+      const pageEl = container.querySelector(`[data-pdf-page="${field.page_index}"]`);
+      if (pageEl instanceof HTMLElement) {
+        const fieldTop = pageEl.offsetTop + overlay.top;
+        const target = Math.max(0, fieldTop - container.clientHeight / 2 + overlay.height / 2);
+        container.scrollTo({ top: target, behavior: 'smooth' });
+        return;
+      }
+      const top = fieldScrollTopPx(field, pageSizes, scale, container.clientHeight);
+      container.scrollTo({ top, behavior: 'smooth' });
+    },
+    [pageSizes, scale],
+  );
+
+  const focusFieldId = useCallback(
+    (fieldId: string) => {
+      setSelectedFieldId(fieldId);
+      const field = fields.find((f) => f.id === fieldId);
+      if (field) {
+        requestAnimationFrame(() => scrollToField(field));
+      }
+    },
+    [fields, scrollToField],
+  );
+
+  const goToNextField = useCallback(() => {
+    const nextId = getNextUnfilledFieldId(
+      fields,
+      fieldValuesWithCurrencyDraft,
+      selectedFieldId,
+      pageSizes,
+    );
+    if (!nextId) {
+      toast.success('All fields are complete');
+      return;
+    }
+    focusFieldId(nextId);
+  }, [fields, fieldValuesWithCurrencyDraft, selectedFieldId, pageSizes, focusFieldId]);
+
+  const goToFirstField = useCallback(() => {
+    if (unfilledFields.length === 0) {
+      toast.success('All fields are complete');
+      return;
+    }
+    focusFieldId(unfilledFields[0].id);
+  }, [unfilledFields, focusFieldId]);
+
   const switchTemplateSigMode = (m: 'draw' | 'type') => {
     if (!selectedField || (selectedField.type !== 'signature' && selectedField.type !== 'initials')) return;
     if (m === templateSigMode) return;
@@ -971,7 +1020,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                       const ph = pageSizes[pi]?.height ?? 792;
                       const fieldsHere = fields.filter((f) => f.page_index === pi);
                       return (
-                        <div key={pi} className="relative mb-4 w-max mx-auto last:mb-0">
+                        <div key={pi} data-pdf-page={pi} className="relative mb-4 w-max mx-auto last:mb-0">
                           <PdfPageView pdf={pdfDoc} pageIndex={pi} scale={scale} />
                           <div className="absolute inset-0 pointer-events-none">
                             {fieldsHere.map((f) => {
@@ -1062,10 +1111,20 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                     )}
                   >
                   {!selectedField && (
-                    <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
+                    <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-10 text-center">
                       <p className={uiCx(uiTypography.helper, 'leading-relaxed')}>
                         Select a highlighted area on the document to fill or sign it here.
                       </p>
+                      {unfilledCount > 0 ? (
+                        <>
+                          <p className={uiCx(uiTypography.helper, 'text-gray-500')}>
+                            {unfilledCount} field{unfilledCount !== 1 ? 's' : ''} left
+                          </p>
+                          <AppButton type="button" size="sm" onClick={goToFirstField}>
+                            Go to first field
+                          </AppButton>
+                        </>
+                      ) : null}
                     </div>
                   )}
 
@@ -1078,26 +1137,49 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                         {selectedField.field_name}
                         {selectedField.required ? <span className="text-red-600"> *</span> : null}
                       </div>
+                      {unfilledCount > 0 ? (
+                        <p className={uiCx(uiTypography.helper, 'mt-1')}>
+                          {unfilledCount} field{unfilledCount !== 1 ? 's' : ''} left
+                        </p>
+                      ) : null}
                     </div>
-                    <AppButton type="button" variant="secondary" size="sm" onClick={() => setSelectedFieldId(null)}>
-                      Done
-                    </AppButton>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                      {unfilledCount > 0 ? (
+                        <AppButton
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          rightIcon={<ChevronRight className="h-4 w-4" aria-hidden />}
+                          onClick={goToNextField}
+                        >
+                          Next field
+                        </AppButton>
+                      ) : null}
+                      <AppButton type="button" variant="secondary" size="sm" onClick={() => setSelectedFieldId(null)}>
+                        Done
+                      </AppButton>
+                    </div>
                   </div>
 
                   {selectedField.type === 'employee_info' && (
                     <div className="space-y-2 mt-1">
-                      <input
-                        className={inputCls}
-                        type={['hire_date', 'date_of_birth'].includes(
-                          (selectedField.employee_info_key || 'full_name').toLowerCase(),
-                        )
-                          ? 'date'
-                          : 'text'}
-                        value={String(fieldValues[selectedField.id] ?? '')}
-                        onChange={(e) =>
-                          setFieldValues((v) => ({ ...v, [selectedField.id]: e.target.value }))
-                        }
-                      />
+                      {isEmployeeInfoDateField(selectedField) ? (
+                        <AppDatePicker
+                          value={String(fieldValues[selectedField.id] ?? '')}
+                          onChange={(e) =>
+                            setFieldValues((v) => ({ ...v, [selectedField.id]: e.target.value }))
+                          }
+                        />
+                      ) : (
+                        <input
+                          className={inputCls}
+                          type="text"
+                          value={String(fieldValues[selectedField.id] ?? '')}
+                          onChange={(e) =>
+                            setFieldValues((v) => ({ ...v, [selectedField.id]: e.target.value }))
+                          }
+                        />
+                      )}
                       <p className="text-xs text-gray-500 leading-relaxed">
                         Pre-filled from your profile; you can edit this before signing.
                       </p>
@@ -1114,24 +1196,18 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned, endpo
                   )}
 
                   {selectedField.type === 'date' && (
-                    <div className="space-y-2 mt-1">
-                      <input
-                        type="date"
-                        className={inputCls}
-                        value={
-                          typeof fieldValues[selectedField.id] === 'string'
-                            && /^\d{4}-\d{2}-\d{2}$/.test(String(fieldValues[selectedField.id]))
-                            ? String(fieldValues[selectedField.id])
-                            : localDateYYYYMMDD()
-                        }
-                        onChange={(e) =>
-                          setFieldValues((v) => ({ ...v, [selectedField.id]: e.target.value }))
-                        }
-                      />
-                      <p className="text-xs text-gray-500 leading-relaxed">
-                        Choose the date for this signature. Defaults to today; you can change it before signing.
-                      </p>
-                    </div>
+                    <AppDatePicker
+                      value={
+                        typeof fieldValues[selectedField.id] === 'string' &&
+                        /^\d{4}-\d{2}-\d{2}$/.test(String(fieldValues[selectedField.id]))
+                          ? String(fieldValues[selectedField.id])
+                          : localDateYYYYMMDD()
+                      }
+                      onChange={(e) =>
+                        setFieldValues((v) => ({ ...v, [selectedField.id]: e.target.value }))
+                      }
+                      helperText="Choose the date for this signature. Defaults to today; you can change it before signing."
+                    />
                   )}
 
                   {selectedField.type === 'value' && (

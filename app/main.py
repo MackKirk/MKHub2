@@ -1604,6 +1604,36 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created document_signature_templates table")
 
+                    try:
+                        if db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_name = 'user_documents' LIMIT 1"
+                            )
+                        ).fetchall() and not db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.columns "
+                                "WHERE table_schema = 'public' AND table_name = 'user_documents' "
+                                "AND column_name = 'signature_template_id' LIMIT 1"
+                            )
+                        ).fetchall():
+                            db.execute(
+                                text(
+                                    "ALTER TABLE user_documents ADD COLUMN signature_template_id UUID NULL "
+                                    "REFERENCES document_signature_templates(id) ON DELETE SET NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "CREATE INDEX IF NOT EXISTS idx_user_documents_signature_template_id "
+                                    "ON user_documents(signature_template_id)"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added user_documents.signature_template_id")
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] user_documents.signature_template_id (non-critical): {_e}")
+
                     rows = db.execute(
                         text(
                             "SELECT 1 FROM information_schema.tables WHERE table_name = 'document_signature_requests' LIMIT 1"

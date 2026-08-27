@@ -77,6 +77,45 @@ class TestDocumentSignatureRequests(unittest.TestCase):
         # data URL form is what the sign API accepts before decode
         self.assertTrue(data_url.startswith("data:image/png;base64,"))
 
+    def test_overlay_skips_page_when_no_values_drawn(self):
+        """ReportLab emits 0 pages if nothing is drawn; must not IndexError on merge."""
+        from app.services.onboarding_sign import apply_template_field_overlays
+        from PyPDF2 import PdfReader, PdfWriter
+
+        w = PdfWriter()
+        w.add_blank_page(612, 792)
+        w.add_blank_page(612, 792)
+        buf = io.BytesIO()
+        w.write(buf)
+        pdf = buf.getvalue()
+
+        fid0 = str(uuid.uuid4())
+        fid1 = str(uuid.uuid4())
+        fields = [
+            {
+                "id": fid0,
+                "type": "text",
+                "page_index": 0,
+                "rect": {"x": 72, "y": 72, "width": 100, "height": 20},
+                "field_name": "A",
+                "required": False,
+                "assignee": "employee",
+            },
+            {
+                "id": fid1,
+                "type": "text",
+                "page_index": 1,
+                "rect": {"x": 72, "y": 72, "width": 100, "height": 20},
+                "field_name": "B",
+                "required": False,
+                "assignee": "employee",
+            },
+        ]
+        # Page 1 has a field in the batch but no value → empty overlay page must be skipped
+        out = apply_template_field_overlays(pdf, fields, {fid0: "Hello"})
+        reader = PdfReader(io.BytesIO(out))
+        self.assertEqual(len(reader.pages), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

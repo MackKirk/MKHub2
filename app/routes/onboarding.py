@@ -11,6 +11,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..auth.security import _has_permission, get_current_user
+from ..config import settings
 from ..db import get_db
 from ..models.models import (
     EmployeeDocument,
@@ -953,6 +954,7 @@ async def me_sign(
             ip_address=_client_ip(request),
             user_agent=request.headers.get("user-agent") or "",
             acceptance_statement=acceptance,
+            tz_name=settings.tz_default or "America/Vancouver",
         )
     else:
         raw = signature_base64.split(",")[-1] if "," in signature_base64 else signature_base64
@@ -978,6 +980,7 @@ async def me_sign(
             ip_address=_client_ip(request),
             user_agent=request.headers.get("user-agent") or "",
             acceptance_statement=acceptance,
+            tz_name=settings.tz_default or "America/Vancouver",
         )
     # Signed PDFs live in the new hire's HR folder. When someone else signs (subject_user_id set),
     # storage still belongs to the employee the document is about; the actual signer is on the cert / created_by.

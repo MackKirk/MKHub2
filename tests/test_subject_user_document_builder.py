@@ -259,7 +259,8 @@ class TestSubjectUserDocumentList(unittest.TestCase):
         q.order_by.return_value = q
         q.all.return_value = []
 
-        list_documents(project_id=None, subject_user_id=None, db=db, user=user)
+        with patch("app.routes.document_creator._summaries_for_documents", return_value=[]):
+            list_documents(project_id=None, subject_user_id=None, db=db, user=user)
 
         db.query.assert_called_once_with(UserDocument)
         filter_args = q.filter.call_args[0]

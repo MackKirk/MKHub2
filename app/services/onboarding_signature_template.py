@@ -84,6 +84,39 @@ def roles_present_in_template(template: Optional[dict]) -> List[str]:
     return out
 
 
+SIGNING_FIELD_TYPES = frozenset({"signature", "initials", "date"})
+
+
+def roles_present_in_signing_fields(template: Optional[dict]) -> List[str]:
+    """Unique role ids on signature/initials/date fields only (order of first appearance)."""
+    if not template or not isinstance(template.get("fields"), list):
+        return []
+    seen = set()
+    out: List[str] = []
+    for f in template["fields"]:
+        if not isinstance(f, dict):
+            continue
+        ftype = (f.get("type") or "").strip().lower()
+        if ftype not in SIGNING_FIELD_TYPES:
+            continue
+        rid = normalize_document_assignee(f.get("assignee"))
+        if rid not in seen:
+            seen.add(rid)
+            out.append(rid)
+    return out
+
+
+def signing_fields_in_template(template: Optional[dict]) -> List[dict]:
+    """Return signature/initials/date field dicts from a template."""
+    if not template or not isinstance(template.get("fields"), list):
+        return []
+    return [
+        f
+        for f in template["fields"]
+        if isinstance(f, dict) and (f.get("type") or "").strip().lower() in SIGNING_FIELD_TYPES
+    ]
+
+
 def signer_role_for_base_document(bd) -> str:
     """Matches template field assignee filter to who receives this document."""
     return (getattr(bd, "assignee_type", None) or "employee").lower()

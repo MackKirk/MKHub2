@@ -12,7 +12,7 @@ import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
 import { AppUserAvatar } from './AppUserAvatar';
 import { SelectDropdownCheckbox } from './SelectDropdownCheckbox';
-import { uiCx, uiDropdown, uiUserSelect } from './tokens';
+import { uiCx, uiDropdown, uiLayout, uiUserSelect } from './tokens';
 import { comboboxMenuStyle, useComboboxDropdown, type ComboboxMenuRect } from './useComboboxDropdown';
 import { useAppUserSelectCatalog } from './useAppUserSelectCatalog';
 
@@ -47,6 +47,8 @@ export type AppUserSelectMultipleProps = AppUserSelectCommonProps & {
   placeholder?: string;
   /** Chips for each selected user (default true in multiple mode). */
   showSelectedChips?: boolean;
+  /** Shows Select all / Clear next to the label. */
+  showSelectAll?: boolean;
 };
 
 export type AppUserSelectProps = AppUserSelectSingleProps | AppUserSelectMultipleProps;
@@ -315,6 +317,7 @@ function AppUserSelectMultiple({
   emptyMessage = 'No users found.',
   pageSize,
   showSelectedChips = true,
+  showSelectAll = false,
   triggerClassName,
 }: AppUserSelectMultipleProps) {
   const [open, setOpen] = useState(false);
@@ -373,6 +376,25 @@ function AppUserSelectMultiple({
     onChange(value.filter((id) => normalizeUserId(id) !== nid));
   };
 
+  const selectAllPool = open ? listUsers : useRemoteCatalog ? catalog.users : staticSorted;
+
+  const selectAllVisible = () => {
+    const ids = selectAllPool.map((u) => u.id);
+    if (ids.length === 0) return;
+    const merged = new Set(value.map(normalizeUserId));
+    const next = [...value];
+    for (const id of ids) {
+      const nid = normalizeUserId(id);
+      if (!merged.has(nid)) {
+        merged.add(nid);
+        next.push(id);
+      }
+    }
+    onChange(next);
+  };
+
+  const clearSelection = () => onChange([]);
+
   useEffect(() => {
     const el = listRef.current;
     if (!open || !el || !useRemoteCatalog) return;
@@ -404,20 +426,50 @@ function AppUserSelectMultiple({
     onToggleMultiple: toggleUser,
   });
 
+  const selectAllActions =
+    showSelectAll && !disabled && (useRemoteCatalog || staticSorted.length > 0) ? (
+      <div className={uiCx(uiLayout.actionsRow, 'shrink-0 gap-2')}>
+        <button
+          type="button"
+          className="text-xs font-medium text-brand-red hover:underline disabled:opacity-50"
+          disabled={selectAllPool.length === 0}
+          onClick={selectAllVisible}
+        >
+          Select all
+        </button>
+        {value.length > 0 ? (
+          <button
+            type="button"
+            className="text-xs font-medium text-gray-600 hover:underline"
+            onClick={clearSelection}
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+    ) : null;
+
   return (
     <div className="space-y-1.5">
-      {label ? (
-        <AppControlLabelRow
-          label={
-            <>
-              {label}
-              {value.length > 0 ? (
-                <span className="ml-1 font-normal normal-case text-gray-500">({value.length} selected)</span>
-              ) : null}
-            </>
-          }
-          fieldHint={fieldHint ? <AppFieldHint hint={fieldHint} /> : undefined}
-        />
+      {label || selectAllActions ? (
+        <div className={uiCx('flex items-center justify-between gap-2')}>
+          {label ? (
+            <AppControlLabelRow
+              label={
+                <>
+                  {label}
+                  {value.length > 0 ? (
+                    <span className="ml-1 font-normal normal-case text-gray-500">({value.length} selected)</span>
+                  ) : null}
+                </>
+              }
+              fieldHint={fieldHint ? <AppFieldHint hint={fieldHint} /> : undefined}
+            />
+          ) : (
+            <span />
+          )}
+          {selectAllActions}
+        </div>
       ) : null}
       <div ref={anchorRef} className="relative">
         <span className={uiDropdown.leftIcon}>{leftTrigger}</span>

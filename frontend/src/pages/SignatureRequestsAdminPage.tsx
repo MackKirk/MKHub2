@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Search, SlidersHorizontal } from 'lucide-react';
+import { ClipboardList, Eye, Search, SlidersHorizontal, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { api } from '@/lib/api';
+import { api, fetchAuthorizedBinary } from '@/lib/api';
 import { canManageSignatureRequests } from '@/lib/documentHubPermissions';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { employeesDirectoryQueryKey, fetchEmployeesDirectory } from '@/lib/employeesQuery';
@@ -22,6 +22,8 @@ import {
   AppPageHeader,
   AppReadOnlyField,
   AppSectionHeader,
+  AppSelect,
+  AppTooltip,
   getAppTabButtonClassName,
   sortListByAppColumn,
   uiBorders,
@@ -35,6 +37,11 @@ import {
   useLocalAppListSort,
   type AppListSortGetter,
 } from '@/components/ui';
+import {
+  LIST_PAGE_SIZE_DEFAULT,
+  listPageSizeSelectOptions,
+  parseListPageLimit,
+} from '@/lib/listPagination';
 
 type AdminParticipant = {
   id: string;
@@ -51,9 +58,11 @@ type AdminParticipant = {
   subject_label?: string | null;
 };
 
+type AdminSignatureSource = 'document_builder' | 'signature_editor' | 'onboarding';
+
 type AdminSignatureRow = {
   id: string;
-  source: 'document_builder' | 'onboarding';
+  source: AdminSignatureSource;
   display_name: string;
   status: string;
   requested_by_name?: string | null;
@@ -84,8 +93,13 @@ const STATUS_QUICK = [
 const SOURCE_QUICK = [
   { key: '', label: 'All sources' },
   { key: 'document_builder', label: 'Document Builder' },
+  { key: 'signature_editor', label: 'Signature Editor' },
   { key: 'onboarding', label: 'Onboarding' },
 ] as const;
+
+function isDocumentEnvelopeSource(source: AdminSignatureSource): boolean {
+  return source === 'document_builder' || source === 'signature_editor';
+}
 
 type SortColumn =
   | 'display_name'
@@ -199,6 +213,14 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
   return rules;
 }
 
+type AdminSignatureListResponse = {
+  items: AdminSignatureRow[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
+
 function buildAdminSignatureQuery(params: URLSearchParams): string {
   const out = new URLSearchParams();
   const q = params.get('q');
@@ -211,8 +233,16 @@ function buildAdminSignatureQuery(params: URLSearchParams): string {
     const value = params.get(key);
     if (value) out.set(key, value);
   }
+  const page = Math.max(1, Number(params.get('page') || '1') || 1);
+  const pageSize = parseListPageLimit(params.get('limit'));
+  out.set('page', String(page));
+  out.set('page_size', String(pageSize));
   const qs = out.toString();
   return qs ? `?${qs}` : '';
+}
+
+function resetListPage(params: URLSearchParams): void {
+  params.set('page', '1');
 }
 
 function SortHeader({
@@ -262,8 +292,52 @@ function fmtDateTime(iso: string | null | undefined): string {
   }
 }
 
+function sentToNames(row: AdminSignatureRow): string {
+  const parts = row.participants ?? [];
+  if (parts.length === 0) return '—';
+  const names = parts.map((p) => (p.name || p.role_label || '').trim()).filter(Boolean);
+  if (names.length === 0) return '—';
+  return names.join(', ');
+}
+
+function participantStatusLabel(status: string): string {
+  switch (status) {
+    case 'signed':
+      return 'Signed';
+    case 'ready':
+      return 'Ready to sign';
+    case 'pending':
+      return 'Waiting';
+    case 'scheduled':
+      return 'Scheduled';
+    case 'cancelled':
+      return 'Cancelled';
+    default:
+      return status.replace(/_/g, ' ');
+  }
+}
+
+function ParticipantsStatusTooltipContent({ participants }: { participants: AdminParticipant[] }) {
+  if (participants.length === 0) {
+    return <span>No signers</span>;
+  }
+  return (
+    <ul className="space-y-1 text-left text-xs">
+      {participants.map((p) => (
+        <li key={p.id}>
+          <span className="font-medium">{p.name || p.role_label || 'Signer'}</span>
+          {p.role_label && p.name ? <span className="text-gray-300"> · {p.role_label}</span> : null}
+          <span className="text-gray-300"> — {participantStatusLabel(p.status)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function sourceLabel(source: AdminSignatureRow['source']): string {
-  return source === 'onboarding' ? 'Onboarding' : 'Document Builder';
+  if (source === 'onboarding') return 'Onboarding';
+  if (source === 'signature_editor') return 'Signature Editor';
+  return 'Document Builder';
 }
 
 function statusLabel(status: string): string {
@@ -316,6 +390,10 @@ export default function SignatureRequestsAdminPage() {
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [selected, setSelected] = useState<AdminSignatureRow | null>(null);
   const [busy, setBusy] = useState(false);
+  const [previewRow, setPreviewRow] = useState<AdminSignatureRow | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const { data: me } = useQuery({
     queryKey: ['me'],
@@ -336,6 +414,7 @@ export default function SignatureRequestsAdminPage() {
     if (debouncedQ === currentQ) return;
     if (debouncedQ) params.set('q', debouncedQ);
     else params.delete('q');
+    resetListPage(params);
     setSearchParams(params, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQ]);
@@ -348,15 +427,23 @@ export default function SignatureRequestsAdminPage() {
   }, [searchParams]);
 
   const qs = useMemo(() => buildAdminSignatureQuery(searchParams), [searchParams]);
+  const currentPage = Math.max(1, Number(searchParams.get('page') || '1') || 1);
+  const pageSize = parseListPageLimit(searchParams.get('limit'));
+  const listPageSizeOptions = useMemo(() => listPageSizeSelectOptions(), []);
   const currentRules = useMemo(() => convertParamsToRules(searchParams), [searchParams]);
   const hasRuleFilters = currentRules.length > 0;
   const hasQuickFilters = Boolean(searchParams.get('status') || searchParams.get('source'));
   const hasActiveFilters = hasRuleFilters || hasQuickFilters;
 
+  const needsEmployees =
+    isFilterModalOpen ||
+    Boolean(searchParams.get('requested_by') || searchParams.get('signer'));
+
   const { data: employees } = useQuery({
     queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
     queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),
     staleTime: 300_000,
+    enabled: needsEmployees,
   });
 
   const filterFields: FieldConfig[] = useMemo(
@@ -405,10 +492,14 @@ export default function SignatureRequestsAdminPage() {
     [employees],
   );
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: listData, isLoading } = useQuery({
     queryKey: ['admin-signature-requests', qs],
-    queryFn: () => api<AdminSignatureRow[]>('GET', `/admin/signature-requests${qs}`),
+    queryFn: () => api<AdminSignatureListResponse>('GET', `/admin/signature-requests${qs}`),
   });
+
+  const rows = listData?.items ?? [];
+  const totalCount = listData?.total ?? 0;
+  const totalPages = listData?.total_pages || (totalCount > 0 ? Math.max(1, Math.ceil(totalCount / pageSize)) : 0);
 
   const { sortBy, sortDir, setSort } = useLocalAppListSort<SortColumn>('sent', 'desc');
 
@@ -422,6 +513,45 @@ export default function SignatureRequestsAdminPage() {
     [rows, selected],
   );
 
+  useEffect(() => {
+    if (!previewRow || !isDocumentEnvelopeSource(previewRow.source)) {
+      setPreviewUrl(null);
+      setPreviewError(null);
+      setPreviewLoading(false);
+      return;
+    }
+    let objectUrl: string | null = null;
+    const ac = new AbortController();
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewUrl(null);
+    void (async () => {
+      try {
+        const buf = await fetchAuthorizedBinary(
+          `/admin/signature-requests/${previewRow.id}/preview`,
+          ac.signal,
+        );
+        if (ac.signal.aborted) return;
+        objectUrl = URL.createObjectURL(new Blob([buf], { type: 'application/pdf' }));
+        setPreviewUrl(objectUrl);
+      } catch (e: unknown) {
+        if (ac.signal.aborted) return;
+        setPreviewError(e instanceof Error ? e.message : 'Could not load preview');
+      } finally {
+        if (!ac.signal.aborted) setPreviewLoading(false);
+      }
+    })();
+    return () => {
+      ac.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [previewRow]);
+
+  const closePreview = () => {
+    setPreviewRow(null);
+    setPreviewError(null);
+  };
+
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['admin-signature-requests'] });
   };
@@ -429,6 +559,8 @@ export default function SignatureRequestsAdminPage() {
   const handleApplyFilters = (rules: FilterRule[]) => {
     const params = convertRulesToParams(rules, searchParams);
     if (q) params.set('q', q);
+    if (searchParams.get('limit')) params.set('limit', searchParams.get('limit')!);
+    resetListPage(params);
     setSearchParams(params, { replace: true });
     setIsFilterModalOpen(false);
   };
@@ -440,6 +572,7 @@ export default function SignatureRequestsAdminPage() {
     } else {
       params.set('status', status);
     }
+    resetListPage(params);
     setSearchParams(params, { replace: true });
   };
 
@@ -450,12 +583,14 @@ export default function SignatureRequestsAdminPage() {
     } else {
       params.set('source', source);
     }
+    resetListPage(params);
     setSearchParams(params, { replace: true });
   };
 
   const clearAllFilters = () => {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
+    if (searchParams.get('limit')) params.set('limit', searchParams.get('limit')!);
     setSearchParams(params, { replace: true });
   };
 
@@ -482,7 +617,7 @@ export default function SignatureRequestsAdminPage() {
   );
 
   const runAdminAction = async (path: string, body?: Record<string, unknown>) => {
-    if (!selectedFromList || selectedFromList.source !== 'document_builder') return;
+    if (!selectedFromList || !isDocumentEnvelopeSource(selectedFromList.source)) return;
     setBusy(true);
     try {
       await api('POST', `/document-creator/signature-requests/${selectedFromList.id}${path}`, body);
@@ -722,6 +857,9 @@ export default function SignatureRequestsAdminPage() {
                     title="Sort by active blocking"
                     className={uiCx('px-3 py-2 text-left', uiTypography.controlLabel)}
                   />
+                  <th className={uiCx('px-3 py-2 text-right', uiTypography.controlLabel)} scope="col">
+                    <span className="sr-only">Preview</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -759,14 +897,39 @@ export default function SignatureRequestsAdminPage() {
                       <td className={uiCx('px-3 py-3 align-top', uiTypography.helper)}>
                         {row.requested_by_name || '—'}
                       </td>
-                      <td className={uiCx('px-3 py-3 align-top whitespace-nowrap', uiTypography.helper)}>
-                        {fmtDateTime(row.sent_at || row.created_at)}
+                      <td className={uiCx('px-3 py-3 align-top', uiTypography.helper)}>
+                        <div className="space-y-0.5">
+                          <div className="whitespace-nowrap">{fmtDateTime(row.sent_at || row.created_at)}</div>
+                          <div className={uiCx(uiTypography.helper, 'text-gray-500')}>
+                            To {sentToNames(row)}
+                          </div>
+                        </div>
                       </td>
                       <td className={uiCx('px-3 py-3 align-top whitespace-nowrap', uiTypography.helper)}>
                         {fmtDateTime(row.deadline_at)}
                       </td>
                       <td className={uiCx('px-3 py-3 align-top whitespace-nowrap', uiTypography.helper)}>
-                        {row.signed_count}/{row.participant_count}
+                        <div className="flex items-center gap-1.5">
+                          <span>
+                            {row.signed_count}/{row.participant_count}
+                          </span>
+                          {(row.participants?.length ?? 0) > 0 ? (
+                            <AppTooltip
+                              content={<ParticipantsStatusTooltipContent participants={row.participants ?? []} />}
+                              placement="top"
+                              wrap
+                            >
+                              <button
+                                type="button"
+                                className="inline-flex rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:ring-offset-1"
+                                aria-label="View signers and status"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Users className="h-4 w-4" />
+                              </button>
+                            </AppTooltip>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-3 py-3 align-top">
                         {row.is_overdue ? (
@@ -789,6 +952,24 @@ export default function SignatureRequestsAdminPage() {
                           <span className={uiTypography.helper}>No</span>
                         )}
                       </td>
+                      <td className="px-3 py-3 align-top text-right">
+                        {isDocumentEnvelopeSource(row.source) ? (
+                          <button
+                            type="button"
+                            className="inline-flex rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:ring-offset-1"
+                            aria-label={`Preview ${row.display_name}`}
+                            title="Preview current document"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewRow(row);
+                            }}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <span className={uiTypography.helper}>—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -796,6 +977,57 @@ export default function SignatureRequestsAdminPage() {
             </table>
           </div>
         )}
+        {!isLoading && totalCount > 0 ? (
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap justify-between gap-3 border-t border-gray-200 px-4 py-3')}>
+            <p className={uiTypography.helper}>
+              Page {currentPage} of {Math.max(totalPages, 1)} ({totalCount} total)
+            </p>
+            <div className={uiCx(uiLayout.actionsRow, 'items-center flex-wrap gap-3')}>
+              <div className="flex items-center gap-2">
+                <span className={uiTypography.helper}>Rows per page</span>
+                <AppSelect
+                  size="sm"
+                  value={String(pageSize || LIST_PAGE_SIZE_DEFAULT)}
+                  onChange={(e) => {
+                    const p = new URLSearchParams(searchParams);
+                    p.set('limit', e.target.value);
+                    resetListPage(p);
+                    setSearchParams(p, { replace: true });
+                  }}
+                  options={listPageSizeOptions}
+                  sortOptions={false}
+                  className="w-20"
+                />
+              </div>
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => {
+                  const p = new URLSearchParams(searchParams);
+                  p.set('page', String(Math.max(1, currentPage - 1)));
+                  setSearchParams(p, { replace: true });
+                }}
+              >
+                Previous
+              </AppButton>
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={totalPages === 0 || currentPage >= totalPages}
+                onClick={() => {
+                  const p = new URLSearchParams(searchParams);
+                  p.set('page', String(Math.min(totalPages, currentPage + 1)));
+                  setSearchParams(p, { replace: true });
+                }}
+              >
+                Next
+              </AppButton>
+            </div>
+          </div>
+        ) : null}
       </AppCard>
 
       <FilterBuilderModal
@@ -818,7 +1050,8 @@ export default function SignatureRequestsAdminPage() {
         }
         formWidth="wide"
         footer={
-          selectedFromList?.source === 'document_builder' &&
+          selectedFromList &&
+          isDocumentEnvelopeSource(selectedFromList.source) &&
           selectedFromList.admin_actions_available &&
           canManageActions ? (
             <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-end')}>
@@ -855,7 +1088,14 @@ export default function SignatureRequestsAdminPage() {
               <AppReadOnlyField label="Requested by" value={selectedFromList.requested_by_name} />
               <AppReadOnlyField
                 label="Sent"
-                value={fmtDateTime(selectedFromList.sent_at || selectedFromList.created_at)}
+                value={
+                  <>
+                    {fmtDateTime(selectedFromList.sent_at || selectedFromList.created_at)}
+                    <span className="mt-1 block text-gray-500">
+                      To {sentToNames(selectedFromList)}
+                    </span>
+                  </>
+                }
               />
               <AppReadOnlyField label="Deadline" value={fmtDateTime(selectedFromList.deadline_at)} />
               <AppReadOnlyField
@@ -901,6 +1141,34 @@ export default function SignatureRequestsAdminPage() {
               </p>
             ) : null}
           </div>
+        ) : null}
+      </AppFormModal>
+
+      <AppFormModal
+        open={!!previewRow}
+        onClose={closePreview}
+        title={previewRow?.display_name || 'Document preview'}
+        description="Current document"
+        formWidth="wide"
+        scrollBody={false}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={closePreview}>
+              Close
+            </AppButton>
+          </div>
+        }
+      >
+        {previewLoading ? (
+          <p className={uiCx(uiTypography.helper, 'py-8 text-center')}>Loading preview…</p>
+        ) : previewError ? (
+          <AppEmptyState title="Could not load preview" description={previewError} />
+        ) : previewUrl ? (
+          <iframe
+            title={previewRow?.display_name || 'PDF preview'}
+            src={previewUrl}
+            className={uiCx('h-[min(70vh,720px)] w-full border-0', uiRadius.control, uiBorders.subtle)}
+          />
         ) : null}
       </AppFormModal>
     </div>

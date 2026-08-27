@@ -25,6 +25,8 @@ import {
   ProfileReadOnlyGrid,
 } from '@/components/users/ProfileSelfEditForms';
 import { User as UserIcon } from 'lucide-react';
+import HubAccessRestrictedBanner from '@/components/personal/HubAccessRestrictedBanner';
+import { isHubAccessBlockedFromStatus } from '@/lib/profileCompleteness';
 import {
   userAddressQuickInfo,
   userBasicInfoQuickInfo,
@@ -119,6 +121,23 @@ export default function Profile(){
   // Get current user ID for components
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const userId = me?.id ? String(me.id) : '';
+  const { data: signatureStatus } = useQuery({
+    queryKey: ['me-signature-status'],
+    queryFn: () =>
+      api<{ blocked?: boolean; has_pending?: boolean; past_deadline?: boolean; status_available?: boolean }>(
+        'GET',
+        '/auth/me/signature-status',
+      ),
+    retry: false,
+  });
+  const { data: onboardingStatus } = useQuery({
+    queryKey: ['me-onboarding-status'],
+    queryFn: () => api<{ past_deadline?: boolean; has_pending?: boolean }>('GET', '/auth/me/onboarding/status'),
+    retry: false,
+  });
+  const hubAccessBlocked =
+    isHubAccessBlockedFromStatus(signatureStatus ?? undefined) ||
+    !!(onboardingStatus?.past_deadline && onboardingStatus?.has_pending);
   const { data: usersOptionsRaw } = useQuery({
     queryKey: ['users-options', { limit: 5000 }],
     queryFn: () => api<any[]>('GET', '/auth/users/options?limit=5000'),
@@ -398,6 +417,8 @@ export default function Profile(){
 
   return (
     <div className={uiCx('w-full min-w-0', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
+      {hubAccessBlocked ? <HubAccessRestrictedBanner showSignNow /> : null}
+
       <AppPageHeader
         title="My Information"
         subtitle={profileSubtitle}

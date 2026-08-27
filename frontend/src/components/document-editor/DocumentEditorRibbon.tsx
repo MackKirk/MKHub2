@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { getOverlayRoot } from '@/lib/overlayRoot';
 import DocumentAutoFillTokenPicker from '@/components/document-editor/DocumentAutoFillTokenPicker';
 import { useDocumentAutoFillTokens } from '@/hooks/useDocumentAutoFillTokens';
-import { insertDocumentSignatureAtomAtCaret, insertDocumentDateAtomAtCaret, insertDocumentTextAtCaret } from '@/lib/documentAutoFillTokens';
+import { insertDocumentSignatureAtomAtCaret, insertDocumentDateAtomAtCaret, insertDocumentTextAtCaret, autoFillPickerDescription, filterAutoFillTokensForScope } from '@/lib/documentAutoFillTokens';
 import type { DocumentSignerRoleDef } from '@/types/documentCreator';
 import {
   RibbonShell,
@@ -200,6 +200,23 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
   const tokensTriggerRef = useRef<HTMLButtonElement>(null);
   const tokensDropdownRef = useRef<HTMLDivElement>(null);
   const { data: tokenValues } = useDocumentAutoFillTokens(projectId, !readOnly, subjectUserId);
+  const scopedAutoFillTokens = useMemo(
+    () =>
+      filterAutoFillTokensForScope(tokenValues?.tokens ?? [], {
+        projectId: isTemplate ? null : projectId,
+        subjectUserId: isTemplate ? null : subjectUserId,
+      }),
+    [tokenValues?.tokens, projectId, subjectUserId, isTemplate],
+  );
+  const autoFillDescription = useMemo(
+    () =>
+      autoFillPickerDescription({
+        projectId: isTemplate ? null : projectId,
+        subjectUserId: isTemplate ? null : subjectUserId,
+        forceToken: isTemplate,
+      }),
+    [projectId, subjectUserId, isTemplate],
+  );
 
   type RoleInsertKind = 'signature' | 'date' | 'initials';
   const [roleMenu, setRoleMenu] = useState<{
@@ -577,8 +594,9 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
                     style={{ top: tokensMenuPos.top, left: tokensMenuPos.left }}
                   >
                     <DocumentAutoFillTokenPicker
-                      tokens={tokenValues?.tokens ?? []}
+                      tokens={scopedAutoFillTokens}
                       forceToken={isTemplate}
+                      description={autoFillDescription}
                       onClose={() => setTokensMenuOpen(false)}
                       onInsert={(text) => {
                         if (textEditingElementId) {

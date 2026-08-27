@@ -244,6 +244,67 @@ export function collectPresentSignerRoleIds(
   return ids;
 }
 
+const SIGNING_TEMPLATE_FIELD_TYPES = new Set(['signature', 'initials', 'date']);
+
+export type SignatureTemplateFieldRef = {
+  type?: string;
+  assignee?: string;
+};
+
+export type SignatureTemplatePayloadRef = {
+  version?: number;
+  fields?: SignatureTemplateFieldRef[];
+};
+
+/** Role ids on signature/initials/date fields in a Signature Editor template. */
+export function collectPresentSignerRoleIdsFromTemplate(
+  template: SignatureTemplatePayloadRef | null | undefined,
+): string[] {
+  const seen = new Set<string>();
+  const order: string[] = [];
+  for (const f of template?.fields ?? []) {
+    const t = (f.type ?? '').trim().toLowerCase();
+    if (!SIGNING_TEMPLATE_FIELD_TYPES.has(t)) continue;
+    const id = normalizeDocumentAssigneeId(f.assignee);
+    if (!seen.has(id)) {
+      seen.add(id);
+      order.push(id);
+    }
+  }
+  return order;
+}
+
+/** Signer slots for Send for signature from a Signature Editor PDF template. */
+export function signersFromSignatureTemplate(
+  template: SignatureTemplatePayloadRef | null | undefined,
+): DocumentSignerRoleDef[] {
+  const roleIds = collectPresentSignerRoleIdsFromTemplate(template);
+  const hasUserAssignee = (template?.fields ?? []).some(
+    (f) =>
+      SIGNING_TEMPLATE_FIELD_TYPES.has((f.type ?? '').trim().toLowerCase()) &&
+      String(f.assignee ?? '').toLowerCase() === 'user',
+  );
+  return roleIds.map((id, i) => {
+    let label = 'Signer';
+    let fillsEmployeeTokens = false;
+    if (id === LEGACY_SIGNER_ROLE_IDS.employee) {
+      label = 'Employee';
+      fillsEmployeeTokens = true;
+    } else if (id === LEGACY_SIGNER_ROLE_IDS.company) {
+      label = hasUserAssignee ? 'User' : 'Company';
+    } else if (id === LEGACY_SIGNER_ROLE_IDS.other) {
+      label = 'Other';
+    }
+    return { id, label, sortOrder: i, fillsEmployeeTokens };
+  });
+}
+
+export function hasSigningFieldsInTemplate(
+  template: SignatureTemplatePayloadRef | null | undefined,
+): boolean {
+  return collectPresentSignerRoleIdsFromTemplate(template).length > 0;
+}
+
 /** Keep unused custom signers pruned; always retain Employee + Company. */
 export function pruneUnusedSigners(
   roles: DocumentSignerRoleDef[],

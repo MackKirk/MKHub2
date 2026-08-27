@@ -93,3 +93,40 @@ export function textToInsertForToken(token: string, value: string | undefined, f
   const v = (value || '').trim();
   return v || token;
 }
+
+/**
+ * Project docs hide Employee tokens; user (subject) docs hide Project tokens.
+ * Standalone / template (neither): show both groups.
+ */
+export function filterAutoFillTokensForScope(
+  tokens: DocumentAutoFillTokenValue[],
+  opts: { projectId?: string | null; subjectUserId?: string | null },
+): DocumentAutoFillTokenValue[] {
+  const hasProject = Boolean(opts.projectId);
+  const hasSubject = Boolean(opts.subjectUserId);
+  if (hasProject && !hasSubject) {
+    return tokens.filter((t) => t.group !== 'employee');
+  }
+  if (hasSubject && !hasProject) {
+    return tokens.filter((t) => t.group !== 'project');
+  }
+  return tokens;
+}
+
+export function autoFillPickerDescription(opts: {
+  projectId?: string | null;
+  subjectUserId?: string | null;
+  forceToken?: boolean;
+}): string {
+  if (opts.forceToken) {
+    return 'Click a token to insert it at the cursor. Templates always insert the token placeholder.';
+  }
+  if (opts.projectId && !opts.subjectUserId) {
+    return 'Click a token to insert it at the cursor. If project data is available, the filled value is inserted instead.';
+  }
+  if (opts.subjectUserId && !opts.projectId) {
+    return 'Click a token to insert it at the cursor. If employee profile data is available, the filled value is inserted instead.';
+  }
+  return 'Click a token to insert it at the cursor. If project or employee data is available, the filled value is inserted instead.';
+}
+

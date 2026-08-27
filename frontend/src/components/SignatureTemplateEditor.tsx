@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { overlayPxToPdfRect, pdfRectToOverlayStyle, type PdfRect } from '@/lib/pdfCoordinates';
@@ -281,16 +281,37 @@ export default function SignatureTemplateEditor({
 
   getVisiblePageIndexFromDomRef.current = getVisiblePageIndexFromDom;
 
+  const removeSelectedField = useCallback(() => {
+    const sel = selectedIdRef.current;
+    if (!sel) return;
+    setFields((fs) => fs.filter((x) => x.id !== sel));
+    setSelectedId(null);
+  }, []);
+
+  const isKeyboardBlockedTarget = (t: HTMLElement | null) => {
+    if (!t) return true;
+    if (t.isContentEditable || t.closest?.('[contenteditable="true"]')) return true;
+    const tag = t.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  };
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (isKeyboardBlockedTarget(t)) return;
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const sel = selectedIdRef.current;
+        if (!sel) return;
+        e.preventDefault();
+        setFields((fs) => fs.filter((x) => x.id !== sel));
+        setSelectedId(null);
+        return;
+      }
+
       if (!(e.ctrlKey || e.metaKey)) return;
       const k = e.key.toLowerCase();
       if (k !== 'c' && k !== 'v') return;
-      const t = e.target as HTMLElement | null;
-      if (!t) return;
-      if (t.isContentEditable || t.closest?.('[contenteditable="true"]')) return;
-      const tag = t.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
       if (k === 'c') {
         const sel = selectedIdRef.current;
@@ -797,7 +818,7 @@ export default function SignatureTemplateEditor({
               title="Signature setup"
               description="Add a field type to place it on the page you are viewing."
             />
-            <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
+            <div className="mt-4 grid grid-cols-2 gap-2">
               {FIELD_TYPES.map(({ type, label }) => (
                 <AppButton
                   key={type}
@@ -816,7 +837,20 @@ export default function SignatureTemplateEditor({
 
             {selected ? (
               <AppCard className="mt-6" bodyClassName={uiSpacing.cardPadding}>
-                <AppSectionHeader title="Field properties" />
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className={uiTypography.sectionTitle}>Field properties</h2>
+                  <AppButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 shrink-0 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    aria-label="Remove field"
+                    title="Remove field (Delete)"
+                    onClick={removeSelectedField}
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </AppButton>
+                </div>
                 <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
                   <AppSelect
                     label="Who completes"
@@ -858,18 +892,6 @@ export default function SignatureTemplateEditor({
                     }
                     fieldHint="Required\n\nWhen checked, the signer must complete this field before the document can be submitted."
                   />
-                  <AppButton
-                    type="button"
-                    variant="danger"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => {
-                      setFields((fs) => fs.filter((x) => x.id !== selected.id));
-                      setSelectedId(null);
-                    }}
-                  >
-                    Remove field
-                  </AppButton>
                 </div>
               </AppCard>
             ) : null}
