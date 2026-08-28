@@ -6,6 +6,8 @@ export interface CommunityPost {
   author_name?: string;
   author_avatar?: string;
   photo_url?: string;
+  banner_focal_x?: number;
+  banner_focal_y?: number;
   document_url?: string;
   document_file_id?: string;
   document_original_name?: string | null;

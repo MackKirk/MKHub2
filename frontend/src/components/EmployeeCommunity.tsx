@@ -5,7 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { CommunityPostBody } from '@/components/community/CommunityPostBody';
+import { CommunityPostBanner } from '@/components/community/CommunityPostBanner';
 import { CommunityFeedPostSnippet } from '@/components/community/CommunityFeedPostSnippet';
 import CommunityDirectoryUserPeekModal from '@/components/community/CommunityDirectoryUserPeekModal';
 import CommunityCommentRichTextEditor from '@/components/community/CommunityCommentRichTextEditor';
@@ -38,6 +38,9 @@ type CommunityPost = {
   author_name?: string;
   author_avatar?: string;
   photo_url?: string;
+  photo_file_id?: string;
+  banner_focal_x?: number;
+  banner_focal_y?: number;
   document_url?: string;
   document_file_id?: string;
   document_original_name?: string | null;
@@ -821,6 +824,15 @@ export default function EmployeeCommunity({
             size="lg"
             dialogClassName="!max-w-5xl !h-[min(92dvh,920px)] !max-h-none flex flex-col"
             bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
+            topContent={
+              modalPost.photo_url ? (
+                <CommunityPostBanner
+                  src={modalPost.photo_url}
+                  focalX={modalPost.banner_focal_x}
+                  focalY={modalPost.banner_focal_y}
+                />
+              ) : null
+            }
             headerContent={
               <div className="flex items-start gap-3">
                 <button

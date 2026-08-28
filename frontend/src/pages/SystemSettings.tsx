@@ -24,6 +24,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import SettingsLookupListsPanel from '@/components/settings/SettingsLookupListsPanel';
 import SettingsFilesAssetsPanel from '@/components/settings/SettingsFilesAssetsPanel';
 import SettingsAutoTasksPanel from '@/components/settings/SettingsAutoTasksPanel';
+import SettingsPropertyOwnersPanel from '@/components/settings/SettingsPropertyOwnersPanel';
 import {
   IMPLEMENTED_PERMISSIONS,
   isHiddenPermissionKey,
@@ -100,7 +101,7 @@ import {
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
-type SettingsSection = 'files' | 'templates' | 'lists' | 'auto-tasks';
+type SettingsSection = 'files' | 'templates' | 'lists' | 'auto-tasks' | 'property-owners';
 
 export default function SystemSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -133,6 +134,8 @@ export default function SystemSettings() {
   const canEditTermsTpl = !!settingsPerms?.can_edit_terms_templates;
   const canViewAutoTasks = !!settingsPerms?.can_view_auto_tasks;
   const canEditAutoTasks = !!settingsPerms?.can_edit_auto_tasks;
+  const canViewPropertyOwners = !!settingsPerms?.can_view_property_owners;
+  const canEditPropertyOwners = !!settingsPerms?.can_edit_property_owners;
 
   const allowedSections = useMemo(() => {
     const sections: SettingsSection[] = [];
@@ -140,15 +143,16 @@ export default function SystemSettings() {
     if (canViewFiles) sections.push('files');
     if (canViewTemplates) sections.push('templates');
     if (canViewAutoTasks) sections.push('auto-tasks');
+    if (canViewPropertyOwners) sections.push('property-owners');
     return sections;
-  }, [canViewLists, canViewFiles, canViewTemplates, canViewAutoTasks]);
+  }, [canViewLists, canViewFiles, canViewTemplates, canViewAutoTasks, canViewPropertyOwners]);
 
   const [section, setSection] = useState<SettingsSection>('lists');
 
   useEffect(() => {
     const raw = (searchParams.get('section') || '').toLowerCase();
     let desired: SettingsSection | null = null;
-    if (raw === 'templates' || raw === 'files' || raw === 'lists' || raw === 'auto-tasks') {
+    if (raw === 'templates' || raw === 'files' || raw === 'lists' || raw === 'auto-tasks' || raw === 'property-owners') {
       desired = raw as SettingsSection;
     } else if (!raw) {
       desired = 'lists';
@@ -180,6 +184,7 @@ export default function SystemSettings() {
     canViewFiles ? { id: 'files' as SettingsSection, label: 'Files & assets' } : null,
     canViewTemplates ? { id: 'templates' as SettingsSection, label: 'Templates' } : null,
     canViewAutoTasks ? { id: 'auto-tasks' as SettingsSection, label: 'Auto tasks' } : null,
+    canViewPropertyOwners ? { id: 'property-owners' as SettingsSection, label: 'Property owners' } : null,
   ].filter(Boolean) as { id: SettingsSection; label: string }[];
 
   if (!settingsPermsFetched) {
@@ -238,6 +243,10 @@ export default function SystemSettings() {
       {section === 'files' && canViewFiles && <SettingsFilesAssetsPanel canEdit={canEditFiles} />}
 
       {section === 'auto-tasks' && canViewAutoTasks && <SettingsAutoTasksPanel canEdit={canEditAutoTasks} />}
+
+      {section === 'property-owners' && canViewPropertyOwners && (
+        <SettingsPropertyOwnersPanel canEdit={canEditPropertyOwners} />
+      )}
 
       {section === 'templates' && canViewTemplates && (
         <div className={uiSpacing.pageStack}>

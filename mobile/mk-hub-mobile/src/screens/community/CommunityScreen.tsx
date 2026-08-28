@@ -688,7 +688,14 @@ export const CommunityScreen: React.FC = () => {
                 {detailBannerUri ? (
                   <Image
                     source={{ uri: detailBannerUri }}
-                    style={styles.detailBanner}
+                    style={[
+                      styles.detailBanner,
+                      selectedPost.photo_url
+                        ? {
+                            objectPosition: `${selectedPost.banner_focal_x ?? 50}% ${selectedPost.banner_focal_y ?? 50}%`,
+                          }
+                        : null,
+                    ]}
                     resizeMode="cover"
                   />
                 ) : null}
@@ -1245,7 +1252,7 @@ const styles = StyleSheet.create({
   },
   detailBanner: {
     width: "100%",
-    height: 180,
+    aspectRatio: 10 / 3,
     backgroundColor: colors.iconMutedBg
   },
   detailInner: {

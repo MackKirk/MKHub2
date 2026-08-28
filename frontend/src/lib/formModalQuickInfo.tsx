@@ -2283,3 +2283,173 @@ export const sendForSignatureQuickInfo = formModalQuickInfo({
     </>
   ),
 });
+
+/** Property lease create/edit modal. */
+export function propertyLeaseQuickInfo(editing: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        {editing ? 'Update' : 'Record'} a lease for this property — for example, when Mack Kirk is the{' '}
+        {uiLabel('Landlord')} renting space out, or the {uiLabel('Tenant')} leasing a yard or office.
+      </>
+    ),
+    howToUse: (
+      <>
+        Choose {uiLabel('Role')} (landlord or tenant), set {uiLabel('Status')}, and enter the{' '}
+        {uiLabel('Counterparty')} name. Add rent amount and frequency, then the {uiLabel('Start')}, {uiLabel('End')},
+        and optional {uiLabel('Renewal')} dates.
+      </>
+    ),
+    behavior: (
+      <>
+        End and renewal dates feed the Properties dashboard and calendar alerts when a lease is expiring or expired.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Save')} stores the lease on this property. {uiLabel('Cancel')} closes without saving.
+      </>
+    ),
+  });
+}
+
+/** Property insurance policy create/edit modal. */
+export function propertyInsuranceQuickInfo(editing: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        {editing ? 'Update' : 'Record'} an insurance policy for this property so coverage and renewals stay visible to
+        the team.
+      </>
+    ),
+    howToUse: (
+      <>
+        Enter the {uiLabel('Provider')}, optional {uiLabel('Policy #')} and {uiLabel('Type')}, then set{' '}
+        {uiLabel('Expiry')} and {uiLabel('Annual premium')}. Add broker or notes if useful for renewals.
+      </>
+    ),
+    behavior: (
+      <>
+        Expiry dates feed the Properties dashboard and calendar alerts when a policy is expiring or expired.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Save')} stores the policy on this property. {uiLabel('Cancel')} closes without saving.
+      </>
+    ),
+  });
+}
+
+/** Property tax record create/edit modal. */
+export function propertyTaxQuickInfo(editing: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        {editing ? 'Update' : 'Record'} a property tax year so assessments, amounts due, and payment status stay visible
+        to the team.
+      </>
+    ),
+    howToUse: (
+      <>
+        Set the {uiLabel('Tax year')} and {uiLabel('Status')}, then enter {uiLabel('Jurisdiction')},{' '}
+        {uiLabel('Assessed value')}, and {uiLabel('Tax amount')}. Add {uiLabel('Due date')} and optional{' '}
+        {uiLabel('Paid date')}.
+      </>
+    ),
+    behavior: (
+      <>
+        Due dates and due/overdue status feed the Properties dashboard and calendar alerts.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Save')} stores the tax record on this property. {uiLabel('Cancel')} closes without saving.
+      </>
+    ),
+  });
+}
+
+/** Property permit create/edit modal. */
+export function propertyPermitQuickInfo(editing: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        {editing ? 'Update' : 'Record'} a permit for this property so approvals, authorities, and expiry stay visible to
+        the team.
+      </>
+    ),
+    howToUse: (
+      <>
+        Enter a {uiLabel('Title')}, {uiLabel('Type')}, and optional {uiLabel('Permit #')}. Set the{' '}
+        {uiLabel('Authority')} and {uiLabel('Stage')}, then {uiLabel('Issued')} / {uiLabel('Expiry')} dates if known.
+      </>
+    ),
+    behavior: (
+      <>
+        Stage updates also appear on the approvals board. Expiry dates feed compliance labels and property alerts.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Save')} stores the permit on this property. {uiLabel('Cancel')} closes without saving.
+      </>
+    ),
+  });
+}
+
+/** Property people / responsibility create/edit modal. */
+export function propertyPeopleQuickInfo(editing: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        {editing ? 'Update' : 'Assign'} a contact responsible for a trade or management role on this property.
+      </>
+    ),
+    howToUse: (
+      <>
+        Choose a {uiLabel('Role')}, then enter {uiLabel('Contact name')}, {uiLabel('Company')}, {uiLabel('Phone')}, and
+        optional {uiLabel('Email')}.
+      </>
+    ),
+    behavior: (
+      <>
+        These contacts appear on the People tab so the team knows who to call for each area of the property.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Save')} stores the responsibility on this property. {uiLabel('Cancel')} closes without saving.
+      </>
+    ),
+  });
+}
+
+/** Property maintenance item create/edit modal. */
+export function propertyMaintenanceQuickInfo(editing: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: (
+      <>
+        {editing ? 'Update' : 'Schedule'} maintenance for this property so recurring work and next due dates stay
+        visible to the team.
+      </>
+    ),
+    howToUse: (
+      <>
+        Enter a {uiLabel('Title')} and optional {uiLabel('Type')}, set {uiLabel('Frequency')} and {uiLabel('Next due')},
+        then choose {uiLabel('Status')}. Add {uiLabel('Last completed')} when the work is done.
+      </>
+    ),
+    behavior: (
+      <>
+        Next due dates help the team see what is coming up on this property. Due and overdue status stand out in the
+        list.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Save')} stores the maintenance item on this property. {uiLabel('Cancel')} closes without saving.
+      </>
+    ),
+  });
+}

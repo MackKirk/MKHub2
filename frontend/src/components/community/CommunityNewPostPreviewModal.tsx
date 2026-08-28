@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
+import { CommunityPostBanner } from '@/components/community/CommunityPostBanner';
 import { CommunityPostBody } from '@/components/community/CommunityPostBody';
+import { communityBannerFileUrl } from '@/lib/communityPostBanner';
 import { COMMUNITY_FEED_AREA_LABELS } from '@/components/community/CommunityFeedPostSnippet';
 import { sanitizeCommunityPostHtml } from '@/lib/communityPostHtml';
 import { withFileAccessTokenIfNeeded } from '@/lib/api';
@@ -15,6 +17,10 @@ type Props = {
   requiresReadConfirmation: boolean;
   /** Compose preview: uploads not yet published */
   attachments: { fileId: string; name: string }[];
+  bannerFileId?: string | null;
+  bannerFocalX?: number | null;
+  bannerFocalY?: number | null;
+  bannerUrl?: string | null;
   /** Saved post: optional download links. When present (even `[]`), `attachments` is ignored for attachment UI. */
   savedAttachments?: { fileId: string; name: string; url: string }[];
   targetType: 'all' | 'divisions' | 'users' | 'groups';
@@ -39,6 +45,10 @@ export function CommunityNewPostPreviewModal({
   relatedArea,
   requiresReadConfirmation,
   attachments,
+  bannerFileId,
+  bannerFocalX,
+  bannerFocalY,
+  bannerUrl,
   savedAttachments,
   targetType,
   divisionCount,
@@ -62,6 +72,8 @@ export function CommunityNewPostPreviewModal({
   const displayDate = dateDisplayLabel ?? 'Just now';
   const displayInitial =
     (authorInitial || (displayAuthor.trim().charAt(0) || 'Y')).toUpperCase();
+
+  const previewBannerSrc = bannerUrl || (bannerFileId ? communityBannerFileUrl(bannerFileId) : null);
 
   const priorityLabel =
     priority && priority !== 'normal'
@@ -108,6 +120,11 @@ export function CommunityNewPostPreviewModal({
       dialogClassName="!max-w-5xl"
       bodyFill={false}
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
+      topContent={
+        previewBannerSrc ? (
+          <CommunityPostBanner src={previewBannerSrc} focalX={bannerFocalX} focalY={bannerFocalY} />
+        ) : null
+      }
       headerContent={headerMeta}
       footer={
         <div className="flex justify-end">

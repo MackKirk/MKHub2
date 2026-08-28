@@ -41,6 +41,12 @@ import {
 } from "../lib/hoursReminderNotifications";
 import { formatWeekdayLong, previousWeekday } from "../lib/workdays";
 import { formatDateLocal } from "../lib/dateUtils";
+import {
+  loadPendingAlertCadence,
+  markPendingAlertsShown,
+  pendingAlertEligibility,
+  savePendingAlertCadence
+} from "../lib/pendingAlertCadence";
 
 const DUE_SOON_DAYS = 7;
 const TASK_LIMIT = 4;
@@ -181,14 +187,43 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         setPendingLoading(true);
         const snapshot = await fetchPending(user.id);
-        applyPending(snapshot);
         await setupHoursReminders(snapshot.loggedToday);
-        if (!snapshot.hasContent) {
+
+        const cadence = await loadPendingAlertCadence(user.id);
+        const eligible = pendingAlertEligibility(
+          {
+            hasClock: !!snapshot.hours,
+            hasTasks:
+              snapshot.tasks.length > 0 || snapshot.otherOpenTaskCount > 0,
+            hasUrgent:
+              snapshot.signatureRequests.length > 0 ||
+              snapshot.onboardingDocs.length > 0
+          },
+          cadence
+        );
+        const filtered: PendingSnapshot = {
+          hours: eligible.hasClock ? snapshot.hours : null,
+          loggedToday: snapshot.loggedToday,
+          tasks: eligible.hasTasks ? snapshot.tasks : [],
+          otherOpenTaskCount: eligible.hasTasks ? snapshot.otherOpenTaskCount : 0,
+          signatureRequests: eligible.hasUrgent
+            ? snapshot.signatureRequests
+            : [],
+          onboardingDocs: eligible.hasUrgent ? snapshot.onboardingDocs : [],
+          hasContent:
+            eligible.hasClock || eligible.hasTasks || eligible.hasUrgent
+        };
+        applyPending(filtered);
+        if (!filtered.hasContent) {
           setPendingVisible(false);
           return;
         }
         if (opts?.force || !dismissedThisForeground.current) {
           setPendingVisible(true);
+          await savePendingAlertCadence(
+            user.id,
+            markPendingAlertsShown(cadence, eligible)
+          );
         }
       } catch {
         void setupHoursReminders(false);

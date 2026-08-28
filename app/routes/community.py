@@ -1,7 +1,7 @@
 import json
 import uuid
 from datetime import datetime, timezone, timedelta, date as _date
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -47,6 +47,29 @@ VALID_RELATED_AREAS = frozenset({
 VALID_POST_STATUS = frozenset({"draft", "scheduled", "published", "cancelled"})
 
 COMMUNITY_GROUP_DESCRIPTION_MAX_LEN = 8000
+
+
+def _clamp_banner_focal(value: Any, default: float = 50.0) -> float:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return default
+    if n != n:  # NaN
+        return default
+    return max(0.0, min(100.0, n))
+
+
+def _community_photo_url(post: CommunityPost) -> Optional[str]:
+    if post.photo_file_id:
+        return f"/files/{post.photo_file_id}/thumbnail?w=1600"
+    return None
+
+
+def _banner_focals(post: CommunityPost) -> Tuple[float, float]:
+    return (
+        _clamp_banner_focal(getattr(post, "banner_focal_x", None), 50.0),
+        _clamp_banner_focal(getattr(post, "banner_focal_y", None), 50.0),
+    )
 
 
 def _can_manage_post(user: User, post: CommunityPost) -> bool:
@@ -307,9 +330,8 @@ def _serialize_community_post(db: Session, post: CommunityPost, viewer: User) ->
     ).first()
     is_unread = view is None
 
-    photo_url = None
-    if post.photo_file_id:
-        photo_url = f"/files/{post.photo_file_id}/thumbnail?w=800"
+    photo_url = _community_photo_url(post)
+    banner_focal_x, banner_focal_y = _banner_focals(post)
 
     attachments = _attachments_response(db, post)
     document_url = attachments[0]["url"] if attachments else None
@@ -376,7 +398,10 @@ def _serialize_community_post(db: Session, post: CommunityPost, viewer: User) ->
         "author_id": str(post.author_id),
         "author_name": author_name,
         "author_avatar": author_avatar,
+        "photo_file_id": str(post.photo_file_id) if post.photo_file_id else None,
         "photo_url": photo_url,
+        "banner_focal_x": banner_focal_x,
+        "banner_focal_y": banner_focal_y,
         "document_url": document_url,
         "document_file_id": document_file_id,
         "document_original_name": document_original_name,
@@ -711,6 +736,8 @@ def create_post(
     title = payload.get("title", "").strip()
     content = payload.get("content", "").strip()
     photo_file_id = payload.get("photo_file_id")
+    banner_focal_x = _clamp_banner_focal(payload.get("banner_focal_x"), 50.0)
+    banner_focal_y = _clamp_banner_focal(payload.get("banner_focal_y"), 50.0)
     document_file_id = payload.get("document_file_id")
     target_type = payload.get("target_type", "all")
     target_division_ids = payload.get("target_division_ids", [])
@@ -757,6 +784,9 @@ def create_post(
             uuid.UUID(str(photo_file_id))
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid photo_file_id format")
+    else:
+        banner_focal_x = 50.0
+        banner_focal_y = 50.0
 
     att_norm: List[Dict[str, str]] = []
     if "attachments" in payload:
@@ -806,6 +836,8 @@ def create_post(
         content=content,
         author_id=current_user.id,
         photo_file_id=uuid.UUID(str(photo_file_id)) if photo_file_id else None,
+        banner_focal_x=banner_focal_x,
+        banner_focal_y=banner_focal_y,
         document_file_id=uuid.UUID(att_norm[0]["file_id"]) if att_norm else None,
         attachment_files=list(att_norm),
         is_urgent=is_urgent,
@@ -876,9 +908,8 @@ def list_my_posts(
         if not author_name and author:
             author_name = author.username
 
-        photo_url = None
-        if post.photo_file_id:
-            photo_url = f"/files/{post.photo_file_id}/thumbnail?w=800"
+        photo_url = _community_photo_url(post)
+        banner_focal_x, banner_focal_y = _banner_focals(post)
 
         attachments = _attachments_response(db, post)
         document_url = attachments[0]["url"] if attachments else None
@@ -947,7 +978,10 @@ def list_my_posts(
             "author_id": str(post.author_id),
             "author_name": author_name,
             "author_avatar": author_avatar,
+            "photo_file_id": str(post.photo_file_id) if post.photo_file_id else None,
             "photo_url": photo_url,
+            "banner_focal_x": banner_focal_x,
+            "banner_focal_y": banner_focal_y,
             "document_url": document_url,
             "document_file_id": document_file_id,
             "document_original_name": document_original_name,
@@ -1024,6 +1058,13 @@ def patch_community_post(
     if "photo_file_id" in payload:
         pf = payload.get("photo_file_id")
         post.photo_file_id = uuid.UUID(str(pf)) if pf else None
+        if not post.photo_file_id:
+            post.banner_focal_x = 50.0
+            post.banner_focal_y = 50.0
+    if "banner_focal_x" in payload:
+        post.banner_focal_x = _clamp_banner_focal(payload.get("banner_focal_x"), 50.0)
+    if "banner_focal_y" in payload:
+        post.banner_focal_y = _clamp_banner_focal(payload.get("banner_focal_y"), 50.0)
     if "attachments" in payload:
         att_norm = _apply_attachments_payload(payload.get("attachments"))
         _sync_attachment_storage(post, att_norm)

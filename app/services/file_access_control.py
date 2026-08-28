@@ -7,7 +7,7 @@ import uuid
 from typing import Any, Optional, Set, Tuple
 
 from fastapi import HTTPException
-from sqlalchemy import cast, func, String
+from sqlalchemy import cast, func, String, or_
 from sqlalchemy.orm import Session
 
 from ..auth.security import (
@@ -36,6 +36,9 @@ from ..models.models import (
     PrintShopRequest,
     PrintShopRequestFile,
     PrintShopSupplyOrderFile,
+    CommunityPost,
+    PropertyFile,
+    Property,
 )
 from ..services.permissions import is_admin
 from ..services.safety_sign_request_access import user_has_any_sign_request_on_project
@@ -225,6 +228,12 @@ def assert_can_initiate_upload(
             raise _forbidden("missing hr:users:write / users:write")
         return
 
+    cat = (category_id or "").strip().lower()
+    if cat in ("community-attachment", "community-banner"):
+        if _has_permission(user, "hr:community:write"):
+            return
+        raise _forbidden("missing hr:community:write")
+
     # "misc" uploads (no project/client/employee)
     if not (
         _has_permission(user, "business:projects:files:write")
@@ -245,7 +254,7 @@ def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> No
     if norm:
         for candidate in (norm, f"/{norm}"):
             fo = db.query(FileObject).filter(FileObject.key == candidate).first()
-            if fo and _is_employee_profile_photo_file(db, fo):
+            if fo and (_is_employee_profile_photo_file(db, fo) or _is_community_post_media_file(db, fo)):
                 return
     fo_by_key = _find_file_object_by_storage_key(db, storage_key)
     if fo_by_key:
@@ -360,6 +369,23 @@ def _is_employee_profile_photo_file(db: Session, fo: FileObject) -> bool:
     return (
         db.query(EmployeeProfile.id)
         .filter(EmployeeProfile.profile_photo_file_id == fo.id)
+        .first()
+        is not None
+    )
+
+
+def _is_community_post_media_file(db: Session, fo: FileObject) -> bool:
+    """Banner and attachments on community posts; feed readers load these via <img>/download."""
+    fid = str(fo.id)
+    return (
+        db.query(CommunityPost.id)
+        .filter(
+            or_(
+                CommunityPost.photo_file_id == fo.id,
+                CommunityPost.document_file_id == fo.id,
+                cast(CommunityPost.attachment_files, String).like(f"%{fid}%"),
+            )
+        )
         .first()
         is not None
     )
@@ -640,6 +666,9 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
     if _is_employee_profile_photo_file(db, fo):
         return
 
+    if _is_community_post_media_file(db, fo):
+        return
+
     if _is_own_employee_profile_document(db, user, fo):
         return
 
@@ -731,6 +760,19 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
         if _has_permission(user, "fleet:access"):
             return
         raise _forbidden("missing fleet:access for work order file")
+
+    pf = db.query(PropertyFile).filter(PropertyFile.file_object_id == fo.id).first()
+    if pf:
+        from ..services.properties import can_read_property_documents, user_can_view_property
+
+        prop = db.query(Property).filter(Property.id == pf.property_id, Property.deleted_at.is_(None)).first()
+        if not prop:
+            raise HTTPException(status_code=404, detail="Property not found")
+        if not can_read_property_documents(user):
+            raise _forbidden("missing properties:documents:read")
+        if not user_can_view_property(db, user, prop):
+            raise _forbidden("no access to property file")
+        return
 
     psr = db.query(PrintShopRequest).filter(PrintShopRequest.artwork_file_id == fo.id).first()
     if psr:

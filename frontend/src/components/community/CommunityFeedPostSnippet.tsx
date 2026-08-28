@@ -1,4 +1,5 @@
 import { CommunityPostBody } from '@/components/community/CommunityPostBody';
+import { CommunityPostBanner } from '@/components/community/CommunityPostBanner';
 import { withFileAccessTokenIfNeeded } from '@/lib/api';
 
 export const COMMUNITY_FEED_AREA_LABELS: Record<string, string> = {
@@ -27,6 +28,8 @@ export type CommunityFeedPostSnippetPost = {
   tags?: string[];
   attachments?: { file_id?: string; url?: string; original_name?: string }[];
   photo_url?: string;
+  banner_focal_x?: number;
+  banner_focal_y?: number;
   document_url?: string;
   document_file_id?: string;
   is_unread?: boolean;
@@ -100,8 +103,7 @@ function contentHasEmbeddedMedia(html: string | undefined): boolean {
 
 function hasPostAttachment(post: CommunityFeedPostSnippetPost): boolean {
   return Boolean(
-    post.photo_url ||
-      post.document_url ||
+    post.document_url ||
       (Array.isArray(post.attachments) && post.attachments.length > 0) ||
       post.tags?.some((tag) => tag === 'Image' || tag === 'Document') ||
       contentHasEmbeddedMedia(post.content)
@@ -163,7 +165,7 @@ export function CommunityFeedPostSnippet({
 
   return (
     <div
-      className={`group border rounded-xl border-l-[3px] px-3.5 py-3 overflow-hidden bg-white shadow-sm ${outerInteractive} ${
+      className={`group border rounded-xl border-l-[3px] overflow-hidden bg-white shadow-sm ${outerInteractive} ${
         isCritical
           ? 'border-gray-200 border-l-red-700'
           : isUrgent
@@ -174,7 +176,10 @@ export function CommunityFeedPostSnippet({
       }`}
       onClick={interactive ? onCardClick : undefined}
     >
-      <div className="flex items-start gap-2.5">
+      {post.photo_url ? (
+        <CommunityPostBanner src={post.photo_url} focalX={post.banner_focal_x} focalY={post.banner_focal_y} />
+      ) : null}
+      <div className="flex items-start gap-2.5 px-3.5 py-3">
         <button
           type="button"
           className={`w-8 h-8 shrink-0 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden ring-offset-2 hover:ring-2 hover:ring-[#7f1010]/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/45 ${!interactive ? 'pointer-events-none' : ''}`}

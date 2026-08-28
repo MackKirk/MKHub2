@@ -2803,6 +2803,9 @@ class CommunityPost(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     photo_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), index=True)
+    # Cover crop focal point for the post banner (CSS object-position, 0–100).
+    banner_focal_x: Mapped[float] = mapped_column(Float, nullable=False, default=50.0)
+    banner_focal_y: Mapped[float] = mapped_column(Float, nullable=False, default=50.0)
     document_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), index=True)
     # Multiple downloadable attachments: [{"file_id": "<uuid>", "name": "report.pdf"}, ...]
     attachment_files: Mapped[Optional[list]] = mapped_column(JSON, default=list)
@@ -4140,3 +4143,310 @@ class PrintShopSupplyOrderFile(Base):
 
     order = relationship("PrintShopSupplyOrder", back_populates="files")
     file_object = relationship("FileObject", foreign_keys=[file_object_id])
+
+
+# ---------- Property Management (Mack Kirk + family portfolio) ----------
+
+
+class PropertyEntity(Base):
+    """Legal entity or person that owns/manages properties (company, owner, family member)."""
+    __tablename__ = "property_entities"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    legal_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[Optional[str]] = mapped_column(String(255))
+    entity_type: Mapped[str] = mapped_column(String(50), default="company", index=True)  # company|person
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+
+class Property(Base):
+    """Real estate asset register (company yards/offices + family properties)."""
+    __tablename__ = "properties"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    property_type: Mapped[Optional[str]] = mapped_column(String(50), index=True)  # office|yard|warehouse|...
+    ownership: Mapped[str] = mapped_column(String(50), default="owned", index=True)  # owned|leased|managed|other
+    visibility: Mapped[str] = mapped_column(String(20), default="company", index=True)  # company|family
+    status: Mapped[str] = mapped_column(String(50), default="active", index=True)
+    address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    address_line2: Mapped[Optional[str]] = mapped_column(String(255))
+    city: Mapped[Optional[str]] = mapped_column(String(100))
+    province: Mapped[Optional[str]] = mapped_column(String(100))
+    postal_code: Mapped[Optional[str]] = mapped_column(String(50))
+    country: Mapped[Optional[str]] = mapped_column(String(100))
+    lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))
+    lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    image_file_object_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+    owners = relationship("PropertyOwner", back_populates="property", cascade="all, delete-orphan")
+    access_grants = relationship("PropertyAccess", back_populates="property", cascade="all, delete-orphan")
+    leases = relationship("PropertyLease", back_populates="property", cascade="all, delete-orphan")
+    insurance_policies = relationship(
+        "PropertyInsurancePolicy", back_populates="property", cascade="all, delete-orphan"
+    )
+    tax_records = relationship("PropertyTaxRecord", back_populates="property", cascade="all, delete-orphan")
+    permits = relationship("PropertyPermit", back_populates="property", cascade="all, delete-orphan")
+    files = relationship("PropertyFile", back_populates="property", cascade="all, delete-orphan")
+    responsibilities = relationship(
+        "PropertyResponsibility", back_populates="property", cascade="all, delete-orphan"
+    )
+    maintenance_items = relationship(
+        "PropertyMaintenanceItem", back_populates="property", cascade="all, delete-orphan"
+    )
+
+
+class PropertyOwner(Base):
+    __tablename__ = "property_owners"
+    __table_args__ = (
+        UniqueConstraint("property_id", "entity_id", name="uq_property_owners_property_entity"),
+        Index("idx_property_owners_property", "property_id"),
+        Index("idx_property_owners_entity", "entity_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), nullable=False
+    )
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("property_entities.id", ondelete="CASCADE"), nullable=False
+    )
+    ownership_percentage: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    property = relationship("Property", back_populates="owners")
+    entity = relationship("PropertyEntity")
+
+
+class PropertyAccess(Base):
+    """Extra user access for family-visible properties."""
+    __tablename__ = "property_access"
+    __table_args__ = (
+        UniqueConstraint("property_id", "user_id", name="uq_property_access_property_user"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    property = relationship("Property", back_populates="access_grants")
+
+
+class PropertyLease(Base):
+    __tablename__ = "property_leases"
+    __table_args__ = (Index("idx_property_leases_property_status", "property_id", "status"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # tenant|landlord
+    landlord_entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("property_entities.id", ondelete="SET NULL")
+    )
+    tenant_entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("property_entities.id", ondelete="SET NULL")
+    )
+    counterparty_name: Mapped[Optional[str]] = mapped_column(String(255))
+    start_date: Mapped[Optional[date]] = mapped_column(Date)
+    end_date: Mapped[Optional[date]] = mapped_column(Date)
+    base_rent: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
+    rent_frequency: Mapped[Optional[str]] = mapped_column(String(50))  # monthly|annual|...
+    currency: Mapped[Optional[str]] = mapped_column(String(10), default="CAD")
+    deposit: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
+    renewal_type: Mapped[Optional[str]] = mapped_column(String(50))
+    renewal_date: Mapped[Optional[date]] = mapped_column(Date)
+    notice_days: Mapped[Optional[int]] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(50), default="draft", index=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    property = relationship("Property", back_populates="leases")
+
+
+class PropertyInsurancePolicy(Base):
+    __tablename__ = "property_insurance_policies"
+    __table_args__ = (Index("idx_property_insurance_property_expiry", "property_id", "expiry_date"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    provider: Mapped[Optional[str]] = mapped_column(String(255))
+    broker: Mapped[Optional[str]] = mapped_column(String(255))
+    policy_number: Mapped[Optional[str]] = mapped_column(String(100))
+    policy_type: Mapped[Optional[str]] = mapped_column(String(100))
+    effective_date: Mapped[Optional[date]] = mapped_column(Date)
+    expiry_date: Mapped[Optional[date]] = mapped_column(Date)
+    coverage_amount: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    deductible: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
+    annual_premium: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
+    contact_name: Mapped[Optional[str]] = mapped_column(String(255))
+    contact_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    contact_email: Mapped[Optional[str]] = mapped_column(String(255))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    property = relationship("Property", back_populates="insurance_policies")
+
+
+class PropertyTaxRecord(Base):
+    __tablename__ = "property_tax_records"
+    __table_args__ = (
+        Index("idx_property_tax_property_year", "property_id", "tax_year"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    jurisdiction: Mapped[Optional[str]] = mapped_column(String(255))
+    tax_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    assessed_value: Mapped[Optional[float]] = mapped_column(Numeric(14, 2))
+    tax_amount: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
+    due_date: Mapped[Optional[date]] = mapped_column(Date)
+    paid_date: Mapped[Optional[date]] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(50), default="upcoming", index=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    property = relationship("Property", back_populates="tax_records")
+
+
+class PropertyPermit(Base):
+    __tablename__ = "property_permits"
+    __table_args__ = (
+        Index("idx_property_permits_property_stage", "property_id", "stage"),
+        Index("idx_property_permits_expiry", "expiry_date"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    permit_type: Mapped[Optional[str]] = mapped_column(String(100))
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    permit_number: Mapped[Optional[str]] = mapped_column(String(100))
+    authority: Mapped[Optional[str]] = mapped_column(String(255))
+    stage: Mapped[str] = mapped_column(String(50), default="identified", index=True)
+    issued_date: Mapped[Optional[date]] = mapped_column(Date)
+    expiry_date: Mapped[Optional[date]] = mapped_column(Date)
+    checklist: Mapped[Optional[list]] = mapped_column(JSON, default=list)  # [{id, label, done}]
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    property = relationship("Property", back_populates="permits")
+
+
+class PropertyFile(Base):
+    __tablename__ = "property_files"
+    __table_args__ = (
+        Index("idx_property_files_property", "property_id"),
+        Index("idx_property_files_related", "related_type", "related_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), nullable=False
+    )
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[Optional[str]] = mapped_column(String(100))
+    related_type: Mapped[Optional[str]] = mapped_column(String(50))  # property|lease|insurance|tax|permit|maintenance
+    related_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    folder: Mapped[Optional[str]] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(String(1000))
+    original_name: Mapped[Optional[str]] = mapped_column(String(255))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    uploaded_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+
+    property = relationship("Property", back_populates="files")
+    file_object = relationship("FileObject", foreign_keys=[file_object_id])
+
+
+class PropertyResponsibility(Base):
+    __tablename__ = "property_responsibilities"
+    __table_args__ = (Index("idx_property_responsibilities_property", "property_id"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(100), nullable=False)  # electrical|hvac|roof|...
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    contact_name: Mapped[Optional[str]] = mapped_column(String(255))
+    contact_company: Mapped[Optional[str]] = mapped_column(String(255))
+    contact_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    contact_email: Mapped[Optional[str]] = mapped_column(String(255))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    property = relationship("Property", back_populates="responsibilities")
+
+
+class PropertyMaintenanceItem(Base):
+    __tablename__ = "property_maintenance_items"
+    __table_args__ = (Index("idx_property_maintenance_property_due", "property_id", "next_due_date"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    item_type: Mapped[Optional[str]] = mapped_column(String(100))
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    frequency: Mapped[Optional[str]] = mapped_column(String(50))  # monthly|quarterly|annual|...
+    next_due_date: Mapped[Optional[date]] = mapped_column(Date)
+    last_completed_date: Mapped[Optional[date]] = mapped_column(Date)
+    responsible_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(String(50), default="scheduled", index=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    property = relationship("Property", back_populates="maintenance_items")
+
+
+class PropertyAlertEvent(Base):
+    """Idempotent property expiry alerts (leases, insurance, tax, permits)."""
+    __tablename__ = "property_alert_events"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    alert_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", "alert_key", name="uq_property_alert_event"),
+        Index("ix_property_alert_events_entity", "entity_type", "entity_id"),
+    )
