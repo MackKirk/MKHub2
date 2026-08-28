@@ -208,6 +208,20 @@ def can_write_auto_tasks(user: User) -> bool:
     return _has_permission(user, AUTO_TASKS_WRITE)
 
 
+def can_view_property_owners(user: User) -> bool:
+    if _user_is_admin(user):
+        return True
+    return _has_permission(user, "properties:access")
+
+
+def can_edit_property_owners(user: User) -> bool:
+    if _user_is_admin(user):
+        return True
+    return _has_permission(user, "properties:company:write") or _has_permission(
+        user, "properties:family:write"
+    )
+
+
 def _list_area(list_name: str) -> Literal["lookup", "files", "terms", "unknown"]:
     if list_name == TERMS_TEMPLATES_LIST_NAME:
         return "terms"
@@ -299,8 +313,10 @@ def settings_permissions_payload(user: User) -> dict[str, bool]:
     can_edit_backgrounds_card = can_write_document_backgrounds(user)
     can_view_document_templates_card = can_read_document_templates(user)
     can_edit_document_templates_card = can_write_document_templates(user)
-    can_view_auto_tasks = can_read_auto_tasks(user)
-    can_edit_auto_tasks = can_write_auto_tasks(user)
+    view_auto_tasks = can_read_auto_tasks(user)
+    edit_auto_tasks = can_write_auto_tasks(user)
+    view_property_owners = can_view_property_owners(user)
+    edit_property_owners = can_edit_property_owners(user)
     can_view_templates_tab = any(
         (
             can_view_permission_templates_card,
@@ -308,7 +324,7 @@ def settings_permissions_payload(user: User) -> dict[str, bool]:
         )
     )
     return {
-        "can_access_settings": can_view_lookup or can_view_files or can_view_templates_tab or can_view_auto_tasks,
+        "can_access_settings": can_view_lookup or can_view_files or can_view_templates_tab or view_auto_tasks or view_property_owners,
         "has_legacy_full_settings_access": False,
         "can_view_lookup_lists": can_view_lookup,
         "can_edit_lookup_lists": can_edit_lookup,
@@ -323,6 +339,8 @@ def settings_permissions_payload(user: User) -> dict[str, bool]:
         "can_view_document_templates": can_view_document_templates_card,
         "can_edit_document_templates": can_edit_document_templates_card,
         "can_view_templates_tab": can_view_templates_tab,
-        "can_view_auto_tasks": can_view_auto_tasks,
-        "can_edit_auto_tasks": can_edit_auto_tasks,
+        "can_view_auto_tasks": view_auto_tasks,
+        "can_edit_auto_tasks": edit_auto_tasks,
+        "can_view_property_owners": view_property_owners,
+        "can_edit_property_owners": edit_property_owners,
     }

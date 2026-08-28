@@ -537,6 +537,9 @@ export function AnnouncementManagerCard({ post }: { post: any }) {
           requiresReadConfirmation={!!displayPost.requires_read_confirmation}
           attachments={[]}
           savedAttachments={postToSavedAttachments(displayPost as Record<string, unknown>)}
+          bannerUrl={displayPost.photo_url ? String(displayPost.photo_url) : null}
+          bannerFocalX={typeof displayPost.banner_focal_x === 'number' ? displayPost.banner_focal_x : Number(displayPost.banner_focal_x || 50)}
+          bannerFocalY={typeof displayPost.banner_focal_y === 'number' ? displayPost.banner_focal_y : Number(displayPost.banner_focal_y || 50)}
           targetType={previewAudienceTarget}
           divisionCount={(displayPost.target_division_ids || []).length}
           selectedEmployeeCount={(displayPost.target_user_ids || []).length}

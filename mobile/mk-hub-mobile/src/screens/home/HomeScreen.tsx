@@ -381,7 +381,14 @@ export const HomeScreen: React.FC = () => {
                     {bannerUri ? (
                       <Image
                         source={{ uri: bannerUri }}
-                        style={styles.novidadeBanner}
+                        style={[
+                          styles.novidadeBanner,
+                          post.photo_url
+                            ? {
+                                objectPosition: `${post.banner_focal_x ?? 50}% ${post.banner_focal_y ?? 50}%`,
+                              }
+                            : null,
+                        ]}
                         resizeMode="cover"
                       />
                     ) : null}
@@ -690,7 +697,7 @@ const styles = StyleSheet.create({
   },
   novidadeBanner: {
     width: "100%",
-    height: 72,
+    aspectRatio: 10 / 3,
     backgroundColor: colors.iconMutedBg
   },
   novidadeBody: {

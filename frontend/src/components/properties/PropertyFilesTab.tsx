@@ -1,0 +1,1123 @@
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Search } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { api, withFileAccessToken } from '@/lib/api';
+import { downloadStoredFiles } from '@/lib/downloadFile';
+import { useConfirm } from '@/components/ConfirmProvider';
+import {
+  FileImagePreviewModal,
+  FilePdfPreviewModal,
+  FileOfficePreviewModal,
+  FileListSelectionBar,
+  FileMoveLocationModal,
+  FileListDropHint,
+  FILE_LIBRARY_ACCEPT,
+  FILE_LIBRARY_UPLOAD_HINT,
+  dropTargetClass,
+  fileDropTargetProps,
+  invalidateQueriesInBackground,
+  leaveContainerDragLeave,
+  patchFilesInQueryCache,
+  restoreQueryCache,
+  getDraggedFileIds,
+  isInternalFileDrag,
+  isExternalFileDrop,
+  setDraggedFileIds,
+  useFileDropTarget,
+  useFileImageGallery,
+  useFileListSelection,
+  usePersistedFileViewMode,
+  FileViewModeToolbar,
+  FileImageGrid,
+  FileGridNonImageList,
+  partitionGridFiles,
+  toGridFileFromClientLike,
+  isFileGridImage,
+  ProjectFilesHome,
+  buildCategoryHomeRows,
+  getRecentFiles,
+  type FilesLibraryHomeFile,
+} from '@/components/files';
+import { libraryFilesMoveCategoryQuickInfo } from '@/lib/formModalQuickInfo';
+import {
+  AppButton,
+  AppCard,
+  AppCheckboxControl,
+  AppEmptyState,
+  AppFileUpload,
+  AppFormModal,
+  AppInput,
+  AppListRowIconButton,
+  AppSectionHeader,
+  AppSelect,
+  AppSortableEntityList,
+  AppSortableEntityListFlatBody,
+  AppSortableEntityListHeader,
+  AppSortableEntityListRow,
+  AppSortableEntityListSortColumn,
+  appSectionPresetProps,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+
+const PROPERTY_FILE_CATEGORIES = [
+  { id: 'pictures', label: 'Photos' },
+  { id: 'documents', label: 'Documents' },
+  { id: 'leases', label: 'Leases' },
+  { id: 'insurance', label: 'Insurance' },
+  { id: 'tax', label: 'Tax' },
+  { id: 'permits', label: 'Permits' },
+  { id: 'maintenance', label: 'Maintenance' },
+  { id: 'general', label: 'General' },
+] as const;
+
+const ALL_FILES_CATEGORY = { id: 'all', label: 'All Files' } as const;
+
+const FILES_GRID_COLS = 'grid-cols-[2rem_56px_minmax(0,1fr)_5.5rem_7rem_auto]';
+
+type FilesLibraryView = 'home' | 'browser';
+type UploadModalContext = 'current-location' | 'choose-location';
+
+type PropertyFileItem = {
+  id: string;
+  file_object_id: string;
+  category?: string | null;
+  original_name: string | null;
+  uploaded_at: string | null;
+  content_type: string | null;
+  is_image?: boolean;
+};
+
+type Props = {
+  propertyId: string;
+  canEdit?: boolean;
+};
+
+export default function PropertyFilesTab({ propertyId, canEdit = true }: Props) {
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const { viewMode, tileSize, setViewMode, setTileSize } = usePersistedFileViewMode('property-files-view', {
+    category: selectedCategory === 'all' ? undefined : selectedCategory,
+  });
+  const [uploadCategory, setUploadCategory] = useState<string>('general');
+  const [isDragging, setIsDragging] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+  const fileSelection = useFileListSelection();
+  const { dropTarget, clearDropTarget, makeDropHandlers, isDropActive } = useFileDropTarget();
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState<
+    Array<{
+      id: string;
+      file: File;
+      progress: number;
+      status: 'pending' | 'uploading' | 'success' | 'error';
+      error?: string;
+    }>
+  >([]);
+  const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
+  const imageGallery = useFileImageGallery();
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
+  const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
+  const [moveLocationFileId, setMoveLocationFileId] = useState<string | null>(null);
+  const [filesLibraryView, setFilesLibraryView] = useState<FilesLibraryView>('home');
+  const [pendingPreviewFileId, setPendingPreviewFileId] = useState<string | null>(null);
+  const [uploadModalContext, setUploadModalContext] = useState<UploadModalContext>('current-location');
+  const [uploadDestinationCategory, setUploadDestinationCategory] = useState('general');
+
+  const { data: files = [], isLoading } = useQuery({
+    queryKey: ['property-files', propertyId],
+    queryFn: () => api<PropertyFileItem[]>('GET', `/properties/${propertyId}/files`),
+    enabled: !!propertyId,
+  });
+
+  const filesByCategory = useMemo(() => {
+    const grouped: Record<string, PropertyFileItem[]> = { all: [] };
+    PROPERTY_FILE_CATEGORIES.forEach((c) => {
+      grouped[c.id] = [];
+    });
+    files.forEach((f) => {
+      const cat = f.category || 'general';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(f);
+      grouped.all.push(f);
+    });
+    return grouped;
+  }, [files]);
+
+  const propertyCategoriesForHome = useMemo(
+    () => PROPERTY_FILE_CATEGORIES.map((c) => ({ id: c.id, name: c.label })),
+    [],
+  );
+
+  const homeTotalFiles = useMemo(() => filesByCategory['all']?.length ?? 0, [filesByCategory]);
+
+  const homeCategories = useMemo(
+    () => buildCategoryHomeRows(propertyCategoriesForHome, filesByCategory, [], () => canEdit),
+    [propertyCategoriesForHome, filesByCategory, canEdit],
+  );
+
+  const categoryNameById = useMemo(() => {
+    const map: Record<string, string> = {
+      [ALL_FILES_CATEGORY.id]: ALL_FILES_CATEGORY.label,
+    };
+    PROPERTY_FILE_CATEGORIES.forEach((c) => {
+      map[c.id] = c.label;
+    });
+    return map;
+  }, []);
+
+  const openFilesHome = () => {
+    fileSelection.clear();
+    setFilesLibraryView('home');
+  };
+
+  const openAllFilesBrowser = (searchQuery?: string) => {
+    fileSelection.clear();
+    setFileSearchQuery(searchQuery ?? '');
+    setSelectedCategory('all');
+    setFilesLibraryView('browser');
+  };
+
+  const openCategoryBrowser = (categoryId: string) => {
+    fileSelection.clear();
+    setFileSearchQuery('');
+    setSelectedCategory(categoryId);
+    setFilesLibraryView('browser');
+  };
+
+  const openUploadModal = (context: UploadModalContext) => {
+    setUploadModalContext(context);
+    if (context === 'choose-location') setUploadDestinationCategory('general');
+    setShowUpload(true);
+  };
+
+  const openRecentFileFromHome = (file: FilesLibraryHomeFile) => {
+    const cat = file.categoryId && file.categoryId !== '' ? file.categoryId : 'general';
+    setSelectedCategory(cat);
+    setFileSearchQuery('');
+    setFilesLibraryView('browser');
+    setPendingPreviewFileId(file.id);
+  };
+
+  const getFileTypeLabel = (f: PropertyFileItem): string => {
+    const name = String(f.original_name || '');
+    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
+    const ct = String(f.content_type || '').toLowerCase();
+    if (f.is_image || ct.startsWith('image/')) return 'Image';
+    if (ct.includes('pdf') || ext === 'pdf') return 'PDF';
+    if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return 'Excel';
+    if (['doc', 'docx'].includes(ext) || ct.includes('word')) return 'Word';
+    if (['ppt', 'pptx'].includes(ext) || ct.includes('powerpoint')) return 'PowerPoint';
+    return ext.toUpperCase() || 'File';
+  };
+
+  const homeRecentFiles = useMemo((): FilesLibraryHomeFile[] => {
+    return getRecentFiles(files, 6).map((f) => {
+      const cat = f.category || 'general';
+      return {
+        id: f.id,
+        fileObjectId: f.file_object_id,
+        name: f.original_name || f.file_object_id,
+        categoryId: f.category,
+        categoryName: categoryNameById[cat] || cat,
+        uploadedAt: f.uploaded_at,
+        isImage: f.is_image,
+        contentType: f.content_type,
+        typeLabel: getFileTypeLabel(f),
+      };
+    });
+  }, [files, categoryNameById]);
+
+  const currentFiles = useMemo(() => {
+    let list = filesByCategory[selectedCategory] || [];
+    const q = fileSearchQuery.trim().toLowerCase();
+    if (q) list = list.filter((f) => (f.original_name || f.file_object_id || '').toLowerCase().includes(q));
+    return [...list].sort((a, b) => {
+      let aVal: string | number;
+      let bVal: string | number;
+      if (sortBy === 'uploaded_at') {
+        aVal = a.uploaded_at || '';
+        bVal = b.uploaded_at || '';
+      } else if (sortBy === 'name') {
+        aVal = (a.original_name || a.file_object_id || '').toLowerCase();
+        bVal = (b.original_name || b.file_object_id || '').toLowerCase();
+      } else {
+        aVal = getFileTypeLabel(a).toLowerCase();
+        bVal = getFileTypeLabel(b).toLowerCase();
+      }
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filesByCategory, selectedCategory, fileSearchQuery, sortBy, sortOrder]);
+
+  const visibleFileIds = useMemo(() => currentFiles.map((f) => f.id), [currentFiles]);
+  const { allSelected: allVisibleSelected } = fileSelection.getSelectionState(visibleFileIds);
+
+  const isImageFile = (f: PropertyFileItem) => isFileGridImage(f);
+  const { imageFiles: gridImageFiles, nonImageFiles: gridNonImageFiles } = useMemo(
+    () => partitionGridFiles(currentFiles, isImageFile, (f) => toGridFileFromClientLike(f)),
+    [currentFiles],
+  );
+  const showGridToggle = selectedCategory === 'photos' || currentFiles.some(isImageFile);
+  const propertyFileById = useMemo(() => {
+    const map = new Map<string, PropertyFileItem>();
+    currentFiles.forEach((f) => map.set(f.id, f));
+    return map;
+  }, [currentFiles]);
+
+  useEffect(() => {
+    fileSelection.clear();
+  }, [selectedCategory]);
+
+  const startFileDrag = (e: DragEvent, fileId: string) => {
+    setDraggedFileIds(e.dataTransfer, fileSelection.resolveDragIds(fileId));
+    setIsDragging(true);
+  };
+
+  const endFileDrag = () => {
+    setIsDragging(false);
+    clearDropTarget();
+  };
+
+  const moveFilesToCategory = async (fileIds: string[], newCategory: string, label?: string) => {
+    const unique = [...new Set(fileIds.filter(Boolean))];
+    if (unique.length === 0 || newCategory === 'all') return;
+    const movable = unique.filter((id) => files.some((f) => f.id === id));
+    if (movable.length === 0) return;
+    const filesQueryKey = ['property-files', propertyId] as const;
+    const snapshot = patchFilesInQueryCache(
+      queryClient,
+      filesQueryKey,
+      movable,
+      { category: newCategory },
+    );
+    fileSelection.clear();
+    const results = await Promise.allSettled(
+      movable.map((fileId) =>
+        api('PATCH', `/properties/${propertyId}/files/${fileId}`, { category: newCategory }),
+      ),
+    );
+    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    if (ok === 0) {
+      restoreQueryCache(queryClient, filesQueryKey, snapshot);
+    } else {
+      invalidateQueriesInBackground(queryClient, [filesQueryKey]);
+    }
+    if (ok === movable.length) {
+      const catLabel = PROPERTY_FILE_CATEGORIES.find((c) => c.id === newCategory)?.label ?? label ?? newCategory;
+      toast.success(movable.length === 1 ? 'File moved' : `Moved ${ok} files to ${catLabel}`);
+    } else {
+      toast.error(`Moved ${ok} of ${movable.length} files`);
+    }
+  };
+
+  const handleDropFileIds = async (e: DragEvent, action: (ids: string[]) => void | Promise<void>) => {
+    if (!isInternalFileDrag(e.dataTransfer)) return false;
+    if (!isInternalFileDrag(e.dataTransfer)) return false;
+    const ids = getDraggedFileIds(e.dataTransfer);
+    if (ids.length === 0) return false;
+    await action(ids);
+    endFileDrag();
+    return true;
+  };
+
+  const handleBulkDownloadSelected = async () => {
+    const ids = [...fileSelection.selectedIds];
+    const payload = ids
+      .map((id) => files.find((f) => f.id === id))
+      .filter((f): f is NonNullable<typeof f> => Boolean(f?.file_object_id))
+      .map((f) => ({ fileObjectId: f.file_object_id, filename: f.original_name || 'file' }));
+    if (payload.length === 0) {
+      toast.error('No files to download');
+      return;
+    }
+    setBulkDownloading(true);
+    try {
+      await downloadStoredFiles(payload, 'property-files.zip');
+      toast.success(payload.length === 1 ? 'Download started' : `Downloading ${payload.length} files as ZIP`);
+    } catch {
+      toast.error('Download failed');
+    } finally {
+      setBulkDownloading(false);
+    }
+  };
+
+  const handleBulkDeleteSelected = async () => {
+    const ids = [...fileSelection.selectedIds];
+    if (ids.length === 0) return;
+    const result = await confirm({
+      title: 'Remove selected files',
+      message: `Remove ${ids.length} file(s) from this property?`,
+    });
+    if (result !== 'confirm') return;
+    setBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map(async (fileId) => {
+          const item = files.find((f) => f.id === fileId);
+          if (!item) return;
+          return api('DELETE', `/properties/${propertyId}/files/${item.id}`);
+        }),
+      );
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      queryClient.invalidateQueries({ queryKey: ['property-files', propertyId] });
+      fileSelection.clear();
+      toast.success(succeeded === ids.length ? `Removed ${succeeded} file(s)` : `Removed ${succeeded} of ${ids.length} file(s)`);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
+    if (sortBy === column) setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortBy(column);
+      setSortOrder('asc');
+    }
+  };
+
+  const iconFor = (f: PropertyFileItem) => {
+    const name = String(f.original_name || '');
+    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
+    const ct = String(f.content_type || '').toLowerCase();
+    const is = (x: string) => ct.includes(x) || ext === x;
+    if (is('pdf')) return { label: 'PDF', color: 'bg-red-500' };
+    if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet'))
+      return { label: 'XLS', color: 'bg-green-600' };
+    if (['doc', 'docx'].includes(ext) || ct.includes('word')) return { label: 'DOC', color: 'bg-blue-600' };
+    if (['ppt', 'pptx'].includes(ext) || ct.includes('powerpoint')) return { label: 'PPT', color: 'bg-orange-500' };
+    if (['zip', 'rar', '7z'].includes(ext) || ct.includes('zip')) return { label: 'ZIP', color: 'bg-gray-700' };
+    if (is('txt')) return { label: 'TXT', color: 'bg-gray-500' };
+    if (f.is_image || ct.startsWith('image/')) return { label: 'IMG', color: 'bg-purple-500' };
+    return { label: (ext || 'FILE').toUpperCase().slice(0, 4), color: 'bg-gray-600' };
+  };
+
+  const getFileType = (f: PropertyFileItem): 'image' | 'pdf' | 'excel' | 'other' => {
+    const name = String(f.original_name || '');
+    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
+    const ct = String(f.content_type || '').toLowerCase();
+    const is = (x: string) => ct.includes(x) || ext === x;
+    if (f.is_image || ct.startsWith('image/')) return 'image';
+    if (is('pdf')) return 'pdf';
+    if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return 'excel';
+    return 'other';
+  };
+
+  const handleFilePreview = async (f: PropertyFileItem) => {
+    const fileType = getFileType(f);
+    const name = f.original_name || f.file_object_id || 'File';
+    try {
+      const r: any = await api('GET', withFileAccessToken(`/files/${f.file_object_id}/preview`));
+      const url = String(r.preview_url || r.download_url || '');
+      if (!url) {
+        toast.error('Preview not available');
+        return;
+      }
+      if (fileType === 'image') {
+        await imageGallery.openImage(
+          f,
+          currentFiles,
+          (file) => getFileType(file) === 'image',
+          (file) => file.file_object_id,
+          (file) => file.original_name || file.file_object_id || 'File',
+        );
+        return;
+      }
+      if (fileType === 'pdf') setPreviewPdf({ url, name });
+      else if (fileType === 'excel') setPreviewExcel({ url, name });
+      else window.open(url, '_blank');
+    } catch {
+      toast.error('Preview not available');
+    }
+  };
+
+  useEffect(() => {
+    if (filesLibraryView !== 'browser' || !pendingPreviewFileId) return;
+    const f = files.find((x) => x.id === pendingPreviewFileId);
+    if (!f) return;
+    void handleFilePreview(f);
+    setPendingPreviewFileId(null);
+  }, [filesLibraryView, pendingPreviewFileId, files]);
+
+  const uploadFileToBlob = async (file: File): Promise<string> => {
+    const type = file.type || 'application/octet-stream';
+    const up: any = await api('POST', '/files/upload', {
+      original_name: file.name,
+      content_type: type,
+      employee_id: null,
+      project_id: null,
+      client_id: null,
+      category_id: 'property-files',
+    });
+    await fetch(up.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': type, 'x-ms-blob-type': 'BlockBlob' },
+      body: file,
+    });
+    const conf: any = await api('POST', '/files/confirm', {
+      key: up.key,
+      size_bytes: file.size,
+      checksum_sha256: 'na',
+      content_type: type,
+    });
+    return conf.id;
+  };
+
+  const uploadMultiple = async (fileList: File[], targetCategory?: string) => {
+    const category =
+      targetCategory !== undefined ? targetCategory : selectedCategory === 'all' ? uploadCategory : selectedCategory;
+    const newQueue = Array.from(fileList).map((file, idx) => ({
+      id: `${Date.now()}-${idx}`,
+      file,
+      progress: 0,
+      status: 'pending' as const,
+    }));
+    setUploadQueue((prev) => [...prev, ...newQueue]);
+
+    for (const item of newQueue) {
+      try {
+        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading' } : u)));
+        const fileObjectId = await uploadFileToBlob(item.file);
+        await api('POST', `/properties/${propertyId}/files`, {
+          file_object_id: fileObjectId,
+          category,
+          original_name: item.file.name,
+          related_type: 'property',
+        });
+        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'success', progress: 100 } : u)));
+      } catch (e: any) {
+        setUploadQueue((prev) =>
+          prev.map((u) => (u.id === item.id ? { ...u, status: 'error', error: e?.message || 'Upload failed' } : u)),
+        );
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ['property-files', propertyId] });
+    setTimeout(() => setUploadQueue((prev) => prev.filter((u) => !newQueue.find((nq) => nq.id === u.id))), 2000);
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: async (item: PropertyFileItem) =>
+      api('DELETE', `/properties/${propertyId}/files/${item.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['property-files', propertyId] });
+      toast.success('File removed');
+    },
+    onError: () => toast.error('Failed to remove file'),
+  });
+
+  const handleDeleteFile = async (f: PropertyFileItem) => {
+    const result = await confirm({
+      title: 'Remove file',
+      message: 'Remove this file?',
+    });
+    if (result !== 'confirm') return;
+    deleteMutation.mutate(f);
+  };
+
+  const fetchDownloadUrl = async (fid: string) => {
+    try {
+      const r: any = await api('GET', withFileAccessToken(`/files/${fid}/download`));
+      return String(r.download_url || '');
+    } catch {
+      toast.error('Download link unavailable');
+      return '';
+    }
+  };
+
+  const onDropRight = async (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    clearDropTarget();
+    if (isInternalFileDrag(e.dataTransfer)) {
+      if (selectedCategory !== 'all') {
+        await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, selectedCategory));
+      }
+      return;
+    }
+    if (isExternalFileDrop(e.dataTransfer)) {
+      const category = selectedCategory === 'all' ? uploadCategory : selectedCategory;
+      await uploadMultiple(Array.from(e.dataTransfer.files), category);
+    }
+  };
+
+  const uploadCategoryOptions = PROPERTY_FILE_CATEGORIES.map((c) => ({
+    value: c.id,
+    label: c.label,
+  }));
+
+  const moveCategoryOptions = uploadCategoryOptions;
+
+  const openMoveLocationModal = (fileId: string) => {
+    setMoveLocationFileId(fileId);
+  };
+
+  const moveLocationFile = useMemo(
+    () => (moveLocationFileId ? files.find((f) => f.id === moveLocationFileId) ?? null : null),
+    [files, moveLocationFileId],
+  );
+
+  const moveLocationInitialCategory = useMemo(() => {
+    const fileCat = moveLocationFile?.category;
+    if (fileCat && PROPERTY_FILE_CATEGORIES.some((c) => c.id === fileCat)) return fileCat;
+    if (selectedCategory !== 'all') return selectedCategory;
+    return 'general';
+  }, [moveLocationFile, selectedCategory]);
+
+  const moveLocationSelectedCount = useMemo(() => {
+    if (!moveLocationFileId) return 1;
+    return fileSelection.resolveDragIds(moveLocationFileId).length;
+  }, [moveLocationFileId, fileSelection]);
+
+  const selectedCategoryLabel =
+    PROPERTY_FILE_CATEGORIES.find((c) => c.id === selectedCategory)?.label ??
+    (selectedCategory === ALL_FILES_CATEGORY.id ? ALL_FILES_CATEGORY.label : selectedCategory);
+
+  return (
+    <>
+      <div className={uiSpacing.sectionStack}>
+        <AppCard className="min-w-0" bodyClassName="!p-0">
+          <div className={uiSpacing.cardPadding}>
+            <AppSectionHeader
+              title="Files"
+              description="Photos, documents, leases, and other attachments for this property."
+              {...appSectionPresetProps('files')}
+              action={
+                canEdit ? (
+                  <AppButton type="button" size="sm" onClick={() => openUploadModal(filesLibraryView === 'home' ? 'choose-location' : 'current-location')}>
+                    Upload file
+                  </AppButton>
+                ) : undefined
+              }
+            />
+          </div>
+
+          {isLoading ? (
+            <div className={uiCx(uiTypography.helper, 'border-t border-gray-100 px-4 py-8 text-center')}>
+              Loading files…
+            </div>
+          ) : filesLibraryView === 'home' ? (
+            <ProjectFilesHome
+              title="Property Files"
+              description="Browse files by category or open the complete property library."
+              categories={homeCategories}
+              totalFileCount={homeTotalFiles}
+              totalFolderCount={0}
+              recentFiles={homeRecentFiles}
+              canWrite={canEdit}
+              designSystem={true}
+              supportsFolders={false}
+              supportsCreateFolder={false}
+              onOpenAllFiles={() => openAllFilesBrowser()}
+              onOpenCategory={openCategoryBrowser}
+              onOpenRecentFile={openRecentFileFromHome}
+              onSearch={(q) => openAllFilesBrowser(q)}
+              onUpload={() => openUploadModal('choose-location')}
+              onCreateFolder={() => {}}
+            />
+          ) : (
+            <div className={uiCx('border-t', uiBorders.subtle)}>
+              <div className="flex min-h-[400px] min-w-0">
+                <aside
+                  className={uiCx(
+                    'flex w-64 shrink-0 flex-col border-r',
+                    uiBorders.subtle,
+                    uiColors.surfaceSubtle,
+                  )}
+                >
+                  <div className={uiCx('border-b px-3 py-2.5', uiBorders.subtle)}>
+                    <p className={uiTypography.overline}>File categories</p>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {PROPERTY_FILE_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        {...fileDropTargetProps('category')}
+                        onClick={() => setSelectedCategory(cat.id)}
+                        {...makeDropHandlers('category', cat.id, cat.label, async (e) => {
+                          if (isInternalFileDrag(e.dataTransfer)) {
+                            await handleDropFileIds(e, (ids) => moveFilesToCategory(ids, cat.id, cat.label));
+                            return;
+                          }
+                          if (isExternalFileDrop(e.dataTransfer)) {
+                            await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
+                          }
+                        })}
+                        className={uiCx(
+                          'w-full border-b text-left transition-colors',
+                          uiBorders.subtle,
+                          uiTypography.helper,
+                          'px-3 py-2 hover:bg-white',
+                          selectedCategory === cat.id &&
+                            'border-l-4 border-l-brand-red bg-white font-semibold text-gray-900',
+                          dropTargetClass(isDropActive('category', cat.id), 'category'),
+                        )}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="truncate">{cat.label}</span>
+                          <span className={uiCx(uiTypography.helper, 'ml-auto shrink-0 text-gray-500')}>
+                            ({filesByCategory[cat.id]?.length ?? 0})
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                    <button
+                      key={ALL_FILES_CATEGORY.id}
+                      type="button"
+                      onClick={() => setSelectedCategory(ALL_FILES_CATEGORY.id)}
+                      className={uiCx(
+                        'w-full border-b text-left transition-colors',
+                        uiBorders.subtle,
+                        uiTypography.helper,
+                        'px-3 py-2 hover:bg-white',
+                        selectedCategory === ALL_FILES_CATEGORY.id &&
+                          'border-l-4 border-l-brand-red bg-white font-semibold text-gray-900',
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="truncate">{ALL_FILES_CATEGORY.label}</span>
+                        <span className={uiCx(uiTypography.helper, 'ml-auto shrink-0 text-gray-500')}>
+                          ({filesByCategory[ALL_FILES_CATEGORY.id]?.length ?? 0})
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                </aside>
+
+                <div
+                  className={uiCx(
+                    'min-w-0 flex-1 overflow-y-auto p-4',
+                    isDragging && 'bg-blue-50/50',
+                  )}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (isInternalFileDrag(e.dataTransfer) || (e.dataTransfer.files?.length || 0) > 0) {
+                      setIsDragging(true);
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    leaveContainerDragLeave(e, () => {
+                      setIsDragging(false);
+                      clearDropTarget();
+                    });
+                  }}
+                  onDrop={onDropRight}
+                >
+                  <div className={uiCx(uiLayout.actionsRow, 'mb-2 flex-wrap gap-2')}>
+                    <AppButton type="button" variant="ghost" size="sm" onClick={openFilesHome}>
+                      ← Files Home
+                    </AppButton>
+                    <span className={uiCx(uiTypography.helper, 'hidden sm:inline text-gray-500')}>
+                      Files Home
+                      {selectedCategory !== 'all' ? (
+                        <>
+                          {' / '}
+                          <span className="font-medium text-gray-800">{selectedCategoryLabel}</span>
+                        </>
+                      ) : null}
+                    </span>
+                  </div>
+                  <div className={uiCx(uiLayout.actionsRow, 'mb-3 flex-wrap items-center justify-between gap-3')}>
+                    <div className={uiCx(uiLayout.actionsRow, 'min-w-0 flex-1 flex-wrap gap-3')}>
+                      <div className="max-w-sm min-w-0 flex-1">
+                        <AppInput
+                          value={fileSearchQuery}
+                          onChange={(e) => setFileSearchQuery(e.target.value)}
+                          placeholder="Search by file name..."
+                          leftIcon={<Search className="h-4 w-4" />}
+                          aria-label="Search files"
+                        />
+                      </div>
+                      <p className={uiCx(uiTypography.helper, 'shrink-0 font-semibold text-gray-800')}>
+                        {selectedCategoryLabel}
+                        <span className="ml-1 font-normal text-gray-500">({currentFiles.length})</span>
+                      </p>
+                    </div>
+                    <div className={uiCx(uiLayout.actionsRow, 'shrink-0 flex-wrap gap-2')}>
+                      <FileViewModeToolbar
+                        viewMode={viewMode}
+                        tileSize={tileSize}
+                        showGridToggle={showGridToggle}
+                        onViewModeChange={setViewMode}
+                        onTileSizeChange={setTileSize}
+                      />
+                    {selectedCategory === 'all' && (
+                      <AppSelect
+                        value={uploadCategory}
+                        onChange={(e) => setUploadCategory(e.target.value)}
+                        options={uploadCategoryOptions}
+                        aria-label="Upload category"
+                      />
+                    )}
+                    </div>
+                  </div>
+
+                  <FileListDropHint dropTarget={dropTarget} />
+                  <FileListSelectionBar
+                    selectedCount={fileSelection.selectedCount}
+                    visibleCount={visibleFileIds.length}
+                    onSelectAll={() => fileSelection.selectAll(visibleFileIds)}
+                    onClear={() => fileSelection.clear()}
+                    onDeleteSelected={handleBulkDeleteSelected}
+                    onDownloadSelected={() => void handleBulkDownloadSelected()}
+                    deleting={bulkDeleting}
+                    downloading={bulkDownloading}
+                    className="mb-3"
+                  />
+
+                  {currentFiles.length > 0 ? (
+                    viewMode === 'grid' ? (
+                      <div className={uiCx(uiRadius.card, uiBorders.subtle, 'overflow-hidden bg-white')}>
+                        <FileImageGrid
+                          files={gridImageFiles}
+                          tileSize={tileSize}
+                          selectedIds={fileSelection.selectedIds}
+                          canSelect
+                          canWrite={canEdit}
+                          onPreviewFile={(file) => {
+                            const original = propertyFileById.get(file.id);
+                            if (original) void handleFilePreview(original);
+                          }}
+                          onSelectFile={(fileId, shiftKey) => {
+                            if (shiftKey) fileSelection.toggleRange(fileId, visibleFileIds);
+                            else fileSelection.toggle(fileId);
+                          }}
+                          onFileDragStart={(e, fileId) => startFileDrag(e, fileId)}
+                          onFileDragEnd={endFileDrag}
+                          nonImageSection={
+                            gridNonImageFiles.length > 0 ? (
+                              <FileGridNonImageList>
+                                <AppSortableEntityList layout="flat" className={uiCx(uiRadius.card, uiBorders.subtle, 'overflow-hidden')}>
+                                  <AppSortableEntityListFlatBody gridCols={FILES_GRID_COLS} minWidth="min-w-0">
+                                    {gridNonImageFiles.map((f) => {
+                                      const icon = iconFor(f);
+                                      const name = f.original_name || f.file_object_id || 'File';
+                                      return (
+                                        <AppSortableEntityListRow
+                                          key={f.id}
+                                          as="div"
+                                          variant="flat"
+                                          gridCols={FILES_GRID_COLS}
+                                          minWidth="min-w-0"
+                                          className="cursor-pointer"
+                                          onClick={() => void handleFilePreview(f)}
+                                        >
+                                          <div />
+                                          <div className="flex justify-center">
+                                            <div className={uiCx('flex h-10 w-8 items-center justify-center text-[10px] font-extrabold text-white', uiRadius.control, icon.color)}>
+                                              {icon.label}
+                                            </div>
+                                          </div>
+                                          <span className="min-w-0 truncate text-sm font-bold text-gray-900">{name}</span>
+                                          <span className={uiCx(uiTypography.helper, 'text-gray-600')}>{getFileTypeLabel(f)}</span>
+                                          <span className={uiCx(uiTypography.helper, 'text-gray-600')}>
+                                            {f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString() : '—'}
+                                          </span>
+                                          <div />
+                                        </AppSortableEntityListRow>
+                                      );
+                                    })}
+                                  </AppSortableEntityListFlatBody>
+                                </AppSortableEntityList>
+                              </FileGridNonImageList>
+                            ) : undefined
+                          }
+                          emptyMessage="No images in this view."
+                        />
+                      </div>
+                    ) : (
+                    <AppSortableEntityList layout="flat" className={uiCx(uiRadius.card, uiBorders.subtle, 'overflow-hidden')}>
+                      <AppSortableEntityListHeader variant="flat" gridCols={FILES_GRID_COLS} minWidth="min-w-0">
+                        <div className="flex items-center justify-center">
+                          <AppCheckboxControl
+                            checked={allVisibleSelected}
+                            aria-label={allVisibleSelected ? 'Deselect all files' : 'Select all files'}
+                            onChange={(checked) => {
+                              if (checked) fileSelection.selectAll(visibleFileIds);
+                              else fileSelection.clear();
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0" aria-hidden />
+                        <AppSortableEntityListSortColumn
+                          label="Name"
+                          column="name"
+                          sortBy={sortBy}
+                          sortDir={sortOrder}
+                          onSort={handleSort}
+                        />
+                        <AppSortableEntityListSortColumn
+                          label="Type"
+                          column="type"
+                          sortBy={sortBy}
+                          sortDir={sortOrder}
+                          onSort={handleSort}
+                        />
+                        <AppSortableEntityListSortColumn
+                          label="Upload date"
+                          column="uploaded_at"
+                          sortBy={sortBy}
+                          sortDir={sortOrder}
+                          onSort={handleSort}
+                        />
+                        <div className="min-w-0 w-24" aria-hidden />
+                      </AppSortableEntityListHeader>
+                      <AppSortableEntityListFlatBody gridCols={FILES_GRID_COLS} minWidth="min-w-0">
+                        {currentFiles.map((f) => {
+                          const icon = iconFor(f);
+                          const isImg = f.is_image || String(f.content_type || '').startsWith('image/');
+                          const name = f.original_name || f.file_object_id || 'File';
+                          return (
+                            <AppSortableEntityListRow
+                              key={f.id}
+                              as="div"
+                              variant="flat"
+                              gridCols={FILES_GRID_COLS}
+                              minWidth="min-w-0"
+                              className={uiCx(
+                                'cursor-move',
+                                fileSelection.isSelected(f.id) ? 'bg-brand-red/5' : '',
+                              )}
+                              draggable
+                              onDragStart={(e) => startFileDrag(e, f.id)}
+                              onDragEnd={endFileDrag}
+                            >
+                              <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                                <AppCheckboxControl
+                                  checked={fileSelection.isSelected(f.id)}
+                                  aria-label={`Select ${name}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (e.shiftKey) fileSelection.toggleRange(f.id, visibleFileIds);
+                                    else fileSelection.toggle(f.id);
+                                  }}
+                                />
+                              </div>
+                              <div className="flex justify-center">
+                                {isImg ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleFilePreview(f)}
+                                    className={uiCx(
+                                      'block h-10 w-10 overflow-hidden ring-offset-2 hover:ring-2 hover:ring-brand-red/40 focus:outline-none focus:ring-2 focus:ring-brand-red',
+                                      uiRadius.control,
+                                      uiColors.surfaceSubtle,
+                                    )}
+                                  >
+                                    <img
+                                      src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=64`)}
+                                      alt={name}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleFilePreview(f)}
+                                    className={uiCx(
+                                      'flex h-10 w-8 items-center justify-center text-[10px] font-extrabold text-white hover:opacity-90',
+                                      uiRadius.control,
+                                      icon.color,
+                                    )}
+                                  >
+                                    {icon.label}
+                                  </button>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleFilePreview(f)}
+                                className={uiCx(
+                                  'min-w-0 truncate text-left text-sm font-bold text-gray-900 hover:text-brand-red hover:underline',
+                                )}
+                              >
+                                {name}
+                              </button>
+                              <span className={uiCx(uiTypography.helper, 'text-gray-600')}>{getFileTypeLabel(f)}</span>
+                              <span className={uiCx(uiTypography.helper, 'text-gray-600')}>
+                                {f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString() : '—'}
+                              </span>
+                              <div className="flex w-24 shrink-0 items-center justify-end gap-1.5">
+                                {canEdit ? (
+                                  <AppListRowIconButton
+                                    preset="move"
+                                    label="Move to…"
+                                    onClick={() => openMoveLocationModal(f.id)}
+                                  />
+                                ) : null}
+                                <AppListRowIconButton
+                                  preset="download"
+                                  label="Download"
+                                  onClick={async () => {
+                                    const url = await fetchDownloadUrl(f.file_object_id);
+                                    if (url) window.open(url, '_blank');
+                                  }}
+                                />
+                                <AppListRowIconButton
+                                  preset="delete"
+                                  label="Delete"
+                                  loading={deleteMutation.isPending}
+                                  onClick={() => void handleDeleteFile(f)}
+                                />
+                              </div>
+                            </AppSortableEntityListRow>
+                          );
+                        })}
+                      </AppSortableEntityListFlatBody>
+                    </AppSortableEntityList>
+                    )
+                  ) : (
+                    <AppEmptyState
+                      title="No files in this category"
+                      description='Drag and drop files here or click "Upload file".'
+                      className="border-0 bg-transparent p-0 py-6 shadow-none"
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </AppCard>
+      </div>
+
+      <AppFormModal
+        open={showUpload}
+        onClose={() => setShowUpload(false)}
+        title="Upload files"
+        description="Pick one or more files. You can also drag and drop onto a category or the file area on this page."
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => setShowUpload(false)}>
+              Close
+            </AppButton>
+          </div>
+        }
+      >
+        <div className={uiSpacing.sectionStack}>
+          {(uploadModalContext === 'choose-location' || selectedCategory === 'all') && (
+            <AppSelect
+              label="Category"
+              value={uploadModalContext === 'choose-location' ? uploadDestinationCategory : uploadCategory}
+              onChange={(e) => {
+                if (uploadModalContext === 'choose-location') {
+                  setUploadDestinationCategory(e.target.value);
+                } else {
+                  setUploadCategory(e.target.value);
+                }
+              }}
+              options={uploadCategoryOptions}
+            />
+          )}
+          <AppFileUpload
+            mode="multiple"
+            accept={FILE_LIBRARY_ACCEPT}
+            value={[]}
+            onChange={() => {}}
+            onFilesSelected={async (added) => {
+              if (added.length === 0) return;
+              if (uploadModalContext === 'choose-location' && !uploadDestinationCategory) {
+                toast.error('Select a category');
+                return;
+              }
+              setShowUpload(false);
+              if (uploadModalContext === 'choose-location') {
+                await uploadMultiple(added, uploadDestinationCategory);
+              } else {
+                await uploadMultiple(added);
+              }
+            }}
+            fieldHint={FILE_LIBRARY_UPLOAD_HINT}
+          />
+        </div>
+      </AppFormModal>
+
+      {uploadQueue.length > 0 && (
+        <AppCard
+          className={uiCx('fixed bottom-4 right-4 z-50 w-80 max-h-96 overflow-hidden', uiShadows.elevated)}
+          bodyClassName="!p-0"
+        >
+          <div className={uiCx(uiLayout.actionsRow, 'justify-between border-b px-3 py-2', uiBorders.subtle, uiColors.surfaceSubtle)}>
+            <span className={uiTypography.sectionTitle}>Upload progress</span>
+            <AppButton type="button" variant="ghost" size="sm" onClick={() => setUploadQueue([])}>
+              Clear
+            </AppButton>
+          </div>
+          <div className="max-h-80 overflow-y-auto">
+            {uploadQueue.map((u) => (
+              <div key={u.id} className={uiCx('border-b px-3 py-2 last:border-0', uiBorders.subtle)}>
+                <div className={uiCx(uiTypography.helper, 'truncate font-medium text-gray-900')} title={u.file.name}>
+                  {u.file.name}
+                </div>
+                <div className={uiTypography.helper}>
+                  {u.status === 'pending' && 'Waiting…'}
+                  {u.status === 'uploading' && 'Uploading…'}
+                  {u.status === 'success' && 'Done'}
+                  {u.status === 'error' && (u.error || 'Error')}
+                </div>
+              </div>
+            ))}
+          </div>
+        </AppCard>
+      )}
+
+      {moveLocationFileId ? (
+        <FileMoveLocationModal
+          open
+          onClose={() => setMoveLocationFileId(null)}
+          title="Move files"
+          quickInfo={libraryFilesMoveCategoryQuickInfo}
+          showFolderSelect={false}
+          categoryOptions={moveCategoryOptions}
+          folders={[]}
+          initialCategory={moveLocationInitialCategory}
+          selectedFileCount={moveLocationSelectedCount}
+          onMove={async (destination) => {
+            if (!moveLocationFileId) return;
+            const ids = fileSelection.resolveDragIds(moveLocationFileId);
+            const label =
+              moveCategoryOptions.find((option) => option.value === destination.category)?.label ??
+              destination.category;
+            await moveFilesToCategory(ids, destination.category, label);
+          }}
+        />
+      ) : null}
+
+      <FileImagePreviewModal
+        open={imageGallery.open}
+        items={imageGallery.items}
+        index={imageGallery.index}
+        loading={imageGallery.loading}
+        onClose={imageGallery.close}
+        onPrev={imageGallery.goPrev}
+        onNext={imageGallery.goNext}
+      />
+
+      <FilePdfPreviewModal
+        open={!!previewPdf}
+        url={previewPdf?.url}
+        name={previewPdf?.name}
+        onClose={() => setPreviewPdf(null)}
+      />
+
+      <FileOfficePreviewModal
+        open={!!previewExcel}
+        url={previewExcel?.url}
+        name={previewExcel?.name}
+        onClose={() => setPreviewExcel(null)}
+      />
+    </>
+  );
+}

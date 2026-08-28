@@ -78,6 +78,7 @@ from .routes.print_shop import router as print_shop_router
 from .routes.print_shop_supplies import router as print_shop_supplies_router
 from .routes.inbound_email import router as inbound_email_router
 from .routes.auto_tasks import router as auto_tasks_router
+from .routes.properties import router as properties_router
 
 
 def create_app() -> FastAPI:
@@ -286,6 +287,7 @@ def create_app() -> FastAPI:
     app.include_router(fleet_router, dependencies=_hub)
     app.include_router(company_credit_cards_router, dependencies=_hub)
     app.include_router(fuel_cards_router, dependencies=_hub)
+    app.include_router(properties_router, dependencies=_hub)
     app.include_router(safety_router, dependencies=_hub)
     app.include_router(form_custom_lists_router, dependencies=_hub)
     app.include_router(form_templates_router, dependencies=_hub)
@@ -3203,6 +3205,22 @@ def create_app() -> FastAPI:
                     import sys
                     import os
                     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    from scripts.seed_properties_permissions import seed_properties_permissions
+                    seed_properties_permissions()
+                except Exception as e:
+                    print(f"⚠️  Could not seed properties permissions on startup: {e}")
+                try:
+                    import sys
+                    import os
+                    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    from scripts.seed_property_setting_lists import seed_property_setting_lists
+                    seed_property_setting_lists()
+                except Exception as e:
+                    print(f"⚠️  Could not seed property setting lists on startup: {e}")
+                try:
+                    import sys
+                    import os
+                    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
                     from scripts.seed_settings_permissions import seed_settings_permissions
                     seed_settings_permissions()
                 except Exception as e:
@@ -3234,6 +3252,13 @@ def create_app() -> FastAPI:
             start_hours_reminder_scheduler()
         except Exception as e:
             print(f"⚠️  Could not start hours reminder scheduler: {e}")
+
+        try:
+            from .services.property_alerts_scheduler import start_property_alerts_scheduler
+
+            start_property_alerts_scheduler()
+        except Exception as e:
+            print(f"⚠️  Could not start property alerts scheduler: {e}")
 
         print("[startup] Application startup complete - server ready!")
 

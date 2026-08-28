@@ -34,6 +34,11 @@ const SubcontractorsListPage = lazy(() => import('./pages/SubcontractorsListPage
 const SubcontractorCompanyPage = lazy(() => import('./pages/SubcontractorCompanyPage'));
 const SubcontractorWorkerPage = lazy(() => import('./pages/SubcontractorWorkerPage'));
 const SubcontractorScanPage = lazy(() => import('./pages/SubcontractorScanPage'));
+const PropertiesDashboard = lazy(() => import('./pages/PropertiesDashboard'));
+const PropertiesList = lazy(() => import('./pages/PropertiesList'));
+const PropertyDetail = lazy(() => import('./pages/PropertyDetail'));
+const PropertyApprovalsBoard = lazy(() => import('./pages/PropertyApprovalsBoard'));
+const PropertiesCalendar = lazy(() => import('./pages/PropertiesCalendar'));
 
 import Profile from './pages/Profile';
 import HomePage from './pages/Home';
@@ -276,6 +281,11 @@ export default function App(){
           <Route path="/company-assets/fuel-cards" element={<AppShell><FuelCardsList/></AppShell>} />
           <Route path="/company-assets/fuel-cards/new" element={<AppShell><FuelCardNew/></AppShell>} />
           <Route path="/company-assets/fuel-cards/:id" element={<AppShell><FuelCardDetail/></AppShell>} />
+          <Route path="/properties" element={<AppShell><PropertiesDashboard/></AppShell>} />
+          <Route path="/properties/list" element={<AppShell><PropertiesList/></AppShell>} />
+          <Route path="/properties/approvals" element={<AppShell><PropertyApprovalsBoard/></AppShell>} />
+          <Route path="/properties/calendar" element={<AppShell><PropertiesCalendar/></AppShell>} />
+          <Route path="/properties/:id" element={<AppShell><PropertyDetail/></AppShell>} />
           <Route path="/fleet/equipment" element={<Navigate to="/company-assets/equipment" replace />} />
           <Route path="/fleet/equipment/new" element={<Navigate to="/company-assets/equipment/new" replace />} />
           <Route path="/fleet/equipment/:id" element={<LegacyFleetEquipmentDetailRedirect />} />

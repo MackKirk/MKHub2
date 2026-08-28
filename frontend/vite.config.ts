@@ -58,6 +58,7 @@ const backendProxyPrefixes = [
   '/permissions',
   '/print-shop',
   '/projects',
+  '/properties',
   '/proposals',
   '/quotes',
   '/reviews',

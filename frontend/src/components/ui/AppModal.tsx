@@ -15,6 +15,8 @@ type AppModalProps = {
   headerActions?: ReactNode;
   /** Replaces the default title/description block; close button remains on the right. */
   headerContent?: ReactNode;
+  /** Full-bleed content above the header (e.g. a cover banner). */
+  topContent?: ReactNode;
   /** When false, only the dialog shell and body render (no title row). */
   showHeader?: boolean;
   /** Extra classes on the backdrop (e.g. `z-[200]` when stacked on another modal). */
@@ -43,6 +45,7 @@ export function AppModal({
   size = 'md',
   headerActions,
   headerContent,
+  topContent,
   showHeader = true,
   overlayClassName,
   dialogClassName,
@@ -83,14 +86,17 @@ export function AppModal({
           role="dialog"
           aria-modal="true"
         >
+          {topContent ? <div className="shrink-0 overflow-hidden">{topContent}</div> : null}
           {showHeader ? (
             <header className={uiCx('flex shrink-0 items-start justify-between gap-3', uiSpacing.cardPadding, uiBorders.subtle)}>
+              <div className="min-w-0 flex-1">
               {headerContent ?? (
                 <div className="min-w-0 space-y-1">
                   {title ? <h3 className={uiTypography.sectionTitle}>{title}</h3> : null}
                   {description ? <p className={uiTypography.sectionSubtitle}>{description}</p> : null}
                 </div>
               )}
+              </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 {headerActions}
                 <button

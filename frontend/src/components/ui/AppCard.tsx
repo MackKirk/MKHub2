@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { MouseEventHandler, ReactNode } from 'react';
 import { uiBorders, uiColors, uiCx, uiRadius, uiSpacing, uiTypography } from './tokens';
 
 type AppCardProps = {
@@ -9,13 +9,38 @@ type AppCardProps = {
   children: ReactNode;
   className?: string;
   bodyClassName?: string;
+  onClick?: MouseEventHandler<HTMLElement>;
 };
 
-export function AppCard({ title, subtitle, actions, footer, children, className, bodyClassName }: AppCardProps) {
+export function AppCard({
+  title,
+  subtitle,
+  actions,
+  footer,
+  children,
+  className,
+  bodyClassName,
+  onClick,
+}: AppCardProps) {
   const hasHeader = Boolean(title || subtitle || actions);
   const hasBody = children != null && children !== false;
   return (
-    <section className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, 'overflow-hidden', className)}>
+    <section
+      className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, 'overflow-hidden', className)}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick(e);
+              }
+            }
+          : undefined
+      }
+    >
       {hasHeader ? (
         <header
           className={uiCx(

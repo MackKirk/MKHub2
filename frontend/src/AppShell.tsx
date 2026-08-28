@@ -282,6 +282,8 @@ const IconBusiness = () => (
   </svg>
 );
 
+const IconBuilding = IconBusiness;
+
 const IconSales = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -541,6 +543,14 @@ export default function AppShell({ children }: PropsWithChildren){
         permissionsSet.has('fleet:equipment:write')
       );
     }
+    if (requiredPermission === 'properties:access') {
+      return (
+        has ||
+        permissionsSet.has('properties:dashboard:read') ||
+        permissionsSet.has('properties:company:read') ||
+        permissionsSet.has('properties:family:read')
+      );
+    }
     if (requiredPermission === 'fleet:vehicles:read') {
       return has || permissionsSet.has('fleet:read');
     }
@@ -789,6 +799,17 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'work-orders', label: 'Work Orders', path: '/fleet/work-orders', icon: <IconClipboard />, requiredPermission: 'fleet:work_orders:read' },
         { id: 'inspections', label: 'Inspections', path: '/fleet/inspections', icon: <IconClipboardCheck />, requiredPermission: 'fleet:inspections:read' },
       ]
+    },
+    {
+      id: 'properties',
+      label: 'Properties',
+      icon: <IconBuilding />,
+      items: [
+        { id: 'properties-dashboard', label: 'Dashboard', path: '/properties', icon: <IconBuilding />, requiredPermission: 'properties:access' },
+        { id: 'properties-list', label: 'Properties', path: '/properties/list', icon: <IconBuilding />, requiredPermission: 'properties:access' },
+        { id: 'properties-approvals', label: 'Approvals', path: '/properties/approvals', icon: <IconClipboard />, requiredPermission: 'properties:permits:read' },
+        { id: 'properties-calendar', label: 'Calendar', path: '/properties/calendar', icon: <IconCalendar />, requiredPermission: 'properties:access' },
+      ],
     },
     {
       id: 'company-assets',

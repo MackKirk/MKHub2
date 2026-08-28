@@ -6,6 +6,7 @@ import { Megaphone, Paperclip, Plus, Minus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import CommunityPostRichTextEditor from '@/components/community/CommunityPostRichTextEditor';
+import { CommunityPostBannerPicker } from '@/components/community/CommunityPostBanner';
 import { CommunityNewPostPreviewModal } from '@/components/community/CommunityNewPostPreviewModal';
 import { LocalDateTimeFields } from '@/components/LocalDateTimeFields';
 import {
@@ -16,6 +17,11 @@ import {
   stripHtmlToPlain,
 } from '@/lib/communityPostHtml';
 import { extractMentionsFromEditor } from '@/lib/communityPostEditorUtils';
+import {
+  COMMUNITY_POST_BANNER_MAX_BYTES,
+  clampBannerFocal,
+  isCommunityBannerImageFile,
+} from '@/lib/communityPostBanner';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import {
@@ -58,7 +64,7 @@ const PRIORITIES: { value: string; label: string }[] = [
 const TITLE_SOFT_MAX = 200;
 const CONTENT_SOFT_MAX = 20000;
 
-/** Hero/cover image is deprecated; downloadable files (stored as attachment_files JSON + legacy document_file_id = first). */
+/** Downloadable files (stored as attachment_files JSON + legacy document_file_id = first). */
 const ATTACHMENT_MAX_BYTES = 45 * 1024 * 1024;
 const MAX_COMMUNITY_ATTACHMENTS = 30;
 const ALLOWED_ATTACHMENT_NAME = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|csv|txt|zip|7z|rar|png|jpe?g|gif|webp|svg|mp3|wav|mp4|mov|webm|json|xml)$/i;
@@ -81,6 +87,9 @@ type CommunityPostFormBaseline = {
   content: string;
   priority: string;
   requiresReadConfirmation: boolean;
+  bannerFileId: string | null;
+  bannerFocalX: number;
+  bannerFocalY: number;
   attachments: CommunityPostLocalAttachment[];
   targetType: AudienceTargetType;
   selectedDivisions: string[];
@@ -96,6 +105,9 @@ const NEW_POST_FORM_BASELINE: CommunityPostFormBaseline = {
   content: '<p></p>',
   priority: 'normal',
   requiresReadConfirmation: false,
+  bannerFileId: null,
+  bannerFocalX: 50,
+  bannerFocalY: 50,
   attachments: [],
   targetType: 'all',
   selectedDivisions: [],
@@ -121,6 +133,9 @@ function serializeCommunityPostFormBaseline(b: CommunityPostFormBaseline): strin
     priority: b.priority,
     requiresReadConfirmation: b.requiresReadConfirmation,
     relatedArea: b.relatedArea,
+    bannerFileId: b.bannerFileId,
+    bannerFocalX: clampBannerFocal(b.bannerFocalX),
+    bannerFocalY: clampBannerFocal(b.bannerFocalY),
     targetType: b.targetType,
     divisions: divs,
     groups,
@@ -138,6 +153,9 @@ function deriveBaselineFromExistingPost(existingPost: Record<string, unknown>): 
   const priority = String(existingPost.priority || 'normal');
   const requiresReadConfirmation = !!existingPost.requires_read_confirmation;
   const relatedArea = String(existingPost.related_area || 'general');
+  const bannerFileId = existingPost.photo_file_id ? String(existingPost.photo_file_id) : null;
+  const bannerFocalX = clampBannerFocal(existingPost.banner_focal_x);
+  const bannerFocalY = clampBannerFocal(existingPost.banner_focal_y);
 
   let attachments: CommunityPostLocalAttachment[] = [];
   const fromApi: CommunityPostLocalAttachment[] = Array.isArray(existingPost.attachments)
@@ -201,6 +219,9 @@ function deriveBaselineFromExistingPost(existingPost: Record<string, unknown>): 
     content,
     priority,
     requiresReadConfirmation,
+    bannerFileId,
+    bannerFocalX,
+    bannerFocalY,
     attachments,
     targetType,
     selectedDivisions,
@@ -235,6 +256,10 @@ export default function CommunityNewPost() {
   const [content, setContent] = useState('<p></p>');
   const [priority, setPriority] = useState<string>('normal');
   const [requiresReadConfirmation, setRequiresReadConfirmation] = useState(false);
+  const [bannerFileId, setBannerFileId] = useState<string | null>(null);
+  const [bannerFocalX, setBannerFocalX] = useState(50);
+  const [bannerFocalY, setBannerFocalY] = useState(50);
+  const [bannerUploading, setBannerUploading] = useState(false);
   const [attachments, setAttachments] = useState<CommunityPostLocalAttachment[]>([]);
   const [targetType, setTargetType] = useState<AudienceTargetType>('all');
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
@@ -304,6 +329,9 @@ export default function CommunityNewPost() {
     setPriority(b.priority);
     setRequiresReadConfirmation(b.requiresReadConfirmation);
     setRelatedArea(b.relatedArea);
+    setBannerFileId(b.bannerFileId);
+    setBannerFocalX(b.bannerFocalX);
+    setBannerFocalY(b.bannerFocalY);
     setAttachments(b.attachments);
     setTargetType(b.targetType);
     setSelectedDivisions(b.selectedDivisions);
@@ -355,8 +383,9 @@ export default function CommunityNewPost() {
         content: sanitizeCommunityPostHtml(content),
         is_urgent: isUrgent,
         requires_read_confirmation: requiresReadConfirmation,
-        /* Cover/hero image removed — always clear legacy photo_file_id when saving from this form */
-        photo_file_id: null,
+        photo_file_id: bannerFileId,
+        banner_focal_x: bannerFileId ? clampBannerFocal(bannerFocalX) : 50,
+        banner_focal_y: bannerFileId ? clampBannerFocal(bannerFocalY) : 50,
         document_file_id: null,
         attachments: attachments.map((a) => ({ file_id: a.fileId, name: a.name })),
         target_type: targetType === 'groups' ? 'users' : targetType,
@@ -395,6 +424,9 @@ export default function CommunityNewPost() {
       content,
       priority,
       requiresReadConfirmation,
+      bannerFileId,
+      bannerFocalX,
+      bannerFocalY,
       attachments,
       targetType,
       selectedDivisions,
@@ -525,6 +557,36 @@ export default function CommunityNewPost() {
     setAttachments((prev) => prev.filter((a) => a.fileId !== fileId));
   };
 
+  const handleBannerPick = async (file: File) => {
+    if (!isCommunityBannerImageFile(file)) {
+      toast.error(
+        `Use a PNG, JPEG, WebP, or GIF up to ${Math.round(COMMUNITY_POST_BANNER_MAX_BYTES / (1024 * 1024))} MB.`,
+      );
+      return;
+    }
+    setBannerUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('original_name', file.name);
+      formData.append('content_type', file.type || 'image/jpeg');
+      formData.append('project_id', '');
+      formData.append('client_id', '');
+      formData.append('employee_id', '');
+      formData.append('category_id', 'community-banner');
+      const conf = await api<{ id: string }>('POST', '/files/upload-proxy', formData);
+      if (!conf?.id) throw new Error('Invalid upload response');
+      setBannerFileId(String(conf.id));
+      setBannerFocalX(50);
+      setBannerFocalY(50);
+      toast.success('Banner added');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to upload banner');
+    } finally {
+      setBannerUploading(false);
+    }
+  };
+
   const toggleDivision = (divisionId: string) => {
     setSelectedDivisions((prev) =>
       prev.includes(divisionId) ? prev.filter((id) => id !== divisionId) : [...prev, divisionId]
@@ -551,6 +613,9 @@ export default function CommunityNewPost() {
         content,
         priority,
         requiresReadConfirmation,
+        bannerFileId,
+        bannerFocalX,
+        bannerFocalY,
         attachments,
         targetType,
         selectedDivisions,
@@ -565,6 +630,9 @@ export default function CommunityNewPost() {
       content,
       priority,
       requiresReadConfirmation,
+      bannerFileId,
+      bannerFocalX,
+      bannerFocalY,
       attachments,
       targetType,
       selectedDivisions,
@@ -590,6 +658,9 @@ export default function CommunityNewPost() {
     setPriority(b.priority);
     setRequiresReadConfirmation(b.requiresReadConfirmation);
     setRelatedArea(b.relatedArea);
+    setBannerFileId(b.bannerFileId);
+    setBannerFocalX(b.bannerFocalX);
+    setBannerFocalY(b.bannerFocalY);
     setAttachments(b.attachments);
     setTargetType(b.targetType);
     setSelectedDivisions(b.selectedDivisions);
@@ -700,6 +771,25 @@ export default function CommunityNewPost() {
 
   const composerBlock = (
     <AppCard className="flex lg:min-h-0 lg:flex-1 flex-col" bodyClassName="flex flex-col gap-5 lg:min-h-0 lg:flex-1">
+      <div className="shrink-0">
+        <CommunityPostBannerPicker
+          fileId={bannerFileId}
+          focalX={bannerFocalX}
+          focalY={bannerFocalY}
+          uploading={bannerUploading}
+          onPickFile={handleBannerPick}
+          onFocalChange={(x, y) => {
+            setBannerFocalX(x);
+            setBannerFocalY(y);
+          }}
+          onRemove={() => {
+            setBannerFileId(null);
+            setBannerFocalX(50);
+            setBannerFocalY(50);
+          }}
+        />
+      </div>
+
       <div className="shrink-0">
         <AppInput
           id="title"
@@ -1166,6 +1256,9 @@ export default function CommunityNewPost() {
         relatedArea={relatedArea}
         requiresReadConfirmation={requiresReadConfirmation}
         attachments={attachments}
+        bannerFileId={bannerFileId}
+        bannerFocalX={bannerFocalX}
+        bannerFocalY={bannerFocalY}
         targetType={targetType}
         divisionCount={selectedDivisions.length}
         selectedEmployeeCount={selectedAudienceUserIds.length}
