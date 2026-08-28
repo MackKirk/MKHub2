@@ -13,6 +13,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth.security import get_current_user, require_permissions, _has_permission
+from ..config import settings
 from ..db import get_db
 from ..models.models import (
     DocumentSignatureParticipant,
@@ -336,6 +337,111 @@ def _current_pdf_id(row: DocumentSignatureRequest) -> UUID:
     return row.current_pdf_file_id or row.source_pdf_file_id
 
 
+def _create_signature_request(
+    db: Session,
+    user: User,
+    *,
+    doc: UserDocument,
+    pdf_bytes: bytes,
+    normalized: dict,
+    required_roles: List[str],
+    assignments: dict,
+    labels: dict,
+    signing_deadline_days: Optional[int],
+    block_hub_access: bool,
+    message_to_signers: Optional[str],
+) -> DocumentSignatureRequest:
+    """Persist DocumentSignatureRequest + participants + first-signer notification."""
+    first_role = required_roles[0]
+    first_signer_id = assignments[first_role]
+
+    safe_title = re.sub(r"[^\w\s.-]", "", (doc.title or "document"))[:80] or "document"
+    fname = f"{safe_title}_for_signature.pdf"
+    source_fo = save_document_signature_pdf(
+        db,
+        pdf_bytes,
+        original_name=fname,
+        category="document-signature-request",
+        owner_user_id=first_signer_id,
+        created_by_id=user.id,
+    )
+    now = datetime.now(timezone.utc)
+    row = DocumentSignatureRequest(
+        user_document_id=doc.id,
+        source_pdf_file_id=source_fo.id,
+        current_pdf_file_id=source_fo.id,
+        signature_template=normalized,
+        signer_user_id=first_signer_id,
+        requested_by_id=user.id,
+        status="pending",
+        display_name=(doc.title or "Document").strip() or "Document",
+        signing_deadline_days=signing_deadline_days,
+        block_hub_access=block_hub_access,
+        message_to_signers=message_to_signers,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    db.flush()
+
+    for idx, role in enumerate(required_roles):
+        status = "ready" if idx == 0 else "pending"
+        part = DocumentSignatureParticipant(
+            request_id=row.id,
+            role=role,
+            role_label=(labels.get(role) or role)[:120],
+            signer_user_id=assignments[role],
+            sort_order=idx,
+            status=status,
+            created_at=now,
+        )
+        if idx == 0:
+            set_participant_turn_deadline(part, row, now=now)
+        db.add(part)
+
+    disp = (doc.title or "Document").strip() or "Document"
+    role_lbl = labels.get(first_role) or first_role
+    db.add(
+        Notification(
+            user_id=first_signer_id,
+            channel="push",
+            template_key="document_signature_pending",
+            payload_json={
+                "title": "Document to sign",
+                "message": f'"{disp}" is waiting for your signature ({role_lbl}).',
+                "type": "default",
+                "link": _signature_notification_link(),
+                "read": False,
+                "metadata": {
+                    "request_id": str(row.id),
+                    "user_document_id": str(doc.id),
+                    "role": first_role,
+                },
+            },
+            status="pending",
+            created_at=now,
+        )
+    )
+    db.commit()
+    db.refresh(row)
+    try:
+        create_audit_log(
+            db,
+            entity_type="document_signature_request",
+            entity_id=str(row.id),
+            action="signature_request.created",
+            actor_id=str(user.id),
+            changes_json={
+                "signing_deadline_days": signing_deadline_days,
+                "block_hub_access": block_hub_access,
+            },
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+    return row
+
+
 @router.post("/documents/{document_id}/send-for-signature")
 def send_for_signature(
     document_id: str,
@@ -433,97 +539,21 @@ def send_for_signature(
     if not getattr(doc, "signer_roles", None):
         doc.signer_roles = roles_catalog
 
-    first_role = required_roles[0]
-    first_signer_id = assignments[first_role]
-
     signing_deadline_days, block_hub_access, message_to_signers = _parse_signing_settings(payload or {}, user)
 
-    safe_title = re.sub(r"[^\w\s.-]", "", (doc.title or "document"))[:80] or "document"
-    fname = f"{safe_title}_for_signature.pdf"
-    source_fo = save_document_signature_pdf(
+    row = _create_signature_request(
         db,
-        pdf_bytes,
-        original_name=fname,
-        category="document-signature-request",
-        owner_user_id=first_signer_id,
-        created_by_id=user.id,
-    )
-    now = datetime.now(timezone.utc)
-    row = DocumentSignatureRequest(
-        user_document_id=doc.id,
-        source_pdf_file_id=source_fo.id,
-        current_pdf_file_id=source_fo.id,
-        signature_template=normalized,
-        signer_user_id=first_signer_id,
-        requested_by_id=user.id,
-        status="pending",
-        display_name=(doc.title or "Document").strip() or "Document",
+        user,
+        doc=doc,
+        pdf_bytes=pdf_bytes,
+        normalized=normalized,
+        required_roles=required_roles,
+        assignments=assignments,
+        labels=labels,
         signing_deadline_days=signing_deadline_days,
         block_hub_access=block_hub_access,
         message_to_signers=message_to_signers,
-        created_at=now,
-        updated_at=now,
     )
-    db.add(row)
-    db.flush()
-
-    first_part: Optional[DocumentSignatureParticipant] = None
-    for idx, role in enumerate(required_roles):
-        status = "ready" if idx == 0 else "pending"
-        part = DocumentSignatureParticipant(
-            request_id=row.id,
-            role=role,
-            role_label=(labels.get(role) or role)[:120],
-            signer_user_id=assignments[role],
-            sort_order=idx,
-            status=status,
-            created_at=now,
-        )
-        if idx == 0:
-            set_participant_turn_deadline(part, row, now=now)
-            first_part = part
-        db.add(part)
-
-    disp = (doc.title or "Document").strip() or "Document"
-    role_lbl = labels.get(first_role) or first_role
-    db.add(
-        Notification(
-            user_id=first_signer_id,
-            channel="push",
-            template_key="document_signature_pending",
-            payload_json={
-                "title": "Document to sign",
-                "message": f'"{disp}" is waiting for your signature ({role_lbl}).',
-                "type": "default",
-                "link": _signature_notification_link(),
-                "read": False,
-                "metadata": {
-                    "request_id": str(row.id),
-                    "user_document_id": str(doc.id),
-                    "role": first_role,
-                },
-            },
-            status="pending",
-            created_at=now,
-        )
-    )
-    db.commit()
-    db.refresh(row)
-    try:
-        create_audit_log(
-            db,
-            entity_type="document_signature_request",
-            entity_id=str(row.id),
-            action="signature_request.created",
-            actor_id=str(user.id),
-            changes_json={
-                "signing_deadline_days": signing_deadline_days,
-                "block_hub_access": block_hub_access,
-            },
-        )
-        db.commit()
-    except Exception:
-        db.rollback()
     return _request_dict(row, db)
 
 
@@ -913,6 +943,7 @@ async def me_sign(
             requested_at=row.created_at or now,
             acceptance_statement=acceptance,
             signers=cert_signers,
+            tz_name=settings.tz_default or "America/Vancouver",
         )
         fname = f"{safe_name}_signed_{now.strftime('%Y%m%d')}.pdf"
         doc = db.query(UserDocument).filter(UserDocument.id == row.user_document_id).first()

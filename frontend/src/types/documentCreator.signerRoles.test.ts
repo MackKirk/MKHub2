@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   LEGACY_SIGNER_ROLE_IDS,
+  collectPresentSignerRoleIdsFromTemplate,
   createDefaultSignerRoles,
   ensureCoreEmployeeCompanyRoles,
   ensureSignerRolesForDocument,
+  hasSigningFieldsInTemplate,
   pruneUnusedSigners,
+  signersFromSignatureTemplate,
 } from '@/types/documentCreator';
 
 describe('signer roles core Employee/Company', () => {
@@ -41,5 +44,33 @@ describe('signer roles core Employee/Company', () => {
     ]);
     const pruned = pruneUnusedSigners(roles, [{ elements: [] }]);
     expect(pruned.map((r) => r.label).sort()).toEqual(['Company', 'Employee']);
+  });
+});
+
+describe('signature template send signers', () => {
+  it('collectPresentSignerRoleIdsFromTemplate ignores non-signing fields', () => {
+    const ids = collectPresentSignerRoleIdsFromTemplate({
+      fields: [
+        { type: 'employee_info', assignee: 'employee' },
+        { type: 'text', assignee: 'user' },
+      ],
+    });
+    expect(ids).toEqual([]);
+    expect(hasSigningFieldsInTemplate({ fields: [{ type: 'text', assignee: 'employee' }] })).toBe(false);
+  });
+
+  it('maps employee and user assignees to stable role ids with User label', () => {
+    const template = {
+      fields: [
+        { type: 'signature', assignee: 'employee' },
+        { type: 'date', assignee: 'user' },
+      ],
+    };
+    expect(collectPresentSignerRoleIdsFromTemplate(template)).toEqual([
+      LEGACY_SIGNER_ROLE_IDS.employee,
+      LEGACY_SIGNER_ROLE_IDS.company,
+    ]);
+    const signers = signersFromSignatureTemplate(template);
+    expect(signers.map((s) => s.label)).toEqual(['Employee', 'User']);
   });
 });

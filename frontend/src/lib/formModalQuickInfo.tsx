@@ -1942,6 +1942,41 @@ export const onboardingDocPreferencesQuickInfo = formModalQuickInfo({
   ),
 });
 
+/** HR Onboarding — resend documents to users (Onboarding Admin → Monitoring). */
+export const onboardingResendQuickInfo = formModalQuickInfo({
+  purpose: (
+    <>
+      Manually assign one or more onboarding documents to specific people for signature — useful for documents set to
+      manual-only delivery, or when someone needs a document again.
+    </>
+  ),
+  howToUse: (
+    <>
+      Choose the {uiLabel('Base document(s)')} and the {uiLabel('Users')} who should receive them. Use{' '}
+      {uiLabel('Select all')} on either field to include every option, or {uiLabel('Clear')} to start over.
+    </>
+  ),
+  behavior: (
+    <>
+      Each selected document is created as a new pending item for each selected user, with a signing window based on
+      that document&apos;s default (usually 7 days). Recipients also get a notification linking to Personal → Signatures.
+    </>
+  ),
+  actions: (
+    <>
+      {uiLabel('Resend')} creates the pending items and notifications. {uiLabel('Cancel')} closes without sending
+      anything.
+    </>
+  ),
+});
+
+export const onboardingResendFieldHints = {
+  documents:
+    'Base document(s)\n\nChoose which onboarding PDFs to assign. Each selected document is sent to every selected user as a new pending signature item.',
+  users:
+    'Users\n\nPeople who should receive the selected documents. Each person gets a new pending item and a notification to sign.',
+} as const;
+
 /** Users — invite new employee wizard. */
 export const inviteUserFieldHints = {
   email_personal:

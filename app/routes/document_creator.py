@@ -13,7 +13,19 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from ..db import get_db
-from ..models.models import DocumentTemplate, DocumentType, UserDocument, User, FileObject, Project, Client, ClientSite, EmployeeProfile, DocumentSignatureRequest
+from ..models.models import (
+    DocumentTemplate,
+    DocumentType,
+    UserDocument,
+    User,
+    FileObject,
+    Project,
+    Client,
+    ClientSite,
+    EmployeeProfile,
+    DocumentSignatureRequest,
+    DocumentSignatureParticipant,
+)
 from ..auth.security import get_current_user, require_permissions, _has_permission, _user_is_admin
 
 
@@ -56,7 +68,7 @@ class DocumentPage(BaseModel):
 
 
 class DocumentCreate(BaseModel):
-    title: str
+    title: Optional[str] = None
     document_type_id: Optional[str] = None
     project_id: Optional[str] = None
     subject_user_id: Optional[str] = None  # HR user-scoped builder; mutually exclusive with project_id
@@ -256,10 +268,115 @@ def _doc_to_out(d: UserDocument, db: Optional[Session] = None) -> dict:
 _LIST_PREVIEW_PAGE_LIMIT = 4
 
 
-def _doc_to_summary(d: UserDocument) -> dict:
+def _document_scope(d: UserDocument) -> str:
+    if getattr(d, "subject_user_id", None):
+        return "user"
+    if d.project_id:
+        return "project"
+    return "standalone"
+
+
+def _signature_status_for_document(
+    d: UserDocument,
+    latest_request: Optional[DocumentSignatureRequest],
+    participants: Optional[List[DocumentSignatureParticipant]],
+) -> dict:
+    """Derive list-row signature badge from latest non-cancelled request or page fields."""
+    parts = participants or []
+    if latest_request is not None:
+        if latest_request.status == "completed":
+            return {
+                "signature_status": "signed",
+                "signature_label": "SIGNED",
+                "signature_signed_count": None,
+                "signature_total_count": None,
+            }
+        if latest_request.status in ("pending", "in_progress"):
+            total = len(parts)
+            signed = sum(1 for p in parts if p.status == "signed")
+            return {
+                "signature_status": "in_progress",
+                "signature_label": f"{signed} OF {total} SIGNED",
+                "signature_signed_count": signed,
+                "signature_total_count": total,
+            }
+
+    from ..document_creator.signature_fields import build_signature_template_payload
+
+    pages = d.pages if isinstance(d.pages, list) else []
+    peek = build_signature_template_payload(pages)
+    fields = peek.get("fields") or []
+    if fields:
+        return {
+            "signature_status": "ready",
+            "signature_label": "READY",
+            "signature_signed_count": None,
+            "signature_total_count": None,
+        }
+    return {
+        "signature_status": "draft",
+        "signature_label": "DRAFT",
+        "signature_signed_count": None,
+        "signature_total_count": None,
+    }
+
+
+def _batch_signature_context(
+    db: Session, doc_ids: List[uuid.UUID]
+) -> dict[uuid.UUID, tuple[Optional[DocumentSignatureRequest], List[DocumentSignatureParticipant]]]:
+    if not doc_ids:
+        return {}
+    rows = (
+        db.query(DocumentSignatureRequest)
+        .filter(DocumentSignatureRequest.user_document_id.in_(doc_ids))
+        .order_by(
+            DocumentSignatureRequest.user_document_id.asc(),
+            DocumentSignatureRequest.created_at.desc(),
+        )
+        .all()
+    )
+    latest_by_doc: dict[uuid.UUID, DocumentSignatureRequest] = {}
+    for row in rows:
+        did = row.user_document_id
+        if did in latest_by_doc:
+            continue
+        if row.status == "cancelled":
+            continue
+        latest_by_doc[did] = row
+
+    request_ids = [r.id for r in latest_by_doc.values()]
+    parts_by_request: dict[uuid.UUID, List[DocumentSignatureParticipant]] = {}
+    if request_ids:
+        all_parts = (
+            db.query(DocumentSignatureParticipant)
+            .filter(DocumentSignatureParticipant.request_id.in_(request_ids))
+            .order_by(DocumentSignatureParticipant.sort_order.asc())
+            .all()
+        )
+        for p in all_parts:
+            parts_by_request.setdefault(p.request_id, []).append(p)
+
+    out: dict[uuid.UUID, tuple[Optional[DocumentSignatureRequest], List[DocumentSignatureParticipant]]] = {}
+    for did in doc_ids:
+        req = latest_by_doc.get(did)
+        parts = parts_by_request.get(req.id, []) if req else []
+        out[did] = (req, parts)
+    return out
+
+
+def _doc_to_summary(
+    d: UserDocument,
+    db: Optional[Session] = None,
+    user: Optional[User] = None,
+    *,
+    signature_ctx: Optional[
+        dict[uuid.UUID, tuple[Optional[DocumentSignatureRequest], List[DocumentSignatureParticipant]]]
+    ] = None,
+    projects_by_id: Optional[dict[uuid.UUID, Project]] = None,
+) -> dict:
     """Slim list payload: metadata + at most the first N pages for list thumbnails."""
     pages = d.pages if isinstance(d.pages, list) else []
-    return {
+    out = {
         "id": str(d.id),
         "title": d.title,
         "document_type_id": str(d.document_type_id) if d.document_type_id else None,
@@ -271,6 +388,59 @@ def _doc_to_summary(d: UserDocument) -> dict:
         "created_at": d.created_at.isoformat() if d.created_at else None,
         "updated_at": d.updated_at.isoformat() if d.updated_at else None,
     }
+    if db is None or user is None:
+        return out
+
+    scope = _document_scope(d)
+    out["scope"] = scope
+    out["can_edit"] = _can_access_document(user, d, db, require_write=True)
+
+    if d.created_by:
+        out["created_by_name"] = _holder_display_name(db, d.created_by)
+
+    scope_label: Optional[str] = None
+    project_meta: Optional[dict] = None
+    if scope == "project" and d.project_id:
+        proj = (projects_by_id or {}).get(d.project_id)
+        if proj is None:
+            proj = db.query(Project).filter(Project.id == d.project_id).first()
+        if proj:
+            scope_label = (proj.name or "").strip() or None
+            project_meta = {
+                "id": str(proj.id),
+                "business_line": getattr(proj, "business_line", None),
+                "is_bidding": bool(getattr(proj, "is_bidding", False)),
+            }
+    elif scope == "user" and getattr(d, "subject_user_id", None):
+        scope_label = _holder_display_name(db, d.subject_user_id)
+    out["scope_label"] = scope_label
+    if project_meta:
+        out["project_meta"] = project_meta
+
+    sig_ctx = signature_ctx or {}
+    req, parts = sig_ctx.get(d.id, (None, []))
+    out.update(_signature_status_for_document(d, req, parts))
+    return out
+
+
+def _summaries_for_documents(docs: List[UserDocument], db: Session, user: User) -> List[dict]:
+    doc_ids = [d.id for d in docs]
+    signature_ctx = _batch_signature_context(db, doc_ids)
+    project_ids = {d.project_id for d in docs if d.project_id}
+    projects_by_id: dict[uuid.UUID, Project] = {}
+    if project_ids:
+        for proj in db.query(Project).filter(Project.id.in_(project_ids)).all():
+            projects_by_id[proj.id] = proj
+    return [
+        _doc_to_summary(
+            d,
+            db,
+            user,
+            signature_ctx=signature_ctx,
+            projects_by_id=projects_by_id,
+        )
+        for d in docs
+    ]
 
 
 def _clone_elements_with_new_ids(elements: Optional[list], prefix: str) -> list:
@@ -1142,15 +1312,17 @@ def list_documents(
             )
     else:
         # Creator's hub Document Builder: only true standalone docs (no project, no subject user).
+        # Exclude signature-editor envelope docs (send-for-signature from PDF templates).
         q = db.query(UserDocument).filter(
             UserDocument.created_by == user.id,
             UserDocument.project_id.is_(None),
             UserDocument.subject_user_id.is_(None),
+            UserDocument.signature_template_id.is_(None),
         )
     docs = q.order_by(
         UserDocument.updated_at.desc().nullslast(), UserDocument.created_at.desc()
     ).all()
-    return [_doc_to_summary(d) for d in docs]
+    return _summaries_for_documents(docs, db, user)
 
 
 @router.post("/documents", response_model=dict)
@@ -1190,31 +1362,34 @@ def create_document(
         if not doc_type:
             raise HTTPException(status_code=404, detail="Document type not found")
         type_signer_roles = getattr(doc_type, "signer_roles", None)
-        pt_list = doc_type.page_templates or []
-        if not isinstance(pt_list, list):
-            pt_list = []
-        pages = []
-        for idx, entry in enumerate(pt_list):
-            if not isinstance(entry, dict):
-                pages.append({"template_id": None, "elements": []})
-                continue
-            tid = entry.get("template_id")
-            if not tid:
-                pages.append({"template_id": None, "elements": [], "margins": entry.get("margins")})
-                continue
-            try:
-                tuid = uuid.UUID(tid) if isinstance(tid, str) else tid
-            except (ValueError, TypeError):
-                pages.append({"template_id": None, "elements": [], "margins": entry.get("margins")})
-                continue
-            template = db.query(DocumentTemplate).filter(DocumentTemplate.id == tuid).first()
-            if not template:
-                pages.append({"template_id": str(tuid), "elements": [], "margins": entry.get("margins")})
-                continue
-            entry_margins = entry.get("margins")
-            entry_elements = entry.get("elements") if isinstance(entry.get("elements"), list) else []
-            elements = _clone_elements_with_new_ids(entry_elements, f"p{idx}") if entry_elements else []
-            pages.append({"template_id": str(tuid), "margins": entry_margins, "elements": elements})
+        if body.pages is not None:
+            pages = body.pages
+        else:
+            pt_list = doc_type.page_templates or []
+            if not isinstance(pt_list, list):
+                pt_list = []
+            pages = []
+            for idx, entry in enumerate(pt_list):
+                if not isinstance(entry, dict):
+                    pages.append({"template_id": None, "elements": []})
+                    continue
+                tid = entry.get("template_id")
+                if not tid:
+                    pages.append({"template_id": None, "elements": [], "margins": entry.get("margins")})
+                    continue
+                try:
+                    tuid = uuid.UUID(tid) if isinstance(tid, str) else tid
+                except (ValueError, TypeError):
+                    pages.append({"template_id": None, "elements": [], "margins": entry.get("margins")})
+                    continue
+                template = db.query(DocumentTemplate).filter(DocumentTemplate.id == tuid).first()
+                if not template:
+                    pages.append({"template_id": str(tuid), "elements": [], "margins": entry.get("margins")})
+                    continue
+                entry_margins = entry.get("margins")
+                entry_elements = entry.get("elements") if isinstance(entry.get("elements"), list) else []
+                elements = _clone_elements_with_new_ids(entry_elements, f"p{idx}") if entry_elements else []
+                pages.append({"template_id": str(tuid), "margins": entry_margins, "elements": elements})
     # Auto-fill tokens (project / employee fields + Auto Date at document create time)
     now = datetime.now(timezone.utc)
     token_values = _project_token_values(pid, db, when=now, employee_user_id=sid)
@@ -1226,8 +1401,38 @@ def create_document(
         signer_roles = ensure_document_signer_roles(type_signer_roles, pages)
     else:
         signer_roles = ensure_document_signer_roles(None, pages)
+    from ..services.document_title import (
+        build_scoped_document_title,
+        unique_title_in_scope,
+    )
+
+    if pid is not None or sid is not None:
+        doc_title = unique_title_in_scope(
+            db,
+            build_scoped_document_title(
+                db,
+                document_type_id=dtype_id,
+                pages=pages,
+                project_id=pid,
+                subject_user_id=sid,
+            ),
+            project_id=pid,
+            subject_user_id=sid,
+        )
+    else:
+        explicit_title = (body.title or "").strip()
+        if explicit_title:
+            doc_title = explicit_title
+        else:
+            doc_title = build_scoped_document_title(
+                db,
+                document_type_id=dtype_id,
+                pages=pages,
+                project_id=None,
+                subject_user_id=None,
+            )
     doc = UserDocument(
-        title=body.title or "Sem título",
+        title=doc_title,
         document_type_id=dtype_id,
         project_id=pid,
         subject_user_id=sid,
@@ -1457,7 +1662,24 @@ def update_document(
             )
 
     if body.title is not None:
-        doc.title = body.title
+        from ..services.document_title import title_taken_in_scope
+
+        new_title = body.title.strip()
+        if (doc.project_id or doc.subject_user_id) and title_taken_in_scope(
+            db,
+            new_title,
+            project_id=doc.project_id,
+            subject_user_id=doc.subject_user_id,
+            exclude_id=doc.id,
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "document_title_taken",
+                    "message": "A document with this name already exists in this scope.",
+                },
+            )
+        doc.title = new_title
     if body.project_id is not None:
         doc.project_id = uuid.UUID(body.project_id) if body.project_id else None
     if body.subject_user_id is not None:

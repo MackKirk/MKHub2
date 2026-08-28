@@ -30,7 +30,12 @@ const PANEL_OPTIONS = {
   preferredMaxHeight: 384,
 };
 
-export default function NotificationBell() {
+type NotificationBellProps = {
+  /** Hub locked — show bell chrome only, never badge or notification content. */
+  hubAccessBlocked?: boolean;
+};
+
+export default function NotificationBell({ hubAccessBlocked = false }: NotificationBellProps) {
   const [isOpen, setIsOpen] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -47,7 +52,8 @@ export default function NotificationBell() {
         return [];
       }
     },
-    refetchInterval: 30000,
+    refetchInterval: hubAccessBlocked ? false : 30000,
+    enabled: !hubAccessBlocked,
   });
 
   const { data: unreadCount } = useQuery({
@@ -60,10 +66,12 @@ export default function NotificationBell() {
         return 0;
       }
     },
-    refetchInterval: 30000,
+    refetchInterval: hubAccessBlocked ? false : 30000,
+    enabled: !hubAccessBlocked,
   });
 
-  const unread = unreadCount ?? 0;
+  const unread = hubAccessBlocked ? 0 : (unreadCount ?? 0);
+  const visibleNotifications = hubAccessBlocked ? [] : (notifications ?? []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -122,9 +130,9 @@ export default function NotificationBell() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          {notifications && notifications.length > 0 ? (
+          {visibleNotifications.length > 0 ? (
             <ul className="divide-y divide-gray-100">
-              {notifications.map((notif) => {
+              {visibleNotifications.map((notif) => {
                 const { Icon, className } = getNotificationIconMeta(notif.type || 'default');
                 return (
                   <li key={notif.id}>
@@ -178,19 +186,21 @@ export default function NotificationBell() {
           )}
         </div>
 
-        <div className={uiCx('shrink-0 border-t border-gray-100', uiSpacing.compactCardPadding)}>
-          <AppButton
-            variant="primary"
-            size="md"
-            className="w-full"
-            onClick={() => {
-              closeDropdown();
-              navigate('/notifications');
-            }}
-          >
-            Show all notifications
-          </AppButton>
-        </div>
+        {!hubAccessBlocked ? (
+          <div className={uiCx('shrink-0 border-t border-gray-100', uiSpacing.compactCardPadding)}>
+            <AppButton
+              variant="primary"
+              size="md"
+              className="w-full"
+              onClick={() => {
+                closeDropdown();
+                navigate('/notifications');
+              }}
+            >
+              Show all notifications
+            </AppButton>
+          </div>
+        ) : null}
       </div>
     ) : null;
 

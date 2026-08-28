@@ -30,23 +30,42 @@ import {
 } from '@/components/ui';
 import {
   collectPresentSignerRoleIds,
+  collectPresentSignerRoleIdsFromTemplate,
+  signersFromSignatureTemplate,
   type DocumentSignerRoleDef,
   type DocElement,
+  type SignatureTemplatePayloadRef,
 } from '@/types/documentCreator';
 import { sendForSignatureQuickInfo } from '@/lib/formModalQuickInfo';
 
-type Props = {
+type BaseProps = {
   open: boolean;
-  documentId: string;
   documentTitle: string;
-  pages: { elements?: DocElement[] }[];
-  signerRoles: DocumentSignerRoleDef[];
   onClose: () => void;
   onSent: () => void;
-  flushSave: () => Promise<boolean>;
   /** When set (user Document Builder), Employee signer is fixed to this user. */
   lockedSubjectUserId?: string | null;
 };
+
+type DocumentModeProps = BaseProps & {
+  documentId: string;
+  pages: { elements?: DocElement[] }[];
+  signerRoles: DocumentSignerRoleDef[];
+  flushSave: () => Promise<boolean>;
+  templateId?: never;
+  signatureTemplate?: never;
+};
+
+type TemplateModeProps = BaseProps & {
+  templateId: string;
+  signatureTemplate: SignatureTemplatePayloadRef | null | undefined;
+  documentId?: never;
+  pages?: never;
+  signerRoles?: never;
+  flushSave?: never;
+};
+
+type Props = DocumentModeProps | TemplateModeProps;
 
 function isEmployeeSigner(signer: DocumentSignerRoleDef): boolean {
   return Boolean(signer.fillsEmployeeTokens) || /^employee$/i.test(signer.label);
@@ -115,36 +134,41 @@ function SortableSignerRow({
   );
 }
 
-export default function SendForSignatureModal({
-  open,
-  documentId,
-  documentTitle,
-  pages,
-  signerRoles,
-  onClose,
-  onSent,
-  flushSave,
-  lockedSubjectUserId = null,
-}: Props) {
-  const roleIds = useMemo(
-    () => collectPresentSignerRoleIds(pages, signerRoles),
-    [pages, signerRoles],
-  );
-  const signersNeeded = useMemo(
-    () =>
-      roleIds
-        .map(
-          (id) =>
-            signerRoles.find((r) => r.id === id) || {
-              id,
-              label: 'Signer',
-              sortOrder: 999,
-              fillsEmployeeTokens: false,
-            },
-        )
-        .sort((a, b) => a.sortOrder - b.sortOrder),
-    [roleIds, signerRoles],
-  );
+export default function SendForSignatureModal(props: Props) {
+  const {
+    open,
+    documentTitle,
+    onClose,
+    onSent,
+    lockedSubjectUserId = null,
+  } = props;
+  const isTemplateMode = 'templateId' in props && Boolean(props.templateId);
+  const documentId = !isTemplateMode ? props.documentId : undefined;
+  const templateId = isTemplateMode ? props.templateId : undefined;
+  const pages = !isTemplateMode ? props.pages : undefined;
+  const signerRoles = !isTemplateMode ? props.signerRoles : undefined;
+  const signatureTemplate = isTemplateMode ? props.signatureTemplate : undefined;
+  const flushSave = !isTemplateMode ? props.flushSave : undefined;
+
+  const roleIds = useMemo(() => {
+    if (isTemplateMode) return collectPresentSignerRoleIdsFromTemplate(signatureTemplate);
+    return collectPresentSignerRoleIds(pages, signerRoles!);
+  }, [isTemplateMode, signatureTemplate, pages, signerRoles]);
+
+  const signersNeeded = useMemo(() => {
+    if (isTemplateMode) return signersFromSignatureTemplate(signatureTemplate);
+    return roleIds
+      .map(
+        (id) =>
+          signerRoles!.find((r) => r.id === id) || {
+            id,
+            label: 'Signer',
+            sortOrder: 999,
+            fillsEmployeeTokens: false,
+          },
+      )
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [isTemplateMode, roleIds, signatureTemplate, signerRoles]);
   const hasEmployeeLabeled = signersNeeded.some((r) => isEmployeeSigner(r));
   const [orderedSigners, setOrderedSigners] = useState<DocumentSignerRoleDef[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
@@ -177,7 +201,7 @@ export default function SendForSignatureModal({
     setSigningDeadlineDays('7');
     setBlockHubAccess(false);
     setMessageToSigners('');
-  }, [open, documentId, signersNeeded, lockedSubjectUserId]);
+  }, [open, documentId, templateId, signersNeeded, lockedSubjectUserId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -216,10 +240,12 @@ export default function SendForSignatureModal({
     }
     setSending(true);
     try {
-      const saved = await flushSave();
-      if (!saved) {
-        toast.error('Could not save the document before sending.');
-        return;
+      if (!isTemplateMode) {
+        const saved = await flushSave!();
+        if (!saved) {
+          toast.error('Could not save the document before sending.');
+          return;
+        }
       }
       const body: Record<string, unknown> = {
         assignments: {},
@@ -240,7 +266,10 @@ export default function SendForSignatureModal({
       }
       const msg = messageToSigners.trim();
       if (msg) body.message_to_signers = msg;
-      await api('POST', `/document-creator/documents/${documentId}/send-for-signature`, body);
+      const url = isTemplateMode
+        ? `/document-signature-templates/${templateId}/send-for-signature`
+        : `/document-creator/documents/${documentId}/send-for-signature`;
+      await api('POST', url, body);
       toast.success('Sent for signature.');
       setAssignments({});
       onSent();
@@ -278,7 +307,9 @@ export default function SendForSignatureModal({
       <div className={uiSpacing.sectionStack}>
         {orderedSigners.length === 0 ? (
           <p className={uiTypography.helper}>
-            This document has no Signature, Initials, or Date fields yet. Add them in the builder first.
+            {isTemplateMode
+              ? 'This document has no Signature, Initials, or Date fields yet. Add them in the template editor first.'
+              : 'This document has no Signature, Initials, or Date fields yet. Add them in the builder first.'}
           </p>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

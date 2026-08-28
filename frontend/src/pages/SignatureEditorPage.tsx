@@ -6,15 +6,18 @@ import { api, fetchAuthorizedBinary } from '@/lib/api';
 import { isAdminRole } from '@/lib/projectLinePermissionKeys';
 import {
   canEditSignatureEditor,
+  canManageSignatureRequests,
   canViewSignatureEditor,
 } from '@/lib/documentHubPermissions';
 import PdfSignatureDocumentLibrary, {
   type PdfSignatureLibraryDoc,
 } from '@/components/PdfSignatureDocumentLibrary';
+import SendForSignatureModal from '@/components/SendForSignatureModal';
 import SignatureTemplateEditor, {
   type SigTemplatePayload,
 } from '@/components/SignatureTemplateEditor';
 import { AppEmptyState, AppPageHeader, AppCard, uiCx, uiSpacing } from '@/components/ui';
+import { hasSigningFieldsInTemplate } from '@/types/documentCreator';
 
 type SigDoc = PdfSignatureLibraryDoc & { file_id?: string };
 
@@ -28,6 +31,7 @@ export default function SignatureEditorPage() {
   const perms = new Set((me?.permissions || []).map(String));
   const canEdit = canEditSignatureEditor(isAdmin, perms);
   const canView = canViewSignatureEditor(isAdmin, perms);
+  const canSend = canEdit || canManageSignatureRequests(isAdmin, perms);
 
   const { data: documents = [] } = useQuery({
     queryKey: ['document-signature-templates'],
@@ -36,6 +40,17 @@ export default function SignatureEditorPage() {
   });
 
   const [templateDoc, setTemplateDoc] = useState<SigDoc | null>(null);
+  const [sendDoc, setSendDoc] = useState<SigDoc | null>(null);
+
+  const openSendForSignature = useCallback((doc: SigDoc) => {
+    if (!hasSigningFieldsInTemplate(doc.signature_template as SigTemplatePayload | null | undefined)) {
+      toast.error(
+        'Add Signature, Initials, or Date fields in the template editor before sending for signature.',
+      );
+      return;
+    }
+    setSendDoc(doc);
+  }, []);
 
   const loadPdf = useCallback(async () => {
     if (!templateDoc) throw new Error('No document selected');
@@ -88,8 +103,31 @@ export default function SignatureEditorPage() {
             await qc.invalidateQueries({ queryKey: ['document-signature-templates'] });
           }}
           onEditTemplate={(doc) => setTemplateDoc(doc)}
+          extraMenuItems={
+            canSend
+              ? [
+                  {
+                    label: 'Send for signature',
+                    onSelect: openSendForSignature,
+                  },
+                ]
+              : undefined
+          }
         />
       )}
+
+      {sendDoc ? (
+        <SendForSignatureModal
+          open={Boolean(sendDoc)}
+          templateId={sendDoc.id}
+          documentTitle={sendDoc.name}
+          signatureTemplate={sendDoc.signature_template as SigTemplatePayload | null | undefined}
+          onClose={() => setSendDoc(null)}
+          onSent={() => {
+            void qc.invalidateQueries({ queryKey: ['document-signature-templates'] });
+          }}
+        />
+      ) : null}
 
       {templateDoc ? (
         <SignatureTemplateEditor

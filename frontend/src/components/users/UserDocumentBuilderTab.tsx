@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { buildDocumentCreatePayload } from '@/lib/documentCreateScope';
 import { ChooseDocumentTypeModal, type DocumentCreationSelection } from '@/components/ChooseDocumentTypeModal';
 import { DocumentPagePreviewThumbnails } from '@/components/DocumentPagePreviewThumbnails';
 import DocumentEditor, { type DocumentEditorHandle } from '@/components/DocumentEditor';
@@ -114,23 +115,27 @@ export default function UserDocumentBuilderTab({ userId, canEdit = true }: UserD
   const [modalDocumentId, setModalDocumentId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showChooseTypeModal, setShowChooseTypeModal] = useState(false);
+  const [promptRenameOnOpen, setPromptRenameOnOpen] = useState(false);
 
   const listQueryKey = ['document-creator-documents', 'subject', userId] as const;
 
   const docFromUrl = searchParams.get('doc');
+  const renameFromUrl = searchParams.get('rename');
   useEffect(() => {
     if (!docFromUrl) return;
     setModalDocumentId(docFromUrl);
     setShowModal(true);
+    if (renameFromUrl === '1') setPromptRenameOnOpen(true);
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete('doc');
+        next.delete('rename');
         return next;
       },
       { replace: true },
     );
-  }, [docFromUrl, setSearchParams]);
+  }, [docFromUrl, renameFromUrl, setSearchParams]);
 
   const inlineEditorOpen = !!(showModal && modalDocumentId && !isExpanded);
   const { shellRef: inlineEditorShellRef, heightPx: inlineEditorHeightPx } =
@@ -171,22 +176,11 @@ export default function UserDocumentBuilderTab({ userId, canEdit = true }: UserD
   const handleCreateNew = async (selection: DocumentCreationSelection) => {
     setIsCreating(true);
     try {
-      const payload: {
-        title: string;
-        subject_user_id: string;
-        document_type_id?: string;
-        pages?: { template_id: string | null; elements: never[] }[];
-      } = { title: 'Untitled document', subject_user_id: userId };
-      if (selection.kind === 'preset') {
-        payload.document_type_id = selection.documentTypeId;
-      } else if (selection.kind === 'background') {
-        payload.pages = [{ template_id: selection.templateId, elements: [] }];
-      } else {
-        payload.pages = [{ template_id: null, elements: [] }];
-      }
+      const payload = buildDocumentCreatePayload(selection, { kind: 'user', userId });
       const created = await api<BuilderDocument>('POST', '/document-creator/documents', payload);
       queryClient.invalidateQueries({ queryKey: listQueryKey });
       setModalDocumentId(created.id);
+      setPromptRenameOnOpen(true);
       setShowModal(true);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to create document.');
@@ -259,6 +253,7 @@ export default function UserDocumentBuilderTab({ userId, canEdit = true }: UserD
 
   const handleCloseModal = () => {
     setShowModal(false);
+    setPromptRenameOnOpen(false);
     setModalDocumentId(null);
     setIsExpanded(false);
     queryClient.invalidateQueries({ queryKey: listQueryKey });
@@ -291,7 +286,7 @@ export default function UserDocumentBuilderTab({ userId, canEdit = true }: UserD
       <button
         type="button"
         onClick={() => handleEdit(doc)}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded text-left focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:ring-offset-1"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40 focus-visible:ring-offset-1"
       >
         <DocumentPagePreviewThumbnails
           pages={(Array.isArray(doc.pages) ? doc.pages : []) as DocumentPage[]}
@@ -344,6 +339,7 @@ export default function UserDocumentBuilderTab({ userId, canEdit = true }: UserD
       open={showChooseTypeModal}
       onClose={() => setShowChooseTypeModal(false)}
       designSystem
+      subjectUserId={userId}
       onSelect={(selection) => {
         setShowChooseTypeModal(false);
         void handleCreateNew(selection);
@@ -398,6 +394,7 @@ export default function UserDocumentBuilderTab({ userId, canEdit = true }: UserD
           subjectUserId={userId}
           onClose={handleCloseModal}
           readOnly={!canEdit}
+          promptRenameOnOpen={promptRenameOnOpen}
           closeSlotBelow={isExpanded ? compressButton : expandButton}
           stickyToolbar={!isExpanded}
           enableSendForSignature={canEdit}

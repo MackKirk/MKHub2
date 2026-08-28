@@ -28,6 +28,7 @@ from ..models.models import (
     ClientFile,
     ClientDocument,
     DocumentTemplate,
+    EmployeeDocument,
     EmployeeProfile,
     UserDocument,
     WorkOrderFile,
@@ -390,6 +391,16 @@ def _is_community_post_media_file(db: Session, fo: FileObject) -> bool:
     )
 
 
+def _is_own_employee_profile_document(db: Session, user: User, fo: FileObject) -> bool:
+    """My Information docs tab — file linked to this user's employee_documents row."""
+    return (
+        db.query(EmployeeDocument.id)
+        .filter(EmployeeDocument.user_id == user.id, EmployeeDocument.file_id == fo.id)
+        .first()
+        is not None
+    )
+
+
 def _collect_file_object_ids_from_proposal_data(data: Any, out: Set[uuid.UUID]) -> None:
     """Walk proposal JSON (cover, page2, section images, etc.) and collect file_object UUIDs."""
     if isinstance(data, dict):
@@ -658,6 +669,9 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
     if _is_community_post_media_file(db, fo):
         return
 
+    if _is_own_employee_profile_document(db, user, fo):
+        return
+
     if _is_training_course_material_blob(fo):
         return
 
@@ -732,6 +746,8 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
             ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == eid).first()
         if not ep:
             raise HTTPException(status_code=404, detail="Employee not found")
+        if ep.user_id == user.id or eid == user.id:
+            return
         if not (
             _has_permission(user, "hr:users:read")
             or _has_permission(user, "users:read")

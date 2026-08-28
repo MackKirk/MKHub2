@@ -92,6 +92,187 @@ class TestSignatureRestrictedMode(unittest.TestCase):
                         require_hub_access(request, db=db)
         self.assertEqual(ctx.exception.status_code, 403)
 
+    def test_blocked_user_can_get_own_emergency_contacts(self):
+        from app.auth.hub_access import require_hub_access
+
+        uid = uuid.uuid4()
+        request = MagicMock()
+        request.url.path = f"/auth/users/{uid}/emergency-contacts"
+        request.method = "GET"
+        request.query_params = {}
+        request.headers = {}
+        request.scope = {"type": "http"}
+
+        user = MagicMock()
+        user.id = uid
+        user.is_active = True
+
+        blocked = ComplianceResult(
+            has_pending=True,
+            pending_count=1,
+            overdue_count=1,
+            blocked=True,
+            earliest_deadline=None,
+            sources={"onboarding": SourceCounts(), "document_builder": SourceCounts()},
+        )
+
+        with patch("app.auth.hub_access.settings") as mock_settings:
+            mock_settings.signature_restricted_mode = True
+            with patch("app.auth.hub_access._optional_user", return_value=user):
+                with patch("app.auth.hub_access.get_signature_compliance", return_value=blocked):
+                    require_hub_access(request, db=MagicMock())
+
+    def test_blocked_user_can_mutate_own_emergency_contacts(self):
+        from app.auth.hub_access import require_hub_access
+
+        uid = uuid.uuid4()
+        request = MagicMock()
+        request.url.path = f"/auth/users/{uid}/emergency-contacts"
+        request.method = "POST"
+        request.query_params = {}
+        request.headers = {}
+        request.scope = {"type": "http"}
+
+        user = MagicMock()
+        user.id = uid
+        user.is_active = True
+
+        blocked = ComplianceResult(
+            has_pending=True,
+            pending_count=1,
+            overdue_count=1,
+            blocked=True,
+            earliest_deadline=None,
+            sources={"onboarding": SourceCounts(), "document_builder": SourceCounts()},
+        )
+
+        with patch("app.auth.hub_access.settings") as mock_settings:
+            mock_settings.signature_restricted_mode = True
+            with patch("app.auth.hub_access._optional_user", return_value=user):
+                with patch("app.auth.hub_access.get_signature_compliance", return_value=blocked):
+                    require_hub_access(request, db=MagicMock())
+
+    def test_blocked_user_my_information_self_service_paths(self):
+        from app.auth.hub_access import require_hub_access
+
+        uid = uuid.uuid4()
+        user = MagicMock()
+        user.id = uid
+        user.is_active = True
+        blocked = ComplianceResult(
+            has_pending=True,
+            pending_count=1,
+            overdue_count=1,
+            blocked=True,
+            earliest_deadline=None,
+            sources={"onboarding": SourceCounts(), "document_builder": SourceCounts()},
+        )
+        allowed = [
+            ("POST", "/users/me/page-views"),
+            ("GET", "/auth/users/options"),
+            ("GET", f"/auth/users/{uid}/education"),
+            ("GET", f"/auth/users/{uid}/visas"),
+            ("GET", f"/auth/users/{uid}/documents"),
+            ("GET", f"/auth/users/{uid}/folders"),
+            ("GET", f"/employees/{uid}/loans"),
+            ("GET", f"/employees/{uid}/reports"),
+            ("GET", f"/employees/{uid}/time-off/balance"),
+            ("GET", f"/employees/{uid}/time-off/requests"),
+            ("GET", f"/employees/{uid}/time-off/history"),
+            ("POST", "/files/upload"),
+            ("POST", "/files/confirm"),
+            ("GET", f"/files/{uuid.uuid4()}/preview"),
+            ("GET", f"/files/{uuid.uuid4()}/download"),
+            ("GET", f"/files/{uuid.uuid4()}/thumbnail"),
+            ("GET", f"/files/{uuid.uuid4()}"),
+            ("GET", "/files/local-inline/org/test/doc.pdf"),
+        ]
+
+        with patch("app.auth.hub_access.settings") as mock_settings:
+            mock_settings.signature_restricted_mode = True
+            with patch("app.auth.hub_access._optional_user", return_value=user):
+                with patch("app.auth.hub_access.get_signature_compliance", return_value=blocked):
+                    for method, path in allowed:
+                        request = MagicMock()
+                        request.url.path = path
+                        request.method = method
+                        request.query_params = {}
+                        request.headers = {}
+                        request.scope = {"type": "http"}
+                        require_hub_access(request, db=MagicMock())
+
+    def test_blocked_user_still_denied_other_employee_and_hub(self):
+        from app.auth.hub_access import require_hub_access
+
+        uid = uuid.uuid4()
+        other = uuid.uuid4()
+        user = MagicMock()
+        user.id = uid
+        user.is_active = True
+        blocked = ComplianceResult(
+            has_pending=True,
+            pending_count=1,
+            overdue_count=1,
+            blocked=True,
+            earliest_deadline=None,
+            sources={"onboarding": SourceCounts(), "document_builder": SourceCounts()},
+        )
+        denied = [
+            ("GET", "/projects"),
+            ("GET", "/notifications"),
+            ("GET", "/notifications/unread-count"),
+            ("GET", f"/employees/{other}/loans"),
+            ("GET", f"/auth/users/{other}/education"),
+            ("GET", f"/auth/users/{other}/documents"),
+            ("POST", "/files/upload-proxy"),
+            ("DELETE", f"/files/{uuid.uuid4()}"),
+        ]
+
+        with patch("app.auth.hub_access.settings") as mock_settings:
+            mock_settings.signature_restricted_mode = True
+            with patch("app.auth.hub_access._optional_user", return_value=user):
+                with patch("app.auth.hub_access.get_signature_compliance", return_value=blocked):
+                    for method, path in denied:
+                        request = MagicMock()
+                        request.url.path = path
+                        request.method = method
+                        request.query_params = {}
+                        request.headers = {}
+                        request.scope = {"type": "http"}
+                        with self.assertRaises(HTTPException) as ctx:
+                            require_hub_access(request, db=MagicMock())
+                        self.assertEqual(ctx.exception.status_code, 403, msg=path)
+    def test_blocked_user_cannot_get_other_users_emergency_contacts(self):
+        from app.auth.hub_access import require_hub_access
+
+        request = MagicMock()
+        request.url.path = f"/auth/users/{uuid.uuid4()}/emergency-contacts"
+        request.method = "GET"
+        request.query_params = {}
+        request.headers = {}
+        request.scope = {"type": "http"}
+
+        user = MagicMock()
+        user.id = uuid.uuid4()
+        user.is_active = True
+
+        blocked = ComplianceResult(
+            has_pending=True,
+            pending_count=1,
+            overdue_count=1,
+            blocked=True,
+            earliest_deadline=None,
+            sources={"onboarding": SourceCounts(), "document_builder": SourceCounts()},
+        )
+
+        with patch("app.auth.hub_access.settings") as mock_settings:
+            mock_settings.signature_restricted_mode = True
+            with patch("app.auth.hub_access._optional_user", return_value=user):
+                with patch("app.auth.hub_access.get_signature_compliance", return_value=blocked):
+                    with self.assertRaises(HTTPException) as ctx:
+                        require_hub_access(request, db=MagicMock())
+        self.assertEqual(ctx.exception.status_code, 403)
+
     def test_blocked_user_allowed_on_signatures_path(self):
         from app.auth.hub_access import require_hub_access
 

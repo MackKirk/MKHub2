@@ -16,26 +16,45 @@ const REQ_PERSONAL = [
   'work_eligibility_status',
 ] as const;
 
+export type ProfileCompletenessOptions = {
+  /** True only when the emergency-contacts list query succeeded (not loading / not error). */
+  contactsKnown?: boolean;
+};
+
 /**
- * Same rules as AppShell: required profile fields + at least one emergency contact when userId is set.
+ * Same rules as AppShell: required profile fields + at least one emergency contact when known.
+ * Do not treat unknown/errored contacts as missing — that caused false onboarding redirects.
  */
 export function computeIsProfileComplete(
   meProfile: any,
   emergencyContactsData: any[] | undefined,
   userId: string,
-  emergencyContactsLoading: boolean
+  emergencyContactsLoading: boolean,
+  options?: ProfileCompletenessOptions,
 ): boolean {
   if (!meProfile?.profile) return false;
   const p = meProfile.profile;
   const missingPersonal = REQ_PERSONAL.filter((k) => !String((p as any)[k] || '').trim());
-  const hasEmergencyContact = userId
-    ? emergencyContactsData !== undefined && emergencyContactsData.length > 0
-    : true;
-  const missingPersonalWithContact: string[] = [...missingPersonal];
-  if (!hasEmergencyContact && userId && !emergencyContactsLoading) {
-    missingPersonalWithContact.push('emergency_contact');
-  }
-  return missingPersonalWithContact.length === 0;
+  if (missingPersonal.length > 0) return false;
+
+  if (!userId) return true;
+  if (emergencyContactsLoading) return false;
+
+  const contactsKnown =
+    options?.contactsKnown ??
+    (Array.isArray(emergencyContactsData) && emergencyContactsData !== undefined);
+
+  // Contacts not loaded successfully yet — do not claim incomplete (or complete) via contacts.
+  if (!contactsKnown) return false;
+
+  return (emergencyContactsData?.length ?? 0) > 0;
+}
+
+/** True when personal profile fields alone are filled (ignores emergency contacts). */
+export function computePersonalFieldsComplete(meProfile: any): boolean {
+  if (!meProfile?.profile) return false;
+  const p = meProfile.profile;
+  return REQ_PERSONAL.every((k) => String((p as any)[k] || '').trim());
 }
 
 /** Matches AppShell: only exact /profile and /onboarding skip redirect to profile wizard */
@@ -55,9 +74,24 @@ export function matchesSignatureRestrictedExempt(pathname: string): boolean {
   return paths.some((p) => pathname === p || pathname.startsWith(p + '/'));
 }
 
+export type SignatureStatusLike = {
+  has_pending?: boolean;
+  past_deadline?: boolean;
+  blocked?: boolean;
+  status_available?: boolean;
+};
+
+/** Hub lock from signature / onboarding overdue compliance. */
+export function isHubAccessBlockedFromStatus(status: SignatureStatusLike | null | undefined): boolean {
+  if (!status) return false;
+  if (status.blocked && status.status_available !== false) return true;
+  if (status.past_deadline && status.has_pending) return true;
+  return false;
+}
+
 /**
  * After auth, pick the first route to open without flashing the hub.
- * Mirrors AppShell redirect rules.
+ * Priority: signature block → /personal/signatures; else incomplete profile → /onboarding; else requested.
  */
 export async function resolvePostAuthDestination(requestedPath: string): Promise<string> {
   const [me, meProfile] = await Promise.all([
@@ -65,47 +99,56 @@ export async function resolvePostAuthDestination(requestedPath: string): Promise
     api<any>('GET', '/auth/me/profile'),
   ]);
   const userId = me?.id ? String(me.id) : '';
-  let emergencyContacts: any[] | undefined;
-  if (userId) {
-    emergencyContacts = await api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`);
-  }
 
-  const isComplete = computeIsProfileComplete(meProfile, emergencyContacts, userId, false);
-
-  if (!isComplete) {
-    if (isExemptFromProfileWizardRedirect(requestedPath)) return requestedPath;
-    return '/onboarding';
-  }
-
-  let status: { has_pending: boolean; past_deadline: boolean; blocked?: boolean; status_available?: boolean } = {
+  let status: SignatureStatusLike = {
     has_pending: false,
     past_deadline: false,
     blocked: false,
     status_available: true,
   };
   try {
-    status = await api<{
-      has_pending: boolean;
-      past_deadline?: boolean;
-      blocked?: boolean;
-      status_available?: boolean;
-    }>('GET', '/auth/me/signature-status');
+    status = await api<SignatureStatusLike>('GET', '/auth/me/signature-status');
   } catch {
     try {
-      status = await api<{ has_pending: boolean; past_deadline: boolean }>(
-        'GET',
-        '/auth/me/onboarding/status'
-      );
+      status = await api<SignatureStatusLike>('GET', '/auth/me/onboarding/status');
     } catch {
       // same fallback as AppShell query
     }
   }
 
-  const blocked =
-    (status.blocked && status.status_available !== false) ||
-    (status.past_deadline && status.has_pending);
-  if (blocked && !matchesSignatureRestrictedExempt(requestedPath)) {
+  if (isHubAccessBlockedFromStatus(status) && !matchesSignatureRestrictedExempt(requestedPath)) {
     return '/personal/signatures';
+  }
+
+  let emergencyContacts: any[] | undefined;
+  let contactsKnown = false;
+  if (userId) {
+    try {
+      emergencyContacts = await api<any[]>(
+        'GET',
+        `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`,
+      );
+      contactsKnown = true;
+    } catch {
+      contactsKnown = false;
+      emergencyContacts = undefined;
+    }
+  }
+
+  const isComplete = computeIsProfileComplete(meProfile, emergencyContacts, userId, false, {
+    contactsKnown: !userId || contactsKnown,
+  });
+
+  // Only send to onboarding when we know fields/contacts are actually missing.
+  if (!isComplete) {
+    const personalOk = computePersonalFieldsComplete(meProfile);
+    const contactsMissing = contactsKnown && (emergencyContacts?.length ?? 0) === 0;
+    const personalMissing = !personalOk;
+    if (personalMissing || contactsMissing) {
+      if (isExemptFromProfileWizardRedirect(requestedPath)) return requestedPath;
+      return '/onboarding';
+    }
+    // Contacts unknown / still incomplete for other reasons — avoid false onboarding trap.
   }
 
   return requestedPath;

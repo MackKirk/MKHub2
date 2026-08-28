@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Mail, MapPin, Phone } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
 import { logoutSession } from '@/lib/logoutSession';
+import { isHubAccessBlockedFromStatus } from '@/lib/profileCompleteness';
 import toast from 'react-hot-toast';
 import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
@@ -119,6 +120,32 @@ export default function OnboardingWizard() {
     queryFn: () => api<ProfileResp>('GET', '/auth/me/profile'),
     enabled: !!userId
   });
+
+  // Hub-locked users must not stay on onboarding (wizard is outside AppShell).
+  const { data: signatureStatus, isLoading: signatureStatusLoading } = useQuery({
+    queryKey: ['me-signature-status'],
+    queryFn: async () => {
+      try {
+        return await api<{
+          blocked?: boolean;
+          status_available?: boolean;
+          past_deadline?: boolean;
+          has_pending?: boolean;
+        }>('GET', '/auth/me/signature-status');
+      } catch {
+        return { blocked: false, status_available: false };
+      }
+    },
+    enabled: !!userId,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!userId || signatureStatusLoading) return;
+    if (isHubAccessBlockedFromStatus(signatureStatus)) {
+      navigate('/personal/signatures', { replace: true });
+    }
+  }, [userId, signatureStatus, signatureStatusLoading, navigate]);
   
   // Memoize profile to avoid unnecessary re-renders
   const p = useMemo(() => profileData?.profile || {}, [profileData?.profile]);

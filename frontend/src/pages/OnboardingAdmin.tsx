@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import SignatureTemplateEditor, { type SigTemplatePayload } from '@/components/SignatureTemplateEditor';
 import PdfSignatureDocumentLibrary from '@/components/PdfSignatureDocumentLibrary';
-import { onboardingDocPreferencesQuickInfo } from '@/lib/formModalQuickInfo';
+import { onboardingDocPreferencesQuickInfo, onboardingResendFieldHints, onboardingResendQuickInfo } from '@/lib/formModalQuickInfo';
 import {
   AppButton,
   AppCard,
@@ -642,13 +642,15 @@ export default function OnboardingAdmin() {
         onClose={() => setResendModalOpen(false)}
         title="Resend document(s)"
         description="Choose one or more base documents and users. Each document is sent to each selected user."
+        quickInfo={onboardingResendQuickInfo}
         footer={
-          <>
-            <AppButton type="button" variant="secondary" onClick={() => setResendModalOpen(false)}>
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => setResendModalOpen(false)}>
               Cancel
             </AppButton>
             <AppButton
               type="button"
+              size="sm"
               onClick={async () => {
                 const userIds = Array.from(resendSelectedIds);
                 const docIds = Array.from(resendDocIds);
@@ -667,6 +669,7 @@ export default function OnboardingAdmin() {
                   toast.success(`Created ${created} pending item(s)`);
                   setResendSelectedIds(new Set());
                   setResendDocIds(new Set());
+                  setResendModalOpen(false);
                   qc.invalidateQueries({ queryKey: ['onb-assignments'] });
                   qc.invalidateQueries({ queryKey: ['me-onboarding-docs'] });
                   qc.invalidateQueries({ queryKey: ['me-onboarding-status'] });
@@ -680,7 +683,7 @@ export default function OnboardingAdmin() {
             >
               Resend
             </AppButton>
-          </>
+          </div>
         }
       >
         <div className={uiSpacing.sectionStack}>
@@ -692,6 +695,9 @@ export default function OnboardingAdmin() {
             onChange={(ids) => setResendDocIds(new Set(ids))}
             disabled={baseDocs.length === 0}
             placeholder="Search document name…"
+            showSelectAll
+            showSelectedChips={false}
+            fieldHint={onboardingResendFieldHints.documents}
             helperText="Signing deadline for resend uses each base document's default (7 days), not the per-package setting."
           />
           <AppUserSelect
@@ -702,6 +708,9 @@ export default function OnboardingAdmin() {
             onChange={(ids) => setResendSelectedIds(new Set(ids))}
             disabled={usersPickerLoading || userPickerList.length === 0}
             placeholder="Search name, username, email…"
+            showSelectAll
+            showSelectedChips={false}
+            fieldHint={onboardingResendFieldHints.users}
           />
           {usersPickerLoading ? <p className={uiTypography.helper}>Loading users…</p> : null}
           {!usersPickerLoading && userPickerList.length === 0 ? (
