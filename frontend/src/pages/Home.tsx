@@ -24,7 +24,6 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { AnimationReadyProvider } from '@/contexts/AnimationReadyContext';
-import { useBusinessLine } from '@/context/BusinessLineContext';
 import type { HomeDashboardState, LayoutItem, WidgetDef } from './home-dashboard/types';
 import { WidgetWrapper } from './home-dashboard/WidgetWrapper';
 import { renderWidget } from './home-dashboard/widgetRegistry';
@@ -65,7 +64,6 @@ function migrateLayoutTo8Col(items: LayoutItem[]): LayoutItem[] {
 export default function Home() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
-  const activeBusinessLine = useBusinessLine();
   const { data: me } = useQuery({
     queryKey: ['me'],
     queryFn: () => api<MeForHomeWidgets>('GET', '/auth/me'),
@@ -102,8 +100,8 @@ export default function Home() {
   }, [saved, isFetched]);
 
   const visibleWidgets = useMemo(
-    () => filterWidgetsForHome(widgets, me, activeBusinessLine),
-    [widgets, me, activeBusinessLine]
+    () => filterWidgetsForHome(widgets, me),
+    [widgets, me],
   );
   const visibleLayout = useMemo(
     () => filterLayoutForWidgets(layout, visibleWidgets) as LayoutItem[],
@@ -286,7 +284,7 @@ export default function Home() {
         icon={<LayoutDashboard className="h-4 w-4" />}
       />
 
-      <div className={uiLayout.actionsRow}>
+      <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
           {isEditMode ? (
             <>
               <AppButton type="button" variant="secondary" size="sm" onClick={() => setAddModalOpen(true)}>
@@ -331,19 +329,21 @@ export default function Home() {
                   )}
                 </div>
               )}
-              <AppButton type="button" variant="secondary" size="sm" onClick={handleReset}>
+              <AppButton type="button" variant="ghost" size="sm" onClick={handleReset}>
                 Reset to default
               </AppButton>
-              <AppButton type="button" variant="secondary" size="sm" onClick={handleCancelEdit}>
-                Cancel
-              </AppButton>
-              <AppButton type="button" size="sm" onClick={handleDoneEdit}>
-                Done
-              </AppButton>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <AppButton type="button" variant="secondary" size="sm" onClick={handleCancelEdit}>
+                  Cancel
+                </AppButton>
+                <AppButton type="button" size="sm" onClick={handleDoneEdit}>
+                  Done
+                </AppButton>
+              </div>
             </>
           ) : (
-            <AppButton type="button" variant="secondary" size="sm" onClick={() => setIsEditMode(true)}>
-              Customize / Edit dashboard
+            <AppButton type="button" size="sm" onClick={() => setIsEditMode(true)}>
+              Customize dashboard
             </AppButton>
           )}
       </div>
@@ -361,7 +361,7 @@ export default function Home() {
         />
       ) : (
       <GridLayout
-        className="layout"
+        className={uiCx('layout', isEditMode && 'home-dashboard-editing')}
         layout={visibleLayout}
         onLayoutChange={handleLayoutChange}
         cols={COLUMNS}
@@ -394,7 +394,6 @@ export default function Home() {
         onAdd={handleAddWidget}
         existingLayout={layout}
         me={me}
-        activeBusinessLine={activeBusinessLine}
       />
 
       <WidgetConfigModal

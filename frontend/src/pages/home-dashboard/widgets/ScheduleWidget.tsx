@@ -4,10 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
-import { AppButton, AppEmptyState, uiBorders, uiCx, uiRadius, uiTypography } from '@/components/ui';
+import { AppButton, AppEmptyState, uiCx, uiTypography } from '@/components/ui';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { homeWidgetScheduleRowClass } from '../HomeWidgetList';
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 
 type Shift = {
   id: string;
@@ -127,7 +128,7 @@ export function ScheduleWidget({ config: _config, embedded = false }: ScheduleWi
   }
   if (error) {
     return (
-      <div className={uiCx(uiRadius.control, 'border border-red-200 bg-red-50/50 px-3 py-2 text-sm text-red-600')}>
+      <div className="px-1 py-2 text-sm text-red-600">
         Failed to load schedule
       </div>
     );
@@ -148,18 +149,36 @@ export function ScheduleWidget({ config: _config, embedded = false }: ScheduleWi
       </div>
     </div>
   ) : (
-    <div className="mb-2 flex shrink-0 items-center justify-between">
-      <span className="truncate text-[10px] font-semibold text-gray-600">{weekLabel}</span>
+    <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
+      <span className={uiCx(uiTypography.helper, 'truncate font-medium text-gray-600')}>{weekLabel}</span>
       <div className="flex shrink-0 items-center gap-0.5">
-        <button type="button" onClick={goToPrev} className="rounded p-1 text-xs text-gray-500 hover:bg-gray-100" aria-label="Previous week">
-          ←
-        </button>
-        <button type="button" onClick={goToToday} className="rounded px-1.5 py-0.5 text-[10px] font-medium text-gray-600 hover:bg-gray-100">
+        <AppButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={goToPrev}
+          className="h-auto min-h-0 px-1 py-0.5"
+          aria-label="Previous week"
+          leftIcon={<ChevronLeft className="h-3.5 w-3.5" />}
+        />
+        <AppButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={goToToday}
+          className="h-auto min-h-0 px-1.5 py-0.5 text-[10px]"
+        >
           Today
-        </button>
-        <button type="button" onClick={goToNext} className="rounded p-1 text-xs text-gray-500 hover:bg-gray-100" aria-label="Next week">
-          →
-        </button>
+        </AppButton>
+        <AppButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={goToNext}
+          className="h-auto min-h-0 px-1 py-0.5"
+          aria-label="Next week"
+          rightIcon={<ChevronRight className="h-3.5 w-3.5" />}
+        />
       </div>
     </div>
   );
@@ -167,32 +186,37 @@ export function ScheduleWidget({ config: _config, embedded = false }: ScheduleWi
   const content = (
     <>
       {weekControls}
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {totalShifts === 0 ? (
           embedded ? (
             <AppEmptyState title="No shifts this week" className="py-6" />
           ) : (
-            <div className={uiCx(uiRadius.control, 'border border-dashed border-gray-200 bg-gray-50/50 px-3 py-4 text-center text-xs text-gray-500')}>
-              No shifts this week
-            </div>
+            <AppEmptyState
+              icon={<CalendarDays className="h-5 w-5" />}
+              title="No shifts this week"
+              description="Your schedule is clear."
+              className="border-0 bg-transparent p-2 shadow-none"
+              action={
+                <Link to="/schedule" className="text-xs font-medium text-brand-red hover:underline">
+                  View schedule →
+                </Link>
+              }
+            />
           )
         ) : (
           dateKeys.map((dateStr) => (
             <div key={dateStr} className="shrink-0">
               <div className={uiTypography.overline}>{formatDayShort(dateStr)}</div>
-              <ul className="mt-1 space-y-1.5">
+              <ul className="mt-0.5 divide-y divide-gray-100">
                 {(shiftsByDate[dateStr] ?? []).map((shift) => (
                   <li key={shift.id}>
                     <Link
                       to={`/schedule?date=${encodeURIComponent(dateStr)}&shift=${encodeURIComponent(shift.id)}`}
-                      className={uiCx(
-                        'block px-2.5 py-2 transition-colors hover:bg-gray-50/80',
-                        uiRadius.control,
-                        uiBorders.subtle,
-                        'bg-white',
-                      )}
+                      className={homeWidgetScheduleRowClass}
                     >
-                      <div className={uiCx(uiTypography.sectionTitle, 'truncate')}>{shift.project_name || 'Shift'}</div>
+                      <div className={uiCx(uiTypography.sectionTitle, 'truncate text-sm')}>
+                        {shift.project_name || 'Shift'}
+                      </div>
                       <div className={uiCx(uiTypography.helper, 'mt-0.5')}>
                         {formatTime12h(shift.start_time)} – {formatTime12h(shift.end_time)}
                       </div>

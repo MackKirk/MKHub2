@@ -1,68 +1,103 @@
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { getShortcutIcon, WidgetIcon } from '../widgetVisualMeta';
+import { uiCx, uiRadius, uiTypography } from '@/components/ui';
+import { getServicePathsForLine, resolveWidgetBusinessLine } from '../homeBusinessLine';
+import type { MeForHomeWidgets } from '../widgetVisibility';
 
-const PRESETS: Record<string, { label: string; path: string; icon: string }> = {
-  tasks: { label: 'Tasks', path: '/tasks', icon: '✅' },
-  projects: { label: 'Projects', path: '/projects', icon: '🏗️' },
-  schedule: { label: 'Schedule', path: '/schedule', icon: '📅' },
-  opportunities: { label: 'Opportunities', path: '/opportunities', icon: '📋' },
-  customers: { label: 'Customers', path: '/customers', icon: '👥' },
-  clock: { label: 'Clock in/out', path: '/clock-in-out', icon: '⏰' },
-  business: { label: 'Dashboard', path: '/business', icon: '📊' },
+const STATIC_PRESETS: Record<string, { label: string; path: string; description: string }> = {
+  tasks: { label: 'Tasks', path: '/tasks', description: 'View your tasks' },
+  schedule: { label: 'Schedule', path: '/schedule', description: 'Open your schedule' },
+  customers: { label: 'Customers', path: '/customers', description: 'Browse customers' },
+  clock: { label: 'Clock in/out', path: '/clock-in-out', description: 'Track attendance' },
+};
+
+const SERVICE_PRESET_META: Record<string, { label: string; description: string; pathKey: 'projects' | 'opportunities' | 'business' }> = {
+  projects: { label: 'Projects', description: 'View your projects', pathKey: 'projects' },
+  opportunities: { label: 'Opportunities', description: 'View opportunities', pathKey: 'opportunities' },
+  business: { label: 'Dashboard', description: 'Business overview', pathKey: 'business' },
 };
 
 type ShortcutsWidgetProps = {
-  config?: { items?: string[] };
+  config?: { items?: string[]; business_line?: string };
 };
 
-const linkBaseClass =
-  'flex items-center justify-center min-h-0 overflow-hidden flex-col w-full min-w-0 rounded-lg transition-colors duration-200 hover:bg-gray-100/80 active:bg-gray-200/80';
+const linkBaseClass = uiCx(
+  'group/shortcut flex min-h-0 min-w-0 w-full flex-col items-center justify-center overflow-hidden transition-colors duration-150',
+  uiRadius.control,
+  'hover:bg-gray-50 active:bg-gray-100/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300',
+);
 
 export function ShortcutsWidget({ config }: ShortcutsWidgetProps) {
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<MeForHomeWidgets>('GET', '/auth/me'),
+  });
+  const businessLine = resolveWidgetBusinessLine(config, me);
+  const servicePaths = getServicePathsForLine(businessLine);
   const items = config?.items ?? ['tasks', 'projects', 'schedule'];
+
   const links = items
-    .map((id) => (typeof id === 'string' ? PRESETS[id] : null))
-    .filter(Boolean) as { label: string; path: string; icon: string }[];
+    .map((id) => {
+      if (typeof id !== 'string') return null;
+      if (STATIC_PRESETS[id]) return { id, ...STATIC_PRESETS[id] };
+      const svc = SERVICE_PRESET_META[id];
+      if (svc) {
+        return {
+          id,
+          label: svc.label,
+          path: servicePaths[svc.pathKey],
+          description: svc.description,
+        };
+      }
+      return null;
+    })
+    .filter(Boolean) as { id: string; label: string; path: string; description: string }[];
 
   const cols = links.length === 1 ? 1 : 2;
+  const singleLarge = links.length === 1;
 
   return (
-    <div className="h-full min-h-0 flex flex-col overflow-hidden w-full">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       <div
-        className="flex-1 min-h-0 grid auto-rows-fr content-stretch overflow-auto w-full"
+        className="grid min-h-0 w-full flex-1 auto-rows-fr content-stretch overflow-auto"
         style={{
           gap: 'clamp(0.25rem, 1.5cqh, 0.5rem)',
           padding: 'clamp(0.25rem, 1.5cqh, 0.5rem)',
           gridTemplateColumns: cols === 1 ? '1fr' : 'repeat(2, 1fr)',
         }}
       >
-        {links.map(({ label, path, icon }) => (
-          <Link
-            key={path}
-            to={path}
-            className={linkBaseClass}
-            style={{
-              padding: 'clamp(0.25rem, 2.5cqh, 0.5rem)',
-              gap: 'clamp(0.25rem, 2cqh, 0.375rem)',
-            }}
-          >
-            <span
-              className="flex shrink-0 items-center justify-center text-gray-800"
+        {links.map(({ id, label, path, description }) => {
+          const Icon = getShortcutIcon(id);
+          return (
+            <Link
+              key={`${id}-${path}`}
+              to={path}
+              className={linkBaseClass}
               style={{
-                width: 'clamp(2.25rem, 22cqh, 5rem)',
-                height: 'clamp(2.25rem, 22cqh, 5rem)',
-                fontSize: 'clamp(1.25rem, 18cqh, 3.25rem)',
+                padding: 'clamp(0.375rem, 2.5cqh, 0.75rem)',
+                gap: 'clamp(0.25rem, 2cqh, 0.5rem)',
               }}
             >
-              {icon}
-            </span>
-            <span
-              className="font-medium text-gray-800 truncate text-center w-full min-w-0"
-              style={{ fontSize: 'clamp(0.75rem, 9cqh, 1.375rem)' }}
-            >
-              {label}
-            </span>
-          </Link>
-        ))}
+              <WidgetIcon icon={Icon} size={singleLarge ? 'lg' : 'md'} className="text-gray-800" />
+              <span
+                className="w-full min-w-0 truncate text-center font-medium text-gray-800"
+                style={{ fontSize: 'clamp(0.6875rem, 8cqh, 0.9375rem)' }}
+              >
+                {label}
+              </span>
+              {singleLarge && (
+                <span
+                  className={uiCx(uiTypography.helper, 'w-full truncate text-center')}
+                  style={{ fontSize: 'clamp(0.5rem, 5cqh, 0.75rem)' }}
+                >
+                  {description}
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

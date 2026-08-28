@@ -7,7 +7,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..auth.security import _has_permission, can_access_business_line
 from ..models.models import User
-from ..services.business_line import BUSINESS_LINE_CONSTRUCTION, normalize_business_line
+from ..services.business_line import (
+    BUSINESS_LINE_CONSTRUCTION,
+    BUSINESS_LINE_REPAIRS_MAINTENANCE,
+    normalize_business_line,
+)
 
 # Shortcuts: same spirit as AppShell Services / Customers
 _SHORTCUT_PUBLIC = frozenset({"tasks", "schedule", "clock"})
@@ -18,11 +22,26 @@ def _is_admin(user: User) -> bool:
     return any((getattr(r, "name", None) or "").lower() == "admin" for r in (user.roles or []))
 
 
+def infer_default_home_business_line(user: User) -> str:
+    """RM-only → R&M; Production-only or both → Production."""
+    has_production = can_access_business_line(user, BUSINESS_LINE_CONSTRUCTION)
+    has_rm = can_access_business_line(user, BUSINESS_LINE_REPAIRS_MAINTENANCE)
+    if has_rm and not has_production:
+        return BUSINESS_LINE_REPAIRS_MAINTENANCE
+    return BUSINESS_LINE_CONSTRUCTION
+
+
+def _resolve_widget_business_line(user: User, business_line: Optional[str]) -> str:
+    if business_line and str(business_line).strip():
+        return normalize_business_line(business_line)
+    return infer_default_home_business_line(user)
+
+
 def user_may_use_business_line_on_home(user: User, business_line: Optional[str]) -> bool:
     """User may load KPI/chart/list widgets for this business line (Services read)."""
     if _is_admin(user):
         return True
-    line = normalize_business_line(business_line) if business_line else BUSINESS_LINE_CONSTRUCTION
+    line = _resolve_widget_business_line(user, business_line)
     return can_access_business_line(user, line)
 
 
@@ -52,7 +71,8 @@ def home_widget_allowed_for_user(user: User, widget: Dict[str, Any]) -> bool:
             if not item or item in _SHORTCUT_PUBLIC:
                 continue
             if item in _SHORTCUT_SERVICES:
-                if not user_may_use_business_line_on_home(user, bl if isinstance(bl, str) else None):
+                line = _resolve_widget_business_line(user, bl if isinstance(bl, str) else None)
+                if not user_may_use_business_line_on_home(user, line):
                     return False
             elif item == "customers":
                 if not _is_admin(user) and not _has_permission(user, "business:customers:read"):

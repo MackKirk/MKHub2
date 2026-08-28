@@ -1,6 +1,7 @@
 /**
  * Gallery items for the Add Widget modal. Each item can add a widget with type + config.
  * defaultSize is resolved from widgetRegistry by type.
+ * Icons are resolved via widgetVisualMeta (presentation-only).
  */
 export type GalleryItem = {
   id: string;
@@ -11,8 +12,6 @@ export type GalleryItem = {
   config: Record<string, unknown>;
   /** For KPI preview: sample value to show (e.g. "24" or "$1.2M") */
   sampleValue?: string;
-  /** Icon name or emoji for KPI/Shortcut */
-  icon?: string;
   /** Chart type for preview and config */
   chartType?: 'bar' | 'pie' | 'line' | 'donut';
   /** For list preview: mock line labels */
@@ -30,7 +29,6 @@ export const GALLERY_ITEMS: GalleryItem[] = [
     category: 'KPIs',
     config: { metric: 'opportunities', period: 'all', mode: 'quantity' },
     sampleValue: '24',
-    icon: '📋',
   },
   {
     id: 'kpi-projects',
@@ -40,7 +38,6 @@ export const GALLERY_ITEMS: GalleryItem[] = [
     category: 'KPIs',
     config: { metric: 'projects', period: 'all', mode: 'quantity' },
     sampleValue: '18',
-    icon: '🏗️',
   },
   {
     id: 'kpi-estimated',
@@ -50,7 +47,6 @@ export const GALLERY_ITEMS: GalleryItem[] = [
     category: 'KPIs',
     config: { metric: 'estimated_value', period: 'all', mode: 'value' },
     sampleValue: '$1.2M',
-    icon: '💰',
   },
   {
     id: 'kpi-actual',
@@ -60,7 +56,6 @@ export const GALLERY_ITEMS: GalleryItem[] = [
     category: 'KPIs',
     config: { metric: 'actual_value', period: 'all', mode: 'value' },
     sampleValue: '$890K',
-    icon: '📊',
   },
   // Charts: only Opportunities and Projects, each with bar, line, pie (green = Opportunities, blue = Projects by default)
   {
@@ -142,7 +137,6 @@ export const GALLERY_ITEMS: GalleryItem[] = [
     description: 'Your tasks with status and priority',
     category: 'Lists',
     config: { limit: 5 },
-    icon: '✓',
   },
   {
     id: 'list_projects',
@@ -151,7 +145,6 @@ export const GALLERY_ITEMS: GalleryItem[] = [
     description: 'Recent projects with status',
     category: 'Lists',
     config: { limit: 5 },
-    icon: '📁',
   },
   {
     id: 'list_opportunities',
@@ -160,15 +153,14 @@ export const GALLERY_ITEMS: GalleryItem[] = [
     description: 'Recent opportunities with status',
     category: 'Lists',
     config: { limit: 5 },
-    icon: '📋',
   },
-  { id: 'shortcut_tasks', type: 'shortcuts', label: 'Tasks', description: 'Quick link to Tasks', category: 'Shortcuts', config: { items: ['tasks'] }, icon: '✅' },
-  { id: 'shortcut_projects', type: 'shortcuts', label: 'Projects', description: 'Quick link to Projects', category: 'Shortcuts', config: { items: ['projects'] }, icon: '🏗️' },
-  { id: 'shortcut_schedule', type: 'shortcuts', label: 'Schedule', description: 'Quick link to Schedule', category: 'Shortcuts', config: { items: ['schedule'] }, icon: '📅' },
-  { id: 'shortcut_opportunities', type: 'shortcuts', label: 'Opportunities', description: 'Quick link to Opportunities', category: 'Shortcuts', config: { items: ['opportunities'] }, icon: '📋' },
-  { id: 'shortcut_customers', type: 'shortcuts', label: 'Customers', description: 'Quick link to Customers', category: 'Shortcuts', config: { items: ['customers'] }, icon: '👥' },
-  { id: 'shortcut_clock', type: 'shortcuts', label: 'Clock in/out', description: 'Quick link to Clock in/out', category: 'Shortcuts', config: { items: ['clock'] }, icon: '⏰' },
-  { id: 'shortcut_business', type: 'shortcuts', label: 'Dashboard', description: 'Quick link to Business Dashboard', category: 'Shortcuts', config: { items: ['business'] }, icon: '📊' },
+  { id: 'shortcut_tasks', type: 'shortcuts', label: 'Tasks', description: 'Quick link to Tasks', category: 'Shortcuts', config: { items: ['tasks'] } },
+  { id: 'shortcut_projects', type: 'shortcuts', label: 'Projects', description: 'Quick link to Projects', category: 'Shortcuts', config: { items: ['projects'] } },
+  { id: 'shortcut_schedule', type: 'shortcuts', label: 'Schedule', description: 'Quick link to Schedule', category: 'Shortcuts', config: { items: ['schedule'] } },
+  { id: 'shortcut_opportunities', type: 'shortcuts', label: 'Opportunities', description: 'Quick link to Opportunities', category: 'Shortcuts', config: { items: ['opportunities'] } },
+  { id: 'shortcut_customers', type: 'shortcuts', label: 'Customers', description: 'Quick link to Customers', category: 'Shortcuts', config: { items: ['customers'] } },
+  { id: 'shortcut_clock', type: 'shortcuts', label: 'Clock in/out', description: 'Quick link to Clock in/out', category: 'Shortcuts', config: { items: ['clock'] } },
+  { id: 'shortcut_business', type: 'shortcuts', label: 'Dashboard', description: 'Quick link to Business Dashboard', category: 'Shortcuts', config: { items: ['business'] } },
   {
     id: 'calendar',
     type: 'calendar',
@@ -176,7 +168,6 @@ export const GALLERY_ITEMS: GalleryItem[] = [
     description: 'Month view with shifts, click day to open Schedule',
     category: 'Calendar',
     config: {},
-    icon: '📅',
   },
   {
     id: 'schedule',
@@ -185,6 +176,5 @@ export const GALLERY_ITEMS: GalleryItem[] = [
     description: 'This week’s shifts at a glance',
     category: 'Calendar',
     config: {},
-    icon: '📆',
   },
 ];

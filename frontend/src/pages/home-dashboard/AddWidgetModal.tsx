@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { getWidgetMeta } from './widgetRegistry';
 import { GALLERY_ITEMS, GALLERY_TABS } from './galleryConfig';
-import { getChartMetricLabel } from './widgets/chartShared';
+import { getGalleryIconNode } from './widgetVisualMeta';
+import { getChartWidgetTitle } from './widgets/chartShared';
+import { inferDefaultHomeBusinessLine, widgetHasServicesShortcuts } from './homeBusinessLine';
 import type { GalleryItem } from './galleryConfig';
 import type { WidgetDef } from './types';
 import type { LayoutItem } from './types';
@@ -9,13 +11,12 @@ import {
   AppButton,
   AppModal,
   AppTabs,
-  uiBorders,
   uiColors,
   uiCx,
   uiLayout,
   uiRadius,
-  uiShadows,
   uiSpacing,
+  uiSortableEntityList,
   uiTypography,
 } from '@/components/ui';
 import type { MeForHomeWidgets } from './widgetVisibility';
@@ -27,7 +28,6 @@ type AddWidgetModalProps = {
   onAdd: (widget: WidgetDef, layoutItem: LayoutItem) => void;
   existingLayout: LayoutItem[];
   me: MeForHomeWidgets | undefined;
-  activeBusinessLine: string;
 };
 
 const TAB_LABELS: Record<(typeof GALLERY_TABS)[number], string> = {
@@ -147,27 +147,23 @@ function GalleryCard({
   const isShortcut = item.category === 'Shortcuts';
   const isCalendar = item.category === 'Calendar';
 
+  const iconNode = getGalleryIconNode(item);
+
   return (
     <button
       type="button"
       onClick={onSelect}
       className={uiCx(
-        'w-full text-left transition-all duration-150 hover:border-brand-red hover:bg-gray-50/50 hover:shadow-md active:scale-[0.98]',
-        'focus:outline-none focus:ring-2 focus:ring-brand-red focus:ring-offset-2',
-        uiRadius.card,
-        uiBorders.strong,
-        uiColors.surface,
-        uiShadows.card,
-        uiSpacing.cardPadding,
+        uiSortableEntityList.rowCard,
+        'w-full p-4 text-left',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 focus-visible:ring-offset-1',
       )}
     >
       {isKpi && (
         <>
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-2xl" aria-hidden>{item.icon}</span>
-          </div>
-          <div className="mt-2 font-medium text-gray-800">{item.label}</div>
-          <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{item.description}</p>
+          <div className="flex items-start justify-between gap-2">{iconNode}</div>
+          <div className={uiCx('mt-2.5 font-medium text-gray-800', uiTypography.body)}>{item.label}</div>
+          <p className={uiCx('mt-0.5 line-clamp-2', uiTypography.helper)}>{item.description}</p>
         </>
       )}
       {isChart && (() => {
@@ -175,46 +171,36 @@ function GalleryCard({
           (item.config?.metric as string)?.includes('opportunities') ? 'opportunities' : 'projects';
         return (
           <>
-            <div className="flex items-center justify-center h-14 mb-2">
+            <div className="mb-2 flex h-14 items-center justify-center">
               {item.chartType === 'bar' && <MiniBarChart variant={chartVariant} />}
               {item.chartType === 'pie' && <MiniPieChart variant={chartVariant} />}
               {item.chartType === 'donut' && <MiniDonutChart variant={chartVariant} />}
               {item.chartType === 'line' && <MiniLineChart variant={chartVariant} />}
             </div>
-            <div className="font-medium text-gray-800">{item.label}</div>
-            <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{item.description}</p>
+            <div className={uiCx('font-medium text-gray-800', uiTypography.body)}>{item.label}</div>
+            <p className={uiCx('mt-0.5 line-clamp-2', uiTypography.helper)}>{item.description}</p>
           </>
         );
       })()}
       {isList && (
         <>
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-2xl" aria-hidden>{item.icon ?? '📋'}</span>
-          </div>
-          <div className="mt-2 font-medium text-gray-800">{item.label}</div>
-          <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{item.description}</p>
+          <div className="flex items-start justify-between gap-2">{iconNode}</div>
+          <div className={uiCx('mt-2.5 font-medium text-gray-800', uiTypography.body)}>{item.label}</div>
+          <p className={uiCx('mt-0.5 line-clamp-2', uiTypography.helper)}>{item.description}</p>
         </>
       )}
       {isShortcut && (
-        <>
-          <div className="flex flex-col items-center justify-center gap-2">
-            <span className="flex items-center justify-center w-14 h-14 text-3xl shrink-0" aria-hidden>
-              {item.icon}
-            </span>
-            <span className="font-medium text-gray-800 text-center text-sm">{item.label}</span>
-          </div>
-        </>
+        <div className="flex flex-col items-center justify-center gap-2.5 py-1">
+          {iconNode}
+          <span className={uiCx('text-center font-medium text-gray-800', uiTypography.body)}>{item.label}</span>
+        </div>
       )}
       {isCalendar && (
-        <>
-          <div className="flex flex-col items-center justify-center gap-2">
-            <span className="flex items-center justify-center w-14 h-14 text-3xl shrink-0" aria-hidden>
-              {item.icon ?? '📅'}
-            </span>
-            <span className="font-medium text-gray-800 text-center text-sm">{item.label}</span>
-            <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{item.description}</p>
-          </div>
-        </>
+        <div className="flex flex-col items-center justify-center gap-2.5 py-1">
+          {iconNode}
+          <span className={uiCx('text-center font-medium text-gray-800', uiTypography.body)}>{item.label}</span>
+          <p className={uiCx('line-clamp-2 text-center', uiTypography.helper)}>{item.description}</p>
+        </div>
       )}
     </button>
   );
@@ -226,27 +212,27 @@ export function AddWidgetModal({
   onAdd,
   existingLayout,
   me,
-  activeBusinessLine,
 }: AddWidgetModalProps) {
   const [activeTab, setActiveTab] = useState<(typeof GALLERY_TABS)[number]>('KPIs');
+  const defaultBusinessLine = inferDefaultHomeBusinessLine(me);
 
   const itemsByTab = useMemo(() => {
     return GALLERY_ITEMS.filter(
-      (item) => item.category === activeTab && isGalleryItemAllowed(item, me, activeBusinessLine)
+      (item) => item.category === activeTab && isGalleryItemAllowed(item, me),
     );
-  }, [activeTab, me, activeBusinessLine]);
+  }, [activeTab, me]);
 
   useEffect(() => {
     if (!open) return;
     const hasCurrent = GALLERY_ITEMS.some(
-      (it) => it.category === activeTab && isGalleryItemAllowed(it, me, activeBusinessLine)
+      (it) => it.category === activeTab && isGalleryItemAllowed(it, me),
     );
     if (hasCurrent) return;
     const firstWith = GALLERY_TABS.find((tab) =>
-      GALLERY_ITEMS.some((it) => it.category === tab && isGalleryItemAllowed(it, me, activeBusinessLine))
+      GALLERY_ITEMS.some((it) => it.category === tab && isGalleryItemAllowed(it, me)),
     );
     if (firstWith) setActiveTab(firstWith);
-  }, [open, me, activeBusinessLine, activeTab]);
+  }, [open, me, activeTab]);
 
   const chartGroups = useMemo(() => {
     if (activeTab !== 'Charts') return null;
@@ -268,15 +254,25 @@ export function AddWidgetModal({
       typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `w-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const needsBusinessLine =
+      item.type === 'chart' ||
+      item.type === 'kpi' ||
+      item.type === 'list_projects' ||
+      item.type === 'list_opportunities' ||
+      (item.type === 'shortcuts' && widgetHasServicesShortcuts(item.config?.items as string[] | undefined));
+    const widgetConfig: Record<string, unknown> = { ...item.config };
+    if (needsBusinessLine) {
+      widgetConfig.business_line = defaultBusinessLine;
+    }
     const title =
       item.type === 'chart' && item.config?.metric
-        ? getChartMetricLabel(String(item.config.metric))
+        ? getChartWidgetTitle(String(item.config.metric), defaultBusinessLine)
         : item.label;
     const widget: WidgetDef = {
       id,
       type: item.type,
       title,
-      config: { ...item.config },
+      config: widgetConfig,
     };
     const { w, h } = defaultSize;
     const maxY = existingLayout.length ? Math.max(...existingLayout.map((l) => l.y + l.h), 0) : 0;

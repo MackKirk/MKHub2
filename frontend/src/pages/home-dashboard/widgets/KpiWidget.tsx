@@ -3,7 +3,9 @@ import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
-import { useBusinessLine } from '@/context/BusinessLineContext';
+import { uiCx, uiTypography } from '@/components/ui';
+import { getBusinessLineShortLabel, getAccessibleHomeBusinessLines, resolveWidgetBusinessLine } from '../homeBusinessLine';
+import type { MeForHomeWidgets } from '../widgetVisibility';
 
 type DashboardResponse = {
   total_opportunities: number;
@@ -65,8 +67,11 @@ type KpiWidgetProps = {
 
 export function KpiWidget({ config }: KpiWidgetProps) {
   const { ready } = useAnimationReady();
-  const ctxLine = useBusinessLine();
-  const businessLine = (config?.business_line as string | undefined) ?? ctxLine;
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<MeForHomeWidgets>('GET', '/auth/me'),
+  });
+  const businessLine = resolveWidgetBusinessLine(config, me);
   const metric = config?.metric ?? 'opportunities';
   const period = (config?.period as DateFilter) ?? 'all';
   const divisionId = config?.division_id;
@@ -100,24 +105,28 @@ export function KpiWidget({ config }: KpiWidgetProps) {
     ? `${String(config.customStart)} – ${String(config.customEnd)}`
     : PERIOD_LABELS[period] ?? 'All time';
   const statusLabel = statusLabels && statusLabels.length > 0 ? statusLabels.join(', ') : null;
+  const showLineInSubtitle = getAccessibleHomeBusinessLines(me).length > 1;
   const filterParts = [periodLabel];
+  if (showLineInSubtitle) filterParts.push(getBusinessLineShortLabel(businessLine));
   if (statusLabel) filterParts.push(statusLabel);
   const chartSubtitle = filterParts.join(' · ');
-  const Subtitle = () => (
-    <p className="text-gray-500 shrink-0 text-[10px]" style={{ fontSize: 'clamp(0.5rem, 4cqh, 0.625rem)', marginBottom: 'clamp(0.125rem, 1cqh, 0.25rem)' }} aria-hidden>{chartSubtitle}</p>
-  );
 
   if (isLoading) {
     return (
-      <div className="flex flex-col min-h-0 h-full w-full">
-        <Subtitle />
-        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="min-h-0 flex-1">
           <div className="min-h-[120px]" />
         </LoadingOverlay>
       </div>
     );
   }
-  if (error) return <div className="flex flex-col min-h-0 h-full w-full"><Subtitle /><div className="flex-1 min-h-0 flex items-center justify-center text-sm text-red-500">Failed to load</div></div>;
+  if (error) {
+    return (
+      <div className="flex h-full min-h-0 w-full flex-col items-center justify-center">
+        <div className="text-sm text-red-500">Failed to load</div>
+      </div>
+    );
+  }
 
   let value: number;
   let formatter: (n: number) => string = (n) => String(n);
@@ -142,21 +151,22 @@ export function KpiWidget({ config }: KpiWidgetProps) {
   }
 
   return (
-    <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
-      <Subtitle />
-      <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden min-w-0">
-        <div className="flex items-center min-w-0 w-full" style={{ gap: 'clamp(0.25rem, 1.5cqh, 0.5rem)' }}>
-          <div
-            className="rounded-full shrink-0 bg-brand-red/30 self-stretch min-h-[1rem]"
-            style={{ width: 'clamp(2px, 0.4cqw, 5px)' }}
-            aria-hidden
-          />
-          <div
-            className="font-bold text-gray-900 tabular-nums truncate min-w-0 text-lg leading-none"
-            style={{ fontSize: 'clamp(0.75rem, 22cqh, 2.75rem)' }}
-          >
-            {formatter(value)}
-          </div>
+    <FadeInOnMount enabled={ready} className="flex h-full min-h-0 w-full flex-col justify-center overflow-hidden">
+      <div
+        className="flex min-h-0 min-w-0 flex-col justify-center"
+        style={{ gap: 'clamp(0.125rem, 1.5cqh, 0.375rem)' }}
+      >
+        <p
+          className={uiCx(uiTypography.helper, 'shrink-0 truncate')}
+          style={{ fontSize: 'clamp(0.5rem, 4cqh, 0.6875rem)' }}
+        >
+          {chartSubtitle}
+        </p>
+        <div
+          className="min-w-0 truncate font-semibold tabular-nums leading-none text-gray-900"
+          style={{ fontSize: 'clamp(0.875rem, 22cqh, 2.5rem)' }}
+        >
+          {formatter(value)}
         </div>
       </div>
     </FadeInOnMount>
