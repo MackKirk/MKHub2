@@ -238,6 +238,7 @@ export function isHiddenPermissionKey(key: string): boolean {
   if (key === 'fleet:access') return true;
   if (key === 'training:access' || key === 'training:manage') return true;
   if (key === 'settings:access') return true;
+  if (key === 'properties:access') return true;
   if (key === 'documents:delete' || key === 'documents:move') return true;
   if (isHiddenProjectLinePermissionKey(key)) return true;
   if (key === 'fleet:read' || key === 'fleet:write' || key === 'fleet:manage') return true;

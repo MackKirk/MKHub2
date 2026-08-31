@@ -13,6 +13,7 @@ import { CompanyAssetsPermissionsPanel } from '@/components/CompanyAssetsPermiss
 import { HrPermissionsPanel } from '@/components/HrPermissionsPanel';
 import { TrainingPermissionsPanel } from '@/components/TrainingPermissionsPanel';
 import { SettingsPermissionsPanel } from '@/components/SettingsPermissionsPanel';
+import { PropertiesPermissionsPanel } from '@/components/PropertiesPermissionsPanel';
 import { ProjectLinePermissionsGrid } from '@/components/ProjectLinePermissionsGrid';
 import {
   applyCustomerAccessLevel,
@@ -75,6 +76,12 @@ import {
   syncTrainingAccess,
   type TrainingAccessLevel,
 } from '@/lib/trainingPermissions';
+import {
+  applyPropertiesAccessLevel,
+  filterPropertiesAreaPermissions,
+  syncPropertiesAccess,
+  type PropertiesAccessLevel,
+} from '@/lib/propertiesPermissions';
 import {
   applySettingsAccessLevel,
   filterSettingsAreaPermissions,
@@ -236,8 +243,8 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
         perms[perm.key] = perm.is_granted;
       });
     });
-    setPermissions(syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(perms)))))));
-    setInitialPermissions(syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess({ ...perms })))))));
+    setPermissions(syncPropertiesAccess(syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(perms))))))));
+    setInitialPermissions(syncPropertiesAccess(syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess({ ...perms }))))))));
 
     const cfg = permissionsData?.configs || {};
     const nextConfigs: LineCategoryConfigs = {
@@ -623,10 +630,10 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
           const editKey = key.replace(':read', ':write');
           newPerms[editKey] = false;
         }
-        return syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(applyPermissionUncheckCascade(key, newPerms)))))));
+        return syncPropertiesAccess(syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(applyPermissionUncheckCascade(key, newPerms))))))));
       }
       
-      return syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(newPerms))))));
+      return syncPropertiesAccess(syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(newPerms)))))));
     });
   };
   
@@ -710,6 +717,13 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     [],
   );
 
+  const handlePropertiesAccessLevel = useCallback(
+    (readKey: string, writeKey: string | undefined, level: PropertiesAccessLevel) => {
+      setPermissions((prev) => applyPropertiesAccessLevel(prev, readKey, writeKey, level));
+    },
+    [],
+  );
+
   const handleSettingsAccessLevel = useCallback(
     (readKey: string, writeKey: string | undefined, level: SettingsAccessLevel) => {
       setPermissions((prev) => applySettingsAccessLevel(prev, readKey, writeKey, level));
@@ -749,15 +763,17 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       return;
     }
     setPermissions((prev) =>
-      syncSettingsAccess(
-        syncTrainingAccess(
-          syncHrAccess(
-            syncDocumentsAccess(
-              syncFleetAccess(
-                syncCompanyAssetsAccess({
-                  ...prev,
-                  ...Object.fromEntries((template.permission_keys || []).map((k) => [k, true])),
-                }),
+      syncPropertiesAccess(
+        syncSettingsAccess(
+          syncTrainingAccess(
+            syncHrAccess(
+              syncDocumentsAccess(
+                syncFleetAccess(
+                  syncCompanyAssetsAccess({
+                    ...prev,
+                    ...Object.fromEntries((template.permission_keys || []).map((k) => [k, true])),
+                  }),
+                ),
               ),
             ),
           ),
@@ -788,7 +804,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
         if (allKeys.includes(areaAccessKey)) next[areaAccessKey] = true;
       }
     });
-    setPermissions(syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(next)))))));
+    setPermissions(syncPropertiesAccess(syncSettingsAccess(syncTrainingAccess(syncHrAccess(syncDocumentsAccess(syncFleetAccess(syncCompanyAssetsAccess(next))))))));
     setShowApplyTemplateModal(false);
   }, [selectedTemplateId, permissionTemplates, permissionsData]);
 
@@ -1181,6 +1197,18 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                   },
                   permissions: filterTrainingAreaPermissions(cat.permissions),
                 });
+              } else if (cat.category.name === 'properties') {
+                processedCategories.push({
+                  ...cat,
+                  category: {
+                    ...cat.category,
+                    name: 'properties',
+                    label: 'Properties',
+                    id: 'properties',
+                    description: 'Property register, leases, insurance, permits, and family portfolio.',
+                  },
+                  permissions: filterPropertiesAreaPermissions(cat.permissions || []),
+                });
               } else if (cat.category.name === 'settings') {
                 processedCategories.push({
                   ...cat,
@@ -1253,7 +1281,6 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                   !p.key.endsWith(':access') &&
                   !isHiddenPermissionKey(p.key)
               );
-              const hasAreaAccess = areaAccessPerm && permissions[areaAccessPerm.key];
               const categoryId = cat.category.id;
               const isExpanded = expandedCategories.has(categoryId);
               
@@ -1305,6 +1332,13 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                         permissions={permissions}
                         canEdit={canEdit}
                         onAccessLevelChange={handleTrainingAccessLevel}
+                      />
+                    ) : cat.category.name === 'properties' ? (
+                      <PropertiesPermissionsPanel
+                        areaPerms={subPermissions}
+                        permissions={permissions}
+                        canEdit={canEdit}
+                        onAccessLevelChange={handlePropertiesAccessLevel}
                       />
                     ) : cat.category.name === 'settings' ? (
                       <SettingsPermissionsPanel
@@ -1522,8 +1556,6 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
               </div>
               );
             });
-            
-            return processedCategories;
           })()}
         </div>
         

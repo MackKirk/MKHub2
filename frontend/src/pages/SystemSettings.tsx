@@ -44,6 +44,7 @@ import { DocumentsPermissionsPanel } from '@/components/DocumentsPermissionsPane
 import { DocumentHubPermissionsPanel } from '@/components/DocumentHubPermissionsPanel';
 import { HrPermissionsPanel } from '@/components/HrPermissionsPanel';
 import { TrainingPermissionsPanel } from '@/components/TrainingPermissionsPanel';
+import { PropertiesPermissionsPanel } from '@/components/PropertiesPermissionsPanel';
 import { ProjectLinePermissionsGrid } from '@/components/ProjectLinePermissionsGrid';
 import {
   applyCustomerAccessLevelToKeySet,
@@ -93,6 +94,12 @@ import {
   syncTrainingAccessInKeySet,
   type TrainingAccessLevel,
 } from '@/lib/trainingPermissions';
+import {
+  applyPropertiesAccessLevelToKeySet,
+  filterPropertiesAreaPermissions,
+  syncPropertiesAccessInKeySet,
+  type PropertiesAccessLevel,
+} from '@/lib/propertiesPermissions';
 import { syncSettingsAccessInKeySet, filterSettingsAreaPermissions } from '@/lib/settingsPermissions';
 import {
   applyProjectLineAccessLevelToKeySet,
@@ -395,6 +402,15 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
           description: 'Organization training dashboard and LMS administration.',
           permissions: filterTrainingAreaPermissions(cat.permissions || []),
         });
+      } else if (cat.name === 'properties') {
+        processed.push({
+          ...cat,
+          id: 'properties',
+          name: 'properties',
+          label: 'Properties',
+          description: 'Property register, leases, insurance, permits, and family portfolio.',
+          permissions: filterPropertiesAreaPermissions(cat.permissions || []),
+        });
       } else if (cat.name === 'settings') {
         processed.push({
           ...cat,
@@ -507,13 +523,15 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
     return {
       name: t.name,
       selectedKeys: syncSettingsAccessInKeySet(
-        syncTrainingAccessInKeySet(syncHrAccessInKeySet(
-          syncDocumentsAccessInKeySet(
-            syncFleetAccessInKeySet(
-              syncCompanyAssetsAccessInKeySet(new Set(t.permission_keys || [])),
+        syncPropertiesAccessInKeySet(
+          syncTrainingAccessInKeySet(syncHrAccessInKeySet(
+            syncDocumentsAccessInKeySet(
+              syncFleetAccessInKeySet(
+                syncCompanyAssetsAccessInKeySet(new Set(t.permission_keys || [])),
+              ),
             ),
-          ),
-        )),
+          )),
+        ),
       ),
     };
   };
@@ -540,6 +558,7 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
       next = syncFleetAccessInKeySet(next);
       next = syncHrAccessInKeySet(next);
       next = syncTrainingAccessInKeySet(next);
+      next = syncPropertiesAccessInKeySet(next);
       next = syncSettingsAccessInKeySet(next);
       onChange(next);
     };
@@ -813,6 +832,29 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
                             onChange(
                               applyTrainingAccessLevelToKeySet(
                                 selectedKeys,
+                                readKey,
+                                writeKey,
+                                level,
+                              ),
+                            );
+                          }}
+                        />
+                      );
+                    })()
+                  ) : cat.name === 'properties' ? (
+                    (() => {
+                      const allKeys = (cat.permissions || []).map((p) => p.key);
+                      const permRecord = Object.fromEntries([...selectedKeys].map((k) => [k, true]));
+                      return (
+                        <PropertiesPermissionsPanel
+                          areaPerms={subPermissions}
+                          permissions={permRecord}
+                          canEdit={!disabled}
+                          onAccessLevelChange={(readKey, writeKey, level: PropertiesAccessLevel) => {
+                            onChange(
+                              applyPropertiesAccessLevelToKeySet(
+                                selectedKeys,
+                                allKeys,
                                 readKey,
                                 writeKey,
                                 level,

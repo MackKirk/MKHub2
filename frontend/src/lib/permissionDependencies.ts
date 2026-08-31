@@ -266,6 +266,18 @@ export function canEnablePermission(
   if (permKey === 'fleet:inspections:write') {
     return has('fleet:inspections:read');
   }
+  if (permKey === 'properties:company:write') {
+    return has('properties:company:read');
+  }
+  if (permKey === 'properties:family:write') {
+    return has('properties:family:read');
+  }
+  if (permKey === 'properties:documents:write') {
+    return has('properties:documents:read');
+  }
+  if (permKey === 'properties:permits:write') {
+    return has('properties:permits:read');
+  }
   if (permKey === 'fleet:work_orders:assign') {
     return has('fleet:work_orders:read');
   }
@@ -561,6 +573,21 @@ export function applyPermissionUncheckCascade(
     newPerms[uncheckedKey.replace(':read', ':write')] = false;
   } else if (uncheckedKey === 'sales:quotations:read') {
     newPerms['sales:quotations:write'] = false;
+  } else if (uncheckedKey === 'properties:access') {
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('properties:') && k !== 'properties:access') {
+        newPerms[k] = false;
+      }
+    });
+    newPerms['properties:access'] = false;
+  } else if (uncheckedKey === 'properties:company:read') {
+    newPerms['properties:company:write'] = false;
+  } else if (uncheckedKey === 'properties:family:read') {
+    newPerms['properties:family:write'] = false;
+  } else if (uncheckedKey === 'properties:documents:read') {
+    newPerms['properties:documents:write'] = false;
+  } else if (uncheckedKey === 'properties:permits:read') {
+    newPerms['properties:permits:write'] = false;
   } else if (uncheckedKey === 'training:admin:read') {
     newPerms['training:admin:write'] = false;
   } else if (
@@ -695,6 +722,14 @@ export function applyPermissionUncheckCascade(
       newPerms['training:admin:write']
     );
     newPerms['training:access'] = hasChild;
+  }
+
+  // Implicit area gate: keep properties:access only while any Properties child remains.
+  if (uncheckedKey === 'properties:access' || uncheckedKey.startsWith('properties:')) {
+    const hasChild = Object.keys(newPerms).some(
+      (k) => k.startsWith('properties:') && k !== 'properties:access' && !!newPerms[k],
+    );
+    newPerms['properties:access'] = hasChild;
   }
 
   // Settings no longer uses a legacy area gate in runtime checks.
