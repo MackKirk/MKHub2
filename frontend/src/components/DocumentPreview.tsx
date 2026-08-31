@@ -652,7 +652,7 @@ function buildEditorHtml(
             .join('') || '<br>';
         }
       }
-      const divStyle = style ? 'display:flex;align-items:center' : '';
+      const divStyle = style ? 'display:flex;align-items:flex-start' : '';
       return `<div ${TEXT_EDITOR_LINE_ATTR}="${idx}" ${TEXT_EDITOR_LINE_STYLE_ATTR}="${style ?? 'none'}" style="${divStyle}">${markerHtml}<span ${TEXT_EDITOR_LINE_TEXT_ATTR}="true" style="${style ? 'flex:1;min-width:0' : ''}">${textHtml}</span></div>`;
     })
     .join('');
@@ -3669,7 +3669,7 @@ export default function DocumentPreview({
                               return (
                                 <div
                                   key={idx}
-                                  className={listStyle ? 'flex min-h-[1.2em] items-center' : 'min-h-[1.2em]'}
+                                  className={listStyle ? 'flex min-h-[1.2em] items-start' : 'min-h-[1.2em]'}
                                   style={{ textAlign: lineAlign }}
                                 >
                                   {listStyle && (
@@ -3724,7 +3724,7 @@ export default function DocumentPreview({
                               return (
                                 <div
                                   key={idx}
-                                  className={style ? 'flex min-h-[1.2em] items-center' : 'min-h-[1.2em]'}
+                                  className={style ? 'flex min-h-[1.2em] items-start' : 'min-h-[1.2em]'}
                                 >
                                   {style && (
                                     <span className="mr-[0.45em] inline-block min-w-[1.35em] shrink-0 select-none text-right">

@@ -97,3 +97,52 @@ class TestDocumentCreatorTokens(unittest.TestCase):
         src = "Wage: <Employee Wage> legacy <Employee Salary>"
         out = _replace_tokens_in_text(src, {"employee_wage": "$42"})
         self.assertEqual(out, "Wage: $42 legacy $42")
+
+    def test_primary_contact_tokens_replace(self):
+        from app.routes.document_creator import _replace_tokens_in_text
+
+        src = (
+            "Contact: <Primary Contact Name>; "
+            "<Primary Contact Phone>; "
+            "<Primary Contact Email>"
+        )
+        out = _replace_tokens_in_text(
+            src,
+            {
+                "primary_contact_name": "Jane Doe",
+                "primary_contact_phone": "604-555-0100",
+                "primary_contact_email": "jane@example.com",
+            },
+        )
+        self.assertEqual(out, "Contact: Jane Doe; 604-555-0100; jane@example.com")
+
+    def test_primary_contact_empty_keeps_tokens(self):
+        from app.routes.document_creator import _replace_tokens_in_text
+
+        src = "<Primary Contact Name> <Primary Contact Phone> <Primary Contact Email>"
+        out = _replace_tokens_in_text(
+            src,
+            {
+                "primary_contact_name": "",
+                "primary_contact_phone": "",
+                "primary_contact_email": "",
+            },
+        )
+        self.assertEqual(out, src)
+
+    def test_contact_phone_prefers_phone_then_mobile(self):
+        from types import SimpleNamespace
+        from app.routes.document_creator import _contact_phone
+
+        self.assertEqual(
+            _contact_phone(SimpleNamespace(phone="604-111", mobile_phone="604-222")),
+            "604-111",
+        )
+        self.assertEqual(
+            _contact_phone(SimpleNamespace(phone="", mobile_phone="604-222")),
+            "604-222",
+        )
+        self.assertEqual(
+            _contact_phone(SimpleNamespace(phone=None, mobile_phone=None)),
+            "",
+        )

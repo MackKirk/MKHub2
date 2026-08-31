@@ -151,6 +151,8 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
   const { data: tokenValues } = useDocumentAutoFillTokens(null, tokensPopoverOpen);
   const [dragOverPageIdx, setDragOverPageIdx] = useState<number | null>(null);
   const [dragInsertPosition, setDragInsertPosition] = useState<'above' | 'below' | null>(null);
+  const draggingPageIdxRef = useRef<number | null>(null);
+  const dragInsertPositionRef = useRef<'above' | 'below' | null>(null);
 
   const { data: documentTypes = [] } = useQuery({
     queryKey: ['document-creator-document-types'],
@@ -246,52 +248,68 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
     setPages((prev) => prev.filter((_, i) => i !== index));
     if (draggingPageIdx === index) setDraggingPageIdx(null);
     if (dragOverPageIdx === index) setDragOverPageIdx(null);
+    if (draggingPageIdxRef.current === index) draggingPageIdxRef.current = null;
+    if (dragInsertPositionRef.current != null) dragInsertPositionRef.current = null;
   };
 
-  const handlePageDragStart = (idx: number, e: React.DragEvent) => {
-    const target = e.target as HTMLElement;
-    if (!target.closest('[data-grabber]')) {
-      e.preventDefault();
-      return;
-    }
+  const handlePageGrabberDragStart = (idx: number, e: React.DragEvent) => {
+    e.stopPropagation();
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(idx));
+    draggingPageIdxRef.current = idx;
+    dragInsertPositionRef.current = null;
     setDraggingPageIdx(idx);
+    setDragOverPageIdx(null);
+    setDragInsertPosition(null);
   };
 
   const handlePageDragOver = (idx: number, e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (draggingPageIdx === null || draggingPageIdx === idx) return;
+    const fromIdx = draggingPageIdxRef.current;
+    if (fromIdx === null || fromIdx === idx) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const mid = rect.top + rect.height / 2;
+    const position: 'above' | 'below' = e.clientY < mid ? 'above' : 'below';
+    dragInsertPositionRef.current = position;
     setDragOverPageIdx(idx);
-    setDragInsertPosition(e.clientY < mid ? 'above' : 'below');
+    setDragInsertPosition(position);
   };
 
-  const handlePageDragLeave = () => {
+  const handlePageDragLeave = (e: React.DragEvent) => {
+    const related = e.relatedTarget as Node | null;
+    if (related && (e.currentTarget as HTMLElement).contains(related)) return;
     setDragOverPageIdx(null);
     setDragInsertPosition(null);
+    dragInsertPositionRef.current = null;
   };
 
-  const handlePageDrop = (idx: number) => {
-    if (draggingPageIdx === null) return;
-    const fromIdx = draggingPageIdx;
+  const handlePageDrop = (idx: number, e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const fromIdx = draggingPageIdxRef.current;
+    const insertPos = dragInsertPositionRef.current;
+    draggingPageIdxRef.current = null;
+    dragInsertPositionRef.current = null;
     setDraggingPageIdx(null);
     setDragOverPageIdx(null);
     setDragInsertPosition(null);
-    if (fromIdx === idx) return;
+    if (fromIdx === null) return;
     setPages((prev) => {
+      if (fromIdx < 0 || fromIdx >= prev.length) return prev;
       const v = [...prev];
       const [moved] = v.splice(fromIdx, 1);
-      const toIdx = dragInsertPosition === 'above' ? idx : idx + 1;
-      const insertAt = fromIdx < toIdx ? toIdx - 1 : toIdx;
+      const toIdx = insertPos === 'above' ? idx : idx + 1;
+      const insertAt = Math.max(0, Math.min(v.length, fromIdx < toIdx ? toIdx - 1 : toIdx));
+      if (insertAt === fromIdx) return prev;
       v.splice(insertAt, 0, moved);
       return v;
     });
   };
 
   const handlePageDragEnd = () => {
+    draggingPageIdxRef.current = null;
+    dragInsertPositionRef.current = null;
     setDraggingPageIdx(null);
     setDragOverPageIdx(null);
     setDragInsertPosition(null);
@@ -647,12 +665,9 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                     return (
                       <div
                         key={idx}
-                        draggable
-                        onDragStart={(e) => handlePageDragStart(idx, e)}
                         onDragOver={(e) => handlePageDragOver(idx, e)}
                         onDragLeave={handlePageDragLeave}
-                        onDrop={() => handlePageDrop(idx)}
-                        onDragEnd={handlePageDragEnd}
+                        onDrop={(e) => handlePageDrop(idx, e)}
                         className={`relative flex gap-3 items-center p-3 transition-all ${
                           draggingPageIdx === idx ? 'opacity-50 bg-gray-50' : 'bg-white hover:bg-gray-50/50'
                         } ${dragOverPageIdx === idx && draggingPageIdx !== idx ? 'ring-1 ring-brand-red/30 ring-inset' : ''}`}
@@ -669,10 +684,14 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                         )}
                         <div
                           data-grabber
+                          draggable
+                          onDragStart={(e) => handlePageGrabberDragStart(idx, e)}
+                          onDragEnd={handlePageDragEnd}
                           className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 cursor-grab active:cursor-grabbing touch-none"
                           title="Drag to reorder"
+                          aria-label="Drag to reorder"
                         >
-                          <GrabberIcon />
+                          <GrabberIcon className="w-5 h-5 pointer-events-none" />
                         </div>
                         <PageThumbnailSmall
                           backgroundUrl={backgroundUrl}

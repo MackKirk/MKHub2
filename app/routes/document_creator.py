@@ -21,6 +21,7 @@ from ..models.models import (
     FileObject,
     Project,
     Client,
+    ClientContact,
     ClientSite,
     EmployeeProfile,
     DocumentSignatureRequest,
@@ -467,6 +468,9 @@ _PLACEHOLDER_TOKENS: list[tuple[str, str]] = [
     ("<Project Address>", "project_address"),
     ("<Customer Name>", "customer_name"),
     ("<Customer Address>", "customer_address"),
+    ("<Primary Contact Name>", "primary_contact_name"),
+    ("<Primary Contact Phone>", "primary_contact_phone"),
+    ("<Primary Contact Email>", "primary_contact_email"),
     ("<Reference Code>", "reference_code"),
     ("REFERENCE CODE", "reference_code"),
     ("<Auto Date>", "auto_date"),
@@ -483,6 +487,9 @@ _TOKEN_CATALOG: list[dict[str, str]] = [
     {"token": "<Project Address>", "key": "project_address", "label": "Project address", "group": "project"},
     {"token": "<Customer Name>", "key": "customer_name", "label": "Customer name", "group": "project"},
     {"token": "<Customer Address>", "key": "customer_address", "label": "Customer address", "group": "project"},
+    {"token": "<Primary Contact Name>", "key": "primary_contact_name", "label": "Primary contact name", "group": "project"},
+    {"token": "<Primary Contact Phone>", "key": "primary_contact_phone", "label": "Primary contact phone", "group": "project"},
+    {"token": "<Primary Contact Email>", "key": "primary_contact_email", "label": "Primary contact email", "group": "project"},
     {"token": "<Reference Code>", "key": "reference_code", "label": "Project code", "group": "project"},
     {"token": "<Auto Date>", "key": "auto_date", "label": "Date when page is added", "group": "project"},
     {"token": "<Employee Name>", "key": "employee_name", "label": "Employee name", "group": "employee"},
@@ -715,6 +722,35 @@ def _employee_token_values(user_id: Optional[uuid.UUID], db: Session) -> dict:
     return out
 
 
+def _contact_phone(contact: ClientContact) -> str:
+    """Prefer phone, fall back to mobile_phone."""
+    return ((contact.phone or "").strip() or (contact.mobile_phone or "").strip())
+
+
+def _resolve_project_primary_contact(proj: Project, db: Session) -> Optional[ClientContact]:
+    """Project.contact_id, else client's is_primary, else first by sort_index."""
+    contact_id = getattr(proj, "contact_id", None)
+    if contact_id:
+        contact = db.get(ClientContact, contact_id)
+        if contact:
+            return contact
+    if not proj.client_id:
+        return None
+    primary = (
+        db.query(ClientContact)
+        .filter(ClientContact.client_id == proj.client_id, ClientContact.is_primary.is_(True))
+        .first()
+    )
+    if primary:
+        return primary
+    return (
+        db.query(ClientContact)
+        .filter(ClientContact.client_id == proj.client_id)
+        .order_by(ClientContact.sort_index, ClientContact.name)
+        .first()
+    )
+
+
 def _project_token_values(
     project_id: Optional[uuid.UUID],
     db: Session,
@@ -732,6 +768,9 @@ def _project_token_values(
         "project_address": "",
         "customer_name": "",
         "customer_address": "",
+        "primary_contact_name": "",
+        "primary_contact_phone": "",
+        "primary_contact_email": "",
         "reference_code": "",
         "auto_date": "",
         "employee_name": "",
@@ -750,12 +789,16 @@ def _project_token_values(
                 if client:
                     client_name = client.display_name or client.name or ""
                     customer_address = _format_customer_address(client)
+            contact = _resolve_project_primary_contact(proj, db)
             values.update(
                 {
                     "project_name": proj.name or "",
                     "project_address": _format_project_address(proj, db),
                     "customer_name": client_name,
                     "customer_address": customer_address,
+                    "primary_contact_name": (contact.name or "").strip() if contact else "",
+                    "primary_contact_phone": _contact_phone(contact) if contact else "",
+                    "primary_contact_email": (contact.email or "").strip() if contact else "",
                     "reference_code": proj.code or "",
                 }
             )

@@ -7,6 +7,18 @@ export type DocumentTypeWithCategory = {
 
 export const UNCATEGORIZED_CATEGORY_KEY = '__uncategorized__';
 
+/** Canonical label for HR employee-contract templates (match is case-insensitive). */
+export const EMPLOYEE_CONTRACT_CATEGORY = 'Employee Contract';
+
+export function isEmployeeContractCategory(category: string | null | undefined): boolean {
+  return (category || '').trim().toLowerCase() === EMPLOYEE_CONTRACT_CATEGORY.toLowerCase();
+}
+
+/** Hide Employee Contract templates when creating/adding pages under a project/opportunity. */
+export function filterDocumentTypesForProjectScope<T extends DocumentTypeWithCategory>(types: T[]): T[] {
+  return types.filter((dt) => !isEmployeeContractCategory(dt.category));
+}
+
 export function groupDocumentTypesByCategory<T extends DocumentTypeWithCategory>(
   types: T[],
 ): { categories: [string, T[]][]; uncategorized: T[] } {
