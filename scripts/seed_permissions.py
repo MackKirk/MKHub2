@@ -317,7 +317,7 @@ def seed_permissions():
                     {
                         "key": "print_shop:write",
                         "label": "Manage Print Shop Requests",
-                        "description": "Allows updating status, notes, and cancelling print shop requests",
+                        "description": "Allows logging requests, updating status and notes, and cancelling print shop requests",
                         "sort_index": 2,
                         "is_implemented": "print_shop:write" in implemented_permissions,
                     },
