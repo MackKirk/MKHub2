@@ -1,5 +1,5 @@
 import { withFileAccessToken } from '@/lib/api';
-import { memo, useEffect, useRef, useState } from 'react';
+import { Fragment, memo, useEffect, useRef, useState } from 'react';
 import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
 import { docElementRotationDeg, docElementRotateStyle } from '@/utils/documentElementGeometry';
 import {
@@ -32,8 +32,8 @@ type DocumentPagesStripProps = {
   templates: Template[];
   currentPageIndex: number;
   onPageSelect: (index: number) => void;
-  /** When set, show the "Add page" button. Omit for read-only mode. */
-  onAddPage?: () => void;
+  /** When set, show add/insert controls. `insertIndex` is where the new page(s) should land. */
+  onAddPage?: (insertIndex: number) => void;
   /** When set, pages can be reordered by drag and drop. */
   onReorderPages?: (fromIndex: number, toIndex: number) => void;
   /** When set, show delete button on each page (only when more than one page). */
@@ -371,78 +371,98 @@ export default function DocumentPagesStrip({
         const isDropTarget = dragOverIndex === i;
         const isSelected = currentPageIndex === i;
         const pageLabel = i === 0 ? 'Cover' : `Page ${i + 1}`;
+        const showInsertGap =
+          onAddPage != null && i < pages.length - 1 && dragPageIndex === null;
         return (
-          <div
-            key={i}
-            draggable={canReorder}
-            onDragStart={(e) => handleDragStart(e, i)}
-            onDragOver={(e) => handleDragOver(e, i)}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, i)}
-            onDragEnd={handleDragEnd}
-            className={`group relative flex shrink-0 flex-col overflow-hidden rounded-lg border bg-white shadow-sm transition-[border-color,box-shadow,opacity] duration-200 ${
-              canReorder ? 'cursor-grab active:cursor-grabbing' : ''
-            } ${
-              isSelected
-                ? 'border-brand-red/45 shadow-md ring-1 ring-brand-red/20'
-                : 'border-slate-200/90 hover:border-slate-300 hover:shadow-md'
-            } ${isDropTarget ? 'ring-1 ring-brand-red/30' : ''} ${isDragging ? 'opacity-50' : ''}`}
-          >
-            <PageThumbnail
-              page={page}
-              templates={templates}
-              backgroundUrl={backgroundUrl}
-              isSelected={isSelected}
-              onClick={() => onPageSelect(i)}
-            />
+          <Fragment key={i}>
             <div
-              className={`flex shrink-0 items-center gap-0.5 border-t px-1.5 py-1 ${
-                isSelected ? 'border-brand-red/15 bg-red-50/70' : 'border-slate-100 bg-slate-50'
-              }`}
+              draggable={canReorder}
+              onDragStart={(e) => handleDragStart(e, i)}
+              onDragOver={(e) => handleDragOver(e, i)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, i)}
+              onDragEnd={handleDragEnd}
+              className={`group relative flex shrink-0 flex-col overflow-hidden rounded-lg border bg-white shadow-sm transition-[border-color,box-shadow,opacity] duration-200 ${
+                canReorder ? 'cursor-grab active:cursor-grabbing' : ''
+              } ${
+                isSelected
+                  ? 'border-brand-red/45 shadow-md ring-1 ring-brand-red/20'
+                  : 'border-slate-200/90 hover:border-slate-300 hover:shadow-md'
+              } ${isDropTarget ? 'ring-1 ring-brand-red/30' : ''} ${isDragging ? 'opacity-50' : ''}`}
             >
-              <span className="min-w-0 flex-1 truncate text-[10px] font-semibold tabular-nums text-slate-500">
-                {pageLabel}
-              </span>
-              {canDuplicate && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDuplicatePage?.(i);
-                  }}
-                  className="rounded-md p-1 text-slate-400 transition-[color,background-color] duration-200 hover:bg-white hover:text-slate-700"
-                  aria-label={`Duplicate ${pageLabel}`}
-                  title={`Duplicate ${pageLabel}`}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h2m8 0h2a2 2 0 012 2v2m0 8v2a2 2 0 01-2 2h-2m-4-4h8" />
-                  </svg>
-                </button>
-              )}
-              {canDelete && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeletePage?.(i);
-                  }}
-                  className="rounded-md p-1 text-slate-400 transition-[color,background-color] duration-200 hover:bg-white hover:text-red-600"
-                  aria-label={`Delete ${pageLabel}`}
-                  title={`Delete ${pageLabel}`}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              )}
+              <PageThumbnail
+                page={page}
+                templates={templates}
+                backgroundUrl={backgroundUrl}
+                isSelected={isSelected}
+                onClick={() => onPageSelect(i)}
+              />
+              <div
+                className={`flex shrink-0 items-center gap-0.5 border-t px-1.5 py-1 ${
+                  isSelected ? 'border-brand-red/15 bg-red-50/70' : 'border-slate-100 bg-slate-50'
+                }`}
+              >
+                <span className="min-w-0 flex-1 truncate text-[10px] font-semibold tabular-nums text-slate-500">
+                  {pageLabel}
+                </span>
+                {canDuplicate && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDuplicatePage?.(i);
+                    }}
+                    className="rounded-md p-1 text-slate-400 transition-[color,background-color] duration-200 hover:bg-white hover:text-slate-700"
+                    aria-label={`Duplicate ${pageLabel}`}
+                    title={`Duplicate ${pageLabel}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h2m8 0h2a2 2 0 012 2v2m0 8v2a2 2 0 01-2 2h-2m-4-4h8" />
+                    </svg>
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeletePage?.(i);
+                    }}
+                    className="rounded-md p-1 text-slate-400 transition-[color,background-color] duration-200 hover:bg-white hover:text-red-600"
+                    aria-label={`Delete ${pageLabel}`}
+                    title={`Delete ${pageLabel}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+            {showInsertGap && (
+              <div className="group/insert relative z-10 -my-2.5 flex h-5 shrink-0 items-center justify-center">
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-3 top-1/2 h-px -translate-y-1/2 bg-slate-200 opacity-0 transition-opacity duration-150 group-hover/insert:opacity-100"
+                />
+                <button
+                  type="button"
+                  onClick={() => onAddPage?.(i + 1)}
+                  className="relative flex h-5 w-5 items-center justify-center rounded-full border border-slate-300/90 bg-white text-slate-500 opacity-0 shadow-sm transition-[opacity,border-color,background-color,color,transform] duration-150 group-hover/insert:opacity-100 hover:border-brand-red/40 hover:bg-red-50 hover:text-brand-red focus-visible:opacity-100"
+                  aria-label={`Insert page after ${pageLabel}`}
+                  title={`Insert page after ${pageLabel}`}
+                >
+                  <span className="text-sm font-light leading-none">+</span>
+                </button>
+              </div>
+            )}
+          </Fragment>
         );
       })}
       {onAddPage != null && (
         <button
           type="button"
-          onClick={onAddPage}
+          onClick={() => onAddPage(pages.length)}
           className="flex shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-300/90 py-2.5 text-slate-500 transition-[border-color,background-color,color] duration-200 ease-out hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
         >
           <span className="text-lg font-light">+</span>

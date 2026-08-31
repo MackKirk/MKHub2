@@ -260,6 +260,8 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const textEditingElementIdRef = useRef<string | null>(null);
   textEditingElementIdRef.current = textEditingElementId;
   const [showAddPageModal, setShowAddPageModal] = useState(false);
+  /** Where to insert pages from AddPageModal; null means append. */
+  const addPageInsertIndexRef = useRef<number | null>(null);
   const [pagesPanelCollapsed, setPagesPanelCollapsed] = useState(false);
   const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -1850,21 +1852,37 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
   const handleAddPageWithTemplate = useCallback(
     (templateId: string | null) => {
       pushHistory();
-      setPages((prev) => [...prev, newPageWithTemplate(templateId)]);
-      setCurrentPageIndex(pages.length);
+      const insertAt = addPageInsertIndexRef.current;
+      let at = 0;
+      setPages((prev) => {
+        const next = [...prev];
+        at = Math.min(Math.max(0, insertAt ?? prev.length), prev.length);
+        next.splice(at, 0, newPageWithTemplate(templateId));
+        return next;
+      });
+      setCurrentPageIndex(at);
       setSelectedElementIds([]);
+      addPageInsertIndexRef.current = null;
       setShowAddPageModal(false);
     },
-    [newPageWithTemplate, pages.length, pushHistory]
+    [newPageWithTemplate, pushHistory]
   );
 
   const handleAddPages = useCallback(
     (newPages: DocumentPage[]) => {
       if (newPages.length === 0) return;
       pushHistory();
-      setPages((prev) => [...prev, ...newPages]);
-      setCurrentPageIndex((prev) => prev + newPages.length - 1);
+      const insertAt = addPageInsertIndexRef.current;
+      let at = 0;
+      setPages((prev) => {
+        const next = [...prev];
+        at = Math.min(Math.max(0, insertAt ?? prev.length), prev.length);
+        next.splice(at, 0, ...newPages);
+        return next;
+      });
+      setCurrentPageIndex(at + newPages.length - 1);
       setSelectedElementIds([]);
+      addPageInsertIndexRef.current = null;
       setShowAddPageModal(false);
     },
     [pushHistory]
@@ -2670,7 +2688,16 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
           templates={templates}
           currentPageIndex={currentPageIndex}
           onPageSelect={handlePageSelect}
-          onAddPage={readOnly ? undefined : isTemplate ? () => {} : () => setShowAddPageModal(true)}
+          onAddPage={
+            readOnly
+              ? undefined
+              : isTemplate
+                ? () => {}
+                : (insertIndex) => {
+                    addPageInsertIndexRef.current = insertIndex;
+                    setShowAddPageModal(true);
+                  }
+          }
           onReorderPages={readOnly ? undefined : isTemplate ? undefined : handleReorderPages}
           onDeletePage={readOnly ? undefined : isTemplate ? undefined : handleDeletePage}
           onDuplicatePage={
@@ -3009,7 +3036,10 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
       <AddPageModal
         open={showAddPageModal}
         templates={templates}
-        onClose={() => setShowAddPageModal(false)}
+        onClose={() => {
+          addPageInsertIndexRef.current = null;
+          setShowAddPageModal(false);
+        }}
         onAddPage={handleAddPageWithTemplate}
         onAddPages={handleAddPages}
         projectId={projectId}

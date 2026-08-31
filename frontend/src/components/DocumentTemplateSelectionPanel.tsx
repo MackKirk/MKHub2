@@ -23,6 +23,7 @@ import {
   isMultiPageTemplate,
   pageLabel,
 } from '@/lib/documentTemplateUtils';
+import { filterDocumentTypesForProjectScope } from '@/lib/documentTypeGrouping';
 import { AppButton, uiCx, uiLayout, uiTypography } from '@/components/ui';
 
 export type DocumentTemplateSelectionPhase = 'grid' | 'options' | 'pages';
@@ -118,9 +119,14 @@ export function DocumentTemplateSelectionPanel({
     [projectId, subjectUserId],
   );
 
+  const visibleDocumentTypes = useMemo(
+    () => (projectId ? filterDocumentTypesForProjectScope(documentTypes) : documentTypes),
+    [documentTypes, projectId],
+  );
+
   const selectedType = useMemo(
-    () => documentTypes.find((dt) => dt.id === selectedTypeId) ?? null,
-    [documentTypes, selectedTypeId],
+    () => visibleDocumentTypes.find((dt) => dt.id === selectedTypeId) ?? null,
+    [visibleDocumentTypes, selectedTypeId],
   );
 
   const resetSelection = useCallback(() => {
@@ -173,26 +179,26 @@ export function DocumentTemplateSelectionPanel({
         await onConfirm({ kind: 'blank' });
         return;
       }
-      const dt = documentTypes.find((d) => d.id === documentTypeId);
+      const dt = visibleDocumentTypes.find((d) => d.id === documentTypeId);
       if (!dt) return;
       if (!isMultiPageTemplate(dt)) {
         await onConfirm({ kind: 'preset', documentTypeId });
       }
     },
-    [busy, disabled, documentTypes, onConfirm],
+    [busy, disabled, visibleDocumentTypes, onConfirm],
   );
 
   const handleTemplatePick = useCallback(
     (documentTypeId: string) => {
       if (disabled || busy) return;
-      const dt = documentTypes.find((d) => d.id === documentTypeId);
+      const dt = visibleDocumentTypes.find((d) => d.id === documentTypeId);
       if (!dt) return;
       if (!isMultiPageTemplate(dt)) return;
       setSelectedTypeId(documentTypeId);
       setSelectedPageIndices(new Set());
       setView('options');
     },
-    [busy, disabled, documentTypes],
+    [busy, disabled, visibleDocumentTypes],
   );
 
   const handleBackgroundSelect = useCallback(
@@ -437,14 +443,14 @@ export function DocumentTemplateSelectionPanel({
   ) : null;
 
   const templateGrid =
-    documentTypes.length === 0 && !isLoading ? (
+    visibleDocumentTypes.length === 0 && !isLoading ? (
       <p className="text-sm text-gray-500 py-8 text-center">
         No document templates yet. Use &quot;From background&quot; to start with a single page, or create templates
         in Document templates.
       </p>
     ) : (
       <DocumentTypePicker
-        documentTypes={documentTypes}
+        documentTypes={visibleDocumentTypes}
         backgroundTemplates={backgroundTemplates}
         isLoading={isLoading || busy}
         onSelect={handleTemplateSelect}
