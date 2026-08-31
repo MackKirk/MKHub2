@@ -1,12 +1,19 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useBusinessLine } from '@/context/BusinessLineContext';
+import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
 import type { WidgetDef } from './types';
 import { getWidgetMeta } from './widgetRegistry';
-import { getChartMetricLabel, CHART_PALETTE_OPTIONS, CHART_PALETTES } from './widgets/chartShared';
+import {
+  getChartWidgetTitle,
+  CHART_PALETTE_OPTIONS,
+  CHART_PALETTES,
+  getDefaultChartPalette,
+  type ChartPaletteId,
+} from './widgets/chartShared';
 import {
   AppButton,
+  AppCheckbox,
   AppDatePicker,
   AppFormModal,
   AppInput,
@@ -24,9 +31,23 @@ import {
   canAccessBusinessLineForHome,
   canReadCustomersForHome,
   isShortcutItemAllowed,
-  normalizeBusinessLineForHome,
 } from './widgetVisibility';
 import { filterStatusesForOpportunity, filterStatusesForProject } from '@/lib/projectStatusVisibility';
+import {
+  CHART_ENTITY_OPTIONS,
+  CHART_GROUP_BY_OPTIONS,
+  composeChartMetric,
+  inferDefaultHomeBusinessLine,
+  KPI_METRIC_OPTIONS,
+  parseChartMetric,
+  widgetHasServicesShortcuts,
+  type HomeBusinessLine,
+} from './homeBusinessLine';
+import {
+  divisionExistsInLine,
+  HomeBusinessLineField,
+  HomeDivisionField,
+} from './HomeWidgetConfigFields';
 
 function KpiStatusSelector({
   config,
@@ -66,28 +87,17 @@ function KpiStatusSelector({
     <div>
       <span className={uiCx(uiTypography.controlLabel, 'mb-2 block')}>Status</span>
       <div className={uiSpacing.sectionStack}>
-        <label className={uiCx(uiLayout.actionsRow, 'cursor-pointer')}>
-          <input
-            type="checkbox"
-            checked={isAllStatus}
-            onChange={toggleAllStatus}
-            className="rounded border-gray-300 text-brand-red focus:ring-brand-red/40"
-          />
-          <span className={uiTypography.body}>All status</span>
-        </label>
+        <AppCheckbox label="All status" checked={isAllStatus} onChange={() => toggleAllStatus()} />
         {statusOptions.map((s) => {
           const label = String(s.label || '');
           const checked = selectedLabels.includes(label);
           return (
-            <label key={s.id} className={uiCx(uiLayout.actionsRow, 'cursor-pointer')}>
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => toggleStatus(label)}
-                className="rounded border-gray-300 text-brand-red focus:ring-brand-red/40"
-              />
-              <span className={uiTypography.body}>{label}</span>
-            </label>
+            <AppCheckbox
+              key={s.id}
+              label={label}
+              checked={checked}
+              onChange={() => toggleStatus(label)}
+            />
           );
         })}
       </div>
@@ -125,6 +135,77 @@ const SHORTCUT_OPTIONS = [
   { id: 'business', label: 'Dashboard' },
 ];
 
+function ChartPalettePicker({
+  value,
+  defaultPalette,
+  onChange,
+}: {
+  value: ChartPaletteId | string | undefined;
+  defaultPalette: ChartPaletteId;
+  onChange: (palette: ChartPaletteId) => void;
+}) {
+  const selected = (value ?? defaultPalette) as ChartPaletteId;
+  const monochrome = CHART_PALETTE_OPTIONS.filter((o) => o.group === 'monochrome');
+  const multicolor = CHART_PALETTE_OPTIONS.filter((o) => o.group === 'multicolor');
+
+  const renderOption = (opt: (typeof CHART_PALETTE_OPTIONS)[number]) => {
+    const isSelected = selected === opt.value;
+    const colors = CHART_PALETTES[opt.value];
+    return (
+      <button
+        key={opt.value}
+        type="button"
+        onClick={() => onChange(opt.value)}
+        className={uiCx(
+          'flex items-center gap-1.5 px-2 py-1.5 transition-colors',
+          uiRadius.control,
+          isSelected
+            ? 'border-2 border-brand-red bg-brand-red/5'
+            : uiCx(uiBorders.strong, uiColors.surface, 'hover:border-gray-300'),
+        )}
+        title={opt.label}
+        aria-label={opt.label}
+      >
+        <div className="flex gap-0.5">
+          {colors.slice(0, 6).map((c, i) => (
+            <span
+              key={i}
+              className="h-3 w-3 shrink-0 rounded-sm"
+              style={{ backgroundColor: c }}
+            />
+          ))}
+        </div>
+      </button>
+    );
+  };
+
+  return (
+    <div className={uiSpacing.sectionStack}>
+      <div>
+        <span className={uiCx(uiTypography.helper, 'mb-1.5 block')}>Single hue</span>
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>{monochrome.map(renderOption)}</div>
+      </div>
+      <div>
+        <span className={uiCx(uiTypography.helper, 'mb-1.5 block')}>Multi-color</span>
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>{multicolor.map(renderOption)}</div>
+      </div>
+    </div>
+  );
+}
+
+function ConfigColumn({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className={uiSpacing.sectionStack}>
+      <h3 className={uiTypography.sectionTitle}>{title}</h3>
+      <div className={uiSpacing.sectionStack}>{children}</div>
+    </div>
+  );
+}
+
+function ConfigColumns({ left, right }: { left: ReactNode; right: ReactNode }) {
+  return <div className={uiLayout.sectionGrid2}>{left}{right}</div>;
+}
+
 type WidgetConfigModalProps = {
   widget: WidgetDef | null;
   onClose: () => void;
@@ -134,18 +215,20 @@ type WidgetConfigModalProps = {
 export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModalProps) {
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [title, setTitle] = useState('');
-  const ctxLine = useBusinessLine();
   const { data: me } = useQuery({
     queryKey: ['me'],
     queryFn: () => api<MeForHomeWidgets>('GET', '/auth/me'),
   });
 
-  const lineForPermissions = useMemo(() => {
-    const bl = widget?.config?.business_line;
-    if (typeof bl === 'string' && bl.trim()) return normalizeBusinessLineForHome(bl);
-    return normalizeBusinessLineForHome(ctxLine);
-  }, [widget?.config?.business_line, ctxLine]);
+  const configBusinessLine = useMemo((): HomeBusinessLine => {
+    const bl = config.business_line;
+    if (typeof bl === 'string' && bl.trim()) {
+      return bl as HomeBusinessLine;
+    }
+    return inferDefaultHomeBusinessLine(me);
+  }, [config.business_line, me]);
 
+  const lineForPermissions = configBusinessLine;
   const allowServicesWidgets = me !== undefined && canAccessBusinessLineForHome(me, lineForPermissions);
   const allowCustomersFilter = me !== undefined && canReadCustomersForHome(me);
 
@@ -153,6 +236,13 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
     queryKey: ['settings'],
     queryFn: () => api<Record<string, unknown>>('GET', '/settings'),
     enabled: widget?.type === 'kpi',
+  });
+
+  const { data: divisionsRaw } = useQuery({
+    queryKey: PROJECT_DIVISIONS_QUERY_KEY,
+    queryFn: () => api('GET', '/settings/project-divisions'),
+    enabled: widget?.type === 'chart' || widget?.type === 'list_projects' || widget?.type === 'list_opportunities',
+    staleTime: 5 * 60_000,
   });
 
   const { data: clientsData } = useQuery({
@@ -171,14 +261,24 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
 
   useEffect(() => {
     if (widget) {
-      setConfig({ ...widget.config });
+      const initial = { ...widget.config };
+      const needsLine =
+        widget.type === 'chart' ||
+        widget.type === 'kpi' ||
+        widget.type === 'list_projects' ||
+        widget.type === 'list_opportunities' ||
+        (widget.type === 'shortcuts' && widgetHasServicesShortcuts(initial.items as string[] | undefined));
+      if (needsLine && !initial.business_line) {
+        initial.business_line = inferDefaultHomeBusinessLine(me);
+      }
+      setConfig(initial);
       const defaultTitle =
         widget.type === 'chart' && widget.config?.metric
-          ? getChartMetricLabel(String(widget.config.metric))
+          ? getChartWidgetTitle(String(widget.config.metric), String(initial.business_line ?? ''))
           : getWidgetMeta(widget.type)?.label ?? '';
       setTitle(widget.title ?? defaultTitle);
     }
-  }, [widget]);
+  }, [widget, me]);
 
   useEffect(() => {
     if (widget?.type !== 'chart' || me === undefined) return;
@@ -187,17 +287,53 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
     }
   }, [widget?.type, widget?.id, allowServicesWidgets, me, config.mode]);
 
+  const handleBusinessLineChange = (line: HomeBusinessLine) => {
+    setConfig((prev) => {
+      const next: Record<string, unknown> = { ...prev, business_line: line };
+      const divId = prev.division_id as string | undefined;
+      if (divId && !divisionExistsInLine(divId, line, divisionsRaw as { id: string; label?: string; subdivisions?: { id: string; label?: string }[] }[] | undefined)) {
+        next.division_id = undefined;
+      }
+      if (widget?.type === 'shortcuts') {
+        const items = (prev.items as string[]) ?? [];
+        const filtered = items.filter((id) => isShortcutItemAllowed(id, me, line));
+        next.items = filtered.length ? filtered : ['tasks'];
+      }
+      return next;
+    });
+  };
+
   if (!widget) return null;
 
   const meta = getWidgetMeta(widget.type);
   const handleSave = () => {
+    const savedConfig = { ...config };
+    if (
+      widget.type === 'chart' ||
+      widget.type === 'kpi' ||
+      widget.type === 'list_projects' ||
+      widget.type === 'list_opportunities' ||
+      (widget.type === 'shortcuts' && widgetHasServicesShortcuts(savedConfig.items as string[] | undefined))
+    ) {
+      savedConfig.business_line = configBusinessLine;
+    }
     const savedTitle =
       widget.type === 'chart'
-        ? getChartMetricLabel(String(config.metric ?? 'opportunities_by_status'))
+        ? getChartWidgetTitle(String(savedConfig.metric ?? 'opportunities_by_status'), configBusinessLine)
         : title || undefined;
-    onSave(widget.id, config, savedTitle);
+    onSave(widget.id, savedConfig, savedTitle);
     onClose();
   };
+
+  const showBusinessLineField =
+    widget.type === 'chart' ||
+    widget.type === 'kpi' ||
+    widget.type === 'list_projects' ||
+    widget.type === 'list_opportunities' ||
+    (widget.type === 'shortcuts' && widgetHasServicesShortcuts(config.items as string[] | undefined));
+
+  const chartParsed = parseChartMetric(String(config.metric ?? 'opportunities_by_status'));
+  const isOpportunitiesChart = chartParsed.entity === 'opportunities';
 
   return (
     <AppFormModal
@@ -205,6 +341,7 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
       onClose={onClose}
       title="Widget settings"
       description="Customize this widget"
+      formWidth="comfortable"
       footer={
         <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
           <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
@@ -217,206 +354,279 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
       }
     >
       <div className={uiSpacing.sectionStack}>
-          {widget.type !== 'chart' && (
+        {showBusinessLineField && (
+          <HomeBusinessLineField
+            me={me}
+            value={config.business_line as string | undefined}
+            onChange={handleBusinessLineChange}
+          />
+        )}
+
+        {widget.type === 'chart' && (
+          <AppCheckbox
+            label={
+              isOpportunitiesChart
+                ? 'Show only Opportunities related to me'
+                : 'Show only Projects related to me'
+            }
+            checked={Boolean(config.related_to_me)}
+            onChange={(checked) => setConfig({ ...config, related_to_me: checked })}
+          />
+        )}
+
+        {widget.type === 'kpi' && (
+          <>
+            <ConfigColumns
+              left={
+                <ConfigColumn title="Metric">
+                  <AppInput
+                    label="Title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder={meta?.label}
+                  />
+                  <AppSelect
+                    label="Metric"
+                    value={String(config.metric ?? 'opportunities')}
+                    onChange={(e) => setConfig({ ...config, metric: e.target.value })}
+                    options={KPI_METRIC_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                    helperText="Opportunities: bidding work. Projects: active jobs."
+                  />
+                  <AppSelect
+                    label="Period"
+                    value={String(config.period ?? 'all')}
+                    onChange={(e) => setConfig({ ...config, period: e.target.value })}
+                    options={PERIOD_OPTIONS}
+                  />
+                </ConfigColumn>
+              }
+              right={
+                <ConfigColumn title="Filters">
+                  <HomeDivisionField
+                    businessLine={configBusinessLine}
+                    value={config.division_id as string | undefined}
+                    onChange={(divisionId) => setConfig({ ...config, division_id: divisionId })}
+                  />
+                </ConfigColumn>
+              }
+            />
+            <KpiStatusSelector
+              config={config}
+              setConfig={setConfig}
+              settings={settings}
+              metric={String(config.metric ?? 'opportunities')}
+            />
+          </>
+        )}
+
+        {widget.type === 'chart' && (
+          <>
+            <ConfigColumns
+              left={
+                <ConfigColumn title="Chart">
+                  <AppSelect
+                    label="Show"
+                    value={chartParsed.entity}
+                    onChange={(e) => {
+                      const entity = e.target.value as 'opportunities' | 'projects';
+                      setConfig({
+                        ...config,
+                        metric: composeChartMetric(entity, chartParsed.groupBy),
+                      });
+                    }}
+                    options={CHART_ENTITY_OPTIONS}
+                  />
+                  <AppSelect
+                    label="Group by"
+                    value={chartParsed.groupBy}
+                    onChange={(e) => {
+                      const groupBy = e.target.value as 'status' | 'division';
+                      setConfig({
+                        ...config,
+                        metric: composeChartMetric(chartParsed.entity, groupBy),
+                      });
+                    }}
+                    options={CHART_GROUP_BY_OPTIONS}
+                  />
+                  <AppSelect
+                    label="Chart type"
+                    value={String(config.chartType ?? 'bar')}
+                    onChange={(e) => setConfig({ ...config, chartType: e.target.value })}
+                    options={CHART_TYPE_OPTIONS}
+                  />
+                  <AppSelect
+                    label="Display"
+                    value={allowServicesWidgets ? String(config.mode ?? 'quantity') : 'quantity'}
+                    onChange={(e) => setConfig({ ...config, mode: e.target.value })}
+                    options={
+                      allowServicesWidgets
+                        ? [
+                            { value: 'quantity', label: 'Count' },
+                            { value: 'value', label: 'Value' },
+                          ]
+                        : [{ value: 'quantity', label: 'Count' }]
+                    }
+                  />
+                </ConfigColumn>
+              }
+              right={
+                <ConfigColumn title="Filters & period">
+                  {allowCustomersFilter && (
+                    <AppSelect
+                      label="Project Owner / Source"
+                      value={config.customer_id !== undefined && config.customer_id !== '' ? String(config.customer_id) : ''}
+                      onChange={(e) => setConfig({ ...config, customer_id: e.target.value || undefined })}
+                      placeholder="All project owners / sources"
+                      options={[
+                        { value: '', label: 'All project owners / sources' },
+                        ...customersList.map((c) => ({
+                          value: c.id,
+                          label: c.display_name || c.name || c.id,
+                        })),
+                      ]}
+                      helperText="Filter by project owner / source."
+                    />
+                  )}
+                  <AppSelect
+                    label="Period"
+                    value={String(config.period ?? 'all')}
+                    onChange={(e) => setConfig({ ...config, period: e.target.value })}
+                    options={CHART_PERIOD_OPTIONS}
+                  />
+                  {config.period === 'custom' && (
+                    <div className={uiLayout.sectionGrid2}>
+                      <AppDatePicker
+                        label="Start date"
+                        value={String(config.customStart ?? '')}
+                        onChange={(e) => setConfig({ ...config, customStart: e.target.value })}
+                      />
+                      <AppDatePicker
+                        label="End date"
+                        value={String(config.customEnd ?? '')}
+                        onChange={(e) => setConfig({ ...config, customEnd: e.target.value })}
+                      />
+                    </div>
+                  )}
+                  <HomeDivisionField
+                    businessLine={configBusinessLine}
+                    value={config.division_id as string | undefined}
+                    onChange={(divisionId) => setConfig({ ...config, division_id: divisionId })}
+                  />
+                </ConfigColumn>
+              }
+            />
+            <div>
+              <span className={uiCx(uiTypography.controlLabel, 'mb-2 block')}>Color palette</span>
+              <ChartPalettePicker
+                value={config.palette as ChartPaletteId | undefined}
+                defaultPalette={getDefaultChartPalette(isOpportunitiesChart)}
+                onChange={(palette) => setConfig({ ...config, palette })}
+              />
+            </div>
+          </>
+        )}
+
+        {(widget.type === 'list_tasks' || widget.type === 'list_projects' || widget.type === 'list_opportunities') &&
+          (widget.type === 'list_tasks' ? (
+            <ConfigColumn title="List">
+              <AppInput
+                label="Title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={meta?.label}
+              />
+              <AppInput
+                label="Number of items"
+                type="number"
+                min={1}
+                max={20}
+                value={String(Number(config.limit) || 5)}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    limit: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 5)),
+                  })
+                }
+              />
+            </ConfigColumn>
+          ) : (
+            <ConfigColumns
+              left={
+                <ConfigColumn title="List">
+                  <AppInput
+                    label="Title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder={meta?.label}
+                  />
+                  <AppInput
+                    label="Number of items"
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={String(Number(config.limit) || 5)}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        limit: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 5)),
+                      })
+                    }
+                  />
+                </ConfigColumn>
+              }
+              right={
+                <ConfigColumn title="Filters">
+                  <HomeDivisionField
+                    businessLine={configBusinessLine}
+                    value={config.division_id as string | undefined}
+                    onChange={(divisionId) => setConfig({ ...config, division_id: divisionId })}
+                  />
+                </ConfigColumn>
+              }
+            />
+          ))}
+
+        {widget.type === 'shortcuts' && (
+          <>
             <AppInput
               label="Title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={meta?.label}
             />
-          )}
-
-          {widget.type === 'kpi' && (
-            <>
-              <AppSelect
-                label="Period"
-                value={String(config.period ?? 'all')}
-                onChange={(e) => setConfig({ ...config, period: e.target.value })}
-                options={PERIOD_OPTIONS}
-              />
-              <KpiStatusSelector
-                config={config}
-                setConfig={setConfig}
-                settings={settings}
-                metric={String(config.metric ?? 'opportunities')}
-              />
-            </>
-          )}
-
-          {widget.type === 'chart' && (() => {
-            const currentMetric = String(config.metric ?? 'opportunities_by_status');
-            const isOpportunitiesChart = currentMetric.startsWith('opportunities');
-            const dataOptions = isOpportunitiesChart
-              ? [
-                  { value: 'opportunities_by_status', label: 'Opportunities by status' },
-                  { value: 'opportunities_by_division', label: 'Opportunities by division' },
-                ]
-              : [
-                  { value: 'projects_by_status', label: 'Projects by status' },
-                  { value: 'projects_by_division', label: 'Projects by division' },
-                ];
-            const validMetric = dataOptions.some((o) => o.value === currentMetric)
-              ? currentMetric
-              : dataOptions[0].value;
-            return (
-            <>
-              <label className={uiCx(uiLayout.actionsRow, 'cursor-pointer')}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(config.related_to_me)}
-                  onChange={(e) => setConfig({ ...config, related_to_me: e.target.checked })}
-                  className="rounded border-gray-300 text-brand-red focus:ring-brand-red/40"
-                />
-                <span className={uiTypography.body}>
-                  {isOpportunitiesChart
-                    ? 'Show only Opportunities related to me'
-                    : 'Show only Projects related to me'}
-                </span>
-              </label>
-              {allowCustomersFilter && (
-              <AppSelect
-                label="Project Owner / Source"
-                value={config.customer_id !== undefined && config.customer_id !== '' ? String(config.customer_id) : ''}
-                onChange={(e) => setConfig({ ...config, customer_id: e.target.value || undefined })}
-                placeholder="All project owners / sources"
-                options={[
-                  { value: '', label: 'All project owners / sources' },
-                  ...customersList.map((c) => ({
-                    value: c.id,
-                    label: c.display_name || c.name || c.id,
-                  })),
-                ]}
-                helperText="Filter chart by project owner / source (projects or opportunities linked to that record only)."
-              />
-              )}
-              <AppSelect
-                label="Data"
-                value={validMetric}
-                onChange={(e) => setConfig({ ...config, metric: e.target.value })}
-                options={dataOptions}
-              />
-              <AppSelect
-                label="Chart type"
-                value={String(config.chartType ?? 'bar')}
-                onChange={(e) => setConfig({ ...config, chartType: e.target.value })}
-                options={CHART_TYPE_OPTIONS}
-              />
-              <AppSelect
-                label="Period"
-                value={String(config.period ?? 'all')}
-                onChange={(e) => setConfig({ ...config, period: e.target.value })}
-                options={CHART_PERIOD_OPTIONS}
-              />
-              {config.period === 'custom' && (
-                <>
-                  <AppDatePicker
-                    label="Start date"
-                    value={String(config.customStart ?? '')}
-                    onChange={(e) => setConfig({ ...config, customStart: e.target.value })}
-                  />
-                  <AppDatePicker
-                    label="End date"
-                    value={String(config.customEnd ?? '')}
-                    onChange={(e) => setConfig({ ...config, customEnd: e.target.value })}
-                  />
-                </>
-              )}
-              <AppSelect
-                label="Display"
-                value={allowServicesWidgets ? String(config.mode ?? 'quantity') : 'quantity'}
-                onChange={(e) => setConfig({ ...config, mode: e.target.value })}
-                options={
-                  allowServicesWidgets
-                    ? [
-                        { value: 'quantity', label: 'Count' },
-                        { value: 'value', label: 'Value' },
-                      ]
-                    : [{ value: 'quantity', label: 'Count' }]
-                }
-              />
-              <div>
-                <span className={uiCx(uiTypography.controlLabel, 'mb-2 block')}>Color palette</span>
-                <div className={uiLayout.actionsRow}>
-                  {CHART_PALETTE_OPTIONS.map((opt) => {
-                    const isOpp = (config.metric as string)?.startsWith?.('opportunities');
-                    const defaultPalette = isOpp ? 'green' : 'cool';
-                    const isSelected = String(config.palette ?? defaultPalette) === opt.value;
-                    const colors = CHART_PALETTES[opt.value];
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setConfig({ ...config, palette: opt.value })}
-                        className={uiCx(
-                          'flex items-center gap-1.5 px-2 py-1.5 transition-colors',
-                          uiRadius.control,
-                          isSelected
-                            ? 'border-2 border-brand-red bg-brand-red/5'
-                            : uiCx(uiBorders.strong, uiColors.surface, 'hover:border-gray-300'),
-                        )}
-                        title={opt.label}
-                      >
-                        <div className="flex gap-0.5">
-                          {colors.slice(0, 6).map((c, i) => (
-                            <span
-                              key={i}
-                              className="h-3 w-3 shrink-0 rounded-sm"
-                              style={{ backgroundColor: c }}
-                            />
-                          ))}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-            );
-          })()}
-
-          {(widget.type === 'list_tasks' || widget.type === 'list_projects' || widget.type === 'list_opportunities') && (
-            <AppInput
-              label="Number of items"
-              type="number"
-              min={1}
-              max={20}
-              value={String(Number(config.limit) || 5)}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  limit: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 5)),
-                })
-              }
-            />
-          )}
-
-          {widget.type === 'shortcuts' && (
             <div>
               <span className={uiCx(uiTypography.controlLabel, 'mb-2 block')}>Shortcuts</span>
-              <div className={uiSpacing.sectionStack}>
-                {SHORTCUT_OPTIONS.filter((opt) => isShortcutItemAllowed(opt.id, me, lineForPermissions)).map((opt) => {
+              <div className={uiLayout.sectionGrid2}>
+                {SHORTCUT_OPTIONS.filter((opt) => isShortcutItemAllowed(opt.id, me, configBusinessLine)).map((opt) => {
                   const items = (config.items as string[]) ?? ['tasks', 'projects', 'schedule'];
                   const checked = items.includes(opt.id);
                   return (
-                    <label key={opt.id} className={uiCx(uiLayout.actionsRow, 'cursor-pointer')}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          const next = e.target.checked
-                            ? [...items, opt.id]
-                            : items.filter((x) => x !== opt.id);
-                          setConfig({ ...config, items: next.length ? next : ['tasks'] });
-                        }}
-                        className="rounded border-gray-300 text-brand-red focus:ring-brand-red/40"
-                      />
-                      <span className={uiTypography.body}>{opt.label}</span>
-                    </label>
+                    <AppCheckbox
+                      key={opt.id}
+                      label={opt.label}
+                      checked={checked}
+                      onChange={(nextChecked) => {
+                        const next = nextChecked
+                          ? [...items, opt.id]
+                          : items.filter((x) => x !== opt.id);
+                        const nextConfig: Record<string, unknown> = {
+                          ...config,
+                          items: next.length ? next : ['tasks'],
+                        };
+                        if (widgetHasServicesShortcuts(next)) {
+                          nextConfig.business_line = configBusinessLine;
+                        } else {
+                          delete nextConfig.business_line;
+                        }
+                        setConfig(nextConfig);
+                      }}
+                    />
                   );
                 })}
               </div>
             </div>
-          )}
+          </>
+        )}
       </div>
     </AppFormModal>
   );

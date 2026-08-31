@@ -138,10 +138,11 @@ export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
   }
 
   return (
-    <FadeInOnMount enabled={ready} className="flex h-full min-h-0 w-full flex-col">
+    <FadeInOnMount enabled={ready} className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       <AppCalendarBase
         bare
         compact
+        compactCellProfile="flat"
         monthLabel={monthLabel}
         weekDayLabels={DAY_NAMES}
         days={appDays}
@@ -152,14 +153,21 @@ export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
             Today
           </AppButton>
         }
-        className="flex min-h-0 flex-1 flex-col"
+        className={uiCx(
+          'flex min-h-0 flex-1 flex-col overflow-hidden',
+          '[&_header]:py-1',
+          '[&_.grid.auto-rows-fr>button]:min-h-0 [&_.grid.auto-rows-fr>div]:min-h-0',
+          '[&_.grid.auto-rows-fr>button]:text-[clamp(8px,2.2cqh,10px)] [&_.grid.auto-rows-fr>div]:text-[clamp(8px,2.2cqh,10px)]',
+        )}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-between gap-2 text-[10px]')}>
+            <span className="truncate text-gray-500">Click day → Schedule</span>
+            <Link to="/schedule" className="shrink-0 font-medium text-brand-red hover:underline">
+              Open Schedule →
+            </Link>
+          </div>
+        }
       />
-      <div className={uiCx(uiLayout.actionsRow, 'mt-2 shrink-0 justify-between', uiTypography.helper)}>
-        <span className="text-[9px]">Click day → Schedule</span>
-        <Link to="/schedule" className="text-[9px] font-medium text-brand-red hover:underline">
-          Open Schedule
-        </Link>
-      </div>
     </FadeInOnMount>
   );
 }

@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { Clock3 } from 'lucide-react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
@@ -8,6 +9,7 @@ import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
+import { uiCx, uiRadius, uiTypography } from '@/components/ui';
 
 type Shift = {
   id: string;
@@ -262,8 +264,8 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
 
   if (!currentUser?.id) {
     return (
-      <div className="flex flex-col min-h-0 h-full w-full">
-        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="min-h-0 flex-1">
           <div className="min-h-[120px]" />
         </LoadingOverlay>
       </div>
@@ -273,20 +275,27 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
   const submitting = mutateClock.isPending;
 
   return (
-    <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
-      <div className="shrink-0 mb-2">
-        <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Today</div>
+    <FadeInOnMount enabled={ready} className="flex h-full min-h-0 w-full flex-col">
+      <div className="mb-2.5 shrink-0">
+        <div className={uiCx(uiTypography.overline, 'flex items-center gap-1.5')}>
+          <Clock3 className="h-3 w-3" aria-hidden />
+          Today
+        </div>
         <div className="text-sm font-semibold text-gray-900">
           {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
         </div>
       </div>
 
-      <div className="flex gap-2 shrink-0 mb-3">
+      <div className="mb-3 flex shrink-0 gap-2">
         <button
           type="button"
           onClick={handleClockIn}
           disabled={!canClockIn || submitting}
-          className="flex-1 py-2.5 rounded-lg bg-green-600 text-white font-semibold text-sm shadow-sm hover:bg-green-700 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+          className={uiCx(
+            'flex-1 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors',
+            uiRadius.control,
+            'bg-green-600 hover:bg-green-700 disabled:pointer-events-none disabled:opacity-50',
+          )}
         >
           Clock In
         </button>
@@ -294,43 +303,53 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
           type="button"
           onClick={handleClockOut}
           disabled={!canClockOut || submitting}
-          className="flex-1 py-2.5 rounded-lg bg-amber-600 text-white font-semibold text-sm shadow-sm hover:bg-amber-700 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+          className={uiCx(
+            'flex-1 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors',
+            uiRadius.control,
+            'bg-amber-600 hover:bg-amber-700 disabled:pointer-events-none disabled:opacity-50',
+          )}
         >
           Clock Out
         </button>
       </div>
 
       {loadingAttendances && (
-        <LoadingOverlay isLoading minHeight="min-h-[100px]" className="flex-1 min-h-0">
+        <LoadingOverlay isLoading minHeight="min-h-[100px]" className="min-h-0 flex-1">
           <div className="min-h-[100px]" />
         </LoadingOverlay>
       )}
 
       {showSummary && (
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-2 text-xs">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto text-xs">
           {hasOpenClockIn && workingDurationLive && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-2.5 py-2">
-              <span className="font-medium text-amber-800">Working for {workingDurationLive}</span>
+            <div
+              className={uiCx(
+                'border border-amber-200/80 bg-amber-50/70 px-2.5 py-2',
+                uiRadius.control,
+              )}
+            >
+              <span className="font-medium text-amber-900">Working for {workingDurationLive}</span>
             </div>
           )}
           {!hasOpenClockIn && nextPendingShift && (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-gray-700">
-              Next: {nextPendingShift.project_name || 'Shift'} ({formatTime12h(nextPendingShift.start_time)} –{' '}
+            <div className={uiCx('bg-gray-50 px-2.5 py-2 text-gray-700', uiRadius.control)}>
+              <span className="font-medium">Next:</span>{' '}
+              {nextPendingShift.project_name || 'Shift'} ({formatTime12h(nextPendingShift.start_time)} –{' '}
               {formatTime12h(nextPendingShift.end_time)})
             </div>
           )}
           {allAttendancesForDate.length > 0 && (
-            <div className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-gray-600">
+            <div className="divide-y divide-gray-100 text-gray-600">
               {allAttendancesForDate
                 .filter((a) => a.clock_in_time || a.clock_out_time)
                 .slice(0, 3)
                 .map((a) => (
-                  <div key={a.id} className="flex justify-between gap-2 py-0.5">
+                  <div key={a.id} className="flex justify-between gap-2 py-1.5 tabular-nums">
                     <span>{formatTime12h(a.clock_in_time ? new Date(a.clock_in_time).toTimeString().slice(0, 5) : null)}</span>
-                    <span>–</span>
+                    <span className="text-gray-400">–</span>
                     <span>
                       {a.clock_out_time
-                        ? new Date(a.clock_out_time).toTimeString().slice(0, 5)
+                        ? formatTime12h(new Date(a.clock_out_time).toTimeString().slice(0, 5))
                         : '--:--'}
                     </span>
                   </div>
@@ -340,7 +359,7 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
         </div>
       )}
 
-      <div className="shrink-0 pt-2 border-t border-gray-100 mt-auto">
+      <div className="mt-auto shrink-0 border-t border-gray-100 pt-2">
         <Link to="/clock-in-out" className="text-xs font-medium text-brand-red hover:underline">
           Open full page →
         </Link>

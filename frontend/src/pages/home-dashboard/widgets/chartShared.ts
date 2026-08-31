@@ -3,6 +3,8 @@
  * Used by Home ChartWidget so charts look identical; state and filters are independent.
  */
 
+import { getBusinessLineShortLabel } from '../homeBusinessLine';
+
 export type StatusValueData = {
   final_total_with_gst: number;
   profit: number;
@@ -43,7 +45,24 @@ export const warmPalette = ['#7c2d12', '#9a3412', '#c2410c', '#ea580c', '#f97316
 export const purplePalette = ['#581c87', '#6b21a8', '#7e22ce', '#9333ea', '#a855f7', '#c084fc', '#d8b4fe', '#e9d5ff'];
 export const brandPalette = ['#7f1010', '#991212', '#b31414', '#d11616', '#dc2626', '#ef4444', '#f87171', '#fca5a5'];
 
-export type ChartPaletteId = 'green' | 'cool' | 'warm' | 'purple' | 'brand';
+/** Distinct hues per slice/series — not shades of one color. */
+export const mixedPalette = ['#2563eb', '#16a34a', '#ea580c', '#9333ea', '#dc2626', '#0891b2', '#ca8a04', '#db2777'];
+export const vividPalette = ['#1d4ed8', '#15803d', '#c2410c', '#7e22ce', '#b91c1c', '#0e7490', '#a16207', '#be185d'];
+export const pastelPalette = ['#93c5fd', '#86efac', '#fdba74', '#d8b4fe', '#fca5a5', '#67e8f9', '#fde047', '#f9a8d4'];
+export const spectrumPalette = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'];
+
+export type ChartPaletteId =
+  | 'green'
+  | 'cool'
+  | 'warm'
+  | 'purple'
+  | 'brand'
+  | 'mixed'
+  | 'vivid'
+  | 'pastel'
+  | 'spectrum';
+
+export type ChartPaletteGroup = 'monochrome' | 'multicolor';
 
 export const CHART_PALETTES: Record<ChartPaletteId, string[]> = {
   green: greenPalette,
@@ -51,15 +70,45 @@ export const CHART_PALETTES: Record<ChartPaletteId, string[]> = {
   warm: warmPalette,
   purple: purplePalette,
   brand: brandPalette,
+  mixed: mixedPalette,
+  vivid: vividPalette,
+  pastel: pastelPalette,
+  spectrum: spectrumPalette,
 };
 
-export const CHART_PALETTE_OPTIONS: { value: ChartPaletteId; label: string }[] = [
-  { value: 'green', label: 'Green' },
-  { value: 'cool', label: 'Blue / Cool' },
-  { value: 'warm', label: 'Orange / Warm' },
-  { value: 'purple', label: 'Purple' },
-  { value: 'brand', label: 'Brand Red' },
+export const CHART_PALETTE_OPTIONS: {
+  value: ChartPaletteId;
+  label: string;
+  group: ChartPaletteGroup;
+}[] = [
+  { value: 'green', label: 'Green', group: 'monochrome' },
+  { value: 'cool', label: 'Blue / Cool', group: 'monochrome' },
+  { value: 'warm', label: 'Orange / Warm', group: 'monochrome' },
+  { value: 'purple', label: 'Purple', group: 'monochrome' },
+  { value: 'brand', label: 'Brand Red', group: 'monochrome' },
+  { value: 'mixed', label: 'Balanced multi', group: 'multicolor' },
+  { value: 'vivid', label: 'Bold multi', group: 'multicolor' },
+  { value: 'pastel', label: 'Soft multi', group: 'multicolor' },
+  { value: 'spectrum', label: 'Rainbow', group: 'multicolor' },
 ];
+
+export function isMultiHueChartPalette(paletteId: ChartPaletteId | string | undefined): boolean {
+  const opt = CHART_PALETTE_OPTIONS.find((o) => o.value === paletteId);
+  return opt?.group === 'multicolor';
+}
+
+export function getDefaultChartPalette(isOpportunities: boolean): ChartPaletteId {
+  return isOpportunities ? 'green' : 'cool';
+}
+
+export function resolveChartPalette(
+  paletteId: ChartPaletteId | string | undefined,
+  isOpportunities: boolean,
+): string[] {
+  const fallback = getDefaultChartPalette(isOpportunities);
+  const id = (paletteId && paletteId in CHART_PALETTES ? paletteId : fallback) as ChartPaletteId;
+  return CHART_PALETTES[id] ?? CHART_PALETTES[fallback];
+}
 
 export function polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {
   const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180;
@@ -122,9 +171,15 @@ const METRIC_LABELS: Record<string, string> = {
   projects_by_division: 'Projects by division',
 };
 
-/** Default chart title from metric (Data field). */
 export function getChartMetricLabel(metric: string): string {
   return METRIC_LABELS[metric] ?? metric;
+}
+
+/** Chart widget title with optional business line suffix when user has multiple lines. */
+export function getChartWidgetTitle(metric: string, businessLine?: string, showLineBadge = false): string {
+  const base = getChartMetricLabel(metric);
+  if (!showLineBadge || !businessLine) return base;
+  return `${base} · ${getBusinessLineShortLabel(businessLine)}`;
 }
 
 export function calculateDateRange(

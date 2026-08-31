@@ -110,57 +110,7 @@ export function getAllWidgets(): WidgetRegistryEntry[] {
   return registry;
 }
 
-const KPI_ICONS: Record<string, string> = {
-  opportunities: '📋',
-  projects: '🏗️',
-  estimated_value: '💰',
-  actual_value: '📊',
-};
-
-const CHART_ICONS: Record<string, string> = {
-  opportunities_by_status: '📋',
-  opportunities_by_division: '📋',
-  projects_by_status: '🏗️',
-  projects_by_division: '🏗️',
-};
-
-const SHORTCUT_ICONS: Record<string, string> = {
-  tasks: '✅',
-  projects: '🏗️',
-  schedule: '📅',
-  opportunities: '📋',
-  customers: '👥',
-  clock: '⏰',
-  business: '📊',
-};
-
-const WIDGET_TYPE_ICONS: Record<string, string> = {
-  shortcuts: '⚡',
-  kpi: '📊',
-  chart: '📈',
-  list_tasks: '✅',
-  list_projects: '🏗️',
-  list_opportunities: '📋',
-  calendar: '📅',
-  schedule: '📆',
-  clock_in_out: '⏰',
-};
-
-export function getWidgetIcon(widget: { type: string; config?: Record<string, unknown> }): string {
-  const { type, config } = widget;
-  if (type === 'kpi' && config?.metric) {
-    return KPI_ICONS[String(config.metric)] ?? WIDGET_TYPE_ICONS.kpi;
-  }
-  if (type === 'chart' && config?.metric) {
-    return CHART_ICONS[String(config.metric)] ?? WIDGET_TYPE_ICONS.chart;
-  }
-  if (type === 'shortcuts' && config?.items) {
-    const items = config.items as string[];
-    const first = items[0];
-    if (first && SHORTCUT_ICONS[first]) return SHORTCUT_ICONS[first];
-  }
-  return WIDGET_TYPE_ICONS[type] ?? '📦';
-}
+export { getWidgetIcon } from './widgetVisualMeta';
 
 export function renderWidget(type: string, config?: Record<string, unknown>): ReactNode {
   const Comp = getWidgetComponent(type);

@@ -1,11 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { BriefcaseBusiness } from 'lucide-react';
 import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
+import { AppBadge } from '@/components/ui';
 import { api } from '@/lib/api';
-import { useBusinessLine } from '@/context/BusinessLineContext';
-import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
+import { getServicePathsForLine, resolveWidgetBusinessLine } from '../homeBusinessLine';
+import type { MeForHomeWidgets } from '../widgetVisibility';import {
+  HomeWidgetList,
+  HomeWidgetListEmpty,
+  HomeWidgetListFooter,
+  HomeWidgetListRow,
+} from '../HomeWidgetList';
 
 type Opportunity = {
   id: string;
@@ -21,9 +27,11 @@ type ListOpportunitiesWidgetProps = {
 
 export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps) {
   const { ready } = useAnimationReady();
-  const ctxLine = useBusinessLine();
-  const businessLine = (config?.business_line as string | undefined) ?? ctxLine;
-  const limit = Math.min(Math.max(1, config?.limit ?? 5), 20);
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<MeForHomeWidgets>('GET', '/auth/me'),
+  });
+  const businessLine = resolveWidgetBusinessLine(config, me);  const limit = Math.min(Math.max(1, config?.limit ?? 5), 20);
   const divisionId = config?.division_id;
 
   const qs = new URLSearchParams();
@@ -31,8 +39,7 @@ export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps
   qs.set('business_line', businessLine);
   if (divisionId) qs.set('division_id', divisionId);
 
-  const oppBase = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities';
-
+  const oppBase = getServicePathsForLine(businessLine).opportunities;
   const { data, isLoading, error } = useQuery<Opportunity[]>({
     queryKey: ['home-list-opportunities', businessLine, limit, divisionId],
     queryFn: () => api('GET', `/projects/business/opportunities?${qs.toString()}`),
@@ -41,8 +48,8 @@ export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps
 
   if (isLoading) {
     return (
-      <div className="flex flex-col min-h-0 h-full w-full">
-        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="min-h-0 flex-1">
           <div className="min-h-[120px]" />
         </LoadingOverlay>
       </div>
@@ -50,63 +57,40 @@ export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps
   }
   if (error) {
     return (
-      <div className="flex flex-col min-h-0 h-full w-full">
-        <div className="flex-1 min-h-0 flex items-center justify-center p-3">
-          <div className="rounded-lg border border-red-200 bg-red-50/50 px-3 py-2 text-sm text-red-600">
-            Failed to load opportunities
-          </div>
-        </div>
+      <div className="flex h-full min-h-0 w-full flex-col items-center justify-center">
+        <div className="text-sm text-red-500">Failed to load opportunities</div>
       </div>
     );
   }
 
   const list = data && typeof data === 'object' && 'items' in data ? (data as { items: Opportunity[] }).items : (Array.isArray(data) ? data : []);
 
-  const itemStyle = { padding: 'clamp(0.375rem, 3cqh, 0.75rem)' };
-  const titleStyle = { fontSize: 'clamp(0.625rem, 5cqh, 0.875rem)' };
-  const metaStyle = { fontSize: 'clamp(0.5rem, 3.5cqh, 0.625rem)' };
-  const viewAllStyle = { fontSize: 'clamp(0.5rem, 4cqh, 0.75rem)' };
-
   return (
-    <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
-      <ul className="flex-1 min-h-0 flex flex-col overflow-y-auto pr-1" style={{ gap: 'clamp(0.25rem, 2cqh, 0.5rem)' }}>
-      {list.length === 0 ? (
-        <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 text-center text-gray-500 shrink-0" style={{ ...itemStyle, paddingBlock: 'clamp(0.5rem, 4cqh, 1rem)' }}>
-          No opportunities
-        </li>
-      ) : (
-        list.map((o) => (
-          <li key={o.id} className="shrink-0">
-            <Link
+    <FadeInOnMount enabled={ready} className="flex h-full min-h-0 w-full flex-col">
+      <HomeWidgetList>
+        {list.length === 0 ? (
+          <HomeWidgetListEmpty icon={<BriefcaseBusiness className="h-5 w-5" />} title="No opportunities" />
+        ) : (
+          list.map((o) => (
+            <HomeWidgetListRow
+              key={o.id}
               to={`${oppBase}/${o.id}`}
-              className="block rounded-lg border border-gray-200 bg-white shadow-sm transition-all hover:border-brand-red/30 hover:shadow-md hover:bg-gray-50/50"
-              style={itemStyle}
-            >
-              <div className="font-medium text-gray-900 truncate text-sm" style={titleStyle}>
-                {o.name || o.code || o.id}
-              </div>
-              {(o.code || o.status_label) && (
-                <div className="flex flex-wrap items-center gap-1 shrink-0" style={{ marginTop: 'clamp(0.125rem, 1cqh, 0.375rem)', gap: 'clamp(0.125rem, 1cqh, 0.25rem)' }}>
-                  {o.code && <span className="font-medium text-gray-500" style={metaStyle}>{o.code}</span>}
-                  {o.status_label && (
-                    <span className="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-700" style={metaStyle}>
-                      {o.status_label}
-                    </span>
-                  )}
-                </div>
-              )}
-            </Link>
-          </li>
-        ))
-      )}
+              title={o.name || o.code || o.id}
+              meta={o.code}
+              trailing={
+                o.status_label ? (
+                  <AppBadge variant="neutral" className="normal-case tracking-normal">
+                    {o.status_label}
+                  </AppBadge>
+                ) : undefined
+              }
+            />
+          ))
+        )}
+      </HomeWidgetList>
       {list.length > 0 && (
-        <li className="pt-0.5 shrink-0">
-          <Link to={oppBase} className="inline-block font-medium text-brand-red hover:underline" style={viewAllStyle}>
-            View all opportunities →
-          </Link>
-        </li>
+        <HomeWidgetListFooter to={oppBase} label="View all opportunities →" />
       )}
-    </ul>
     </FadeInOnMount>
   );
 }

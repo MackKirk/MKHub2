@@ -4,6 +4,7 @@
 import { BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 import type { GalleryItem } from './galleryConfig';
 import type { WidgetDef } from './types';
+import { inferDefaultHomeBusinessLine } from './homeBusinessLine';
 
 export type MeForHomeWidgets = {
   roles?: string[];
@@ -55,16 +56,19 @@ export function canReadCustomersForHome(me: MeForHomeWidgets | undefined): boole
   return permSet(me).has('business:customers:read');
 }
 
-function lineForWidgetConfig(config: Record<string, unknown> | undefined, activeBusinessLine: string): string {
+function lineForWidgetConfig(
+  config: Record<string, unknown> | undefined,
+  me: MeForHomeWidgets | undefined,
+): string {
   const bl = config?.business_line;
   if (typeof bl === 'string' && bl.trim()) return normalizeBusinessLineForHome(bl);
-  return normalizeBusinessLineForHome(activeBusinessLine);
+  return inferDefaultHomeBusinessLine(me);
 }
 
-export function isShortcutItemAllowed(itemId: string, me: MeForHomeWidgets | undefined, activeBusinessLine: string): boolean {
+export function isShortcutItemAllowed(itemId: string, me: MeForHomeWidgets | undefined, businessLine: string): boolean {
   if (SHORTCUT_PUBLIC.has(itemId)) return true;
   if (SHORTCUT_SERVICES.has(itemId)) {
-    return canAccessBusinessLineForHome(me, activeBusinessLine);
+    return canAccessBusinessLineForHome(me, businessLine);
   }
   if (itemId === 'customers') {
     return canReadCustomersForHome(me);
@@ -75,7 +79,6 @@ export function isShortcutItemAllowed(itemId: string, me: MeForHomeWidgets | und
 export function isWidgetDefAllowed(
   widget: Pick<WidgetDef, 'type' | 'config'>,
   me: MeForHomeWidgets | undefined,
-  activeBusinessLine: string
 ): boolean {
   const { type, config } = widget;
   const cfg = config && typeof config === 'object' ? config : {};
@@ -87,7 +90,7 @@ export function isWidgetDefAllowed(
   if (type === 'shortcuts') {
     const items = (cfg.items as string[]) ?? [];
     if (items.length === 0) return true;
-    const line = lineForWidgetConfig(cfg as Record<string, unknown>, activeBusinessLine);
+    const line = lineForWidgetConfig(cfg as Record<string, unknown>, me);
     for (const raw of items) {
       const id = String(raw);
       if (!isShortcutItemAllowed(id, me, line)) return false;
@@ -96,22 +99,21 @@ export function isWidgetDefAllowed(
   }
 
   if (type === 'kpi' || type === 'chart' || type === 'list_projects' || type === 'list_opportunities') {
-    return canAccessBusinessLineForHome(me, lineForWidgetConfig(cfg as Record<string, unknown>, activeBusinessLine));
+    return canAccessBusinessLineForHome(me, lineForWidgetConfig(cfg as Record<string, unknown>, me));
   }
 
   return false;
 }
 
-export function isGalleryItemAllowed(item: GalleryItem, me: MeForHomeWidgets | undefined, activeBusinessLine: string): boolean {
-  return isWidgetDefAllowed({ type: item.type, config: item.config }, me, activeBusinessLine);
+export function isGalleryItemAllowed(item: GalleryItem, me: MeForHomeWidgets | undefined): boolean {
+  return isWidgetDefAllowed({ type: item.type, config: item.config }, me);
 }
 
 export function filterWidgetsForHome(
   widgets: WidgetDef[],
   me: MeForHomeWidgets | undefined,
-  activeBusinessLine: string
 ): WidgetDef[] {
-  return widgets.filter((w) => isWidgetDefAllowed(w, me, activeBusinessLine));
+  return widgets.filter((w) => isWidgetDefAllowed(w, me));
 }
 
 export function filterLayoutForWidgets(layout: { i: string }[], widgets: WidgetDef[]): { i: string }[] {

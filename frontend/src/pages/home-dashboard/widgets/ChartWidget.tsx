@@ -5,19 +5,24 @@ import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
-import { useBusinessLine } from '@/context/BusinessLineContext';
+import {
+  getAccessibleHomeBusinessLines,
+  getBusinessLineShortLabel,
+  resolveWidgetBusinessLine,
+} from '../homeBusinessLine';
+import type { MeForHomeWidgets } from '../widgetVisibility';
 import {
   getValue,
   getCount,
   getProfit,
   formatCurrency,
-  greenPalette,
-  coolPalette,
-  CHART_PALETTES,
   createPieSlice,
   polarToCartesian,
   calculateDateRange,
   getPeriodDisplay,
+  getDefaultChartPalette,
+  isMultiHueChartPalette,
+  resolveChartPalette,
   type StatusValueData,
   type DateFilterType,
   type ChartPaletteId,
@@ -187,9 +192,11 @@ function useChartTimeseries(
 }
 
 export function ChartWidget({ config }: ChartWidgetProps) {
-  const ctxBusinessLine = useBusinessLine();
-  const businessLine = (config?.business_line as string | undefined) ?? ctxBusinessLine;
-  const metric = (config?.metric ?? 'opportunities_by_status') as ChartMetric;
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<MeForHomeWidgets>('GET', '/auth/me'),
+  });
+  const businessLine = resolveWidgetBusinessLine(config, me);  const metric = (config?.metric ?? 'opportunities_by_status') as ChartMetric;
   const rawChartType = config?.chartType ?? 'bar';
   const chartType = rawChartType === 'donut' ? 'pie' : rawChartType;
   const isDonut = rawChartType === 'donut';
@@ -214,9 +221,10 @@ export function ChartWidget({ config }: ChartWidgetProps) {
   );
 
   const isOpportunities = metric === 'opportunities_by_status' || metric === 'opportunities_by_division';
-  const defaultPalette = isOpportunities ? 'green' : 'cool';
+  const defaultPalette = getDefaultChartPalette(isOpportunities);
   const paletteId = (config?.palette ?? defaultPalette) as ChartPaletteId;
-  const colors = CHART_PALETTES[paletteId] ?? greenPalette;
+  const colors = resolveChartPalette(paletteId, isOpportunities);
+  const isMultiHue = isMultiHueChartPalette(paletteId);
   const firstColor = colors[0];
   const lastColor = colors[Math.min(4, colors.length - 1)];
   const barGradientStyle = { background: `linear-gradient(to right, ${firstColor}, ${lastColor})` };
@@ -256,10 +264,11 @@ export function ChartWidget({ config }: ChartWidgetProps) {
   );
   const modeLabel = mode === 'value' ? 'Value' : 'Count';
   const customerFilterLabel = customerId ? ' · One customer' : '';
-  const chartSubtitle = `${periodDisplay} · ${modeLabel}${customerFilterLabel}`;
-
+  const showLineInSubtitle = getAccessibleHomeBusinessLines(me).length > 1;
+  const lineLabel = showLineInSubtitle ? ` · ${getBusinessLineShortLabel(businessLine)}` : '';
+  const chartSubtitle = `${periodDisplay} · ${modeLabel}${lineLabel}${customerFilterLabel}`;
   const Subtitle = () => (
-    <p className="text-[10px] text-gray-500 shrink-0 mb-1" aria-hidden>{chartSubtitle}</p>
+    <p className="mb-1.5 shrink-0 text-[10px] text-gray-500" aria-hidden>{chartSubtitle}</p>
   );
 
   if (isLoading) {
@@ -272,8 +281,8 @@ export function ChartWidget({ config }: ChartWidgetProps) {
       </div>
     );
   }
-  if (error) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="text-sm text-red-500">Failed to load</div></div>;
-  if (sorted.length === 0) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="text-sm text-gray-500">No data</div></div>;
+  if (error) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="flex flex-1 items-center justify-center text-sm text-red-500">Failed to load</div></div>;
+  if (sorted.length === 0) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="flex flex-1 items-center justify-center text-sm text-gray-500">No data</div></div>;
 
   if (chartType === 'line') {
     // X-axis = months, Y-axis = value, one line per status/division (from timeseries API)
@@ -287,9 +296,9 @@ export function ChartWidget({ config }: ChartWidgetProps) {
         </div>
       );
     }
-    if (timeseries.error) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="text-sm text-red-500">Failed to load</div></div>;
+    if (timeseries.error) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="flex flex-1 items-center justify-center text-sm text-red-500">Failed to load</div></div>;
     const ts = timeseries.data;
-    if (!ts || !ts.months.length || !ts.series.length) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="text-sm text-gray-500">No data</div></div>;
+    if (!ts || !ts.months.length || !ts.series.length) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="flex flex-1 items-center justify-center text-sm text-gray-500">No data</div></div>;
 
     const months = ts.months;
     const series = ts.series.filter((s) => s.values.some((v) => v > 0));
@@ -577,10 +586,13 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
       <Subtitle />
       <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
-        {displayEntries.map((e) => {
+        {displayEntries.map((e, barIndex) => {
           const barPercentage = (e.value / maxVal) * 100;
           const percentage = totalForPct > 0 ? (e.value / totalForPct) * 100 : 0;
           const barWidthPct = barsMounted ? barPercentage : 0;
+          const barFillStyle = isMultiHue
+            ? { backgroundColor: colors[barIndex % colors.length] }
+            : barGradientStyle;
 
           if (mode === 'value') {
             return (
@@ -590,7 +602,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
                   <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative overflow-hidden">
                     <div
                       className="rounded-full h-3 transition-all duration-300 ease-out absolute inset-y-0 left-0"
-                      style={{ width: `${barWidthPct}%`, ...barGradientStyle }}
+                      style={{ width: `${barWidthPct}%`, ...barFillStyle }}
                     />
                   </div>
                   <span className="text-xs font-bold text-gray-900 whitespace-nowrap shrink-0 tabular-nums">
@@ -607,7 +619,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
               <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative overflow-hidden">
                 <div
                   className="rounded-full h-3 transition-all duration-300 ease-out absolute inset-y-0 left-0"
-                  style={{ width: `${barWidthPct}%`, ...barGradientStyle }}
+                  style={{ width: `${barWidthPct}%`, ...barFillStyle }}
                 />
               </div>
               <span className="text-xs font-bold text-gray-900 whitespace-nowrap shrink-0 tabular-nums">
