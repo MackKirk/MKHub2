@@ -701,6 +701,7 @@ export default function CustomerDetail(){
                         >
                           <div className="min-w-0" title="Opportunity name, code and client">Opportunity</div>
                           <div className="min-w-0" title="Site address">Address</div>
+                          <div className="min-w-0" title="Creation date">Created at</div>
                           <div className="min-w-0" title="Person responsible for the estimate">Estimator</div>
                           <div className="min-w-0" title="Estimated total value">Est. value</div>
                           <div className="min-w-0" title="Current status (e.g. Prospecting, Sent, Refused)">Status</div>

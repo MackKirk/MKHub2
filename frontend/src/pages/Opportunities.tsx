@@ -144,10 +144,10 @@ const OPPORTUNITY_TAB_ICON_BUTTONS = [
 export const SHOW_OPPORTUNITY_LIST_SHORTCUTS = false;
 
 export const OPPORTUNITY_LIST_GRID_CLASS = SHOW_OPPORTUNITY_LIST_SHORTCUTS
-  ? 'grid-cols-[8fr_5fr_4fr_3fr_3fr_3fr_auto]'
-  : 'grid-cols-[8fr_5fr_4fr_3fr_3fr_3fr]';
+  ? 'grid-cols-[8fr_5fr_3fr_4fr_3fr_3fr_3fr_auto]'
+  : 'grid-cols-[8fr_5fr_3fr_4fr_3fr_3fr_3fr]';
 
-export const OPPORTUNITY_LIST_MIN_WIDTH = 'min-w-[960px]';
+export const OPPORTUNITY_LIST_MIN_WIDTH = 'min-w-[1040px]';
 
 const ProjectMapView = lazy(() => import('@/features/projects/components/map/ProjectMapView'));
 const ProjectMapLoading = lazy(() => import('@/features/projects/components/map/ProjectMapLoading').then((m) => ({ default: m.ProjectMapLoading })));
@@ -306,12 +306,12 @@ export default function Opportunities() {
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
   const [reportModalOpen, setReportModalOpen] = useState<{ open:boolean, projectId?:string }|null>(null);
 
-  type OpportunityListSort = 'opportunity' | 'address' | 'estimator' | 'value' | 'status' | 'divisions';
+  type OpportunityListSort = 'opportunity' | 'address' | 'created_at' | 'estimator' | 'value' | 'status' | 'divisions';
   const { sortBy, sortDir, setSort: setListSort } = useAppListSort<OpportunityListSort>({
     searchParams,
     setSearchParams,
     defaultSort: 'opportunity',
-    validSorts: ['opportunity', 'address', 'estimator', 'value', 'status', 'divisions'] as const,
+    validSorts: ['opportunity', 'address', 'created_at', 'estimator', 'value', 'status', 'divisions'] as const,
   });
 
   // Get employees for estimator filter
@@ -740,6 +740,14 @@ export default function Opportunities() {
                 title="Sort by address"
               />
               <AppSortableEntityListSortColumn
+                label="Created at"
+                column="created_at"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={setListSort}
+                title="Sort by creation date"
+              />
+              <AppSortableEntityListSortColumn
                 label="Estimator"
                 column="estimator"
                 sortBy={sortBy}
@@ -1118,6 +1126,12 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
       <span className="text-xs font-semibold text-gray-900 truncate">{heroAddress || '—'}</span>
     </div>
   );
+  const createdDate = (opportunity.created_at || '').slice(0, 10);
+  const colCreated = (
+    <div className="min-w-0 flex items-center">
+      <span className="text-xs font-semibold text-gray-900 truncate">{createdDate || '—'}</span>
+    </div>
+  );
   const col2 = (
     <div className="min-w-0 flex items-center">
       {!userForAvatar && !listEstimatorName ? (
@@ -1206,6 +1220,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
       >
         <td className="px-3 py-2 align-middle">{col1}</td>
         <td className="px-3 py-2 align-middle">{colAddress}</td>
+        <td className="px-3 py-2 align-middle">{colCreated}</td>
         <td className="px-3 py-2 align-middle">{col2}</td>
         <td className="px-3 py-2 align-middle">{col3}</td>
         <td className="px-3 py-2 align-middle">{col4}</td>
@@ -1225,6 +1240,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
     >
       {col1}
       {colAddress}
+      {colCreated}
       {col2}
       {col3}
       {col4}

@@ -38,6 +38,20 @@ export function formatCurrency(value: number): string {
   }).format(value);
 }
 
+/** Compact $K/$M/$B for donut center only — legends keep full formatCurrency. */
+export function formatCompactCurrency(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+  const fmt = (n: number, suffix: string) => {
+    const rounded = n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(n >= 1 ? 1 : 2);
+    return `${sign}$${rounded.replace(/\.0$/, '')}${suffix}`;
+  };
+  if (abs >= 1_000_000_000) return fmt(abs / 1_000_000_000, 'B');
+  if (abs >= 1_000_000) return fmt(abs / 1_000_000, 'M');
+  if (abs >= 1_000) return fmt(abs / 1_000, 'K');
+  return formatCurrency(value);
+}
+
 // Palettes from Business Dashboard (darkest -> lightest; largest slice can start darker)
 export const greenPalette = ['#14532d', '#166534', '#15803d', '#16a34a', '#22c55e', '#4ade80', '#86efac', '#bbf7d0'];
 export const coolPalette = ['#0b1739', '#0f2a5a', '#1d4ed8', '#2563eb', '#0284c7', '#0ea5e9', '#38bdf8', '#7dd3fc'];

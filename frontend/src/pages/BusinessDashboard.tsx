@@ -219,6 +219,10 @@ const createPieSlice = (startAngle: number, endAngle: number, radius: number, ce
   ].join(' ');
 };
 
+/** Donut geometry in viewBox 0–100. */
+const DONUT_OUTER_R = 40;
+const DONUT_INNER_R = 24;
+
 const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
   const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
   return {
@@ -227,9 +231,25 @@ const polarToCartesian = (centerX: number, centerY: number, radius: number, angl
   };
 };
 
-// Palettes are ordered from darkest -> lightest so the largest slice can start darker.
-const greenPalette = ['#14532d', '#166534', '#15803d', '#16a34a', '#22c55e', '#4ade80', '#86efac', '#bbf7d0'];
-const coolPalette = ['#0b1739', '#0f2a5a', '#1d4ed8', '#2563eb', '#0284c7', '#0ea5e9', '#38bdf8', '#7dd3fc'];
+// Distinct multi-hue palettes (professional tones) so categories are easy to compare.
+const opportunityChartPalette = ['#1d4ed8', '#15803d', '#c2410c', '#7e22ce', '#b91c1c', '#0e7490', '#a16207', '#be185d'];
+const projectChartPalette = ['#1e3a5f', '#0f766e', '#9a3412', '#5b21b6', '#9f1239', '#0369a1', '#854d0e', '#9d174d'];
+
+/** Lighten a hex color toward white (~25%) for soft bar gradients. */
+function lightenHex(hex: string, amount = 0.28): string {
+  const raw = hex.replace('#', '');
+  if (raw.length !== 6) return hex;
+  const r = parseInt(raw.slice(0, 2), 16);
+  const g = parseInt(raw.slice(2, 4), 16);
+  const b = parseInt(raw.slice(4, 6), 16);
+  const mix = (c: number) => Math.round(c + (255 - c) * amount);
+  const toHex = (c: number) => mix(c).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function barGradient(color: string): string {
+  return `linear-gradient(to right, ${color}, ${lightenHex(color)})`;
+}
 
 type DateFilterType = 'all' | 'last_year' | 'last_6_months' | 'last_3_months' | 'last_month' | 'custom';
 
@@ -385,10 +405,12 @@ function DashboardChartFilters({
   displayMode,
   setDisplayMode,
 }: DashboardChartFiltersProps) {
+  const compactTrigger = 'h-8 !py-1 !text-xs !pr-7';
   return (
-    <div className={uiCx(uiLayout.actionsRow, 'shrink-0 flex-wrap gap-2')}>
+    <div className={uiCx(uiLayout.actionsRow, 'shrink-0 flex-wrap gap-1.5')}>
       <AppSelect
-        className="w-[8.5rem] shrink-0"
+        className="w-[7.75rem] shrink-0 !space-y-0"
+        triggerClassName={compactTrigger}
         options={DATE_FILTER_OPTIONS}
         value={dateFilter}
         onChange={(e) => {
@@ -402,16 +424,17 @@ function DashboardChartFilters({
           type="button"
           variant="ghost"
           size="sm"
-          className="px-2"
+          className="h-8 px-1.5"
           title={`${formatDateForDisplay(customStart)} - ${formatDateForDisplay(customEnd)}`}
           onClick={openCustomModal}
           aria-label="Edit custom date range"
         >
-          <Calendar className="h-4 w-4" />
+          <Calendar className="h-3.5 w-3.5" />
         </AppButton>
       ) : null}
       <AppSelect
-        className="w-[6.5rem] shrink-0"
+        className="w-[5.75rem] shrink-0 !space-y-0"
+        triggerClassName={compactTrigger}
         options={DISPLAY_MODE_OPTIONS}
         value={displayMode}
         onChange={(e) => setDisplayMode(e.target.value as 'quantity' | 'value')}
@@ -726,6 +749,20 @@ export default function BusinessDashboard() {
     }).format(value);
   };
 
+  /** Compact $K/$M/$B for donut center only — legends keep full formatCurrency. */
+  const formatCompactCurrency = (value: number): string => {
+    const abs = Math.abs(value);
+    const sign = value < 0 ? '-' : '';
+    const fmt = (n: number, suffix: string) => {
+      const rounded = n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(n >= 1 ? 1 : 2);
+      return `${sign}$${rounded.replace(/\.0$/, '')}${suffix}`;
+    };
+    if (abs >= 1_000_000_000) return fmt(abs / 1_000_000_000, 'B');
+    if (abs >= 1_000_000) return fmt(abs / 1_000_000, 'M');
+    if (abs >= 1_000) return fmt(abs / 1_000, 'K');
+    return formatCurrency(value);
+  };
+
   // Calculate max count/value for progress bar scaling
   const maxOpportunityStatusCount = useMemo(() => {
     if (!oppStatusStats?.opportunities_by_status) return 1;
@@ -859,11 +896,11 @@ export default function BusinessDashboard() {
               {/* Opportunities by Division */}
               <LoadingOverlay isLoading={oppDivisionsLoading} minHeight="min-h-[200px]">
               <AppCard
-                className={uiCx('flex flex-col transition-all duration-200 ease-out hover:-translate-y-0.5', chartCardAnimClass)}
+                className={uiCx('flex flex-col transition-shadow duration-200', chartCardAnimClass)}
                 bodyClassName={uiCx(uiSpacing.cardPadding, 'flex flex-1 flex-col min-h-0')}
               >
                 <div className="mb-3 flex flex-shrink-0 items-center justify-between gap-2">
-                  <div className={uiTypography.overline}>
+                  <div className={uiCx(uiTypography.sectionTitle, 'min-w-0 truncate')}>
                     Opportunities by Division{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                   </div>
                   <DashboardChartFilters
@@ -876,11 +913,11 @@ export default function BusinessDashboard() {
                     setDisplayMode={setOppDivisionDisplayMode}
                   />
                 </div>
-                <div className="flex-1 flex items-center justify-center">
+                <div className="flex-1 flex items-center justify-center min-h-0">
                   {oppStatsByDivision.length === 0 ? (
                     <p className={uiCx(uiTypography.helper, 'text-center')}>No data</p>
                   ) : (() => {
-                    const colors = greenPalette;
+                    const colors = opportunityChartPalette;
                     // Always start from divisions that have opportunities, regardless of value.
                     const divisionsForList = oppStatsByDivision
                       .filter(d => (d.opportunities_count || 0) > 0)
@@ -907,10 +944,12 @@ export default function BusinessDashboard() {
                       colorById.set(d.id, colors[idx % colors.length]);
                     });
 
-                    const radius = 40;
+                    const radius = DONUT_OUTER_R;
+                    const rInner = DONUT_INNER_R;
                     const centerX = 50;
                     const centerY = 50;
                     const explodeOffset = 5;
+                    const metricColLabel = oppDivisionDisplayMode === 'value' ? 'Value' : 'Quantity';
                     const handleOppSliceMouseEnter = (div: typeof divisionsForChart[0], ev: React.MouseEvent) => {
                       const val = oppDivisionDisplayMode === 'value' ? (div.opportunities_value || 0) : (div.opportunities_count || 0);
                       const pct = total > 0 ? (val / total) * 100 : 0;
@@ -931,58 +970,91 @@ export default function BusinessDashboard() {
                     };
                     let currentAngle = 0;
                     return (
-                      <div className="flex flex-row gap-3 flex-1 min-h-0 w-full">
-                        <div className="flex-[0_0_40%] min-w-0 min-h-0 flex items-center justify-center relative">
+                      <div className="flex flex-col sm:flex-row gap-4 flex-1 min-h-0 w-full items-stretch">
+                        <div className="sm:flex-[0_0_48%] min-w-0 min-h-[160px] sm:min-h-0 flex items-center justify-center relative">
                           <svg
                             viewBox="0 0 100 100"
-                            className="w-full h-full max-w-full max-h-full min-h-[80px]"
+                            className="w-full h-full max-w-[240px] max-h-[240px] min-h-[140px]"
                             preserveAspectRatio="xMidYMid meet"
                             onMouseLeave={handleOppSliceMouseLeave}
                           >
                             {!hasChartData ? (
-                              <circle cx={centerX} cy={centerY} r={radius} fill="#e5e7eb" />
+                              <>
+                                <circle cx={centerX} cy={centerY} r={radius} fill="#e5e7eb" />
+                                <circle cx={centerX} cy={centerY} r={rInner} fill="white" />
+                              </>
                             ) : divisionsForChart.length === 1 ? (
-                              <circle cx={centerX} cy={centerY} r={radius} fill={colors[0]} />
+                              <>
+                                <circle
+                                  cx={centerX}
+                                  cy={centerY}
+                                  r={radius}
+                                  fill={colors[0]}
+                                  style={{ cursor: 'pointer' }}
+                                  onMouseEnter={(ev) => handleOppSliceMouseEnter(divisionsForChart[0], ev)}
+                                  onMouseMove={handleOppSliceMouseMove}
+                                  onMouseLeave={handleOppSliceMouseLeave}
+                                />
+                                <circle cx={centerX} cy={centerY} r={rInner} fill="white" className="pointer-events-none" />
+                              </>
                             ) : (
-                              divisionsForChart.map((div, idx) => {
-                                const percentage = oppDivisionDisplayMode === 'value'
-                                  ? ((div.opportunities_value || 0) / total) * 100
-                                  : ((div.opportunities_count || 0) / total) * 100;
-                                const angle = (percentage / 100) * 360;
-                                const startAngle = currentAngle;
-                                const endAngle = currentAngle + angle;
-                                currentAngle = endAngle;
-                                const midAngle = (startAngle + endAngle) / 2;
-                                const isHovered = pieTooltip?.chart === 'opp' && pieTooltip?.label === div.label;
-                                const { x: ox, y: oy } = polarToCartesian(centerX, centerY, explodeOffset, midAngle);
-                                const tx = isHovered ? ox - centerX : 0;
-                                const ty = isHovered ? oy - centerY : 0;
-                                return (
-                                  <g
-                                    key={div.id}
-                                    transform={`translate(${tx}, ${ty})`}
-                                    style={{
-                                      cursor: 'pointer',
-                                      opacity: hasAnimated ? 1 : 0,
-                                      transition: `transform 0.15s ease-out, opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`,
-                                    }}
-                                    onMouseEnter={(ev) => handleOppSliceMouseEnter(div, ev)}
-                                    onMouseMove={handleOppSliceMouseMove}
-                                    onMouseLeave={handleOppSliceMouseLeave}
-                                  >
-                                    <path
-                                      d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
-                                      fill={colorById.get(div.id) || colors[idx % colors.length]}
+                              <>
+                                {divisionsForChart.map((div, idx) => {
+                                  const percentage = oppDivisionDisplayMode === 'value'
+                                    ? ((div.opportunities_value || 0) / total) * 100
+                                    : ((div.opportunities_count || 0) / total) * 100;
+                                  const angle = (percentage / 100) * 360;
+                                  const startAngle = currentAngle;
+                                  const endAngle = currentAngle + angle;
+                                  currentAngle = endAngle;
+                                  const midAngle = (startAngle + endAngle) / 2;
+                                  const isHovered = pieTooltip?.chart === 'opp' && pieTooltip?.label === div.label;
+                                  const { x: ox, y: oy } = polarToCartesian(centerX, centerY, explodeOffset, midAngle);
+                                  const tx = isHovered ? ox - centerX : 0;
+                                  const ty = isHovered ? oy - centerY : 0;
+                                  return (
+                                    <g
+                                      key={div.id}
+                                      transform={`translate(${tx}, ${ty})`}
                                       style={{
-                                        filter: isHovered ? 'brightness(1.12)' : undefined,
-                                        transition: 'filter 0.2s ease-out',
+                                        cursor: 'pointer',
+                                        opacity: hasAnimated ? 1 : 0,
+                                        transition: `transform 0.15s ease-out, opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`,
                                       }}
-                                    />
-                                  </g>
-                                );
-                              })
+                                      onMouseEnter={(ev) => handleOppSliceMouseEnter(div, ev)}
+                                      onMouseMove={handleOppSliceMouseMove}
+                                      onMouseLeave={handleOppSliceMouseLeave}
+                                    >
+                                      <path
+                                        d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
+                                        fill={colorById.get(div.id) || colors[idx % colors.length]}
+                                        style={{
+                                          filter: isHovered ? 'brightness(1.12)' : undefined,
+                                          transition: 'filter 0.2s ease-out',
+                                        }}
+                                      />
+                                    </g>
+                                  );
+                                })}
+                                <circle cx={centerX} cy={centerY} r={rInner} fill="white" className="pointer-events-none" />
+                              </>
                             )}
                           </svg>
+                          {hasChartData && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-2">
+                              <div
+                                className="pointer-events-auto font-semibold text-gray-900 tabular-nums leading-tight whitespace-nowrap text-[clamp(0.75rem,2.4vw,1.125rem)]"
+                                title={oppDivisionDisplayMode === 'value' ? formatCurrency(total) : undefined}
+                              >
+                                {oppDivisionDisplayMode === 'value' ? (
+                                  formatCompactCurrency(total)
+                                ) : (
+                                  <CountUp value={total} enabled={hasAnimated} />
+                                )}
+                              </div>
+                              <div className="text-[10px] font-medium text-gray-500 mt-0.5 whitespace-nowrap">Opportunities</div>
+                            </div>
+                          )}
                           {pieTooltip?.chart === 'opp' &&
                             createPortal(
                               <div
@@ -999,41 +1071,52 @@ export default function BusinessDashboard() {
                               document.body
                             )}
                         </div>
-                        <div className="flex-1 min-w-0 space-y-1 text-xs overflow-y-auto py-0.5 border-l border-gray-200 pl-3">
+                        <div className="flex-1 min-w-0 overflow-y-auto py-0.5 sm:pl-1">
                           {divisionsForList.length === 0 ? (
                             <div className="text-xs text-gray-400">No data</div>
-                          ) : divisionsForList.slice(0, 7).map((div) => {
-                            const valuePercentage = oppDivisionDisplayMode === 'value' && total > 0
-                              ? ((div.opportunities_value || 0) / total) * 100
-                              : 0;
-                            const countPercentage = oppDivisionDisplayMode === 'quantity' && total > 0
-                              ? ((div.opportunities_count || 0) / total) * 100
-                              : 0;
-                            const dotColor = colorById.get(div.id) || '#d1d5db';
-                            
-                            return (
-                              <div key={div.id}>
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    className="w-3 h-3 rounded-full"
-                                    style={{ backgroundColor: dotColor }}
-                                  />
-                                  <span className="text-gray-700 truncate flex-1 min-w-0 pr-2">{div.label}</span>
-                                  <span className="text-gray-900 font-semibold tabular-nums text-right min-w-[120px]">
-                                    {oppDivisionDisplayMode === 'value' ? (
-                                      <>
-                                        {formatCurrency(div.opportunities_value || 0)} ({valuePercentage.toFixed(0)}%)
-                                      </>
-                                    ) : (
-                                      <>
-                                        <CountUp value={div.opportunities_count || 0} enabled={hasAnimated} /> ({countPercentage.toFixed(0)}%)
-                                      </>
-                                    )}
-                                  </span>
-                                </div>
+                          ) : (
+                            <div className="w-full text-xs">
+                              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-0 items-center pb-1.5 mb-0.5 border-b border-gray-100">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Division</span>
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right min-w-[4.5rem]">{metricColLabel}</span>
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right w-10">%</span>
                               </div>
-                            );
-                          })}
+                              {divisionsForList.slice(0, 7).map((div) => {
+                                const valuePercentage = oppDivisionDisplayMode === 'value' && total > 0
+                                  ? ((div.opportunities_value || 0) / total) * 100
+                                  : 0;
+                                const countPercentage = oppDivisionDisplayMode === 'quantity' && total > 0
+                                  ? ((div.opportunities_count || 0) / total) * 100
+                                  : 0;
+                                const pct = oppDivisionDisplayMode === 'value' ? valuePercentage : countPercentage;
+                                const dotColor = colorById.get(div.id) || '#d1d5db';
+                                return (
+                                  <div
+                                    key={div.id}
+                                    className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 items-center py-1.5 border-b border-gray-50 last:border-b-0"
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span
+                                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                                        style={{ backgroundColor: dotColor }}
+                                      />
+                                      <span className="text-gray-700 truncate">{div.label}</span>
+                                    </div>
+                                    <span className="text-gray-900 font-medium tabular-nums text-right min-w-[4.5rem]">
+                                      {oppDivisionDisplayMode === 'value' ? (
+                                        formatCurrency(div.opportunities_value || 0)
+                                      ) : (
+                                        <CountUp value={div.opportunities_count || 0} enabled={hasAnimated} />
+                                      )}
+                                    </span>
+                                    <span className="text-gray-500 tabular-nums text-right w-10">
+                                      {pct.toFixed(0)}%
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1045,11 +1128,11 @@ export default function BusinessDashboard() {
                 {/* Projects by Division */}
                 <LoadingOverlay isLoading={projDivisionsLoading} minHeight="min-h-[200px]">
                 <AppCard
-                  className={uiCx('flex flex-col transition-all duration-200 ease-out hover:-translate-y-0.5', chartCardAnimClass)}
+                  className={uiCx('flex flex-col transition-shadow duration-200', chartCardAnimClass)}
                   bodyClassName={uiCx(uiSpacing.cardPadding, 'flex flex-1 flex-col min-h-0')}
                 >
                   <div className="mb-3 flex flex-shrink-0 items-center justify-between gap-2">
-                    <div className={uiTypography.overline}>
+                    <div className={uiCx(uiTypography.sectionTitle, 'min-w-0 truncate')}>
                       Projects by Division{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                     </div>
                     <DashboardChartFilters
@@ -1062,11 +1145,11 @@ export default function BusinessDashboard() {
                       setDisplayMode={setProjDivisionDisplayMode}
                     />
                   </div>
-                  <div className="flex-1 flex items-center justify-center">
+                  <div className="flex-1 flex items-center justify-center min-h-0">
                     {projStatsByDivision.length === 0 ? (
                       <p className={uiCx(uiTypography.helper, 'text-center')}>No data</p>
                     ) : (() => {
-                    const colors = coolPalette;
+                    const colors = projectChartPalette;
                     const divisionsForList = projStatsByDivision
                       .filter(d => (d.projects_count || 0) > 0)
                       .slice()
@@ -1091,10 +1174,12 @@ export default function BusinessDashboard() {
                       colorById.set(d.id, colors[idx % colors.length]);
                     });
 
-                    const radius = 40;
+                    const radius = DONUT_OUTER_R;
+                    const rInner = DONUT_INNER_R;
                     const centerX = 50;
                     const centerY = 50;
                     const explodeOffset = 5;
+                    const metricColLabel = projDivisionDisplayMode === 'value' ? 'Value' : 'Quantity';
                     const handleProjSliceMouseEnter = (div: typeof divisionsForChart[0], ev: React.MouseEvent) => {
                       const val = projDivisionDisplayMode === 'value' ? (div.projects_value || 0) : (div.projects_count || 0);
                       const pct = total > 0 ? (val / total) * 100 : 0;
@@ -1115,58 +1200,91 @@ export default function BusinessDashboard() {
                     };
                     let currentAngle = 0;
                     return (
-                      <div className="flex flex-row gap-3 flex-1 min-h-0 w-full">
-                        <div className="flex-[0_0_40%] min-w-0 min-h-0 flex items-center justify-center relative">
+                      <div className="flex flex-col sm:flex-row gap-4 flex-1 min-h-0 w-full items-stretch">
+                        <div className="sm:flex-[0_0_48%] min-w-0 min-h-[160px] sm:min-h-0 flex items-center justify-center relative">
                           <svg
                             viewBox="0 0 100 100"
-                            className="w-full h-full max-w-full max-h-full min-h-[80px]"
+                            className="w-full h-full max-w-[240px] max-h-[240px] min-h-[140px]"
                             preserveAspectRatio="xMidYMid meet"
                             onMouseLeave={handleProjSliceMouseLeave}
                           >
                             {!hasChartData ? (
-                              <circle cx={centerX} cy={centerY} r={radius} fill="#e5e7eb" />
+                              <>
+                                <circle cx={centerX} cy={centerY} r={radius} fill="#e5e7eb" />
+                                <circle cx={centerX} cy={centerY} r={rInner} fill="white" />
+                              </>
                             ) : divisionsForChart.length === 1 ? (
-                              <circle cx={centerX} cy={centerY} r={radius} fill={colors[0]} />
+                              <>
+                                <circle
+                                  cx={centerX}
+                                  cy={centerY}
+                                  r={radius}
+                                  fill={colors[0]}
+                                  style={{ cursor: 'pointer' }}
+                                  onMouseEnter={(ev) => handleProjSliceMouseEnter(divisionsForChart[0], ev)}
+                                  onMouseMove={handleProjSliceMouseMove}
+                                  onMouseLeave={handleProjSliceMouseLeave}
+                                />
+                                <circle cx={centerX} cy={centerY} r={rInner} fill="white" className="pointer-events-none" />
+                              </>
                             ) : (
-                              divisionsForChart.map((div, idx) => {
-                                const percentage = projDivisionDisplayMode === 'value'
-                                  ? ((div.projects_value || 0) / total) * 100
-                                  : ((div.projects_count || 0) / total) * 100;
-                                const angle = (percentage / 100) * 360;
-                                const startAngle = currentAngle;
-                                const endAngle = currentAngle + angle;
-                                currentAngle = endAngle;
-                                const midAngle = (startAngle + endAngle) / 2;
-                                const isHovered = pieTooltip?.chart === 'proj' && pieTooltip?.label === div.label;
-                                const { x: ox, y: oy } = polarToCartesian(centerX, centerY, explodeOffset, midAngle);
-                                const tx = isHovered ? ox - centerX : 0;
-                                const ty = isHovered ? oy - centerY : 0;
-                                return (
-                                  <g
-                                    key={div.id}
-                                    transform={`translate(${tx}, ${ty})`}
-                                    style={{
-                                      cursor: 'pointer',
-                                      opacity: hasAnimated ? 1 : 0,
-                                      transition: `transform 0.15s ease-out, opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`,
-                                    }}
-                                    onMouseEnter={(ev) => handleProjSliceMouseEnter(div, ev)}
-                                    onMouseMove={handleProjSliceMouseMove}
-                                    onMouseLeave={handleProjSliceMouseLeave}
-                                  >
-                                    <path
-                                      d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
-                                      fill={colorById.get(div.id) || colors[idx % colors.length]}
+                              <>
+                                {divisionsForChart.map((div, idx) => {
+                                  const percentage = projDivisionDisplayMode === 'value'
+                                    ? ((div.projects_value || 0) / total) * 100
+                                    : ((div.projects_count || 0) / total) * 100;
+                                  const angle = (percentage / 100) * 360;
+                                  const startAngle = currentAngle;
+                                  const endAngle = currentAngle + angle;
+                                  currentAngle = endAngle;
+                                  const midAngle = (startAngle + endAngle) / 2;
+                                  const isHovered = pieTooltip?.chart === 'proj' && pieTooltip?.label === div.label;
+                                  const { x: ox, y: oy } = polarToCartesian(centerX, centerY, explodeOffset, midAngle);
+                                  const tx = isHovered ? ox - centerX : 0;
+                                  const ty = isHovered ? oy - centerY : 0;
+                                  return (
+                                    <g
+                                      key={div.id}
+                                      transform={`translate(${tx}, ${ty})`}
                                       style={{
-                                        filter: isHovered ? 'brightness(1.12)' : undefined,
-                                        transition: 'filter 0.2s ease-out',
+                                        cursor: 'pointer',
+                                        opacity: hasAnimated ? 1 : 0,
+                                        transition: `transform 0.15s ease-out, opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`,
                                       }}
-                                    />
-                                  </g>
-                                );
-                              })
+                                      onMouseEnter={(ev) => handleProjSliceMouseEnter(div, ev)}
+                                      onMouseMove={handleProjSliceMouseMove}
+                                      onMouseLeave={handleProjSliceMouseLeave}
+                                    >
+                                      <path
+                                        d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
+                                        fill={colorById.get(div.id) || colors[idx % colors.length]}
+                                        style={{
+                                          filter: isHovered ? 'brightness(1.12)' : undefined,
+                                          transition: 'filter 0.2s ease-out',
+                                        }}
+                                      />
+                                    </g>
+                                  );
+                                })}
+                                <circle cx={centerX} cy={centerY} r={rInner} fill="white" className="pointer-events-none" />
+                              </>
                             )}
                           </svg>
+                          {hasChartData && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-2">
+                              <div
+                                className="pointer-events-auto font-semibold text-gray-900 tabular-nums leading-tight whitespace-nowrap text-[clamp(0.75rem,2.4vw,1.125rem)]"
+                                title={projDivisionDisplayMode === 'value' ? formatCurrency(total) : undefined}
+                              >
+                                {projDivisionDisplayMode === 'value' ? (
+                                  formatCompactCurrency(total)
+                                ) : (
+                                  <CountUp value={total} enabled={hasAnimated} />
+                                )}
+                              </div>
+                              <div className="text-[10px] font-medium text-gray-500 mt-0.5 whitespace-nowrap">Projects</div>
+                            </div>
+                          )}
                           {pieTooltip?.chart === 'proj' &&
                             createPortal(
                               <div
@@ -1183,41 +1301,52 @@ export default function BusinessDashboard() {
                               document.body
                             )}
                         </div>
-                        <div className="flex-1 min-w-0 space-y-1 text-xs overflow-y-auto py-0.5 border-l border-gray-200 pl-3">
+                        <div className="flex-1 min-w-0 overflow-y-auto py-0.5 sm:pl-1">
                           {divisionsForList.length === 0 ? (
                             <div className="text-xs text-gray-400">No data</div>
-                          ) : divisionsForList.slice(0, 7).map((div) => {
-                            const valuePercentage = projDivisionDisplayMode === 'value' && total > 0
-                              ? ((div.projects_value || 0) / total) * 100
-                              : 0;
-                            const countPercentage = projDivisionDisplayMode === 'quantity' && total > 0
-                              ? ((div.projects_count || 0) / total) * 100
-                              : 0;
-                            const dotColor = colorById.get(div.id) || '#d1d5db';
-                            
-                            return (
-                              <div key={div.id}>
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    className="w-3 h-3 rounded-full"
-                                    style={{ backgroundColor: dotColor }}
-                                  />
-                                  <span className="text-gray-700 truncate flex-1 min-w-0 pr-2">{div.label}</span>
-                                  <span className="text-gray-900 font-semibold tabular-nums text-right min-w-[120px]">
-                                    {projDivisionDisplayMode === 'value' ? (
-                                      <>
-                                        {formatCurrency(div.projects_value || 0)} ({valuePercentage.toFixed(0)}%)
-                                      </>
-                                    ) : (
-                                      <>
-                                        <CountUp value={div.projects_count || 0} enabled={hasAnimated} /> ({countPercentage.toFixed(0)}%)
-                                      </>
-                                    )}
-                                  </span>
-                                </div>
+                          ) : (
+                            <div className="w-full text-xs">
+                              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-0 items-center pb-1.5 mb-0.5 border-b border-gray-100">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Division</span>
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right min-w-[4.5rem]">{metricColLabel}</span>
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right w-10">%</span>
                               </div>
-                            );
-                          })}
+                              {divisionsForList.slice(0, 7).map((div) => {
+                                const valuePercentage = projDivisionDisplayMode === 'value' && total > 0
+                                  ? ((div.projects_value || 0) / total) * 100
+                                  : 0;
+                                const countPercentage = projDivisionDisplayMode === 'quantity' && total > 0
+                                  ? ((div.projects_count || 0) / total) * 100
+                                  : 0;
+                                const pct = projDivisionDisplayMode === 'value' ? valuePercentage : countPercentage;
+                                const dotColor = colorById.get(div.id) || '#d1d5db';
+                                return (
+                                  <div
+                                    key={div.id}
+                                    className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 items-center py-1.5 border-b border-gray-50 last:border-b-0"
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span
+                                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                                        style={{ backgroundColor: dotColor }}
+                                      />
+                                      <span className="text-gray-700 truncate">{div.label}</span>
+                                    </div>
+                                    <span className="text-gray-900 font-medium tabular-nums text-right min-w-[4.5rem]">
+                                      {projDivisionDisplayMode === 'value' ? (
+                                        formatCurrency(div.projects_value || 0)
+                                      ) : (
+                                        <CountUp value={div.projects_count || 0} enabled={hasAnimated} />
+                                      )}
+                                    </span>
+                                    <span className="text-gray-500 tabular-nums text-right w-10">
+                                      {pct.toFixed(0)}%
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1232,11 +1361,11 @@ export default function BusinessDashboard() {
               {/* Opportunities by Status (horizontal bars) */}
               <LoadingOverlay isLoading={oppStatusLoading} minHeight="min-h-[200px]">
                   <AppCard
-                    className={uiCx('min-w-0 transition-all duration-200 ease-out hover:-translate-y-0.5', chartCardAnimClass)}
+                    className={uiCx('min-w-0 transition-shadow duration-200', chartCardAnimClass)}
                     bodyClassName={uiSpacing.cardPadding}
                   >
                     <div className="mb-3 flex items-center justify-between gap-2">
-                      <div className={uiTypography.overline}>
+                      <div className={uiCx(uiTypography.sectionTitle, 'min-w-0 truncate')}>
                         Opportunities by Status{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                       </div>
                       <DashboardChartFilters
@@ -1249,7 +1378,7 @@ export default function BusinessDashboard() {
                         setDisplayMode={setOppStatusDisplayMode}
                       />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       {oppStatusStats && Object.entries(oppStatusStats.opportunities_by_status).length > 0 ? (
                         (() => {
                           const entries = Object.entries(oppStatusStats.opportunities_by_status)
@@ -1285,23 +1414,25 @@ export default function BusinessDashboard() {
                                 return sum;
                               }, 0)
                             : 0;
-                          return sorted.slice(0, 6).map(([status, data]) => {
+                          return sorted.slice(0, 6).map(([status, data], idx) => {
+                            const barColor = opportunityChartPalette[idx % opportunityChartPalette.length];
+                            const barBg = barGradient(barColor);
                             if (oppStatusDisplayMode === 'value') {
                               const valueData = data as StatusValueData;
                               const finalTotalPercentage = (valueData.final_total_with_gst / maxOpportunityStatusCount) * 100;
                               const valuePercentage = totalValue > 0 ? (valueData.final_total_with_gst / totalValue) * 100 : 0;
                               return (
-                                <div key={status} className="flex items-center gap-2">
-                                  <span className="text-xs text-gray-500 truncate w-28">
+                                <div key={status} className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center">
+                                  <span className="text-xs text-gray-600 truncate">
                                     {status}
                                   </span>
-                                  <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
+                                  <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
                                     <div
-                                      className="bg-gradient-to-r from-[#14532d] to-[#22c55e] rounded-full h-3 transition-all duration-500 ease-out absolute inset-0"
-                                      style={{ width: `${finalTotalPercentage}%` }}
+                                      className="rounded-full h-3.5 transition-all duration-500 ease-out absolute inset-y-0 left-0"
+                                      style={{ width: `${finalTotalPercentage}%`, background: barBg }}
                                     />
                                   </div>
-                                  <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
+                                  <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
                                     {formatCurrency(valueData.final_total_with_gst)} ({valuePercentage.toFixed(0)}%)
                                   </span>
                                 </div>
@@ -1311,17 +1442,17 @@ export default function BusinessDashboard() {
                               const percentage = totalCount > 0 ? (count / totalCount) * 100 : 0;
                               const barPercentage = (count / maxOpportunityStatusCount) * 100;
                               return (
-                                <div key={status} className="flex items-center gap-2">
-                                  <span className="text-xs text-gray-500 truncate w-28">
+                                <div key={status} className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center">
+                                  <span className="text-xs text-gray-600 truncate">
                                     {status}
                                   </span>
-                                  <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
+                                  <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
                                     <div
-                                      className="bg-gradient-to-r from-[#14532d] to-[#22c55e] rounded-full h-3 transition-all duration-500 ease-out"
-                                      style={{ width: `${barPercentage}%` }}
+                                      className="rounded-full h-3.5 transition-all duration-500 ease-out"
+                                      style={{ width: `${barPercentage}%`, background: barBg }}
                                     />
                                   </div>
-                                  <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
+                                  <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
                                     <CountUp value={count} enabled={hasAnimated || oppStatusStats !== undefined} /> ({percentage.toFixed(0)}%)
                                   </span>
                                 </div>
@@ -1339,11 +1470,11 @@ export default function BusinessDashboard() {
                 {/* Projects by Status (horizontal bars) */}
                 <LoadingOverlay isLoading={projStatusLoading} minHeight="min-h-[200px]">
                   <AppCard
-                    className={uiCx('min-w-0 transition-all duration-200 ease-out hover:-translate-y-0.5', chartCardAnimClass)}
+                    className={uiCx('min-w-0 transition-shadow duration-200', chartCardAnimClass)}
                     bodyClassName={uiSpacing.cardPadding}
                   >
                     <div className="mb-3 flex items-center justify-between gap-2">
-                      <div className={uiTypography.overline}>
+                      <div className={uiCx(uiTypography.sectionTitle, 'min-w-0 truncate')}>
                         Projects by Status{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                       </div>
                       <DashboardChartFilters
@@ -1356,7 +1487,7 @@ export default function BusinessDashboard() {
                         setDisplayMode={setProjStatusDisplayMode}
                       />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       {projStatusStats && Object.entries(projStatusStats.projects_by_status).length > 0 ? (
                         (() => {
                           const entries = Object.entries(projStatusStats.projects_by_status)
@@ -1392,23 +1523,25 @@ export default function BusinessDashboard() {
                                 return sum;
                               }, 0)
                             : 0;
-                          return sorted.slice(0, 6).map(([status, data]) => {
+                          return sorted.slice(0, 6).map(([status, data], idx) => {
+                            const barColor = projectChartPalette[idx % projectChartPalette.length];
+                            const barBg = barGradient(barColor);
                             if (projStatusDisplayMode === 'value') {
                               const valueData = data as StatusValueData;
                               const finalTotalPercentage = (valueData.final_total_with_gst / maxProjectStatusCount) * 100;
                               const valuePercentage = totalValue > 0 ? (valueData.final_total_with_gst / totalValue) * 100 : 0;
                               return (
-                                <div key={status} className="flex items-center gap-2">
-                                  <span className="text-xs text-gray-500 truncate w-28">
+                                <div key={status} className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center">
+                                  <span className="text-xs text-gray-600 truncate">
                                     {status}
                                   </span>
-                                  <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
+                                  <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
                                     <div
-                                      className="bg-gradient-to-r from-[#0b1739] to-[#1d4ed8] rounded-full h-3 transition-all duration-500 ease-out absolute inset-0"
-                                      style={{ width: `${finalTotalPercentage}%` }}
+                                      className="rounded-full h-3.5 transition-all duration-500 ease-out absolute inset-y-0 left-0"
+                                      style={{ width: `${finalTotalPercentage}%`, background: barBg }}
                                     />
                                   </div>
-                                  <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
+                                  <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
                                     {formatCurrency(valueData.final_total_with_gst)} ({valuePercentage.toFixed(0)}%)
                                   </span>
                                 </div>
@@ -1418,17 +1551,17 @@ export default function BusinessDashboard() {
                               const percentage = totalCount > 0 ? (count / totalCount) * 100 : 0;
                               const barPercentage = (count / maxProjectStatusCount) * 100;
                               return (
-                                <div key={status} className="flex items-center gap-2">
-                                  <span className="text-xs text-gray-500 truncate w-28">
+                                <div key={status} className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center">
+                                  <span className="text-xs text-gray-600 truncate">
                                     {status}
                                   </span>
-                                  <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
+                                  <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
                                     <div
-                                      className="bg-gradient-to-r from-[#0b1739] to-[#1d4ed8] rounded-full h-3 transition-all duration-500 ease-out"
-                                      style={{ width: `${barPercentage}%` }}
+                                      className="rounded-full h-3.5 transition-all duration-500 ease-out"
+                                      style={{ width: `${barPercentage}%`, background: barBg }}
                                     />
                                   </div>
-                                  <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
+                                  <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
                                     <CountUp value={count} enabled={hasAnimated || projStatusStats !== undefined} /> ({percentage.toFixed(0)}%)
                                   </span>
                                 </div>
@@ -1547,19 +1680,20 @@ export default function BusinessDashboard() {
                         <div className={uiTypography.sectionTitle}>{division.label}</div>
                       </div>
                       {hasSubdivisions && (
-                        <div className="group/sub relative shrink-0">
-                          <div className={uiCx(uiTypography.overline, 'cursor-pointer whitespace-nowrap bg-gray-100 px-2 py-1', uiRadius.control)}>
-                            {division.subdivisions.length} sub
-                          </div>
-                          <div className="absolute right-0 bottom-full mb-1 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover/sub:opacity-100 transition-opacity pointer-events-none z-10 min-w-max">
-                            <div className="space-y-0.5">
+                        <AppTooltip
+                          wrap
+                          content={
+                            <div className="space-y-0.5 text-left">
                               {division.subdivisions.map((sub) => (
                                 <div key={sub.id}>{sub.label}</div>
                               ))}
                             </div>
-                            <div className="absolute -bottom-1 right-3 w-2 h-2 bg-gray-900 rotate-45"></div>
+                          }
+                        >
+                          <div className={uiCx(uiTypography.overline, 'cursor-pointer whitespace-nowrap bg-gray-100 px-2 py-1', uiRadius.control)}>
+                            {division.subdivisions.length} sub
                           </div>
-                        </div>
+                        </AppTooltip>
                       )}
                     </div>
 

@@ -484,7 +484,6 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
                           label: c.display_name || c.name || c.id,
                         })),
                       ]}
-                      helperText="Filter by project owner / source."
                     />
                   )}
                   <AppSelect

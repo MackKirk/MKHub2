@@ -16,6 +16,7 @@ import {
   getCount,
   getProfit,
   formatCurrency,
+  formatCompactCurrency,
   createPieSlice,
   polarToCartesian,
   calculateDateRange,
@@ -486,6 +487,10 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     const centerX = 50;
     const centerY = 50;
     const explodeOffset = 5;
+    const hasChartData = total > 0 && slicesForChart.length > 0;
+    const metricColLabel = mode === 'value' ? 'Value' : 'Quantity';
+    const categoryColLabel = metric.includes('division') ? 'Division' : 'Status';
+    const centerEntityLabel = metric.startsWith('projects_') ? 'Projects' : 'Opportunities';
 
     const handleSliceMouseEnter = (e: ChartEntry, ev: React.MouseEvent) => {
       setHoveredPieSlice(e);
@@ -499,93 +504,148 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     return (
       <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full relative">
         <Subtitle />
-        <div className="flex flex-row gap-3 flex-1 min-h-0 w-full">
-        <div className="flex-1 min-w-0 min-h-0 flex items-center justify-center">
-          <svg
-            viewBox="0 0 100 100"
-            className="w-full h-full max-w-full max-h-full min-h-[80px]"
-            preserveAspectRatio="xMidYMid meet"
-            onMouseLeave={handleSliceMouseLeave}
-          >
-            {slicesForChart.map((e, i) => {
-              const angle = (e.value / total) * 360;
-              const startAngle = currentAngle;
-              const endAngle = currentAngle + angle;
-              currentAngle = endAngle;
-              const midAngle = (startAngle + endAngle) / 2;
-              const isHovered = hoveredPieSlice?.label === e.label;
-              const { x: ox, y: oy } = polarToCartesian(centerX, centerY, explodeOffset, midAngle);
-              const tx = isHovered ? ox - centerX : 0;
-              const ty = isHovered ? oy - centerY : 0;
-              const pct = total > 0 ? (e.value / total) * 100 : 0;
-              return (
-                <g
-                  key={e.label}
-                  transform={`translate(${tx}, ${ty})`}
-                  style={{
-                    cursor: 'pointer',
-                    opacity: pieSlicesMounted ? 1 : 0,
-                    transition: `transform 0.15s ease-out, opacity 400ms ease-out ${pieSlicesMounted ? i * 80 + 'ms' : '0ms'}`,
-                  }}
-                  onMouseEnter={(ev) => handleSliceMouseEnter(e, ev)}
-                  onMouseMove={handleSliceMouseMove}
-                  onMouseLeave={handleSliceMouseLeave}
-                >
-                  <path
-                    d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
-                    fill={colors[i % colors.length]}
-                    style={{
-                      filter: isHovered ? 'brightness(1.12)' : undefined,
-                      transition: 'filter 0.2s ease-out',
-                    }}
+        <div className="flex flex-col sm:flex-row gap-4 flex-1 min-h-0 w-full items-stretch">
+          <div className="sm:flex-[0_0_48%] min-w-0 min-h-[160px] sm:min-h-0 flex items-center justify-center relative">
+            <svg
+              viewBox="0 0 100 100"
+              className="w-full h-full max-w-[240px] max-h-[240px] min-h-[140px]"
+              preserveAspectRatio="xMidYMid meet"
+              onMouseLeave={handleSliceMouseLeave}
+            >
+              {!hasChartData ? (
+                <>
+                  <circle cx={centerX} cy={centerY} r={radius} fill="#e5e7eb" />
+                  {isDonut ? <circle cx={centerX} cy={centerY} r={rInner} fill="white" /> : null}
+                </>
+              ) : isDonut && slicesForChart.length === 1 ? (
+                <>
+                  <circle
+                    cx={centerX}
+                    cy={centerY}
+                    r={radius}
+                    fill={colors[0]}
+                    style={{ cursor: 'pointer' }}
+                    onMouseEnter={(ev) => handleSliceMouseEnter(slicesForChart[0], ev)}
+                    onMouseMove={handleSliceMouseMove}
+                    onMouseLeave={handleSliceMouseLeave}
                   />
-                </g>
-              );
-            })}
-            {isDonut && <circle cx={centerX} cy={centerY} r={rInner} fill="white" />}
-          </svg>
-          {hoveredPieSlice &&
-            createPortal(
-              <div
-                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
-                style={{ left: pieTooltipPos.x + 10, top: pieTooltipPos.y + 10 }}
-              >
-                <div className="font-semibold">{hoveredPieSlice.label}</div>
-                <div className="text-gray-300">
-                  {mode === 'value' ? formatCurrency(hoveredPieSlice.value) : hoveredPieSlice.value} ({total > 0 ? ((hoveredPieSlice.value / total) * 100).toFixed(0) : 0}%)
+                  <circle cx={centerX} cy={centerY} r={rInner} fill="white" className="pointer-events-none" />
+                </>
+              ) : (
+                <>
+                  {slicesForChart.map((e, i) => {
+                    const angle = (e.value / total) * 360;
+                    const startAngle = currentAngle;
+                    const endAngle = currentAngle + angle;
+                    currentAngle = endAngle;
+                    const midAngle = (startAngle + endAngle) / 2;
+                    const isHovered = hoveredPieSlice?.label === e.label;
+                    const { x: ox, y: oy } = polarToCartesian(centerX, centerY, explodeOffset, midAngle);
+                    const tx = isHovered ? ox - centerX : 0;
+                    const ty = isHovered ? oy - centerY : 0;
+                    return (
+                      <g
+                        key={e.label}
+                        transform={`translate(${tx}, ${ty})`}
+                        style={{
+                          cursor: 'pointer',
+                          opacity: pieSlicesMounted ? 1 : 0,
+                          transition: `transform 0.15s ease-out, opacity 400ms ease-out ${pieSlicesMounted ? i * 80 + 'ms' : '0ms'}`,
+                        }}
+                        onMouseEnter={(ev) => handleSliceMouseEnter(e, ev)}
+                        onMouseMove={handleSliceMouseMove}
+                        onMouseLeave={handleSliceMouseLeave}
+                      >
+                        <path
+                          d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
+                          fill={colors[i % colors.length]}
+                          style={{
+                            filter: isHovered ? 'brightness(1.12)' : undefined,
+                            transition: 'filter 0.2s ease-out',
+                          }}
+                        />
+                      </g>
+                    );
+                  })}
+                  {isDonut ? (
+                    <circle cx={centerX} cy={centerY} r={rInner} fill="white" className="pointer-events-none" />
+                  ) : null}
+                </>
+              )}
+            </svg>
+            {isDonut && hasChartData && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-2">
+                <div
+                  className="pointer-events-auto font-semibold text-gray-900 tabular-nums leading-tight whitespace-nowrap text-[clamp(0.75rem,2.4vw,1.125rem)]"
+                  title={mode === 'value' ? formatCurrency(total) : undefined}
+                >
+                  {mode === 'value' ? formatCompactCurrency(total) : total}
                 </div>
-              </div>,
-              document.body
-            )}
-        </div>
-        <div className="space-y-1 text-xs shrink-0 overflow-y-auto py-0.5 border-l border-gray-200 pl-3 min-w-0 max-w-[45%]">
-          {sorted.slice(0, 10).map((e, i) => {
-            const pct = totalForPct > 0 ? (e.value / totalForPct) * 100 : 0;
-            const dotColor = colors[i % colors.length];
-            return (
-              <div key={e.label}>
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
-                  <span className="text-gray-700 truncate flex-1 min-w-0">{e.label}</span>
-                  <span className="text-gray-900 font-semibold tabular-nums text-right shrink-0">
-                    {mode === 'value' ? formatCurrency(e.value) : e.value} ({pct.toFixed(0)}%)
-                  </span>
-                </div>
+                <div className="text-[10px] font-medium text-gray-500 mt-0.5 whitespace-nowrap">{centerEntityLabel}</div>
               </div>
-            );
-          })}
-        </div>
+            )}
+            {hoveredPieSlice &&
+              createPortal(
+                <div
+                  className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
+                  style={{ left: pieTooltipPos.x + 10, top: pieTooltipPos.y + 10 }}
+                >
+                  <div className="font-semibold">{hoveredPieSlice.label}</div>
+                  <div className="text-gray-300">
+                    {mode === 'value' ? formatCurrency(hoveredPieSlice.value) : hoveredPieSlice.value} ({total > 0 ? ((hoveredPieSlice.value / total) * 100).toFixed(0) : 0}%)
+                  </div>
+                </div>,
+                document.body
+              )}
+          </div>
+          <div className="flex-1 min-w-0 overflow-y-auto py-0.5 sm:pl-1">
+            {sorted.length === 0 ? (
+              <div className="text-xs text-gray-400">No data</div>
+            ) : (
+              <div className="w-full text-xs">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-0 items-center pb-1.5 mb-0.5 border-b border-gray-100">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{categoryColLabel}</span>
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right min-w-[4.5rem]">{metricColLabel}</span>
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 text-right w-10">%</span>
+                </div>
+                {sorted.slice(0, 10).map((e, i) => {
+                  const pct = totalForPct > 0 ? (e.value / totalForPct) * 100 : 0;
+                  const dotColor = colors[i % colors.length];
+                  return (
+                    <div
+                      key={e.label}
+                      className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 items-center py-1.5 border-b border-gray-50 last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: dotColor }}
+                        />
+                        <span className="text-gray-700 truncate">{e.label}</span>
+                      </div>
+                      <span className="text-gray-900 font-medium tabular-nums text-right min-w-[4.5rem]">
+                        {mode === 'value' ? formatCurrency(e.value) : e.value}
+                      </span>
+                      <span className="text-gray-500 tabular-nums text-right w-10">
+                        {pct.toFixed(0)}%
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </FadeInOnMount>
     );
   }
 
-  // Bar chart (same layout and colors as Business Dashboard) — responsive to card size, bars animate on mount
+  // Bar chart — same refined layout as Business Dashboard status bars
   const displayEntries = sorted.slice(0, 10);
   return (
     <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
       <Subtitle />
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pr-1">
         {displayEntries.map((e, barIndex) => {
           const barPercentage = (e.value / maxVal) * 100;
           const percentage = totalForPct > 0 ? (e.value / totalForPct) * 100 : 0;
@@ -596,33 +656,37 @@ export function ChartWidget({ config }: ChartWidgetProps) {
 
           if (mode === 'value') {
             return (
-              <div key={e.label} className="shrink-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs text-gray-500 truncate w-20 sm:w-28 shrink-0">{e.label}</span>
-                  <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative overflow-hidden">
-                    <div
-                      className="rounded-full h-3 transition-all duration-300 ease-out absolute inset-y-0 left-0"
-                      style={{ width: `${barWidthPct}%`, ...barFillStyle }}
-                    />
-                  </div>
-                  <span className="text-xs font-bold text-gray-900 whitespace-nowrap shrink-0 tabular-nums">
-                    {formatCurrency(e.value)} ({percentage.toFixed(0)}%)
-                  </span>
+              <div
+                key={e.label}
+                className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center shrink-0"
+              >
+                <span className="text-xs text-gray-600 truncate">{e.label}</span>
+                <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
+                  <div
+                    className="rounded-full h-3.5 transition-all duration-300 ease-out absolute inset-y-0 left-0"
+                    style={{ width: `${barWidthPct}%`, ...barFillStyle }}
+                  />
                 </div>
+                <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
+                  {formatCurrency(e.value)} ({percentage.toFixed(0)}%)
+                </span>
               </div>
             );
           }
 
           return (
-            <div key={e.label} className="flex items-center gap-2 min-w-0 shrink-0">
-              <span className="text-xs text-gray-500 truncate w-20 sm:w-28 shrink-0">{e.label}</span>
-              <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative overflow-hidden">
+            <div
+              key={e.label}
+              className="grid grid-cols-[7.5rem_minmax(0,1fr)_auto] gap-x-3 items-center shrink-0"
+            >
+              <span className="text-xs text-gray-600 truncate">{e.label}</span>
+              <div className="bg-gray-100/80 rounded-full h-3.5 min-w-0 relative overflow-hidden">
                 <div
-                  className="rounded-full h-3 transition-all duration-300 ease-out absolute inset-y-0 left-0"
+                  className="rounded-full h-3.5 transition-all duration-300 ease-out absolute inset-y-0 left-0"
                   style={{ width: `${barWidthPct}%`, ...barFillStyle }}
                 />
               </div>
-              <span className="text-xs font-bold text-gray-900 whitespace-nowrap shrink-0 tabular-nums">
+              <span className="text-xs font-semibold text-gray-900 whitespace-nowrap tabular-nums text-right min-w-[5.5rem]">
                 {e.value} ({percentage.toFixed(0)}%)
               </span>
             </div>

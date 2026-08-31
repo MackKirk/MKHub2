@@ -392,6 +392,10 @@ def _business_project_order_parts(
         if asc:
             return (key.asc().nulls_last(), Project.code.asc())
         return (key.desc().nulls_last(), Project.code.desc())
+    if s in ("created_at", "created"):
+        if asc:
+            return (Project.created_at.asc().nulls_last(), Project.code.asc())
+        return (Project.created_at.desc().nulls_last(), Project.code.desc())
     return (Project.created_at.desc(),)
 
 
