@@ -7947,6 +7947,72 @@ def business_projects_map_points(
     )
 
 
+@router.get("/business/projects/calendar")
+def business_projects_calendar(
+    start: str,
+    end: str,
+    division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
+    subdivision_id: Optional[str] = None,
+    status: Optional[str] = None,
+    status_not: Optional[str] = None,
+    q: Optional[str] = None,
+    min_value: Optional[float] = None,
+    client_id: Optional[str] = None,
+    client_id_not: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
+    estimator_id: Optional[str] = None,
+    estimator_id_not: Optional[str] = None,
+    eta_start: Optional[str] = None,
+    eta_end: Optional[str] = None,
+    value_min: Optional[int] = None,
+    value_max: Optional[int] = None,
+    business_line: Optional[str] = None,
+    related_to_me: Optional[bool] = False,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Calendar data for projects list — B1 visibility (active range ∪ shifts)."""
+    from fastapi import HTTPException
+
+    from ..services.project_calendar_service import get_project_calendar_data
+    from ..services.project_list_filters import filters_from_query_params
+
+    filters = filters_from_query_params(
+        division_id=division_id,
+        division_id_not=division_id_not,
+        subdivision_id=subdivision_id,
+        status=status,
+        status_not=status_not,
+        q=q,
+        min_value=min_value,
+        client_id=client_id,
+        client_id_not=client_id_not,
+        date_start=date_start,
+        date_end=date_end,
+        estimator_id=estimator_id,
+        estimator_id_not=estimator_id_not,
+        eta_start=eta_start,
+        eta_end=eta_end,
+        value_min=value_min,
+        value_max=value_max,
+        related_to_me=related_to_me,
+    )
+    try:
+        return get_project_calendar_data(
+            db,
+            user,
+            business_line,
+            filters,
+            start=start,
+            end=end,
+            is_bidding=False,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/business/opportunities/map-points")
 def business_opportunities_map_points(
     division_id: Optional[str] = None,

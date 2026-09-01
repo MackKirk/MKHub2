@@ -1,10 +1,10 @@
-export type ProjectViewMode = 'cards' | 'list' | 'map';
+export type ProjectViewMode = 'cards' | 'list' | 'map' | 'calendar';
 
-export type ListCardViewMode = Exclude<ProjectViewMode, 'map'>;
+export type ListCardViewMode = Exclude<ProjectViewMode, 'map' | 'calendar'>;
 
 const LIST_CARD_VIEW_MODES = new Set<ListCardViewMode>(['list', 'cards']);
 
-/** Initial view on page entry: list or cards only (never map). */
+/** Initial view on page entry: list or cards only (never map/calendar). */
 export function resolveInitialListViewMode(
   urlView: string | null,
   storageKey: string,
@@ -18,6 +18,16 @@ export function resolveInitialListViewMode(
     return saved as ListCardViewMode;
   }
   return fallback;
+}
+
+/** Full project list view including map and calendar from URL. */
+export function resolveInitialProjectViewMode(
+  urlView: string | null,
+  storageKey: string,
+  fallback: ListCardViewMode = 'list',
+): ProjectViewMode {
+  if (urlView === 'map' || urlView === 'calendar') return urlView;
+  return resolveInitialListViewMode(urlView, storageKey, fallback);
 }
 
 export const LIST_PAGE_SIZE_OPTIONS = [25, 50, 100, 150, 200] as const;
@@ -54,6 +64,6 @@ export function effectiveListPageLimit(
   viewMode: ProjectViewMode,
   rawLimit: string | null | undefined,
 ): number {
-  if (viewMode === 'cards' || viewMode === 'map') return CARD_VIEW_PAGE_SIZE;
+  if (viewMode === 'cards' || viewMode === 'map' || viewMode === 'calendar') return CARD_VIEW_PAGE_SIZE;
   return parseListPageLimit(rawLimit);
 }
