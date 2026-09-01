@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Printer, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { isNotifiableRequesterEmail } from '@/components/print-shop/printRequestLineItems';
 import {
   AppBadge,
   AppButton,
@@ -138,7 +139,7 @@ export default function PrintShopList() {
         subtitle="Manage print requests for signs, stickers, banners, and more."
         icon={<Printer className="h-4 w-4" />}
         actions={
-          <Link to="/print-request">
+          <Link to="/print-shop/new">
             <AppButton variant="primary">New request</AppButton>
           </Link>
         }
@@ -160,7 +161,7 @@ export default function PrintShopList() {
         <AppEmptyState
           icon={<Printer className="h-8 w-8" />}
           title="No requests in this queue"
-          description="New submissions appear under To Do."
+          description="Public submissions and staff-logged requests appear under To Do."
         />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -199,7 +200,9 @@ export default function PrintShopList() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     <div>{item.requester_name}</div>
-                    <div className="text-xs text-gray-500">{item.requester_email}</div>
+                    {isNotifiableRequesterEmail(item.requester_email) ? (
+                      <div className="text-xs text-gray-500">{item.requester_email}</div>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3">
                     <AppBadge variant={statusBadgeVariant(item.status)}>{item.status_label}</AppBadge>

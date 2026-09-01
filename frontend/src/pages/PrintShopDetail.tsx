@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
 import { formatDateTimeVancouver } from '@/lib/dateUtils';
+import { isNotifiableRequesterEmail } from '@/components/print-shop/printRequestLineItems';
 import {
   AppBadge,
   AppButton,
@@ -194,7 +195,7 @@ function draftFromRow(row: PrintShopRequestDetail): {
       : [newEditItem()];
   return {
     requesterName: row.requester_name || '',
-    requesterEmail: row.requester_email || '',
+    requesterEmail: isNotifiableRequesterEmail(row.requester_email) ? row.requester_email : '',
     dueDate: row.due_date?.slice(0, 10) || '',
     createdAt: row.created_at?.slice(0, 10) || '',
     notes: row.notes || '',
@@ -260,6 +261,7 @@ export default function PrintShopDetail() {
 
   const row = detailQuery.data;
   const notesValue = internalNotes ?? row?.internal_notes ?? '';
+  const canNotifyRequester = isNotifiableRequesterEmail(row?.requester_email);
 
   useEffect(() => {
     setEstimateHydrated(false);
@@ -267,7 +269,7 @@ export default function PrintShopDetail() {
     setEstimateMessage('');
     setShowReady(false);
     setPickupLocation('');
-    setSendReadyEmail(true);
+    setSendReadyEmail(false);
     setEditing(false);
     setEditItems((prev) => {
       revokeNewFiles(prev);
@@ -280,6 +282,7 @@ export default function PrintShopDetail() {
     setEstimateDate(row.estimated_delivery_date?.slice(0, 10) || '');
     setEstimateMessage(row.estimate_message || '');
     setPickupLocation(row.pickup_location || '');
+    setSendReadyEmail(isNotifiableRequesterEmail(row.requester_email));
     setEstimateHydrated(true);
   }, [row, estimateHydrated]);
 
@@ -328,7 +331,7 @@ export default function PrintShopDetail() {
     mutationFn: () =>
       api<PrintShopRequestDetail>('POST', `/print-shop/requests/${id}/mark-ready`, {
         pickup_location: pickupLocation.trim() || null,
-        send_email: sendReadyEmail,
+        send_email: canNotifyRequester && sendReadyEmail,
       }),
     onSuccess: (data) => {
       if (data?.email_skipped) toast.success('Marked ready — email not sent');
@@ -370,7 +373,11 @@ export default function PrintShopDetail() {
       }),
     onSuccess: (data) => {
       if (data?.email_sent) toast.success('Estimate emailed to requester');
-      else toast.success('Estimate saved (email not sent — check SMTP settings)');
+      else if (!isNotifiableRequesterEmail(row?.requester_email)) {
+        toast.success('Estimate saved (no requester email to notify)');
+      } else {
+        toast.success('Estimate saved (email not sent — check SMTP settings)');
+      }
       setEstimateHydrated(false);
       invalidate();
     },
@@ -380,8 +387,8 @@ export default function PrintShopDetail() {
   const updateMut = useMutation({
     mutationFn: async () => {
       if (!editRequesterName.trim()) throw new Error('Requester name is required');
-      if (!editRequesterEmail.trim() || !editRequesterEmail.includes('@')) {
-        throw new Error('Valid requester email is required');
+      if (editRequesterEmail.trim() && !isNotifiableRequesterEmail(editRequesterEmail)) {
+        throw new Error('Enter a valid requester email, or leave it blank');
       }
       for (let i = 0; i < editItems.length; i++) {
         const it = editItems[i];
@@ -697,19 +704,22 @@ export default function PrintShopDetail() {
           />
           <AppCheckbox
             label="Send ready email to requester"
-            checked={sendReadyEmail}
+            checked={canNotifyRequester && sendReadyEmail}
             onChange={setSendReadyEmail}
+            disabled={!canNotifyRequester}
             fieldHint={
-              sendReadyEmail
-                ? 'Includes the pickup location in the email.'
-                : 'Status will still move to Ready — no email sent.'
+              !canNotifyRequester
+                ? 'No requester email on this request — status will still move to Ready.'
+                : sendReadyEmail
+                  ? 'Includes the pickup location in the email.'
+                  : 'Status will still move to Ready — no email sent.'
             }
           />
           <div className={uiLayout.actionsRow}>
             <AppButton
               variant="primary"
               loading={readyMut.isPending}
-              disabled={sendReadyEmail && !pickupLocation.trim()}
+              disabled={canNotifyRequester && sendReadyEmail && !pickupLocation.trim()}
               onClick={() => readyMut.mutate()}
             >
               Confirm ready
@@ -760,9 +770,9 @@ export default function PrintShopDetail() {
                   <AppInput
                     label="Email"
                     type="email"
-                    required
                     value={editRequesterEmail}
                     onChange={(e) => setEditRequesterEmail(e.target.value)}
+                    helperText="Optional. Leave blank if you will not notify them."
                   />
                   <AppDatePicker
                     label="Created date"
@@ -821,12 +831,16 @@ export default function PrintShopDetail() {
                   value={
                     <div>
                       <div>{row.requester_name}</div>
-                      <a
-                        className="text-brand-red underline text-xs"
-                        href={`mailto:${row.requester_email}`}
-                      >
-                        {row.requester_email}
-                      </a>
+                      {isNotifiableRequesterEmail(row.requester_email) ? (
+                        <a
+                          className="text-brand-red underline text-xs"
+                          href={`mailto:${row.requester_email}`}
+                        >
+                          {row.requester_email}
+                        </a>
+                      ) : (
+                        <div className="text-xs text-gray-500">No email</div>
+                      )}
                     </div>
                   }
                 />
@@ -1032,7 +1046,13 @@ export default function PrintShopDetail() {
                   disabled={!estimateDate}
                   onClick={() => estimateMut.mutate()}
                 >
-                  {row.estimate_emailed_at ? 'Update & email estimate' : 'Send estimate email'}
+                  {canNotifyRequester
+                    ? row.estimate_emailed_at
+                      ? 'Update & email estimate'
+                      : 'Send estimate email'
+                    : row.estimated_delivery_date
+                      ? 'Update estimate'
+                      : 'Save estimate'}
                 </AppButton>
                 {row.estimate_emailed_at ? (
                   <p className={uiTypography.helper}>
@@ -1087,6 +1107,11 @@ export default function PrintShopDetail() {
           </div>
 
           <p className={uiTypography.helper}>
+            Log from email:{' '}
+            <Link to="/print-shop/new" className="text-brand-red underline">
+              /print-shop/new
+            </Link>
+            {' · '}
             Public form:{' '}
             <Link to="/print-request" className="text-brand-red underline">
               /print-request

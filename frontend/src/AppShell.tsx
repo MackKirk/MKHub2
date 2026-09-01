@@ -791,7 +791,7 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Print Shop',
       icon: <IconPrinter />,
       items: [
-        { id: 'print-shop-new', label: 'New request', path: '/print-request', icon: <IconRequest />, requiredPermission: 'print_shop:read' },
+        { id: 'print-shop-new', label: 'New request', path: '/print-shop/new', icon: <IconRequest />, requiredPermission: 'print_shop:read' },
         { id: 'print-shop-queue', label: 'Requests', path: '/print-shop', icon: <IconPrinter />, requiredPermission: 'print_shop:read' },
         { id: 'print-shop-supplies', label: 'Supply stock', path: '/print-shop/supplies', icon: <IconBox />, requiredPermission: 'print_shop:read' },
         { id: 'print-shop-supply-orders', label: 'Supply orders', path: '/print-shop/supplies/orders', icon: <IconShoppingCart />, requiredPermission: 'print_shop:read' },

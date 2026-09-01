@@ -84,6 +84,8 @@ MAX_ARTWORK_BYTES = 15 * 1024 * 1024  # 15 MB per file
 MAX_ARTWORK_FILES = 10  # per line item
 MAX_LINE_ITEMS = 20
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Stored when staff logs a request with no requester email (column is NOT NULL).
+PLACEHOLDER_REQUESTER_EMAIL = "dev@mackkirk.com"
 
 # Simple in-memory rate limit for public create: 10 / hour / IP
 _RATE_LIMIT_MAX = 10
@@ -634,8 +636,8 @@ def _smtp_send(
         logger.warning("%s skipped (SMTP not configured)", log_label)
         return False
     to_email = (to_email or "").strip()
-    if not to_email:
-        logger.warning("%s skipped (no recipient email)", log_label)
+    if not _is_notifiable_requester_email(to_email):
+        logger.info("%s skipped (no notifiable recipient)", log_label)
         return False
 
     msg = EmailMessage()
@@ -839,47 +841,43 @@ def _send_ready_email(row: PrintShopRequest) -> bool:
     )
 
 
-@router.get("/public/meta")
-def public_meta():
-    return {
-        "product_types": [{"value": k, "label": v} for k, v in PRODUCT_TYPES],
-        "units": [{"value": k, "label": v} for k, v in UNITS],
-        "max_artwork_mb": 15,
-        "max_artwork_files": MAX_ARTWORK_FILES,
-        "max_line_items": MAX_LINE_ITEMS,
-        "allowed_artwork_types": ["application/pdf", "image/png", "image/jpeg"],
-        "statuses": [{"value": k, "label": v} for k, v in STATUS_LABELS.items()],
-    }
+def _form_truthy(raw: Optional[str], default: bool = False) -> bool:
+    if raw is None or str(raw).strip() == "":
+        return default
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
-@router.post("/public/requests")
-async def create_public_request(
-    request: Request,
-    requester_name: str = Form(...),
-    requester_email: str = Form(...),
-    due_date: Optional[str] = Form(None),
-    notes: Optional[str] = Form(None),
-    items_json: str = Form(...),
-    db: Session = Depends(get_db),
-    user: Optional[User] = Depends(get_optional_user),
-):
-    """Create a request with one or more line items.
+def _is_notifiable_requester_email(email: Optional[str]) -> bool:
+    e = (email or "").strip().lower()
+    return bool(e) and e != PLACEHOLDER_REQUESTER_EMAIL and bool(EMAIL_RE.match(e))
 
-    Frontend sends `items_json` (array of item metadata) and files named `artwork_0`, `artwork_1`, …
-    (repeat the same field name once per file for that item index).
-    """
-    import json
 
-    _check_rate_limit(_client_ip(request))
-
-    name = (requester_name or "").strip()
-    email = (requester_email or "").strip().lower()
-    notes_s = (notes or "").strip() or None
-
-    if not name:
-        raise HTTPException(status_code=400, detail="requester_name is required")
-    if not email or not EMAIL_RE.match(email):
+def _normalize_requester_email(email: Optional[str], *, required: bool) -> str:
+    email_s = (email or "").strip().lower()
+    if not email_s:
+        if required:
+            raise HTTPException(status_code=400, detail="Valid requester_email is required")
+        return PLACEHOLDER_REQUESTER_EMAIL
+    if not EMAIL_RE.match(email_s):
         raise HTTPException(status_code=400, detail="Valid requester_email is required")
+    return email_s
+
+
+def _validate_requester(name: str, email: str, *, email_required: bool = True) -> Tuple[str, str]:
+    name_s = (name or "").strip()
+    if not name_s:
+        raise HTTPException(status_code=400, detail="requester_name is required")
+    return name_s, _normalize_requester_email(email, required=email_required)
+
+
+async def _parse_items_and_artwork(
+    request: Request,
+    items_json: str,
+    *,
+    created_by: Optional[uuid.UUID],
+    db: Session,
+) -> List[Dict[str, Any]]:
+    import json
 
     try:
         raw_items = json.loads(items_json or "[]")
@@ -891,10 +889,6 @@ async def create_public_request(
         raise HTTPException(status_code=400, detail=f"Too many items (max {MAX_LINE_ITEMS})")
 
     form = await request.form()
-    due = _parse_due_date(due_date)
-    created_by = user.id if user else None
-    now = _utcnow()
-
     parsed_items: List[Dict[str, Any]] = []
     for idx, raw in enumerate(raw_items):
         if not isinstance(raw, dict):
@@ -925,7 +919,24 @@ async def create_public_request(
             stored.append((fo, original_name))
 
         parsed_items.append({**fields, "files": stored})
+    return parsed_items
 
+
+def _persist_print_shop_request(
+    *,
+    db: Session,
+    parsed_items: List[Dict[str, Any]],
+    name: str,
+    email: str,
+    due: Optional[date],
+    notes_s: Optional[str],
+    actor_id: Optional[uuid.UUID],
+    requested_by_user_id: Optional[uuid.UUID],
+    internal_notes: Optional[str] = None,
+    created_at: Optional[datetime] = None,
+) -> PrintShopRequest:
+    now = _utcnow()
+    created = created_at or now
     first = parsed_items[0]
     primary_fo = first["files"][0][0] if first["files"] else None
 
@@ -942,13 +953,14 @@ async def create_public_request(
         due_date=due,
         requester_name=name,
         requester_email=email,
-        requested_by_user_id=user.id if user else None,
+        requested_by_user_id=requested_by_user_id,
         artwork_file_id=None,
         notes=notes_s,
-        created_at=now,
+        internal_notes=internal_notes,
+        created_at=created,
         updated_at=now,
         status_changed_at=now,
-        status_changed_by=user.id if user else None,
+        status_changed_by=actor_id,
     )
     _sync_request_header_from_items(
         row,
@@ -970,7 +982,7 @@ async def create_public_request(
             width=parsed["width"],
             height=parsed["height"],
             unit=parsed["unit"],
-            created_at=now,
+            created_at=created,
         )
         db.add(item)
         db.flush()
@@ -982,21 +994,72 @@ async def create_public_request(
                     file_object_id=fo.id,
                     original_name=original_name,
                     sort_index=fidx,
-                    created_at=now,
+                    created_at=created,
                 )
             )
 
     db.commit()
     db.refresh(row)
+    return _get_row(db, str(row.id))
 
-    # Reload with items for email body
-    row = _get_row(db, str(row.id))
+
+def _maybe_send_received_email(db: Session, row: PrintShopRequest) -> bool:
     received_sent = _send_received_email(row)
     if received_sent:
         row.received_emailed_at = _utcnow()
         db.commit()
         db.refresh(row)
+    return received_sent
 
+
+@router.get("/public/meta")
+def public_meta():
+    return {
+        "product_types": [{"value": k, "label": v} for k, v in PRODUCT_TYPES],
+        "units": [{"value": k, "label": v} for k, v in UNITS],
+        "max_artwork_mb": 15,
+        "max_artwork_files": MAX_ARTWORK_FILES,
+        "max_line_items": MAX_LINE_ITEMS,
+        "allowed_artwork_types": ["application/pdf", "image/png", "image/jpeg"],
+        "statuses": [{"value": k, "label": v} for k, v in STATUS_LABELS.items()],
+    }
+
+
+@router.post("/public/requests")
+async def create_public_request(
+    request: Request,
+    requester_name: str = Form(...),
+    requester_email: str = Form(...),
+    due_date: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    items_json: str = Form(...),
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Create a request with one or more line items.
+
+    Frontend sends `items_json` (array of item metadata) and files named `artwork_0`, `artwork_1`, …
+    (repeat the same field name once per file for that item index).
+    """
+    _check_rate_limit(_client_ip(request))
+    name, email = _validate_requester(requester_name, requester_email)
+    notes_s = (notes or "").strip() or None
+    due = _parse_due_date(due_date)
+    actor_id = user.id if user else None
+    parsed_items = await _parse_items_and_artwork(
+        request, items_json, created_by=actor_id, db=db
+    )
+    row = _persist_print_shop_request(
+        db=db,
+        parsed_items=parsed_items,
+        name=name,
+        email=email,
+        due=due,
+        notes_s=notes_s,
+        actor_id=actor_id,
+        requested_by_user_id=actor_id,
+    )
+    received_sent = _maybe_send_received_email(db, row)
     return {
         "id": str(row.id),
         "request_code": row.request_code,
@@ -1006,6 +1069,54 @@ async def create_public_request(
         "message": "Print request submitted successfully",
         "email_sent": received_sent,
     }
+
+
+@router.post("/requests")
+async def create_internal_request(
+    request: Request,
+    requester_name: str = Form(...),
+    requester_email: Optional[str] = Form(None),
+    due_date: Optional[str] = Form(None),
+    created_at: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    internal_notes: Optional[str] = Form(None),
+    send_received_email: Optional[str] = Form(None),
+    items_json: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    __: Any = Depends(require_permissions("print_shop:write")),
+):
+    """Staff-logged request (email / walk-in). Skips rate limit; confirmation email is opt-in."""
+    name, email = _validate_requester(requester_name, requester_email, email_required=False)
+    notes_s = (notes or "").strip() or None
+    internal_s = (internal_notes or "").strip() or None
+    due = _parse_due_date(due_date)
+    created = _parse_created_at(created_at)
+    parsed_items = await _parse_items_and_artwork(
+        request, items_json, created_by=user.id, db=db
+    )
+    row = _persist_print_shop_request(
+        db=db,
+        parsed_items=parsed_items,
+        name=name,
+        email=email,
+        due=due,
+        notes_s=notes_s,
+        actor_id=user.id,
+        requested_by_user_id=None,
+        internal_notes=internal_s,
+        created_at=created,
+    )
+    send_email = _form_truthy(send_received_email, default=False) and _is_notifiable_requester_email(email)
+    received_sent = False
+    if send_email:
+        received_sent = _maybe_send_received_email(db, row)
+        row = _get_row(db, str(row.id))
+    data = _serialize(row, include_internal=True)
+    data["email_sent"] = received_sent
+    data["email_skipped"] = not send_email
+    data["message"] = "Print request logged"
+    return data
 
 
 @router.get("/requests")
@@ -1184,12 +1295,10 @@ async def update_request(
     _assert_request_editable(row)
 
     name = (requester_name or "").strip()
-    email = (requester_email or "").strip().lower()
+    email = _normalize_requester_email(requester_email, required=False)
     notes_s = (notes or "").strip() or None
     if not name:
         raise HTTPException(status_code=400, detail="requester_name is required")
-    if not email or not EMAIL_RE.match(email):
-        raise HTTPException(status_code=400, detail="Valid requester_email is required")
 
     try:
         raw_items = json.loads(items_json or "[]")

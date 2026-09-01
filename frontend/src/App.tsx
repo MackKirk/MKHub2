@@ -84,6 +84,7 @@ import CommunityInsights from './pages/CommunityInsights';
 import CommunityNewPost from './pages/CommunityNewPost';
 import PrintRequestForm from './pages/PrintRequestForm';
 import PrintShopList from './pages/PrintShopList';
+import PrintShopNewRequest from './pages/PrintShopNewRequest';
 import PrintShopDetail from './pages/PrintShopDetail';
 import PrintShopSupplies from './pages/PrintShopSupplies';
 import PrintShopSupplyOrders from './pages/PrintShopSupplyOrders';
@@ -191,6 +192,7 @@ export default function App(){
           <Route path="/task-requests" element={<AppShell><TaskRequests/></AppShell>} />
           <Route path="/tasks" element={<AppShell><Tasks/></AppShell>} />
           <Route path="/print-shop" element={<AppShell><PrintShopList/></AppShell>} />
+          <Route path="/print-shop/new" element={<AppShell><PrintShopNewRequest/></AppShell>} />
           <Route path="/print-shop/supplies" element={<AppShell><PrintShopSupplies/></AppShell>} />
           <Route path="/print-shop/supplies/orders" element={<AppShell><PrintShopSupplyOrders/></AppShell>} />
           <Route path="/print-shop/supplies/orders/new" element={<AppShell><PrintShopSupplyOrderNew/></AppShell>} />
