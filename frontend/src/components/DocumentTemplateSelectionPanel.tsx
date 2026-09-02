@@ -23,7 +23,6 @@ import {
   isMultiPageTemplate,
   pageLabel,
 } from '@/lib/documentTemplateUtils';
-import { filterDocumentTypesForProjectScope } from '@/lib/documentTypeGrouping';
 import { AppButton, uiCx, uiLayout, uiTypography } from '@/components/ui';
 
 export type DocumentTemplateSelectionPhase = 'grid' | 'options' | 'pages';
@@ -119,10 +118,7 @@ export function DocumentTemplateSelectionPanel({
     [projectId, subjectUserId],
   );
 
-  const visibleDocumentTypes = useMemo(
-    () => (projectId ? filterDocumentTypesForProjectScope(documentTypes) : documentTypes),
-    [documentTypes, projectId],
-  );
+  const visibleDocumentTypes = documentTypes;
 
   const selectedType = useMemo(
     () => visibleDocumentTypes.find((dt) => dt.id === selectedTypeId) ?? null,

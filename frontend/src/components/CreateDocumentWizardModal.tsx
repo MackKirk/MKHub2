@@ -228,7 +228,7 @@ export function CreateDocumentWizardModal({
 
     queryKey: ['document-creator-document-types'],
 
-    queryFn: () => api<DocumentTypePreset[]>('GET', '/document-creator/document-types'),
+    queryFn: () => api<DocumentTypePreset[]>('GET', '/document-creator/document-types?for_picker=1'),
 
     enabled: open && step === 2,
 

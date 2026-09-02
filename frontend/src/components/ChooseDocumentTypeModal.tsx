@@ -57,7 +57,7 @@ export function ChooseDocumentTypeModal({
 
   const { data: documentTypes = [], isLoading } = useQuery({
     queryKey: ['document-creator-document-types'],
-    queryFn: () => api<import('@/components/DocumentTypePicker').DocumentTypePreset[]>('GET', '/document-creator/document-types'),
+    queryFn: () => api<import('@/components/DocumentTypePicker').DocumentTypePreset[]>('GET', '/document-creator/document-types?for_picker=1'),
     enabled: open,
   });
 

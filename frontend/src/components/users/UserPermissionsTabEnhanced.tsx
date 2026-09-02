@@ -45,6 +45,7 @@ import {
 import { DocumentsPermissionsPanel } from '@/components/DocumentsPermissionsPanel';
 import { DocumentHubPermissionsPanel } from '@/components/DocumentHubPermissionsPanel';
 import CompanyFilesCategoriesModal from '@/components/CompanyFilesCategoriesModal';
+import DocumentTemplateCategoriesModal from '@/components/DocumentTemplateCategoriesModal';
 import {
   applyDocumentsAccessLevel,
   applyCompanyFilesCategoryConfigToPayload,
@@ -60,8 +61,16 @@ import {
 } from '@/lib/documentsPermissions';
 import {
   applyDocumentHubAccessLevel,
+  applyDocumentTemplateCategoryConfigToPayload,
+  cloneDocumentTemplateCategoryConfig,
+  DOCUMENT_HUB_TEMPLATES_READ,
+  documentTemplateCategoryConfigsEqual,
+  EMPTY_DOCUMENT_TEMPLATE_CATEGORY_CONFIG,
   filterDocumentHubAreaPermissions,
+  resolveDocumentTemplateCategoryConfigFromApi,
+  syncDocumentTemplateCategoryConfigAfterBuilderChange,
   type DocumentHubAccessLevel,
+  type DocumentTemplateCategoryConfigState,
 } from '@/lib/documentHubPermissions';
 import {
   applyHrAccessLevel,
@@ -220,6 +229,11 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
   const [initialCompanyFilesCategoryConfig, setInitialCompanyFilesCategoryConfig] =
     useState<CompanyFilesCategoryConfigState>({ ...EMPTY_COMPANY_FILES_CATEGORY_CONFIG });
   const [showCompanyFilesCategoriesModal, setShowCompanyFilesCategoriesModal] = useState(false);
+  const [documentTemplateCategoryConfig, setDocumentTemplateCategoryConfig] =
+    useState<DocumentTemplateCategoryConfigState>({ ...EMPTY_DOCUMENT_TEMPLATE_CATEGORY_CONFIG });
+  const [initialDocumentTemplateCategoryConfig, setInitialDocumentTemplateCategoryConfig] =
+    useState<DocumentTemplateCategoryConfigState>({ ...EMPTY_DOCUMENT_TEMPLATE_CATEGORY_CONFIG });
+  const [showDocumentTemplateCategoriesModal, setShowDocumentTemplateCategoriesModal] = useState(false);
   const [categoryModal, setCategoryModal] = useState<{
     line: ProjectLine;
     feature: 'files' | 'reports';
@@ -259,6 +273,12 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     );
     setCompanyFilesCategoryConfig(companyFilesCfg);
     setInitialCompanyFilesCategoryConfig(cloneCompanyFilesCategoryConfig(companyFilesCfg));
+
+    const templateCategoryCfg = resolveDocumentTemplateCategoryConfigFromApi(
+      (permissionsData?.configs || {}) as Record<string, unknown>,
+    );
+    setDocumentTemplateCategoryConfig(templateCategoryCfg);
+    setInitialDocumentTemplateCategoryConfig(cloneDocumentTemplateCategoryConfig(templateCategoryCfg));
 
     permissionsHydratedForUser.current = userId;
   }, [permissionsData, userId]);
@@ -305,6 +325,14 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     ) {
       return true;
     }
+    if (
+      !documentTemplateCategoryConfigsEqual(
+        documentTemplateCategoryConfig,
+        initialDocumentTemplateCategoryConfig,
+      )
+    ) {
+      return true;
+    }
 
     return false;
   }, [
@@ -316,6 +344,8 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     initialLineCategoryConfigs,
     companyFilesCategoryConfig,
     initialCompanyFilesCategoryConfig,
+    documentTemplateCategoryConfig,
+    initialDocumentTemplateCategoryConfig,
   ]);
 
   const openProjectFilesCategoriesModal = (line: ProjectLine) => {
@@ -695,8 +725,13 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
   const handleDocumentHubAccessLevel = useCallback(
     (readKey: string, writeKey: string | undefined, level: DocumentHubAccessLevel) => {
       setPermissions((prev) => applyDocumentHubAccessLevel(prev, readKey, writeKey, level));
+      if (readKey === DOCUMENT_HUB_TEMPLATES_READ) {
+        setDocumentTemplateCategoryConfig((prev) =>
+          syncDocumentTemplateCategoryConfigAfterBuilderChange(prev, level),
+        );
+      }
     },
-    []
+    [],
   );
 
   const handleHrAccessLevel = useCallback(
@@ -845,6 +880,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       applyLineCategoryConfigToPayload(payload, 'construction', lineCategoryConfigs.construction);
       applyLineCategoryConfigToPayload(payload, 'repairs', lineCategoryConfigs.repairs);
       applyCompanyFilesCategoryConfigToPayload(payload, companyFilesCategoryConfig);
+      applyDocumentTemplateCategoryConfigToPayload(payload, documentTemplateCategoryConfig);
       clearLegacyProjectSubPermissions(payload);
       clearLegacyCategoryConfigKeys(payload);
       // clearLegacy may set retired keys (estimate/orders); only send active defs + config keys
@@ -864,6 +900,9 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
       setInitialCompanyFilesCategoryConfig(
         cloneCompanyFilesCategoryConfig(companyFilesCategoryConfig),
       );
+      setInitialDocumentTemplateCategoryConfig(
+        cloneDocumentTemplateCategoryConfig(documentTemplateCategoryConfig),
+      );
       
       // If editing own permissions, invalidate /auth/me cache to refresh permissions
       if (currentUser && currentUser.id === userId) {
@@ -873,6 +912,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
         await queryClient.invalidateQueries({ queryKey: ['project-reports-category-perms'] });
         await queryClient.invalidateQueries({ queryKey: ['company-files-department-perms'] });
         await queryClient.invalidateQueries({ queryKey: ['company-files-departments'] });
+        await queryClient.invalidateQueries({ queryKey: ['document-template-category-perms'] });
       }
       // Always invalidate me when saving settings-related keys so menu/tabs refresh promptly
       const savedSettingsChild = settingsChildKeys.some((k) => payload[k] === true || payload[k] === false);
@@ -896,6 +936,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
     permissions,
     lineCategoryConfigs,
     companyFilesCategoryConfig,
+    documentTemplateCategoryConfig,
     currentUser,
     queryClient,
     refetchUser,
@@ -939,6 +980,17 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
               write: write ? [...write] : null,
             });
             setShowCompanyFilesCategoriesModal(false);
+          }}
+        />
+      ) : null}
+      {showDocumentTemplateCategoriesModal ? (
+        <DocumentTemplateCategoriesModal
+          open
+          readCategories={documentTemplateCategoryConfig.read}
+          onClose={() => setShowDocumentTemplateCategoriesModal(false)}
+          onSave={(readIds) => {
+            setDocumentTemplateCategoryConfig({ read: [...readIds] });
+            setShowDocumentTemplateCategoriesModal(false);
           }}
         />
       ) : null}
@@ -1457,6 +1509,9 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                         permissions={permissions}
                         canEdit={canEdit}
                         onAccessLevelChange={handleDocumentHubAccessLevel}
+                        onConfigureTemplateCategories={
+                          canEdit ? () => setShowDocumentTemplateCategoriesModal(true) : undefined
+                        }
                       />
                     ) : cat.category.name === 'construction' ? (
                       <div className="space-y-4">

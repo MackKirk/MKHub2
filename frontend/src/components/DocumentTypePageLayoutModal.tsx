@@ -31,11 +31,9 @@ export function DocumentTypePageLayoutModal({
   if (!open) return null;
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 flex flex-col bg-black/50" onClick={onClose}>
-      <div
-        className="flex-1 flex flex-col m-4 rounded-xl shadow-xl bg-white overflow-hidden min-h-0 max-h-[calc(100vh-2rem)]"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <OverlayPortal>
+      {/* Full-bleed like Document Builder editor — no inset card / margins. */}
+      <div className="fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-white">
         <DocumentEditor
           mode="template"
           open={open}
@@ -49,6 +47,6 @@ export function DocumentTypePageLayoutModal({
           onDuplicatePage={onDuplicatePage}
         />
       </div>
-    </div></OverlayPortal>
+    </OverlayPortal>
   );
 }

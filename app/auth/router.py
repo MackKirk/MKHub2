@@ -1186,6 +1186,24 @@ def my_settings_permissions(user: User = Depends(get_current_user)):
     return settings_permissions_payload(user)
 
 
+@router.get("/me/document-template-category-permissions")
+def my_document_template_category_permissions(
+    user: User = Depends(get_current_user),
+):
+    """
+    Allow-list of document template category SettingItem ids for document creation pickers.
+
+    - null => admin bypass (all categories)
+    - [] => deny categorized templates (deny-by-default)
+    """
+    from ..services.document_template_categories import get_allowed_category_ids
+
+    allowed = get_allowed_category_ids(user)
+    if allowed is None:
+        return {"allowed_category_ids": None}
+    return {"allowed_category_ids": sorted(allowed)}
+
+
 def _category_config_for_line(perm_map: dict, business_line: Optional[str], feature: str):
     from ..auth.security import _project_line_perm_prefix
 

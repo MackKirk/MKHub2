@@ -53,6 +53,7 @@ const LIST_DESCRIPTIONS: Record<string, string> = {
   payment_terms: 'Payment terms offered on quotes and customers.',
   lead_sources: 'Where leads and opportunities come from.',
   report_categories: 'Categories for project notes and reports.',
+  document_template_categories: 'Categories for grouping document templates in Document Builder.',
   training_matrix_slots: 'Columns on the training matrix (slug + cell type).',
   timesheet: 'Default break length, eligible employees, and geofence radius.',
   service_items: 'Codes used when logging hours (Regular now; overtime and others later).',
@@ -86,7 +87,8 @@ function groupForList(name: string): ListGroupId {
     n === 'payment_terms' ||
     n === 'lead_sources' ||
     n === 'client_types' ||
-    n === 'report_categories'
+    n === 'report_categories' ||
+    n === 'document_template_categories'
   ) {
     return 'organization';
   }

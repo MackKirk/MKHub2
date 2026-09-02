@@ -158,6 +158,20 @@ class TestSettingsPermissions(unittest.TestCase):
         self.assertTrue(can_read_document_templates(user))
         self.assertFalse(can_read_document_backgrounds(user))
 
+    def test_document_template_categories_read_via_document_hub_templates(self):
+        user = _user_with({"document_hub:templates:read": True})
+        self.assertTrue(can_read_list_in_settings_bundle(user, "document_template_categories"))
+        self.assertFalse(can_read_setting_list(user, "document_template_categories"))
+        self.assertFalse(can_write_setting_list(user, "document_template_categories"))
+
+    def test_document_template_categories_write_requires_lookup_lists(self):
+        reader = _user_with({"document_hub:templates:write": True})
+        self.assertTrue(can_read_list_in_settings_bundle(reader, "document_template_categories"))
+        self.assertFalse(can_write_setting_list(reader, "document_template_categories"))
+
+        writer = _user_with({"settings:lookup_lists:write": True})
+        self.assertTrue(can_write_setting_list(writer, "document_template_categories"))
+
     def test_settings_permissions_endpoint_no_access(self):
         payload = settings_permissions_payload(_user_with({}))
         self.assertFalse(payload["can_access_settings"])

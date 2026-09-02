@@ -27,9 +27,9 @@ describe('isEmployeeContractCategory', () => {
 });
 
 describe('filterDocumentTypesForProjectScope', () => {
-  it('excludes Employee Contract templates and keeps others', () => {
-    const out = filterDocumentTypesForProjectScope(types);
-    expect(out.map((t) => t.id)).toEqual(['1', '5']);
-    expect(getDocumentTypeCategories(out)).toEqual(['Commercial']);
+  it('is a no-op (category access is enforced via permissions)', () => {
+    expect(filterDocumentTypesForProjectScope(types).map((t) => t.id)).toEqual(
+      types.map((t) => t.id),
+    );
   });
 });

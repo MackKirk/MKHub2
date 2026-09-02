@@ -15,6 +15,7 @@ export const DOCUMENT_HUB_BACKGROUNDS_READ = 'document_hub:backgrounds:read';
 export const DOCUMENT_HUB_BACKGROUNDS_WRITE = 'document_hub:backgrounds:write';
 export const DOCUMENT_HUB_TEMPLATES_READ = 'document_hub:templates:read';
 export const DOCUMENT_HUB_TEMPLATES_WRITE = 'document_hub:templates:write';
+export const DOCUMENT_HUB_TEMPLATES_CATEGORIES_READ = 'document_hub:templates:categories:read';
 export const DOCUMENT_HUB_BLOCK_ACCESS = 'documents:signatures:block_access';
 
 export const DOCUMENT_HUB_CHILD_KEYS = [
@@ -209,4 +210,57 @@ export function canViewDocumentHubTemplates(isAdmin: boolean, permissions: Set<s
     hasPerm(permissions, 'settings:document_templates:read') ||
     hasPerm(permissions, 'settings:document_templates:write')
   );
+}
+
+/** Config key for per-category template picker allow-list (SettingItem ids). Deny-by-default. */
+export type DocumentTemplateCategoryConfigState = {
+  read: string[];
+};
+
+export const EMPTY_DOCUMENT_TEMPLATE_CATEGORY_CONFIG: DocumentTemplateCategoryConfigState = {
+  read: [],
+};
+
+export function resolveDocumentTemplateCategoryConfigFromApi(
+  cfg: Record<string, unknown>,
+): DocumentTemplateCategoryConfigState {
+  const v = cfg[DOCUMENT_HUB_TEMPLATES_CATEGORIES_READ];
+  return {
+    read: Array.isArray(v) ? (v as string[]) : [],
+  };
+}
+
+export function cloneDocumentTemplateCategoryConfig(
+  cfg: DocumentTemplateCategoryConfigState,
+): DocumentTemplateCategoryConfigState {
+  return { read: [...cfg.read] };
+}
+
+function normCategoryIdList(v: string[] | undefined): string[] {
+  return Array.from(new Set((v || []).map(String))).sort();
+}
+
+export function documentTemplateCategoryConfigsEqual(
+  a: DocumentTemplateCategoryConfigState,
+  b: DocumentTemplateCategoryConfigState,
+): boolean {
+  return JSON.stringify(normCategoryIdList(a.read)) === JSON.stringify(normCategoryIdList(b.read));
+}
+
+export function applyDocumentTemplateCategoryConfigToPayload(
+  payload: Record<string, boolean | string[]>,
+  cfg: DocumentTemplateCategoryConfigState,
+): void {
+  payload[DOCUMENT_HUB_TEMPLATES_CATEGORIES_READ] = [...cfg.read];
+}
+
+/** Clear category allow-list when Document Builder is blocked. */
+export function syncDocumentTemplateCategoryConfigAfterBuilderChange(
+  cfg: DocumentTemplateCategoryConfigState,
+  access: DocumentHubAccessLevel,
+): DocumentTemplateCategoryConfigState {
+  if (access === 'blocked') {
+    return { read: [] };
+  }
+  return cfg;
 }

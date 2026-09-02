@@ -14,9 +14,9 @@ export function isEmployeeContractCategory(category: string | null | undefined):
   return (category || '').trim().toLowerCase() === EMPLOYEE_CONTRACT_CATEGORY.toLowerCase();
 }
 
-/** Hide Employee Contract templates when creating/adding pages under a project/opportunity. */
+/** @deprecated Use document template category permissions instead. */
 export function filterDocumentTypesForProjectScope<T extends DocumentTypeWithCategory>(types: T[]): T[] {
-  return types.filter((dt) => !isEmployeeContractCategory(dt.category));
+  return types;
 }
 
 export function groupDocumentTypesByCategory<T extends DocumentTypeWithCategory>(

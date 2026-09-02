@@ -1,20 +1,32 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import type { DocumentTypePreset } from '@/components/DocumentTypePicker';
-import { getDocumentTypeCategories } from '@/lib/documentTypeGrouping';
 import type { DocElement, PageMargins } from '@/types/documentCreator';
 import { docElementRotationDeg, docElementRotateStyle } from '@/utils/documentElementGeometry';
 import { DocumentTypePageLayoutModal } from '@/components/DocumentTypePageLayoutModal';
-import OverlayPortal from '@/components/OverlayPortal';
 import DocumentAutoFillTokenPicker from '@/components/document-editor/DocumentAutoFillTokenPicker';
 import { useDocumentAutoFillTokens } from '@/hooks/useDocumentAutoFillTokens';
+import {
+  AppButton,
+  AppFormModal,
+  AppInput,
+  AppSelect,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 const A4_ASPECT = 210 / 297;
 
 type Template = { id: string; name: string; background_file_id?: string };
+type SettingsListItem = { id: string; label: string; sort_index?: number };
 
 type PageTemplateRow = {
   template_id: string;
@@ -158,7 +170,45 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
     queryKey: ['document-creator-document-types'],
     queryFn: () => api<DocumentTypePreset[]>('GET', '/document-creator/document-types'),
   });
-  const existingCategories = useMemo(() => getDocumentTypeCategories(documentTypes), [documentTypes]);
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api<Record<string, SettingsListItem[]>>('GET', '/settings'),
+  });
+  const { data: categoryPerms } = useQuery({
+    queryKey: ['document-template-category-perms'],
+    queryFn: () =>
+      api<{ allowed_category_ids: string[] | null }>(
+        'GET',
+        '/auth/me/document-template-category-permissions',
+      ),
+  });
+  const { data: settingsPerms } = useQuery({
+    queryKey: ['me-settings-permissions'],
+    queryFn: () => api<{ can_edit_lookup_lists?: boolean }>('GET', '/auth/me/settings-permissions'),
+  });
+  const categoryOptions = useMemo(() => {
+    const items = settings?.document_template_categories || [];
+    const allowedIds = categoryPerms?.allowed_category_ids;
+    // undefined => perms still loading (show none yet); null => admin (all); array => allow-list
+    const filtered =
+      categoryPerms === undefined
+        ? []
+        : allowedIds === null
+          ? items
+          : items.filter((item) => (allowedIds || []).includes(String(item.id)));
+    const sorted = [...filtered].sort(
+      (a, b) => (a.sort_index ?? 0) - (b.sort_index ?? 0) || a.label.localeCompare(b.label),
+    );
+    const options = [
+      { value: '', label: 'No category' },
+      ...sorted.map((item) => ({ value: item.label, label: item.label })),
+    ];
+    const current = category.trim();
+    if (current && !options.some((option) => option.value === current)) {
+      options.push({ value: current, label: `${current} (legacy)` });
+    }
+    return options;
+  }, [settings?.document_template_categories, categoryPerms, category]);
   const editing = editingId ? documentTypes.find((dt) => dt.id === editingId) : null;
 
   useEffect(() => {
@@ -407,6 +457,11 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
     }
   };
 
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+  };
+
   const openCreate = () => {
     setEditingId(null);
     setName('');
@@ -597,66 +652,95 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
       )}
 
       {showForm && !readOnly && (
-        <OverlayPortal>
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] flex flex-col">
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {editingId ? 'Edit document template' : 'New document template'}
-              </h3>
+        <AppFormModal
+          open={showForm}
+          onClose={closeForm}
+          title={editingId ? 'Edit document template' : 'New document template'}
+          description="Preset page layouts offered when creating a document in Document Builder."
+          formWidth="comfortable"
+          quickInfo={
+            <>
+              <p>
+                Name the template, choose a category, and arrange pages in order. Each page can use a background layout
+                from your background templates.
+              </p>
+              <p>
+                Categories are managed in System Settings. Users pick this template when creating a document to start
+                with your page sequence.
+              </p>
+            </>
+          }
+          footer={
+            <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+              <AppButton type="button" variant="secondary" size="sm" onClick={closeForm} disabled={isSaving}>
+                Cancel
+              </AppButton>
+              <AppButton
+                type="submit"
+                form="document-type-form"
+                size="sm"
+                disabled={isSaving}
+                loading={isSaving}
+              >
+                {editingId ? 'Save' : 'Create'}
+              </AppButton>
             </div>
-            <form id="document-type-form" onSubmit={handleSubmit} className="p-4 overflow-y-auto flex-1 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 rounded border border-gray-300 text-sm focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red"
-                  placeholder="e.g. Proposal"
-                />
+          }
+        >
+          <form id="document-type-form" onSubmit={handleSubmit} className={uiSpacing.sectionStack}>
+            <AppInput
+              label="Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Proposal"
+              disabled={isSaving}
+              required
+            />
+            <AppSelect
+              label="Category"
+              options={categoryOptions}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              disabled={isSaving}
+              helperText={
+                <>
+                  Used to group templates in the Create document modal and when adding pages to a document. Categories
+                  are managed in System Settings.
+                  {settingsPerms?.can_edit_lookup_lists ? (
+                    <>
+                      {' '}
+                      <Link
+                        to="/settings?list=document_template_categories"
+                        className="text-brand-red hover:underline"
+                      >
+                        Manage categories
+                      </Link>
+                    </>
+                  ) : null}
+                </>
+              }
+            />
+            <AppInput
+              label="Description (optional)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="e.g. Cover + back cover + content page"
+              disabled={isSaving}
+            />
+            <div>
+              <div className={uiCx('mb-2 flex items-center justify-between gap-2')}>
+                <span className={uiTypography.controlLabel}>Pages</span>
+                <AppButton type="button" variant="ghost" size="sm" onClick={addPage} disabled={isSaving}>
+                  + Add page
+                </AppButton>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <input
-                  type="text"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  list="document-type-categories"
-                  className="w-full px-3 py-2 rounded border border-gray-300 text-sm focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red"
-                  placeholder="e.g. Commercial proposal, Contract"
-                />
-                <datalist id="document-type-categories">
-                  {existingCategories.map((cat) => (
-                    <option key={cat} value={cat} />
-                  ))}
-                </datalist>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Used to group templates in the Create document modal and when adding pages to a document.
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
-                <input
-                  type="text"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3 py-2 rounded border border-gray-300 text-sm focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red"
-                  placeholder="e.g. Cover + back cover + content page"
-                />
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">Pages</label>
-                  <button
-                    type="button"
-                    onClick={addPage}
-                    className="text-sm text-brand-red hover:underline font-medium"
-                  >
-                    + Add page
-                  </button>
-                </div>
-                <div className="space-y-0 divide-y divide-gray-100 rounded-lg border border-gray-200 overflow-hidden bg-white">
+              <div
+                className={uiCx(
+                  uiBorders.subtle,
+                  uiRadius.card,
+                  'divide-y divide-gray-100 overflow-hidden bg-white',
+                )}
+              >
                   {pages.map((p, idx) => {
                     const template = templates.find((t) => t.id === p.template_id);
                     const backgroundUrl = template?.background_file_id
@@ -702,7 +786,14 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                           value={p.label}
                           onChange={(e) => updatePage(idx, 'label', e.target.value)}
                           placeholder={template?.name || 'Page name'}
-                          className="flex-1 min-w-0 px-2.5 py-1.5 rounded border border-gray-200 text-sm focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
+                          disabled={isSaving}
+                          className={uiCx(
+                            'flex-1 min-w-0 bg-white text-xs text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-400 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gray-400/35 disabled:cursor-not-allowed disabled:bg-gray-100',
+                            uiSpacing.controlX,
+                            uiSpacing.controlY,
+                            uiRadius.control,
+                            uiBorders.input,
+                          )}
                         />
                         <div className="flex items-center gap-0.5 flex-shrink-0">
                           <button
@@ -738,27 +829,8 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
                   })}
                 </div>
               </div>
-            </form>
-            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => { setShowForm(false); setEditingId(null); }}
-                className="px-4 py-2 rounded border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                form="document-type-form"
-                disabled={isSaving}
-                className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90 disabled:opacity-50"
-              >
-                {isSaving ? 'Saving...' : editingId ? 'Save' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div>
-        </OverlayPortal>
+          </form>
+        </AppFormModal>
       )}
 
       {layoutModalPageIndex !== null && layoutPage && (

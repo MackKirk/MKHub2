@@ -836,6 +836,10 @@ def _pages_with_project_tokens(
 
 @router.get("/document-types", response_model=List[dict])
 def list_document_types(
+    for_picker: bool = Query(
+        False,
+        description="Kept for clients; category allow-list always applies for non-admins.",
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions(
@@ -846,10 +850,16 @@ def list_document_types(
         "settings:document_templates:write",
         "hr:users:view:general",
         "users:read",
+        "document_hub:builder:read",
+        "document_hub:builder:write",
     )),
 ):
     """List document type presets (e.g. cover + back cover + content page)."""
+    from ..services.document_template_categories import filter_document_types_for_user
+
     types = db.query(DocumentType).order_by(DocumentType.category or "", DocumentType.name).all()
+    # Always filter by category allow-list (admin bypass inside helper).
+    types = filter_document_types_for_user(user, db, types, for_picker=for_picker)
     return [
         {
             "id": str(t.id),
@@ -894,11 +904,21 @@ def create_document_type(
 ):
     """Create a document type preset (ordered list of page templates)."""
     from ..services.document_signer_roles import normalize_signer_roles_list
+    from ..services.document_template_categories import (
+        assert_can_use_document_template_category,
+        validate_document_template_category,
+    )
+
+    try:
+        validated_category = validate_document_template_category(db, body.category)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    assert_can_use_document_template_category(user, db, validated_category)
 
     doc_type = DocumentType(
         name=body.name or "Unnamed",
         description=body.description,
-        category=body.category,
+        category=validated_category,
         page_templates=body.page_templates if body.page_templates is not None else [],
         signer_roles=normalize_signer_roles_list(body.signer_roles) if body.signer_roles is not None else None,
     )
@@ -937,12 +957,29 @@ def update_document_type(
     doc_type = db.query(DocumentType).filter(DocumentType.id == dtid).first()
     if not doc_type:
         raise HTTPException(status_code=404, detail="Document type not found")
+    from ..services.document_template_categories import assert_can_use_document_template_category
+
+    assert_can_use_document_template_category(user, db, getattr(doc_type, "category", None))
     if body.name is not None:
         doc_type.name = body.name
     if body.description is not None:
         doc_type.description = body.description
     if body.category is not None:
-        doc_type.category = body.category
+        from ..services.document_template_categories import (
+            assert_can_use_document_template_category,
+            validate_document_template_category,
+        )
+
+        try:
+            validated_category = validate_document_template_category(
+                db,
+                body.category,
+                allow_legacy=doc_type.category,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        assert_can_use_document_template_category(user, db, validated_category)
+        doc_type.category = validated_category
     if body.page_templates is not None:
         doc_type.page_templates = body.page_templates
     if body.signer_roles is not None:
@@ -982,6 +1019,9 @@ def delete_document_type(
     doc_type = db.query(DocumentType).filter(DocumentType.id == dtid).first()
     if not doc_type:
         raise HTTPException(status_code=404, detail="Document type not found")
+    from ..services.document_template_categories import assert_can_use_document_template_category
+
+    assert_can_use_document_template_category(user, db, getattr(doc_type, "category", None))
     db.delete(doc_type)
     db.commit()
     return {"ok": True}
@@ -1007,6 +1047,9 @@ def duplicate_document_type(
     doc_type = db.query(DocumentType).filter(DocumentType.id == dtid).first()
     if not doc_type:
         raise HTTPException(status_code=404, detail="Document type not found")
+    from ..services.document_template_categories import assert_can_use_document_template_category
+
+    assert_can_use_document_template_category(user, db, getattr(doc_type, "category", None))
     copy_name = (doc_type.name or "Template").strip() + " (copy)"
     page_templates = doc_type.page_templates
     if isinstance(page_templates, list):
@@ -1054,6 +1097,13 @@ def expand_document_type_pages(
     doc_type = db.query(DocumentType).filter(DocumentType.id == dtid).first()
     if not doc_type:
         raise HTTPException(status_code=404, detail="Document type not found")
+    from ..services.document_template_categories import assert_can_use_document_template_category
+
+    assert_can_use_document_template_category(
+        user,
+        db,
+        getattr(doc_type, "category", None),
+    )
     pt_list = doc_type.page_templates or []
     if not isinstance(pt_list, list):
         pt_list = []
@@ -1404,6 +1454,13 @@ def create_document(
         doc_type = db.query(DocumentType).filter(DocumentType.id == dtype_id).first()
         if not doc_type:
             raise HTTPException(status_code=404, detail="Document type not found")
+        from ..services.document_template_categories import assert_can_use_document_template_category
+
+        assert_can_use_document_template_category(
+            user,
+            db,
+            getattr(doc_type, "category", None),
+        )
         type_signer_roles = getattr(doc_type, "signer_roles", None)
         if body.pages is not None:
             pages = body.pages

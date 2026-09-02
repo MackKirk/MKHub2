@@ -9,6 +9,7 @@ import {
   AppPageHeader,
   uiCx,
   uiSpacing,
+  uiTypography,
 } from '@/components/ui';
 
 export default function DocumentsTemplatesPage() {
@@ -46,22 +47,26 @@ export default function DocumentsTemplatesPage() {
       ) : (
         <div className={uiSpacing.pageStack}>
           {canViewDocBg ? (
-            <AppCard
-              title="Background templates"
-              subtitle="Page backgrounds (images) used when building documents in Document Builder."
-              className="min-w-0"
-            >
+            <section className="min-w-0">
+              <div className="mb-3">
+                <h2 className={uiTypography.sectionTitle}>Background templates</h2>
+                <p className={uiTypography.sectionSubtitle}>
+                  Page backgrounds (images) used when building documents in Document Builder.
+                </p>
+              </div>
               <DocumentTemplatesTab readOnly={!canEditDocBg} />
-            </AppCard>
+            </section>
           ) : null}
           {canViewDocTpl ? (
-            <AppCard
-              title="Document templates"
-              subtitle="Preset layouts (ordered pages with backgrounds and fields) offered when creating a new document."
-              className="min-w-0"
-            >
+            <section className="min-w-0">
+              <div className="mb-3">
+                <h2 className={uiTypography.sectionTitle}>Document templates</h2>
+                <p className={uiTypography.sectionSubtitle}>
+                  Preset layouts (ordered pages with backgrounds and fields) offered when creating a new document.
+                </p>
+              </div>
               <DocumentTypesTab readOnly={!canEditDocTpl} />
-            </AppCard>
+            </section>
           ) : null}
         </div>
       )}
