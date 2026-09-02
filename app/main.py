@@ -182,6 +182,12 @@ def create_app() -> FastAPI:
                 extra = None
                 if request is not None:
                     qs = str(request.url.query or "")
+                    if qs:
+                        qs = re.sub(
+                            r"(?i)((?:access_token|refresh_token|token|secret)=)[^&]*",
+                            r"\1redacted",
+                            qs,
+                        )
                     client_host = getattr(getattr(request, "client", None), "host", None)
                     extra = {
                         k: v
@@ -232,6 +238,7 @@ def create_app() -> FastAPI:
         if not embed_ok:
             response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
         if settings.public_base_url.strip().lower().startswith("https://"):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         if (settings.environment or "").lower() in ("prod", "production") and not embed_ok:
@@ -367,6 +374,17 @@ def create_app() -> FastAPI:
             db = SessionLocal()
             try:
                 dialect = db.bind.dialect.name if getattr(db, "bind", None) is not None else ""
+                try:
+                    db.execute(
+                        text(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0"
+                        )
+                    )
+                    db.commit()
+                except Exception as _e:
+                    db.rollback()
+                    print(f"[startup] users.session_version (non-critical): {_e}")
+
                 # Ensure print shop table on all dialects (SQLite local + PostgreSQL)
                 try:
                     from .models.models import (

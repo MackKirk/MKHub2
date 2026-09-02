@@ -63,7 +63,7 @@ def validate_and_rotate_refresh(db: Session, old_jwt: str) -> tuple[str, str]:
         db.commit()
         raise HTTPException(status_code=401, detail="Refresh token invalid or revoked")
 
-    from ..auth.security import create_access_token, create_refresh_token
+    from ..auth.security import create_access_token, create_refresh_token, user_session_version
     from ..services.offboarding_service import enforce_due_revocation_for_user
 
     if enforce_due_revocation_for_user(db, uid):
@@ -75,11 +75,19 @@ def validate_and_rotate_refresh(db: Session, old_jwt: str) -> tuple[str, str]:
 
     db.delete(row)
     db.flush()
-    access = create_access_token(str(uid))
+    access = create_access_token(str(uid), session_version=user_session_version(user))
     new_refresh = create_refresh_token(str(uid))
     persist_refresh_token_for_user(db, uid, new_refresh)
     db.commit()
     return access, new_refresh
+
+
+def bump_session_and_revoke(db: Session, user: User) -> None:
+    """Invalidate all access JWTs and refresh rows for this user (logout / password reset / deactivate)."""
+    from ..auth.security import user_session_version
+
+    user.session_version = user_session_version(user) + 1
+    clear_refresh_tokens_for_user(db, user.id)
 
 
 def revoke_refresh_token(db: Session, refresh_jwt: str) -> None:

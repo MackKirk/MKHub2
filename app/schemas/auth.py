@@ -60,7 +60,7 @@ class PasswordResetConfirmRequest(BaseModel):
 
 
 class RefreshTokenRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = ""
 
 
 class MeResponse(BaseModel):

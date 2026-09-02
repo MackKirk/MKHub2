@@ -52,6 +52,7 @@ from ..auth.security import (
     _has_project_feature_permission,
     _has_permission,
 )
+from ..auth.mass_assignment import sanitize_orm_patch
 from ..services.safety_sign_request_access import (
     user_has_pending_safety_sign_request_for_inspection,
     user_has_sign_request_for_inspection,
@@ -1790,6 +1791,8 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         _normalize_billing_patch(payload)
 
     _normalize_field_brief_patch(payload)
+
+    payload = sanitize_orm_patch(payload)
 
     # Update project
     for k, v in payload.items():

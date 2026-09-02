@@ -1207,9 +1207,9 @@ def update_user(
         u.is_active = bool(is_active)
         u.status = "active" if u.is_active else "inactive"
         if not u.is_active:
-            from ..services.refresh_tokens import clear_refresh_tokens_for_user
+            from ..services.refresh_tokens import bump_session_and_revoke
 
-            clear_refresh_tokens_for_user(db, u.id)
+            bump_session_and_revoke(db, u)
         touched_profile_audit = True
     if divisions is not None:
         divisions_list = db.query(SettingList).filter(SettingList.name == "divisions").first()

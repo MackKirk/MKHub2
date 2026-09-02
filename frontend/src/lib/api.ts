@@ -73,6 +73,70 @@ export function getToken(){
   return localStorage.getItem('user_token');
 }
 
+const REFRESH_STORAGE_KEY = 'user_refresh_token';
+
+export function persistSessionTokens(access: string, refresh?: string | null) {
+  localStorage.setItem('user_token', access);
+  if (refresh) localStorage.setItem(REFRESH_STORAGE_KEY, refresh);
+}
+
+export function clearSessionTokens() {
+  localStorage.removeItem('user_token');
+  localStorage.removeItem(REFRESH_STORAGE_KEY);
+}
+
+export async function revokeRefreshOnLogout(): Promise<void> {
+  const rt = localStorage.getItem(REFRESH_STORAGE_KEY);
+  const access = getToken();
+  try {
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    };
+    if (access) headers.Authorization = 'Bearer ' + access;
+    await fetch('/auth/logout', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ refresh_token: rt || '' }),
+    });
+  } catch {
+    /* still clear locally */
+  }
+  clearSessionTokens();
+}
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+function tryRefreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    const rt = localStorage.getItem(REFRESH_STORAGE_KEY);
+    if (!rt) return null;
+    try {
+      const r = await fetch('/auth/refresh', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: rt }),
+      });
+      if (!r.ok) return null;
+      const j = (await r.json()) as { access_token?: string; refresh_token?: string };
+      if (!j.access_token) return null;
+      persistSessionTokens(j.access_token, j.refresh_token);
+      return j.access_token;
+    } catch {
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+function redirectToLogin() {
+  clearSessionTokens();
+  window.location.replace('/login');
+}
+
 /** Append JWT for GET /files/* (thumbnails, etc.) where <img> cannot send Authorization. */
 export function withFileAccessToken(url: string): string {
   const t = getToken();
@@ -93,11 +157,20 @@ export function withFileAccessTokenIfNeeded(url: string | null | undefined): str
 
 /** Fetch a binary endpoint (PDF/PNG) with the session Bearer token. */
 export async function fetchAuthorizedBinary(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
-  const t = getToken();
-  const r = await fetch(url, {
-    headers: { Authorization: 'Bearer ' + (t || '') },
-    signal,
-  });
+  const doFetch = (token: string | null) =>
+    fetch(url, {
+      headers: { Authorization: 'Bearer ' + (token || '') },
+      signal,
+    });
+  let r = await doFetch(getToken());
+  if (r.status === 401) {
+    const next = await tryRefreshAccessToken();
+    if (next) r = await doFetch(next);
+  }
+  if (r.status === 401) {
+    redirectToLogin();
+    throw new Error('Unauthorized');
+  }
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
     throw new Error((err as { detail?: string }).detail || r.statusText || 'Request failed');
@@ -135,14 +208,29 @@ export async function api<T=any>(
   const r = await fetch(path, { method, headers: h, body: bodyData, signal });
   const requestPath = path.split('?')[0];
   const isLoginAttempt = method === 'POST' && (requestPath === '/auth/login' || requestPath.endsWith('/auth/login'));
-  if (r.status === 401 && !isLoginAttempt) {
-    localStorage.removeItem('user_token');
-    window.location.replace('/login');
+  const isAuthSessionCall =
+    method === 'POST' &&
+    (requestPath === '/auth/refresh' ||
+      requestPath.endsWith('/auth/refresh') ||
+      requestPath === '/auth/logout' ||
+      requestPath.endsWith('/auth/logout'));
+  if (r.status === 401 && !isLoginAttempt && !isAuthSessionCall) {
+    const next = !(bodyData instanceof FormData) ? await tryRefreshAccessToken() : null;
+    if (next) {
+      h.Authorization = 'Bearer ' + next;
+      const retry = await fetch(path, { method, headers: h, body: bodyData, signal });
+      if (retry.status !== 401) {
+        return parseApiResponse<T>(retry);
+      }
+    }
+    redirectToLogin();
     throw new Error('Unauthorized');
   }
-  if (!r.ok) { 
-    // FastAPI returns errors in {detail: "message"} format
-    // Try to get the error message from the response
+  return parseApiResponse<T>(r);
+}
+
+async function parseApiResponse<T>(r: Response): Promise<T> {
+  if (!r.ok) {
     let errorMessage = `HTTP ${r.status}: ${r.statusText}`;
     let detail: unknown = undefined;
     try {
@@ -153,10 +241,8 @@ export async function api<T=any>(
         errorMessage =
           formatApiErrorDetail(err.detail) || err.message || err.error || errorMessage;
       } else {
-        // Try to get text response
         const text = await r.text();
         if (text) {
-          // Try to parse as JSON if it looks like JSON
           if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
             try {
               const parsed = JSON.parse(text);
@@ -172,12 +258,11 @@ export async function api<T=any>(
         }
       }
     } catch (e) {
-      // If all else fails, use the default message
       console.error('Error parsing error response:', e);
     }
     throw new ApiError(r.status, errorMessage, detail);
   }
-  const ct = r.headers.get('Content-Type')||'';
+  const ct = r.headers.get('Content-Type') || '';
   if (ct.includes('application/json')) return await r.json();
   // @ts-ignore
   return await r.text();

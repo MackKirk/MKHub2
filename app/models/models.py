@@ -87,6 +87,8 @@ class User(Base):
     mobile: Mapped[Optional[str]] = mapped_column(String(50))  # Mobile phone for notifications
     preferred_notification: Mapped[Optional[dict]] = mapped_column(JSON)  # Notification preferences {push: bool, email: bool, quiet_hours: dict}
     status: Mapped[Optional[str]] = mapped_column(String(50), default="active")  # User status: active|inactive|suspended
+    # Incremented on logout / password reset / deactivate so outstanding access JWTs die immediately.
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     roles = relationship("Role", secondary=user_roles, back_populates="users")
     divisions = relationship("SettingItem", secondary="user_divisions", backref="users")

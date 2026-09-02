@@ -40,7 +40,9 @@ from .security import (
     require_roles,
     require_permissions,
     _has_permission,
+    http_bearer,
 )
+from fastapi.security import HTTPAuthorizationCredentials
 from .login_throttle import (
     client_ip as login_client_ip,
     enforce_login_allowed,
@@ -983,7 +985,11 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
         structlog.get_logger().warning("training_assignment_failed", error=str(e))
         # Don't fail registration if training assignment fails
 
-    access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
+    access = create_access_token(
+        str(user.id),
+        roles=[r.name for r in user.roles],
+        session_version=int(getattr(user, "session_version", 0) or 0),
+    )
     refresh = create_refresh_token(str(user.id))
     from ..services.refresh_tokens import clear_refresh_tokens_for_user, persist_refresh_token_for_user
 
@@ -1107,7 +1113,11 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         _log_login_failure(db, request, "user_inactive", "Login failed: user inactive")
         record_login_failure(ip, req.identifier or "")
         raise HTTPException(status_code=403, detail=LOGIN_ACCOUNT_DEACTIVATED)
-    access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
+    access = create_access_token(
+        str(user.id),
+        roles=[r.name for r in user.roles],
+        session_version=int(getattr(user, "session_version", 0) or 0),
+    )
     refresh = create_refresh_token(str(user.id))
     record_login_success(ip, req.identifier or "")
     user.last_login_at = datetime.now(timezone.utc)
@@ -1144,10 +1154,40 @@ def refresh(req: RefreshTokenRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/logout")
-def logout(req: RefreshTokenRequest, db: Session = Depends(get_db)):
-    from ..services.refresh_tokens import revoke_refresh_token
+def logout(
+    req: RefreshTokenRequest,
+    db: Session = Depends(get_db),
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
+):
+    from ..services.refresh_tokens import bump_session_and_revoke, revoke_refresh_token
+    import jwt as _jwt
 
-    revoke_refresh_token(db, req.refresh_token)
+    user = None
+    rt = (req.refresh_token or "").strip()
+    if rt:
+        try:
+            p = _jwt.decode(rt, settings.jwt_secret, algorithms=[settings.jwt_algorithm], options={"verify_exp": False})
+            if p.get("type") == "refresh" and p.get("sub"):
+                user = db.query(User).filter(User.id == uuid.UUID(str(p["sub"]))).first()
+        except Exception:
+            user = None
+    if user is None and creds and creds.credentials:
+        try:
+            payload = _jwt.decode(
+                creds.credentials,
+                settings.jwt_secret,
+                algorithms=[settings.jwt_algorithm],
+                options={"verify_exp": False},
+            )
+            if payload.get("type") != "refresh" and payload.get("sub"):
+                user = db.query(User).filter(User.id == uuid.UUID(str(payload["sub"]))).first()
+        except Exception:
+            user = None
+    if user is not None:
+        bump_session_and_revoke(db, user)
+        db.commit()
+    elif rt:
+        revoke_refresh_token(db, rt)
     return {"status": "ok"}
 
 
@@ -2780,6 +2820,9 @@ def password_reset(req: PasswordResetConfirmRequest, db: Session = Depends(get_d
         raise HTTPException(status_code=400, detail="Invalid or expired token")
     user.password_hash = get_password_hash(req.new_password)
     pr.used_at = now_utc
+    from ..services.refresh_tokens import bump_session_and_revoke
+
+    bump_session_and_revoke(db, user)
     db.commit()
     return {"status": "ok"}
 

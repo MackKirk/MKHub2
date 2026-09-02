@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { api, persistSessionTokens } from '@/lib/api';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -58,7 +58,7 @@ export default function Register() {
     setLoading(true);
     
     try {
-      const response = await api<{ access_token: string }>('POST', '/auth/register', {
+      const response = await api<{ access_token: string; refresh_token?: string }>('POST', '/auth/register', {
         invite_token: token,
         password: password,
         first_name: first.trim(),
@@ -66,7 +66,7 @@ export default function Register() {
       });
       
       if (response && response.access_token) {
-        localStorage.setItem('user_token', response.access_token);
+        persistSessionTokens(response.access_token, response.refresh_token);
         toast.success('Registration successful!');
         navigate('/onboarding', { replace: true });
       } else {

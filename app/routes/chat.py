@@ -425,6 +425,20 @@ async def ws_chat(websocket: WebSocket, token: Optional[str] = None):
         await websocket.close(code=4401)
         return
 
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.id == uuid.UUID(user_id)).first()
+        from ..auth.security import access_session_is_current
+
+        if not u or not u.is_active or not access_session_is_current(u, payload):
+            await websocket.close(code=4401)
+            return
+    except Exception:
+        await websocket.close(code=4401)
+        return
+    finally:
+        db.close()
+
     await websocket.accept()
     await hub.connect(user_id, websocket)
 

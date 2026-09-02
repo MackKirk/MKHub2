@@ -1,7 +1,7 @@
 import { PropsWithChildren, useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, revokeRefreshOnLogout } from '@/lib/api';
 import {
   computeIsProfileComplete,
   isExemptFromProfileWizardRedirect,
@@ -712,7 +712,7 @@ export default function AppShell({ children }: PropsWithChildren){
       // Note: We can't save from here, so we just proceed
     }
     
-    localStorage.removeItem('user_token');
+    await revokeRefreshOnLogout();
     queryClient.clear(); // Clear all React Query cache
     navigate('/login', { replace: true });
   };

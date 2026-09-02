@@ -1,6 +1,6 @@
 import { useParams, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { getToken } from '@/lib/api';
+import { getToken, clearSessionTokens } from '@/lib/api';
 import InspectionScheduleDetail from './InspectionScheduleDetail';
 import InspectionDetail from './InspectionDetail';
 
@@ -11,7 +11,7 @@ async function getJsonOr404<T>(path: string): Promise<T | null> {
   if (t) h.Authorization = `Bearer ${t}`;
   const r = await fetch(path, { method: 'GET', headers: h });
   if (r.status === 401) {
-    localStorage.removeItem('user_token');
+    clearSessionTokens();
     window.location.replace('/login');
     throw new Error('Unauthorized');
   }

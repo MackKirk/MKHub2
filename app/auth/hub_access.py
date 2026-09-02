@@ -50,6 +50,10 @@ def _optional_user(conn: HTTPConnection, db: Session) -> Optional[User]:
     user = db.query(User).filter(User.id == user_uuid).first()
     if user is None or not user.is_active:
         return None
+    from .security import access_session_is_current
+
+    if not access_session_is_current(user, payload):
+        return None
     return user
 
 

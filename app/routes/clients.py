@@ -27,6 +27,7 @@ from ..auth.security import (
 )
 from ..services.standard_file_categories import get_categories_for_client_api, get_default_folder_rows
 from ..services.project_visibility import project_visibility_clause_for_user, is_project_visible_to_user
+from ..auth.mass_assignment import sanitize_orm_patch
 
 
 router = APIRouter(prefix="/clients", tags=["clients"])
@@ -653,6 +654,7 @@ def update_client(client_id: str, payload: dict, db: Session = Depends(get_db), 
             raise
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
+    payload = sanitize_orm_patch(payload)
     # Don't try to set is_system if column doesn't exist - just skip it if it's in payload
     for k, v in payload.items():
         if k == 'is_system':
@@ -804,6 +806,7 @@ def update_contact(client_id: str, contact_id: str, payload: dict, db: Session =
     c = db.query(ClientContact).filter(ClientContact.id == contact_id, ClientContact.client_id == client_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
+    payload = sanitize_orm_patch(payload)
     for k, v in payload.items():
         setattr(c, k, v)
     db.commit()
@@ -913,6 +916,7 @@ def update_site(client_id: str, site_id: str, payload: dict, db: Session = Depen
                 coordinates_changed = True
     
     # Update site
+    payload = sanitize_orm_patch(payload)
     for k, v in payload.items():
         setattr(row, k, v)
     db.commit()
