@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, formatApiErrorDetail, getToken } from '@/lib/api';
+import { api, formatApiErrorDetail, getToken, clearSessionTokens } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   employeeActivityAuditQuickInfo,
@@ -239,7 +239,7 @@ export function UserActivitySection({ userId }: UserActivityTabProps) {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (r.status === 401) {
-        localStorage.removeItem('user_token');
+        clearSessionTokens();
         window.location.replace('/login');
         return;
       }

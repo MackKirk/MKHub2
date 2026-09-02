@@ -69,8 +69,16 @@ def _create_token(sub: str, ttl_seconds: int, extra: Optional[dict] = None) -> s
     return token
 
 
-def create_access_token(user_id: str, roles: Optional[List[str]] = None) -> str:
-    return _create_token(user_id, settings.jwt_ttl_seconds, extra={"roles": roles or []})
+def create_access_token(
+    user_id: str,
+    roles: Optional[List[str]] = None,
+    session_version: int = 0,
+) -> str:
+    return _create_token(
+        user_id,
+        settings.jwt_ttl_seconds,
+        extra={"roles": roles or [], "sv": int(session_version or 0)},
+    )
 
 
 def create_refresh_token(user_id: str) -> str:
@@ -86,13 +94,22 @@ def decode_token(token: str) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 
-def get_current_user(
-    creds: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
-    db: Session = Depends(get_db),
-):
-    if creds is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    payload = decode_token(creds.credentials)
+def access_token_session_version(payload: dict) -> int:
+    try:
+        return int(payload.get("sv", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def user_session_version(user: User) -> int:
+    return int(getattr(user, "session_version", 0) or 0)
+
+
+def access_session_is_current(user: User, payload: dict) -> bool:
+    return access_token_session_version(payload) == user_session_version(user)
+
+
+def _user_from_access_payload(db: Session, payload: dict) -> User:
     user_id_raw = payload.get("sub")
     try:
         user_uuid = uuid.UUID(str(user_id_raw))
@@ -107,7 +124,19 @@ def get_current_user(
     db.refresh(user)
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not active")
+    if not access_session_is_current(user, payload):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     return user
+
+
+def get_current_user(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
+    db: Session = Depends(get_db),
+):
+    if creds is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    payload = decode_token(creds.credentials)
+    return _user_from_access_payload(db, payload)
 
 
 def get_current_user_bearer_or_query_token(
@@ -120,21 +149,7 @@ def get_current_user_bearer_or_query_token(
     if not raw:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     payload = decode_token(raw)
-    user_id_raw = payload.get("sub")
-    try:
-        user_uuid = uuid.UUID(str(user_id_raw))
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid subject")
-    user = db.query(User).filter(User.id == user_uuid).first()
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not active")
-    from ..services.offboarding_service import enforce_due_revocation_for_user
-
-    enforce_due_revocation_for_user(db, user.id)
-    db.refresh(user)
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not active")
-    return user
+    return _user_from_access_payload(db, payload)
 
 
 def _forbidden(reason: str) -> HTTPException:

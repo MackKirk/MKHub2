@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, withFileAccessToken } from '@/lib/api';
+import { api, withFileAccessToken, revokeRefreshOnLogout } from '@/lib/api';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { sortByLabel } from '@/lib/sortOptions';
 import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
@@ -1020,7 +1020,7 @@ export default function UserInfo(){
       await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
       await queryClient.invalidateQueries({ queryKey: ['user', userId] });
       if (!nextActive && me && String(me.id) === String(userId)) {
-        localStorage.removeItem('user_token');
+        await revokeRefreshOnLogout();
         window.location.replace('/login');
         return true;
       }

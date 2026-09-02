@@ -8,7 +8,7 @@ from typing import Optional, List, Dict, Any
 
 from ..db import get_db
 from ..models.models import User, EmployeeProfile, user_divisions, SettingItem
-from ..auth.security import get_current_user
+from ..auth.security import get_current_user, _has_permission
 from ..services.hierarchy import get_manager_chain, get_direct_reports
 
 
@@ -84,6 +84,26 @@ def _employee_directory_payload(u: User, ep: Optional[EmployeeProfile], division
     }
 
 
+_DIRECTORY_PII_KEYS = ("email", "address", "phone", "hire_date")
+
+
+def strip_employee_directory_pii(row: Dict[str, Any], *, see_pii: bool) -> Dict[str, Any]:
+    """Drop home contact / hire date unless the viewer is HR (or viewing self on a card)."""
+    if see_pii:
+        return row
+    out = dict(row)
+    for k in _DIRECTORY_PII_KEYS:
+        if k in out:
+            out[k] = None
+    return out
+
+
+def _viewer_sees_directory_pii(user: User, subject_user_id: Optional[uuid.UUID] = None) -> bool:
+    if subject_user_id is not None and user.id == subject_user_id:
+        return True
+    return _has_permission(user, "hr:access")
+
+
 @router.get("")
 def list_employees(
     q: Optional[str] = None,
@@ -91,7 +111,7 @@ def list_employees(
     active_only: bool = False,
     sort: str = "recent",
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     # Join users with employee profile when available (no joinedload to avoid holding connection long)
     max_limit = 5000
@@ -155,7 +175,8 @@ def list_employees(
             primary = (getattr(ep, "phone", None) or "").strip() or None
             mobile = (getattr(ep, "mobile_phone", None) or "").strip() or None
             row["phone"] = primary or mobile
-        out.append(row)
+        see_pii = _viewer_sees_directory_pii(user)
+        out.append(strip_employee_directory_pii(row, see_pii=see_pii))
     return out
 
 
@@ -165,7 +186,7 @@ def employee_reports(manager_id: str, db: Session = Depends(get_db), _=Depends(g
 
 
 @router.get("/{user_id}/directory-card")
-def employee_directory_card(user_id: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def employee_directory_card(user_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Directory-style profile for one user (e.g. community @mention peek). Authenticated employees only."""
     try:
         uid = uuid.UUID(str(user_id))
@@ -176,7 +197,8 @@ def employee_directory_card(user_id: str, db: Session = Depends(get_db), _=Depen
         raise HTTPException(status_code=404, detail="User not found")
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == uid).first()
     divisions = _divisions_for_user(db, u.id)
-    return _employee_directory_payload(u, ep, divisions)
+    row = _employee_directory_payload(u, ep, divisions)
+    return strip_employee_directory_pii(row, see_pii=_viewer_sees_directory_pii(user, uid))
 
 
 @router.get("/{user_id}/hierarchy")

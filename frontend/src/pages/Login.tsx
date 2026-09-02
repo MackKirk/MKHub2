@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, api, persistSessionTokens } from '@/lib/api';
 import { LOGIN_TOAST_ID, lockSecondsForFailures, parseRetryAfterSeconds } from '@/lib/loginThrottle';
 import { resolvePostAuthDestination } from '@/lib/profileCompleteness';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -156,11 +156,11 @@ export default function Login() {
     else saveIdentifier('');
     setLoggingIn(true);
     try {
-      const j = await api<{ access_token: string }>('POST', '/auth/login', { identifier, password });
+      const j = await api<{ access_token: string; refresh_token?: string }>('POST', '/auth/login', { identifier, password });
       if (j && j.access_token) {
         setConsecutiveFailures(0);
         setLockUntil(0);
-        localStorage.setItem('user_token', j.access_token);
+        persistSessionTokens(j.access_token, j.refresh_token);
         const requested = loc.state?.from ? String(loc.state.from) : '/home';
         try {
           const to = await resolvePostAuthDestination(requested);
