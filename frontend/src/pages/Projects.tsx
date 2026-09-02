@@ -6,7 +6,7 @@ import ImagePicker from '@/components/ImagePicker';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import toast from 'react-hot-toast';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { FolderKanban, LayoutGrid, List, MapPin, Search, SlidersHorizontal } from 'lucide-react';
+import { FolderKanban, Calendar, LayoutGrid, List, MapPin, Search, SlidersHorizontal } from 'lucide-react';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
@@ -24,7 +24,7 @@ import {
   effectiveListPageLimit,
   listPageSizeSelectOptions,
   parseListPageLimit,
-  resolveInitialListViewMode,
+  resolveInitialProjectViewMode,
   type ProjectViewMode,
 } from '@/lib/listPagination';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
@@ -134,6 +134,7 @@ export const PROJECT_LIST_MIN_WIDTH = 'min-w-[960px]';
 
 const ProjectMapView = lazy(() => import('@/features/projects/components/map/ProjectMapView'));
 const ProjectMapLoading = lazy(() => import('@/features/projects/components/map/ProjectMapLoading').then((m) => ({ default: m.ProjectMapLoading })));
+const ProjectCalendarView = lazy(() => import('@/features/projects/components/calendar/ProjectCalendarView'));
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
 // Base pricing Value: sum of approved items (value × qty), without PST/GST
@@ -464,7 +465,7 @@ export default function Projects(){
   
   // View mode state with persistence
   const [viewMode, setViewMode] = useState<ProjectViewMode>(() =>
-    resolveInitialListViewMode(searchParams.get('view'), 'projects-view-mode'),
+    resolveInitialProjectViewMode(searchParams.get('view'), 'projects-view-mode'),
   );
   
   useEffect(() => {
@@ -476,6 +477,10 @@ export default function Projects(){
       } else if (viewMode === 'map') {
         if (params.get('view') === 'map') return prev;
         params.set('view', 'map');
+        params.delete('limit');
+      } else if (viewMode === 'calendar') {
+        if (params.get('view') === 'calendar') return prev;
+        params.set('view', 'calendar');
         params.delete('limit');
       } else {
         if (!params.has('view') && !params.has('limit')) return prev;
@@ -532,7 +537,7 @@ export default function Projects(){
   const { data, isLoading, isFetching, refetch } = useQuery({ 
     queryKey:['projects', businessLine, qs], 
     queryFn: ()=> api<{ items: Project[]; total: number; page: number; limit: number } | Project[]>('GET', `/projects/business/projects${qs}`),
-    enabled: viewMode !== 'map',
+    enabled: viewMode !== 'map' && viewMode !== 'calendar',
   });
   
   // Load project divisions in parallel (shared across all cards, no individual loading)
@@ -547,7 +552,7 @@ export default function Projects(){
   );
   
   // Show loading until list API returns (divisions load in parallel for icons)
-  const isInitialLoading = viewMode !== 'map' && isLoading && !data;
+  const isInitialLoading = viewMode !== 'map' && viewMode !== 'calendar' && isLoading && !data;
   
   // Track when animation completes to remove inline styles for hover to work
   useEffect(() => {
@@ -871,6 +876,18 @@ export default function Projects(){
               >
                 <MapPin className="h-4 w-4" />
               </AppButton>
+              <AppButton
+                type="button"
+                variant={viewMode === 'calendar' ? 'primary' : 'secondary'}
+                size="sm"
+                className="!rounded-none !border-l-0 !px-2.5"
+                onClick={() => setViewMode('calendar')}
+                title="Calendar view"
+                aria-label="Calendar view"
+                aria-pressed={viewMode === 'calendar'}
+              >
+                <Calendar className="h-4 w-4" />
+              </AppButton>
             </div>
             <div className="min-w-0 flex-1">
               <AppInput
@@ -958,6 +975,22 @@ export default function Projects(){
               detailBasePath={projectBasePath}
             />
           </Suspense>
+        ) : viewMode === 'calendar' ? (
+          <Suspense
+            fallback={
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: 35 }).map((_, i) => (
+                  <div key={i} className="min-h-[120px] animate-pulse rounded-lg bg-gray-100" />
+                ))}
+              </div>
+            }
+          >
+            <ProjectCalendarView
+              searchParams={searchParams}
+              businessLine={businessLine}
+              detailBasePath={projectBasePath}
+            />
+          </Suspense>
         ) : viewMode === 'cards' ? (
           <div className={uiCx('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3', listCardAnimClass)}>
             {isLoading && !arr.length ? (
@@ -1019,14 +1052,14 @@ export default function Projects(){
             ) : null}
           </div>
         )}
-        {!isInitialLoading && viewMode !== 'map' && arr.length === 0 && (
+        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && arr.length === 0 && (
           <AppEmptyState
             className="py-8"
             title="No projects found"
             description="No projects found matching your criteria."
           />
         )}
-        {!isInitialLoading && viewMode !== 'map' && totalCount > 0 && (
+        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && totalCount > 0 && (
           <div className={uiCx(uiLayout.actionsRow, 'mt-4 flex-wrap justify-between gap-3 border-t border-gray-200 pt-4')}>
             <p className={uiTypography.helper}>
               Page {currentPage} of {totalPages} ({totalCount} total)
