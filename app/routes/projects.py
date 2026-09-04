@@ -1,7 +1,7 @@
 import copy
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
-from sqlalchemy.orm import Session, defer, object_session
+from sqlalchemy.orm import Session, aliased, defer, object_session
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import func, extract, select, literal, or_
@@ -259,145 +259,167 @@ def _resolve_user_display_names(db: Session, user_ids: list) -> dict:
     return out
 
 
-def _user_display_sort_subq(user_id_column):
-    """Correlated scalar subquery: lower-case display name for ordering (no join row duplication)."""
+def _user_display_label_expr(user_entity, profile_entity):
+    """Lower-case display name expression for already-joined User + EmployeeProfile."""
     full_name = func.trim(
         func.concat(
-            func.coalesce(EmployeeProfile.first_name, literal("")),
+            func.coalesce(profile_entity.first_name, literal("")),
             literal(" "),
-            func.coalesce(EmployeeProfile.last_name, literal("")),
+            func.coalesce(profile_entity.last_name, literal("")),
         )
     )
-    label = func.lower(
+    # preferred_name is often '' (not NULL); COALESCE must skip blanks or every row sorts equal.
+    return func.lower(
         func.coalesce(
-            EmployeeProfile.preferred_name,
+            func.nullif(func.trim(profile_entity.preferred_name), literal("")),
             func.nullif(full_name, literal("")),
-            User.username,
+            func.nullif(user_entity.username, literal("")),
             literal(""),
         )
     )
-    return (
-        select(label)
-        .select_from(User)
-        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
-        .where(User.id == user_id_column)
-        .limit(1)
-        .scalar_subquery()
-    )
 
 
-def _project_address_sort_key():
-    """Sort key aligned with list hero address (site fields, then project address fallbacks)."""
-    site_line = (
-        select(
-            func.lower(
-                func.coalesce(
-                    ClientSite.site_address_line1,
-                    ClientSite.site_city,
-                    ClientSite.site_postal_code,
-                    literal(""),
-                )
-            )
-        )
-        .where(ClientSite.id == Project.site_id)
-        .correlate(Project)
-        .scalar_subquery()
-    )
-    project_line = func.lower(
-        func.coalesce(
-            Project.address,
-            Project.address_city,
-            Project.address_postal_code,
-            literal(""),
-        )
-    )
-    return func.coalesce(site_line, project_line, literal(""))
+def _business_list_sort_key(sort: Optional[str], *, opportunities: bool) -> str:
+    s = (sort or "").strip().lower()
+    if not s:
+        return "opportunity" if opportunities else "project"
+    return s
 
 
-def _project_division_sort_key(dialect_name: str):
-    """Sort by alphabetically first division/subdivision label on the project."""
-    if dialect_name != "postgresql":
-        return func.lower(func.coalesce(cast(Project.project_division_ids, String), literal("")))
-
-    from sqlalchemy.dialects.postgresql import JSONB
-
-    div_json = func.coalesce(cast(Project.project_division_ids, JSONB), cast(literal("[]"), JSONB))
-    div_ids_subq = select(func.jsonb_array_elements_text(div_json).label("div_id")).correlate(Project)
-    min_label_subq = (
-        select(func.min(func.lower(SettingItem.label)))
-        .where(cast(SettingItem.id, String).in_(div_ids_subq))
-        .correlate(Project)
-        .scalar_subquery()
-    )
-    return func.coalesce(min_label_subq, literal(""))
-
-
-def _business_project_order_parts(
+def _apply_business_list_sort(
+    query,
     sort: Optional[str],
     sort_dir: Optional[str],
     *,
     opportunities: bool,
     db: Optional[Session] = None,
 ):
-    """ORDER BY columns for business opportunity/project lists (full result set, before OFFSET/LIMIT)."""
+    """
+    Apply JOIN-based sort keys for expensive columns and return (query, order_parts).
+    Callers must handle sort=value via _paginate_projects_by_display_value instead.
+    """
     asc = (sort_dir or "asc").lower() != "desc"
-    s = (sort or "").strip().lower()
+    s = _business_list_sort_key(sort, opportunities=opportunities)
     dialect_name = db.get_bind().dialect.name if db is not None else "postgresql"
-    if not s:
-        s = "opportunity" if opportunities else "project"
-
-    def _str_col(col, secondary=None):
-        if asc:
-            parts = (col.asc().nulls_last(),)
-        else:
-            parts = (col.desc().nulls_last(),)
-        if secondary is not None:
-            parts = parts + ((secondary.asc() if asc else secondary.desc()),)
-        return parts
+    code_k = func.lower(func.coalesce(Project.code, literal("")))
 
     if s in ("opportunity", "project"):
         name_k = func.lower(func.coalesce(Project.name, literal("")))
-        code_k = func.lower(func.coalesce(Project.code, literal("")))
         if asc:
-            return (name_k.asc(), code_k.asc())
-        return (name_k.desc(), code_k.desc())
+            return query, (name_k.asc(), code_k.asc())
+        return query, (name_k.desc(), code_k.desc())
+
     if s == "start":
-        # UI shows (date_start || created_at) as YYYY-MM-DD; filters use DATE-only COALESCE.
         eff = cast(func.coalesce(Project.date_start, Project.created_at), Date)
         secondary = func.coalesce(Project.date_start, Project.created_at)
         if asc:
-            return (eff.asc().nulls_last(), secondary.asc().nulls_last(), Project.code.asc())
-        return (eff.desc().nulls_last(), secondary.desc().nulls_last(), Project.code.desc())
+            return query, (eff.asc().nulls_last(), secondary.asc().nulls_last(), Project.code.asc())
+        return query, (eff.desc().nulls_last(), secondary.desc().nulls_last(), Project.code.desc())
+
     if s == "eta":
         eff = cast(Project.date_eta, Date)
         if asc:
-            return (eff.asc().nulls_last(), Project.date_eta.asc().nulls_last(), Project.code.asc())
-        return (eff.desc().nulls_last(), Project.date_eta.desc().nulls_last(), Project.code.desc())
+            return query, (eff.asc().nulls_last(), Project.date_eta.asc().nulls_last(), Project.code.asc())
+        return query, (eff.desc().nulls_last(), Project.date_eta.desc().nulls_last(), Project.code.desc())
+
     if s == "value":
+        # Prefer _paginate_projects_by_display_value; this is a DB fallback only.
         v = func.coalesce(Project.service_value, Project.cost_estimated, literal(0))
-        return (v.asc().nulls_last(),) if asc else (v.desc().nulls_last(),)
+        if asc:
+            return query, (v.asc().nulls_last(), code_k.asc())
+        return query, (v.desc().nulls_last(), code_k.desc())
+
     if s == "status":
-        st = func.lower(func.coalesce(Project.status_label, literal("")))
-        return _str_col(st)
+        st = func.nullif(func.lower(func.trim(func.coalesce(Project.status_label, literal("")))), literal(""))
+        if asc:
+            return query, (st.asc().nulls_last(), code_k.asc())
+        return query, (st.desc().nulls_last(), code_k.desc())
+
     if s == "address":
-        return _str_col(_project_address_sort_key())
+        Site = aliased(ClientSite, name="list_sort_site")
+        query = query.outerjoin(Site, Site.id == Project.site_id)
+        # Match list hero address; blank keys sort last (same idea as NULLS LAST).
+        key = func.nullif(
+            func.lower(
+                func.coalesce(
+                    func.nullif(Site.site_address_line1, ""),
+                    func.nullif(Site.site_city, ""),
+                    func.nullif(Site.site_postal_code, ""),
+                    func.nullif(Project.address, ""),
+                    func.nullif(Project.address_city, ""),
+                    func.nullif(Project.address_province, ""),
+                    literal(""),
+                )
+            ),
+            literal(""),
+        )
+        if asc:
+            return query, (key.asc().nulls_last(), code_k.asc())
+        return query, (key.desc().nulls_last(), code_k.desc())
+
     if s in ("division", "divisions"):
-        return _str_col(_project_division_sort_key(dialect_name))
+        if dialect_name != "postgresql":
+            key = func.lower(func.coalesce(cast(Project.project_division_ids, String), literal("")))
+            if asc:
+                return query, (key.asc().nulls_last(), code_k.asc())
+            return query, (key.desc().nulls_last(), code_k.desc())
+
+        from sqlalchemy import case
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        empty_arr = cast(literal("[]"), JSONB)
+        div_raw = func.coalesce(cast(Project.project_division_ids, JSONB), empty_arr)
+        div_json = case(
+            (func.jsonb_typeof(div_raw) == literal("array"), div_raw),
+            else_=empty_arr,
+        )
+        expanded = (
+            select(
+                Project.id.label("pid"),
+                func.jsonb_array_elements_text(div_json).label("div_id"),
+            )
+        ).subquery("list_sort_proj_divs")
+        div_labels = (
+            select(
+                expanded.c.pid.label("pid"),
+                func.min(func.lower(SettingItem.label)).label("min_label"),
+            )
+            .select_from(expanded)
+            .outerjoin(SettingItem, cast(SettingItem.id, String) == expanded.c.div_id)
+            .group_by(expanded.c.pid)
+        ).subquery("list_sort_div_labels")
+        query = query.outerjoin(div_labels, div_labels.c.pid == Project.id)
+        key = func.coalesce(div_labels.c.min_label, literal(""))
+        if asc:
+            return query, (key.asc().nulls_last(), code_k.asc())
+        return query, (key.desc().nulls_last(), code_k.desc())
+
     if opportunities and s == "estimator":
-        key = _user_display_sort_subq(Project.estimator_id)
+        SortUser = aliased(User, name="list_sort_estimator")
+        SortProfile = aliased(EmployeeProfile, name="list_sort_estimator_profile")
+        query = query.outerjoin(SortUser, SortUser.id == Project.estimator_id)
+        query = query.outerjoin(SortProfile, SortProfile.user_id == SortUser.id)
+        key = func.nullif(_user_display_label_expr(SortUser, SortProfile), literal(""))
         if asc:
-            return (key.asc().nulls_last(), Project.code.asc())
-        return (key.desc().nulls_last(), Project.code.desc())
+            return query, (key.asc().nulls_last(), code_k.asc())
+        return query, (key.desc().nulls_last(), code_k.desc())
+
     if not opportunities and s == "admin":
-        key = _user_display_sort_subq(Project.project_admin_id)
+        SortUser = aliased(User, name="list_sort_admin")
+        SortProfile = aliased(EmployeeProfile, name="list_sort_admin_profile")
+        query = query.outerjoin(SortUser, SortUser.id == Project.project_admin_id)
+        query = query.outerjoin(SortProfile, SortProfile.user_id == SortUser.id)
+        key = func.nullif(_user_display_label_expr(SortUser, SortProfile), literal(""))
         if asc:
-            return (key.asc().nulls_last(), Project.code.asc())
-        return (key.desc().nulls_last(), Project.code.desc())
+            return query, (key.asc().nulls_last(), code_k.asc())
+        return query, (key.desc().nulls_last(), code_k.desc())
+
     if s in ("created_at", "created"):
         if asc:
-            return (Project.created_at.asc().nulls_last(), Project.code.asc())
-        return (Project.created_at.desc().nulls_last(), Project.code.desc())
-    return (Project.created_at.desc(),)
+            return query, (Project.created_at.asc().nulls_last(), Project.code.asc())
+        return query, (Project.created_at.desc().nulls_last(), Project.code.desc())
+
+    return query, (Project.created_at.desc(),)
 
 
 def _user_is_related_to_project(db: Session, user: User, project: Project) -> bool:
@@ -1012,6 +1034,52 @@ def _paginate_projects_with_section_access(
     total = query.count()
     rows = query.order_by(*order_parts).offset(offset).limit(limit).all()
     return filter_projects_with_section_access(user, rows), total
+
+
+def _display_list_value_for_project(p: Project, values_map: dict[str, float], *, opportunities: bool) -> float:
+    """Same value source as list cards: latest proposal grand total, else stored fields."""
+    pid = str(p.id)
+    grand = values_map.get(pid)
+    if grand is not None and grand > 0:
+        return float(grand)
+    if opportunities:
+        return float(getattr(p, "cost_estimated", None) or 0)
+    sv = getattr(p, "service_value", None)
+    if sv is not None:
+        return float(sv)
+    return float(getattr(p, "cost_estimated", None) or 0)
+
+
+def _paginate_projects_by_display_value(
+    db: Session,
+    user: User,
+    query,
+    page: int,
+    limit: int,
+    sort_dir: Optional[str],
+    *,
+    opportunities: bool,
+    business_line: Optional[str] = None,
+):
+    """
+    Sort/paginate by the same proposal-derived Value shown on list cards.
+    Loads the filtered set, applies section access, sorts in Python, then slices.
+    """
+    asc = (sort_dir or "asc").lower() != "desc"
+    offset = (page - 1) * limit
+    rows = query.all()
+    filtered = filter_projects_with_section_access(user, rows)
+    values_map, _ = _load_latest_proposals_by_project(db, [p.id for p in filtered])
+
+    def sort_key(p: Project):
+        return (
+            _display_list_value_for_project(p, values_map, opportunities=opportunities),
+            (getattr(p, "code", None) or "").lower(),
+            (getattr(p, "name", None) or "").lower(),
+        )
+
+    filtered.sort(key=sort_key, reverse=not asc)
+    return filtered[offset : offset + limit], len(filtered)
 
 
 def calculate_proposal_grand_total(proposal_data: dict) -> float:
@@ -2438,6 +2506,43 @@ def add_project_member(
     db.add(row)
     db.commit()
     db.refresh(row)
+
+    if member_user_id != user.id:
+        try:
+            from ..services.notifications import create_notification
+
+            is_rm = getattr(proj, "business_line", None) == BUSINESS_LINE_REPAIRS_MAINTENANCE
+            is_opportunity = bool(getattr(proj, "is_bidding", False))
+            if is_rm:
+                link = f"/rm-opportunities/{proj.id}" if is_opportunity else f"/rm-projects/{proj.id}"
+            else:
+                link = f"/opportunities/{proj.id}" if is_opportunity else f"/projects/{proj.id}"
+            name = str(proj.name or proj.code or "Project")
+            kind = "opportunity" if is_opportunity else "project"
+            create_notification(
+                db,
+                str(member_user_id),
+                "push",
+                template_key="project_team_added",
+                payload_json={
+                    "title": "Added to project team",
+                    "message": f"You were added to the team on {kind} {name}.",
+                    "link": link,
+                    "read": False,
+                    "type": "project_team",
+                    "metadata": {
+                        "project_id": str(proj.id),
+                        "added_by_user_id": str(user.id),
+                    },
+                },
+            )
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Project team add notification failed project_id=%s user_id=%s",
+                proj.id,
+                member_user_id,
+            )
+
     return _serialize_project_member_row(db, row, getattr(proj, "created_by_user_id", None))
 
 
@@ -6984,7 +7089,7 @@ def _load_latest_proposals_by_project(db: Session, project_ids: list) -> tuple[d
 
     rows = (
         db.query(Proposal)
-        .filter(Proposal.project_id.in_(project_ids))
+        .filter(Proposal.project_id.in_(project_ids), Proposal.deleted_at.is_(None))
         .order_by(Proposal.created_at.desc())
         .all()
     )
@@ -7098,10 +7203,24 @@ def _paginate_and_serialize_business_opportunity_style(
     list_kind: str,
     business_line: Optional[str] = None,
 ):
-    order_parts = _business_project_order_parts(sort, sort_dir, opportunities=True, db=db)
-    projects, total = _paginate_projects_with_section_access(
-        user, query, order_parts, page, limit, business_line=business_line
-    )
+    if _business_list_sort_key(sort, opportunities=True) == "value":
+        projects, total = _paginate_projects_by_display_value(
+            db,
+            user,
+            query,
+            page,
+            limit,
+            sort_dir,
+            opportunities=True,
+            business_line=business_line,
+        )
+    else:
+        query, order_parts = _apply_business_list_sort(
+            query, sort, sort_dir, opportunities=True, db=db
+        )
+        projects, total = _paginate_projects_with_section_access(
+            user, query, order_parts, page, limit, business_line=business_line
+        )
 
     # Build cover_image_url for cards (same source priority as General Information)
     project_ids = [p.id for p in projects]
@@ -7671,15 +7790,29 @@ def business_projects(
     total_count = query.count()
     offset = (page - 1) * limit
     # Get projects first (before value filtering if needed)
-    order_parts = _business_project_order_parts(sort, sort_dir, opportunities=False, db=db)
-    if min_value is not None:
-        # Legacy min_value path still over-fetches; section-gate after.
-        projects = query.order_by(*order_parts).offset(offset).limit(limit * 2).all()
-        projects = filter_projects_with_section_access(user, projects)
-    else:
-        projects, total_count = _paginate_projects_with_section_access(
-            user, query, order_parts, page, limit, business_line=business_line
+    if _business_list_sort_key(sort, opportunities=False) == "value" and min_value is None:
+        projects, total_count = _paginate_projects_by_display_value(
+            db,
+            user,
+            query,
+            page,
+            limit,
+            sort_dir,
+            opportunities=False,
+            business_line=business_line,
         )
+    else:
+        query, order_parts = _apply_business_list_sort(
+            query, sort, sort_dir, opportunities=False, db=db
+        )
+        if min_value is not None:
+            # Legacy min_value path still over-fetches; section-gate after.
+            projects = query.order_by(*order_parts).offset(offset).limit(limit * 2).all()
+            projects = filter_projects_with_section_access(user, projects)
+        else:
+            projects, total_count = _paginate_projects_with_section_access(
+                user, query, order_parts, page, limit, business_line=business_line
+            )
     
     # Filter by minimum value (considering Grand Total from estimates)
     if min_value is not None:

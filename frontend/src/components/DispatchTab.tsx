@@ -982,8 +982,8 @@ export default function DispatchTab({
       <>
         <AppCard className="!rounded-2xl" bodyClassName={uiSpacing.cardPadding}>
           <AppSectionHeader
-            title="Workload"
-            description="Employee shifts and workload scheduling. Use the week calendar to plan shifts or review pending attendance."
+            title="Dispatch"
+            description="Employee shifts and dispatch scheduling. Use the week calendar to plan shifts or review pending attendance."
             {...appSectionPresetProps('workload')}
           />
           <div className={uiCx('mt-4', uiSpacing.sectionStack)}>{workloadInner}</div>

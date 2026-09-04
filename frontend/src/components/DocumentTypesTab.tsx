@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -181,10 +180,6 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
         'GET',
         '/auth/me/document-template-category-permissions',
       ),
-  });
-  const { data: settingsPerms } = useQuery({
-    queryKey: ['me-settings-permissions'],
-    queryFn: () => api<{ can_edit_lookup_lists?: boolean }>('GET', '/auth/me/settings-permissions'),
   });
   const categoryOptions = useMemo(() => {
     const items = settings?.document_template_categories || [];
@@ -373,23 +368,52 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
     });
   };
 
-  const savePageLayout = (
+  const savePageLayout = async (
     index: number,
     margins: PageMargins,
     elements: DocElement[],
     templateId?: string | null
   ) => {
-    setPages((prev) => {
-      const next = [...prev];
-      next[index] = {
-        ...next[index],
-        margins,
-        elements,
-        ...(templateId !== undefined ? { template_id: templateId ?? '' } : {}),
-      };
-      return next;
-    });
+    const updatedPages = pages.map((p, i) =>
+      i === index
+        ? {
+            ...p,
+            margins,
+            elements,
+            ...(templateId !== undefined ? { template_id: templateId ?? '' } : {}),
+          }
+        : p,
+    );
+    setPages(updatedPages);
     setLayoutModalPageIndex(null);
+
+    // Persist immediately when editing an existing template
+    if (editingId) {
+      const page_templates = updatedPages
+        .map((p) => {
+          const tid = p.template_id?.trim();
+          if (!tid) return null;
+          return {
+            template_id: tid,
+            label: p.label?.trim() || undefined,
+            margins: p.margins ?? undefined,
+            elements: p.elements ?? [],
+          };
+        })
+        .filter(Boolean) as { template_id: string; label?: string; margins?: PageMargins; elements?: DocElement[] }[];
+      try {
+        await api('PATCH', `/document-creator/document-types/${editingId}`, {
+          name: name.trim(),
+          description: description.trim() || undefined,
+          category: category.trim() || undefined,
+          page_templates,
+        });
+        toast.success('Page layout saved.');
+        queryClient.invalidateQueries({ queryKey: ['document-creator-document-types'] });
+      } catch (err: any) {
+        toast.error(err?.message || 'Failed to save page layout.');
+      }
+    }
   };
 
   const duplicatePageLayout = (margins: PageMargins, elements: DocElement[]) => {
@@ -702,23 +726,6 @@ export default function DocumentTypesTab({ readOnly = false }: { readOnly?: bool
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               disabled={isSaving}
-              helperText={
-                <>
-                  Used to group templates in the Create document modal and when adding pages to a document. Categories
-                  are managed in System Settings.
-                  {settingsPerms?.can_edit_lookup_lists ? (
-                    <>
-                      {' '}
-                      <Link
-                        to="/settings?list=document_template_categories"
-                        className="text-brand-red hover:underline"
-                      >
-                        Manage categories
-                      </Link>
-                    </>
-                  ) : null}
-                </>
-              }
             />
             <AppInput
               label="Description (optional)"

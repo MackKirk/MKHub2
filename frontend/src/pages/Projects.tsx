@@ -534,10 +534,11 @@ export default function Projects(){
     return s ? `?${s}` : '';
   }, [searchParams, businessLine, viewMode]);
   
-  const { data, isLoading, isFetching, refetch } = useQuery({ 
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({ 
     queryKey:['projects', businessLine, qs], 
     queryFn: ()=> api<{ items: Project[]; total: number; page: number; limit: number } | Project[]>('GET', `/projects/business/projects${qs}`),
     enabled: viewMode !== 'map' && viewMode !== 'calendar',
+    placeholderData: keepPreviousData,
   });
   
   // Load project divisions in parallel (shared across all cards, no individual loading)
@@ -1052,7 +1053,14 @@ export default function Projects(){
             ) : null}
           </div>
         )}
-        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && arr.length === 0 && (
+        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && isError && arr.length === 0 && (
+          <AppEmptyState
+            className="py-8"
+            title="Could not load projects"
+            description={(error as Error)?.message || 'Something went wrong while loading projects. Try again.'}
+          />
+        )}
+        {!isInitialLoading && viewMode !== 'map' && viewMode !== 'calendar' && !isError && arr.length === 0 && (
           <AppEmptyState
             className="py-8"
             title="No projects found"
@@ -1172,7 +1180,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
     { key: 'pricing', icon: '💰', label: 'Pricing', tab: 'pricing' },
     { key: 'reports', icon: '📋', label: 'Notes/History', tab: 'reports' },
-    { key: 'dispatch', icon: '👷', label: 'Workload', tab: 'dispatch' },
+    { key: 'dispatch', icon: '👷', label: 'Dispatch', tab: 'dispatch' },
   ];
 
   const col1 = (
@@ -1464,7 +1472,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
   // Tab icons and navigation - same style as Opportunities cards (w-8 h-8 rounded-lg)
   const tabButtons = [
     { key: 'reports', icon: '📝', label: 'Notes/History', tab: 'reports' },
-    { key: 'dispatch', icon: '👷', label: 'Workload', tab: 'dispatch' },
+    { key: 'dispatch', icon: '👷', label: 'Dispatch', tab: 'dispatch' },
     { key: 'timesheet', icon: '⏰', label: 'Timesheet', tab: 'timesheet' },
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },

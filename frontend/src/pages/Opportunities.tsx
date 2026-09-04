@@ -239,10 +239,11 @@ export default function Opportunities() {
   }, [searchParams, businessLine, viewMode]);
   
   const listEndpoint = '/projects/business/opportunities';
-  const { data, isLoading, refetch } = useQuery({ 
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({ 
     queryKey: ['opportunities', businessLine, qs],
     queryFn: ()=> api<{ items: Opportunity[]; total: number; page: number; limit: number } | Opportunity[]>('GET', `${listEndpoint}${qs}`),
     enabled: viewMode !== 'map',
+    placeholderData: keepPreviousData,
   });
   
   // Load project divisions in parallel
@@ -685,7 +686,7 @@ export default function Opportunities() {
             />
           </Suspense>
         ) : viewMode === 'cards' ? (
-          <div className={uiCx('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3', listCardAnimClass)}>
+          <div className={uiCx('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3', listCardAnimClass, isFetching && arr.length > 0 ? 'opacity-60 pointer-events-none' : undefined)}>
             {hasEditPermission && (
               <Link
                 to={newOpportunityPath}
@@ -707,7 +708,7 @@ export default function Opportunities() {
             ))}
           </div>
         ) : (
-          <AppSortableEntityList className={listCardAnimClass}>
+          <AppSortableEntityList className={uiCx(listCardAnimClass, isFetching && arr.length > 0 ? 'opacity-60 pointer-events-none' : undefined)}>
             {hasEditPermission && (
               <Link
                 to={newOpportunityPath}
@@ -793,7 +794,14 @@ export default function Opportunities() {
             ))}
           </AppSortableEntityList>
         )}
-        {!isInitialLoading && viewMode !== 'map' && arr.length === 0 && (
+        {!isInitialLoading && viewMode !== 'map' && isError && arr.length === 0 && (
+          <AppEmptyState
+            className="py-8"
+            title="Could not load opportunities"
+            description={(error as Error)?.message || 'Something went wrong while loading opportunities. Try again.'}
+          />
+        )}
+        {!isInitialLoading && viewMode !== 'map' && !isError && arr.length === 0 && (
           <AppEmptyState
             className="py-8"
             title="No opportunities found"

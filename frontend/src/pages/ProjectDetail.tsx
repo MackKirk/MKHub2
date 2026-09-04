@@ -1725,7 +1725,7 @@ export default function ProjectDetail(){
     }
     const tabTitles: Record<string, string> = {
       'reports': 'Notes/History',
-      'dispatch': 'Workload',
+      'dispatch': 'Dispatch',
       'timesheet': 'Timesheet',
       'files': 'Project Files',
       'documents': 'Documents',
@@ -1755,7 +1755,7 @@ export default function ProjectDetail(){
     }
     const tabDescriptions: Record<string, string> = {
       'reports': 'Notes and history',
-      'dispatch': 'Employee shifts and workload management',
+      'dispatch': 'Employee shifts and dispatch management',
       'timesheet': 'Time tracking and hours',
       'files': 'Documents, photos and files',
       'documents': 'Create and edit documents, export to PDF',
@@ -1926,7 +1926,7 @@ export default function ProjectDetail(){
           </p>
           <p className="mt-2 text-amber-900/80">
             Being on a shift does not grant project access. Ask an admin to grant at least one
-            section (Files, Reports, Workload, etc.), or add you under Project access if you
+            section (Files, Reports, Dispatch, etc.), or add you under Project access if you
             should open this project.
           </p>
           {!useDesignSystem ? (
@@ -8552,7 +8552,7 @@ function ProjectTabCards({ availableTabs, tabCounts, onTabClick, proj, currentTa
   const tabConfig: Record<string, { label: string, icon: string }> = {
     overview: { label: 'Overview', icon: '📊' },
     reports: { label: 'Notes/History', icon: '📝' },
-    dispatch: { label: 'Workload', icon: '👷' },
+    dispatch: { label: 'Dispatch', icon: '👷' },
     timesheet: { label: 'Timesheet', icon: '⏰' },
     files: { label: 'Files', icon: '📁' },
     documents: { label: 'Documents', icon: '📄' },
