@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { CommunityPostBanner } from '@/components/community/CommunityPostBanner';
+import { CommunityPostBody } from '@/components/community/CommunityPostBody';
 import { CommunityFeedPostSnippet } from '@/components/community/CommunityFeedPostSnippet';
 import CommunityDirectoryUserPeekModal from '@/components/community/CommunityDirectoryUserPeekModal';
 import CommunityCommentRichTextEditor from '@/components/community/CommunityCommentRichTextEditor';
