@@ -28,6 +28,14 @@ from ..services.attendance_job_labels import (
     parse_job_type_from_reason_text,
     resolve_job_label,
 )
+from ..services.attendance_period import (
+    apply_attendance_period_fields,
+    effective_declared_hours,
+    effective_entry_kind,
+    effective_job_type,
+    period_response_fields,
+)
+from ..services.time_calculation import round_clock_datetime
 from ..services.standard_file_categories import ensure_standard_file_categories
 from ..services.training_matrix_slots import (
     ensure_training_matrix_slots,
@@ -37,6 +45,7 @@ from ..services.training_matrix_slots import (
 from ..services.organization_logos import ensure_organization_logos_list
 from ..services.certificate_background_library import ensure_certificate_backgrounds_list
 from ..services.service_items import ensure_service_items_list
+from ..services.work_types import sync_work_type_from_setting_item
 from ..services.document_template_categories import ensure_document_template_categories_list
 from ..auth.security import require_permissions, get_current_user
 from ..auth.security import User as UserType
@@ -607,6 +616,10 @@ def create_setting_item(
         value = str(fid)
     it = SettingItem(list_id=lst.id, label=label, value=value, sort_index=sort_index, meta=meta or None)
     db.add(it)
+    if list_name == "service_items":
+        sync_work_type_from_setting_item(
+            db, label=label, value=value, sort_index=sort_index or 0
+        )
     db.commit()
     return {"id": str(it.id)}
 
@@ -745,6 +758,16 @@ def delete_setting_item(
     if it and not can_write_setting_list(user, list_name, it.label):
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    if it and list_name == "service_items":
+        prev = (it.value or it.label or "").strip().lower()
+        sync_work_type_from_setting_item(
+            db,
+            label=it.label,
+            value=it.value,
+            deactivate=True,
+            previous_code=prev,
+        )
+
     db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.id == item_id).delete()
     db.commit()
     return {"status": "ok"}
@@ -810,6 +833,17 @@ def update_attendance(
             new_clock_out_time = clock_out_time
         except:
             raise HTTPException(status_code=400, detail="Invalid clock_out_time format")
+
+    hours_only = (
+        payload.get("entry_kind") == "hours_only"
+        or "HOURS_WORKED:" in (payload.get("reason_text") or attendance.reason_text or "")
+        or effective_entry_kind(attendance) == "hours_only"
+    )
+    if not hours_only:
+        if new_clock_in_time is not None and "clock_in_time" in payload:
+            new_clock_in_time = round_clock_datetime(new_clock_in_time)
+        if new_clock_out_time is not None and "clock_out_time" in payload:
+            new_clock_out_time = round_clock_datetime(new_clock_out_time)
     
     # Validate that clock_out_time is not before or equal to clock_in_time
     if new_clock_in_time and new_clock_out_time:
@@ -891,6 +925,15 @@ def update_attendance(
     
     if "reason_text" in payload:
         attendance.reason_text = payload["reason_text"]
+
+    apply_attendance_period_fields(
+        db,
+        attendance,
+        payload,
+        update_notes="reason_text" in payload,
+    )
+    attendance.updated_at = datetime.now(timezone.utc)
+    attendance.updated_by = user.id
     
     if "worker_id" in payload:
         attendance.worker_id = uuid.UUID(payload["worker_id"])
@@ -992,6 +1035,13 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
             it.value = ""
     # Always set meta (even if empty dict) to ensure meta fields are preserved
     it.meta = meta
+    if list_name == "service_items":
+        sync_work_type_from_setting_item(
+            db,
+            label=it.label,
+            value=it.value,
+            sort_index=it.sort_index or 0,
+        )
     db.commit()
     # Propagate label rename to referencing records (non-destructive; only on rename, not on delete)
     if label_changed and label:
@@ -1313,15 +1363,23 @@ def list_attendances(
                 query = query.filter(
                     and_(
                         Attendance.shift_id.is_(None),
-                        Attendance.reason_text.like(f"JOB_TYPE:{job_type}%")
+                        or_(
+                            Attendance.predefined_job_code == job_type,
+                            Attendance.reason_text.like(f"JOB_TYPE:{job_type}%"),
+                        ),
                     )
                 )
             else:
-                # It's a project UUID - filter through shift
+                # It's a project UUID - filter through shift OR attendance.project_id OR JOB_TYPE marker
                 try:
                     project_uuid = uuid.UUID(project_id)
-                    # Join with Shift to filter by project_id
-                    query = query.join(Shift, Attendance.shift_id == Shift.id).filter(Shift.project_id == project_uuid).distinct()
+                    query = query.outerjoin(Shift, Attendance.shift_id == Shift.id).filter(
+                        or_(
+                            Attendance.project_id == project_uuid,
+                            Shift.project_id == project_uuid,
+                            Attendance.reason_text.like(f"JOB_TYPE:{project_id}%"),
+                        )
+                    ).distinct()
                 except Exception as e:
                     logger.warning(f"Invalid project_id format: {project_id}, error: {e}")
                     pass
@@ -1409,8 +1467,8 @@ def list_attendances(
                     if shift.project_id and str(shift.project_id) in projects_dict:
                         project = projects_dict[str(shift.project_id)]
                         project_name = project.name
-                elif att.reason_text and att.reason_text.startswith("JOB_TYPE:"):
-                    job_type = parse_job_type_from_reason_text(att.reason_text)
+                elif effective_job_type(att):
+                    job_type = effective_job_type(att)
                     if job_type:
                         job_name, resolved_project_name = resolve_job_label(
                             db,
@@ -1423,19 +1481,14 @@ def list_attendances(
                 
                 # Calculate hours - NEW MODEL: clock_in_time and clock_out_time are in the same record
                 hours_worked = None
-                if att.clock_in_time and att.clock_out_time:
+                declared = effective_declared_hours(att)
+                if declared is not None and effective_entry_kind(att) == "hours_only":
+                    hours_worked = declared
+                elif att.clock_in_time and att.clock_out_time:
                     diff = att.clock_out_time - att.clock_in_time
                     hours_worked = diff.total_seconds() / 3600  # Convert to hours
-                elif "HOURS_WORKED:" in (att.reason_text or ""):
-                    # Extract hours_worked from reason_text for "hours worked" entries
-                    parts = (att.reason_text or "").split("|")
-                    for part in parts:
-                        if part.startswith("HOURS_WORKED:"):
-                            try:
-                                hours_worked = float(part.replace("HOURS_WORKED:", ""))
-                            except:
-                                pass
-                            break
+                elif declared is not None:
+                    hours_worked = declared
                 
                 # Determine type for backward compatibility
                 att_type = None
@@ -1501,6 +1554,7 @@ def list_attendances(
                     except (TypeError, ValueError):
                         pass
 
+                period_fields = period_response_fields(att)
                 result.append({
                     "id": str(att.id),
                     "record_kind": "internal",
@@ -1516,9 +1570,10 @@ def list_attendances(
                     "status": att.status,
                     "source": att.source,
                     "shift_id": str(att.shift_id) if att.shift_id else None,
+                    **period_fields,
                     "job_name": job_name,
                     "project_name": project_name,
-                    "project_id": project_id_str,
+                    "project_id": project_id_str or period_fields.get("project_id"),
                     "project_address": project_address_str,
                     "hours_worked": round(hours_worked, 2) if hours_worked else None,
                     "break_minutes": break_minutes,
@@ -1701,6 +1756,16 @@ def create_attendance_manual(
                 clock_out_time_utc = clock_out_time_utc.replace(tzinfo=timezone.utc)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid clock_out_time format: {str(e)}")
+
+    hours_only = (
+        payload.get("entry_kind") == "hours_only"
+        or "HOURS_WORKED:" in (payload.get("reason_text") or "")
+    )
+    if not hours_only:
+        if clock_in_time_utc is not None:
+            clock_in_time_utc = round_clock_datetime(clock_in_time_utc)
+        if clock_out_time_utc is not None:
+            clock_out_time_utc = round_clock_datetime(clock_out_time_utc)
     
     # If new model fields not provided, fall back to legacy time_selected_utc
     if not clock_in_time_utc and not clock_out_time_utc:
@@ -1794,6 +1859,9 @@ def create_attendance_manual(
             # Legacy fields (required for database NOT NULL constraint)
             mocked_flag=payload.get("gps_mocked", False),
         )
+        apply_attendance_period_fields(db, attendance, payload)
+        attendance.updated_at = time_entered_utc
+        attendance.updated_by = user.id
         db.add(attendance)
     elif clock_in_time_utc:
         # Only clock-in time provided
@@ -1815,6 +1883,9 @@ def create_attendance_manual(
             # Legacy fields (required for database NOT NULL constraint)
             mocked_flag=payload.get("gps_mocked", False),
         )
+        apply_attendance_period_fields(db, attendance, payload)
+        attendance.updated_at = time_entered_utc
+        attendance.updated_by = user.id
         db.add(attendance)
     else:  # clock_out_time_utc only
         # For clock-out, check if there's an open clock-in to update
@@ -1826,10 +1897,13 @@ def create_attendance_manual(
                 Attendance.clock_out_time.is_(None)
             ).order_by(Attendance.clock_in_time.desc()).first()
         else:
-            # Direct attendance - match by job_type from reason_text
+            # Direct attendance - match by job (column or JOB_TYPE marker)
             existing_attendance = None
-            if reason_text and reason_text.startswith("JOB_TYPE:"):
-                job_type = reason_text.split("|")[0].replace("JOB_TYPE:", "")
+            job_type = None
+            if reason_text:
+                from ..services.attendance_job_labels import parse_job_type_from_reason_text as _pjt
+                job_type = payload.get("job_type") or _pjt(reason_text)
+            if job_type:
                 open_attendances = db.query(Attendance).filter(
                     Attendance.shift_id.is_(None),
                     Attendance.worker_id == uuid.UUID(worker_id),
@@ -1837,11 +1911,9 @@ def create_attendance_manual(
                     Attendance.clock_out_time.is_(None)
                 ).order_by(Attendance.clock_in_time.desc()).all()
                 for att in open_attendances:
-                    if att.reason_text and att.reason_text.startswith("JOB_TYPE:"):
-                        att_job_type = att.reason_text.split("|")[0].replace("JOB_TYPE:", "")
-                        if att_job_type == job_type:
-                            existing_attendance = att
-                            break
+                    if effective_job_type(att) == str(job_type):
+                        existing_attendance = att
+                        break
         
         if existing_attendance:
             # Update existing attendance with clock-out
@@ -1862,6 +1934,9 @@ def create_attendance_manual(
                 existing_attendance.status = "pending"
             else:
                 existing_attendance.status = status
+            apply_attendance_period_fields(db, existing_attendance, payload)
+            existing_attendance.updated_at = time_entered_utc
+            existing_attendance.updated_by = user.id
             attendance = existing_attendance
         else:
             # Create new attendance with only clock-out
@@ -1883,6 +1958,9 @@ def create_attendance_manual(
                 # Legacy fields (required for database NOT NULL constraint)
                 mocked_flag=payload.get("gps_mocked", False),
             )
+            apply_attendance_period_fields(db, attendance, payload)
+            attendance.updated_at = time_entered_utc
+            attendance.updated_by = user.id
             db.add(attendance)
     
     db.commit()

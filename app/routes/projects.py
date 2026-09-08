@@ -4692,6 +4692,46 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
             func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).asc()
         ).all()
     
+    seen_att_ids = {a.id for a in attendances}
+    try:
+        project_uuid = uuid.UUID(str(project_id))
+    except (ValueError, TypeError):
+        project_uuid = None
+    if project_uuid is not None:
+        extra_q = db.query(Attendance).filter(
+            or_(
+                Attendance.project_id == project_uuid,
+                and_(
+                    Attendance.shift_id.is_(None),
+                    Attendance.reason_text.like(f"JOB_TYPE:{project_id}%"),
+                ),
+            )
+        )
+        if date_start and date_end:
+            date_start_dt = datetime.combine(date_start, time.min).replace(tzinfo=timezone.utc)
+            date_end_dt = datetime.combine(date_end + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
+            extra_q = extra_q.filter(
+                or_(
+                    and_(
+                        Attendance.clock_in_time.isnot(None),
+                        Attendance.clock_in_time >= date_start_dt,
+                        Attendance.clock_in_time < date_end_dt,
+                    ),
+                    and_(
+                        Attendance.clock_in_time.is_(None),
+                        Attendance.clock_out_time.isnot(None),
+                        Attendance.clock_out_time >= date_start_dt,
+                        Attendance.clock_out_time < date_end_dt,
+                    ),
+                )
+            )
+        if user_id:
+            extra_q = extra_q.filter(Attendance.worker_id == user_id)
+        for extra in extra_q.all():
+            if extra.id not in seen_att_ids:
+                attendances.append(extra)
+                seen_att_ids.add(extra.id)
+    
     # Get user and profile info for attendances
     worker_ids = list(set([str(a.worker_id) for a in attendances]))
     users_dict = {}
@@ -4848,6 +4888,8 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
         # We'll skip manual entries that have corresponding attendance
         entry_date = r.work_date
         entry_user_id = str(r.user_id)
+        if getattr(r, "source_attendance_id", None):
+            continue
         has_attendance = any(
             str(a.worker_id) == entry_user_id and 
             ((a.clock_in_time and a.clock_in_time.date() == entry_date) or 
@@ -4855,7 +4897,7 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
             for a in attendances
         )
         
-        # Only include manual entries that don't have attendance
+        # Only include leftover orphan rows that don't have attendance
         if not has_attendance:
             out.append({
                 "id": str(r.id),
@@ -4889,6 +4931,16 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="Project not found")
     _assert_project_line_write(user, p)
     from datetime import datetime as _dt
+    from datetime import time as _time
+    from datetime import timedelta as _td
+    from ..config import settings as _settings
+    from ..services.time_rules import local_to_utc as _local_to_utc
+    from ..services.time_calculation import round_clock_datetime as _round_clock
+    from ..services.attendance_period import apply_attendance_period_fields as _apply_period
+    from ..routes.settings import calculate_break_minutes as _calc_break
+    from ..models.models import Attendance as _Attendance
+    from ..routes.dispatch import _maybe_sync_pte_from_attendance
+
     work_date = payload.get("work_date")
     minutes = int(payload.get("minutes") or 0)
     notes = payload.get("notes")
@@ -4896,14 +4948,11 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
     end_time = payload.get("end_time")
     target_user_id = payload.get("user_id") or str(user.id)
     if not work_date:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="work_date required")
     try:
         d = _dt.strptime(work_date, "%Y-%m-%d").date()
     except Exception:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="invalid date")
-    from datetime import time as _time
     st = None; et = None
     try:
         if start_time: st = _time.fromisoformat(start_time)
@@ -4913,16 +4962,77 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
         if end_time: et = _time.fromisoformat(end_time)
     except Exception:
         et = None
-    # allow admins to create entries on behalf of others (timesheet:write already enforced)
     try:
         from uuid import UUID as _UUID
         target_uuid = _UUID(str(target_user_id))
     except Exception:
         target_uuid = user.id
-    row = ProjectTimeEntry(project_id=project_id, user_id=target_uuid, work_date=d, start_time=st, end_time=et, minutes=minutes, notes=notes, created_by=user.id)
-    db.add(row)
+
+    hours_only = (not st or not et) and minutes > 0
+    clock_in = None
+    clock_out = None
+    if st:
+        clock_in = _local_to_utc(_dt.combine(d, st), _settings.tz_default)
+        if clock_in.tzinfo is None:
+            clock_in = clock_in.replace(tzinfo=timezone.utc)
+        if not hours_only:
+            clock_in = _round_clock(clock_in)
+    if et:
+        clock_out = _local_to_utc(_dt.combine(d, et), _settings.tz_default)
+        if clock_out.tzinfo is None:
+            clock_out = clock_out.replace(tzinfo=timezone.utc)
+        if not hours_only:
+            clock_out = _round_clock(clock_out)
+    declared = None
+    entry_kind = "hours_only" if hours_only else "clock"
+    if hours_only:
+        declared = minutes / 60.0
+        if clock_in is None:
+            clock_in = _local_to_utc(_dt.combine(d, _time.min), _settings.tz_default)
+            if clock_in.tzinfo is None:
+                clock_in = clock_in.replace(tzinfo=timezone.utc)
+        if clock_out is None:
+            clock_out = clock_in + _td(minutes=minutes)
+
+    now_utc = datetime.now(timezone.utc)
+    break_minutes = None
+    if clock_in and clock_out and not hours_only:
+        break_minutes = _calc_break(db, target_uuid, clock_in, clock_out)
+
+    attendance = _Attendance(
+        shift_id=None,
+        worker_id=target_uuid,
+        clock_in_time=clock_in,
+        clock_in_entered_utc=now_utc if clock_in else None,
+        clock_out_time=clock_out,
+        clock_out_entered_utc=now_utc if clock_out else None,
+        status="approved",
+        source="admin",
+        created_by=user.id,
+        break_minutes=break_minutes,
+        mocked_flag=False,
+    )
+    attendance.approved_at = now_utc
+    attendance.approved_by = user.id
+    _apply_period(
+        db,
+        attendance,
+        {
+            "project_id": str(project_id),
+            "entry_kind": entry_kind,
+            "declared_hours": declared,
+            "reason_text": notes or "",
+        },
+        job_type=str(project_id),
+    )
+    attendance.updated_at = now_utc
+    attendance.updated_by = user.id
+    db.add(attendance)
     db.commit()
-    db.refresh(row)
+    db.refresh(attendance)
+    _maybe_sync_pte_from_attendance(db, attendance, _settings.tz_default, True)
+
+    row_id = f"attendance_{attendance.id}"
     
     # Create audit log with rich context
     try:
@@ -4955,17 +5065,18 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
         create_audit_log(
             db=db,
             entity_type="timesheet_entry",
-            entity_id=str(row.id),
+            entity_id=str(attendance.id),
             action="CREATE",
             actor_id=str(user.id),
             actor_role=actor_role,
             source="api",
             changes_json={
-                "minutes": row.minutes,
-                "work_date": row.work_date.isoformat(),
-                "notes": row.notes or None,
+                "minutes": minutes,
+                "work_date": d.isoformat(),
+                "notes": notes or None,
                 "start_time": start_time,
                 "end_time": end_time,
+                "attendance_id": str(attendance.id),
             },
             context={
                 "project_id": str(project_id),
@@ -4977,7 +5088,7 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
     except Exception:
         pass
     
-    return {"id": str(row.id)}
+    return {"id": row_id}
 
 
 @router.patch("/{project_id}/timesheet/{entry_id}")

@@ -56,7 +56,7 @@ const LIST_DESCRIPTIONS: Record<string, string> = {
   document_template_categories: 'Categories for grouping document templates in Document Builder.',
   training_matrix_slots: 'Columns on the training matrix (slug + cell type).',
   timesheet: 'Default break length, eligible employees, and geofence radius.',
-  service_items: 'Codes used when logging hours (Regular now; overtime and others later).',
+  service_items: 'Work Types used when logging hours (Regular is default; add Crane, Electrical, etc. here).',
 };
 
 type ListGroupId = 'statuses' | 'organization' | 'training' | 'operations' | 'other';

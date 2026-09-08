@@ -381,7 +381,7 @@ export default function ProjectTimesheetTab({
   const [clockType, setClockType] = useState<'in' | 'out' | null>(null);
   const [selectedTime, setSelectedTime] = useState<string>(''); // Stores time in 24h format (HH:MM) for backend
   const [selectedHour12, setSelectedHour12] = useState<string>(''); // Stores hour in 12h format (1-12)
-  const [selectedMinute, setSelectedMinute] = useState<string>(''); // Stores minute in 5-minute increments (00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)
+  const [selectedMinute, setSelectedMinute] = useState<string>(''); // 15-minute increments
   const [selectedAmPm, setSelectedAmPm] = useState<'AM' | 'PM'>('AM'); // Stores AM/PM
   const [reasonText, setReasonText] = useState<string>('');
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
@@ -622,10 +622,10 @@ export default function ProjectTimesheetTab({
       return;
     }
 
-    // Ensure time is in valid format (HH:MM) with 5-minute increments
+    // Ensure time is in valid format (HH:MM) with 15-minute increments
     const [hours, minutes] = selectedTime.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 5 !== 0 || minutes < 0 || minutes > 59) {
-      toast.error('Please select a valid time in 5-minute increments');
+    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 15 !== 0 || minutes < 0 || minutes > 59) {
+      toast.error('Please select a valid time in 15-minute increments');
       return;
     }
 
@@ -1583,7 +1583,7 @@ export default function ProjectTimesheetTab({
                 value={selectedTime}
                 onChange={(e) => setSelectedTime(e.target.value)}
                 required
-                fieldHint="Time\n\nSelect in 5-minute steps. Your own clock events cannot be more than 4 minutes in the future."
+                fieldHint="Time\n\nSelect in 15-minute steps. Your own clock events cannot be more than 4 minutes in the future."
               />
               {clockType === 'out' && (
                 <div>
@@ -1879,8 +1879,8 @@ export default function ProjectTimesheetTab({
                       required
                     >
                       <option value="">Min</option>
-                      {Array.from({ length: 12 }, (_, i) => {
-                        const m = i * 5;
+                      {Array.from({ length: 4 }, (_, i) => {
+                        const m = i * 15;
                         return (
                           <option key={m} value={String(m).padStart(2, '0')}>
                             {String(m).padStart(2, '0')}

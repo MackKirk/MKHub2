@@ -39,8 +39,9 @@ import {
   clearHoursReminderRegistration,
   setupHoursReminders
 } from "../lib/hoursReminderNotifications";
-import { formatWeekdayLong, previousWeekday } from "../lib/workdays";
+import { formatWeekdayLong, isWeekday, previousWeekday } from "../lib/workdays";
 import { formatDateLocal } from "../lib/dateUtils";
+import { isBlairHoursJoke } from "../lib/blairHoursJoke";
 import {
   loadPendingAlertCadence,
   markPendingAlertsShown,
@@ -187,29 +188,43 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         setPendingLoading(true);
         const snapshot = await fetchPending(user.id);
-        await setupHoursReminders(snapshot.loggedToday);
+        const withJoke: PendingSnapshot =
+          isBlairHoursJoke(user.username) &&
+          !snapshot.loggedToday &&
+          isWeekday()
+            ? {
+                ...snapshot,
+                hours: {
+                  label: formatWeekdayLong(new Date()),
+                  date: formatDateLocal(new Date()),
+                  joke: true
+                },
+                hasContent: true
+              }
+            : snapshot;
+        await setupHoursReminders(snapshot.loggedToday, user.username);
 
         const cadence = await loadPendingAlertCadence(user.id);
         const eligible = pendingAlertEligibility(
           {
-            hasClock: !!snapshot.hours,
+            hasClock: !!withJoke.hours,
             hasTasks:
-              snapshot.tasks.length > 0 || snapshot.otherOpenTaskCount > 0,
+              withJoke.tasks.length > 0 || withJoke.otherOpenTaskCount > 0,
             hasUrgent:
-              snapshot.signatureRequests.length > 0 ||
-              snapshot.onboardingDocs.length > 0
+              withJoke.signatureRequests.length > 0 ||
+              withJoke.onboardingDocs.length > 0
           },
           cadence
         );
         const filtered: PendingSnapshot = {
-          hours: eligible.hasClock ? snapshot.hours : null,
-          loggedToday: snapshot.loggedToday,
-          tasks: eligible.hasTasks ? snapshot.tasks : [],
-          otherOpenTaskCount: eligible.hasTasks ? snapshot.otherOpenTaskCount : 0,
+          hours: eligible.hasClock ? withJoke.hours : null,
+          loggedToday: withJoke.loggedToday,
+          tasks: eligible.hasTasks ? withJoke.tasks : [],
+          otherOpenTaskCount: eligible.hasTasks ? withJoke.otherOpenTaskCount : 0,
           signatureRequests: eligible.hasUrgent
-            ? snapshot.signatureRequests
+            ? withJoke.signatureRequests
             : [],
-          onboardingDocs: eligible.hasUrgent ? snapshot.onboardingDocs : [],
+          onboardingDocs: eligible.hasUrgent ? withJoke.onboardingDocs : [],
           hasContent:
             eligible.hasClock || eligible.hasTasks || eligible.hasUrgent
         };
@@ -226,12 +241,12 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
           );
         }
       } catch {
-        void setupHoursReminders(false);
+        void setupHoursReminders(false, user.username);
       } finally {
         setPendingLoading(false);
       }
     },
-    [applyPending, user?.id]
+    [applyPending, user?.id, user?.username]
   );
 
   const refreshNotifications = useCallback(async () => {

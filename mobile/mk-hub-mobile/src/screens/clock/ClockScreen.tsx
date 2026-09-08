@@ -597,7 +597,7 @@ export const ClockScreen: React.FC = () => {
           closeClockModal();
           const today = formatDateLocal(new Date());
           if (!loggedDate || loggedDate === today) {
-            void syncHoursReminder(true);
+            void syncHoursReminder(true, user?.username);
           }
           if (loggedDate && loggedDate !== selectedDate) {
             setSelectedDate(loggedDate);

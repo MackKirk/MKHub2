@@ -150,10 +150,15 @@ function findNextPendingShift(
   return null;
 }
 
-/** Local time rounded down to 15 minutes. */
+/** Local time rounded to nearest 15 minutes (7→00, 8→15). */
 export function buildRoundedTimeHHMM(now = new Date()): string {
-  const hours = now.getHours();
-  const minutes = Math.floor(now.getMinutes() / 15) * 15;
+  const remainder = now.getMinutes() % 15;
+  let minutes = remainder < 8 ? now.getMinutes() - remainder : now.getMinutes() + (15 - remainder);
+  let hours = now.getHours();
+  if (minutes === 60) {
+    minutes = 0;
+    hours = (hours + 1) % 24;
+  }
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 

@@ -34,6 +34,12 @@ from ..services.attendance_job_labels import (
     parse_service_item_from_reason_text,
     resolve_job_label,
 )
+from ..services.attendance_period import (
+    apply_attendance_period_fields,
+    effective_declared_hours,
+    effective_job_type,
+    period_response_fields,
+)
 from ..services.service_items import (
     DEFAULT_VALUE as DEFAULT_SERVICE_ITEM,
     list_service_items,
@@ -80,6 +86,73 @@ def _apply_service_item_to_reason(
         hours_worked=markers["hours_worked"],
         notes=notes,
     )
+
+
+def _finish_attendance_period(
+    db: Session,
+    attendance: Attendance,
+    payload: Optional[dict] = None,
+    *,
+    job_type: Optional[str] = None,
+    user: Optional[User] = None,
+    update_notes: bool = True,
+) -> None:
+    apply_attendance_period_fields(
+        db,
+        attendance,
+        payload or {},
+        job_type=job_type,
+        update_notes=update_notes,
+    )
+    attendance.updated_at = datetime.now(timezone.utc)
+    if user is not None:
+        attendance.updated_by = user.id
+
+
+def _maybe_sync_pte_from_attendance(
+    db: Session,
+    attendance: Attendance,
+    project_timezone: str,
+    inside_geo: bool = False,
+) -> None:
+    if attendance.status != "approved":
+        return
+    project_id = getattr(attendance, "project_id", None)
+    shift = None
+    if attendance.shift_id:
+        shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
+        if shift and not project_id:
+            project_id = shift.project_id
+    if not project_id:
+        return
+    if shift:
+        _create_or_update_timesheet_from_attendance(
+            db, attendance, shift, project_timezone, inside_geo
+        )
+        return
+    work_date = None
+    if attendance.clock_in_time:
+        work_date = utc_to_local(attendance.clock_in_time, project_timezone).date()
+    elif attendance.clock_out_time:
+        work_date = utc_to_local(attendance.clock_out_time, project_timezone).date()
+    if not work_date:
+        return
+
+    class _ShiftLike:
+        pass
+
+    shift_like = _ShiftLike()
+    shift_like.project_id = project_id
+    shift_like.date = work_date
+    _create_or_update_timesheet_from_attendance(
+        db, attendance, shift_like, project_timezone, inside_geo
+    )
+
+
+def _shift_job_type(shift: Shift) -> Optional[str]:
+    if shift.project_id:
+        return str(shift.project_id)
+    return shift.job_name
 
 
 def get_user_role(user: User, db: Session) -> str:
@@ -1325,6 +1398,9 @@ def create_attendance(
                 # Legacy fields (required for database NOT NULL constraint)
                 mocked_flag=mocked_flag,
             )
+            _finish_attendance_period(
+                db, attendance, payload, job_type=_shift_job_type(shift), user=user
+            )
             db.add(attendance)
             db.commit()
             db.refresh(attendance)
@@ -1391,12 +1467,23 @@ def create_attendance(
                 else:
                     existing_attendance.status = status
                 # Update notes / service item without dropping JOB_TYPE or SERVICE_ITEM markers
-                if reason_text or payload.get("service_item"):
-                    existing_attendance.reason_text = _apply_service_item_to_reason(
+                if reason_text or payload.get("service_item") or payload.get("work_type_id"):
+                    _finish_attendance_period(
                         db,
-                        existing_attendance.reason_text,
+                        existing_attendance,
                         payload,
+                        job_type=_shift_job_type(shift),
+                        user=user,
                         update_notes=bool(reason_text),
+                    )
+                else:
+                    _finish_attendance_period(
+                        db,
+                        existing_attendance,
+                        payload,
+                        job_type=_shift_job_type(shift),
+                        user=user,
+                        update_notes=False,
                     )
                 attendance = existing_attendance
                 db.commit()
@@ -1434,6 +1521,9 @@ def create_attendance(
                     attachments=payload.get("attachments"),
                     # Legacy fields (required for database NOT NULL constraint)
                     mocked_flag=mocked_flag,
+                )
+                _finish_attendance_period(
+                    db, attendance, payload, job_type=_shift_job_type(shift), user=user
                 )
                 db.add(attendance)
                 db.commit()
@@ -1570,6 +1660,7 @@ def create_attendance(
             "inside_geofence": inside_geo,
             "same_day_as_today": is_same_day_as_today,
             "gps_risk": geo_risk,
+            **period_response_fields(attendance),
         }
     except HTTPException as e:
         # Re-raise HTTPException with detailed logging
@@ -1804,6 +1895,9 @@ def create_attendance_supervisor(
         mocked_flag=False,
         attachments=payload.get("attachments"),
     )
+    _finish_attendance_period(
+        db, attendance, payload, job_type=_shift_job_type(shift) if shift else None, user=user
+    )
     
     db.add(attendance)
     db.commit()
@@ -2009,17 +2103,11 @@ def create_direct_attendance(
                 Attendance.clock_in_time < date_end
             ).order_by(Attendance.clock_in_time.desc()).all()  # Get most recent first
             
-            # Filter by job_type stored in reason_text
-            # Format: "JOB_TYPE:{job_type}|{reason}" or just "JOB_TYPE:{job_type}"
+            # Filter by job (project_id / predefined code / JOB_TYPE marker)
             for att in open_attendances:
-                reason = att.reason_text or ""
-                if reason.startswith("JOB_TYPE:"):
-                    parts = reason.split("|")
-                    job_marker = parts[0]
-                    att_job_type = job_marker.replace("JOB_TYPE:", "")
-                    if att_job_type == job_type:
-                        clock_in_attendance = att
-                        break
+                if effective_job_type(att) == str(job_type):
+                    clock_in_attendance = att
+                    break
             
             if not clock_in_attendance:
                 raise HTTPException(
@@ -2124,6 +2212,7 @@ def create_direct_attendance(
                 # Legacy fields (required for database NOT NULL constraint)
                 mocked_flag=gps.get("mocked", False) if gps else False,
             )
+            _finish_attendance_period(db, attendance, payload, job_type=job_type, user=user)
             # Auto-approve if today
             if status == "approved":
                 attendance.approved_at = time_entered_utc
@@ -2166,14 +2255,14 @@ def create_direct_attendance(
                 clock_in_attendance.status = status
             # Update notes / service item without dropping JOB_TYPE or SERVICE_ITEM markers
             reason_text = (payload.get("reason_text") or "").strip()
-            if reason_text or payload.get("service_item"):
-                clock_in_attendance.reason_text = _apply_service_item_to_reason(
-                    db,
-                    clock_in_attendance.reason_text,
-                    payload,
-                    job_type=job_type,
-                    update_notes=bool(reason_text),
-                )
+            _finish_attendance_period(
+                db,
+                clock_in_attendance,
+                payload,
+                job_type=job_type,
+                user=user,
+                update_notes=bool(reason_text),
+            )
             # Auto-approve if today and not already approved
             if status == "approved" and clock_in_attendance.status == "approved":
                 if not clock_in_attendance.approved_at:
@@ -2184,6 +2273,7 @@ def create_direct_attendance(
             db.refresh(attendance)
         
         logger.info(f"Direct attendance created (NO SHIFT): {attendance.id}, Status: {attendance.status}, Job: {job_type}")
+        _maybe_sync_pte_from_attendance(db, attendance, settings.tz_default, False)
         
         # If pending and past date, create task for supervisor
         if status == "pending":
@@ -2318,7 +2408,7 @@ def get_direct_attendances_for_date(
         func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).asc()
     ).all()
     
-    job_types = [parse_job_type_from_reason_text(att.reason_text) for att in attendances]
+    job_types = [effective_job_type(att) for att in attendances]
     projects_by_id = load_projects_by_id(
         db,
         collect_project_ids_from_job_types([jt for jt in job_types if jt]),
@@ -2326,7 +2416,7 @@ def get_direct_attendances_for_date(
 
     result = []
     for att in attendances:
-        job_type = parse_job_type_from_reason_text(att.reason_text)
+        job_type = effective_job_type(att)
         job_name = None
         project_name = None
         if job_type:
@@ -2360,10 +2450,10 @@ def get_direct_attendances_for_date(
             "time_selected_utc": time_selected.isoformat() if time_selected else None,  # Backward compatibility
             "status": att.status,
             "source": att.source,
+            **period_response_fields(att),
             "job_type": job_type,
             "job_name": job_name,
             "project_name": project_name,
-            "service_item": parse_service_item_from_reason_text(att.reason_text),
             "reason_text": att.reason_text,  # Include reason_text so frontend can extract job_type
             "break_minutes": att.break_minutes,  # Include break time
             **attendance_edit_fields(att, user),
@@ -2493,9 +2583,9 @@ def get_weekly_attendance_summary(
         worker_names_map[worker_id] = worker_name
     
     direct_job_types = [
-        parse_job_type_from_reason_text(att.reason_text)
+        effective_job_type(att)
         for att in attendances
-        if not att.shift_id and att.reason_text
+        if not att.shift_id
     ]
     projects_by_id = load_projects_by_id(
         db,
@@ -2561,7 +2651,7 @@ def get_weekly_attendance_summary(
                     if project:
                         project_name = project.name
         else:
-            job_type = parse_job_type_from_reason_text(attendance.reason_text)
+            job_type = effective_job_type(attendance)
             if job_type:
                 _, resolved_project_name = resolve_job_label(
                     db,
@@ -2571,18 +2661,8 @@ def get_weekly_attendance_summary(
                 if resolved_project_name:
                     project_name = resolved_project_name
         
-        # Extract HOURS_WORKED from reason_text if present
-        hours_worked = None
-        reason = attendance.reason_text or ""
-        if "HOURS_WORKED:" in reason:
-            parts = reason.split("|")
-            for part in parts:
-                if part.startswith("HOURS_WORKED:"):
-                    try:
-                        hours_worked = float(part.replace("HOURS_WORKED:", ""))
-                    except:
-                        pass
-                    break
+        # Hours-only declared hours (column or HOURS_WORKED marker)
+        hours_worked = effective_declared_hours(attendance)
         
         # Calculate break minutes using the same function as the attendance table
         # This ensures consistency between the attendance table and weekly summary
@@ -2619,9 +2699,9 @@ def get_weekly_attendance_summary(
                 "status": attendance.status,
                 "reason_text": attendance.reason_text,
             } if attendance.clock_out_time else None,
+            **period_response_fields(attendance),
             "job_type": job_type,
             "project_name": project_name,
-            "service_item": parse_service_item_from_reason_text(attendance.reason_text),
             "hours_worked": hours_worked,
             "break_minutes": final_break_minutes,
             "worker_id": str(attendance.worker_id),
@@ -2932,6 +3012,7 @@ def approve_attendance(
     )
     
     # Create/update timesheet entry when approved
+    inside_geo = True
     if shift:
         # Recalculate geofence status for logging (use stored GPS data if available)
         project = db.query(Project).filter(Project.id == shift.project_id).first()
@@ -2948,8 +3029,7 @@ def approve_attendance(
         else:
             # No geofences - location validation not required
             inside_geo = True
-        
-        _create_or_update_timesheet_from_attendance(db, attendance, shift, project_timezone, inside_geo)
+    _maybe_sync_pte_from_attendance(db, attendance, project_timezone, inside_geo)
     
     return {
         "id": str(attendance.id),
@@ -3333,7 +3413,7 @@ def get_shift_attendance(
             "status": a.status,
             "source": a.source,
             "reason_text": a.reason_text,
-            "service_item": parse_service_item_from_reason_text(a.reason_text),
+            **period_response_fields(a),
             "break_minutes": a.break_minutes,  # Include break time
             # GPS data from clock-in (or clock-out if clock-in doesn't exist)
             "gps_lat": float(a.clock_in_gps_lat) if a.clock_in_gps_lat else (float(a.clock_out_gps_lat) if a.clock_out_gps_lat else None),
@@ -3551,14 +3631,18 @@ def _create_or_update_timesheet_from_attendance(
     # to an attendance event (or legacy "attendance system" note), otherwise create a new one.
     from sqlalchemy import or_
     existing_entry = db.query(ProjectTimeEntry).filter(
-        ProjectTimeEntry.project_id == shift.project_id,
-        ProjectTimeEntry.user_id == attendance.worker_id,
-        ProjectTimeEntry.work_date == shift.date,
-        or_(
-            ProjectTimeEntry.source_attendance_id.isnot(None),
-            ProjectTimeEntry.notes.ilike("%attendance system%"),
-        ),
+        ProjectTimeEntry.source_attendance_id == attendance.id
     ).first()
+    if existing_entry is None:
+        existing_entry = db.query(ProjectTimeEntry).filter(
+            ProjectTimeEntry.project_id == shift.project_id,
+            ProjectTimeEntry.user_id == attendance.worker_id,
+            ProjectTimeEntry.work_date == shift.date,
+            ProjectTimeEntry.source_attendance_id.is_(None),
+            or_(
+                ProjectTimeEntry.notes.ilike("%attendance system%"),
+            ),
+        ).first()
     
     # NEW MODEL: Process both clock-in and clock-out if they exist
     # Process clock-in first if clock_in_time exists and we haven't processed it yet

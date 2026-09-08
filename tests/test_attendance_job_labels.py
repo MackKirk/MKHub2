@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 from app.services.attendance_job_labels import (
     collect_project_ids_from_job_types,
+    compose_reason_text,
     format_project_job_label,
     parse_job_type_from_reason_text,
     resolve_job_label,

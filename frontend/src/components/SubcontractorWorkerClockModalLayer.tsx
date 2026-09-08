@@ -235,8 +235,8 @@ export function SubcontractorWorkerClockModalLayer({
     }
 
     const [hours, minutes] = timeToUse.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 5 !== 0 || minutes < 0 || minutes > 59) {
-      toast.error('Please select a valid time in 5-minute increments');
+    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 15 !== 0 || minutes < 0 || minutes > 59) {
+      toast.error('Please select a valid time in 15-minute increments');
       return;
     }
 
@@ -475,7 +475,7 @@ export function SubcontractorWorkerClockModalLayer({
           )}
           {!hasUnrestrictedClock && (
             <p className="mt-1.5 text-xs text-gray-500">
-              Time is locked to the current time (5-minute increments). Contact an administrator to enable time editing.
+              Time is locked to the current time (15-minute increments). Contact an administrator to enable time editing.
             </p>
           )}
         </div>

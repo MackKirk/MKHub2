@@ -1821,7 +1821,7 @@ export default function Attendance() {
               onChange={(next) => setFormData((prev) => ({ ...prev, clock_in_time: next }))}
               required
               dateFieldHint="Clock-in date\n\nDay the employee started on site."
-              timeFieldHint="Clock-in time\n\nLocal time when the employee clocked in (5-minute steps)."
+              timeFieldHint="Clock-in time\n\nLocal time when the employee clocked in (15-minute steps)."
             />
           ) : (
             <AppDatePicker

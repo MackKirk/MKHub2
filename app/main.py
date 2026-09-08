@@ -1019,6 +1019,118 @@ def create_app() -> FastAPI:
                             pass
                         db.commit()
 
+                    try:
+                        from .models.models import WorkType as _WorkType
+
+                        Base.metadata.create_all(bind=engine, tables=[_WorkType.__table__])
+                    except Exception as _e:
+                        print(f"[startup] work_types create_all (non-critical): {_e}")
+
+                    for _col, _ddl in (
+                        ("project_id", "UUID NULL"),
+                        ("predefined_job_code", "VARCHAR(20) NULL"),
+                        ("work_type_id", "UUID NULL"),
+                        ("entry_kind", "VARCHAR(20) NOT NULL DEFAULT 'clock'"),
+                        ("declared_hours", "NUMERIC(10, 2) NULL"),
+                        ("updated_at", "TIMESTAMPTZ NULL"),
+                        ("updated_by", "UUID NULL"),
+                    ):
+                        try:
+                            db.execute(
+                                text(
+                                    f"ALTER TABLE attendance ADD COLUMN IF NOT EXISTS {_col} {_ddl}"
+                                )
+                            )
+                            db.commit()
+                        except Exception as _e:
+                            db.rollback()
+                            print(f"[startup] attendance.{_col} (non-critical): {_e}")
+
+                    try:
+                        db.execute(
+                            text(
+                                "CREATE INDEX IF NOT EXISTS idx_attendance_project_id ON attendance(project_id)"
+                            )
+                        )
+                        db.execute(
+                            text(
+                                "CREATE INDEX IF NOT EXISTS idx_attendance_work_type_id ON attendance(work_type_id)"
+                            )
+                        )
+                        db.execute(
+                            text(
+                                "CREATE INDEX IF NOT EXISTS idx_attendance_predefined_job_code ON attendance(predefined_job_code)"
+                            )
+                        )
+                        db.commit()
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] attendance period indexes (non-critical): {_e}")
+
+                    try:
+                        db.execute(
+                            text(
+                                """
+                                DO $$ BEGIN
+                                  ALTER TABLE attendance
+                                    ADD CONSTRAINT fk_attendance_project_id
+                                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL;
+                                EXCEPTION WHEN duplicate_object THEN NULL;
+                                END $$;
+                                """
+                            )
+                        )
+                        db.execute(
+                            text(
+                                """
+                                DO $$ BEGIN
+                                  ALTER TABLE attendance
+                                    ADD CONSTRAINT fk_attendance_work_type_id
+                                    FOREIGN KEY (work_type_id) REFERENCES work_types(id) ON DELETE SET NULL;
+                                EXCEPTION WHEN duplicate_object THEN NULL;
+                                END $$;
+                                """
+                            )
+                        )
+                        db.execute(
+                            text(
+                                """
+                                DO $$ BEGIN
+                                  ALTER TABLE attendance
+                                    ADD CONSTRAINT fk_attendance_updated_by
+                                    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL;
+                                EXCEPTION WHEN duplicate_object THEN NULL;
+                                END $$;
+                                """
+                            )
+                        )
+                        db.commit()
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] attendance period FKs (non-critical): {_e}")
+
+                    try:
+                        db.execute(
+                            text(
+                                """
+                                CREATE UNIQUE INDEX IF NOT EXISTS uq_project_time_entries_source_attendance_id
+                                ON project_time_entries(source_attendance_id)
+                                """
+                            )
+                        )
+                        db.commit()
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] project_time_entries unique source_attendance_id (non-critical): {_e}")
+
+                    try:
+                        from .services.service_items import ensure_service_items_list as _ensure_si
+
+                        _ensure_si(db)
+                    except Exception as _e:
+                        db.rollback()
+                        print(f"[startup] work_types seed (non-critical): {_e}")
+
                     # Check for cloth_size and cloth_sizes_custom columns in employee_profiles
                     rows = db.execute(
                         text(

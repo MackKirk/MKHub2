@@ -19,6 +19,14 @@ logger = structlog.get_logger()
 REMINDER_HOUR = 18
 TITLE = "Log your hours"
 BODY = "It's 6 PM — don't forget to log today's hours in MK Hub."
+BLAIR_USERNAME = "bbennett"
+BLAIR_TITLE = "Blair, have you logged your hours today?"
+
+
+def hours_reminder_copy(username: str | None) -> tuple[str, str]:
+    if (username or "").strip().lower() == BLAIR_USERNAME:
+        return BLAIR_TITLE, BODY
+    return TITLE, BODY
 
 
 def _company_now() -> datetime:
@@ -107,10 +115,11 @@ def process_hours_reminders(db: Session, *, force: bool = False) -> int:
             if user_logged_hours_on(db, user_id, local_date):
                 continue
 
+            title, body = hours_reminder_copy(bundle["user"].username)
             stale = send_expo_push(
                 bundle["tokens"],
-                title=TITLE,
-                body=BODY,
+                title=title,
+                body=body,
                 data={"screen": "Clock", "type": "hours_reminder"},
             )
             stale_tokens.extend(stale)

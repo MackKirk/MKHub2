@@ -9,24 +9,13 @@ from ..config import settings
 
 
 def round_to_5_minutes(dt: datetime) -> datetime:
+    """Round datetime to nearest 15-minute increment (VeriClock).
+
+    Name kept for call-site compatibility. Remainder 0–7 stay; 8–14 round up.
     """
-    Round datetime to nearest 5-minute increment.
-    
-    Args:
-        dt: Datetime to round
-    
-    Returns:
-        Rounded datetime
-    """
-    minutes = dt.minute
-    rounded_minutes = (minutes // 5) * 5
-    if minutes % 5 >= 3:  # Round up if >= 3 minutes
-        rounded_minutes += 5
-        if rounded_minutes >= 60:
-            rounded_minutes = 0
-            dt = dt + timedelta(hours=1)
-    
-    return dt.replace(minute=rounded_minutes, second=0, microsecond=0)
+    from .time_calculation import round_clock_datetime
+
+    return round_clock_datetime(dt)
 
 
 def is_within_tolerance(

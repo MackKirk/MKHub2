@@ -4,9 +4,9 @@ export const TIME_HOUR_12_OPTIONS = Array.from({ length: 12 }, (_, i) => ({
   label: String(i + 1),
 }));
 
-/** Five-minute steps (00, 05, …, 55). */
-export const TIME_MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => {
-  const m = String(i * 5).padStart(2, '0');
+/** 15-minute steps (00, 15, 30, 45) — VeriClock / MKHub clock grid. */
+export const TIME_MINUTE_OPTIONS = Array.from({ length: 4 }, (_, i) => {
+  const m = String(i * 15).padStart(2, '0');
   return { value: m, label: m };
 });
 
@@ -53,12 +53,14 @@ export function formatTimeDisplay(hhmm: string): string {
 }
 
 /**
- * Round a Date to the nearest 5-minute increment (matches backend round_to_5_minutes).
- * Remainder >= 3 minutes rounds up; 58–59 rolls into the next hour.
+ * Round a Date to the nearest 15-minute increment (matches backend round_clock_datetime).
+ * Remainder 0–7 stay; 8–14 round up (7→00, 8→15, 52→45, 53→00).
  */
-export function roundToNearest5Minutes(date: Date = new Date()): Date {
+export function roundToNearest15Minutes(date: Date = new Date()): Date {
   const result = new Date(date.getTime());
-  let rounded = Math.round(result.getMinutes() / 5) * 5;
+  const minutes = result.getMinutes();
+  const remainder = minutes % 15;
+  let rounded = remainder < 8 ? minutes - remainder : minutes + (15 - remainder);
   if (rounded === 60) {
     result.setHours(result.getHours() + 1);
     rounded = 0;
@@ -67,8 +69,13 @@ export function roundToNearest5Minutes(date: Date = new Date()): Date {
   return result;
 }
 
-/** `HH:mm` from a date rounded to the nearest 5 minutes. */
+/** @deprecated Use roundToNearest15Minutes. Kept for call-site compatibility. */
+export function roundToNearest5Minutes(date: Date = new Date()): Date {
+  return roundToNearest15Minutes(date);
+}
+
+/** `HH:mm` from a date rounded to the nearest 15 minutes. */
 export function formatRoundedHhmm(date: Date = new Date()): string {
-  const rounded = roundToNearest5Minutes(date);
+  const rounded = roundToNearest15Minutes(date);
   return `${String(rounded.getHours()).padStart(2, '0')}:${String(rounded.getMinutes()).padStart(2, '0')}`;
 }

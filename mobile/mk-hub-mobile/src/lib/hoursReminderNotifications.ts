@@ -1,4 +1,4 @@
-import { Platform } from "react-native";
+import { Image, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
@@ -7,6 +7,7 @@ import { CommonActions } from "@react-navigation/native";
 import { navigationRef } from "../navigation/HubMenuProvider";
 import { registerDeviceToken, unregisterDeviceToken } from "../services/notifications";
 import { isWeekday } from "./workdays";
+import { BLAIR_HOURS_PHOTO, BLAIR_HOURS_TITLE, isBlairHoursJoke } from "./blairHoursJoke";
 
 const REMINDER_ID = "mkhub-hours-reminder";
 const CHANNEL_ID = "hours-reminders";
@@ -150,7 +151,30 @@ function nextReminderDate(hasLoggedToday: boolean, now = new Date()): Date {
   return bumpToWeekday(target);
 }
 
-export async function syncHoursReminder(hasLoggedToday: boolean): Promise<void> {
+function hoursReminderContent(
+  username?: string | null
+): Notifications.NotificationContentInput {
+  const joke = isBlairHoursJoke(username);
+  const content: Notifications.NotificationContentInput = {
+    title: joke ? BLAIR_HOURS_TITLE : "Log your hours",
+    body: "Don't forget to log today's hours in MK Hub.",
+    sound: "default",
+    data: { screen: "Clock", type: "hours_reminder" }
+  };
+  if (!joke) return content;
+  const uri = Image.resolveAssetSource(BLAIR_HOURS_PHOTO)?.uri;
+  if (uri) {
+    content.attachments = [
+      { identifier: "blair-hours", url: uri, type: "image/png" }
+    ];
+  }
+  return content;
+}
+
+export async function syncHoursReminder(
+  hasLoggedToday: boolean,
+  username?: string | null
+): Promise<void> {
   try {
     await Notifications.cancelScheduledNotificationAsync(REMINDER_ID);
   } catch {
@@ -165,12 +189,7 @@ export async function syncHoursReminder(hasLoggedToday: boolean): Promise<void> 
   const when = nextReminderDate(hasLoggedToday);
   await Notifications.scheduleNotificationAsync({
     identifier: REMINDER_ID,
-    content: {
-      title: "Log your hours",
-      body: "Don't forget to log today's hours in MK Hub.",
-      sound: "default",
-      data: { screen: "Clock", type: "hours_reminder" }
-    },
+    content: hoursReminderContent(username),
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
       date: when,
@@ -179,12 +198,15 @@ export async function syncHoursReminder(hasLoggedToday: boolean): Promise<void> 
   });
 }
 
-export async function setupHoursReminders(hasLoggedToday: boolean): Promise<void> {
+export async function setupHoursReminders(
+  hasLoggedToday: boolean,
+  username?: string | null
+): Promise<void> {
   const granted = await requestHoursReminderPermission();
   if (!granted) {
     remotePushReady = false;
     return;
   }
   await registerRemotePushToken();
-  await syncHoursReminder(hasLoggedToday);
+  await syncHoursReminder(hasLoggedToday, username);
 }

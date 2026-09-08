@@ -518,8 +518,8 @@ export function ClockInOutModalLayer({
     }
 
     const [hours, minutes] = timeToUse.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 5 !== 0 || minutes < 0 || minutes > 59) {
-      toast.error('Please select a valid time in 5-minute increments');
+    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 15 !== 0 || minutes < 0 || minutes > 59) {
+      toast.error('Please select a valid time in 15-minute increments');
       return;
     }
 

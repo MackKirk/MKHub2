@@ -716,6 +716,7 @@ class ProjectTimeEntry(Base):
         UUID(as_uuid=True),
         ForeignKey("attendance.id", ondelete="SET NULL"),
         nullable=True,
+        unique=True,
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -2365,6 +2366,26 @@ class Shift(Base):
     )
 
 
+class WorkType(Base):
+    """Operational activity / project costing classification chosen at time entry.
+
+    Independent of payroll treatment (PayrollCode / Sage Payroll Income).
+    Regular is the default so most employees never pick. Sage Item mapping is later.
+    """
+    __tablename__ = "work_types"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sort_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sage_service_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    overtime_exempt: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    deduction_exempt: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class Attendance(Base):
     """Worker clock-in/out attendance records - single record per event"""
     __tablename__ = "attendance"
@@ -2403,6 +2424,21 @@ class Attendance(Base):
     rejected_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
 
+    # Structured period fields (Phase 1). Dual-written with reason_text markers.
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    predefined_job_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
+    work_type_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("work_types.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    entry_kind: Mapped[str] = mapped_column(String(20), default="clock", nullable=False)
+    declared_hours: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Legacy fields (for migration compatibility - will be removed after migration)
     type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # in|out - DEPRECATED, kept for migration
     time_entered_utc: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # DEPRECATED, kept for migration
@@ -2418,6 +2454,8 @@ class Attendance(Base):
         Index('idx_attendance_worker_clock_out', 'worker_id', 'clock_out_time'),
         Index('idx_attendance_shift', 'shift_id'),
         Index('idx_attendance_status', 'status'),
+        Index('idx_attendance_project_id', 'project_id'),
+        Index('idx_attendance_work_type_id', 'work_type_id'),
     )
 
 

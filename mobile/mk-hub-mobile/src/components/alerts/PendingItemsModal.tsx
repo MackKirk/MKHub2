@@ -1,6 +1,7 @@
 import React from "react";
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -9,6 +10,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { BLAIR_HOURS_PHOTO, BLAIR_HOURS_TITLE } from "../../lib/blairHoursJoke";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { TaskItem } from "../../types/tasks";
@@ -24,6 +26,7 @@ const WARNING = "#B45309";
 export type PendingHours = {
   label: string;
   date: string;
+  joke?: boolean;
 };
 
 type PendingItemsModalProps = {
@@ -140,18 +143,32 @@ export const PendingItemsModal: React.FC<PendingItemsModalProps> = ({
                 onPress={onLogHours}
                 activeOpacity={0.85}
               >
+                {hours.joke ? (
+                  <Image
+                    source={BLAIR_HOURS_PHOTO}
+                    style={styles.jokePhoto}
+                    resizeMode="cover"
+                    accessibilityLabel="Blair"
+                  />
+                ) : null}
                 <View style={styles.hoursTop}>
-                  <View style={[styles.rowIcon, { backgroundColor: "#FEF3C7" }]}>
-                    <Ionicons name="time-outline" size={18} color={WARNING} />
-                  </View>
+                  {hours.joke ? null : (
+                    <View style={[styles.rowIcon, { backgroundColor: "#FEF3C7" }]}>
+                      <Ionicons name="time-outline" size={18} color={WARNING} />
+                    </View>
+                  )}
                   <View style={styles.hoursCopy}>
-                    <Text style={styles.hoursTitle}>Hours not logged</Text>
-                    <Text style={styles.hoursBody}>
-                      You haven't logged hours for {hours.label}.
+                    <Text style={[styles.hoursTitle, hours.joke ? styles.jokeTitle : null]}>
+                      {hours.joke ? BLAIR_HOURS_TITLE : "Hours not logged"}
                     </Text>
+                    {hours.joke ? null : (
+                      <Text style={styles.hoursBody}>
+                        You haven't logged hours for {hours.label}.
+                      </Text>
+                    )}
                   </View>
                 </View>
-                <View style={styles.hoursCta}>
+                <View style={[styles.hoursCta, hours.joke ? styles.jokeCta : null]}>
                   <Text style={styles.hoursCtaText}>Log hours</Text>
                 </View>
               </TouchableOpacity>
@@ -303,6 +320,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing.md,
     gap: spacing.sm
+  },
+  jokePhoto: {
+    width: "100%",
+    height: 220,
+    borderRadius: radius.md,
+    backgroundColor: "#FDE68A"
+  },
+  jokeTitle: {
+    textAlign: "center"
+  },
+  jokeCta: {
+    alignSelf: "center"
   },
   hoursTop: {
     flexDirection: "row",
