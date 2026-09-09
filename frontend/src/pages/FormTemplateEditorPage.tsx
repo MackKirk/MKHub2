@@ -266,7 +266,7 @@ export default function FormTemplateEditorPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isEmployeeReviewEditor = location.pathname.startsWith('/reviews/form-templates');
-  const listPath = isEmployeeReviewEditor ? '/reviews/form-templates' : '/safety/form-templates';
+  const listPath = isEmployeeReviewEditor ? '/reviews/form-templates' : '/documents/form-templates';
   const navigateBackToTemplateList = useNavigateBack(listPath);
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -1434,7 +1434,7 @@ export default function FormTemplateEditorPage() {
           />
           <p className={uiTypography.helper}>
             Create or edit lists under{' '}
-            <Link to="/safety/form-custom-lists" className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
+            <Link to="/documents/form-custom-lists" className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
               Form Custom Lists
             </Link>
             .
@@ -1690,7 +1690,7 @@ export default function FormTemplateEditorPage() {
                       />
                       <p className={uiTypography.helper}>
                         Create lists under{' '}
-                        <Link to="/safety/form-custom-lists" className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
+                        <Link to="/documents/form-custom-lists" className="text-brand-red hover:underline" onClick={(e) => e.stopPropagation()}>
                           Form Custom Lists
                         </Link>{' '}
                         if none appear here.

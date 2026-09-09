@@ -379,6 +379,12 @@ def seed_business_permissions():
                 "description": "Allows adding and removing project members from project detail",
                 "sort_index": base_sort + 19,
             })
+            business_permissions.append({
+                "key": f"{prefix}:owner:write",
+                "label": "Change Project Owner",
+                "description": "Allows changing the project owner (primary customer) and reassigning site, contact, and related fields",
+                "sort_index": base_sort + 20,
+            })
         
         for perm_data in business_permissions:
             # Find or create permission

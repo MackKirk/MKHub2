@@ -100,6 +100,15 @@ def can_manage_project_members(user: User, line: Optional[str] = None) -> bool:
     return _has_permission(user, "business:construction:projects:members:write")
 
 
+def can_change_project_owner(user: User, line: Optional[str] = None) -> bool:
+    if _is_admin(user):
+        return True
+    ln = normalize_business_line(line)
+    if ln == BUSINESS_LINE_REPAIRS_MAINTENANCE:
+        return _has_permission(user, "business:rm:projects:owner:write")
+    return _has_permission(user, "business:construction:projects:owner:write")
+
+
 def _legacy_related_clause(user_id: uuid.UUID):
     user_id_str = str(user_id)
     return or_(

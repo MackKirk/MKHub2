@@ -1,4 +1,4 @@
-import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
@@ -15,16 +15,39 @@ import {
   AppListCreateItem,
   AppPageHeader,
   AppQuickFilterRow,
+  AppSelect,
   uiBorders,
   uiColors,
   uiCx,
   uiLayout,
+  uiRadius,
   uiShadows,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
-import { Search, SlidersHorizontal, Truck } from 'lucide-react';
+import { Search, SlidersHorizontal, Truck, List, Table2 } from 'lucide-react';
 import { canEditFleetAssetRecord } from '@/lib/fleetPermissions';
+import {
+  formatFleetAssetStatus,
+  getFleetAssetStatusVariant,
+  getFleetDueStatusBadgeVariant,
+} from '@/lib/fleetUi';
+import { listPageSizeSelectOptions, parseListPageLimit } from '@/lib/listPagination';
+import FleetAssetsSpreadsheetView from '@/components/fleet/FleetAssetsSpreadsheetView';
+
+const FLEET_ASSETS_VIEW_STORAGE_KEY = 'fleet-assets-view-mode';
+type FleetAssetsViewMode = 'list' | 'spreadsheet';
+
+function resolveInitialFleetAssetsViewMode(urlView: string | null): FleetAssetsViewMode {
+  // Spreadsheet is the default landing view; only explicit ?view=list keeps list.
+  if (urlView === 'list') return 'list';
+  return 'spreadsheet';
+}
+
+type FleetComplianceTypeStatus = {
+  label: string;
+  expiry_date?: string;
+};
 
 type FleetAsset = {
   id: string;
@@ -50,7 +73,9 @@ type FleetAsset = {
   hours_noted_issues?: string;
   driver_id?: string;
   driver_name?: string;
+  assigned_to_name?: string | null;
   driver_contact_phone?: string;
+  department?: string | null;
   fuel_type?: string;
   vehicle_type?: string;
   yard_location?: string;
@@ -62,7 +87,10 @@ type FleetAsset = {
   gvw_unit?: string;
   equipment_type_label?: string;
   created_at: string;
+  compliance_by_type?: Record<string, FleetComplianceTypeStatus>;
 };
+
+const COMPLIANCE_TYPE_ORDER = ['CVIP', 'NDT', 'CRANE', 'PROPANE'] as const;
 
 type FleetAssetsResponse = {
   items: FleetAsset[];
@@ -71,6 +99,12 @@ type FleetAssetsResponse = {
   limit: number;
   total_pages: number;
   fuel_type_options: string[];
+};
+
+type FleetAssetsCountsResponse = {
+  types: Record<string, number>;
+  statuses: Record<string, number>;
+  assigned: Record<string, number>;
 };
 
 const META_YARD_MAX_LEN = 30;
@@ -224,12 +258,18 @@ function buildFleetAssetsApiParams(
   page: number,
   limit: number,
   search: string,
-  opts?: { omitQuickFilters?: boolean; page?: number; limit?: number },
+  opts?: {
+    omitQuickFilters?: boolean;
+    page?: number;
+    limit?: number;
+    includeFuelTypes?: boolean;
+    countsOnly?: boolean;
+  },
 ): URLSearchParams {
   const params = new URLSearchParams();
   if (search) params.append('search', search);
 
-  if (!opts?.omitQuickFilters) {
+  if (!opts?.omitQuickFilters && !opts?.countsOnly) {
     const typeVal = searchParams.get('type');
     const typeNot = searchParams.get('type_not');
     if (typeVal) params.append('asset_type', typeVal);
@@ -256,10 +296,13 @@ function buildFleetAssetsApiParams(
   if (year) params.append('year', year);
   if (yearNot) params.append('year_not', yearNot);
 
-  params.set('sort', sortBy);
-  params.set('dir', sortDir);
-  params.set('page', String(opts?.page ?? page));
-  params.set('limit', String(opts?.limit ?? limit));
+  if (!opts?.countsOnly) {
+    params.set('sort', sortBy);
+    params.set('dir', sortDir);
+    params.set('page', String(opts?.page ?? page));
+    params.set('limit', String(opts?.limit ?? limit));
+    if (opts?.includeFuelTypes) params.set('include_fuel_types', 'true');
+  }
   return params;
 }
 
@@ -324,27 +367,6 @@ function getFleetValueLabel(rule: FilterRule, divisions: { id?: string; label?: 
   return (map && map[v]) ?? v ?? '';
 }
 
-type FleetAssetStatusVariant = 'success' | 'warning' | 'danger' | 'neutral' | 'info';
-
-function getFleetAssetStatusVariant(status: string): FleetAssetStatusVariant {
-  switch (status) {
-    case 'active':
-      return 'success';
-    case 'maintenance':
-      return 'warning';
-    case 'retired':
-      return 'danger';
-    case 'inactive':
-      return 'neutral';
-    default:
-      return 'neutral';
-  }
-}
-
-function formatFleetAssetStatus(status: string): string {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
 function getFleetAssetTypeLabel(assetType: string): string {
   if (assetType === 'vehicle') return 'Vehicle';
   if (assetType === 'heavy_machinery') return 'Heavy Machinery';
@@ -368,19 +390,23 @@ function SortHeader({
   title: string;
   className?: string;
 }) {
-  const indicator = sortBy === column ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+  const active = sortBy === column;
+  const arrow = sortDir === 'asc' ? '↑' : '↓';
   return (
     <th className={className}>
       <AppButton
         type="button"
         variant="ghost"
         size="sm"
-        className={uiCx('h-auto px-0 font-semibold text-gray-700 hover:text-gray-900')}
+        className={uiCx('h-auto inline-flex items-center gap-1 px-0 font-semibold text-gray-700 hover:text-gray-900')}
         onClick={() => onSort(column)}
         title={title}
       >
-        {label}
-        {indicator}
+        <span>{label}</span>
+        {/* Reserve arrow width so activating sort does not resize columns */}
+        <span className={uiCx('inline-block w-3 shrink-0 text-center', active ? undefined : 'invisible')} aria-hidden={!active}>
+          {active ? arrow : '↑'}
+        </span>
       </AppButton>
     </th>
   );
@@ -390,9 +416,14 @@ export default function FleetAssets() {
   const nav = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const search = searchParams.get('search') ?? '';
+  const searchFromUrl = searchParams.get('search') ?? '';
+  const [searchInput, setSearchInput] = useState(searchFromUrl);
+  const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
   const [showNewAssetModal, setShowNewAssetModal] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<FleetAssetsViewMode>(() =>
+    resolveInitialFleetAssetsViewMode(searchParams.get('view')),
+  );
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
   const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
@@ -412,11 +443,13 @@ export default function FleetAssets() {
 
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const [page, setPage] = useState(pageParam);
-  const limit = 15;
+  const limit = parseListPageLimit(searchParams.get('limit'));
+  const listPageSizeOptions = useMemo(() => listPageSizeSelectOptions(), []);
+  const currentListPageSize = String(limit);
 
   // List sort (only columns that remain in the table)
-  type SortColumn = 'unit_number' | 'name' | 'type' | 'year' | 'plate_vin' | 'assignment' | 'status';
-  const validSorts: SortColumn[] = ['unit_number', 'name', 'type', 'year', 'plate_vin', 'assignment', 'status'];
+  type SortColumn = 'unit_number' | 'name' | 'type' | 'year' | 'plate_vin' | 'assignment' | 'compliance' | 'status';
+  const validSorts: SortColumn[] = ['unit_number', 'name', 'type', 'year', 'plate_vin', 'assignment', 'compliance', 'status'];
   const rawSort = searchParams.get('sort');
   const sortBy: SortColumn = (rawSort && validSorts.includes(rawSort as SortColumn)) ? (rawSort as SortColumn) : 'unit_number';
   const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
@@ -429,6 +462,51 @@ export default function FleetAssets() {
     setPage(1);
     setSearchParams(params, { replace: true });
   };
+
+  // Debounce search before syncing to URL (avoids refetch on every keystroke)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchInput), 350);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    const currentSearch = params.get('search') || '';
+    if (debouncedSearch === currentSearch) return;
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    else params.delete('search');
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
+  // Sync search input when URL changes (e.g. back/forward navigation)
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') || '';
+    if (urlSearch !== searchInput) setSearchInput(urlSearch);
+    if (urlSearch !== debouncedSearch) setDebouncedSearch(urlSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (viewMode === 'list') {
+          if (params.get('view') === 'list') return prev;
+          params.set('view', 'list');
+        } else {
+          // Spreadsheet is the default — keep URL clean
+          if (!params.has('view')) return prev;
+          params.delete('view');
+        }
+        return params;
+      },
+      { replace: true },
+    );
+    localStorage.setItem(FLEET_ASSETS_VIEW_STORAGE_KEY, viewMode);
+  }, [viewMode, setSearchParams]);
 
   // Update type filter and page when URL params change
   useEffect(() => {
@@ -445,6 +523,8 @@ export default function FleetAssets() {
     setTypeFilter(prev => prev !== newType ? newType : prev);
     if (urlPage !== page) setPage(urlPage);
   }, [searchParams]);
+
+  const search = searchFromUrl;
   
   // Update URL when type filter changes (reset page to 1)
   const handleTypeFilterChange = (type: string) => {
@@ -526,50 +606,42 @@ export default function FleetAssets() {
 
   const quickFilterCountBaseQs = useMemo(
     () =>
-      buildFleetAssetsApiParams(searchParams, typeFilter, sortBy, sortDir, page, limit, search, {
-        omitQuickFilters: true,
-        page: 1,
-        limit: 1,
+      buildFleetAssetsApiParams(searchParams, typeFilter, 'unit_number', 'asc', 1, 1, search, {
+        countsOnly: true,
       }).toString(),
-    [searchParams, typeFilter, sortBy, sortDir, page, limit, search],
+    // Counts ignore sort/pagination/quick filters — exclude them so sorting does not refetch counts
+    [
+      search,
+      searchParams.get('division_id'),
+      searchParams.get('division_id_not'),
+      searchParams.get('fuel_type'),
+      searchParams.get('fuel_type_not'),
+      searchParams.get('year'),
+      searchParams.get('year_not'),
+    ],
   );
 
-  const quickFilterCountTargets = useMemo(() => {
-    const targets: Array<{ key: string; qs: string }> = [];
-    for (const opt of TYPE_QUICK_FILTER_OPTIONS) {
-      const p = new URLSearchParams(quickFilterCountBaseQs);
-      if (opt.value !== 'all') p.set('asset_type', opt.value);
-      targets.push({ key: `type:${opt.value}`, qs: p.toString() });
-    }
-    for (const opt of STATUS_OPTIONS) {
-      const p = new URLSearchParams(quickFilterCountBaseQs);
-      p.set('status', opt.value);
-      targets.push({ key: `status:${opt.value}`, qs: p.toString() });
-    }
-    for (const assignedValue of ['true', 'false'] as const) {
-      const p = new URLSearchParams(quickFilterCountBaseQs);
-      p.set('assigned', assignedValue);
-      targets.push({ key: `assigned:${assignedValue}`, qs: p.toString() });
-    }
-    return targets;
-  }, [quickFilterCountBaseQs]);
-
-  const quickFilterCountQueries = useQueries({
-    queries: quickFilterCountTargets.map((target) => ({
-      queryKey: ['fleetAssets', 'quick-filter-count', target.key, target.qs],
-      queryFn: () => api<FleetAssetsResponse>('GET', `/fleet/assets?${target.qs}`).then((r) => r.total),
-      staleTime: 60_000,
-    })),
+  const { data: quickFilterCountsData } = useQuery({
+    queryKey: ['fleetAssets', 'counts', quickFilterCountBaseQs],
+    queryFn: () =>
+      api<FleetAssetsCountsResponse>('GET', `/fleet/assets/counts?${quickFilterCountBaseQs}`),
+    staleTime: 60_000,
   });
 
   const quickFilterCountsByKey = useMemo(() => {
     const counts: Record<string, number> = {};
-    quickFilterCountTargets.forEach((target, index) => {
-      const total = quickFilterCountQueries[index]?.data;
-      if (typeof total === 'number') counts[target.key] = total;
-    });
+    if (!quickFilterCountsData) return counts;
+    for (const [key, value] of Object.entries(quickFilterCountsData.types || {})) {
+      if (typeof value === 'number') counts[`type:${key}`] = value;
+    }
+    for (const [key, value] of Object.entries(quickFilterCountsData.statuses || {})) {
+      if (typeof value === 'number') counts[`status:${key}`] = value;
+    }
+    for (const [key, value] of Object.entries(quickFilterCountsData.assigned || {})) {
+      if (typeof value === 'number') counts[`assigned:${key}`] = value;
+    }
     return counts;
-  }, [quickFilterCountTargets, quickFilterCountQueries]);
+  }, [quickFilterCountsData]);
 
   const quickFilterSegmentsWithCounts = useMemo(
     () =>
@@ -588,6 +660,7 @@ export default function FleetAssets() {
       sortBy,
       sortDir,
       page,
+      limit,
       searchParams.get('type'),
       searchParams.get('type_not'),
       searchParams.get('status'),
@@ -612,10 +685,25 @@ export default function FleetAssets() {
       );
       return api<FleetAssetsResponse>('GET', `/fleet/assets?${params.toString()}`);
     },
+    placeholderData: keepPreviousData,
   });
 
   const assets = data?.items ?? [];
-  const fuelTypeOptions = data?.fuel_type_options ?? [];
+  const isInitialLoading = isLoading && !data;
+
+  const { data: fuelTypesData } = useQuery({
+    queryKey: ['fleetAssets', 'fuel-type-options'],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('page', '1');
+      params.set('limit', '1');
+      params.set('include_fuel_types', 'true');
+      return api<FleetAssetsResponse>('GET', `/fleet/assets?${params.toString()}`);
+    },
+    staleTime: 5 * 60_000,
+    select: (res) => res.fuel_type_options ?? [],
+  });
+  const fuelTypeOptions = fuelTypesData ?? [];
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -663,19 +751,37 @@ export default function FleetAssets() {
 
       <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>
         <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+          <div className={uiCx('flex shrink-0 items-stretch overflow-hidden', uiRadius.control, uiBorders.subtle)}>
+            <AppButton
+              type="button"
+              variant={viewMode === 'spreadsheet' ? 'primary' : 'secondary'}
+              size="sm"
+              className="!rounded-none !px-2.5"
+              onClick={() => setViewMode('spreadsheet')}
+              title="Spreadsheet view"
+              aria-label="Spreadsheet view"
+              aria-pressed={viewMode === 'spreadsheet'}
+            >
+              <Table2 className="h-4 w-4" />
+            </AppButton>
+            <AppButton
+              type="button"
+              variant={viewMode === 'list' ? 'primary' : 'secondary'}
+              size="sm"
+              className="!rounded-none !border-l-0 !px-2.5"
+              onClick={() => setViewMode('list')}
+              title="List view"
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
+            >
+              <List className="h-4 w-4" />
+            </AppButton>
+          </div>
           <div className="min-w-0 flex-1">
             <AppInput
-              placeholder="Search by name, VIN, plate, model, fuel type, type (SUV…), address, assigned user…"
-              value={search}
-              onChange={(e) => {
-                const next = e.target.value;
-                const params = new URLSearchParams(searchParams);
-                if (next) params.set('search', next);
-                else params.delete('search');
-                params.set('page', '1');
-                setPage(1);
-                setSearchParams(params, { replace: true });
-              }}
+              placeholder="Search unit #, plate, VIN, or name (unit:6, plate:ABC…)"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               leftIcon={<Search className="h-4 w-4" />}
               aria-label="Search fleet assets"
             />
@@ -738,7 +844,24 @@ export default function FleetAssets() {
                 Showing {((data.page - 1) * data.limit) + 1} to {Math.min(data.page * data.limit, data.total)} of{' '}
                 {data.total} assets
               </p>
-              <div className={uiCx(uiLayout.actionsRow, 'items-center')}>
+              <div className={uiCx(uiLayout.actionsRow, 'items-center flex-wrap gap-3')}>
+                <div className="flex items-center gap-2">
+                  <span className={uiTypography.helper}>Rows per page</span>
+                  <AppSelect
+                    size="sm"
+                    value={currentListPageSize}
+                    onChange={(e) => {
+                      const params = new URLSearchParams(searchParams);
+                      params.set('limit', e.target.value);
+                      params.set('page', '1');
+                      setPage(1);
+                      setSearchParams(params);
+                    }}
+                    options={listPageSizeOptions}
+                    sortOptions={false}
+                    className="w-20"
+                  />
+                </div>
                 <AppButton
                   type="button"
                   variant="secondary"
@@ -782,13 +905,38 @@ export default function FleetAssets() {
             <AppListCreateItem label="New Asset" layout="row" className="w-full" onClick={() => setShowNewAssetModal(true)} />
           </div>
         ) : null}
-        {isLoading ? (
+        {isInitialLoading ? (
           <div className={uiCx(uiSpacing.cardPadding, 'text-center')}>
             <p className={uiTypography.helper}>Loading assets...</p>
           </div>
         ) : assets.length > 0 ? (
-          <div className="overflow-x-auto min-w-0">
-            <table className={uiCx('w-full min-w-0 border-collapse', uiBorders.subtle)}>
+          viewMode === 'spreadsheet' ? (
+            <FleetAssetsSpreadsheetView
+              assets={assets}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSort={setListSort}
+              onRowNavigate={(id) => nav(`/fleet/assets/${id}`)}
+              isFetching={isFetching}
+            />
+          ) : (
+          <div
+            className={uiCx(
+              'overflow-x-auto min-w-0',
+              isFetching && assets.length > 0 ? 'opacity-60 pointer-events-none' : undefined,
+            )}
+          >
+            <table className={uiCx('w-full min-w-[1100px] table-fixed border-collapse', uiBorders.subtle)}>
+              <colgroup>
+                <col className="w-[7%]" />
+                <col className="w-[20%]" />
+                <col className="w-[11%]" />
+                <col className="w-[7%]" />
+                <col className="w-[11%]" />
+                <col className="w-[13%]" />
+                <col className="w-[18%]" />
+                <col className="w-[13%]" />
+              </colgroup>
               <thead>
                 <tr className={uiCx(uiColors.surfaceSubtle, 'border-b border-gray-200')}>
                   <SortHeader
@@ -846,6 +994,15 @@ export default function FleetAssets() {
                     className={uiCx('px-3 py-2 text-left', uiTypography.controlLabel)}
                   />
                   <SortHeader
+                    label="Compliance"
+                    column="compliance"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={(col) => setListSort(col as SortColumn)}
+                    title="Sort by compliance status"
+                    className={uiCx('px-3 py-2 text-left', uiTypography.controlLabel)}
+                  />
+                  <SortHeader
                     label="Status"
                     column="status"
                     sortBy={sortBy}
@@ -894,7 +1051,7 @@ export default function FleetAssets() {
                         <AppBadge variant="info">{getFleetAssetTypeLabel(asset.asset_type)}</AppBadge>
                       </td>
                       <td className={uiCx('px-3 py-3 align-top', uiTypography.helper)}>{asset.year ?? '—'}</td>
-                      <td className={uiCx('max-w-[120px] truncate px-3 py-3 align-top', uiTypography.helper)}>
+                      <td className={uiCx('min-w-0 truncate px-3 py-3 align-top', uiTypography.helper)}>
                         {asset.license_plate || asset.vin || '—'}
                       </td>
                       <td className="min-w-0 px-3 py-3 align-top">
@@ -907,6 +1064,26 @@ export default function FleetAssets() {
                           ) : null}
                         </div>
                       </td>
+                      <td className="min-w-0 px-3 py-3 align-top">
+                        {(() => {
+                          const byType = asset.compliance_by_type || {};
+                          const entries = COMPLIANCE_TYPE_ORDER.filter((t) => byType[t]).map((t) => [t, byType[t]] as const);
+                          if (entries.length === 0) {
+                            return <span className={uiTypography.helper}>—</span>;
+                          }
+                          return (
+                            <div className="flex flex-wrap gap-1">
+                              {entries.map(([type, s]) => (
+                                <span key={type} title={`${type} expires ${s.expiry_date || '—'}`}>
+                                  <AppBadge variant={getFleetDueStatusBadgeVariant(s.label)}>
+                                    {type}: {s.label}
+                                  </AppBadge>
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="px-3 py-3 align-top">
                         <AppBadge variant={getFleetAssetStatusVariant(asset.status)}>
                           {formatFleetAssetStatus(asset.status)}
@@ -918,6 +1095,7 @@ export default function FleetAssets() {
               </tbody>
             </table>
           </div>
+          )
         ) : (
           <div className={uiCx(uiSpacing.cardPadding, 'pb-10')}>
             <AppEmptyState title={emptyListTitle} className="border-0 bg-transparent p-0 shadow-none" />

@@ -8,6 +8,8 @@ export type UseAppListSortOptions<T extends string> = {
   setSearchParams: SetURLSearchParams;
   /** Column id used when `sort` is missing from the URL. */
   defaultSort: T;
+  /** Direction used when `dir` is missing from the URL (default `asc`). */
+  defaultDir?: AppListSortDirection;
   /** Allowed values; used to validate the URL `sort` param. */
   validSorts: readonly T[];
   sortParam?: string;
@@ -29,6 +31,7 @@ export function useAppListSort<T extends string>({
   searchParams,
   setSearchParams,
   defaultSort,
+  defaultDir = 'asc',
   validSorts,
   sortParam = 'sort',
   dirParam = 'dir',
@@ -42,7 +45,9 @@ export function useAppListSort<T extends string>({
     return defaultSort;
   }, [searchParams, sortParam, validSorts, defaultSort]);
 
-  const sortDir: AppListSortDirection = searchParams.get(dirParam) === 'desc' ? 'desc' : 'asc';
+  const rawDir = searchParams.get(dirParam);
+  const sortDir: AppListSortDirection =
+    rawDir === 'desc' || rawDir === 'asc' ? rawDir : defaultDir;
 
   const setSort = useCallback(
     (column: T, direction?: AppListSortDirection) => {

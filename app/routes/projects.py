@@ -64,6 +64,7 @@ from ..services.business_line import (
 )
 from ..services.rm_pictures_folders import ensure_rm_pictures_default_folders
 from ..services.project_visibility import (
+    can_change_project_owner,
     can_manage_project_members,
     can_view_all_projects_in_line,
     filter_projects_with_section_access,
@@ -72,6 +73,7 @@ from ..services.project_visibility import (
     project_visibility_clause_for_user,
     user_has_any_project_section_permission,
 )
+from ..services.project_change_owner import change_project_owner
 from sqlalchemy import or_, and_, cast, String, Date
 
 
@@ -1599,6 +1601,8 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         payload.pop("business_line", None)
     payload.pop("is_bidding", None)
     payload.pop("related_leak_investigation_id", None)
+    # Owner changes must go through POST /{project_id}/change-owner (folders/files/validation).
+    payload.pop("client_id", None)
 
     # Capture before state for audit log (hero and key project fields)
     before_state = {
@@ -2015,6 +2019,81 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         pass  # Don't fail project update if audit log fails
     
     return {"status": "ok"}
+
+
+@router.post("/{project_id}/change-owner")
+def change_project_owner_endpoint(
+    project_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Atomically change primary customer (project owner) with site/contact and folder move."""
+    try:
+        uuid.UUID(str(project_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Invalid project ID format")
+
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_write(user, p)
+    if not can_change_project_owner(user, getattr(p, "business_line", None)):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    before_client_id = str(p.client_id) if getattr(p, "client_id", None) else None
+    before_site_id = str(p.site_id) if getattr(p, "site_id", None) else None
+    before_contact_id = str(p.contact_id) if getattr(p, "contact_id", None) else None
+    before_related = sorted(str(x) for x in (getattr(p, "related_client_ids", None) or []) if x) or None
+    before_awarded = sorted(_effective_awarded_related_client_ids(p)) or None
+
+    audit_meta = change_project_owner(db, p, payload or {})
+    db.commit()
+    db.refresh(p)
+
+    try:
+        from ..services.audit import create_audit_log, compute_diff
+
+        after_state = {
+            "client_id": str(p.client_id) if p.client_id else None,
+            "site_id": str(p.site_id) if getattr(p, "site_id", None) else None,
+            "contact_id": str(p.contact_id) if getattr(p, "contact_id", None) else None,
+            "related_client_ids": sorted(
+                str(x) for x in (getattr(p, "related_client_ids", None) or []) if x
+            )
+            or None,
+            "awarded_related_client_ids": sorted(_effective_awarded_related_client_ids(p)) or None,
+        }
+        before_state = {
+            "client_id": before_client_id,
+            "site_id": before_site_id,
+            "contact_id": before_contact_id,
+            "related_client_ids": before_related,
+            "awarded_related_client_ids": before_awarded,
+        }
+        diff = compute_diff(before_state, after_state)
+        create_audit_log(
+            db=db,
+            entity_type="project",
+            entity_id=str(p.id),
+            action="UPDATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="change-owner",
+            changes_json={"before": before_state, "after": after_state},
+            context={
+                "project_id": str(p.id),
+                "source": "change-owner",
+                "old_client_name": audit_meta.get("old_client_name"),
+                "new_client_name": audit_meta.get("new_client_name"),
+                "resync_billing_from_client": audit_meta.get("resync_billing_from_client"),
+                "changed_fields": list(diff.keys()) if isinstance(diff, dict) else [],
+            },
+        )
+    except Exception:
+        pass
+
+    return get_project(project_id=str(p.id), sign_inspection_id=None, db=db, user=user)
 
 
 @router.post("/{project_id}/billing/sync-from-client")

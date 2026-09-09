@@ -6,6 +6,12 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { INSPECTION_RESULT_LABELS, INSPECTION_RESULT_COLORS } from '@/lib/fleetBadges';
 import FleetDetailHeader from '@/components/FleetDetailHeader';
 import WorkOrderNewModal from '@/components/fleet/WorkOrderNewModal';
+import FinishInspectionModal, {
+  canOfferScheduleNextInspection,
+  type FinishInspectionConfirmResult,
+  type FinishInspectionNextSchedule,
+} from '@/components/fleet/FinishInspectionModal';
+import { createNextInspectionSchedule } from '@/lib/fleetInspectionNextSchedule';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useNavigateBack } from '@/hooks/useNavigateBack';
 import {
@@ -98,6 +104,19 @@ export default function InspectionDetail() {
     enabled: !!isValidId && canViewExecution,
   });
 
+  const { data: parentSchedule } = useQuery({
+    queryKey: ['inspection-schedule', inspection?.inspection_schedule_id],
+    queryFn: () =>
+      api<{
+        fleet_asset_id: string;
+        urgency?: string;
+        category?: string;
+        body_result?: string | null;
+        mechanical_result?: string | null;
+      }>('GET', `/fleet/inspection-schedules/${inspection!.inspection_schedule_id}`),
+    enabled: !!inspection?.inspection_schedule_id && canViewExecution,
+  });
+
   const inspectionType = inspection?.inspection_type || 'mechanical';
   const { data: checklistTemplate } = useQuery<ChecklistTemplate>({
     queryKey: ['inspectionChecklistTemplate', inspectionType],
@@ -107,6 +126,12 @@ export default function InspectionDetail() {
 
   const isBody = inspection?.inspection_type === 'body';
   const isMechanical = inspection?.inspection_type === 'mechanical';
+  const otherLegResult = useMemo(() => {
+    if (!parentSchedule || !inspection) return null;
+    return (inspection.inspection_type || '').toLowerCase() === 'body'
+      ? parentSchedule.mechanical_result
+      : parentSchedule.body_result;
+  }, [parentSchedule, inspection]);
   const hasWorkOrder = !!(inspection as Inspection)?.auto_generated_work_order_id;
   const isResultFinal = inspection?.result && ['pass', 'fail', 'conditional'].includes((inspection.result || '').toLowerCase());
   const canEditBody = canEditExecution && isBody && !hasWorkOrder && !isResultFinal;
@@ -115,6 +140,16 @@ export default function InspectionDetail() {
   const [bodyForm, setBodyForm] = useState<BodyFormState | null>(null);
   const [mechanicalEditMode, setMechanicalEditMode] = useState(false);
   const [mechanicalForm, setMechanicalForm] = useState<MechanicalFormState | null>(null);
+  const [finishModalOpen, setFinishModalOpen] = useState(false);
+  const [finishMessage, setFinishMessage] = useState('');
+  const [allowScheduleNext, setAllowScheduleNext] = useState(false);
+  const pendingFinishRef = useRef<{
+    checklist_results?: Record<string, any>;
+    result?: string;
+    notes?: string;
+    photos?: string[];
+  } | null>(null);
+  const pendingNextRef = useRef<FinishInspectionNextSchedule | null>(null);
 
   /** Open edit mode once per inspection after load; do not reopen after Save draft / Save (mutation closes edit). */
   const lastAutoOpenedInspectionIdRef = useRef<string | null>(null);
@@ -250,21 +285,46 @@ export default function InspectionDetail() {
         notes: vars.notes,
         photos: vars.photos,
       }).then((data) => ({ data, finish: vars.finish })),
-    onSuccess: ({ data: updated, finish }) => {
+    onSuccess: async ({ data: updated, finish }) => {
       toast.success(finish ? 'Inspection finished' : 'Progress saved');
       queryClient.invalidateQueries({ queryKey: ['inspection', id] });
       queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
       queryClient.invalidateQueries({ queryKey: ['fleet-inspection-schedules-calendar'] });
+      if (inspection?.inspection_schedule_id) {
+        queryClient.invalidateQueries({ queryKey: ['inspection-schedule', inspection.inspection_schedule_id] });
+      }
       if (updated?.result === 'fail' && (updated as any).auto_generated_work_order_id) {
         toast.success('Work order was created automatically for this failed inspection.');
       }
+      const next = pendingNextRef.current;
+      pendingNextRef.current = null;
+      const assetId = inspection?.fleet_asset_id || parentSchedule?.fleet_asset_id;
+      if (finish && next && assetId) {
+        try {
+          await createNextInspectionSchedule({ fleetAssetId: assetId, next });
+          toast.success('Next inspection scheduled');
+          queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
+          queryClient.invalidateQueries({ queryKey: ['fleet-inspection-schedules-calendar'] });
+        } catch {
+          toast.error('Inspection finished, but scheduling the next one failed');
+        }
+      }
+      setFinishModalOpen(false);
       setBodyEditMode(false);
       setMechanicalEditMode(false);
     },
     onError: () => {
+      pendingNextRef.current = null;
       toast.error('Failed to save inspection');
     },
   });
+
+  const submitFinish = (confirmResult: FinishInspectionConfirmResult) => {
+    const pending = pendingFinishRef.current;
+    if (!pending) return;
+    pendingNextRef.current = confirmResult.scheduleNext ? confirmResult : null;
+    updateInspectionMutation.mutate({ ...pending, finish: true });
+  };
 
   const detailBodyChecklistPayload = (form: BodyFormState) => {
     const _metadata: Record<string, string> = {};
@@ -323,15 +383,29 @@ export default function InspectionDetail() {
       finalResult.charAt(0).toUpperCase() + finalResult.slice(1);
     let message = `Finalize this Body / Exterior inspection with result: ${resultLabel}? This locks in the checklist.\n`;
     if (finalResult === 'fail') message += 'A work order may be created automatically for a failed inspection.';
-    const dlg = await confirm({ title: 'Finish inspection', message, confirmText: 'Finish', cancelText: 'Cancel' });
-    if (dlg !== 'confirm') return;
-    updateInspectionMutation.mutate({
+    pendingFinishRef.current = {
       checklist_results: detailBodyChecklistPayload(bodyForm),
       result: finalResult,
       notes: bodyForm.notes.trim() || undefined,
       photos: bodyPhotoIds.length ? bodyPhotoIds : undefined,
-      finish: true,
+    };
+    const offerNext = canOfferScheduleNextInspection({
+      thisResult: finalResult,
+      otherLegResult,
+      fleetAssetId: inspection?.fleet_asset_id || parentSchedule?.fleet_asset_id,
     });
+    if (!offerNext) {
+      const dlg = await confirm({ title: 'Finish inspection', message, confirmText: 'Finish', cancelText: 'Cancel' });
+      if (dlg !== 'confirm') {
+        pendingFinishRef.current = null;
+        return;
+      }
+      submitFinish({ scheduleNext: false });
+      return;
+    }
+    setFinishMessage(message);
+    setAllowScheduleNext(true);
+    setFinishModalOpen(true);
   };
 
   const bodyComplete = !!(bodyForm && isBodyChecklistComplete(bodyForm.areas));
@@ -366,15 +440,29 @@ export default function InspectionDetail() {
       finalResult.charAt(0).toUpperCase() + finalResult.slice(1);
     let message = `Finalize this Mechanical inspection with result: ${resultLabel}? This locks in the checklist.\n`;
     if (finalResult === 'fail') message += 'A work order may be created automatically for a failed inspection.';
-    const dlg = await confirm({ title: 'Finish inspection', message, confirmText: 'Finish', cancelText: 'Cancel' });
-    if (dlg !== 'confirm') return;
-    updateInspectionMutation.mutate({
+    pendingFinishRef.current = {
       checklist_results: detailMechanicalChecklistPayload(mechanicalForm),
       result: finalResult,
       notes: mechanicalForm.notes.trim() || undefined,
       photos: bodyPhotoIds.length ? bodyPhotoIds : undefined,
-      finish: true,
+    };
+    const offerNext = canOfferScheduleNextInspection({
+      thisResult: finalResult,
+      otherLegResult,
+      fleetAssetId: inspection?.fleet_asset_id || parentSchedule?.fleet_asset_id,
     });
+    if (!offerNext) {
+      const dlg = await confirm({ title: 'Finish inspection', message, confirmText: 'Finish', cancelText: 'Cancel' });
+      if (dlg !== 'confirm') {
+        pendingFinishRef.current = null;
+        return;
+      }
+      submitFinish({ scheduleNext: false });
+      return;
+    }
+    setFinishMessage(message);
+    setAllowScheduleNext(true);
+    setFinishModalOpen(true);
   };
 
   const deleteInspectionMutation = useMutation({
@@ -1217,6 +1305,21 @@ export default function InspectionDetail() {
           }}
           inspectionId={inspection.id}
           fleetAssetId={inspection.fleet_asset_id}
+        />
+
+        <FinishInspectionModal
+          open={finishModalOpen}
+          message={finishMessage}
+          allowScheduleNext={allowScheduleNext}
+          defaultUrgency={parentSchedule?.urgency || 'normal'}
+          defaultCategory={parentSchedule?.category || 'inspection'}
+          busy={updateInspectionMutation.isPending}
+          onCancel={() => {
+            pendingFinishRef.current = null;
+            pendingNextRef.current = null;
+            setFinishModalOpen(false);
+          }}
+          onConfirm={submitFinish}
         />
       </div>
     </div>

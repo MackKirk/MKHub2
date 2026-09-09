@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
-import { formatDateLocal } from '@/lib/dateUtils';
+import { formatDateLocal, localDateInputToIso } from '@/lib/dateUtils';
 import {
   FleetInspectionScheduleFormFields,
   type FleetInspectionScheduleFormValues,
@@ -57,7 +57,7 @@ export default function ScheduleFleetInspectionModal({
     mutationFn: async () => {
       const payload = {
         fleet_asset_id: form.fleet_asset_id,
-        scheduled_at: new Date(form.scheduled_at).toISOString(),
+        scheduled_at: localDateInputToIso(form.scheduled_at),
         urgency: form.urgency,
         category: form.category,
         notes: form.notes.trim() || null,

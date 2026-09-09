@@ -3130,6 +3130,23 @@ class InspectionSchedule(Base):
     )
 
 
+class InspectionScheduleAlertEvent(Base):
+    """Idempotent inspection schedule approaching/overdue alerts."""
+
+    __tablename__ = "inspection_schedule_alert_events"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False, default="inspection_schedule")
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    alert_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", "alert_key", name="uq_inspection_schedule_alert_event"),
+        Index("ix_inspection_schedule_alert_events_entity", "entity_type", "entity_id"),
+    )
+
+
 class FleetInspection(Base):
     """Fleet inspections with checklist results. Type: body (funilaria/pintura) or mechanical (checklist A-H)."""
     __tablename__ = "fleet_inspections"

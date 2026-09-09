@@ -3242,6 +3242,24 @@ def create_app() -> FastAPI:
                         print(f"[startup] project warranty tables (non-critical): {_e}")
 
                     try:
+                        rows = db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_name = 'inspection_schedule_alert_events' LIMIT 1"
+                            )
+                        ).fetchall()
+                        if not rows:
+                            from .models.models import InspectionScheduleAlertEvent
+
+                            Base.metadata.create_all(
+                                bind=engine,
+                                tables=[InspectionScheduleAlertEvent.__table__],
+                            )
+                            db.commit()
+                            print("[startup] Created inspection_schedule_alert_events table")
+                    except Exception as _e:
+                        print(f"[startup] inspection_schedule_alert_events (non-critical): {_e}")
+
+                    try:
                         for col, ddl in [
                             (
                                 "related_warranty_id",
@@ -3419,6 +3437,13 @@ def create_app() -> FastAPI:
             start_property_alerts_scheduler()
         except Exception as e:
             print(f"⚠️  Could not start property alerts scheduler: {e}")
+
+        try:
+            from .services.fleet_inspection_alerts_scheduler import start_fleet_inspection_alerts_scheduler
+
+            start_fleet_inspection_alerts_scheduler()
+        except Exception as e:
+            print(f"⚠️  Could not start fleet inspection alerts scheduler: {e}")
 
         print("[startup] Application startup complete - server ready!")
 

@@ -1,6 +1,6 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ClipboardCheck, Search } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
@@ -30,6 +30,7 @@ import {
   uiShadows,
   uiSpacing,
   uiTypography,
+  useAppListSort,
 } from '@/components/ui';
 
 type Schedule = {
@@ -48,15 +49,42 @@ type Schedule = {
   mechanical_result?: string | null;
 };
 
-type SortColumn = 'scheduled_at' | 'asset';
+const INSPECTION_LIST_SORTS = [
+  'scheduled_at',
+  'created_at',
+  'asset',
+  'status',
+  'body_result',
+  'mechanical_result',
+] as const;
 
-const LIST_GRID_COLS = 'grid-cols-[minmax(7rem,1fr)_minmax(10rem,2fr)_minmax(6rem,1fr)_minmax(5rem,1fr)_minmax(5rem,1fr)]';
-const LIST_MIN_WIDTH = 'min-w-[640px]';
+type SortColumn = (typeof INSPECTION_LIST_SORTS)[number];
+
+const LIST_GRID_COLS =
+  'grid-cols-[minmax(7rem,1fr)_minmax(10rem,2fr)_minmax(6rem,1fr)_minmax(5rem,1fr)_minmax(5rem,1fr)_minmax(7rem,1fr)]';
+const LIST_MIN_WIDTH = 'min-w-[720px]';
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'All statuses' },
   ...Object.entries(SCHEDULE_STATUS_LABELS).map(([value, label]) => ({ value, label })),
 ];
+
+const OPEN_SCHEDULE_STATUSES = new Set(['scheduled', 'in_progress']);
+
+function getScheduleDueBadge(schedule: Schedule): { label: string; variant: 'warning' | 'danger' } | null {
+  if (!OPEN_SCHEDULE_STATUSES.has((schedule.status || '').toLowerCase()) || !schedule.scheduled_at) {
+    return null;
+  }
+  const due = new Date(schedule.scheduled_at);
+  if (Number.isNaN(due.getTime())) return null;
+  const today = new Date();
+  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diffDays = Math.round((dueDay.getTime() - todayDay.getTime()) / 86400000);
+  if (diffDays < 0) return { label: 'Overdue', variant: 'danger' };
+  if (diffDays <= 7) return { label: diffDays === 0 ? 'Due today' : 'Due soon', variant: 'warning' };
+  return null;
+}
 
 export default function Inspections() {
   const nav = useNavigate();
@@ -70,18 +98,27 @@ export default function Inspections() {
   const permissions = useMemo(() => new Set<string>(me?.permissions || []), [me?.permissions]);
   const canScheduleInspection = canEditFleetInspectionTab(isAdmin, permissions, 'schedules');
 
-  const validSorts: SortColumn[] = ['scheduled_at', 'asset'];
-  const rawSort = searchParams.get('sort');
-  const sortBy: SortColumn =
-    rawSort && validSorts.includes(rawSort as SortColumn) ? (rawSort as SortColumn) : 'scheduled_at';
-  const sortDir = (searchParams.get('dir') === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc';
-  const setListSort = (column: SortColumn, direction?: 'asc' | 'desc') => {
+  const { sortBy, sortDir, setSort: setListSort } = useAppListSort<SortColumn>({
+    searchParams,
+    setSearchParams,
+    defaultSort: 'created_at',
+    defaultDir: 'desc',
+    validSorts: INSPECTION_LIST_SORTS,
+  });
+
+  // Persist initial sort in the URL so opening the page always shows newest-created schedules first.
+  useEffect(() => {
+    const rawSort = searchParams.get('sort');
+    const rawDir = searchParams.get('dir');
+    const sortValid = rawSort != null && (INSPECTION_LIST_SORTS as readonly string[]).includes(rawSort);
+    const dirValid = rawDir === 'asc' || rawDir === 'desc';
+    if (sortValid && dirValid) return;
+
     const params = new URLSearchParams(searchParams);
-    const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
-    params.set('sort', column);
-    params.set('dir', nextDir);
+    if (!sortValid) params.set('sort', 'created_at');
+    if (!dirValid) params.set('dir', 'desc');
     setSearchParams(params, { replace: true });
-  };
+  }, [searchParams, setSearchParams]);
 
   const statusParam = searchParams.get('status') ?? '';
 
@@ -99,7 +136,7 @@ export default function Inspections() {
     setSearchParams(params, { replace: true });
   };
 
-  const { data: schedulesRaw = [], isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['inspection-schedules', statusParam, sortBy, sortDir],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -108,29 +145,29 @@ export default function Inspections() {
       params.set('dir', sortDir);
       return api<Schedule[]>('GET', `/fleet/inspection-schedules?${params.toString()}`);
     },
+    placeholderData: keepPreviousData,
   });
 
+  const schedulesRaw = data ?? [];
   const schedules = useMemo(() => {
-    const list = schedulesRaw ?? [];
-    if (!search.trim()) return list;
+    if (!search.trim()) return schedulesRaw;
     const q = search.trim().toLowerCase();
-    return list.filter(
+    return schedulesRaw.filter(
       (s) =>
         (s.fleet_asset_name && s.fleet_asset_name.toLowerCase().includes(q)) ||
         (s.fleet_asset_id && s.fleet_asset_id.toLowerCase().includes(q)),
     );
   }, [schedulesRaw, search]);
 
-
-
-  const showEmptyList = !isLoading && schedules.length === 0;
+  const isInitialLoading = isLoading && !data;
+  const showEmptyList = !isInitialLoading && schedules.length === 0;
 
   return (
     <div className={uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <AppPageHeader
         title="Fleet Inspections"
         subtitle="Manage inspection schedules. Open a schedule to start Body or Mechanical inspection."
-        icon={<ClipboardCheck className="h-4 w-4" />}
+        icon={<ClipboardCheck className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -155,7 +192,7 @@ export default function Inspections() {
         </div>
       </AppCard>
 
-      <LoadingOverlay isLoading={isLoading} text="Loading schedules…">
+      <LoadingOverlay isLoading={isInitialLoading} text="Loading schedules…">
         <AppCard
           className={uiShadows.card}
           bodyClassName="!p-0"
@@ -169,7 +206,12 @@ export default function Inspections() {
             ) : undefined
           }
         >
-          <div className="flex flex-col">
+          <div
+            className={uiCx(
+              'flex flex-col',
+              isFetching && schedules.length > 0 ? 'opacity-60 pointer-events-none' : undefined,
+            )}
+          >
             {showEmptyList ? (
               <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'min-h-[12rem] pb-10')}>
                 {canScheduleInspection ? (
@@ -216,18 +258,31 @@ export default function Inspections() {
                       />
                       <AppSortableEntityListSortColumn
                         label="Status"
-                        column="scheduled_at"
-                        sortable={false}
+                        column="status"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
                       />
                       <AppSortableEntityListSortColumn
                         label="Body"
-                        column="asset"
-                        sortable={false}
+                        column="body_result"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
                       />
                       <AppSortableEntityListSortColumn
                         label="Mechanical"
-                        column="asset"
-                        sortable={false}
+                        column="mechanical_result"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
+                      />
+                      <AppSortableEntityListSortColumn
+                        label="Created"
+                        column="created_at"
+                        sortBy={sortBy}
+                        sortDir={sortDir}
+                        onSort={setListSort}
                       />
                     </AppSortableEntityListHeader>
                     <AppSortableEntityListFlatBody gridCols={LIST_GRID_COLS} minWidth={LIST_MIN_WIDTH}>
@@ -235,6 +290,7 @@ export default function Inspections() {
                         const bodyDone = s.body_result && s.body_result !== 'pending';
                         const mechDone = s.mechanical_result && s.mechanical_result !== 'pending';
                         const vehicleLabel = s.fleet_asset_name || s.fleet_asset_id;
+                        const dueBadge = getScheduleDueBadge(s);
 
                         return (
                           <AppSortableEntityListRow
@@ -273,10 +329,13 @@ export default function Inspections() {
                                 {vehicleLabel}
                               </button>
                             </div>
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex flex-wrap items-center gap-1.5">
                               <AppBadge variant={getInspectionScheduleStatusBadgeVariant(s.status)}>
                                 {SCHEDULE_STATUS_LABELS[s.status] ?? s.status}
                               </AppBadge>
+                              {dueBadge ? (
+                                <AppBadge variant={dueBadge.variant}>{dueBadge.label}</AppBadge>
+                              ) : null}
                             </div>
                             <div className="min-w-0">
                               {s.body_inspection_id ? (
@@ -304,6 +363,9 @@ export default function Inspections() {
                                 <span className={uiTypography.helper}>—</span>
                               )}
                             </div>
+                            <span className={uiCx(uiTypography.body, 'whitespace-nowrap tabular-nums text-gray-600')}>
+                              {s.created_at ? formatDateLocal(new Date(s.created_at)) : '—'}
+                            </span>
                           </AppSortableEntityListRow>
                         );
                       })}

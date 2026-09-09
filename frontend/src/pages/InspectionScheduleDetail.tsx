@@ -527,6 +527,10 @@ export default function InspectionScheduleDetail() {
                       inspection={asInlineRow(bodyInspection)}
                       fleetAsset={asset}
                       templateAreas={bodyTemplate.areas}
+                      otherLegResult={schedule.mechanical_result}
+                      fleetAssetId={schedule.fleet_asset_id}
+                      scheduleUrgency={schedule.urgency}
+                      scheduleCategory={schedule.category}
                       onSaved={finishBodyInline}
                       onCancel={finishBodyInline}
                     />
@@ -723,6 +727,10 @@ export default function InspectionScheduleDetail() {
                       inspection={asInlineRow(mechanicalInspection)}
                       fleetAsset={asset}
                       templateSections={mechanicalTemplate.sections}
+                      otherLegResult={schedule.body_result}
+                      fleetAssetId={schedule.fleet_asset_id}
+                      scheduleUrgency={schedule.urgency}
+                      scheduleCategory={schedule.category}
                       onSaved={finishMechInline}
                       onCancel={finishMechInline}
                     />

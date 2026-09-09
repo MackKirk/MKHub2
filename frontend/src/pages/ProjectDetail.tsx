@@ -38,6 +38,7 @@ import OrdersTab from '@/components/OrdersTab';
 import ProjectDocumentsTab, { type ProjectDocumentsTabHandle } from '@/components/ProjectDocumentsTab';
 import ProjectSafetyTab from '@/components/ProjectSafetyTab';
 import ProjectWarrantiesTab from '@/components/ProjectWarrantiesTab';
+import ChangeProjectOwnerModal from '@/components/ChangeProjectOwnerModal';
 import ProjectFieldBriefCard from '@/components/ProjectFieldBriefCard';
 import ProjectTeamCard from '@/components/ProjectTeamCard';
 import SiteFormModal, { type ClientSiteRecord } from '@/components/SiteFormModal';
@@ -56,6 +57,7 @@ import {
   hasProjectFeatureWritePermission,
   hasProjectLineWritePermission,
   hasProjectMembersWritePermission,
+  hasProjectOwnerWritePermission,
   isAdminRole,
   resolveProjectBusinessLine,
 } from '@/lib/projectLinePermissionKeys';
@@ -290,7 +292,7 @@ const PROJECT_UPDATE_LABELS: Record<string, string> = {
   lead_source: 'Lead source',
   project_number: 'Project number',
   is_bidding: 'Is bidding',
-  client_id: 'Client',
+  client_id: 'Project Owner',
   code: 'Code',
   related_client_ids: 'Related customers',
   awarded_related_client_ids: 'Awarded related customers',
@@ -452,6 +454,15 @@ function buildRecentActivityLabel(
       return isOpportunity ? 'Opportunity restored' : 'Project restored';
     }
     if (action === 'UPDATE') {
+      if (context.source === 'change-owner') {
+        const fromName =
+          (typeof context.old_client_name === 'string' && context.old_client_name.trim()) ||
+          getDisplayValue('client_id', resolvedValues, before, after);
+        const toName =
+          (typeof context.new_client_name === 'string' && context.new_client_name.trim()) ||
+          getDisplayValue('client_id', resolvedValues, after, before);
+        return `Project owner changed from "${fromName}" to "${toName}"`;
+      }
       if (context.conversion) {
         // Show conversion with each updated field and its value: "Field to "value"" (one line per logical field, prefer name over ID)
         const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'date_awarded', 'progress', 'lead_source', 'project_number', 'lat', 'lng', 'related_client_ids', 'awarded_related_client_ids'];
@@ -1320,6 +1331,12 @@ export default function ProjectDetail(){
     isAdmin,
     location.pathname
   );
+  const canChangeProjectOwner = hasProjectOwnerWritePermission(
+    permissions,
+    projectBusinessLine,
+    isAdmin,
+    location.pathname
+  );
 
   const canOpenProjectSections =
     signOnlySafetySession ||
@@ -1494,6 +1511,7 @@ export default function ProjectDetail(){
   const [editLeadSourceModal, setEditLeadSourceModal] = useState(false);
   const [editProjectNumberModal, setEditProjectNumberModal] = useState(false);
   const [editContactModal, setEditContactModal] = useState(false);
+  const [editProjectOwnerModal, setEditProjectOwnerModal] = useState(false);
   const [editRelatedCustomersModal, setEditRelatedCustomersModal] = useState(false);
   const [editDescriptionModal, setEditDescriptionModal] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -2222,16 +2240,35 @@ export default function ProjectDetail(){
 
                     {/* Project Owner / Source */}
                     <div>
-                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Owner / Source</span>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Owner / Source</span>
+                        {canChangeProjectOwner &&
+                          (useDesignSystem ? (
+                            <AppHeroEditButton
+                              onClick={() => setEditProjectOwnerModal(true)}
+                              title="Change Project Owner"
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setEditProjectOwnerModal(true)}
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Change Project Owner"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          ))}
+                      </div>
                       {proj?.client_id ? (
                         <Link
                           to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
-                          className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
+                          className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words block"
                         >
                           {proj?.client_display_name || proj?.client_name || 'Open record'}
                         </Link>
                       ) : (
-                        <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
+                        <div className="text-xs font-semibold text-gray-400">—</div>
                       )}
                     </div>
 
@@ -3806,6 +3843,24 @@ export default function ProjectDetail(){
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
             invalidateRecentActivity();
             setEditContactModal(false);
+          }}
+        />
+      )}
+
+      {editProjectOwnerModal && proj && (
+        <ChangeProjectOwnerModal
+          open={editProjectOwnerModal}
+          projectId={String(id)}
+          project={proj}
+          onClose={() => setEditProjectOwnerModal(false)}
+          onSaved={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            await queryClient.invalidateQueries({ queryKey: ['projectFiles', id] });
+            await queryClient.invalidateQueries({ queryKey: ['project-folders', id] });
+            await queryClient.invalidateQueries({ queryKey: ['projectProposals', id] });
+            await queryClient.invalidateQueries({ queryKey: ['proposal'] });
+            invalidateRecentActivity();
+            setEditProjectOwnerModal(false);
           }}
         />
       )}

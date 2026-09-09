@@ -24,6 +24,7 @@ const LINE_PROJECT_SUB_KEYS = LINE_PROJECT_PREFIXES.flatMap((prefix) => [
   ]),
   `${prefix}:warranties:costs:read`,
   `${prefix}:members:write`,
+  `${prefix}:owner:write`,
 ]);
 
 /** Permissions that are enforced in the app (not [WIP] in the UI). */

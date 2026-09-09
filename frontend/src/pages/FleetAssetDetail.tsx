@@ -38,6 +38,7 @@ import {
 import FleetComplianceModal, {
   type FleetComplianceRecord,
 } from '@/components/fleet/FleetComplianceModal';
+import FleetComplianceDetailModal from '@/components/fleet/FleetComplianceDetailModal';
 import { FleetAssetLogsTab, type FleetAssetHistoryItem } from '@/components/fleet/FleetAssetLogsTab';
 import {
   canEditFleetAssetTab,
@@ -412,6 +413,7 @@ export default function FleetAssetDetail() {
   const [showHeroPhotoViewModal, setShowHeroPhotoViewModal] = useState(false);
   const [showComplianceModal, setShowComplianceModal] = useState(false);
   const [editingComplianceId, setEditingComplianceId] = useState<string | null>(null);
+  const [viewingComplianceId, setViewingComplianceId] = useState<string | null>(null);
   const [logDetailAssignment, setLogDetailAssignment] = useState<AssetAssignment | null>(null);
   const [logDetailLogType, setLogDetailLogType] = useState<'assignment' | 'return' | null>(null);
   const [logDetailPerformedBy, setLogDetailPerformedBy] = useState<string | null>(null);
@@ -610,6 +612,10 @@ export default function FleetAssetDetail() {
     rows.sort((a, b) => compareFleetComplianceRecords(a, b, sort, dir));
     return rows;
   }, [complianceRecords, compListParams]);
+
+  const viewingComplianceRecord = viewingComplianceId
+    ? complianceRecords.find((r) => r.id === viewingComplianceId)
+    : undefined;
 
   const setComplianceTableSort = useCallback(
     (column: FleetComplianceSortCol) => {
@@ -1013,9 +1019,8 @@ export default function FleetAssetDetail() {
               setEditingComplianceId(null);
               setShowComplianceModal(true);
             }}
-            onEditRecord={(recordId) => {
-              setEditingComplianceId(recordId);
-              setShowComplianceModal(true);
+            onViewRecord={(recordId) => {
+              setViewingComplianceId(recordId);
             }}
             onDeleteRecord={handleDeleteComplianceRecord}
           />
@@ -1131,6 +1136,19 @@ export default function FleetAssetDetail() {
           queryClient.invalidateQueries({ queryKey: ['fleetAssetHistory', id] });
         }}
       />
+      {viewingComplianceRecord ? (
+        <FleetComplianceDetailModal
+          open
+          record={viewingComplianceRecord}
+          canEdit={canEditCompliance}
+          onClose={() => setViewingComplianceId(null)}
+          onEdit={(rec) => {
+            setViewingComplianceId(null);
+            setEditingComplianceId(rec.id);
+            setShowComplianceModal(true);
+          }}
+        />
+      ) : null}
       <FleetComplianceModal
         open={canEditCompliance && showComplianceModal && !!id}
         assetId={id ?? ''}

@@ -60,6 +60,38 @@ export async function getFleetAsset(assetId: string): Promise<FleetAsset> {
   return response.data;
 }
 
+export async function updateFleetAsset(
+  assetId: string,
+  body: { photos?: string[] | null }
+): Promise<FleetAsset> {
+  const response = await api.put<FleetAsset>(`/fleet/assets/${assetId}`, body);
+  return response.data;
+}
+
+export async function uploadFleetAssetPhoto(file: {
+  uri: string;
+  name: string;
+  type: string;
+}): Promise<string> {
+  const form = new FormData();
+  form.append("file", {
+    uri: file.uri,
+    name: file.name,
+    type: file.type
+  } as unknown as Blob);
+  form.append("original_name", file.name);
+  form.append("content_type", file.type);
+  form.append("project_id", "");
+  form.append("client_id", "");
+  form.append("employee_id", "");
+  form.append("category_id", "fleet-assignment-photos");
+
+  const response = await api.post<{ id: string }>("/files/upload-proxy", form, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+  return response.data.id;
+}
+
 export async function getEquipment(equipmentId: string): Promise<EquipmentItem> {
   const response = await api.get<EquipmentItem>(`/fleet/equipment/${equipmentId}`);
   return response.data;
