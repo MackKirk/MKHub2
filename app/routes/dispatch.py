@@ -18,7 +18,7 @@ from ..models.models import (
 )
 from ..auth.security import get_current_user, assert_project_workload_permission
 from ..config import settings
-from ..services.dispatch_conflict import has_overlap, get_conflicting_shifts
+from ..services.dispatch_conflict import get_conflicting_shifts, serialize_conflicts
 from ..services.geofence import inside_geofence
 from ..services.time_rules import (
     round_to_5_minutes, is_within_tolerance, is_same_day,
@@ -196,7 +196,13 @@ def _normalize_shift_notes(raw) -> Optional[str]:
     return text
 
 
-def _shift_to_dict(shift: Shift, *, geofences: list, project_name: Optional[str] = None) -> dict:
+def _shift_to_dict(
+    shift: Shift,
+    *,
+    geofences: list,
+    project_name: Optional[str] = None,
+    conflicts: Optional[List[Dict]] = None,
+) -> dict:
     payload = {
         "id": str(shift.id),
         "project_id": str(shift.project_id),
@@ -212,6 +218,7 @@ def _shift_to_dict(shift: Shift, *, geofences: list, project_name: Optional[str]
         "notes": shift.notes,
         "created_by": str(shift.created_by),
         "created_at": shift.created_at.isoformat() if shift.created_at else None,
+        "conflicts": conflicts if conflicts is not None else [],
     }
     if project_name is not None:
         payload["project_name"] = project_name
@@ -231,7 +238,7 @@ def create_shift(
 ):
     """
     Create a new shift for a worker.
-    HARD STOP: Blocks if worker has overlapping shift.
+    Overlapping shifts are allowed; conflicts are returned in the response body.
     """
     # Validate project exists
     project = db.query(Project).filter(Project.id == project_id).first()
@@ -275,25 +282,9 @@ def create_shift(
     if end_time <= start_time and shift_date == shift_date:  # Same day
         # Allow cross-day shifts
         pass
-    
-    # HARD STOP: Check for conflicts
-    if has_overlap(db, worker_id, shift_date, start_time, end_time):
-        conflicts = get_conflicting_shifts(db, worker_id, shift_date, start_time, end_time)
-        conflict_info = [
-            {
-                "id": str(c.id),
-                "date": c.date.isoformat(),
-                "start_time": c.start_time.isoformat(),
-                "end_time": c.end_time.isoformat(),
-                "project_id": str(c.project_id),
-            }
-            for c in conflicts
-        ]
-        raise HTTPException(
-            status_code=400,
-            detail=f"Worker already has overlapping shift(s)",
-            headers={"X-Conflict-Shifts": str(conflict_info)}
-        )
+
+    conflict_shifts = get_conflicting_shifts(db, worker_id, shift_date, start_time, end_time)
+    conflict_payload = serialize_conflicts(db, conflict_shifts)
     
     # Get geofences (default from project or custom)
     geofences = payload.get("geofences")
@@ -385,6 +376,7 @@ def create_shift(
         shift,
         geofences=get_geofences_for_shift(shift, project, db),
         project_name=project.name,
+        conflicts=conflict_payload,
     )
 
 
@@ -460,13 +452,8 @@ def create_shift_without_project(
     
     project_id = str(general_project.id)
     
-    # Check for conflicts
-    if has_overlap(db, worker_id, shift_date, start_time, end_time):
-        conflicts = get_conflicting_shifts(db, worker_id, shift_date, start_time, end_time)
-        raise HTTPException(
-            status_code=400,
-            detail=f"Worker already has overlapping shift(s)"
-        )
+    conflict_shifts = get_conflicting_shifts(db, worker_id, shift_date, start_time, end_time)
+    conflict_payload = serialize_conflicts(db, conflict_shifts)
     
     # Create shift with "General" project but store job_type to indicate it's not project-specific
     shift = Shift(
@@ -531,7 +518,64 @@ def create_shift_without_project(
         "job_name": shift.job_name,
         "notes": shift.notes,
         "created_at": shift.created_at.isoformat() if shift.created_at else None,
+        "conflicts": conflict_payload,
     }
+
+
+@router.post("/shifts/check-overlaps")
+def check_shift_overlaps(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Preview overlapping shifts for one or more proposed intervals.
+    Does not create or update shifts — advisory only.
+    """
+    items = payload.get("items")
+    if not isinstance(items, list):
+        raise HTTPException(status_code=400, detail="items must be a list")
+
+    results = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        worker_id = raw.get("worker_id")
+        date_str = raw.get("date")
+        start_time_str = raw.get("start_time")
+        end_time_str = raw.get("end_time")
+        exclude_shift_id = raw.get("exclude_shift_id")
+        if not worker_id or not date_str or not start_time_str or not end_time_str:
+            raise HTTPException(
+                status_code=400,
+                detail="Each item requires worker_id, date, start_time, and end_time",
+            )
+        try:
+            shift_date = datetime.fromisoformat(str(date_str).split("T")[0]).date()
+            start_time = time.fromisoformat(str(start_time_str))
+            end_time = time.fromisoformat(str(end_time_str))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid date or time format in items")
+
+        conflicts = get_conflicting_shifts(
+            db,
+            str(worker_id),
+            shift_date,
+            start_time,
+            end_time,
+            exclude_shift_id=str(exclude_shift_id) if exclude_shift_id else None,
+        )
+        results.append(
+            {
+                "worker_id": str(worker_id),
+                "date": shift_date.isoformat(),
+                "start_time": start_time.isoformat(),
+                "end_time": end_time.isoformat(),
+                "conflicts": serialize_conflicts(db, conflicts),
+            }
+        )
+
+    return {"items": results}
 
 
 @router.get("/projects/{project_id}/shifts")
@@ -695,7 +739,7 @@ def update_shift(
 ):
     """
     Update a shift.
-    Re-checks for conflicts if times are changed.
+    Overlapping shifts are allowed; conflicts are returned in the response body.
     """
     shift = db.query(Shift).filter(Shift.id == shift_id).first()
     if not shift:
@@ -718,9 +762,6 @@ def update_shift(
     
     # Update fields
     updated = False
-    new_date = shift.date  # Date is locked - cannot be changed
-    new_start_time = shift.start_time
-    new_end_time = shift.end_time
     
     # DATE IS LOCKED: Do not allow date changes. If date is in payload, reject it.
     # This ensures data integrity - to change a date, the user must delete and recreate the shift.
@@ -740,16 +781,14 @@ def update_shift(
     
     if "start_time" in payload:
         try:
-            new_start_time = time.fromisoformat(payload["start_time"])
-            shift.start_time = new_start_time
+            shift.start_time = time.fromisoformat(payload["start_time"])
             updated = True
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid start_time format")
     
     if "end_time" in payload:
         try:
-            new_end_time = time.fromisoformat(payload["end_time"])
-            shift.end_time = new_end_time
+            shift.end_time = time.fromisoformat(payload["end_time"])
             updated = True
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid end_time format")
@@ -795,15 +834,18 @@ def update_shift(
         if new_notes != shift.notes:
             shift.notes = new_notes
             updated = True
-    
-    # If times changed, re-check for conflicts
-    if updated and (new_date != shift.date or new_start_time != shift.start_time or new_end_time != shift.end_time):
-        if has_overlap(db, str(shift.worker_id), new_date, new_start_time, new_end_time, exclude_shift_id=shift_id):
-            conflicts = get_conflicting_shifts(db, str(shift.worker_id), new_date, new_start_time, new_end_time, exclude_shift_id=shift_id)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Worker already has overlapping shift(s)"
-            )
+
+    conflict_payload = serialize_conflicts(
+        db,
+        get_conflicting_shifts(
+            db,
+            str(shift.worker_id),
+            shift.date,
+            shift.start_time,
+            shift.end_time,
+            exclude_shift_id=shift_id,
+        ),
+    )
     
     from datetime import timezone
     shift.updated_at = datetime.now(timezone.utc)
@@ -851,7 +893,7 @@ def update_shift(
         }
     )
     
-    # Send notification if times changed
+    # Send notification if updated
     if updated:
         project_timezone = project.timezone if project else settings.tz_default
         send_shift_notification(
@@ -871,7 +913,7 @@ def update_shift(
     # Get geofences (from shift or project)
     geofences = get_geofences_for_shift(shift, project, db)
     
-    return _shift_to_dict(shift, geofences=geofences)
+    return _shift_to_dict(shift, geofences=geofences, conflicts=conflict_payload)
 
 
 @router.delete("/shifts/{shift_id}")

@@ -1195,13 +1195,14 @@ export const projectEditOnSiteLeadsQuickInfo = formModalQuickInfo({
   ),
   howToUse: (
     <>
-      For each project division, search and pick a team member. Leave a division blank if it has no dedicated lead.
-      Divisions themselves come from {uiLabel('Project Divisions')} and cannot be changed here.
+      For each project division, search and pick a team member. Use the clear control to remove a lead and leave the
+      division unassigned. Divisions themselves come from {uiLabel('Project Divisions')} and cannot be changed here.
     </>
   ),
   actions: (
     <>
-      {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} stores the lead for each division on this project.
+      {uiLabel('Cancel')} closes without saving. {uiLabel('Save')} stores the lead for each division on this project
+      (cleared divisions have no lead).
     </>
   ),
 });
@@ -1390,14 +1391,17 @@ export const createShiftQuickInfo = formModalQuickInfo({
   ),
   howToUse: (
     <>
-      Choose {uiLabel('Workers')}, pick {uiLabel('Single Date')} or {uiLabel('Date Range')}, set start and end times,
-      and optionally assign a {uiLabel('Job Type')}. The button label shows how many shifts will be created.
+      Choose {uiLabel('Workers')}, pick {uiLabel('Single Date')} or {uiLabel('Date Range')}, select a time of day (
+      {uiLabel('All day')}, {uiLabel('Morning')}, {uiLabel('Afternoon')}, {uiLabel('Evening')}, or {uiLabel('Custom')}), and optionally assign
+      a {uiLabel('Job Type')}. If the project still has divisions without an on-site lead, turn on{' '}
+      {uiLabel('Also assign as on-site lead')} when needed. The button label shows how many shifts will be created.
     </>
   ),
   behavior: (
     <>
       In range mode you can {uiLabel('Exclude weekends')} so Saturday and Sunday are skipped. Each worker × date
-      combination becomes its own shift.
+      combination becomes its own shift. Overlapping times for the same worker show a warning but do not block saving.
+      On-site lead is optional and collapsed by default; when used it only fills empty division slots.
     </>
   ),
   actions: (
@@ -1410,11 +1414,16 @@ export const createShiftQuickInfo = formModalQuickInfo({
 
 /** Edit Shift (Workload / Dispatch). */
 export const editShiftQuickInfo = formModalQuickInfo({
-  purpose: <>View or update an existing scheduled shift — times and job type only.</>,
+  purpose: <>View or update an existing scheduled shift — time of day, job type, and notes.</>,
   howToUse: (
     <>
-      Worker and date are fixed. Change {uiLabel('Start Time')}, {uiLabel('End Time')}, or {uiLabel('Job Type')} when
-      you have edit permission.
+      Worker and date are fixed. Change {uiLabel('Time of day')} (including {uiLabel('Custom')} start/end),{' '}
+      {uiLabel('Job Type')}, or notes when you have edit permission.
+    </>
+  ),
+  behavior: (
+    <>
+      Saving with a time that overlaps another shift for the same worker shows a warning but still saves.
     </>
   ),
   actions: (

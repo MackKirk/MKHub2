@@ -8035,14 +8035,27 @@ function OnSiteLeadsModal({
 
   const handleLeadChange = (divId: string, leadId: string) => {
     if (!canEdit) return;
-    setLocalLeads((prev) => ({ ...prev, [divId]: leadId }));
+    setLocalLeads((prev) => {
+      const next = { ...prev };
+      if (!leadId || !String(leadId).trim()) {
+        delete next[divId];
+      } else {
+        next[divId] = leadId;
+      }
+      return next;
+    });
   };
 
   const handleSave = async () => {
     if (!canEdit) return;
     setIsSaving(true);
     try {
-      await onUpdate(localLeads);
+      const cleaned: Record<string, string> = {};
+      for (const divId of originalDivisions) {
+        const leadId = localLeads[divId];
+        if (leadId && String(leadId).trim()) cleaned[divId] = String(leadId);
+      }
+      await onUpdate(cleaned);
       onClose();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Failed to update on-site leads');
@@ -8236,8 +8249,11 @@ function ProjectOverviewBody({
   const teamCard = (
     <ProjectTeamCard
       projectId={projectId}
+      project={proj}
       employees={employees}
       canManageMembers={canManageMembers}
+      businessLine={proj?.business_line}
+      statusLabel={proj?.status_label || ''}
       useDesignSystem={useDesignSystem}
       isOpportunity={isOpportunityStyleTabs}
       className="h-full"
