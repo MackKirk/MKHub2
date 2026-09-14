@@ -82,6 +82,7 @@ def _employee_directory_payload(u: User, ep: Optional[EmployeeProfile], division
         if (ep and getattr(ep, "profile_photo_file_id", None))
         else None,
         "roles": [r.name for r in getattr(u, "roles", [])] if hasattr(u, "roles") else [],
+        "is_active": bool(getattr(u, "is_active", True)),
     }
 
 

@@ -5,6 +5,7 @@ from typing import Any
 
 from ..auth.security import _has_permission
 from ..models.models import Attendance, User
+from .sage_export import is_sage_paid
 
 HR_LOCK_MESSAGE = (
     "These hours were approved by HR and can no longer be edited. "
@@ -22,6 +23,8 @@ def has_hr_attendance_write(user: User) -> bool:
 
 def worker_can_edit_attendance(attendance: Attendance, user: User) -> bool:
     """Workers can edit their own hours until HR (someone else) approves/locks them."""
+    if is_sage_paid(attendance):
+        return False
     if has_hr_attendance_write(user):
         return True
     if str(attendance.worker_id) != str(user.id):

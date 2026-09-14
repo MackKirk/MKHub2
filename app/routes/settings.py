@@ -35,6 +35,12 @@ from ..services.attendance_period import (
     effective_job_type,
     period_response_fields,
 )
+from ..services.sage_export import (
+    SAGE_PAID_MESSAGE,
+    is_sage_paid,
+    refresh_sage_export_state,
+    sage_response_fields,
+)
 from ..services.time_calculation import round_clock_datetime
 from ..services.standard_file_categories import ensure_standard_file_categories
 from ..services.training_matrix_slots import (
@@ -656,6 +662,10 @@ def delete_attendance(
         )
 
     from ..services.attendance_edit import HR_LOCK_MESSAGE, worker_can_edit_attendance
+    from ..services.sage_export import SAGE_PAID_MESSAGE, is_sage_paid
+
+    if is_sage_paid(attendance):
+        raise HTTPException(status_code=403, detail=SAGE_PAID_MESSAGE)
 
     if not worker_can_edit_attendance(attendance, user):
         raise HTTPException(status_code=403, detail=HR_LOCK_MESSAGE)
@@ -807,6 +817,10 @@ def update_attendance(
         )
 
     from ..services.attendance_edit import HR_LOCK_MESSAGE, worker_can_edit_attendance
+    from ..services.sage_export import SAGE_PAID_MESSAGE, is_sage_paid
+
+    if is_sage_paid(attendance):
+        raise HTTPException(status_code=403, detail=SAGE_PAID_MESSAGE)
 
     if not worker_can_edit_attendance(attendance, user):
         raise HTTPException(status_code=403, detail=HR_LOCK_MESSAGE)
@@ -934,6 +948,7 @@ def update_attendance(
     )
     attendance.updated_at = datetime.now(timezone.utc)
     attendance.updated_by = user.id
+    refresh_sage_export_state(attendance, hours_changed=True)
     
     if "worker_id" in payload:
         attendance.worker_id = uuid.UUID(payload["worker_id"])
@@ -1258,6 +1273,7 @@ def list_attendances(
     project_id: Optional[str] = None,  # Filter by project (through shift)
     record_kind: str = Query("internal", description="internal | subcontractor | all"),
     subcontractor_company_id: Optional[str] = None,
+    limit: int = Query(1000, ge=1, le=10000, description="Max rows to return"),
     db: Session = Depends(get_db),
     user: UserType = Depends(get_current_user)
 ):
@@ -1386,7 +1402,7 @@ def list_attendances(
         
         # Order by clock_in_time or clock_out_time
         from sqlalchemy import func
-        attendances = query.order_by(func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).desc()).limit(1000).all()
+        attendances = query.order_by(func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).desc()).limit(limit).all()
         total_in_db = db.query(Attendance).count()
         logger.info(f"Query returned {len(attendances)} attendance records (total in DB: {total_in_db})")
         
@@ -1571,6 +1587,7 @@ def list_attendances(
                     "source": att.source,
                     "shift_id": str(att.shift_id) if att.shift_id else None,
                     **period_fields,
+                    **sage_response_fields(att),
                     "job_name": job_name,
                     "project_name": project_name,
                     "project_id": project_id_str or period_fields.get("project_id"),
@@ -1707,6 +1724,7 @@ def get_attendance(
         "created_at": attendance.created_at.isoformat() if attendance.created_at else None,
         "approved_at": attendance.approved_at.isoformat() if attendance.approved_at else None,
         "approved_by": str(attendance.approved_by) if attendance.approved_by else None,
+        **sage_response_fields(attendance),
     }
 
 
@@ -1963,6 +1981,7 @@ def create_attendance_manual(
             attendance.updated_by = user.id
             db.add(attendance)
     
+    refresh_sage_export_state(attendance)
     db.commit()
     db.refresh(attendance)
     

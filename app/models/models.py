@@ -2448,6 +2448,15 @@ class Attendance(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Sage companion export (Time Slips). Companion acks sent/paid; MKHub never opens Sage.
+    sage_state: Mapped[str] = mapped_column(String(20), default="none", nullable=False, index=True)
+    sage_source_key: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    sage_rec_id: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    sage_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    sage_paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    sage_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sage_urgent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # Legacy fields (for migration compatibility - will be removed after migration)
     type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # in|out - DEPRECATED, kept for migration
     time_entered_utc: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # DEPRECATED, kept for migration
