@@ -5,6 +5,7 @@ import {
   BriefcaseBusiness,
   Building2,
   CalendarDays,
+  CalendarRange,
   ChartSpline,
   Clock3,
   DollarSign,
@@ -50,6 +51,7 @@ const WIDGET_TYPE_ICONS: Record<string, LucideIcon> = {
   list_projects: FolderKanban,
   list_opportunities: BriefcaseBusiness,
   calendar: CalendarDays,
+  project_calendar: CalendarRange,
   schedule: CalendarDays,
   clock_in_out: Clock3,
 };

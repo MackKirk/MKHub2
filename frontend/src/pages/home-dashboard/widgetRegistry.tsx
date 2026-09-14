@@ -6,6 +6,7 @@ import { ListTasksWidget } from './widgets/ListTasksWidget';
 import { ListProjectsWidget } from './widgets/ListProjectsWidget';
 import { ListOpportunitiesWidget } from './widgets/ListOpportunitiesWidget';
 import { CalendarWidget } from './widgets/CalendarWidget';
+import { ProjectCalendarWidget } from './widgets/ProjectCalendarWidget';
 import { ScheduleWidget } from './widgets/ScheduleWidget';
 import { ClockInOutWidget } from './widgets/ClockInOutWidget';
 
@@ -79,6 +80,14 @@ const registry: WidgetRegistryEntry[] = [
     defaultSize: { w: 3, h: 2 },
     defaultConfig: {},
     component: ({ config }) => <CalendarWidget config={config} />,
+  },
+  {
+    id: 'project_calendar',
+    label: 'Project calendar',
+    category: 'Calendar',
+    defaultSize: { w: 8, h: 6 },
+    defaultConfig: {},
+    component: ({ config }) => <ProjectCalendarWidget config={config} />,
   },
   {
     id: 'schedule',

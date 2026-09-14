@@ -1,4 +1,4 @@
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import {
@@ -13,6 +13,14 @@ import toast from 'react-hot-toast';
 import { ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import QuoteForm from '@/components/QuoteForm';
 import ImagePicker from '@/components/ImagePicker';
+import { QuoteOutcomeBadge } from '@/components/quotes/QuoteOutcomeBadge';
+import { QuoteOutcomeModal } from '@/components/quotes/QuoteOutcomeModal';
+import {
+  parseQuoteOutcomeStatus,
+  QUOTE_LOST_REASON_LABELS,
+  type QuoteLostReason,
+  type QuoteOutcomeStatus,
+} from '@/pages/quotesOutcome';
 import {
   AppButton,
   AppCard,
@@ -57,6 +65,12 @@ type Quote = {
   data?: any;
   created_at?: string;
   updated_at?: string;
+  outcome_status?: string;
+  outcome_at?: string | null;
+  outcome_set_by_id?: string | null;
+  outcome_note?: string | null;
+  lost_reason?: string | null;
+  outcome_value?: number | null;
 };
 
 type ClientFile = {
@@ -68,6 +82,13 @@ type ClientFile = {
   original_name?: string;
   uploaded_at?: string;
 };
+
+/** Matches FleetAssetHero Assign / Return action tiles. */
+const quoteHeroMarkResultButtonClass =
+  'h-24 w-24 sm:h-28 sm:w-28 rounded-xl border-2 border-sky-400 bg-sky-50 text-sky-950 text-sm font-semibold shadow-sm hover:bg-sky-100 active:scale-[0.98] transition flex flex-col items-center justify-center gap-1 px-1 py-2 text-center leading-tight';
+
+const quoteHeroChangeResultButtonClass =
+  'h-24 w-24 sm:h-28 sm:w-28 rounded-xl border-2 border-gray-300 bg-gray-50 text-gray-800 text-sm font-semibold shadow-sm hover:bg-gray-100 active:scale-[0.98] transition flex flex-col items-center justify-center gap-1 px-1 py-2 text-center leading-tight';
 
 function HeroField({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -88,6 +109,7 @@ function QuoteDetailHero({
   isHeroCollapsed,
   onToggleCollapse,
   onChangeCover,
+  onEditOutcome,
 }: {
   quote: Quote;
   client?: { display_name?: string; name?: string } | null;
@@ -98,6 +120,7 @@ function QuoteDetailHero({
   isHeroCollapsed: boolean;
   onToggleCollapse: () => void;
   onChangeCover: () => void;
+  onEditOutcome: () => void;
 }) {
   const heroMeasureRef = useRef<HTMLDivElement>(null);
   const [heroExpandedHeight, setHeroExpandedHeight] = useState(320);
@@ -144,6 +167,12 @@ function QuoteDetailHero({
   const estimatedValue = getQuoteValue(quote);
   const created = (quote.created_at || '').slice(0, 10);
   const updated = (quote.updated_at || '').slice(0, 10);
+  const outcomeAt = (quote.outcome_at || '').slice(0, 10);
+  const outcomeStatus = parseQuoteOutcomeStatus(quote.outcome_status);
+  const resultActionLabel = outcomeStatus === 'pending' ? 'Mark result' : 'Change result';
+  const lostReasonLabel = quote.lost_reason
+    ? QUOTE_LOST_REASON_LABELS[quote.lost_reason as QuoteLostReason] || quote.lost_reason
+    : null;
 
   return (
     <AppCard className={uiCx('transition-[margin]', HERO_PANEL_EASE)} bodyClassName="relative overflow-hidden p-0">
@@ -154,11 +183,11 @@ function QuoteDetailHero({
         aria-hidden={isHeroCollapsed}
       >
         <div ref={heroMeasureRef} className="overflow-visible p-2.5">
-          <div className="flex items-start gap-5">
+          <div className="flex items-center gap-5">
             <div className="w-48 shrink-0 overflow-visible">
               <div
                 className={uiCx(
-                  'group relative mb-3 h-36 w-48 overflow-hidden',
+                  'group relative h-36 w-48 overflow-hidden',
                   uiRadius.card,
                   uiBorders.subtle,
                 )}
@@ -176,9 +205,11 @@ function QuoteDetailHero({
               </div>
             </div>
 
-            <div className="min-w-0 flex-1">
-              <div className="mb-1">
+            <div className="min-w-0 flex-1 self-start lg:flex lg:items-center lg:justify-between lg:gap-4">
+              <div className="min-w-0 flex-1">
+              <div className="mb-1 flex flex-wrap items-center gap-2">
                 <h3 className="text-sm font-bold text-gray-900">{documentTitle}</h3>
+                <QuoteOutcomeBadge status={quote.outcome_status} />
               </div>
 
               <div className={uiCx('grid grid-cols-3', 'gap-x-2.5 gap-y-1')}>
@@ -214,9 +245,14 @@ function QuoteDetailHero({
                       {formatQuoteValueDisplay(estimatedValue)}
                     </div>
                   </HeroField>
+                  {outcomeAt ? (
+                    <HeroField label="Outcome date">
+                      <div className="text-xs font-semibold text-gray-900">{outcomeAt}</div>
+                    </HeroField>
+                  ) : null}
                 </div>
 
-                <div className="min-w-0">
+                <div className="min-w-0 space-y-1">
                   <HeroField label="Estimator">
                     {estimatorUser ? (
                       <div className="flex items-center gap-2">
@@ -231,8 +267,35 @@ function QuoteDetailHero({
                       <div className="text-xs text-gray-400">—</div>
                     )}
                   </HeroField>
+                  {lostReasonLabel ? (
+                    <HeroField label="Lost reason">
+                      <div className="text-xs font-semibold text-gray-900">{lostReasonLabel}</div>
+                    </HeroField>
+                  ) : null}
+                  {quote.outcome_note ? (
+                    <HeroField label="Outcome note">
+                      <div className="text-xs text-gray-700 line-clamp-3">{quote.outcome_note}</div>
+                    </HeroField>
+                  ) : null}
                 </div>
               </div>
+              </div>
+
+              {hasEditPermission ? (
+                <div className="mt-4 flex flex-col items-center gap-1.5 lg:mt-0 lg:shrink-0 lg:self-center">
+                  <button
+                    type="button"
+                    onClick={onEditOutcome}
+                    className={
+                      outcomeStatus === 'pending'
+                        ? quoteHeroMarkResultButtonClass
+                        : quoteHeroChangeResultButtonClass
+                    }
+                  >
+                    <span>{resultActionLabel}</span>
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -259,9 +322,12 @@ function QuoteDetailHero({
         <div className="p-3">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0 flex-1">
-              <h3 className="truncate text-sm font-bold text-gray-900">{documentTitle}</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-sm font-bold text-gray-900">{documentTitle}</h3>
+                <QuoteOutcomeBadge status={quote.outcome_status} />
+              </div>
             </div>
-            <div className="flex shrink-0 items-center gap-4 pr-8">
+            <div className="flex shrink-0 items-center gap-3 pr-8">
               {estimatorUser ? (
                 <div className="flex items-center gap-2">
                   <AppUserAvatar user={estimatorUser} size="sm" showTooltip />
@@ -272,6 +338,11 @@ function QuoteDetailHero({
               ) : (
                 <div className="text-xs text-gray-400">—</div>
               )}
+              {hasEditPermission ? (
+                <AppButton type="button" variant="secondary" size="sm" onClick={onEditOutcome}>
+                  {resultActionLabel}
+                </AppButton>
+              ) : null}
             </div>
           </div>
         </div>
@@ -293,7 +364,6 @@ function QuoteDetailHero({
 }
 
 export default function QuoteDetail() {
-  const nav = useNavigate();
   const { id } = useParams();
   const { data: quote, isLoading } = useQuery({
     queryKey: ['quote', id],
@@ -321,6 +391,7 @@ export default function QuoteDetail() {
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isHeroCollapsed, setIsHeroCollapsed] = useState(false);
+  const [outcomeModalOpen, setOutcomeModalOpen] = useState(false);
 
   const isAdmin = (me?.roles || []).includes('admin');
   const permissions = new Set(me?.permissions || []);
@@ -387,6 +458,7 @@ export default function QuoteDetail() {
           isHeroCollapsed={isHeroCollapsed}
           onToggleCollapse={() => setIsHeroCollapsed((v) => !v)}
           onChangeCover={() => setPickerOpen(true)}
+          onEditOutcome={() => setOutcomeModalOpen(true)}
         />
 
         {hasViewPermission ? (
@@ -450,6 +522,13 @@ export default function QuoteDetail() {
         targetWidth={1024}
         targetHeight={768}
         clientId={quote?.client_id}
+      />
+
+      <QuoteOutcomeModal
+        open={outcomeModalOpen}
+        quote={quote}
+        initialStatus={(quote.outcome_status as QuoteOutcomeStatus) || 'pending'}
+        onClose={() => setOutcomeModalOpen(false)}
       />
     </main>
   );

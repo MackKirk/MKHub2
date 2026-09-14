@@ -1,17 +1,25 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { uiBorders, uiCx, uiRadius, uiTypography } from '@/components/ui';
+import { getBcStatutoryHolidays } from '@/lib/bcStatutoryHolidays';
 import { formatDateLocal } from '@/lib/dateUtils';
 import type { ProjectCalendarDayEntry } from './projectCalendar.types';
 import { ProjectCalendarProjectChip } from './ProjectCalendarProjectChip';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MAX_CHIPS_PER_DAY = 3;
+
+/** Widget is "comfortable" enough for the larger calendar chips. */
+const WIDGET_COMFORTABLE_MIN_W = 560;
+const WIDGET_COMFORTABLE_MIN_H = 420;
+
+type Density = 'page' | 'widget';
+type ChipMode = boolean | 'dense';
 
 type Props = {
   currentMonth: Date;
   daysByKey: Record<string, ProjectCalendarDayEntry[]>;
   onDayClick: (date: Date, entries: ProjectCalendarDayEntry[]) => void;
   onProjectClick: (entry: ProjectCalendarDayEntry, date: Date) => void;
+  density?: Density;
 };
 
 export function ProjectCalendarMonthGrid({
@@ -19,8 +27,38 @@ export function ProjectCalendarMonthGrid({
   daysByKey,
   onDayClick,
   onProjectClick,
+  density = 'page',
 }: Props) {
   const today = new Date();
+  const isWidget = density === 'widget';
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [widgetComfortable, setWidgetComfortable] = useState(false);
+
+  useEffect(() => {
+    if (!isWidget) return;
+    const grid = rootRef.current;
+    // Measure the widget body (fixed by dashboard tile), not the grid itself —
+    // cell min-heights change with density and would feedback-loop.
+    const el = grid?.parentElement;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+
+    const measure = () => {
+      const { width, height } = el.getBoundingClientRect();
+      setWidgetComfortable(width >= WIDGET_COMFORTABLE_MIN_W && height >= WIDGET_COMFORTABLE_MIN_H);
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isWidget]);
+
+  const useLargerChips = !isWidget || widgetComfortable;
+  const maxChips = isWidget ? (widgetComfortable ? 3 : 2) : 3;
+  const chipMode: ChipMode = !isWidget ? true : widgetComfortable ? true : 'dense';
+  const cellMinH = !isWidget ? 'min-h-[120px]' : widgetComfortable ? 'min-h-[96px]' : 'min-h-[72px]';
+  const cellPad = !isWidget ? 'p-1.5' : widgetComfortable ? 'p-1.5' : 'p-1';
+  const gridGap = !isWidget ? 'gap-1' : widgetComfortable ? 'gap-1' : 'gap-0.5';
 
   const calendarDays = useMemo(() => {
     const year = currentMonth.getFullYear();
@@ -35,24 +73,41 @@ export function ProjectCalendarMonthGrid({
     return days;
   }, [currentMonth]);
 
+  const holidaysByKey = useMemo(
+    () => getBcStatutoryHolidays(currentMonth.getFullYear()),
+    [currentMonth],
+  );
+
   const isToday = (date: Date | null) =>
     Boolean(date && date.toDateString() === today.toDateString());
 
   return (
-    <div className="grid grid-cols-7 gap-1">
-      {DAY_NAMES.map((day) => (
-        <div key={day} className={uiCx(uiTypography.overline, 'py-1.5 text-center')}>
-          {day}
-        </div>
-      ))}
+    <div ref={rootRef} className={uiCx('grid grid-cols-7', gridGap)}>
+      {DAY_NAMES.map((day, index) => {
+        const isWeekendHeader = index === 0 || index === 6;
+        return (
+          <div
+            key={day}
+            className={uiCx(
+              uiTypography.overline,
+              isWidget && !useLargerChips ? 'py-1 text-center text-[10px]' : 'py-1.5 text-center',
+              isWeekendHeader && 'text-gray-400',
+            )}
+          >
+            {day}
+          </div>
+        );
+      })}
       {calendarDays.map((date, index) => {
         if (!date) {
-          return <div key={`empty-${index}`} className="min-h-[120px]" />;
+          return <div key={`empty-${index}`} className={cellMinH} />;
         }
         const dayKey = formatDateLocal(date);
         const entries = daysByKey[dayKey] || [];
         const dayIsToday = isToday(date);
-        const overflow = entries.length > MAX_CHIPS_PER_DAY;
+        const holidayName = holidaysByKey.get(dayKey) ?? null;
+        const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+        const overflow = entries.length > maxChips;
 
         return (
           <div
@@ -67,14 +122,27 @@ export function ProjectCalendarMonthGrid({
               }
             }}
             className={uiCx(
-              'flex min-h-[120px] cursor-pointer flex-col p-1.5 transition-colors hover:bg-gray-50/80',
+              'flex cursor-pointer flex-col transition-colors hover:bg-gray-50/80',
+              cellMinH,
+              cellPad,
               uiRadius.control,
-              dayIsToday ? 'border-2 border-brand-red bg-red-50/30' : uiBorders.subtle,
-              'bg-white',
+              dayIsToday
+                ? 'border-2 border-brand-red bg-red-50/30'
+                : holidayName
+                  ? uiCx(uiBorders.subtle, 'bg-red-50')
+                  : isWeekend
+                    ? uiCx(uiBorders.subtle, 'bg-gray-100')
+                    : uiCx(uiBorders.subtle, 'bg-white'),
             )}
           >
             <div className="flex items-center justify-between gap-1">
-              <span className={uiCx('text-xs font-medium', dayIsToday ? 'text-brand-red' : 'text-gray-700')}>
+              <span
+                className={uiCx(
+                  'font-medium',
+                  isWidget && !useLargerChips ? 'text-[10px]' : 'text-xs',
+                  dayIsToday ? 'text-brand-red' : holidayName ? 'text-red-700' : 'text-gray-700',
+                )}
+              >
                 {date.getDate()}
               </span>
               {entries.length > 0 ? (
@@ -83,12 +151,25 @@ export function ProjectCalendarMonthGrid({
                 </span>
               ) : null}
             </div>
-            <div className="mt-1 flex-1 space-y-1 overflow-hidden">
-              {entries.slice(0, MAX_CHIPS_PER_DAY).map((entry) => (
+            {holidayName ? (
+              <span
+                className="mt-0.5 truncate text-[9px] font-medium leading-tight text-red-700"
+                title={holidayName}
+              >
+                {holidayName}
+              </span>
+            ) : null}
+            <div
+              className={uiCx(
+                'flex-1 overflow-hidden',
+                isWidget && !useLargerChips ? 'mt-0.5 space-y-0.5' : 'mt-1 space-y-1',
+              )}
+            >
+              {entries.slice(0, maxChips).map((entry) => (
                 <ProjectCalendarProjectChip
                   key={entry.project_id}
                   entry={entry}
-                  compact
+                  compact={chipMode}
                   onOpen={() => onProjectClick(entry, date)}
                 />
               ))}
@@ -101,7 +182,7 @@ export function ProjectCalendarMonthGrid({
                     onDayClick(date, entries);
                   }}
                 >
-                  +{entries.length - MAX_CHIPS_PER_DAY} more
+                  +{entries.length - maxChips} more
                 </button>
               ) : null}
             </div>

@@ -1123,6 +1123,15 @@ class Quote(Base):
     data: Mapped[Optional[dict]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Commercial outcome (pending | successful | not_successful)
+    outcome_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False, index=True)
+    outcome_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    outcome_set_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    outcome_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    lost_reason: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    outcome_value: Mapped[Optional[float]] = mapped_column(Numeric(14, 2), nullable=True)
     # Soft delete
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

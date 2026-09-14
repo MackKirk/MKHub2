@@ -4,7 +4,8 @@ import { formatTime12h, personToAvatarUser } from './projectCalendar.utils';
 
 type Props = {
   entry: ProjectCalendarDayEntry;
-  compact?: boolean;
+  /** `true` = calendar cell; `dense` = single-line (small home widget). */
+  compact?: boolean | 'dense';
   onOpen: () => void;
 };
 
@@ -27,6 +28,8 @@ function projectChipColors(projectId: string): { bg: string; text: string; borde
 
 export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: Props) {
   const colors = projectChipColors(entry.project_id);
+  const isDense = compact === 'dense';
+  const isCompact = compact === true || isDense;
   const titleParts = [
     entry.code,
     entry.name,
@@ -62,6 +65,8 @@ export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: P
         : [`${entry.shift_count} worker${entry.shift_count === 1 ? '' : 's'} scheduled`]
       : [];
 
+  const denseLabel = entry.code || entry.name;
+
   return (
     <button
       type="button"
@@ -70,79 +75,95 @@ export function ProjectCalendarProjectChip({ entry, compact = false, onOpen }: P
         onOpen();
       }}
       className={uiCx(
-        'w-full rounded-lg border px-2 py-1.5 text-left shadow-sm transition-colors hover:brightness-95',
+        'w-full border text-left transition-colors hover:brightness-95',
         colors.bg,
         colors.text,
         colors.border,
-        compact ? 'text-[10px]' : 'text-xs',
+        isDense
+          ? 'rounded px-1 py-0.5 text-[9px] leading-tight shadow-none'
+          : uiCx('rounded-lg px-2 py-1.5 shadow-sm', isCompact ? 'text-[10px]' : 'text-xs'),
       )}
       title={[...titleParts, ...leadershipParts, ...workerLines].join(' · ')}
     >
-      <div className="flex min-w-0 items-start gap-1.5">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1">
-            {entry.code ? (
-              <span className="font-semibold leading-snug">{entry.code}</span>
-            ) : null}
-            {entry.appearance === 'shift_only' ? (
-              <AppBadge variant="warning" className="!px-1 !py-0 text-[8px] uppercase">
-                Outside dates
-              </AppBadge>
-            ) : null}
-          </div>
-          <span className={uiCx('block line-clamp-2 font-medium leading-snug', compact && 'line-clamp-1')}>
-            {entry.name}
-          </span>
-          {!compact && entry.client_display_name ? (
-            <span className="block line-clamp-1 text-[10px] opacity-80">{entry.client_display_name}</span>
+      {isDense ? (
+        <div className="flex min-w-0 items-center gap-0.5">
+          <span className="min-w-0 flex-1 truncate font-semibold">{denseLabel}</span>
+          {entry.appearance === 'shift_only' ? (
+            <span className="shrink-0 text-[8px] font-medium uppercase opacity-70">out</span>
+          ) : null}
+          {entry.shift_count > 0 ? (
+            <span className="shrink-0 tabular-nums opacity-70">{entry.shift_count}</span>
           ) : null}
         </div>
-      </div>
-
-      {!compact && (entry.estimators.length || entry.project_admin || entry.onsite_leads.length) ? (
-        <div className="mt-1 flex flex-wrap items-center gap-1">
-          {entry.estimators.slice(0, 2).map((est) => (
-            <span key={est.id} title={`Estimator: ${est.name ?? ''}`} className="inline-flex">
-              <AppUserAvatar user={personToAvatarUser(est)} size="sm" />
-            </span>
-          ))}
-          {entry.project_admin ? (
-            <span title={`Admin: ${entry.project_admin.name ?? ''}`} className="inline-flex">
-              <AppUserAvatar user={personToAvatarUser(entry.project_admin)} size="sm" />
-            </span>
-          ) : null}
-          {entry.onsite_leads.slice(0, 2).map((lead) => (
-            <span
-              key={lead.id}
-              title={`On-site${lead.division_label ? ` (${lead.division_label})` : ''}: ${lead.name ?? ''}`}
-              className="inline-flex"
-            >
-              <AppUserAvatar user={personToAvatarUser(lead)} size="sm" />
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      {!compact && workerLines.length > 0 ? (
-        <div className={uiCx('mt-1 space-y-0.5 border-t border-black/5 pt-1', uiTypography.helper)}>
-          {workerLines.slice(0, 3).map((line, idx) => (
-            <div key={idx} className="line-clamp-1 text-[10px]">
-              {line}
+      ) : (
+        <>
+          <div className="flex min-w-0 items-start gap-1.5">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1">
+                {entry.code ? (
+                  <span className="font-semibold leading-snug">{entry.code}</span>
+                ) : null}
+                {entry.appearance === 'shift_only' ? (
+                  <AppBadge variant="warning" className="!px-1 !py-0 text-[8px] uppercase">
+                    Outside dates
+                  </AppBadge>
+                ) : null}
+              </div>
+              <span className={uiCx('block line-clamp-2 font-medium leading-snug', isCompact && 'line-clamp-1')}>
+                {entry.name}
+              </span>
+              {!isCompact && entry.client_display_name ? (
+                <span className="block line-clamp-1 text-[10px] opacity-80">{entry.client_display_name}</span>
+              ) : null}
             </div>
-          ))}
-          {workerLines.length > 3 ? (
-            <div className="text-[10px] opacity-70">+{workerLines.length - 3} more</div>
-          ) : null}
-        </div>
-      ) : null}
+          </div>
 
-      {compact && entry.shift_count > 0 ? (
-        <div className={uiCx('mt-0.5 text-[9px] opacity-80')}>
-          {entry.workers_visible
-            ? `${entry.shift_count} shift${entry.shift_count === 1 ? '' : 's'}`
-            : `${entry.shift_count} scheduled`}
-        </div>
-      ) : null}
+          {!isCompact && (entry.estimators.length || entry.project_admin || entry.onsite_leads.length) ? (
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              {entry.estimators.slice(0, 2).map((est) => (
+                <span key={est.id} title={`Estimator: ${est.name ?? ''}`} className="inline-flex">
+                  <AppUserAvatar user={personToAvatarUser(est)} size="sm" />
+                </span>
+              ))}
+              {entry.project_admin ? (
+                <span title={`Admin: ${entry.project_admin.name ?? ''}`} className="inline-flex">
+                  <AppUserAvatar user={personToAvatarUser(entry.project_admin)} size="sm" />
+                </span>
+              ) : null}
+              {entry.onsite_leads.slice(0, 2).map((lead) => (
+                <span
+                  key={lead.id}
+                  title={`On-site${lead.division_label ? ` (${lead.division_label})` : ''}: ${lead.name ?? ''}`}
+                  className="inline-flex"
+                >
+                  <AppUserAvatar user={personToAvatarUser(lead)} size="sm" />
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {!isCompact && workerLines.length > 0 ? (
+            <div className={uiCx('mt-1 space-y-0.5 border-t border-black/5 pt-1', uiTypography.helper)}>
+              {workerLines.slice(0, 3).map((line, idx) => (
+                <div key={idx} className="line-clamp-1 text-[10px]">
+                  {line}
+                </div>
+              ))}
+              {workerLines.length > 3 ? (
+                <div className="text-[10px] opacity-70">+{workerLines.length - 3} more</div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {isCompact && entry.shift_count > 0 ? (
+            <div className={uiCx('mt-0.5 text-[9px] opacity-80')}>
+              {entry.workers_visible
+                ? `${entry.shift_count} shift${entry.shift_count === 1 ? '' : 's'}`
+                : `${entry.shift_count} scheduled`}
+            </div>
+          ) : null}
+        </>
+      )}
     </button>
   );
 }

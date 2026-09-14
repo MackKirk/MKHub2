@@ -11,8 +11,8 @@ from fastapi.responses import FileResponse
 from ..config import settings
 from ..logging import RequestIdMiddleware
 from ..db import get_db
-from ..models.models import FileObject, Quote, Client, Material
-from ..auth.security import get_current_user
+from ..models.models import FileObject, Quote, Client, Material, User, EmployeeProfile
+from ..auth.security import get_current_user, require_permissions
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, cast, String, Date, func
 import uuid
@@ -22,6 +22,8 @@ from ..storage.hybrid_provider import HybridStorageProvider
 from ..storage.provider import StorageProvider
 from ..models import models
 from ..schemas import files as file_schemas
+from datetime import datetime, timezone
+from collections import defaultdict
 
 from ..proposals.pdf_merge import generate_pdf
 from ..proposals.pdf_image_optimizer import optimize_image_bytes
@@ -61,6 +63,264 @@ def serve_quote_asset(filename: str):
 
 UPLOAD_DIR = "var/uploads/quotes"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+QUOTE_OUTCOME_STATUSES = ("pending", "successful", "not_successful")
+QUOTE_LOST_REASONS = ("price", "competitor", "timing", "scope", "no_response", "other")
+OUTCOME_STATUS_LABELS = {
+    "pending": "Pending",
+    "successful": "Successful",
+    "not_successful": "Not successful",
+}
+
+
+def _quote_num(v) -> float:
+    try:
+        if v is None:
+            return 0.0
+        if isinstance(v, str):
+            vv = v.replace("$", "").replace(",", "").strip()
+            if vv == "":
+                return 0.0
+            return float(vv)
+        return float(v)
+    except Exception:
+        return 0.0
+
+
+def _compute_estimated_value(data: dict) -> float:
+    """
+    Compute the Estimated Value shown on quote cards.
+    If multiple pricing sections exist, use the MAX Final Total (with GST) among them.
+    """
+    if not data:
+        return 0.0
+
+    pricing_sections = data.get("pricing_sections")
+    if pricing_sections and isinstance(pricing_sections, list) and len(pricing_sections) > 0:
+        max_total = 0.0
+        for section in pricing_sections:
+            if not isinstance(section, dict):
+                continue
+
+            section_total = _quote_num(section.get("total"))
+            if section_total > max_total:
+                max_total = section_total
+                continue
+
+            items = section.get("items") or []
+            if isinstance(items, str):
+                try:
+                    import json as _json
+                    items = _json.loads(items) or []
+                except Exception:
+                    items = []
+            if not isinstance(items, list) or not items:
+                continue
+
+            section_pst_rate = _quote_num(section.get("pstRate") or section.get("pst_rate") or data.get("pst_rate"))
+            section_gst_rate = _quote_num(section.get("gstRate") or section.get("gst_rate") or data.get("gst_rate"))
+
+            total_num = 0.0
+            total_for_pst = 0.0
+            total_for_gst = 0.0
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                price = _quote_num(item.get("price"))
+                qty = _quote_num(item.get("quantity", 1))
+                line_total = price * qty
+                total_num += line_total
+                if item.get("pst") is True:
+                    total_for_pst += line_total
+                if item.get("gst") is True:
+                    total_for_gst += line_total
+
+            pst_val = total_for_pst * (section_pst_rate / 100.0)
+            gst_val = total_for_gst * (section_gst_rate / 100.0)
+            grand_total = total_num + pst_val + gst_val
+            if grand_total > max_total:
+                max_total = grand_total
+
+        if max_total > 0:
+            return max_total
+
+    display_total = _quote_num(data.get("display_total"))
+    if display_total > 0:
+        return display_total
+
+    pst_rate = _quote_num(data.get("pst_rate"))
+    gst_rate = _quote_num(data.get("gst_rate"))
+
+    additional_costs = data.get("additional_costs") or []
+    if isinstance(additional_costs, str):
+        try:
+            import json as _json
+            additional_costs = _json.loads(additional_costs) or []
+        except Exception:
+            additional_costs = []
+
+    if not isinstance(additional_costs, list):
+        additional_costs = []
+
+    total_num = 0.0
+    total_for_pst = 0.0
+    total_for_gst = 0.0
+
+    if additional_costs:
+        for item in additional_costs:
+            if not isinstance(item, dict):
+                continue
+            val = _quote_num(item.get("value"))
+            quantity = _quote_num(item.get("quantity", 1))
+            line_total = val * quantity
+            total_num += line_total
+            if item.get("pst") is True:
+                total_for_pst += line_total
+            if item.get("gst") is True:
+                total_for_gst += line_total
+    else:
+        total_num = _quote_num(data.get("total"))
+
+    pst_val = total_for_pst * (pst_rate / 100.0)
+    gst_val = total_for_gst * (gst_rate / 100.0)
+    grand_total = total_num + pst_val + gst_val
+    if grand_total > 0:
+        return grand_total
+    return total_num
+
+
+def _quote_metric_value(row: Quote) -> float:
+    """Prefer outcome_value snapshot; otherwise live estimated value from data."""
+    if row.outcome_value is not None:
+        try:
+            v = float(row.outcome_value)
+            if v > 0:
+                return v
+        except Exception:
+            pass
+    return _compute_estimated_value(row.data or {})
+
+
+def _serialize_outcome_fields(row: Quote) -> dict:
+    status = (getattr(row, "outcome_status", None) or "pending").strip() or "pending"
+    if status not in QUOTE_OUTCOME_STATUSES:
+        status = "pending"
+    outcome_value = None
+    if row.outcome_value is not None:
+        try:
+            outcome_value = float(row.outcome_value)
+        except Exception:
+            outcome_value = None
+    return {
+        "outcome_status": status,
+        "outcome_at": row.outcome_at.isoformat() if row.outcome_at else None,
+        "outcome_set_by_id": str(row.outcome_set_by_id) if row.outcome_set_by_id else None,
+        "outcome_note": row.outcome_note,
+        "lost_reason": row.lost_reason,
+        "outcome_value": outcome_value,
+    }
+
+
+def _apply_quote_list_filters(
+    query,
+    *,
+    client_id: Optional[str] = None,
+    client_id_not: Optional[str] = None,
+    creation_date_start: Optional[str] = None,
+    creation_date_end: Optional[str] = None,
+    update_date_start: Optional[str] = None,
+    update_date_end: Optional[str] = None,
+    estimator_id: Optional[str] = None,
+    estimator_id_not: Optional[str] = None,
+    outcome_status: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    if client_id:
+        try:
+            query = query.filter(Quote.client_id == uuid.UUID(client_id))
+        except ValueError:
+            pass
+
+    if client_id_not:
+        try:
+            query = query.filter(Quote.client_id != uuid.UUID(client_id_not))
+        except ValueError:
+            pass
+
+    if creation_date_start:
+        try:
+            start_d = datetime.strptime(creation_date_start, "%Y-%m-%d").date()
+            query = query.filter(cast(Quote.created_at, Date) >= start_d)
+        except Exception:
+            pass
+
+    if creation_date_end:
+        try:
+            end_d = datetime.strptime(creation_date_end, "%Y-%m-%d").date()
+            query = query.filter(cast(Quote.created_at, Date) <= end_d)
+        except Exception:
+            pass
+
+    if update_date_start:
+        try:
+            start_d = datetime.strptime(update_date_start, "%Y-%m-%d").date()
+            query = query.filter(cast(Quote.updated_at, Date) >= start_d)
+        except Exception:
+            pass
+
+    if update_date_end:
+        try:
+            end_d = datetime.strptime(update_date_end, "%Y-%m-%d").date()
+            query = query.filter(cast(Quote.updated_at, Date) <= end_d)
+        except Exception:
+            pass
+
+    if estimator_id:
+        try:
+            query = query.filter(Quote.estimator_id == uuid.UUID(estimator_id))
+        except ValueError:
+            pass
+
+    if estimator_id_not:
+        try:
+            query = query.filter(Quote.estimator_id != uuid.UUID(estimator_id_not))
+        except ValueError:
+            pass
+
+    if outcome_status:
+        statuses = [s.strip() for s in outcome_status.split(",") if s.strip()]
+        statuses = [s for s in statuses if s in QUOTE_OUTCOME_STATUSES]
+        if len(statuses) == 1:
+            query = query.filter(Quote.outcome_status == statuses[0])
+        elif len(statuses) > 1:
+            query = query.filter(Quote.outcome_status.in_(statuses))
+
+    if q:
+        query = query.outerjoin(Client, Quote.client_id == Client.id)
+        query = query.filter(
+            or_(
+                Quote.name.ilike(f"%{q}%"),
+                Quote.code.ilike(f"%{q}%"),
+                Quote.order_number.ilike(f"%{q}%"),
+                Client.display_name.ilike(f"%{q}%"),
+                Client.name.ilike(f"%{q}%"),
+            )
+        )
+
+    return query
+
+
+def _user_display_name(user: Optional[User], profile: Optional[EmployeeProfile] = None) -> str:
+    if profile:
+        parts = [profile.first_name or "", profile.last_name or ""]
+        name = " ".join(p for p in parts if p).strip()
+        if name:
+            return name
+        if profile.preferred_name:
+            return profile.preferred_name
+    if user:
+        return user.username or str(user.id)
+    return "Unknown"
 
 
 @router.post("/generate")
@@ -438,7 +698,11 @@ def next_code(client_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("")
-def save_quote(payload: dict = Body(...), db: Session = Depends(get_db), user=Depends(get_current_user)):
+def save_quote(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user=Depends(require_permissions("sales:quotations:write")),
+):
     pid = payload.get('id')
     title = payload.get('cover_title') or payload.get('title') or 'Quotation'
     client_id = payload.get('client_id')
@@ -537,95 +801,28 @@ def list_quotes(
     estimator_id_not: Optional[str] = Query(None),
     value_min: Optional[float] = Query(None),
     value_max: Optional[float] = Query(None),
+    outcome_status: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions("sales:quotations:read")),
 ):
-    from ..models.models import Client
-    from sqlalchemy import or_, cast, String, Date, func, and_
-
     query = db.query(Quote).filter(Quote.deleted_at.is_(None))
+    query = _apply_quote_list_filters(
+        query,
+        client_id=client_id,
+        client_id_not=client_id_not,
+        creation_date_start=creation_date_start,
+        creation_date_end=creation_date_end,
+        update_date_start=update_date_start,
+        update_date_end=update_date_end,
+        estimator_id=estimator_id,
+        estimator_id_not=estimator_id_not,
+        outcome_status=outcome_status,
+        q=q,
+    )
 
-    if client_id:
-        try:
-            client_uuid = uuid.UUID(client_id)
-            query = query.filter(Quote.client_id == client_uuid)
-        except ValueError:
-            pass
-    
-    # Filter by client (exclusion)
-    if client_id_not:
-        try:
-            client_uuid = uuid.UUID(client_id_not)
-            query = query.filter(Quote.client_id != client_uuid)
-        except ValueError:
-            pass
-    
-    # Filter by creation date range
-    if creation_date_start:
-        try:
-            from datetime import datetime
-            start_d = datetime.strptime(creation_date_start, "%Y-%m-%d").date()
-            query = query.filter(cast(Quote.created_at, Date) >= start_d)
-        except Exception:
-            pass
-
-    if creation_date_end:
-        try:
-            from datetime import datetime
-            end_d = datetime.strptime(creation_date_end, "%Y-%m-%d").date()
-            query = query.filter(cast(Quote.created_at, Date) <= end_d)
-        except Exception:
-            pass
-    
-    # Filter by update date range
-    if update_date_start:
-        try:
-            from datetime import datetime
-            start_d = datetime.strptime(update_date_start, "%Y-%m-%d").date()
-            query = query.filter(cast(Quote.updated_at, Date) >= start_d)
-        except Exception:
-            pass
-
-    if update_date_end:
-        try:
-            from datetime import datetime
-            end_d = datetime.strptime(update_date_end, "%Y-%m-%d").date()
-            query = query.filter(cast(Quote.updated_at, Date) <= end_d)
-        except Exception:
-            pass
-    
-    # Filter by estimator
-    if estimator_id:
-        try:
-            estimator_uuid = uuid.UUID(estimator_id)
-            query = query.filter(Quote.estimator_id == estimator_uuid)
-        except ValueError:
-            pass
-    
-    # Filter by estimator (exclusion)
-    if estimator_id_not:
-        try:
-            estimator_uuid = uuid.UUID(estimator_id_not)
-            query = query.filter(Quote.estimator_id != estimator_uuid)
-        except ValueError:
-            pass
-    
-    # Search - include client name if client relation exists (only non-deleted clients for display)
-    if q:
-        query = query.outerjoin(Client, Quote.client_id == Client.id)
-        query = query.filter(
-            or_(
-                Quote.name.ilike(f"%{q}%"),
-                Quote.code.ilike(f"%{q}%"),
-                Quote.order_number.ilike(f"%{q}%"),
-                Client.display_name.ilike(f"%{q}%"),
-                Client.name.ilike(f"%{q}%")
-            )
-        )
-    
     rows = query.order_by(Quote.created_at.desc()).limit(500).all()
-    
-    # Fetch client information in one query
+
     client_ids = list(set([r.client_id for r in rows if r.client_id]))
     clients_map = {}
     if client_ids:
@@ -636,147 +833,15 @@ def list_quotes(
                 "name": client.name,
                 "display_name": client.display_name,
             }
-    
+
     result = []
-    def _num(v) -> float:
-        try:
-            if v is None:
-                return 0.0
-            # Handle strings like "$1,234.56"
-            if isinstance(v, str):
-                vv = v.replace("$", "").replace(",", "").strip()
-                if vv == "":
-                    return 0.0
-                return float(vv)
-            return float(v)
-        except Exception:
-            return 0.0
-
-    value_min_num = _num(value_min) if value_min is not None else None
-    value_max_num = _num(value_max) if value_max is not None else None
-
-    def _compute_estimated_value(data: dict) -> float:
-        """
-        Compute the Estimated Value shown on quote cards.
-        If multiple pricing sections exist, use the MAX Final Total (with GST) among them.
-        Mirrors frontend logic:
-          - New format: max of computed grand totals per pricing_sections[] (prefer section.total if present)
-          - Legacy format: totalNum + pst + gst
-        """
-        if not data:
-            return 0.0
-
-        # Check for pricing_sections (new format with multiple sections)
-        pricing_sections = data.get("pricing_sections")
-        if pricing_sections and isinstance(pricing_sections, list) and len(pricing_sections) > 0:
-            # Get the maximum Final Total (with GST) from all sections.
-            # Prefer section["total"] if present; otherwise compute from items + rates.
-            max_total = 0.0
-            for section in pricing_sections:
-                if not isinstance(section, dict):
-                    continue
-
-                # 1) Prefer persisted total (grandTotal)
-                section_total = _num(section.get("total"))
-                if section_total > max_total:
-                    max_total = section_total
-                    continue
-
-                # 2) Compute from items if total isn't present
-                items = section.get("items") or []
-                if isinstance(items, str):
-                    try:
-                        import json as _json
-                        items = _json.loads(items) or []
-                    except Exception:
-                        items = []
-                if not isinstance(items, list) or not items:
-                    continue
-
-                # Rates are stored as pstRate/gstRate in new format; keep fallbacks.
-                section_pst_rate = _num(section.get("pstRate") or section.get("pst_rate") or data.get("pst_rate"))
-                section_gst_rate = _num(section.get("gstRate") or section.get("gst_rate") or data.get("gst_rate"))
-
-                total_num = 0.0
-                total_for_pst = 0.0
-                total_for_gst = 0.0
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    price = _num(item.get("price"))
-                    qty = _num(item.get("quantity", 1))
-                    line_total = price * qty
-                    total_num += line_total
-                    if item.get("pst") is True:
-                        total_for_pst += line_total
-                    if item.get("gst") is True:
-                        total_for_gst += line_total
-
-                pst_val = total_for_pst * (section_pst_rate / 100.0)
-                gst_val = total_for_gst * (section_gst_rate / 100.0)
-                grand_total = total_num + pst_val + gst_val
-                if grand_total > max_total:
-                    max_total = grand_total
-
-            if max_total > 0:
-                return max_total
-
-        # Prefer explicit display_total if present (newer saves)
-        display_total = _num(data.get("display_total"))
-        if display_total > 0:
-            return display_total
-
-        # Legacy format: Calculate from additional_costs
-        pst_rate = _num(data.get("pst_rate"))
-        gst_rate = _num(data.get("gst_rate"))
-
-        additional_costs = data.get("additional_costs") or []
-        if isinstance(additional_costs, str):
-            try:
-                import json as _json
-                additional_costs = _json.loads(additional_costs) or []
-            except Exception:
-                additional_costs = []
-
-        if not isinstance(additional_costs, list):
-            additional_costs = []
-
-        # Calculate total_num from items (price * quantity), or use stored total if items are empty
-        total_num = 0.0
-        total_for_pst = 0.0
-        total_for_gst = 0.0
-        
-        if additional_costs:
-            # Calculate from items
-            for item in additional_costs:
-                if not isinstance(item, dict):
-                    continue
-                # For legacy format, need to account for quantity
-                val = _num(item.get("value"))
-                quantity = _num(item.get("quantity", 1))
-                line_total = val * quantity
-                total_num += line_total
-                if item.get("pst") is True:
-                    total_for_pst += line_total
-                if item.get("gst") is True:
-                    total_for_gst += line_total
-        else:
-            # No items, use stored total
-            total_num = _num(data.get("total"))
-
-        pst_val = total_for_pst * (pst_rate / 100.0)
-        gst_val = total_for_gst * (gst_rate / 100.0)
-        grand_total = total_num + pst_val + gst_val
-        if grand_total > 0:
-            return grand_total
-        return total_num
+    value_min_num = _quote_num(value_min) if value_min is not None else None
+    value_max_num = _quote_num(value_max) if value_max is not None else None
 
     for r in rows:
         data = r.data or {}
-        # "Document Type" displayed on cover page; stored as cover_title in data
         document_type = (data.get("cover_title") or r.title or "Quotation")
         estimated_value = _compute_estimated_value(data)
-        # Filter by value range (computed from data)
         if value_min_num is not None and estimated_value < value_min_num:
             continue
         if value_max_num is not None and estimated_value > value_max_num:
@@ -797,22 +862,199 @@ def list_quotes(
             "updated_at": r.updated_at.isoformat() if r.updated_at else None,
             "client_name": None,
             "client_display_name": None,
+            **_serialize_outcome_fields(r),
         }
-        
-        # Add client information if found
+
         client_id_str = str(r.client_id) if r.client_id else None
         if client_id_str and client_id_str in clients_map:
             client_info = clients_map[client_id_str]
             quote_dict["client_name"] = client_info.get("name")
             quote_dict["client_display_name"] = client_info.get("display_name")
-        
+
         result.append(quote_dict)
-    
+
     return result
 
 
+@router.get("/insights")
+def quotes_insights(
+    client_id: Optional[str] = Query(None),
+    client_id_not: Optional[str] = Query(None),
+    creation_date_start: Optional[str] = Query(None),
+    creation_date_end: Optional[str] = Query(None),
+    update_date_start: Optional[str] = Query(None),
+    update_date_end: Optional[str] = Query(None),
+    estimator_id: Optional[str] = Query(None),
+    estimator_id_not: Optional[str] = Query(None),
+    value_min: Optional[float] = Query(None),
+    value_max: Optional[float] = Query(None),
+    outcome_status: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions("sales:quotations:read")),
+):
+    """Aggregated quote outcome insights (not capped like the list endpoint)."""
+    query = db.query(Quote).filter(Quote.deleted_at.is_(None))
+    query = _apply_quote_list_filters(
+        query,
+        client_id=client_id,
+        client_id_not=client_id_not,
+        creation_date_start=creation_date_start,
+        creation_date_end=creation_date_end,
+        update_date_start=update_date_start,
+        update_date_end=update_date_end,
+        estimator_id=estimator_id,
+        estimator_id_not=estimator_id_not,
+        outcome_status=outcome_status,
+        q=q,
+    )
+    rows = query.all()
+
+    value_min_num = _quote_num(value_min) if value_min is not None else None
+    value_max_num = _quote_num(value_max) if value_max is not None else None
+
+    filtered = []
+    for r in rows:
+        live_value = _compute_estimated_value(r.data or {})
+        if value_min_num is not None and live_value < value_min_num:
+            continue
+        if value_max_num is not None and live_value > value_max_num:
+            continue
+        filtered.append(r)
+
+    by_status = {
+        s: {"count": 0, "value": 0.0, "label": OUTCOME_STATUS_LABELS[s]}
+        for s in QUOTE_OUTCOME_STATUSES
+    }
+    by_estimator = {}
+    by_lost_reason = {}
+    monthly = defaultdict(
+        lambda: {
+            "pending": 0,
+            "successful": 0,
+            "not_successful": 0,
+            "value_won": 0.0,
+            "value_lost": 0.0,
+        }
+    )
+
+    estimator_ids = {r.estimator_id for r in filtered if r.estimator_id}
+    users_map = {}
+    profiles_map = {}
+    if estimator_ids:
+        users = db.query(User).filter(User.id.in_(list(estimator_ids))).all()
+        users_map = {str(u.id): u for u in users}
+        profiles = (
+            db.query(EmployeeProfile)
+            .filter(EmployeeProfile.user_id.in_(list(estimator_ids)))
+            .all()
+        )
+        profiles_map = {str(p.user_id): p for p in profiles}
+
+    for r in filtered:
+        status = (getattr(r, "outcome_status", None) or "pending").strip() or "pending"
+        if status not in QUOTE_OUTCOME_STATUSES:
+            status = "pending"
+        value = _quote_metric_value(r)
+        by_status[status]["count"] += 1
+        by_status[status]["value"] += value
+
+        est_key = str(r.estimator_id) if r.estimator_id else "unassigned"
+        if est_key not in by_estimator:
+            if r.estimator_id:
+                name = _user_display_name(users_map.get(est_key), profiles_map.get(est_key))
+            else:
+                name = "Unassigned"
+            by_estimator[est_key] = {
+                "estimator_id": None if est_key == "unassigned" else est_key,
+                "name": name,
+                "pending": 0,
+                "successful": 0,
+                "not_successful": 0,
+                "value_won": 0.0,
+                "value_lost": 0.0,
+            }
+        by_estimator[est_key][status] += 1
+        if status == "successful":
+            by_estimator[est_key]["value_won"] += value
+        elif status == "not_successful":
+            by_estimator[est_key]["value_lost"] += value
+
+        if status == "not_successful":
+            reason = (r.lost_reason or "other").strip() or "other"
+            if reason not in QUOTE_LOST_REASONS:
+                reason = "other"
+            if reason not in by_lost_reason:
+                by_lost_reason[reason] = {"reason": reason, "count": 0, "value": 0.0}
+            by_lost_reason[reason]["count"] += 1
+            by_lost_reason[reason]["value"] += value
+
+        when = r.outcome_at if status != "pending" and r.outcome_at else r.created_at
+        if when:
+            month_key = when.strftime("%Y-%m")
+            monthly[month_key][status] += 1
+            if status == "successful":
+                monthly[month_key]["value_won"] += value
+            elif status == "not_successful":
+                monthly[month_key]["value_lost"] += value
+
+    successful = by_status["successful"]["count"]
+    not_successful = by_status["not_successful"]["count"]
+    decided = successful + not_successful
+    win_rate = (successful / decided) if decided > 0 else None
+
+    months_sorted = sorted(monthly.keys())
+    monthly_series = []
+    for m in months_sorted:
+        decided_m = monthly[m]["successful"] + monthly[m]["not_successful"]
+        monthly_series.append({
+            "month": m,
+            "pending": monthly[m]["pending"],
+            "successful": monthly[m]["successful"],
+            "not_successful": monthly[m]["not_successful"],
+            "value_won": round(monthly[m]["value_won"], 2),
+            "value_lost": round(monthly[m]["value_lost"], 2),
+            "win_rate": round(monthly[m]["successful"] / decided_m, 4) if decided_m > 0 else None,
+        })
+
+    estimator_list = sorted(
+        by_estimator.values(),
+        key=lambda e: (e["successful"] + e["not_successful"] + e["pending"]),
+        reverse=True,
+    )
+    for e in estimator_list:
+        d = e["successful"] + e["not_successful"]
+        e["win_rate"] = round(e["successful"] / d, 4) if d > 0 else None
+        e["value_won"] = round(e["value_won"], 2)
+        e["value_lost"] = round(e["value_lost"], 2)
+
+    return {
+        "total_count": len(filtered),
+        "by_status": {
+            s: {
+                "count": by_status[s]["count"],
+                "value": round(by_status[s]["value"], 2),
+                "label": by_status[s]["label"],
+            }
+            for s in QUOTE_OUTCOME_STATUSES
+        },
+        "win_rate": round(win_rate, 4) if win_rate is not None else None,
+        "value_won": round(by_status["successful"]["value"], 2),
+        "value_lost": round(by_status["not_successful"]["value"], 2),
+        "by_estimator": estimator_list,
+        "by_lost_reason": sorted(
+            by_lost_reason.values(), key=lambda x: x["count"], reverse=True
+        ),
+        "monthly": monthly_series,
+    }
+
+
 @router.get("/{quote_id}")
-def get_quote(quote_id: str, db: Session = Depends(get_db)):
+def get_quote(
+    quote_id: str,
+    db: Session = Depends(get_db),
+    _user=Depends(require_permissions("sales:quotations:read")),
+):
     q = db.query(Quote).filter(Quote.id == quote_id, Quote.deleted_at.is_(None)).first()
     if not q:
         raise HTTPException(status_code=404, detail='Not found')
@@ -828,16 +1070,83 @@ def get_quote(quote_id: str, db: Session = Depends(get_db)):
         "data": q.data or {},
         "created_at": q.created_at.isoformat() if q.created_at else None,
         "updated_at": q.updated_at.isoformat() if q.updated_at else None,
+        **_serialize_outcome_fields(q),
+    }
+
+
+@router.post("/{quote_id}/outcome")
+def set_quote_outcome(
+    quote_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user=Depends(require_permissions("sales:quotations:write")),
+):
+    q = db.query(Quote).filter(Quote.id == quote_id, Quote.deleted_at.is_(None)).first()
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+
+    status = (payload.get("status") or "").strip()
+    if status not in QUOTE_OUTCOME_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"status must be one of: {', '.join(QUOTE_OUTCOME_STATUSES)}",
+        )
+
+    note = payload.get("note")
+    if note is not None:
+        note = str(note).strip() or None
+
+    lost_reason = payload.get("lost_reason")
+    if lost_reason is not None:
+        lost_reason = str(lost_reason).strip() or None
+
+    if status == "not_successful":
+        if lost_reason and lost_reason not in QUOTE_LOST_REASONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"lost_reason must be one of: {', '.join(QUOTE_LOST_REASONS)}",
+            )
+        if not lost_reason:
+            lost_reason = "other"
+    else:
+        lost_reason = None
+
+    now = datetime.now(timezone.utc)
+    estimated = _compute_estimated_value(q.data or {})
+
+    q.outcome_status = status
+    q.outcome_note = note
+    q.lost_reason = lost_reason
+    q.updated_at = now
+
+    if status == "pending":
+        q.outcome_at = None
+        q.outcome_set_by_id = None
+        q.outcome_value = None
+    else:
+        q.outcome_at = now
+        q.outcome_set_by_id = getattr(user, "id", None)
+        q.outcome_value = estimated if estimated > 0 else None
+
+    db.commit()
+    db.refresh(q)
+    return {
+        "id": str(q.id),
+        **_serialize_outcome_fields(q),
     }
 
 
 @router.patch("/{quote_id}")
-def update_quote(quote_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user=Depends(get_current_user)):
+def update_quote(
+    quote_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user=Depends(require_permissions("sales:quotations:write")),
+):
     q = db.query(Quote).filter(Quote.id == quote_id, Quote.deleted_at.is_(None)).first()
     if not q:
         raise HTTPException(status_code=404, detail='Quote not found')
-    
-    # Update only provided fields
+
     if 'name' in payload:
         q.name = payload['name']
     if 'client_id' in payload:
@@ -850,28 +1159,27 @@ def update_quote(quote_id: str, payload: dict = Body(...), db: Session = Depends
         q.order_number = payload['order_number']
     if 'title' in payload:
         q.title = payload['title']
-    # estimator_id should never change after creation - ignore if provided in payload
-    # The estimator is always the user who created the quotation
     if 'data' in payload:
         try:
             import copy as _copy
             q.data = _copy.deepcopy(payload['data'])
         except Exception:
             q.data = payload['data']
-    
-    from datetime import datetime
+
     q.updated_at = datetime.utcnow()
     db.commit()
     return {"id": str(q.id)}
 
 
 @router.delete("/{quote_id}")
-def delete_quote(quote_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def delete_quote(
+    quote_id: str,
+    db: Session = Depends(get_db),
+    user=Depends(require_permissions("sales:quotations:write")),
+):
     q = db.query(Quote).filter(Quote.id == quote_id, Quote.deleted_at.is_(None)).first()
     if not q:
         raise HTTPException(status_code=404, detail='Quote not found')
-    # Soft delete: mark as deleted instead of removing the row
-    from datetime import datetime, timezone
     q.deleted_at = datetime.now(timezone.utc)
     q.deleted_by_id = user.id if user else None
     db.commit()
@@ -885,7 +1193,7 @@ def delete_quote(quote_id: str, db: Session = Depends(get_db), user=Depends(get_
             actor_id=str(user.id) if user else None,
             actor_role="user",
             source="api",
-            changes_json={"deleted_quote": {"title": getattr(q, "title", None), "status": getattr(q, "status", None)}, "soft_delete": True},
+            changes_json={"deleted_quote": {"title": getattr(q, "title", None), "status": getattr(q, "outcome_status", None)}, "soft_delete": True},
             context={"quote_title": getattr(q, "title", None)},
         )
     except Exception:
@@ -894,7 +1202,11 @@ def delete_quote(quote_id: str, db: Session = Depends(get_db), user=Depends(get_
 
 
 @router.post("/{quote_id}/restore")
-def restore_quote(quote_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def restore_quote(
+    quote_id: str,
+    db: Session = Depends(get_db),
+    user=Depends(require_permissions("sales:quotations:write")),
+):
     """Restore a soft-deleted quote. Does not filter by deleted_at so deleted quotes can be found."""
     q = db.query(Quote).filter(Quote.id == quote_id).first()
     if not q:
@@ -903,6 +1215,7 @@ def restore_quote(quote_id: str, db: Session = Depends(get_db), user=Depends(get
         return {"status": "ok", "message": "Quote was not deleted"}
     q.deleted_at = None
     q.deleted_by_id = None
+    q.updated_at = datetime.utcnow()
     db.commit()
     try:
         from ..services.audit import create_audit_log

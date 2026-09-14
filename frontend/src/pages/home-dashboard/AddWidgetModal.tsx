@@ -259,6 +259,7 @@ export function AddWidgetModal({
       item.type === 'kpi' ||
       item.type === 'list_projects' ||
       item.type === 'list_opportunities' ||
+      item.type === 'project_calendar' ||
       (item.type === 'shortcuts' && widgetHasServicesShortcuts(item.config?.items as string[] | undefined));
     const widgetConfig: Record<string, unknown> = { ...item.config };
     if (needsBusinessLine) {

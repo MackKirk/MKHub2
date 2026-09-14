@@ -98,7 +98,13 @@ export function isWidgetDefAllowed(
     return true;
   }
 
-  if (type === 'kpi' || type === 'chart' || type === 'list_projects' || type === 'list_opportunities') {
+  if (
+    type === 'kpi' ||
+    type === 'chart' ||
+    type === 'list_projects' ||
+    type === 'list_opportunities' ||
+    type === 'project_calendar'
+  ) {
     return canAccessBusinessLineForHome(me, lineForWidgetConfig(cfg as Record<string, unknown>, me));
   }
 
