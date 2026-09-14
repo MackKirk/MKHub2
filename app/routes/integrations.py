@@ -1,15 +1,18 @@
 from typing import Optional
 import time
+import uuid
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
-from ..auth.security import get_current_user
+from ..auth.security import _has_permission, get_current_user
 from ..config import settings
-from ..db import engine
-from ..models.models import User
+from ..db import engine, get_db
+from ..models.models import Attendance, User
+from ..services.sage_export import apply_sage_ack, sage_queue_payload, sage_response_fields
 
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
@@ -119,4 +122,72 @@ def places_details(
     if st != "OK":
         raise HTTPException(status_code=400, detail=st or "Place details error")
     return data
+
+
+def _can_read_sage_queue(user: User) -> bool:
+    return (
+        _has_permission(user, "hr:attendance:read")
+        or _has_permission(user, "hr:attendance:write")
+        or _has_permission(user, "hr:users:view:timesheet")
+        or _has_permission(user, "users:read")
+    )
+
+
+def _can_ack_sage(user: User) -> bool:
+    return (
+        _has_permission(user, "hr:attendance:write")
+        or _has_permission(user, "hr:users:edit:timesheet")
+        or _has_permission(user, "users:write")
+    )
+
+
+@router.get("/sage/queue")
+def sage_export_queue(
+    urgent_only: bool = Query(False),
+    limit: int = Query(200, ge=1, le=1000),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Windows companion pulls this. Persist queued/error only — no historical backfill."""
+    if not _can_read_sage_queue(user):
+        raise HTTPException(status_code=403, detail="Access denied")
+    q = db.query(Attendance).filter(Attendance.sage_state.in_(["queued", "error"]))
+    if urgent_only:
+        q = q.filter(Attendance.sage_urgent.is_(True))
+    rows = q.order_by(Attendance.sage_urgent.desc()).limit(limit).all()
+    return [sage_queue_payload(att) for att in rows]
+
+
+@router.post("/sage/ack")
+def sage_export_ack(
+    payload: dict,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Companion reports sent / paid / error / queued after talking to Sage."""
+    if not _can_ack_sage(user):
+        raise HTTPException(status_code=403, detail="Access denied")
+    attendance_id = payload.get("attendance_id")
+    state = payload.get("state")
+    if not attendance_id or not state:
+        raise HTTPException(status_code=400, detail="attendance_id and state are required")
+    try:
+        attendance_uuid = uuid.UUID(str(attendance_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid attendance_id")
+    attendance = db.query(Attendance).filter(Attendance.id == attendance_uuid).first()
+    if not attendance:
+        raise HTTPException(status_code=404, detail="Attendance not found")
+    try:
+        apply_sage_ack(
+            attendance,
+            state=str(state),
+            sage_rec_id=payload.get("sage_rec_id"),
+            error=payload.get("error"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.commit()
+    db.refresh(attendance)
+    return sage_response_fields(attendance)
 

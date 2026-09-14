@@ -1034,6 +1034,13 @@ def create_app() -> FastAPI:
                         ("declared_hours", "NUMERIC(10, 2) NULL"),
                         ("updated_at", "TIMESTAMPTZ NULL"),
                         ("updated_by", "UUID NULL"),
+                        ("sage_state", "VARCHAR(20) NOT NULL DEFAULT 'none'"),
+                        ("sage_source_key", "VARCHAR(20) NULL"),
+                        ("sage_rec_id", "VARCHAR(40) NULL"),
+                        ("sage_error", "TEXT NULL"),
+                        ("sage_synced_at", "TIMESTAMPTZ NULL"),
+                        ("sage_paid_at", "TIMESTAMPTZ NULL"),
+                        ("sage_urgent", "BOOLEAN NOT NULL DEFAULT FALSE"),
                     ):
                         try:
                             db.execute(
@@ -1060,6 +1067,11 @@ def create_app() -> FastAPI:
                         db.execute(
                             text(
                                 "CREATE INDEX IF NOT EXISTS idx_attendance_predefined_job_code ON attendance(predefined_job_code)"
+                            )
+                        )
+                        db.execute(
+                            text(
+                                "CREATE INDEX IF NOT EXISTS idx_attendance_sage_state ON attendance(sage_state)"
                             )
                         )
                         db.commit()

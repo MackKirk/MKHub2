@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import { Clock, TriangleAlert } from 'lucide-react';
@@ -10,6 +10,10 @@ import {
   scWorkerAttendanceDetailQuickInfo,
   scWorkerManualAttendanceQuickInfo,
 } from '@/lib/formModalQuickInfo';
+import {
+  employeesDirectoryQueryKey,
+  fetchEmployeesDirectory,
+} from '@/lib/employeesQuery';
 import {
   AppBadge,
   AppButton,
@@ -30,6 +34,7 @@ import {
   AppReadOnlyField,
   AppSectionHeader,
   AppSelect,
+  AppTabs,
   AppSortableEntityList,
   AppSortableEntityListFlatBody,
   AppSortableEntityListHeader,
@@ -46,6 +51,10 @@ import {
 } from '@/components/ui';
 import { PREDEFINED_JOBS } from '@/constants/predefinedJobs';
 import { resolveAttendanceEventJobLabel } from '@/lib/attendanceJobLabels';
+import { AttendanceWeekGrid } from '@/components/AttendanceWeekGrid';
+import { AttendanceSageBadge } from '@/components/AttendanceSageBadge';
+import { isSagePaid, SAGE_PAID_MESSAGE } from '@/lib/sageAttendance';
+import { startOfSundayWeek, weekDateStrings } from '@/lib/weekUtils';
 
 
 type Attendance = {
@@ -88,6 +97,11 @@ type Attendance = {
   clock_out_confirmed_by?: string | null;
   gps_accuracy_m?: number | null;
   hr_status?: string | null;
+  sage_state?: string | null;
+  sage_locked?: boolean;
+  sage_error?: string | null;
+  sage_synced_at?: string | null;
+  sage_paid_at?: string | null;
 };
 
 type AttendanceEvent = {
@@ -132,12 +146,18 @@ type AttendanceEvent = {
   gps_lng?: number | null;
   gps_accuracy_m?: number | null;
   hr_status?: string | null;
+  sage_state?: string | null;
+  sage_locked?: boolean;
+  sage_error?: string | null;
+  sage_synced_at?: string | null;
+  sage_paid_at?: string | null;
 };
 
 type User = {
   id: string;
   username: string;
   name?: string;
+  is_active?: boolean;
 };
 
 type Project = {
@@ -285,9 +305,9 @@ function SignaturePreviewBlock({ fileId, label }: { fileId?: string | null; labe
   );
 }
 
-const ATTENDANCE_ADMIN_GRID = 'grid-cols-[32px_3fr_4fr_4fr_4fr_4fr_5fr_3fr_3fr_3fr_auto]';
-const ATTENDANCE_ADMIN_GRID_READONLY = 'grid-cols-[3fr_4fr_4fr_4fr_4fr_5fr_3fr_3fr_3fr_auto]';
-const ATTENDANCE_ADMIN_MIN_WIDTH = 'min-w-[1100px]';
+const ATTENDANCE_ADMIN_GRID = 'grid-cols-[32px_3fr_4fr_4fr_4fr_4fr_5fr_3fr_3fr_3fr_3fr_auto]';
+const ATTENDANCE_ADMIN_GRID_READONLY = 'grid-cols-[3fr_4fr_4fr_4fr_4fr_5fr_3fr_3fr_3fr_3fr_auto]';
+const ATTENDANCE_ADMIN_MIN_WIDTH = 'min-w-[1220px]';
 
 const buildEvents = (attendances: Attendance[], projects: Project[] = []): AttendanceEvent[] => {
   // NEW MODEL: Each attendance record is already a complete event
@@ -400,6 +420,11 @@ const buildEvents = (attendances: Attendance[], projects: Project[] = []): Atten
       gps_lng: att.gps_lng ?? null,
       gps_accuracy_m: att.gps_accuracy_m ?? null,
       hr_status: att.hr_status ?? null,
+      sage_state: att.sage_state ?? 'none',
+      sage_locked: Boolean(att.sage_locked),
+      sage_error: att.sage_error ?? null,
+      sage_synced_at: att.sage_synced_at ?? null,
+      sage_paid_at: att.sage_paid_at ?? null,
     };
   });
 
@@ -419,11 +444,14 @@ export default function Attendance() {
   const canEditAttendance = isAdmin || perms.has('hr:attendance:write') || perms.has('hr:users:edit:timesheet') || perms.has('users:write');
   const listGridCols = canEditAttendance ? ATTENDANCE_ADMIN_GRID : ATTENDANCE_ADMIN_GRID_READONLY;
   const [refreshKey, setRefreshKey] = useState(0);
+  const [viewMode, setViewMode] = useState<'list' | 'week'>('week');
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfSundayWeek(new Date()));
   const [filters, setFilters] = useState({
     worker_id: '',
     start_date: '',
     end_date: '',
     status: '',
+    sage_state: '',
     record_kind: 'internal' as 'internal' | 'subcontractor' | 'all',
     subcontractor_company_id: '',
     project_id: '',
@@ -453,14 +481,27 @@ export default function Attendance() {
   
 
   // Build query string for filters
+  const weekDates = useMemo(() => weekDateStrings(weekStart), [weekStart]);
+  const weekStartStr = weekDates[0] || '';
+  const weekEndStr = weekDates[6] || '';
   const queryParams = new URLSearchParams();
-  if (filters.worker_id) queryParams.set('worker_id', filters.worker_id);
-  if (filters.start_date) queryParams.set('start_date', filters.start_date);
-  if (filters.end_date) queryParams.set('end_date', filters.end_date);
-  if (filters.status) queryParams.set('status', filters.status);
-  if (filters.record_kind) queryParams.set('record_kind', filters.record_kind);
-  if (filters.subcontractor_company_id) queryParams.set('subcontractor_company_id', filters.subcontractor_company_id);
-  if (filters.project_id) queryParams.set('project_id', filters.project_id);
+  if (viewMode === 'week') {
+    queryParams.set('record_kind', 'internal');
+    queryParams.set('start_date', weekStartStr);
+    queryParams.set('end_date', weekEndStr);
+    queryParams.set('limit', '5000');
+    if (filters.worker_id) queryParams.set('worker_id', filters.worker_id);
+    if (filters.project_id) queryParams.set('project_id', filters.project_id);
+    if (filters.status) queryParams.set('status', filters.status);
+  } else {
+    if (filters.worker_id) queryParams.set('worker_id', filters.worker_id);
+    if (filters.start_date) queryParams.set('start_date', filters.start_date);
+    if (filters.end_date) queryParams.set('end_date', filters.end_date);
+    if (filters.status) queryParams.set('status', filters.status);
+    if (filters.record_kind) queryParams.set('record_kind', filters.record_kind);
+    if (filters.subcontractor_company_id) queryParams.set('subcontractor_company_id', filters.subcontractor_company_id);
+    if (filters.project_id) queryParams.set('project_id', filters.project_id);
+  }
   const queryString = queryParams.toString();
   const url = queryString
     ? `/settings/attendance/list?${queryString}`
@@ -473,6 +514,7 @@ export default function Attendance() {
       // Ensure result is always an array
       return Array.isArray(result) ? result : [];
     },
+    placeholderData: keepPreviousData,
   });
 
   const { data: projects = [] } = useQuery({
@@ -495,18 +537,25 @@ export default function Attendance() {
     },
   });
 
-  const { data: users } = useQuery({
-    queryKey: ['employees'],
-    queryFn: async () => {
-      const result = await api<any[]>('GET', '/employees');
-      return Array.isArray(result) ? result : [];
-    },
+  const attendanceEmployeesQuery = {
+    limit: 2000,
+    activeOnly: true,
+    sort: 'name' as const,
+  };
+  const { data: users, isLoading: isEmployeesLoading } = useQuery({
+    queryKey: employeesDirectoryQueryKey(attendanceEmployeesQuery),
+    queryFn: () => fetchEmployeesDirectory(attendanceEmployeesQuery),
+    staleTime: 5 * 60 * 1000,
   });
 
-  const attendanceEvents = useMemo(
-    () => buildEvents(Array.isArray(attendances) ? attendances : [], Array.isArray(projects) ? projects : []),
-    [attendances, projects]
-  );
+  const attendanceEvents = useMemo(() => {
+    const events = buildEvents(
+      Array.isArray(attendances) ? attendances : [],
+      Array.isArray(projects) ? projects : [],
+    );
+    if (!filters.sage_state) return events;
+    return events.filter((event) => (event.sage_state || 'none') === filters.sage_state);
+  }, [attendances, projects, filters.sage_state]);
 
   const jobOptions = useMemo(() => {
     const projectsArray = Array.isArray(projects) ? projects : [];
@@ -524,8 +573,29 @@ export default function Attendance() {
       id: String(u.id),
       name: u.name,
       username: u.username,
+      is_active: u.is_active,
     }));
   }, [users]);
+
+  const weekEmployees = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string }>();
+    for (const u of employeeUsers) {
+      if (u.is_active === false) continue;
+      if (filters.worker_id && u.id !== filters.worker_id) continue;
+      byId.set(u.id, { id: u.id, name: u.name || u.username || u.id });
+    }
+    for (const event of attendanceEvents) {
+      if (filters.worker_id && event.worker_id !== filters.worker_id) continue;
+      if (byId.has(event.worker_id)) continue;
+      byId.set(event.worker_id, {
+        id: event.worker_id,
+        name: event.worker_name || event.worker_id,
+      });
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [employeeUsers, attendanceEvents, filters.worker_id]);
+
+  const isWeekLoading = isEmployeesLoading || isLoading;
 
   const workerFilterOptions = useMemo(() => {
     const list = Array.isArray(users) ? users : [];
@@ -559,7 +629,8 @@ export default function Attendance() {
     | 'project'
     | 'hours'
     | 'break'
-    | 'status';
+    | 'status'
+    | 'sage';
   const { sortBy, sortDir, setSort } = useLocalAppListSort<AttendanceSortColumn>('clock_in', 'desc');
 
   const attendanceStatusSortKey = useCallback((event: AttendanceEvent) => {
@@ -589,6 +660,7 @@ export default function Attendance() {
         hours: (e) => e.hours_worked ?? null,
         break: (e) => e.break_minutes ?? null,
         status: (e) => attendanceStatusSortKey(e),
+        sage: (e) => e.sage_state || 'none',
       }),
     [attendanceEvents, sortBy, sortDir, eventJobLabel, attendanceStatusSortKey],
   );
@@ -640,7 +712,7 @@ export default function Attendance() {
     setEditingEvent(null);
   };
 
-  const handleOpenModal = (event?: AttendanceEvent) => {
+  const handleOpenModal = (event?: AttendanceEvent, seed?: { workerId: string; date: string }) => {
     setViewingEvent(null);
     if (event) {
       setEditingEvent(event);
@@ -741,15 +813,28 @@ export default function Attendance() {
         .toISOString()
         .slice(0, 16);
       setEditingEvent(null);
-      setFormData({
-        worker_id: '',
-        job_type: '0',
-        clock_in_time: local,
-        clock_out_time: '',
-        status: 'approved',
-        entry_mode: 'time',
-        hours_worked: '',
-      });
+      if (seed?.workerId && seed.date) {
+        setSelectedWorkers([seed.workerId]);
+        setFormData({
+          worker_id: seed.workerId,
+          job_type: '0',
+          clock_in_time: `${seed.date}T08:00`,
+          clock_out_time: '',
+          status: 'approved',
+          entry_mode: 'hours',
+          hours_worked: '',
+        });
+      } else {
+        setFormData({
+          worker_id: '',
+          job_type: '0',
+          clock_in_time: local,
+          clock_out_time: '',
+          status: 'approved',
+          entry_mode: 'time',
+          hours_worked: '',
+        });
+      }
       setInsertBreakTime(false);
       setBreakHours('0');
       setBreakMinutes('0');
@@ -758,6 +843,10 @@ export default function Attendance() {
   };
 
   const handleDeleteEvent = async (event: AttendanceEvent) => {
+    if (isSagePaid(event.sage_state, event.sage_locked)) {
+      toast.error(SAGE_PAID_MESSAGE);
+      return;
+    }
     setViewingEvent(null);
     const result = await confirm({
       title: 'Delete Attendance Event',
@@ -874,6 +963,10 @@ export default function Attendance() {
         try {
           const event = attendanceEvents.find((e) => e.event_id === eventId);
           if (!event) continue;
+          if (isSagePaid(event.sage_state, event.sage_locked)) {
+            errorCount++;
+            continue;
+          }
 
           const attendanceId = event.clock_in_id || event.clock_out_id || event.event_id;
           if (!attendanceId) {
@@ -932,6 +1025,10 @@ export default function Attendance() {
   };
 
   const handleSubmit = async () => {
+    if (isSagePaid(editingEvent?.sage_state, editingEvent?.sage_locked)) {
+      toast.error(SAGE_PAID_MESSAGE);
+      return;
+    }
     const isEditingSubcontractor = editingEvent?.record_kind === 'subcontractor';
     // For editing, use formData.worker_id; for creating, use selectedWorkers
     const workersToProcess = editingEvent 
@@ -1244,6 +1341,7 @@ export default function Attendance() {
   const projectsList = Array.isArray(projects) ? projects : [];
 
   const isSubmitDisabled = useMemo(() => {
+    if (isSagePaid(editingEvent?.sage_state, editingEvent?.sage_locked)) return true;
     if (editingEvent?.record_kind === 'subcontractor') {
       return !isCompleteLocalDatetime(formData.clock_in_time) || !projectsList.some((p) => p.id === formData.job_type);
     }
@@ -1270,13 +1368,35 @@ export default function Attendance() {
     <div className={uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
       <AppPageHeader
         title="Attendance"
-        subtitle="Manage all clock-in/out records"
+        subtitle={
+          viewMode === 'week'
+            ? 'Weekly timesheet — click a cell to add or edit hours'
+            : 'Manage all clock-in/out records'
+        }
         icon={<Clock className="h-4 w-4" />}
+        actions={
+          <AppTabs
+            value={viewMode}
+            onChange={(key) => setViewMode(key as 'list' | 'week')}
+            tabs={[
+              { key: 'week', label: 'Week' },
+              { key: 'list', label: 'List' },
+            ]}
+          />
+        }
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>
-        <AppSectionHeader title="Filters" description="Narrow the attendance list by type, worker, project, or date." />
+        <AppSectionHeader
+          title="Filters"
+          description={
+            viewMode === 'week'
+              ? 'Week view is Sunday–Saturday for internal employees. Use List for subcontractors and bulk delete.'
+              : 'Narrow the attendance list by type, worker, project, or date.'
+          }
+        />
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {viewMode === 'list' ? (
           <AppSelect
             label="Record type"
             value={filters.record_kind}
@@ -1292,6 +1412,7 @@ export default function Attendance() {
               { value: 'all', label: 'All' },
             ]}
           />
+          ) : null}
           <AppCombobox
             label="Worker"
             value={filters.worker_id}
@@ -1306,6 +1427,7 @@ export default function Attendance() {
             allowEmpty
             emptyOptionLabel="All Projects"
           />
+          {viewMode === 'list' ? (
           <AppCombobox
             label="Subcontractor company"
             value={filters.subcontractor_company_id}
@@ -1313,16 +1435,21 @@ export default function Attendance() {
             options={companyFilterOptions}
             placeholder="All companies"
           />
+          ) : null}
+          {viewMode === 'list' ? (
           <AppDatePicker
             label="Start Date"
             value={filters.start_date}
             onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
           />
+          ) : null}
+          {viewMode === 'list' ? (
           <AppDatePicker
             label="End Date"
             value={filters.end_date}
             onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
           />
+          ) : null}
           <AppSelect
             label="Status"
             value={filters.status}
@@ -1336,6 +1463,21 @@ export default function Attendance() {
               { value: 'finalized', label: 'Finalized (subcontractor)' },
             ]}
           />
+          {filters.record_kind !== 'subcontractor' ? (
+          <AppSelect
+            label="Sage"
+            value={filters.sage_state}
+            onChange={(e) => setFilters({ ...filters, sage_state: e.target.value })}
+            options={[
+              { value: '', label: 'All Sage statuses' },
+              { value: 'none', label: 'Not queued' },
+              { value: 'queued', label: 'Queued' },
+              { value: 'sent', label: 'In Sage' },
+              { value: 'paid', label: 'Paid' },
+              { value: 'error', label: 'Sage error' },
+            ]}
+          />
+          ) : null}
         </div>
       </AppCard>
 
@@ -1345,7 +1487,7 @@ export default function Attendance() {
         </div>
       )}
 
-      {canEditAttendance && selectedEvents.size > 0 && (
+      {viewMode === 'list' && canEditAttendance && selectedEvents.size > 0 && (
         <div className={uiCx('flex items-center justify-between rounded-xl border bg-blue-50 p-3')}>
           <div className={uiCx(uiTypography.helper, 'font-medium text-blue-900')}>
             {selectedEvents.size} event(s) selected
@@ -1363,8 +1505,25 @@ export default function Attendance() {
         </div>
       )}
 
+      {viewMode === 'week' ? (
       <AppCard bodyClassName={uiSpacing.cardPadding}>
-        <AppSectionHeader title="Records" description="Click a row to view details. Use checkboxes for bulk delete." />
+        <AttendanceWeekGrid
+          weekStart={weekStart}
+          onWeekStartChange={setWeekStart}
+          employees={weekEmployees}
+          entries={attendanceEvents}
+          jobLabel={eventJobLabel}
+          canEdit={canEditAttendance}
+          isLoading={isWeekLoading}
+          onAdd={(workerId, date) => handleOpenModal(undefined, { workerId, date })}
+          onEdit={(entry) => {
+            const match = attendanceEvents.find((e) => e.event_id === entry.event_id);
+            if (match) handleOpenModal(match);
+          }}
+        />
+      </AppCard>
+      ) : (
+      <AppCard bodyClassName={uiSpacing.cardPadding}>
         <div className="mt-4 flex flex-col gap-2 overflow-x-auto">
           {canEditAttendance && (
             <AppListCreateItem
@@ -1460,6 +1619,13 @@ export default function Attendance() {
                   sortDir={sortDir}
                   onSort={setSort}
                 />
+                <AppSortableEntityListSortColumn
+                  label="Sage"
+                  column="sage"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onSort={setSort}
+                />
                 <div className="min-w-0 w-24" aria-hidden />
               </AppSortableEntityListHeader>
               <AppSortableEntityListFlatBody gridCols={listGridCols} minWidth={ATTENDANCE_ADMIN_MIN_WIDTH}>
@@ -1514,18 +1680,27 @@ export default function Attendance() {
                     <span className={uiCx(uiTypography.helper, 'min-w-0 text-gray-900')}>{formatHours(event.hours_worked)}</span>
                     <span className={uiCx(uiTypography.helper, 'min-w-0 text-gray-900')}>{formatBreak(event.break_minutes)}</span>
                     <div className="min-w-0">{attendanceStatusBadge(event)}</div>
+                    <div className="min-w-0">
+                      <AttendanceSageBadge
+                        state={event.sage_state}
+                        recordKind={event.record_kind}
+                        error={event.sage_error}
+                        empty="dash"
+                      />
+                    </div>
                     <div className="flex w-24 shrink-0 items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                       {canEditAttendance && (
                         <>
                           <AppListRowIconButton
                             preset="edit"
-                            label="Edit attendance"
+                            label={isSagePaid(event.sage_state, event.sage_locked) ? 'View attendance' : 'Edit attendance'}
                             onClick={() => handleOpenModal(event)}
                           />
                           <AppListRowIconButton
                             preset="delete"
                             label="Delete attendance"
                             loading={deletingId === event.event_id}
+                            disabled={isSagePaid(event.sage_state, event.sage_locked)}
                             onClick={() => void handleDeleteEvent(event)}
                           />
                         </>
@@ -1549,6 +1724,7 @@ export default function Attendance() {
           )}
         </div>
       </AppCard>
+      )}
 
       <AppFormModal
         open={!!viewingEvent}
@@ -1631,6 +1807,17 @@ export default function Attendance() {
                             ? 'Pending'
                             : 'Rejected'}
                       </DetailField>
+                      <DetailField label="Sage">
+                        <AttendanceSageBadge
+                          state={viewingEvent.sage_state}
+                          recordKind={viewingEvent.record_kind}
+                          error={viewingEvent.sage_error}
+                          empty="dash"
+                        />
+                        {viewingEvent.sage_error ? (
+                          <div className="mt-1 text-red-700">{viewingEvent.sage_error}</div>
+                        ) : null}
+                      </DetailField>
                       <DetailField label="Clock in">
                         {viewingEvent.is_hours_worked ? '—' : formatDateTime(viewingEvent.clock_in_time)}
                       </DetailField>
@@ -1701,12 +1888,28 @@ export default function Attendance() {
               loading={isSubmitting}
               onClick={() => void handleSubmit()}
             >
-              {isSubmitting ? 'Saving...' : editingEvent ? 'Update' : 'Create'}
+              {isSubmitting
+                ? 'Saving...'
+                : isSagePaid(editingEvent?.sage_state, editingEvent?.sage_locked)
+                  ? 'Locked'
+                  : editingEvent
+                    ? 'Update'
+                    : 'Create'}
             </AppButton>
           </div>
         }
       >
         <div className={uiSpacing.sectionStack}>
+          {editingEvent && isSagePaid(editingEvent.sage_state, editingEvent.sage_locked) ? (
+            <div className={uiCx('rounded-lg border border-gray-200 bg-gray-50 p-3', uiTypography.helper, 'text-gray-800')}>
+              {SAGE_PAID_MESSAGE}
+            </div>
+          ) : null}
+          {editingEvent?.sage_state === 'error' && editingEvent.sage_error ? (
+            <div className={uiCx('rounded-lg border border-red-200 bg-red-50 p-3', uiTypography.helper, 'text-red-800')}>
+              {editingEvent.sage_error}
+            </div>
+          ) : null}
           {editingEvent ? (
             editingEvent.record_kind === 'subcontractor' ? (
               <AppReadOnlyField

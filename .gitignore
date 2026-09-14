@@ -38,6 +38,24 @@ var/*.sqlite
 var/storage/
 var/cache/
 
+# Sage companion local build output / secrets (never commit company file or Sage passwords)
+sage-companion/**/bin/
+sage-companion/**/obj/
+sage-companion/**/*.exe
+sage-companion/**/*.pdb
+sage-companion/**/appsettings.local.json
+sage-companion/**/*.user
+
+# Sage 50 Canada company files / backups (payroll data — never commit)
+*.sai
+*.SAI
+*.saj
+*.SAJ
+*.cab
+*.CAB
+sage-test/
+SageTest/
+
 # Environment variables
 .env
 .env.local

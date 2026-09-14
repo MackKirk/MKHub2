@@ -107,6 +107,9 @@ def _finish_attendance_period(
     attendance.updated_at = datetime.now(timezone.utc)
     if user is not None:
         attendance.updated_by = user.id
+    from ..services.sage_export import refresh_sage_export_state
+
+    refresh_sage_export_state(attendance)
 
 
 def _maybe_sync_pte_from_attendance(
@@ -2952,6 +2955,9 @@ def approve_attendance(
     attendance.status = "approved"
     attendance.approved_at = datetime.now(timezone.utc)
     attendance.approved_by = user.id
+    from ..services.sage_export import refresh_sage_export_state
+
+    refresh_sage_export_state(attendance)
 
     complete_tasks_for_origin(
         db,
