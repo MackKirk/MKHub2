@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
-from sqlalchemy import or_, and_, func, case, cast, BigInteger, exists
+from sqlalchemy import or_, and_, func, case, cast, BigInteger, exists, Date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session, joinedload
@@ -531,6 +531,316 @@ def _fleet_assets_order(sort: Optional[str], direction: str):
     return FleetAsset.created_at.desc()
 
 
+_FLEET_LIST_COMPLIANCE_TYPES = ("CVIP", "NDT", "CRANE", "PROPANE")
+
+
+def _fleet_compliance_status_label(expiry_date: Optional[datetime | date]) -> str:
+    """Match fleet asset detail / compliance tab: Valid / Due Soon / Expired / No expiry."""
+    if expiry_date is None:
+        return "No expiry"
+    if isinstance(expiry_date, datetime):
+        exp_day = expiry_date.date()
+    elif isinstance(expiry_date, date):
+        exp_day = expiry_date
+    else:
+        return "No expiry"
+    today = datetime.now(timezone.utc).date()
+    days_left = (exp_day - today).days
+    if days_left < 0:
+        return "Expired"
+    if days_left <= 30:
+        return "Due Soon"
+    return "Valid"
+
+
+def _fleet_assets_compliance_by_type(
+    db: Session,
+    asset_ids: List[uuid.UUID],
+) -> Dict[uuid.UUID, Dict[str, Dict[str, Any]]]:
+    """Latest record per (asset, record_type) for list badges. One query for the page."""
+    out: Dict[uuid.UUID, Dict[str, Dict[str, Any]]] = {aid: {} for aid in asset_ids}
+    if not asset_ids:
+        return out
+    rows = (
+        db.query(FleetComplianceRecord)
+        .filter(
+            FleetComplianceRecord.fleet_asset_id.in_(asset_ids),
+            FleetComplianceRecord.record_type.in_(_FLEET_LIST_COMPLIANCE_TYPES),
+        )
+        .order_by(
+            FleetComplianceRecord.fleet_asset_id.asc(),
+            FleetComplianceRecord.record_type.asc(),
+            FleetComplianceRecord.expiry_date.desc().nulls_last(),
+        )
+        .all()
+    )
+    for rec in rows:
+        aid = rec.fleet_asset_id
+        rtype = rec.record_type
+        if aid not in out or rtype in out[aid]:
+            continue
+        exp = rec.expiry_date
+        if isinstance(exp, datetime):
+            expiry_iso = exp.date().isoformat()
+        elif isinstance(exp, date):
+            expiry_iso = exp.isoformat()
+        else:
+            expiry_iso = None
+        out[aid][rtype] = {
+            "label": _fleet_compliance_status_label(exp),
+            "expiry_date": expiry_iso,
+        }
+    return out
+
+
+def _escape_ilike(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _parse_fleet_asset_search(raw: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not raw:
+        return None
+    term = " ".join(str(raw).strip().split())
+    if not term:
+        return None
+    field: Optional[str] = None
+    lower = term.lower()
+    if lower.startswith("unit:"):
+        field = "unit"
+        term = term[5:].strip()
+    elif term.startswith("#"):
+        field = "unit"
+        term = term[1:].strip()
+    elif lower.startswith("plate:"):
+        field = "plate"
+        term = term[6:].strip()
+    elif lower.startswith("vin:"):
+        field = "vin"
+        term = term[4:].strip()
+    if not term:
+        return None
+    return {
+        "term": term,
+        "field": field,
+        "digits_only": term.isdigit(),
+        "len": len(term),
+    }
+
+
+def _fleet_asset_search_match_and_rank(parsed: Dict[str, Any]):
+    """Return (match_condition, search_rank_expr, needs_driver_join)."""
+    term = parsed["term"]
+    field = parsed.get("field")
+    digits_only = bool(parsed.get("digits_only"))
+    term_len = int(parsed.get("len") or 0)
+    esc = _escape_ilike(term)
+    exact = esc
+    prefix = f"{esc}%"
+    contains = f"%{esc}%"
+
+    def ilike(col, pattern: str):
+        return col.ilike(pattern, escape="\\")
+
+    unit_exact = func.lower(func.coalesce(FleetAsset.unit_number, "")) == term.lower()
+    unit_prefix = ilike(FleetAsset.unit_number, prefix)
+    plate_exact = func.lower(func.coalesce(FleetAsset.license_plate, "")) == term.lower()
+    plate_prefix = ilike(FleetAsset.license_plate, prefix)
+    vin_exact = func.lower(func.coalesce(FleetAsset.vin, "")) == term.lower()
+    vin_prefix = ilike(FleetAsset.vin, prefix)
+    plate_or_vin_prefix = or_(plate_exact, plate_prefix, vin_exact, vin_prefix)
+    name_make_model = or_(
+        ilike(FleetAsset.name, contains),
+        ilike(FleetAsset.make, contains),
+        ilike(FleetAsset.model, contains),
+    )
+
+    if field == "unit":
+        match = or_(unit_exact, unit_prefix, ilike(FleetAsset.unit_number, contains))
+        rank = case((unit_exact, 0), (unit_prefix, 1), else_=4)
+        return match, rank, False
+    if field == "plate":
+        match = or_(plate_exact, plate_prefix, ilike(FleetAsset.license_plate, contains))
+        rank = case((or_(plate_exact, plate_prefix), 2), else_=4)
+        return match, rank, False
+    if field == "vin":
+        match = or_(vin_exact, vin_prefix, ilike(FleetAsset.vin, contains))
+        rank = case((or_(vin_exact, vin_prefix), 2), else_=4)
+        return match, rank, False
+
+    # Digits-only or very short terms: identity fields only (unit / plate / VIN).
+    identity_only = digits_only or term_len <= 2
+    identity_match = or_(
+        unit_exact,
+        unit_prefix,
+        plate_or_vin_prefix,
+        ilike(FleetAsset.license_plate, contains),
+        ilike(FleetAsset.vin, contains),
+    )
+
+    conditions = [identity_match]
+    needs_driver = False
+
+    if not identity_only and term_len >= 3:
+        mid = or_(
+            name_make_model,
+            ilike(FleetAsset.body_style, contains),
+            ilike(FleetAsset.vehicle_type, contains),
+            ilike(FleetAsset.equipment_type_label, contains),
+            ilike(FleetAsset.fuel_type, contains),
+        )
+        conditions.append(mid)
+    if not identity_only and term_len >= 5:
+        conditions.append(ilike(FleetAsset.yard_location, contains))
+        conditions.append(ilike(FleetAsset.notes, contains))
+        needs_driver = True
+
+    match = or_(*conditions)
+    rank = case(
+        (unit_exact, 0),
+        (unit_prefix, 1),
+        (plate_or_vin_prefix, 2),
+        (name_make_model, 3),
+        else_=4,
+    )
+    return match, rank, needs_driver
+
+
+def _apply_fleet_asset_list_filters(
+    query,
+    db: Session,
+    *,
+    asset_type: Optional[FleetAssetType] = None,
+    asset_type_not: Optional[str] = None,
+    division_id: Optional[uuid.UUID] = None,
+    division_id_not: Optional[uuid.UUID] = None,
+    status: Optional[str] = None,
+    status_not: Optional[str] = None,
+    search: Optional[str] = None,
+    fuel_type: Optional[str] = None,
+    fuel_type_not: Optional[str] = None,
+    year: Optional[int] = None,
+    year_not: Optional[int] = None,
+    assigned: Optional[bool] = None,
+    apply_type: bool = True,
+    apply_status: bool = True,
+    apply_assigned: bool = True,
+):
+    """Apply list filters. Returns (query, search_rank_expr|None)."""
+    if apply_type:
+        if asset_type:
+            query = query.filter(FleetAsset.asset_type == asset_type.value)
+        if asset_type_not:
+            query = query.filter(FleetAsset.asset_type != asset_type_not)
+    if division_id:
+        query = query.filter(FleetAsset.division_id == division_id)
+    if division_id_not is not None:
+        query = query.filter(FleetAsset.division_id != division_id_not)
+    if apply_status:
+        if status:
+            query = query.filter(FleetAsset.status == status)
+        if status_not:
+            query = query.filter(FleetAsset.status != status_not)
+    if fuel_type:
+        query = query.filter(FleetAsset.fuel_type.ilike(fuel_type))
+    if fuel_type_not:
+        query = query.filter(or_(FleetAsset.fuel_type.is_(None), ~FleetAsset.fuel_type.ilike(fuel_type_not)))
+    if year is not None:
+        query = query.filter(FleetAsset.year == year)
+    if year_not is not None:
+        query = query.filter(FleetAsset.year != year_not)
+    if apply_assigned and assigned is not None:
+        if assigned:
+            query = query.filter(FleetAsset.driver_id.isnot(None))
+        else:
+            query = query.filter(FleetAsset.driver_id.is_(None))
+
+    search_rank = None
+    parsed = _parse_fleet_asset_search(search)
+    if parsed:
+        match, search_rank, needs_driver = _fleet_asset_search_match_and_rank(parsed)
+        if needs_driver:
+            esc = _escape_ilike(parsed["term"])
+            contains = f"%{esc}%"
+            driver_user = or_(
+                User.username.ilike(contains, escape="\\"),
+                User.email_personal.ilike(contains, escape="\\"),
+            )
+            driver_profile = or_(
+                EmployeeProfile.first_name.ilike(contains, escape="\\"),
+                EmployeeProfile.last_name.ilike(contains, escape="\\"),
+                EmployeeProfile.preferred_name.ilike(contains, escape="\\"),
+            )
+            matching_ids_subq = (
+                db.query(FleetAsset.id)
+                .outerjoin(User, FleetAsset.driver_id == User.id)
+                .outerjoin(EmployeeProfile, User.id == EmployeeProfile.user_id)
+                .filter(or_(match, driver_user, driver_profile))
+                .distinct()
+            )
+            query = query.filter(FleetAsset.id.in_(matching_ids_subq))
+        else:
+            query = query.filter(match)
+
+    return query, search_rank
+
+
+def _batch_fleet_user_displays(db: Session, user_ids: List[Optional[uuid.UUID]]) -> Dict[uuid.UUID, str]:
+    ids = list({uid for uid in user_ids if uid})
+    if not ids:
+        return {}
+    users = db.query(User).filter(User.id.in_(ids)).all()
+    profiles = db.query(EmployeeProfile).filter(EmployeeProfile.user_id.in_(ids)).all()
+    profile_by_uid = {p.user_id: p for p in profiles}
+    out: Dict[uuid.UUID, str] = {}
+    for u in users:
+        profile = profile_by_uid.get(u.id)
+        if profile:
+            if profile.preferred_name:
+                out[u.id] = profile.preferred_name
+                continue
+            composed = f"{(profile.first_name or '').strip()} {(profile.last_name or '').strip()}".strip()
+            if composed:
+                out[u.id] = composed
+                continue
+        out[u.id] = u.username or u.email_personal or str(u.id)
+    return out
+
+
+def _fleet_open_assignments_by_asset(
+    db: Session,
+    asset_ids: List[uuid.UUID],
+) -> Dict[uuid.UUID, AssetAssignment]:
+    if not asset_ids:
+        return {}
+    rows = (
+        db.query(AssetAssignment)
+        .filter(
+            AssetAssignment.fleet_asset_id.in_(asset_ids),
+            AssetAssignment.returned_at.is_(None),
+        )
+        .order_by(AssetAssignment.fleet_asset_id.asc(), AssetAssignment.assigned_at.desc())
+        .all()
+    )
+    out: Dict[uuid.UUID, AssetAssignment] = {}
+    for row in rows:
+        if row.fleet_asset_id not in out:
+            out[row.fleet_asset_id] = row
+    return out
+
+
+def _fleet_fuel_type_options(db: Session) -> List[str]:
+    from sqlalchemy import distinct
+
+    ft_query = db.query(distinct(FleetAsset.fuel_type)).filter(
+        FleetAsset.asset_type == "vehicle",
+        FleetAsset.fuel_type.isnot(None),
+        FleetAsset.fuel_type != "",
+    )
+    fuel_type_options = [r[0] for r in ft_query.all() if r[0]]
+    fuel_type_options.sort()
+    return fuel_type_options
+
+
 @router.get("/assets")
 def list_fleet_assets(
     asset_type: Optional[FleetAssetType] = Query(None),
@@ -548,7 +858,8 @@ def list_fleet_assets(
     sort: Optional[str] = Query(None),
     dir: Optional[str] = Query("asc"),
     page: int = 1,
-    limit: int = 15,
+    limit: int = 25,
+    include_fuel_types: bool = Query(False),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
@@ -556,118 +867,101 @@ def list_fleet_assets(
     if not has_fleet_assets_list_permission(user):
         raise HTTPException(status_code=403, detail="Forbidden")
     page = max(1, page)
-    limit = max(1, min(100, limit))
+    limit = max(1, min(200, limit))
     offset = (page - 1) * limit
 
-    query = db.query(FleetAsset)
+    query, search_rank = _apply_fleet_asset_list_filters(
+        db.query(FleetAsset),
+        db,
+        asset_type=asset_type,
+        asset_type_not=asset_type_not,
+        division_id=division_id,
+        division_id_not=division_id_not,
+        status=status,
+        status_not=status_not,
+        search=search,
+        fuel_type=fuel_type,
+        fuel_type_not=fuel_type_not,
+        year=year,
+        year_not=year_not,
+        assigned=assigned,
+    )
 
-    if asset_type:
-        query = query.filter(FleetAsset.asset_type == asset_type.value)
-    if asset_type_not:
-        query = query.filter(FleetAsset.asset_type != asset_type_not)
-    if division_id:
-        query = query.filter(FleetAsset.division_id == division_id)
-    if division_id_not is not None:
-        query = query.filter(FleetAsset.division_id != division_id_not)
-    if status:
-        query = query.filter(FleetAsset.status == status)
-    if status_not:
-        query = query.filter(FleetAsset.status != status_not)
-    if fuel_type:
-        query = query.filter(FleetAsset.fuel_type.ilike(fuel_type))
-    if fuel_type_not:
-        query = query.filter(or_(FleetAsset.fuel_type.is_(None), ~FleetAsset.fuel_type.ilike(fuel_type_not)))
-    if year is not None:
-        query = query.filter(FleetAsset.year == year)
-    if year_not is not None:
-        query = query.filter(FleetAsset.year != year_not)
-    if assigned is not None:
-        if assigned:
-            query = query.filter(FleetAsset.driver_id.isnot(None))
+    order_parts: List[Any] = []
+    if search_rank is not None:
+        order_parts.append(search_rank.asc())
+
+    if (sort or "") == "compliance":
+        today = func.current_date()
+        expiry_day = cast(FleetComplianceRecord.expiry_date, Date)
+        severity = case(
+            (FleetComplianceRecord.expiry_date.is_(None), 3),
+            (expiry_day < today, 0),
+            (expiry_day <= today + 30, 1),
+            else_=2,
+        )
+        compliance_rank_sq = (
+            db.query(
+                FleetComplianceRecord.fleet_asset_id.label("fleet_asset_id"),
+                func.min(severity).label("compliance_rank"),
+            )
+            .filter(FleetComplianceRecord.record_type.in_(_FLEET_LIST_COMPLIANCE_TYPES))
+            .group_by(FleetComplianceRecord.fleet_asset_id)
+            .subquery()
+        )
+        query = query.outerjoin(
+            compliance_rank_sq,
+            FleetAsset.id == compliance_rank_sq.c.fleet_asset_id,
+        )
+        rank_col = compliance_rank_sq.c.compliance_rank
+        is_asc = (dir or "asc").lower() == "asc"
+        if is_asc:
+            order_parts.extend([rank_col.asc().nulls_last(), FleetAsset.unit_number.asc()])
         else:
-            query = query.filter(FleetAsset.driver_id.is_(None))
-    if search:
-        search_term = f"%{search}%"
-        # FleetAsset fields: name, make, model, vin, plate, unit_number, body_style, vehicle_type, fuel_type, yard_location, equipment_type_label, notes
-        asset_conditions = or_(
-            FleetAsset.name.ilike(search_term),
-            FleetAsset.vin.ilike(search_term),
-            FleetAsset.license_plate.ilike(search_term),
-            FleetAsset.model.ilike(search_term),
-            FleetAsset.make.ilike(search_term),
-            FleetAsset.unit_number.ilike(search_term),
-            FleetAsset.body_style.ilike(search_term),
-            FleetAsset.vehicle_type.ilike(search_term),
-            FleetAsset.fuel_type.ilike(search_term),
-            FleetAsset.yard_location.ilike(search_term),
-            FleetAsset.equipment_type_label.ilike(search_term),
-            FleetAsset.notes.ilike(search_term),
-        )
-        # Driver name (assigned user): join User + EmployeeProfile
-        driver_user = or_(
-            User.username.ilike(search_term),
-            User.email_personal.ilike(search_term),
-        )
-        driver_profile = or_(
-            EmployeeProfile.first_name.ilike(search_term),
-            EmployeeProfile.last_name.ilike(search_term),
-            EmployeeProfile.preferred_name.ilike(search_term),
-        )
-        # Subquery: distinct asset IDs matching search (avoids SELECT DISTINCT + ORDER BY conflict in PostgreSQL)
-        matching_ids_subq = (
-            db.query(FleetAsset.id)
-            .outerjoin(User, FleetAsset.driver_id == User.id)
-            .outerjoin(EmployeeProfile, User.id == EmployeeProfile.user_id)
-            .filter(or_(asset_conditions, driver_user, driver_profile))
-            .distinct()
-        )
-        query = query.filter(FleetAsset.id.in_(matching_ids_subq))
-
-    order_clause = _fleet_assets_order(sort, dir or "asc")
-    if isinstance(order_clause, tuple):
-        query = query.order_by(*order_clause)
+            order_parts.extend([rank_col.desc().nulls_last(), FleetAsset.unit_number.asc()])
     else:
-        query = query.order_by(order_clause)
+        order_clause = _fleet_assets_order(sort, dir or "asc")
+        if isinstance(order_clause, tuple):
+            order_parts.extend(order_clause)
+        else:
+            order_parts.append(order_clause)
+
+    query = query.order_by(*order_parts)
 
     total = query.count()
     assets = query.offset(offset).limit(limit).all()
     total_pages = (total + limit - 1) // limit if total > 0 else 1
 
+    asset_ids = [a.id for a in assets]
+    compliance_by_asset = _fleet_assets_compliance_by_type(db, asset_ids)
+    open_by_asset = _fleet_open_assignments_by_asset(db, asset_ids)
+    display_ids: List[Optional[uuid.UUID]] = [a.driver_id for a in assets]
+    for assignment in open_by_asset.values():
+        display_ids.append(assignment.assigned_to_user_id)
+    displays = _batch_fleet_user_displays(db, display_ids)
+
     items = []
     for a in assets:
         d = FleetAssetResponse.model_validate(a).model_dump(mode="json")
-        d["driver_name"] = get_user_display(db, a.driver_id) if a.driver_id else None
-        open_assignment = (
-            db.query(AssetAssignment)
-            .filter(
-                AssetAssignment.fleet_asset_id == a.id,
-                AssetAssignment.returned_at.is_(None),
-            )
-            .order_by(AssetAssignment.assigned_at.desc())
-            .first()
-        )
+        d["driver_name"] = displays.get(a.driver_id) if a.driver_id else None
+        d["compliance_by_type"] = compliance_by_asset.get(a.id, {})
+        open_assignment = open_by_asset.get(a.id)
         if open_assignment:
             assignee = (open_assignment.assigned_to_name or "").strip() or (
-                get_user_display(db, open_assignment.assigned_to_user_id)
+                displays.get(open_assignment.assigned_to_user_id)
                 if open_assignment.assigned_to_user_id
                 else None
             )
             d["assigned_to_name"] = assignee
+            d["department"] = open_assignment.department_snapshot or None
         else:
             d["assigned_to_name"] = None
+            d["department"] = None
         items.append(d)
 
-    # Fetch distinct fuel types for filter dropdown (when viewing vehicles or all)
     fuel_type_options: List[str] = []
-    if asset_type is None or asset_type == FleetAssetType.vehicle:
-        from sqlalchemy import distinct
-        ft_query = db.query(distinct(FleetAsset.fuel_type)).filter(
-            FleetAsset.asset_type == "vehicle",
-            FleetAsset.fuel_type.isnot(None),
-            FleetAsset.fuel_type != "",
-        )
-        fuel_type_options = [r[0] for r in ft_query.all() if r[0]]
-        fuel_type_options.sort()
+    if include_fuel_types and (asset_type is None or asset_type == FleetAssetType.vehicle):
+        fuel_type_options = _fleet_fuel_type_options(db)
 
     return {
         "items": items,
@@ -676,6 +970,73 @@ def list_fleet_assets(
         "limit": limit,
         "total_pages": total_pages,
         "fuel_type_options": fuel_type_options,
+    }
+
+
+@router.get("/assets/counts")
+def list_fleet_asset_counts(
+    division_id: Optional[uuid.UUID] = Query(None),
+    division_id_not: Optional[uuid.UUID] = Query(None),
+    search: Optional[str] = Query(None),
+    fuel_type: Optional[str] = Query(None),
+    fuel_type_not: Optional[str] = Query(None),
+    year: Optional[int] = Query(None),
+    year_not: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Facet counts for fleet assets quick filters (one request instead of many list calls)."""
+    if not has_fleet_assets_list_permission(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    base, _ = _apply_fleet_asset_list_filters(
+        db.query(FleetAsset),
+        db,
+        division_id=division_id,
+        division_id_not=division_id_not,
+        search=search,
+        fuel_type=fuel_type,
+        fuel_type_not=fuel_type_not,
+        year=year,
+        year_not=year_not,
+        apply_type=False,
+        apply_status=False,
+        apply_assigned=False,
+    )
+
+    row = (
+        base.with_entities(
+            func.count().label("all_count"),
+            func.count().filter(FleetAsset.asset_type == "vehicle").label("vehicle"),
+            func.count().filter(FleetAsset.asset_type == "heavy_machinery").label("heavy_machinery"),
+            func.count().filter(FleetAsset.asset_type == "other").label("other"),
+            func.count().filter(FleetAsset.status == "active").label("active"),
+            func.count().filter(FleetAsset.status == "inactive").label("inactive"),
+            func.count().filter(FleetAsset.status == "maintenance").label("maintenance"),
+            func.count().filter(FleetAsset.status == "retired").label("retired"),
+            func.count().filter(FleetAsset.driver_id.isnot(None)).label("assigned_true"),
+            func.count().filter(FleetAsset.driver_id.is_(None)).label("assigned_false"),
+        )
+        .one()
+    )
+
+    return {
+        "types": {
+            "all": int(row.all_count or 0),
+            "vehicle": int(row.vehicle or 0),
+            "heavy_machinery": int(row.heavy_machinery or 0),
+            "other": int(row.other or 0),
+        },
+        "statuses": {
+            "active": int(row.active or 0),
+            "inactive": int(row.inactive or 0),
+            "maintenance": int(row.maintenance or 0),
+            "retired": int(row.retired or 0),
+        },
+        "assigned": {
+            "true": int(row.assigned_true or 0),
+            "false": int(row.assigned_false or 0),
+        },
     }
 
 
@@ -1155,6 +1516,9 @@ def create_asset_compliance(
     if not asset:
         raise HTTPException(status_code=404, detail="Fleet asset not found")
     data = payload.dict(exclude={"fleet_asset_id"})
+    # JSON column cannot serialize uuid.UUID (same as fleet asset photos/documents)
+    if "documents" in data:
+        data["documents"] = _fleet_asset_json_file_id_list(data.get("documents"))
     rec = FleetComplianceRecord(fleet_asset_id=asset_id, **data)
     db.add(rec)
     db.commit()
@@ -1186,6 +1550,9 @@ def update_compliance(
     before = snapshot_compliance(rec)
     update_data = payload.dict(exclude_unset=True)
     for key, value in update_data.items():
+        # JSON column cannot serialize uuid.UUID (same as fleet asset photos/documents)
+        if key == "documents":
+            value = _fleet_asset_json_file_id_list(value)
         setattr(rec, key, value)
     db.commit()
     db.refresh(rec)
@@ -2530,7 +2897,7 @@ def list_inspection_schedules(
     status: Optional[str] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
-    sort: Optional[str] = Query("scheduled_at"),
+    sort: Optional[str] = Query("created_at"),
     dir: Optional[str] = Query("desc"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
@@ -2553,10 +2920,15 @@ def list_inspection_schedules(
     is_desc = (dir or "desc").lower() == "desc"
     if sort == "scheduled_at":
         query = query.order_by(InspectionSchedule.scheduled_at.desc() if is_desc else InspectionSchedule.scheduled_at.asc())
+    elif sort == "created_at":
+        query = query.order_by(InspectionSchedule.created_at.desc() if is_desc else InspectionSchedule.created_at.asc())
     elif sort == "asset":
         query = query.join(InspectionSchedule.fleet_asset).order_by(FleetAsset.name.desc() if is_desc else FleetAsset.name.asc())
+    elif sort == "status":
+        query = query.order_by(InspectionSchedule.status.desc() if is_desc else InspectionSchedule.status.asc())
     else:
-        query = query.order_by(InspectionSchedule.scheduled_at.desc() if is_desc else InspectionSchedule.scheduled_at.asc())
+        # Default / unknown: created_at (newest schedules first). body/mechanical sorted after enrichment.
+        query = query.order_by(InspectionSchedule.created_at.desc() if is_desc else InspectionSchedule.created_at.asc())
     rows = query.limit(500).all()
     out_list = []
     for r in rows:
@@ -2571,6 +2943,10 @@ def list_inspection_schedules(
                 "mechanical_result": mech_insp.result if mech_insp else None,
             })
         )
+    if sort == "body_result":
+        out_list.sort(key=lambda x: (x.body_result or "").lower(), reverse=is_desc)
+    elif sort == "mechanical_result":
+        out_list.sort(key=lambda x: (x.mechanical_result or "").lower(), reverse=is_desc)
     return out_list
 
 

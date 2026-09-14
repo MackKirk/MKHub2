@@ -52,7 +52,7 @@ export const MKProjectTeamSection: React.FC<MKProjectTeamSectionProps> = ({
       <Text style={styles.title}>Project Team</Text>
       <Text style={styles.subtitle}>
         Project access members can open this project. Scheduled workers are on
-        shifts only — that does not grant project access.
+        shifts only.
       </Text>
 
       <Text style={styles.sectionLabel}>Project access</Text>

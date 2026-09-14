@@ -62,7 +62,7 @@ type Props = {
   onSort: (column: FleetAssetComplianceSortCol) => void;
   canEdit?: boolean;
   onCreateClick: () => void;
-  onEditRecord: (recordId: string) => void;
+  onViewRecord: (recordId: string) => void;
   onDeleteRecord: (record: FleetAssetComplianceRow) => void;
 };
 
@@ -77,7 +77,7 @@ export function FleetAssetComplianceTab({
   onSort,
   canEdit = true,
   onCreateClick,
-  onEditRecord,
+  onViewRecord,
   onDeleteRecord,
 }: Props) {
   const totalCount = Array.isArray(complianceRecords) ? complianceRecords.length : 0;
@@ -204,22 +204,18 @@ export function FleetAssetComplianceTab({
                       key={rec.id}
                       variant="flat"
                       as="div"
-                      role={canEdit ? 'button' : undefined}
-                      tabIndex={canEdit ? 0 : undefined}
+                      role="button"
+                      tabIndex={0}
                       gridCols={LIST_GRID_COLS}
                       minWidth={LIST_MIN_WIDTH}
-                      className={canEdit ? 'cursor-pointer' : undefined}
-                      onClick={canEdit ? () => onEditRecord(rec.id) : undefined}
-                      onKeyDown={
-                        canEdit
-                          ? (e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                onEditRecord(rec.id);
-                              }
-                            }
-                          : undefined
-                      }
+                      className="cursor-pointer"
+                      onClick={() => onViewRecord(rec.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onViewRecord(rec.id);
+                        }
+                      }}
                     >
                       <span className={uiCx(uiTypography.body, 'whitespace-nowrap font-medium text-gray-900')}>
                         {rec.record_type}

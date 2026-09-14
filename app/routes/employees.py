@@ -68,6 +68,7 @@ def _employee_directory_payload(u: User, ep: Optional[EmployeeProfile], division
         "hire_date": hire_iso,
         "first_name": (getattr(ep, "first_name", None) or "").strip() if ep else None,
         "last_name": (getattr(ep, "last_name", None) or "").strip() if ep else None,
+        "preferred_name": ((getattr(ep, "preferred_name", None) or "").strip() or None) if ep else None,
         "email": u.email_personal,
         "email_corporate": corp,
         "work_email": work_email,

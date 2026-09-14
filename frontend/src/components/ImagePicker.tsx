@@ -1161,18 +1161,12 @@ export default function ImagePicker({
     return img.src;
   };
 
-  // Handle save from ImageEditor - update image in picker and upload as copy
+  // Handle save from ImageEditor - update image in picker; persist to gallery when context exists
   const handleImageEditorSave = async (blob: Blob) => {
     if (isSavingFromEditor) return; // Prevent multiple saves
     
     setIsSavingFromEditor(true);
     try {
-      if (!clientId && !projectId) {
-        toast.error('Client or project context required');
-        setIsSavingFromEditor(false);
-        return;
-      }
-
       // Convert PNG blob to JPG unless document creator needs transparency preserved
       let imageBlob = blob;
       const keepPng = preserveTransparency && blob.type === 'image/png';
@@ -1260,6 +1254,9 @@ export default function ImagePicker({
 
       toast.success('Image edited');
       setIsSavingFromEditor(false);
+
+      // Without client/project context, keep local blob only — Confirm re-uploads the export.
+      if (!clientId && !projectId) return;
 
       const editedMime = imageBlob.type || (keepPng ? 'image/png' : 'image/jpeg');
       const editedExt = editedMime === 'image/png' ? 'png' : 'jpg';

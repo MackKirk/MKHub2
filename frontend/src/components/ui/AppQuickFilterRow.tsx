@@ -22,13 +22,14 @@ export function AppQuickFilterRow({ segments, label = 'Quick filters:', classNam
   return (
     <div
       className={uiCx(
-        'mt-3 border-t border-gray-100 pt-3',
         uiLayout.actionsRow,
-        'flex-wrap items-center gap-2',
+        'mt-3 flex-wrap items-center gap-2 border-t border-gray-100 pt-3',
         className,
       )}
     >
-      <span className={uiCx(uiTypography.overline, 'inline-flex shrink-0 items-center leading-none')}>{label}</span>
+      {label ? (
+        <span className={uiCx(uiTypography.overline, 'inline-flex shrink-0 items-center leading-none')}>{label}</span>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {segments.map((segment) => (
           <button

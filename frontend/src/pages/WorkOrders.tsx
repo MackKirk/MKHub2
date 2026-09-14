@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { ClipboardList, Search, SlidersHorizontal } from 'lucide-react';
@@ -36,6 +36,7 @@ import {
   uiShadows,
   uiSpacing,
   uiTypography,
+  useAppListSort,
 } from '@/components/ui';
 
 type WorkOrder = {
@@ -69,14 +70,17 @@ const DESC_TRUNCATE = 60;
 const LIST_GRID_COLS = 'grid-cols-[2fr_5fr_2fr_2fr_2fr_2fr_2fr]';
 const LIST_MIN_WIDTH = 'min-w-[880px]';
 
-type SortColumn =
-  | 'work_order_number'
-  | 'description'
-  | 'category'
-  | 'urgency'
-  | 'status'
-  | 'created_at'
-  | 'scheduled_start_at';
+const WORK_ORDER_LIST_SORTS = [
+  'work_order_number',
+  'description',
+  'category',
+  'urgency',
+  'status',
+  'created_at',
+  'scheduled_start_at',
+] as const;
+
+type SortColumn = (typeof WORK_ORDER_LIST_SORTS)[number];
 
 function buildMetaLine(wo: WorkOrder): string {
   const parts: string[] = [];
@@ -206,28 +210,13 @@ export default function WorkOrders({ scope = 'fleet' }: { scope?: WorkOrderListS
   const [page, setPage] = useState(pageParam);
   const limit = 15;
 
-  const validSorts: SortColumn[] = [
-    'work_order_number',
-    'description',
-    'category',
-    'urgency',
-    'status',
-    'created_at',
-    'scheduled_start_at',
-  ];
-  const rawSort = searchParams.get('sort');
-  const sortBy: SortColumn =
-    rawSort && validSorts.includes(rawSort as SortColumn) ? (rawSort as SortColumn) : 'created_at';
-  const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
-  const setListSort = (column: SortColumn, direction?: 'asc' | 'desc') => {
-    const params = new URLSearchParams(searchParams);
-    const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
-    params.set('sort', column);
-    params.set('dir', nextDir);
-    params.set('page', '1');
-    setPage(1);
-    setSearchParams(params, { replace: true });
-  };
+  const { sortBy, sortDir, setSort: setListSort } = useAppListSort<SortColumn>({
+    searchParams,
+    setSearchParams,
+    defaultSort: 'created_at',
+    defaultDir: 'desc',
+    validSorts: WORK_ORDER_LIST_SORTS,
+  });
 
   useEffect(() => {
     const urlPage = parseInt(searchParams.get('page') || '1', 10);
@@ -274,12 +263,14 @@ export default function WorkOrders({ scope = 'fleet' }: { scope?: WorkOrderListS
       params.set('limit', String(limit));
       return api<WorkOrderListResponse>('GET', `/fleet/work-orders?${params.toString()}`);
     },
+    placeholderData: keepPreviousData,
   });
 
   const workOrders = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = data?.total_pages ?? 1;
   const currentPage = data?.page ?? 1;
+  const isInitialLoading = isLoading && !data;
 
   const handleApplyFilters = (rules: FilterRule[]) => {
     const params = convertRulesToParams(rules, searchParams);
@@ -298,7 +289,7 @@ export default function WorkOrders({ scope = 'fleet' }: { scope?: WorkOrderListS
     setSearchParams(params, { replace: true });
   };
 
-  const showEmptyList = !isLoading && workOrders.length === 0;
+  const showEmptyList = !isInitialLoading && workOrders.length === 0;
   const subtitle =
     scope === 'equipment' ? 'Equipment work order management' : 'Fleet work order management';
 
@@ -369,7 +360,7 @@ export default function WorkOrders({ scope = 'fleet' }: { scope?: WorkOrderListS
         </div>
       )}
 
-      <LoadingOverlay isLoading={isLoading} text="Loading work orders...">
+      <LoadingOverlay isLoading={isInitialLoading} text="Loading work orders...">
         <AppCard
           className={uiShadows.card}
           bodyClassName="!p-0"
@@ -419,7 +410,12 @@ export default function WorkOrders({ scope = 'fleet' }: { scope?: WorkOrderListS
             ) : undefined
           }
         >
-          <div className="flex flex-col">
+          <div
+            className={uiCx(
+              'flex flex-col',
+              isFetching && workOrders.length > 0 ? 'opacity-60 pointer-events-none' : undefined,
+            )}
+          >
             {showEmptyList ? (
               <div className={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack, 'min-h-[12rem] pb-10')}>
                 {canCreateWorkOrder ? (

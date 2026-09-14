@@ -135,6 +135,13 @@ function LegacyFleetEquipmentDetailRedirect() {
   return <Navigate to={`/company-assets/equipment/${id}`} replace />;
 }
 
+/** Legacy Safety form template editor URLs → Documents & Forms */
+function LegacySafetyFormTemplateRedirect() {
+  const { id } = useParams();
+  if (!id) return <Navigate to="/documents/form-templates" replace />;
+  return <Navigate to={`/documents/form-templates/${id}`} replace />;
+}
+
 import { getToken } from './lib/api';
 
 /** Root `/` with token: resolve onboarding vs hub before navigating (matches post-login behavior). */
@@ -239,6 +246,9 @@ export default function App(){
           <Route path="/documents/create" element={<AppShell><DocumentCreator/></AppShell>} />
           <Route path="/documents/create/:id" element={<AppShell><DocumentCreator/></AppShell>} />
           <Route path="/documents/signature-editor" element={<AppShell><SignatureEditorPage/></AppShell>} />
+          <Route path="/documents/form-templates" element={<AppShell><FormTemplatesPage /></AppShell>} />
+          <Route path="/documents/form-templates/:id" element={<AppShell><FormTemplateEditorPage /></AppShell>} />
+          <Route path="/documents/form-custom-lists" element={<AppShell><FormCustomListsPage /></AppShell>} />
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
           <Route path="/users" element={<AppShell><Users/></AppShell>} />
           <Route path="/human-resources/overview" element={<AppShell><HrDataQualityOverview /></AppShell>} />
@@ -262,9 +272,9 @@ export default function App(){
           <Route path="/safety/inspections" element={<AppShell><SafetyInspectionsPage /></AppShell>} />
           <Route path="/safety/sign/:projectId/:inspectionId" element={<AppShell><SafetyInspectionSignPage /></AppShell>} />
           <Route path="/safety/calendar" element={<AppShell><SafetySchedulePage /></AppShell>} />
-          <Route path="/safety/form-templates" element={<AppShell><FormTemplatesPage /></AppShell>} />
-          <Route path="/safety/form-custom-lists" element={<AppShell><FormCustomListsPage /></AppShell>} />
-          <Route path="/safety/form-templates/:id" element={<AppShell><FormTemplateEditorPage /></AppShell>} />
+          <Route path="/safety/form-templates" element={<Navigate to="/documents/form-templates" replace />} />
+          <Route path="/safety/form-custom-lists" element={<Navigate to="/documents/form-custom-lists" replace />} />
+          <Route path="/safety/form-templates/:id" element={<LegacySafetyFormTemplateRedirect />} />
           <Route path="/fleet" element={<AppShell><FleetDashboard/></AppShell>} />
           <Route path="/fleet/assets" element={<AppShell><FleetAssets/></AppShell>} />
           <Route path="/fleet/vehicles" element={<AppShell><FleetAssets/></AppShell>} />

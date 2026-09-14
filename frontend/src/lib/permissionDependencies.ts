@@ -27,9 +27,11 @@ function clearMembersWriteIfNoLineRead(perms: Record<string, boolean>): void {
   }
   if (!hasConstructionLineRead(perms)) {
     perms['business:construction:projects:members:write'] = false;
+    perms['business:construction:projects:owner:write'] = false;
   }
   if (!hasRepairsLineRead(perms)) {
     perms['business:rm:projects:members:write'] = false;
+    perms['business:rm:projects:owner:write'] = false;
   }
 }
 
@@ -203,6 +205,12 @@ export function canEnablePermission(
   if (permKey === 'business:rm:projects:members:write') {
     return hasRepairsLineRead(permissions);
   }
+  if (permKey === 'business:construction:projects:owner:write') {
+    return hasConstructionLineRead(permissions);
+  }
+  if (permKey === 'business:rm:projects:owner:write') {
+    return hasRepairsLineRead(permissions);
+  }
   if (
     permKey.startsWith('business:construction:projects:') &&
     permKey.endsWith(':read') &&
@@ -308,6 +316,12 @@ export function permissionEnableBlockedMessage(permKey: string): string | null {
   }
   if (permKey === 'business:projects:members:write') {
     return 'Requires at least one project view permission (legacy, Production, or R&M)';
+  }
+  if (permKey === 'business:construction:projects:owner:write') {
+    return 'Requires "View Projects & Opportunities (Production)" first';
+  }
+  if (permKey === 'business:rm:projects:owner:write') {
+    return 'Requires "View Projects & Opportunities (Repairs & Maintenance)" first';
   }
   if (permKey === 'business:construction:projects:write') {
     return 'Requires "View Projects & Opportunities (Production)" first';

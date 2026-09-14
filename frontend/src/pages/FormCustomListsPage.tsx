@@ -407,7 +407,7 @@ export default function FormCustomListsPage() {
         subtitle={
           <>
             Reusable hierarchical lists for drop-down fields in form templates.{' '}
-            <Link to="/safety/form-templates" className="text-brand-red hover:underline">
+            <Link to="/documents/form-templates" className="text-brand-red hover:underline">
               Form Templates
             </Link>
           </>

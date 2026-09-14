@@ -160,6 +160,18 @@ export function hasProjectMembersWritePermission(
   return hasPerm(permissions, `${PROJECT_LINE_PREFIX[line]}:members:write`);
 }
 
+/** Change Project Owner / primary customer (write-only, line-scoped). */
+export function hasProjectOwnerWritePermission(
+  permissions: Set<string> | Record<string, boolean>,
+  businessLine: string | undefined | null,
+  isAdmin = false,
+  pathname?: string
+): boolean {
+  if (isAdmin) return true;
+  const line = projectLineFromBusinessLine(resolveProjectBusinessLine(businessLine, pathname));
+  return hasPerm(permissions, `${PROJECT_LINE_PREFIX[line]}:owner:write`);
+}
+
 /**
  * Create/update/delete project or opportunity (status, name, convert, etc.).
  * Line-scoped main write, with legacy business:projects:write fallback.

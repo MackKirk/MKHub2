@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Bell,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   Clock,
   HardHat,
@@ -31,6 +32,9 @@ export const NOTIFICATION_ICON: Record<string, { Icon: LucideIcon; className: st
   community_comment_reply: { Icon: Megaphone, className: 'bg-indigo-100 text-indigo-700' },
   community_urgent: { Icon: AlertTriangle, className: 'bg-red-100 text-red-700' },
   community_required: { Icon: ClipboardList, className: 'bg-purple-100 text-purple-700' },
+  fleet_inspection: { Icon: ClipboardCheck, className: 'bg-sky-100 text-sky-700' },
+  fleet_inspection_approaching: { Icon: ClipboardCheck, className: 'bg-amber-100 text-amber-700' },
+  fleet_inspection_overdue: { Icon: AlertTriangle, className: 'bg-red-100 text-red-700' },
 };
 
 export function getNotificationIconMeta(type: string) {
@@ -79,5 +83,6 @@ export function groupNotificationsByDate(notifications: NotificationRecord[]) {
 
 export function resolveNotificationLink(notif: NotificationRecord) {
   if (!notif.link) return undefined;
-  return notif.type === 'shift' ? '/schedule' : notif.link;
+  if (notif.type === 'shift') return '/schedule';
+  return notif.link;
 }

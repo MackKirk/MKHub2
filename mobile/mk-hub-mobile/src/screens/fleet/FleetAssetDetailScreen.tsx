@@ -369,6 +369,8 @@ export const FleetAssetDetailScreen: React.FC = () => {
               openAssignment={openAssignment}
               token={token}
               variant={activeTab === "general" ? "full" : "compact"}
+              canEditPhoto={canWrite}
+              onPhotosUpdated={setFleetAsset}
             />
             {visibleTabs.length > 0 ? (
               <View style={styles.tabContent}>{renderFleetTabContent()}</View>

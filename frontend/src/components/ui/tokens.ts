@@ -104,7 +104,10 @@ export const uiDropdown = {
     uiBorders.input,
   ),
   triggerWithLeftIcon: 'pl-8',
+  /** Room for a clear (X) control on the right edge of the trigger. */
+  triggerWithClear: 'pr-8',
   leftIcon: 'pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-gray-400',
+  rightIcon: 'absolute inset-y-0 right-1.5 flex items-center',
   menu: uiCx(
     'fixed z-[100050] max-h-56 overflow-auto bg-white py-1.5',
     uiRadius.dropdownMenu,

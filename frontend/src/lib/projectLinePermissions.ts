@@ -180,6 +180,18 @@ export function buildProjectLinePermissionRows(
     });
   }
 
+  const owner = areaPerms.find((p) => p.key === `${prefix}:owner:write`);
+  if (owner) {
+    rows.push({
+      kind: 'writeOnly',
+      id: owner.id,
+      label: formatLinePermissionLabel(owner.label),
+      description: owner.description,
+      writeKey: owner.key,
+      indent: true,
+    });
+  }
+
   return rows;
 }
 

@@ -10,18 +10,29 @@ import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
 import {
   hasProjectFeatureWritePermission,
+  hasProjectLineWritePermission,
   isAdminRole,
 } from '@/lib/projectLinePermissionKeys';
-import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { createShiftQuickInfo } from '@/lib/formModalQuickInfo';
+import { employeesDirectoryQueryKey, fetchEmployeesDirectory } from '@/lib/employeesQuery';
+import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
+import { getProjectDivisionLabel } from '@/lib/projectListRowUtils';
+import { getUserDisplayName } from '@/lib/userDisplay';
+import {
+  SHIFT_TIME_PRESET_OPTIONS,
+  resolvePresetTimes,
+  type ShiftTimePreset,
+} from '@/lib/shiftTimePresets';
 import {
   AppButton,
   AppCard,
   AppCheckbox,
+  AppControlLabelRow,
   AppDatePicker,
   AppEmptyState,
   AppFormModal,
   AppInput,
+  AppMultiSelect,
   AppSectionHeader,
   AppSelect,
   AppTabs,
@@ -99,6 +110,12 @@ export default function DispatchTab({
     businessLine,
     'workload',
     isAdmin
+  );
+  const canEditOnsiteLeads = hasProjectLineWritePermission(
+    permissions,
+    businessLine,
+    isAdmin,
+    location.pathname,
   );
 
   // Check if editing is restricted based on status (only Finished restricts editing for workload)
@@ -194,8 +211,10 @@ export default function DispatchTab({
   });
 
   const { data: employees } = useQuery({
-    queryKey: ['employees'],
-    queryFn: () => api<any[]>('GET', '/employees'),
+    // Match ProjectDetail cache key so Dispatch does not re-fetch 5000 rows on tab open.
+    queryKey: employeesDirectoryQueryKey({ limit: 5000 }),
+    queryFn: () => fetchEmployeesDirectory({ limit: 5000 }),
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: project } = useQuery({
@@ -937,15 +956,16 @@ export default function DispatchTab({
 
   const modals = (
     <>
-      {createShiftModal && project && employees && Array.isArray(employees) && (
+      {createShiftModal && project && (
         <CreateShiftModal
           projectId={projectId}
           project={project}
-          employees={employees}
+          employees={Array.isArray(employees) ? employees : []}
           defaultBreakMin={defaultBreakMin}
           defaultGeofenceRadius={defaultGeofenceRadius}
           designSystem={designSystem}
           jobTypeOptions={jobTypeOptions}
+          canEditOnsiteLeads={canEditOnsiteLeads}
           onClose={() => setCreateShiftModal(false)}
           onSave={async () => {
             await refetchShifts();
@@ -956,11 +976,11 @@ export default function DispatchTab({
         />
       )}
 
-      {editShiftModal && project && employees && Array.isArray(employees) && editShiftModal?.id && (
+      {editShiftModal && project && editShiftModal?.id && (
         <EditShiftModal
           projectId={projectId}
           project={project}
-          employees={employees}
+          employees={Array.isArray(employees) ? employees : []}
           shift={editShiftModal}
           canEdit={canEditWorkload}
           designSystem={designSystem}
@@ -1152,7 +1172,7 @@ function PendingAttendanceRow({
   );
 }
 
-function CreateShiftModal({
+export function CreateShiftModal({
   projectId,
   project,
   employees,
@@ -1160,6 +1180,7 @@ function CreateShiftModal({
   defaultGeofenceRadius,
   designSystem,
   jobTypeOptions,
+  canEditOnsiteLeads = false,
   onClose,
   onSave,
 }: {
@@ -1170,9 +1191,11 @@ function CreateShiftModal({
   defaultGeofenceRadius: number;
   designSystem?: boolean;
   jobTypeOptions?: { value: string; label: string }[];
+  canEditOnsiteLeads?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
+  const queryClient = useQueryClient();
   const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
   const [dateMode, setDateMode] = useState<'single' | 'range'>('range');
   const [date, setDate] = useState(formatDateLocal(new Date()));
@@ -1183,14 +1206,54 @@ function CreateShiftModal({
     return formatDateLocal(nextWeek);
   });
   const [excludeWeekends, setExcludeWeekends] = useState(false);
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('17:00');
+  const [timePreset, setTimePreset] = useState<ShiftTimePreset>('all_day');
+  const [startTime, setStartTime] = useState(() => resolvePresetTimes('all_day').start);
+  const [endTime, setEndTime] = useState(() => resolvePresetTimes('all_day').end);
   const [jobType, setJobType] = useState('');
   const [error, setError] = useState('');
+  const [overlapWarnings, setOverlapWarnings] = useState<
+    { workerId: string; workerName: string; date: string; conflicts: any[] }[]
+  >([]);
   const [saving, setSaving] = useState(false);
   const [workerDropdownOpen, setWorkerDropdownOpen] = useState(false);
   const [workerSearch, setWorkerSearch] = useState('');
   const workerDropdownRef = useRef<HTMLDivElement>(null);
+  const [assignAsOnsiteLead, setAssignAsOnsiteLead] = useState(false);
+  const [leadWorkerId, setLeadWorkerId] = useState<string | null>(null);
+  const [leadDivisionIds, setLeadDivisionIds] = useState<string[]>([]);
+
+  const { data: projectDivisions } = useQuery({
+    queryKey: PROJECT_DIVISIONS_QUERY_KEY,
+    queryFn: () => api<any[]>('GET', '/settings/project-divisions'),
+    staleTime: 300_000,
+    enabled: canEditOnsiteLeads,
+  });
+
+  const availableDivisions = useMemo(() => {
+    const ids = Array.isArray(project?.project_division_ids)
+      ? project.project_division_ids.map((id: unknown) => String(id))
+      : [];
+    const leads =
+      project?.division_onsite_leads && typeof project.division_onsite_leads === 'object'
+        ? (project.division_onsite_leads as Record<string, string>)
+        : {};
+    return ids.filter((divId: string) => {
+      const existing = leads[divId];
+      return !existing || !String(existing).trim();
+    });
+  }, [project?.project_division_ids, project?.division_onsite_leads]);
+
+  const showOnsiteLeadSection = canEditOnsiteLeads && availableDivisions.length > 0;
+
+  const leadAssignments = useMemo(() => {
+    if (!assignAsOnsiteLead || !leadWorkerId || leadDivisionIds.length === 0) return {};
+    const allowed = new Set(availableDivisions);
+    const next: Record<string, string> = {};
+    for (const divId of leadDivisionIds) {
+      if (allowed.has(divId)) next[divId] = leadWorkerId;
+    }
+    return next;
+  }, [assignAsOnsiteLead, leadWorkerId, leadDivisionIds, availableDivisions]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -1209,47 +1272,79 @@ function CreateShiftModal({
     };
   }, [workerDropdownOpen]);
 
+  // Keep lead worker/divisions in sync with selected workers and open slots
+  useEffect(() => {
+    const selected = selectedWorkers.map(String);
+    if (selected.length === 0) {
+      setAssignAsOnsiteLead(false);
+      setLeadWorkerId(null);
+      setLeadDivisionIds([]);
+      return;
+    }
+    if (leadWorkerId && !selected.includes(String(leadWorkerId))) {
+      setLeadWorkerId(selected.length === 1 ? selected[0] : null);
+    } else if (!leadWorkerId && assignAsOnsiteLead && selected.length === 1) {
+      setLeadWorkerId(selected[0]);
+    }
+    setLeadDivisionIds((prev) => prev.filter((id) => availableDivisions.includes(id)));
+  }, [selectedWorkers, leadWorkerId, assignAsOnsiteLead, availableDivisions]);
+
   // Generate list of dates based on mode
   const selectedDates = useMemo(() => {
     if (dateMode === 'single') {
       return [date];
     } else {
-      // Range mode
       const dates: string[] = [];
-      // Parse dates in local timezone to avoid UTC issues
       const fromParts = dateFrom.split('-').map(Number);
       const toParts = dateTo.split('-').map(Number);
       const from = new Date(fromParts[0], fromParts[1] - 1, fromParts[2]);
       const to = new Date(toParts[0], toParts[1] - 1, toParts[2]);
-      
-      // Iterate through dates
+
       const current = new Date(from);
       while (current <= to) {
         const year = current.getFullYear();
         const month = String(current.getMonth() + 1).padStart(2, '0');
         const day = String(current.getDate()).padStart(2, '0');
         const dateStr = `${year}-${month}-${day}`;
-        
+
         if (excludeWeekends) {
           const dayOfWeek = current.getDay();
-          // getDay() returns: 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-          // We want to exclude Saturday (6) and Sunday (0)
           if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-            // Not Sunday (0) or Saturday (6) - include this date
             dates.push(dateStr);
           }
         } else {
           dates.push(dateStr);
         }
-        
-        // Move to next day
+
         current.setDate(current.getDate() + 1);
       }
       return dates;
     }
   }, [dateMode, date, dateFrom, dateTo, excludeWeekends]);
 
-  // Filter employees by search
+  const dateRangeSummary = useMemo(() => {
+    if (!Array.isArray(selectedDates) || selectedDates.length === 0) return '';
+    const count = selectedDates.length;
+    const unit = excludeWeekends && dateMode === 'range' ? 'weekday' : 'day';
+    const countLabel = `${count} ${unit}${count > 1 ? 's' : ''}`;
+    if (count === 1) {
+      const one = new Date(selectedDates[0] + 'T12:00:00').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+      return `${countLabel} · ${one}`;
+    }
+    const first = new Date(selectedDates[0] + 'T12:00:00').toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+    const last = new Date(selectedDates[selectedDates.length - 1] + 'T12:00:00').toLocaleDateString(
+      'en-US',
+      { month: 'short', day: 'numeric' },
+    );
+    return `${countLabel} · ${first}–${last}`;
+  }, [selectedDates, excludeWeekends, dateMode]);
+
   const filteredEmployees = useMemo(() => {
     if (!employees || !Array.isArray(employees)) return [];
     if (!workerSearch) return employees;
@@ -1260,19 +1355,130 @@ function CreateShiftModal({
     });
   }, [employees, workerSearch]);
 
+  const employeeNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const emp of employees || []) {
+      if (emp?.id) {
+        map.set(
+          String(emp.id),
+          getUserDisplayName(emp) || emp.name || emp.username || String(emp.id),
+        );
+      }
+    }
+    return map;
+  }, [employees]);
+
+  const applyTimePreset = (preset: ShiftTimePreset) => {
+    setTimePreset(preset);
+    const times = resolvePresetTimes(preset);
+    setStartTime(times.start);
+    setEndTime(times.end);
+  };
+
+  // Live overlap preview (advisory)
+  useEffect(() => {
+    const workers = Array.isArray(selectedWorkers) ? selectedWorkers : [];
+    const dates = Array.isArray(selectedDates) ? selectedDates : [];
+    if (workers.length === 0 || dates.length === 0 || !startTime || !endTime) {
+      setOverlapWarnings([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const items: { worker_id: string; date: string; start_time: string; end_time: string }[] =
+          [];
+        for (const workerId of workers) {
+          for (const dateStr of dates) {
+            items.push({
+              worker_id: String(workerId),
+              date: dateStr,
+              start_time: startTime,
+              end_time: endTime,
+            });
+          }
+        }
+        const res = await api<{ items?: any[] }>(
+          'POST',
+          '/dispatch/shifts/check-overlaps',
+          { items },
+          undefined,
+          controller.signal,
+        );
+        const warnings: { workerId: string; workerName: string; date: string; conflicts: any[] }[] =
+          [];
+        for (const item of res?.items || []) {
+          if (Array.isArray(item.conflicts) && item.conflicts.length > 0) {
+            warnings.push({
+              workerId: String(item.worker_id),
+              workerName: employeeNameById.get(String(item.worker_id)) || String(item.worker_id),
+              date: String(item.date),
+              conflicts: item.conflicts,
+            });
+          }
+        }
+        setOverlapWarnings(warnings);
+      } catch (e: any) {
+        if (e?.name === 'AbortError' || controller.signal.aborted) return;
+        // Ignore preview failures — create still works
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [selectedWorkers, selectedDates, startTime, endTime, employeeNameById]);
+
+  const leadWorkerOptions = useMemo(
+    () =>
+      (Array.isArray(selectedWorkers) ? selectedWorkers : []).map((id) => ({
+        value: String(id),
+        label: employeeNameById.get(String(id)) || String(id),
+      })),
+    [selectedWorkers, employeeNameById],
+  );
+
+  const divisionOptions = useMemo(
+    () =>
+      availableDivisions.map((divId) => ({
+        value: divId,
+        label: getProjectDivisionLabel(divId, projectDivisions),
+      })),
+    [availableDivisions, projectDivisions],
+  );
+
   const toggleWorker = (workerId: string) => {
     setSelectedWorkers((prev) => {
       const prevArray = Array.isArray(prev) ? prev : [];
-      return prevArray.includes(workerId) 
-        ? prevArray.filter((id) => id !== workerId) 
+      return prevArray.includes(workerId)
+        ? prevArray.filter((id) => id !== workerId)
         : [...prevArray, workerId];
     });
+  };
+
+  const handleAssignAsOnsiteLeadChange = (checked: boolean) => {
+    setAssignAsOnsiteLead(checked);
+    if (!checked) {
+      setLeadWorkerId(null);
+      setLeadDivisionIds([]);
+      return;
+    }
+    const workers = (Array.isArray(selectedWorkers) ? selectedWorkers : []).map(String);
+    const nextWorker = workers.length === 1 ? workers[0] : leadWorkerId && workers.includes(String(leadWorkerId)) ? String(leadWorkerId) : null;
+    setLeadWorkerId(nextWorker);
+    if (availableDivisions.length === 1) {
+      setLeadDivisionIds([availableDivisions[0]]);
+    } else if (leadDivisionIds.length === 0) {
+      setLeadDivisionIds([]);
+    }
   };
 
   const handleSave = async () => {
     const workersArray = Array.isArray(selectedWorkers) ? selectedWorkers : [];
     const datesArray = Array.isArray(selectedDates) ? selectedDates : [];
-    
+
     if (workersArray.length === 0) {
       setError('At least one worker is required');
       return;
@@ -1283,14 +1489,51 @@ function CreateShiftModal({
       return;
     }
 
+    if (showOnsiteLeadSection && assignAsOnsiteLead) {
+      if (!leadWorkerId || !workersArray.map(String).includes(String(leadWorkerId))) {
+        setError('Select which worker should be the on-site lead.');
+        return;
+      }
+      if (leadDivisionIds.length === 0) {
+        setError('Select at least one division for the on-site lead.');
+        return;
+      }
+      const availableSet = new Set(availableDivisions);
+      for (const divId of leadDivisionIds) {
+        if (!availableSet.has(divId)) {
+          setError('One or more selected lead divisions are no longer available.');
+          return;
+        }
+      }
+    }
+
     setError('');
     setSaving(true);
 
     try {
-      // Use the provided default values (they should always be valid numbers)
+      if (showOnsiteLeadSection && Object.keys(leadAssignments).length > 0) {
+        const existing =
+          project?.division_onsite_leads && typeof project.division_onsite_leads === 'object'
+            ? { ...(project.division_onsite_leads as Record<string, string>) }
+            : {};
+        const merged = { ...existing, ...leadAssignments };
+        try {
+          await api('PATCH', `/projects/${encodeURIComponent(projectId)}`, {
+            division_onsite_leads: merged,
+          });
+          await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+        } catch (e: any) {
+          const msg = e?.response?.data?.detail || e?.message || 'Failed to update on-site leads';
+          setError(msg);
+          toast.error(msg);
+          setSaving(false);
+          return;
+        }
+      }
+
       const geofenceRadius = defaultGeofenceRadius ?? 150;
       const breakMin = defaultBreakMin ?? 30;
-      
+
       const geofences = project?.lat && project?.lng
         ? [
             {
@@ -1301,10 +1544,7 @@ function CreateShiftModal({
           ]
         : [];
 
-      // Create shifts for each combination of worker and date
       const shiftsToCreate = [];
-      const workersArray = Array.isArray(selectedWorkers) ? selectedWorkers : [];
-      const datesArray = Array.isArray(selectedDates) ? selectedDates : [];
       for (const workerId of workersArray) {
         for (const dateStr of datesArray) {
           shiftsToCreate.push({
@@ -1315,26 +1555,37 @@ function CreateShiftModal({
             default_break_min: breakMin,
             geofences,
             job_type: jobType || null,
-            job_name: jobType || null, // Store the job type name for backward compatibility
+            job_name: jobType || null,
           });
         }
       }
 
-      // Call API to create multiple shifts
       let successCount = 0;
       let errorCount = 0;
+      let conflictCount = 0;
       const errors: string[] = [];
 
       for (const shiftData of shiftsToCreate) {
         try {
-          await api('POST', '/dispatch/projects/' + projectId + '/shifts', shiftData);
+          const created = await api<any>(
+            'POST',
+            '/dispatch/projects/' + projectId + '/shifts',
+            shiftData,
+          );
           successCount++;
+          if (Array.isArray(created?.conflicts) && created.conflicts.length > 0) {
+            conflictCount++;
+          }
         } catch (e: any) {
           errorCount++;
           const employeesArray = Array.isArray(employees) ? employees : [];
-          const workerName = employeesArray.find((emp: any) => emp.id === shiftData.worker_id)?.name || shiftData.worker_id;
+          const workerName =
+            employeesArray.find((emp: any) => emp.id === shiftData.worker_id)?.name ||
+            shiftData.worker_id;
           const errorMsg = e.response?.data?.detail || e.message || 'Failed';
-          errors.push(`${workerName} on ${new Date(shiftData.date).toLocaleDateString()}: ${errorMsg}`);
+          errors.push(
+            `${workerName} on ${new Date(shiftData.date).toLocaleDateString()}: ${errorMsg}`,
+          );
         }
       }
 
@@ -1346,10 +1597,14 @@ function CreateShiftModal({
           errorDetails += '\n... and ' + (errors.length - 10) + ' more';
         }
         setError(errorDetails);
-        // Still refresh to show created shifts
         if (successCount > 0) {
           await onSave();
         }
+      } else if (conflictCount > 0) {
+        toast.success(
+          `${successCount} shift${successCount > 1 ? 's' : ''} created; ${conflictCount} have schedule conflicts`,
+        );
+        await onSave();
       } else {
         toast.success(`${successCount} shift${successCount > 1 ? 's' : ''} created successfully`);
         await onSave();
@@ -1362,17 +1617,15 @@ function CreateShiftModal({
     }
   };
 
-  // Safety check after hooks
-  if (!project || !employees || !Array.isArray(employees)) {
+  if (!project) {
     return null;
   }
 
-  const canSubmit = Array.isArray(selectedWorkers) && selectedWorkers.length > 0 && Array.isArray(selectedDates) && selectedDates.length > 0;
-
-  const employeeUsers = useMemo(
-    () => (employees || []).map((e: any) => mapEmployeeToAppUserSelect(e)),
-    [employees],
-  );
+  const canSubmit =
+    Array.isArray(selectedWorkers) &&
+    selectedWorkers.length > 0 &&
+    Array.isArray(selectedDates) &&
+    selectedDates.length > 0;
 
   const jobOpts =
     jobTypeOptions ??
@@ -1384,6 +1637,56 @@ function CreateShiftModal({
   const shiftCount =
     (Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) *
     (Array.isArray(selectedDates) ? selectedDates.length : 0);
+
+  const onsiteLeadSection =
+    showOnsiteLeadSection && Array.isArray(selectedWorkers) && selectedWorkers.length > 0 ? (
+      <div className={uiCx(uiSpacing.sectionStack, 'space-y-3')}>
+        <AppCheckbox
+          label="Also assign as on-site lead"
+          checked={assignAsOnsiteLead}
+          onChange={handleAssignAsOnsiteLeadChange}
+          disabled={saving}
+          fieldHint={
+            'Also assign as on-site lead\n\nOptional. Fills project divisions that do not yet have an on-site lead. Existing leads are never overwritten.'
+          }
+        />
+        {assignAsOnsiteLead ? (
+          <>
+            <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
+              Fills open division slots only. One lead per division.
+            </p>
+            {selectedWorkers.length > 1 ? (
+              <AppSelect
+                label="Lead worker"
+                value={leadWorkerId || ''}
+                onChange={(e) => setLeadWorkerId(e.target.value || null)}
+                options={[
+                  { value: '', label: 'Select worker…' },
+                  ...leadWorkerOptions,
+                ]}
+                disabled={saving}
+              />
+            ) : null}
+            {availableDivisions.length > 1 ? (
+              <AppMultiSelect
+                label="Divisions"
+                value={leadDivisionIds}
+                onChange={setLeadDivisionIds}
+                options={divisionOptions}
+                placeholder="Select division(s)…"
+                disabled={saving}
+                showSelectedChips
+              />
+            ) : availableDivisions.length === 1 ? (
+              <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
+                Will assign:{' '}
+                {getProjectDivisionLabel(availableDivisions[0], projectDivisions)}
+              </p>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    ) : null;
 
   if (designSystem) {
     return (
@@ -1431,11 +1734,12 @@ function CreateShiftModal({
           <AppUserSelect
             mode="multiple"
             label="Workers *"
-            users={employeeUsers}
             value={Array.isArray(selectedWorkers) ? selectedWorkers : []}
             onChange={setSelectedWorkers}
-            fieldHint="Workers\n\nSelect one or more employees who will be scheduled for the chosen dates."
+            fieldHint="Workers\n\nSelect one or more employees who will be scheduled for the chosen dates. Search by name or username — all active users are available."
           />
+
+          {onsiteLeadSection}
 
           <AppSelect
             label="Date Selection"
@@ -1472,38 +1776,86 @@ function CreateShiftModal({
                 checked={excludeWeekends}
                 onChange={setExcludeWeekends}
               />
-              {Array.isArray(selectedDates) && selectedDates.length > 0 && (
-                <p className={uiCx(uiTypography.helper, 'text-gray-600')}>
-                  {selectedDates.length} day{selectedDates.length > 1 ? 's' : ''} selected
-                  {selectedDates.length <= 10 && (
-                    <span className="mt-1 block text-gray-500">
-                      {selectedDates
-                        .map((d) =>
-                          new Date(d).toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                          }),
-                        )
-                        .join(', ')}
-                    </span>
-                  )}
-                </p>
-              )}
+              {dateRangeSummary ? (
+                <p className={uiCx(uiTypography.helper, 'text-gray-600')}>{dateRangeSummary}</p>
+              ) : null}
             </>
           )}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <AppTimePicker
-              label="Start Time *"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
-            <AppTimePicker
-              label="End Time *"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-            />
+          {overlapWarnings.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <div className="font-medium">Schedule conflicts detected</div>
+              <p className="mt-1 text-xs text-amber-800">
+                These shifts can still be created, but this worker already has overlapping time on
+                another shift.
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs">
+                {overlapWarnings.slice(0, 8).map((w) => {
+                  const projectLabel =
+                    w.conflicts
+                      .map((c) => c.project_name)
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .join(', ') || 'another project';
+                  return (
+                    <li key={`${w.workerId}-${w.date}`}>
+                      {w.workerName} on{' '}
+                      {new Date(w.date + 'T12:00:00').toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                      })}{' '}
+                      overlaps {projectLabel}
+                    </li>
+                  );
+                })}
+                {overlapWarnings.length > 8 ? (
+                  <li>…and {overlapWarnings.length - 8} more</li>
+                ) : null}
+              </ul>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <AppControlLabelRow label="Time of day" />
+            <div className="flex flex-wrap gap-2">
+              {SHIFT_TIME_PRESET_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={saving}
+                  onClick={() => applyTimePreset(opt.value)}
+                  className={uiCx(
+                    'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+                    timePreset === opt.value
+                      ? 'border-[#7f1010] bg-red-50 text-[#7f1010]'
+                      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50',
+                    saving && 'opacity-50',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {timePreset === 'custom' ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <AppTimePicker
+                  label="Start Time"
+                  value={startTime}
+                  onChange={(e) => {
+                    setStartTime(e.target.value);
+                    setTimePreset('custom');
+                  }}
+                />
+                <AppTimePicker
+                  label="End Time"
+                  value={endTime}
+                  onChange={(e) => {
+                    setEndTime(e.target.value);
+                    setTimePreset('custom');
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
 
           <AppSelect
@@ -1556,7 +1908,6 @@ function CreateShiftModal({
               </div>
             )}
 
-            {/* Worker Selection with Multi-Select */}
             <div>
               <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
                 Workers {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 0 && `(${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} selected)`}
@@ -1575,7 +1926,7 @@ function CreateShiftModal({
                 <span className="text-gray-400">{workerDropdownOpen ? '▲' : '▼'}</span>
               </button>
               {workerDropdownOpen && (
-                <div 
+                <div
                   className="absolute z-50 mt-1 w-full rounded-lg border bg-white shadow-lg max-h-60 overflow-auto"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
@@ -1681,7 +2032,8 @@ function CreateShiftModal({
             )}
           </div>
 
-            {/* Date Selection Mode */}
+            {onsiteLeadSection}
+
             <div>
               <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Date Selection</label>
               <div className="flex items-center gap-4 mb-2">
@@ -1747,44 +2099,78 @@ function CreateShiftModal({
                     />
                     <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Exclude weekends</span>
                   </label>
-                {Array.isArray(selectedDates) && selectedDates.length > 0 && (
-                  <div className="text-xs text-gray-600">
-                    {selectedDates.length} day{selectedDates.length > 1 ? 's' : ''} selected
-                    {selectedDates.length <= 10 && (
-                      <div className="mt-1 text-gray-500">
-                        {selectedDates.map((d) => new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })).join(', ')}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {dateRangeSummary ? (
+                  <div className="text-xs text-gray-600">{dateRangeSummary}</div>
+                ) : null}
               </div>
             )}
           </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Start Time</label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  step="900"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                />
+            {overlapWarnings.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <div className="font-medium">Schedule conflicts detected</div>
+                <p className="mt-1 text-xs text-amber-800">
+                  These shifts can still be created, but this worker already has overlapping time on
+                  another shift.
+                </p>
               </div>
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">End Time</label>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  step="900"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                />
+            )}
+
+            <div className="space-y-2">
+              <AppControlLabelRow label="Time of day" />
+              <div className="flex flex-wrap gap-2">
+                {SHIFT_TIME_PRESET_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => applyTimePreset(opt.value)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                      timePreset === opt.value
+                        ? 'border-[#7f1010] bg-red-50 text-[#7f1010]'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
+              {timePreset === 'custom' ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                      Start Time
+                    </label>
+                    <input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => {
+                        setStartTime(e.target.value);
+                        setTimePreset('custom');
+                      }}
+                      step="900"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                      End Time
+                    </label>
+                    <input
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => {
+                        setEndTime(e.target.value);
+                        setTimePreset('custom');
+                      }}
+                      step="900"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
 
-            {/* Job Type Selection (Optional) */}
             <div>
               <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
                 Job Type <span className="text-gray-400 normal-case">(optional)</span>
@@ -1822,7 +2208,7 @@ function CreateShiftModal({
             {saving
               ? 'Creating...'
               : canSubmit
-              ? `Create ${selectedWorkers.length * selectedDates.length} Shift${selectedWorkers.length * selectedDates.length > 1 ? 's' : ''}`
+              ? `Create ${shiftCount} Shift${shiftCount > 1 ? 's' : ''}`
               : 'Create Shift'}
           </button>
         </div>
@@ -1830,4 +2216,3 @@ function CreateShiftModal({
     </div></OverlayPortal>
   );
 }
-

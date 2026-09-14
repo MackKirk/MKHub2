@@ -812,8 +812,6 @@ export default function AppShell({ children }: PropsWithChildren){
       items: [
         { id: 'safety-inspections', label: 'Inspections', path: '/safety/inspections', icon: <IconClipboardCheck />, requiredPermission: 'business:projects:safety:read' },
         { id: 'safety-calendar', label: 'Schedule', path: '/safety/calendar', icon: <IconCalendar />, requiredPermission: 'business:projects:safety:read' },
-        { id: 'safety-form-templates', label: 'Form Templates', path: '/safety/form-templates', icon: <IconDocument />, requiredPermission: 'business:projects:safety:read' },
-        { id: 'safety-form-custom-lists', label: 'Form Custom Lists', path: '/safety/form-custom-lists', icon: <IconDocument />, requiredPermission: 'business:projects:safety:read' },
       ]
     },
     {
@@ -852,7 +850,7 @@ export default function AppShell({ children }: PropsWithChildren){
     },
     {
       id: 'document-hub',
-      label: 'Documents',
+      label: 'Documents & Forms',
       icon: <IconDocument />,
       items: [
         { id: 'document-hub-builder', label: 'Document Builder', path: '/documents/create', icon: <IconDocument /> },
@@ -864,6 +862,8 @@ export default function AppShell({ children }: PropsWithChildren){
         },
         { id: 'document-hub-signature-editor', label: 'Signature Editor', path: '/documents/signature-editor', icon: <IconPen /> },
         { id: 'document-hub-templates', label: 'Document Templates', path: '/documents/templates', icon: <IconDocument /> },
+        { id: 'document-hub-form-templates', label: 'Form Templates', path: '/documents/form-templates', icon: <IconDocument />, requiredPermission: 'business:projects:safety:read' },
+        { id: 'document-hub-form-custom-lists', label: 'Form Custom Lists', path: '/documents/form-custom-lists', icon: <IconDocument />, requiredPermission: 'business:projects:safety:read' },
       ]
     },
     {

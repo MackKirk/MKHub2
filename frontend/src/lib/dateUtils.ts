@@ -47,6 +47,24 @@ export function getTodayLocal(): string {
 }
 
 /**
+ * Convert a date-only input (YYYY-MM-DD) to ISO UTC using local noon.
+ * `new Date('YYYY-MM-DD')` is UTC midnight and shifts back a calendar day in Americas timezones.
+ */
+export function localDateInputToIso(dateStr: string): string {
+  const s = String(dateStr || '').trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) throw new Error(`Invalid date: ${dateStr}`);
+    return d.toISOString();
+  }
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  return new Date(year, month - 1, day, 12, 0, 0, 0).toISOString();
+}
+
+/**
  * Get current month in local timezone as YYYY-MM
  */
 export function getCurrentMonthLocal(): string {

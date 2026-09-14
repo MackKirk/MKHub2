@@ -446,6 +446,9 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
     },
   });
 
+  /** Gallery context for ImagePicker — prop wins; otherwise use loaded document's project. */
+  const imagePickerProjectId = projectId ?? doc?.project_id ?? undefined;
+
   const leaveEditor = useCallback(() => {
     const close = onCloseRef.current ?? navigateBackRef.current;
     close();
@@ -2470,22 +2473,24 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         }
         onAddText={handleAddText}
         onAddImage={() => {
-          if (projectId) {
-            if (
-              selectedElementIds.length === 1 &&
-              selectedElement?.type === 'image' &&
-              !selectedElement.content
-            ) {
-              openImagePickerForElement(selectedElement.id);
-              return;
-            }
-            imagePickerReplaceRef.current = null;
-            imagePickerOpenRef.current = true;
-            setImagePickerReplaceElementId(null);
-            setImagePickerFileObjectId(undefined);
-            setImagePickerOpenEditorOnOpen(false);
-            setImagePickerOpen(true);
-          } else fileInputRef.current?.click();
+          if (isTemplate) {
+            fileInputRef.current?.click();
+            return;
+          }
+          if (
+            selectedElementIds.length === 1 &&
+            selectedElement?.type === 'image' &&
+            !selectedElement.content
+          ) {
+            openImagePickerForElement(selectedElement.id);
+            return;
+          }
+          imagePickerReplaceRef.current = null;
+          imagePickerOpenRef.current = true;
+          setImagePickerReplaceElementId(null);
+          setImagePickerFileObjectId(undefined);
+          setImagePickerOpenEditorOnOpen(false);
+          setImagePickerOpen(true);
         }}
         onAddImagePlaceholder={handleAddImagePlaceholder}
         onAddInitials={
@@ -2520,10 +2525,8 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                 setSelectedElementIds([]);
               }}
               onReplaceImage={handleReplaceImage}
-              onReplaceImageClick={
-                projectId ? openImagePickerForElement : undefined
-              }
-              onEditImageClick={projectId ? openImageEditorForElement : undefined}
+              onReplaceImageClick={isTemplate ? undefined : openImagePickerForElement}
+              onEditImageClick={isTemplate ? undefined : openImageEditorForElement}
               onAlignSelected={handleAlignSelected}
               onSendBackward={
                 selectedElement
@@ -2773,7 +2776,9 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
                     onReplaceImage={
                       readOnly ? undefined : (id, file) => handleReplaceImageAtPage(pageIndex, id, file)
                     }
-                    onReplaceImageClick={readOnly ? undefined : (projectId ? openImagePickerForElement : undefined)}
+                    onReplaceImageClick={
+                      readOnly || isTemplate ? undefined : openImagePickerForElement
+                    }
                     onInsertImages={
                       readOnly
                         ? undefined
@@ -2826,7 +2831,9 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
             onGestureChange={readOnly ? undefined : handleCanvasGestureChange}
             onRemoveElement={readOnly ? undefined : handleRemoveElement}
             onReplaceImage={readOnly ? undefined : handleReplaceImage}
-            onReplaceImageClick={readOnly ? undefined : (projectId ? openImagePickerForElement : undefined)}
+            onReplaceImageClick={
+              readOnly || isTemplate ? undefined : openImagePickerForElement
+            }
             onInsertImages={readOnly ? undefined : insertImagesFromFiles}
             projectId={projectId}
           />
@@ -3046,11 +3053,11 @@ const DocumentEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(fun
         subjectUserId={subjectUserId}
       />
       )}
-      {!isTemplate && projectId && imagePickerOpen && (
+      {!isTemplate && imagePickerOpen && (
         <ImagePicker
           isOpen={true}
           onClose={closeImagePicker}
-          projectId={projectId}
+          projectId={imagePickerProjectId}
           fileObjectId={imagePickerFileObjectId}
           openEditorOnOpen={imagePickerOpenEditorOnOpen}
           targetWidth={imagePickerTargetSize.width}

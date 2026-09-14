@@ -66,7 +66,7 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const isHr = variant === 'employee_review';
-  const editorBasePath = isHr ? '/reviews/form-templates' : '/safety/form-templates';
+  const editorBasePath = isHr ? '/reviews/form-templates' : '/documents/form-templates';
 
   const sortBy = (searchParams.get('sort') as SortCol) || 'name';
   const sortDir: AppListSortDirection = searchParams.get('dir') === 'desc' ? 'desc' : 'asc';
@@ -335,7 +335,7 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
       <AppPageHeader
         title={pageTitle}
         subtitle={pageSubtitle}
-        icon={<FileStack className="h-4 w-4" />}
+        icon={<FileStack className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>

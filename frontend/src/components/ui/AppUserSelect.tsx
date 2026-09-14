@@ -63,10 +63,21 @@ function filterStaticUsers(users: AppUserSelectUser[], query: string): AppUserSe
   const q = query.trim().toLowerCase();
   if (!q) return users;
   return users.filter((u) => {
-    const name = getUserDisplayName(u).toLowerCase();
+    const displayName = getUserDisplayName(u).toLowerCase();
+    const pickerLabel = getUserPickerLabel(u).toLowerCase();
+    const preferred = (u.preferred_name || '').toLowerCase();
+    const apiName = (u.name || '').toLowerCase();
     const subtitle = getUserSubtitle(u).toLowerCase();
     const username = (u.username || '').toLowerCase();
-    return name.includes(q) || subtitle.includes(q) || username.includes(q) || u.id.toLowerCase().includes(q);
+    return (
+      displayName.includes(q) ||
+      pickerLabel.includes(q) ||
+      preferred.includes(q) ||
+      apiName.includes(q) ||
+      subtitle.includes(q) ||
+      username.includes(q) ||
+      u.id.toLowerCase().includes(q)
+    );
   });
 }
 
@@ -213,6 +224,12 @@ function AppUserSelectSingle({
   const leftTrigger =
     value && displayUser ? <AppUserAvatar user={displayUser} size="sm" /> : <UserRound className="h-4 w-4" />;
 
+  const clearSelection = () => {
+    onChange('');
+    setLastPicked(null);
+    setText('');
+  };
+
   const dropdown = renderUserListbox({
     listRef,
     portalListId,
@@ -282,20 +299,35 @@ function AppUserSelectSingle({
           className={uiCx(
             uiDropdown.trigger,
             value && displayUser ? uiUserSelect.triggerWithAvatar : uiDropdown.triggerWithLeftIcon,
+            value && !disabled && uiDropdown.triggerWithClear,
             open && !disabled && 'border-gray-400 ring-1 ring-inset ring-gray-400/35',
             triggerClassName,
           )}
         />
+        {value && !disabled ? (
+          <span className={uiDropdown.rightIcon}>
+            <button
+              type="button"
+              className={uiCx(
+                'inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700',
+              )}
+              aria-label="Clear selection"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                clearSelection();
+              }}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        ) : null}
       </div>
       {showSelectedChip && displayUser ? (
         <UserSelectChip
           user={displayUser}
           disabled={disabled}
-          onRemove={() => {
-            onChange('');
-            setLastPicked(null);
-            setText('');
-          }}
+          onRemove={clearSelection}
         />
       ) : null}
       {helperText ? <p className="text-xs text-gray-600">{helperText}</p> : null}
