@@ -59,6 +59,8 @@ type Quote = {
   name?: string;
   client_id?: string;
   estimator_id?: string;
+  estimator_name?: string | null;
+  estimator_avatar_file_id?: string | null;
   project_division_ids?: string[];
   order_number?: string;
   title?: string;
@@ -385,7 +387,7 @@ export default function QuoteDetail() {
   });
   const { data: employees } = useQuery({
     queryKey: ['employees'],
-    queryFn: () => api<any[]>('GET', '/employees'),
+    queryFn: () => api<any[]>('GET', '/employees?limit=5000&sort=name'),
   });
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
 
@@ -399,7 +401,15 @@ export default function QuoteDetail() {
   const hasEditPermission = isAdmin || permissions.has('sales:quotations:write');
 
   const estimator = employees?.find((e: any) => String(e.id) === String(quote?.estimator_id));
-  const estimatorUser = estimator ? mapEmployeeToAppUserSelect(estimator) : null;
+  const estimatorUser = estimator
+    ? mapEmployeeToAppUserSelect(estimator)
+    : quote?.estimator_id
+      ? mapEmployeeToAppUserSelect({
+          id: quote.estimator_id,
+          name: quote.estimator_name || undefined,
+          profile_photo_file_id: quote.estimator_avatar_file_id || undefined,
+        })
+      : null;
 
   const cover = useMemo(() => {
     const files = clientFiles || [];

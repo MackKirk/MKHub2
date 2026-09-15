@@ -6,6 +6,8 @@ export type Quote = {
   created_at?: string;
   updated_at?: string;
   estimator_id?: string;
+  estimator_name?: string | null;
+  estimator_avatar_file_id?: string | null;
   project_division_ids?: string[];
   client_name?: string;
   client_display_name?: string;
@@ -147,6 +149,8 @@ export function getQuoteDocumentType(quote: Quote): string {
 }
 
 export function getEstimatorName(quote: Quote, employees?: any[]): string {
+  const fromApi = (quote.estimator_name || '').trim();
+  if (fromApi) return fromApi;
   const estimator = employees?.find((e: any) => String(e.id) === String(quote.estimator_id));
   return estimator?.name || estimator?.username || '—';
 }

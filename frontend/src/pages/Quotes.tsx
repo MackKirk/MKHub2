@@ -356,7 +356,7 @@ export default function Quotes() {
 
   const { data: employees } = useQuery({
     queryKey: ['employees'],
-    queryFn: () => api<any[]>('GET', '/employees'),
+    queryFn: () => api<any[]>('GET', '/employees?limit=5000&sort=name'),
     staleTime: 300_000,
   });
 

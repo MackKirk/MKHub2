@@ -312,15 +312,54 @@ def _apply_quote_list_filters(
 
 def _user_display_name(user: Optional[User], profile: Optional[EmployeeProfile] = None) -> str:
     if profile:
+        preferred = (profile.preferred_name or "").strip()
+        if preferred:
+            return preferred
         parts = [profile.first_name or "", profile.last_name or ""]
         name = " ".join(p for p in parts if p).strip()
         if name:
             return name
-        if profile.preferred_name:
-            return profile.preferred_name
     if user:
         return user.username or str(user.id)
     return "Unknown"
+
+
+def _load_estimator_maps(db: Session, estimator_ids) -> tuple[dict, dict]:
+    """Batch-load User + EmployeeProfile keyed by user id string."""
+    ids = [eid for eid in estimator_ids if eid]
+    if not ids:
+        return {}, {}
+    users = db.query(User).filter(User.id.in_(list(ids))).all()
+    users_map = {str(u.id): u for u in users}
+    profiles = (
+        db.query(EmployeeProfile)
+        .filter(EmployeeProfile.user_id.in_(list(ids)))
+        .all()
+    )
+    profiles_map = {str(p.user_id): p for p in profiles}
+    return users_map, profiles_map
+
+
+def _serialize_estimator_fields(
+    estimator_id,
+    users_map: dict,
+    profiles_map: dict,
+) -> dict:
+    if not estimator_id:
+        return {
+            "estimator_name": None,
+            "estimator_avatar_file_id": None,
+        }
+    key = str(estimator_id)
+    user = users_map.get(key)
+    profile = profiles_map.get(key)
+    avatar = None
+    if profile and getattr(profile, "profile_photo_file_id", None):
+        avatar = str(profile.profile_photo_file_id)
+    return {
+        "estimator_name": _user_display_name(user, profile) if (user or profile) else None,
+        "estimator_avatar_file_id": avatar,
+    }
 
 
 @router.post("/generate")
@@ -834,6 +873,9 @@ def list_quotes(
                 "display_name": client.display_name,
             }
 
+    estimator_ids = {r.estimator_id for r in rows if r.estimator_id}
+    users_map, profiles_map = _load_estimator_maps(db, estimator_ids)
+
     result = []
     value_min_num = _quote_num(value_min) if value_min is not None else None
     value_max_num = _quote_num(value_max) if value_max is not None else None
@@ -862,6 +904,7 @@ def list_quotes(
             "updated_at": r.updated_at.isoformat() if r.updated_at else None,
             "client_name": None,
             "client_display_name": None,
+            **_serialize_estimator_fields(r.estimator_id, users_map, profiles_map),
             **_serialize_outcome_fields(r),
         }
 
@@ -939,17 +982,7 @@ def quotes_insights(
     )
 
     estimator_ids = {r.estimator_id for r in filtered if r.estimator_id}
-    users_map = {}
-    profiles_map = {}
-    if estimator_ids:
-        users = db.query(User).filter(User.id.in_(list(estimator_ids))).all()
-        users_map = {str(u.id): u for u in users}
-        profiles = (
-            db.query(EmployeeProfile)
-            .filter(EmployeeProfile.user_id.in_(list(estimator_ids)))
-            .all()
-        )
-        profiles_map = {str(p.user_id): p for p in profiles}
+    users_map, profiles_map = _load_estimator_maps(db, estimator_ids)
 
     for r in filtered:
         status = (getattr(r, "outcome_status", None) or "pending").strip() or "pending"
@@ -1058,6 +1091,9 @@ def get_quote(
     q = db.query(Quote).filter(Quote.id == quote_id, Quote.deleted_at.is_(None)).first()
     if not q:
         raise HTTPException(status_code=404, detail='Not found')
+    users_map, profiles_map = _load_estimator_maps(
+        db, [q.estimator_id] if q.estimator_id else []
+    )
     return {
         "id": str(q.id),
         "client_id": str(q.client_id) if q.client_id else None,
@@ -1070,6 +1106,7 @@ def get_quote(
         "data": q.data or {},
         "created_at": q.created_at.isoformat() if q.created_at else None,
         "updated_at": q.updated_at.isoformat() if q.updated_at else None,
+        **_serialize_estimator_fields(q.estimator_id, users_map, profiles_map),
         **_serialize_outcome_fields(q),
     }
 
