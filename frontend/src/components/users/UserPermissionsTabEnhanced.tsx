@@ -1305,7 +1305,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                 label: 'Quotations',
                 description:
                   quotationsCategory?.category?.description ||
-                  'Permissions for Quotations area. Blocking access blocks all sub-permissions.',
+                  'Permissions for Sales quotations (View / Edit).',
               },
               permissions: quotationsCategory?.permissions || [],
             });

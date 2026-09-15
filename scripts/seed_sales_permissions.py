@@ -1,7 +1,6 @@
 """
-Script para adicionar permissões de Sales com estrutura hierárquica.
-A primeira permissão sempre é a liberação da área (sales:access).
-Se bloquear sales:access, automaticamente bloqueia todas as sub-permissões.
+Script para adicionar permissões de Sales / Quotations.
+sales:quotations:read/write are standalone (sales:access is legacy and not required).
 """
 import sys
 import os
@@ -44,13 +43,13 @@ def seed_sales_permissions():
         if category:
             print(f"Category 'sales' already exists, updating...")
             category.label = "Sales"
-            category.description = "Permissions for Sales area. Blocking access blocks all sub-permissions."
+            category.description = "Permissions for Sales quotations (View / Edit)."
             category.is_active = True
         else:
             category = PermissionCategory(
                 name="sales",
                 label="Sales",
-                description="Permissions for Sales area. Blocking access blocks all sub-permissions.",
+                description="Permissions for Sales quotations (View / Edit).",
                 sort_index=3,  # After Business
             )
             db.add(category)
@@ -58,12 +57,12 @@ def seed_sales_permissions():
         db.flush()  # To get the category ID
         
         # Define Sales permissions with hierarchical structure
-        # First permission is always the area access
+        # sales:access is legacy (kept for existing overrides); quotations keys stand alone
         sales_permissions = [
             {
                 "key": "sales:access",
                 "label": "Access Sales",
-                "description": "Grants access to the Sales area. Required for all Sales functions. If disabled, all Sales permissions are blocked.",
+                "description": "Legacy Sales area gate. Not required; View/Edit Quotations stand alone.",
                 "sort_index": 1,
             },
             {

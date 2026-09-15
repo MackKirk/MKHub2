@@ -446,7 +446,7 @@ function PermissionTemplatesSection({ canEdit = true }: { canEdit?: boolean }) {
       label: 'Quotations',
       description:
         quotationsCat?.description ||
-        'Permissions for Quotations area. Blocking access blocks all sub-permissions.',
+        'Permissions for Sales quotations (View / Edit).',
       permissions: quotationsCat?.permissions || [],
     };
     processed.push(normalizedQuotations);
