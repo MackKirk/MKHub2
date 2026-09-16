@@ -234,6 +234,30 @@ def assert_can_initiate_upload(
             return
         raise _forbidden("missing hr:community:write")
 
+    # Fleet misc uploads (no project/client/employee) — authorize by Fleet keys only
+    # for these categories; if missing, fall through to the legacy misc allowlist
+    # so other-area writers who already uploaded here keep working.
+    if cat in ("work-order-files", "fleet-work-order-photos", "fleet-work-order"):
+        if _has_permission(user, "fleet:work_orders:files:write"):
+            return
+    elif cat == "fleet-inspection":
+        if (
+            _has_permission(user, "fleet:inspections:execution:write")
+            or _has_permission(user, "fleet:inspections:write")
+        ):
+            return
+    elif cat == "fleet-compliance":
+        if _has_permission(user, "fleet:vehicles:compliance:write"):
+            return
+    elif cat == "fleet-assignment-photos":
+        if (
+            _has_permission(user, "fleet:vehicles:general:write")
+            or _has_permission(user, "fleet:equipment:general:write")
+            or _has_permission(user, "fleet:vehicles:write")
+            or _has_permission(user, "fleet:equipment:write")
+        ):
+            return
+
     # "misc" uploads (no project/client/employee)
     if not (
         _has_permission(user, "business:projects:files:write")
