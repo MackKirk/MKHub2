@@ -6,6 +6,7 @@ export type EmployeesDirectoryParams = {
   limit?: number;
   activeOnly?: boolean;
   sort?: 'recent' | 'name';
+  lite?: boolean;
 };
 
 /** Shared React Query key — include params so limit/active/sort do not share stale cache entries. */
@@ -17,6 +18,7 @@ export function employeesDirectoryQueryKey(params: EmployeesDirectoryParams = {}
       limit: params.limit ?? EMPLOYEES_DIRECTORY_LIMIT,
       activeOnly: params.activeOnly ?? false,
       sort: params.sort ?? 'recent',
+      lite: params.lite ?? false,
     },
   ] as const;
 }
@@ -28,6 +30,7 @@ export function fetchEmployeesDirectory(params: EmployeesDirectoryParams = {}) {
   const qs = new URLSearchParams({ limit: String(limit) });
   if (params.activeOnly) qs.set('active_only', 'true');
   if (params.sort) qs.set('sort', params.sort);
+  if (params.lite) qs.set('lite', 'true');
   return api<any[]>('GET', `/employees?${qs.toString()}`);
 }
 

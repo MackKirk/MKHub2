@@ -39,6 +39,26 @@ export function formatDateLocal(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+const UTC_MIDNIGHT_ISO = /^\d{4}-\d{2}-\d{2}T00:00(?::00(?:\.0+)?)?Z$/i;
+
+/**
+ * Calendar work date for an attendance timestamp.
+ * Hours-only rows were sometimes rewritten as `YYYY-MM-DDT00:00:00Z`. That UTC
+ * midnight is the previous evening in America/Vancouver, so keep the stamped
+ * calendar day instead of converting through local Date.
+ */
+export function attendanceWorkDate(iso: string | null | undefined, hoursWorked = false): string {
+  if (!iso) return '';
+  const s = iso.trim();
+  if (!s) return '';
+  if (hoursWorked && UTC_MIDNIGHT_ISO.test(s)) {
+    return s.slice(0, 10);
+  }
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return '';
+  return formatDateLocal(d);
+}
+
 /**
  * Get today's date in local timezone as YYYY-MM-DD
  */

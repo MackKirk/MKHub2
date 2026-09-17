@@ -38,6 +38,7 @@ from .routes.calendar import router as calendar_router
 from .routes.settings import router as settings_router
 from .routes.inventory import router as inventory_router
 from .routes.integrations import router as integrations_router
+from .routes.vericlock_import import router as vericlock_import_router
 from .routes.proposals import router as proposals_router
 from .routes.quotes import router as quotes_router
 from .routes.users import router as users_router
@@ -268,6 +269,7 @@ def create_app() -> FastAPI:
     app.include_router(auto_tasks_router, dependencies=_hub)
     app.include_router(settings_router, dependencies=_hub)
     app.include_router(integrations_router, dependencies=_hub)
+    app.include_router(vericlock_import_router, dependencies=_hub)
     app.include_router(inventory_router, dependencies=_hub)
     from .routes.subcontractors import router as subcontractors_router
 
@@ -1041,6 +1043,7 @@ def create_app() -> FastAPI:
                         ("sage_synced_at", "TIMESTAMPTZ NULL"),
                         ("sage_paid_at", "TIMESTAMPTZ NULL"),
                         ("sage_urgent", "BOOLEAN NOT NULL DEFAULT FALSE"),
+                        ("external_ref", "VARCHAR(80) NULL"),
                     ):
                         try:
                             db.execute(
@@ -1074,10 +1077,29 @@ def create_app() -> FastAPI:
                                 "CREATE INDEX IF NOT EXISTS idx_attendance_sage_state ON attendance(sage_state)"
                             )
                         )
+                        db.execute(
+                            text(
+                                "CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_external_ref ON attendance(external_ref)"
+                            )
+                        )
                         db.commit()
                     except Exception as _e:
                         db.rollback()
                         print(f"[startup] attendance period indexes (non-critical): {_e}")
+
+                    try:
+                        from .models.models import VeriClockEmployeeMap as _VeriClockEmployeeMap
+
+                        Base.metadata.create_all(bind=engine, tables=[_VeriClockEmployeeMap.__table__])
+                    except Exception as _e:
+                        print(f"[startup] vericlock_employee_maps create_all (non-critical): {_e}")
+
+                    try:
+                        from .models.models import VeriClockJobMap as _VeriClockJobMap
+
+                        Base.metadata.create_all(bind=engine, tables=[_VeriClockJobMap.__table__])
+                    except Exception as _e:
+                        print(f"[startup] vericlock_job_maps create_all (non-critical): {_e}")
 
                     try:
                         db.execute(

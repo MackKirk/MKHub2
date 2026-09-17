@@ -8,7 +8,7 @@ import {
   uiCx,
   uiTypography,
 } from '@/components/ui';
-import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { attendanceWorkDate, getTodayLocal } from '@/lib/dateUtils';
 import {
   addDays,
   formatWeekRangeLabel,
@@ -46,15 +46,13 @@ type Props = {
   jobLabel: (entry: AttendanceWeekGridEntry) => string;
   canEdit: boolean;
   isLoading?: boolean;
+  hoursLoading?: boolean;
   onAdd: (workerId: string, date: string) => void;
   onEdit: (entry: AttendanceWeekGridEntry) => void;
 };
 
 function entryLocalDate(entry: AttendanceWeekGridEntry): string {
-  const iso = entry.clock_in_time || entry.clock_out_time;
-  if (!iso) return '';
-  if (entry.is_hours_worked) return iso.slice(0, 10);
-  return formatDateLocal(new Date(iso));
+  return attendanceWorkDate(entry.clock_in_time || entry.clock_out_time, Boolean(entry.is_hours_worked));
 }
 
 function isOpenClock(entry: AttendanceWeekGridEntry): boolean {
@@ -94,6 +92,7 @@ export function AttendanceWeekGrid({
   jobLabel,
   canEdit,
   isLoading,
+  hoursLoading = false,
   onAdd,
   onEdit,
 }: Props) {
@@ -135,9 +134,9 @@ export function AttendanceWeekGrid({
     const q = query.trim().toLowerCase();
     return employees
       .filter((emp) => !q || emp.name.toLowerCase().includes(q))
-      .filter((emp) => !hideEmpty || (hoursByWorker.get(emp.id) || 0) > 0)
+      .filter((emp) => hoursLoading || !hideEmpty || (hoursByWorker.get(emp.id) || 0) > 0)
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [employees, query, hideEmpty, hoursByWorker]);
+  }, [employees, query, hideEmpty, hoursByWorker, hoursLoading]);
 
   const clockedInCount = openByWorker.size;
   const weekTotal = useMemo(
@@ -180,12 +179,16 @@ export function AttendanceWeekGrid({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {clockedInCount > 0 ? (
+          {hoursLoading ? (
+            <AppBadge variant="neutral">Loading hours…</AppBadge>
+          ) : clockedInCount > 0 ? (
             <AppBadge variant="warning">{clockedInCount} clocked in</AppBadge>
           ) : (
             <AppBadge variant="neutral">Nobody clocked in</AppBadge>
           )}
-          <AppBadge variant="neutral">Week total {formatHoursShort(weekTotal)}</AppBadge>
+          <AppBadge variant="neutral">
+            Week total {hoursLoading ? '…' : formatHoursShort(weekTotal)}
+          </AppBadge>
           <span className="px-1 text-[10px] uppercase tracking-wide text-gray-400">Sage</span>
           <AppBadge variant="info">Queued</AppBadge>
           <AppBadge variant="success">In Sage</AppBadge>
@@ -269,6 +272,9 @@ export function AttendanceWeekGrid({
                           )}
                         >
                           <div className="flex min-h-[2.75rem] flex-col gap-1">
+                            {hoursLoading && cell.length === 0 ? (
+                              <div className="h-8 animate-pulse rounded-md bg-gray-100" />
+                            ) : null}
                             {cell.map((entry) => (
                               <button
                                 key={entry.event_id}
@@ -305,7 +311,7 @@ export function AttendanceWeekGrid({
                       );
                     })}
                     <td className="border-b border-l border-gray-100 px-2 py-2 font-semibold text-gray-900">
-                      {formatHoursShort(weekHours)}
+                      {hoursLoading ? '…' : formatHoursShort(weekHours)}
                     </td>
                   </tr>
                 );

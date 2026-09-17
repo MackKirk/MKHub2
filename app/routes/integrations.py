@@ -1,18 +1,34 @@
 from typing import Optional
 import time
 import uuid
+import secrets
+from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import text
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from sqlalchemy import or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from ..auth.security import _has_permission, get_current_user
+from ..auth.security import (
+    _has_permission,
+    _user_from_access_payload,
+    decode_token,
+    get_current_user,
+    http_bearer,
+)
+from fastapi.security import HTTPAuthorizationCredentials
 from ..config import settings
 from ..db import engine, get_db
-from ..models.models import Attendance, User
-from ..services.sage_export import apply_sage_ack, sage_queue_payload, sage_response_fields
+from ..models.models import Attendance, EmployeeProfile, User, WorkType
+from ..services.sage_export import (
+    SOURCE_VERICLOCK,
+    apply_sage_ack,
+    refresh_sage_export_state,
+    sage_queue_payload,
+    sage_response_fields,
+    worker_display_name,
+)
 
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
@@ -141,31 +157,122 @@ def _can_ack_sage(user: User) -> bool:
     )
 
 
+def _sage_companion_or_user(
+    request: Request,
+    db: Session = Depends(get_db),
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
+    x_secret: Optional[str] = Header(default=None, alias="X-Sage-Companion-Secret"),
+) -> Optional[User]:
+    """Companion secret, or an HR JWT. None means the Windows companion."""
+    expected = (settings.sage_companion_secret or "").strip()
+    provided = (x_secret or "").strip()
+    if expected:
+        if provided and secrets.compare_digest(provided, expected):
+            return None
+        auth = request.headers.get("authorization") or ""
+        if auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
+            if token and secrets.compare_digest(token, expected):
+                return None
+    if creds is None:
+        if not expected:
+            raise HTTPException(status_code=503, detail="Sage companion secret is not configured")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return _user_from_access_payload(db, decode_token(creds.credentials))
+
+
+def _worker_names_by_id(db: Session, worker_ids: list) -> dict[str, str]:
+    if not worker_ids:
+        return {}
+    users = {str(u.id): u for u in db.query(User).filter(User.id.in_(worker_ids)).all()}
+    profiles = {
+        str(p.user_id): p
+        for p in db.query(EmployeeProfile).filter(EmployeeProfile.user_id.in_(worker_ids)).all()
+    }
+    out: dict[str, str] = {}
+    for wid in worker_ids:
+        key = str(wid)
+        out[key] = worker_display_name(profiles.get(key), users.get(key))
+    return out
+
+
+def _items_by_work_type(db: Session, rows: list) -> dict[str, Optional[str]]:
+    ids = [att.work_type_id for att in rows if getattr(att, "work_type_id", None)]
+    if not ids:
+        return {}
+    types = {str(wt.id): wt for wt in db.query(WorkType).filter(WorkType.id.in_(ids)).all()}
+    out: dict[str, Optional[str]] = {}
+    for att in rows:
+        wt_id = getattr(att, "work_type_id", None)
+        if not wt_id:
+            continue
+        wt = types.get(str(wt_id))
+        code = (getattr(wt, "sage_service_id", None) or "").strip()
+        out[str(att.id)] = code or None
+    return out
+
+
 @router.get("/sage/queue")
 def sage_export_queue(
     urgent_only: bool = Query(False),
     limit: int = Query(200, ge=1, le=1000),
-    user: User = Depends(get_current_user),
+    since_days: int = Query(21, ge=1, le=90),
+    principal: Optional[User] = Depends(_sage_companion_or_user),
     db: Session = Depends(get_db),
 ):
-    """Windows companion pulls this. Persist queued/error only — no historical backfill."""
-    if not _can_read_sage_queue(user):
+    """Windows companion pulls this. Recently eligible approved hours are persisted as queued."""
+    if principal is not None and not _can_read_sage_queue(principal):
         raise HTTPException(status_code=403, detail="Access denied")
+    cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
+    pending = (
+        db.query(Attendance)
+        .filter(Attendance.status == "approved")
+        .filter(Attendance.sage_state == "none")
+        .filter(or_(Attendance.source.is_(None), Attendance.source != SOURCE_VERICLOCK))
+        .filter(
+            or_(
+                Attendance.clock_in_time >= cutoff,
+                Attendance.clock_out_time >= cutoff,
+            )
+        )
+        .limit(400)
+        .all()
+    )
+    dirty = False
+    for att in pending:
+        before = (att.sage_state or "none")
+        refresh_sage_export_state(att)
+        if (att.sage_state or "none") != before or att.sage_source_key:
+            dirty = True
+    if dirty:
+        db.commit()
+
     q = db.query(Attendance).filter(Attendance.sage_state.in_(["queued", "error"]))
     if urgent_only:
         q = q.filter(Attendance.sage_urgent.is_(True))
     rows = q.order_by(Attendance.sage_urgent.desc()).limit(limit).all()
-    return [sage_queue_payload(att) for att in rows]
+    names = _worker_names_by_id(db, [att.worker_id for att in rows])
+    items = _items_by_work_type(db, rows)
+    tz_name = settings.tz_default or "America/Vancouver"
+    return [
+        sage_queue_payload(
+            att,
+            worker_name=names.get(str(att.worker_id)),
+            sage_item=items.get(str(att.id)),
+            tz_name=tz_name,
+        )
+        for att in rows
+    ]
 
 
 @router.post("/sage/ack")
 def sage_export_ack(
     payload: dict,
-    user: User = Depends(get_current_user),
+    principal: Optional[User] = Depends(_sage_companion_or_user),
     db: Session = Depends(get_db),
 ):
     """Companion reports sent / paid / error / queued after talking to Sage."""
-    if not _can_ack_sage(user):
+    if principal is not None and not _can_ack_sage(principal):
         raise HTTPException(status_code=403, detail="Access denied")
     attendance_id = payload.get("attendance_id")
     state = payload.get("state")

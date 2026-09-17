@@ -8,6 +8,7 @@ from app.services.attendance_period import (
     effective_declared_hours,
     effective_entry_kind,
     effective_job_type,
+    payload_treats_as_hours_only,
     split_job_ref,
 )
 
@@ -68,6 +69,34 @@ class TestEffectiveFields(unittest.TestCase):
             reason_text="JOB_TYPE:0|SERVICE_ITEM:regular",
         )
         self.assertEqual(effective_entry_kind(att), "clock")
+
+
+class TestPayloadTreatsAsHoursOnly(unittest.TestCase):
+    def test_clock_entry_kind_wins_over_existing_hours_only_row(self):
+        att = SimpleNamespace(
+            entry_kind="hours_only",
+            reason_text=compose_reason_text(job_type="0", hours_worked="8"),
+        )
+        self.assertFalse(
+            payload_treats_as_hours_only(
+                {"entry_kind": "clock", "reason_text": "JOB_TYPE:0"},
+                att,
+            )
+        )
+
+    def test_existing_hours_only_is_kept_when_payload_omits_kind_and_reason(self):
+        att = SimpleNamespace(
+            entry_kind="hours_only",
+            reason_text=compose_reason_text(job_type="0", hours_worked="8"),
+        )
+        self.assertTrue(payload_treats_as_hours_only({}, att))
+
+    def test_new_reason_without_hours_marker_is_clock(self):
+        att = SimpleNamespace(
+            entry_kind="hours_only",
+            reason_text=compose_reason_text(job_type="0", hours_worked="8"),
+        )
+        self.assertFalse(payload_treats_as_hours_only({"reason_text": "JOB_TYPE:0"}, att))
 
 
 if __name__ == "__main__":

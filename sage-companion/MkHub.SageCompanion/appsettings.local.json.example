@@ -1,0 +1,11 @@
+{
+  "SaiPath": "T:\\Databases\\2025 MACK KIRK.SAI",
+  "SageUser": "sysadmin",
+  "SagePassword": "",
+  "ImportExe": "C:\\Program Files (x86)\\Sage 50 Premium Accounting Version 2026\\Sage_SA_import.exe",
+  "EmployeeName": "Lee Ouderkirk",
+  "Item": "101",
+  "Customer": "0 Customer",
+  "Hours": "01:00:00",
+  "DryRun": true
+}
