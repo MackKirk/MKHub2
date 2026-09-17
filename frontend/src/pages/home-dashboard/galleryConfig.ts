@@ -170,6 +170,14 @@ export const GALLERY_ITEMS: GalleryItem[] = [
     config: {},
   },
   {
+    id: 'project_calendar',
+    type: 'project_calendar',
+    label: 'Project calendar',
+    description: 'Month view of projects by day; open Projects calendar',
+    category: 'Calendar',
+    config: {},
+  },
+  {
     id: 'schedule',
     type: 'schedule',
     label: 'Schedule',

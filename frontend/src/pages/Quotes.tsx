@@ -1,12 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useMemo, useState, useEffect, useCallback } from 'react';
-import { Link, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
-import { FileText, LayoutGrid, Plus, Search, SlidersHorizontal, Table } from 'lucide-react';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
+import { BarChart3, FileText, LayoutGrid, List, Plus, Search, SlidersHorizontal, Table } from 'lucide-react';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import { QuoteOutcomeBadge } from '@/components/quotes/QuoteOutcomeBadge';
+import { QuoteOutcomeMenu } from '@/components/quotes/QuoteOutcomeMenu';
+import { QuoteOutcomeModal } from '@/components/quotes/QuoteOutcomeModal';
+import { QuotesInsightsPanel } from '@/pages/quotes/QuotesInsightsPanel';
+import {
+  formatWinRate,
+  QUOTE_OUTCOME_LABELS,
+  QUOTE_OUTCOME_STATUSES,
+  type QuoteOutcomeStatus,
+} from '@/pages/quotesOutcome';
 import {
   AppButton,
   AppCard,
@@ -52,8 +62,9 @@ import {
   toggleColumnSort,
 } from '@/pages/quotesListUtils';
 
-const QUOTES_TABLE_GRID = 'grid-cols-[minmax(120px,1.2fr)_minmax(130px,1.3fr)_minmax(80px,0.7fr)_minmax(80px,0.7fr)_minmax(100px,1fr)_minmax(90px,0.8fr)]';
-const QUOTES_TABLE_MIN_WIDTH = 'min-w-[720px]';
+const QUOTES_TABLE_GRID =
+  'grid-cols-[minmax(100px,1.1fr)_minmax(110px,1.2fr)_minmax(88px,0.75fr)_minmax(70px,0.6fr)_minmax(70px,0.6fr)_minmax(90px,0.9fr)_minmax(80px,0.75fr)_minmax(44px,0.4fr)]';
+const QUOTES_TABLE_MIN_WIDTH = 'min-w-[860px]';
 
 function quoteSortParts(sortKey: QuoteSortKey): {
   column: QuoteTableColumn | null;
@@ -84,6 +95,7 @@ function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
     update_date: ['update_date_start', 'update_date_end'],
     estimator: ['estimator_id', 'estimator_id_not'],
     value: ['value_min', 'value_max'],
+    outcome: ['outcome_status'],
   };
 
   Object.values(fieldsToClear)
@@ -165,6 +177,12 @@ function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
           params.set('value_max', rule.value[1]);
         }
         break;
+
+      case 'outcome':
+        if (typeof rule.value === 'string' && rule.operator === 'is') {
+          params.set('outcome_status', rule.value);
+        }
+        break;
     }
   }
 
@@ -243,6 +261,11 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
     rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'less_than', value: valueMax });
   }
 
+  const outcome = params.get('outcome_status');
+  if (outcome) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'outcome', operator: 'is', value: outcome });
+  }
+
   return rules;
 }
 
@@ -253,32 +276,35 @@ export default function Quotes() {
 
   const viewMode = parseViewMode(searchParams.get('view'));
   const sortKey = parseSortKey(searchParams.get('sort'));
+  const panelMode = searchParams.get('panel') === 'insights' ? 'insights' : 'list';
   const { column: sortColumn, dir: sortDir } = quoteSortParts(sortKey);
 
   const [q, setQ] = useState(queryParam);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
-
-
+  const [outcomeModal, setOutcomeModal] = useState<{
+    quote: Quote;
+    initialStatus?: QuoteOutcomeStatus;
+  } | null>(null);
 
   const currentRules = useMemo(() => convertParamsToRules(searchParams), [searchParams]);
 
   const setViewAndSort = useCallback(
-    (next: { view?: QuoteViewMode; sort?: QuoteSortKey }) => {
+    (next: { view?: QuoteViewMode; sort?: QuoteSortKey; panel?: 'list' | 'insights' }) => {
       const params = new URLSearchParams(searchParams);
-      preserveUiParams(params, next.view ?? viewMode, next.sort ?? sortKey);
+      preserveUiParams(params, next.view ?? viewMode, next.sort ?? sortKey, next.panel ?? panelMode);
       setSearchParams(params, { replace: true });
     },
-    [searchParams, setSearchParams, viewMode, sortKey]
+    [searchParams, setSearchParams, viewMode, sortKey, panelMode]
   );
 
   const mergeSearchParams = useCallback(
     (base: URLSearchParams) => {
-      preserveUiParams(base, viewMode, sortKey);
+      preserveUiParams(base, viewMode, sortKey, panelMode);
       return base;
     },
-    [searchParams, viewMode, sortKey]
+    [viewMode, sortKey, panelMode]
   );
 
   useEffect(() => {
@@ -288,7 +314,7 @@ export default function Quotes() {
     } else {
       params.delete('q');
     }
-    preserveUiParams(params, viewMode, sortKey);
+    preserveUiParams(params, viewMode, sortKey, panelMode);
     setSearchParams(params, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
@@ -330,7 +356,7 @@ export default function Quotes() {
 
   const { data: employees } = useQuery({
     queryKey: ['employees'],
-    queryFn: () => api<any[]>('GET', '/employees'),
+    queryFn: () => api<any[]>('GET', '/employees?limit=5000&sort=name'),
     staleTime: 300_000,
   });
 
@@ -422,6 +448,17 @@ export default function Quotes() {
         type: 'number',
         operators: ['is_equal_to', 'greater_than', 'less_than', 'between'],
       },
+      {
+        id: 'outcome',
+        label: 'Outcome',
+        type: 'select',
+        operators: ['is'],
+        getOptions: () =>
+          QUOTE_OUTCOME_STATUSES.map((s) => ({
+            value: s,
+            label: QUOTE_OUTCOME_LABELS[s],
+          })),
+      },
     ],
     [clients, employees]
   );
@@ -455,6 +492,9 @@ export default function Quotes() {
         return `$${Number(rule.value[0]).toLocaleString()} → $${Number(rule.value[1]).toLocaleString()}`;
       }
       return `$${Number(rule.value).toLocaleString()}`;
+    }
+    if (rule.field === 'outcome') {
+      return QUOTE_OUTCOME_LABELS[rule.value as QuoteOutcomeStatus] || String(rule.value);
     }
     return String(rule.value);
   };
@@ -504,7 +544,7 @@ export default function Quotes() {
       <AppPageHeader
         title="Quotations"
         subtitle="List, search and manage quotations"
-        icon={<FileText className="h-4 w-4" />}
+        icon={<FileText className="h-4 w-4" />}
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -512,27 +552,53 @@ export default function Quotes() {
           <div className={uiCx('flex shrink-0 items-stretch overflow-hidden', uiRadius.control, uiBorders.subtle)}>
             <AppButton
               type="button"
-              variant={viewMode === 'cards' ? 'primary' : 'secondary'}
+              variant={panelMode === 'list' ? 'primary' : 'secondary'}
               size="sm"
               className="!rounded-none !px-2.5"
-              onClick={() => setViewAndSort({ view: 'cards' })}
-              title="Cards view"
-              aria-label="Cards view"
+              onClick={() => setViewAndSort({ panel: 'list' })}
+              title="List"
+              aria-label="List"
             >
-              <LayoutGrid className="h-4 w-4" />
+              <List className="h-4 w-4" />
             </AppButton>
             <AppButton
               type="button"
-              variant={viewMode === 'table' ? 'primary' : 'secondary'}
+              variant={panelMode === 'insights' ? 'primary' : 'secondary'}
               size="sm"
               className="!rounded-none !border-l-0 !px-2.5"
-              onClick={() => setViewAndSort({ view: 'table' })}
-              title="Table view"
-              aria-label="Table view"
+              onClick={() => setViewAndSort({ panel: 'insights' })}
+              title="Insights"
+              aria-label="Insights"
             >
-              <Table className="h-4 w-4" />
+              <BarChart3 className="h-4 w-4" />
             </AppButton>
           </div>
+          {panelMode === 'list' && (
+            <div className={uiCx('flex shrink-0 items-stretch overflow-hidden', uiRadius.control, uiBorders.subtle)}>
+              <AppButton
+                type="button"
+                variant={viewMode === 'cards' ? 'primary' : 'secondary'}
+                size="sm"
+                className="!rounded-none !px-2.5"
+                onClick={() => setViewAndSort({ view: 'cards' })}
+                title="Cards view"
+                aria-label="Cards view"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </AppButton>
+              <AppButton
+                type="button"
+                variant={viewMode === 'table' ? 'primary' : 'secondary'}
+                size="sm"
+                className="!rounded-none !border-l-0 !px-2.5"
+                onClick={() => setViewAndSort({ view: 'table' })}
+                title="Table view"
+                aria-label="Table view"
+              >
+                <Table className="h-4 w-4" />
+              </AppButton>
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <AppInput
               placeholder="Search by quote name, code, or client name..."
@@ -558,7 +624,7 @@ export default function Quotes() {
           )}
         </div>
 
-        {!isInitialLoading && (
+        {!isInitialLoading && panelMode === 'list' && (
           <div
             className={uiCx(
               'mt-3 border-t border-gray-100 pt-3',
@@ -581,11 +647,21 @@ export default function Quotes() {
                     <span className="font-medium text-gray-800">{formatQuoteCurrency(summary.average)}</span>
                   </span>
                 )}
+                <span className={uiTypography.helper}>
+                  Win rate{' '}
+                  <span className="font-medium text-gray-800">{formatWinRate(summary.win_rate)}</span>
+                </span>
+                {summary.successful > 0 && (
+                  <span className={uiTypography.helper}>
+                    Value won{' '}
+                    <span className="font-semibold text-green-700">{formatQuoteCurrency(summary.value_won)}</span>
+                  </span>
+                )}
               </div>
               {showCapWarning && (
                 <p className="mt-1.5 text-xs text-amber-700">
-                  Totals reflect up to {QUOTES_LIST_CAP} quotations (newest first from server). Narrow filters for
-                  exact totals.
+                  List shows up to {QUOTES_LIST_CAP} quotations (newest first). Insights use the full filtered set.
+                  Narrow filters for exact list totals.
                 </p>
               )}
             </div>
@@ -615,33 +691,39 @@ export default function Quotes() {
         </div>
       )}
 
-      <LoadingOverlay isLoading={isInitialLoading} text="Loading quotes...">
-        <AppCard className={uiCx(uiShadows.card, listCardAnimClass)} bodyClassName={viewMode === 'table' ? '!p-0' : uiSpacing.cardPadding}>
-          {viewMode === 'table' ? (
-            <QuotesTableView
-              quotes={sortedQuotes}
-              employees={employees}
-              sortColumn={sortColumn}
-              sortDir={sortDir}
-              total={summary.total}
-              isLoading={isLoading}
-              hasEditPermission={hasEditPermission}
-              location={location}
-              onColumnSort={handleColumnSort}
-            />
-          ) : (
-            <QuotesCardsView
-              quotes={sortedQuotes}
-              employees={employees}
-              clientFiles={allClientFiles}
-              isLoading={isLoading}
-              hasEditPermission={hasEditPermission}
-              location={location}
-              listCardAnimClass={listCardAnimClass}
-            />
-          )}
-        </AppCard>
-      </LoadingOverlay>
+      {panelMode === 'insights' ? (
+        <QuotesInsightsPanel apiQs={apiQs} />
+      ) : (
+        <LoadingOverlay isLoading={isInitialLoading} text="Loading quotes...">
+          <AppCard className={uiCx(uiShadows.card, listCardAnimClass)} bodyClassName={viewMode === 'table' ? '!p-0' : uiSpacing.cardPadding}>
+            {viewMode === 'table' ? (
+              <QuotesTableView
+                quotes={sortedQuotes}
+                employees={employees}
+                sortColumn={sortColumn}
+                sortDir={sortDir}
+                total={summary.total}
+                isLoading={isLoading}
+                hasEditPermission={hasEditPermission}
+                location={location}
+                onColumnSort={handleColumnSort}
+                onMarkOutcome={(quote, status) => setOutcomeModal({ quote, initialStatus: status })}
+              />
+            ) : (
+              <QuotesCardsView
+                quotes={sortedQuotes}
+                employees={employees}
+                clientFiles={allClientFiles}
+                isLoading={isLoading}
+                hasEditPermission={hasEditPermission}
+                location={location}
+                listCardAnimClass={listCardAnimClass}
+                onMarkOutcome={(quote, status) => setOutcomeModal({ quote, initialStatus: status })}
+              />
+            )}
+          </AppCard>
+        </LoadingOverlay>
+      )}
 
       <FilterBuilderModal
         isOpen={isFilterModalOpen}
@@ -650,6 +732,13 @@ export default function Quotes() {
         initialRules={currentRules}
         fields={filterFields}
         getFieldData={() => null}
+      />
+
+      <QuoteOutcomeModal
+        open={!!outcomeModal}
+        quote={outcomeModal?.quote ?? null}
+        initialStatus={outcomeModal?.initialStatus}
+        onClose={() => setOutcomeModal(null)}
       />
     </div>
   );
@@ -665,6 +754,7 @@ function QuotesTableView({
   hasEditPermission,
   location,
   onColumnSort,
+  onMarkOutcome,
 }: {
   quotes: Quote[];
   employees?: any[];
@@ -675,6 +765,7 @@ function QuotesTableView({
   hasEditPermission: boolean;
   location: ReturnType<typeof useLocation>;
   onColumnSort: (column: QuoteTableColumn) => void;
+  onMarkOutcome: (quote: Quote, status: QuoteOutcomeStatus) => void;
 }) {
   if (isLoading && !quotes.length) {
     return (
@@ -724,6 +815,7 @@ function QuotesTableView({
               title="Sort by client"
             />
             <div className={uiCx('min-w-0', uiTypography.controlLabel)}>Document / Code</div>
+            <div className={uiCx('min-w-0', uiTypography.controlLabel)}>Outcome</div>
             <AppSortableEntityListSortColumn
               label="Created"
               column="created"
@@ -757,6 +849,9 @@ function QuotesTableView({
               title="Sort by estimated value"
               className="justify-end text-right"
             />
+            <div className={uiCx('min-w-0 text-right', uiTypography.controlLabel)} aria-hidden>
+              {' '}
+            </div>
           </AppSortableEntityListHeader>
 
           <AppSortableEntityListFlatBody gridCols={QUOTES_TABLE_GRID} minWidth={QUOTES_TABLE_MIN_WIDTH}>
@@ -784,6 +879,9 @@ function QuotesTableView({
                     <div className={uiTypography.sectionTitle}>{documentType}</div>
                     <div className={uiTypography.helper}>{quote.code || quote.order_number || '—'}</div>
                   </div>
+                  <div className="min-w-0">
+                    <QuoteOutcomeBadge status={quote.outcome_status} />
+                  </div>
                   <div className={uiCx('min-w-0 whitespace-nowrap', uiTypography.body)}>{created || '—'}</div>
                   <div className={uiCx('min-w-0 whitespace-nowrap', uiTypography.body)}>{updated || '—'}</div>
                   <div className={uiCx('min-w-0 truncate', uiTypography.body)} title={estimatorName}>
@@ -791,6 +889,14 @@ function QuotesTableView({
                   </div>
                   <div className={uiCx('min-w-0 text-right font-semibold text-brand-red whitespace-nowrap', uiTypography.body)}>
                     {formatQuoteValueDisplay(value)}
+                  </div>
+                  <div className="flex min-w-0 justify-end">
+                    {hasEditPermission ? (
+                      <QuoteOutcomeMenu
+                        currentStatus={quote.outcome_status}
+                        onSelect={(status) => onMarkOutcome(quote, status)}
+                      />
+                    ) : null}
                   </div>
                 </AppSortableEntityListRow>
               );
@@ -804,8 +910,9 @@ function QuotesTableView({
               QUOTES_TABLE_GRID,
             )}
           >
-            <div className="col-span-5 text-right font-semibold text-gray-800">Total</div>
+            <div className="col-span-6 text-right font-semibold text-gray-800">Total</div>
             <div className="text-right font-bold text-brand-red">{formatQuoteCurrency(total)}</div>
+            <div />
           </div>
         </AppSortableEntityList>
       )}
@@ -821,6 +928,7 @@ function QuotesCardsView({
   hasEditPermission,
   location,
   listCardAnimClass,
+  onMarkOutcome,
 }: {
   quotes: Quote[];
   employees?: any[];
@@ -829,6 +937,7 @@ function QuotesCardsView({
   hasEditPermission: boolean;
   location: ReturnType<typeof useLocation>;
   listCardAnimClass?: string;
+  onMarkOutcome: (quote: Quote, status: QuoteOutcomeStatus) => void;
 }) {
   if (isLoading && !quotes.length) {
     return (
@@ -859,6 +968,8 @@ function QuotesCardsView({
             quote={quote}
             employees={employees}
             clientFiles={clientFiles?.[quote.client_id || ''] || []}
+            hasEditPermission={hasEditPermission}
+            onMarkOutcome={onMarkOutcome}
           />
         ))}
       </div>
@@ -876,10 +987,14 @@ function QuoteListCard({
   quote,
   employees,
   clientFiles: _clientFiles,
+  hasEditPermission,
+  onMarkOutcome,
 }: {
   quote: Quote;
   employees?: any[];
   clientFiles?: any[];
+  hasEditPermission: boolean;
+  onMarkOutcome: (quote: Quote, status: QuoteOutcomeStatus) => void;
 }) {
   const clientName = getQuoteClientName(quote);
   const created = (quote.created_at || '').slice(0, 10);
@@ -889,8 +1004,7 @@ function QuoteListCard({
   const documentType = getQuoteDocumentType(quote);
 
   return (
-    <Link
-      to={`/quotes/${encodeURIComponent(String(quote.id))}`}
+    <div
       className={uiCx(
         'group relative block h-full transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300',
         uiBorders.subtle,
@@ -899,21 +1013,37 @@ function QuoteListCard({
         'hover:shadow-md',
       )}
     >
-      <div className={uiCx('flex flex-col gap-3', uiSpacing.cardPadding)}>
-        <div className="min-w-0">
-          <div className={uiCx(uiTypography.helper, 'truncate')}>{clientName || 'No client'}</div>
+      <Link
+        to={`/quotes/${encodeURIComponent(String(quote.id))}`}
+        className="absolute inset-0 z-0"
+        aria-label={`Open ${documentType}`}
+      />
+      <div className={uiCx('relative z-10 pointer-events-none flex flex-col gap-3', uiSpacing.cardPadding)}>
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div
-              className={uiCx(
-                uiTypography.sectionTitle,
-                'whitespace-normal break-words transition-colors group-hover:text-brand-red',
-              )}
-            >
-              {documentType}
+            <div className={uiCx(uiTypography.helper, 'truncate')}>{clientName || 'No client'}</div>
+            <div className="min-w-0">
+              <div
+                className={uiCx(
+                  uiTypography.sectionTitle,
+                  'whitespace-normal break-words transition-colors group-hover:text-brand-red',
+                )}
+              >
+                {documentType}
+              </div>
+              <div className={uiCx(uiTypography.helper, 'break-words')}>
+                {quote.code || quote.order_number || '—'}
+              </div>
             </div>
-            <div className={uiCx(uiTypography.helper, 'break-words')}>
-              {quote.code || quote.order_number || '—'}
-            </div>
+          </div>
+          <div className="pointer-events-auto flex shrink-0 items-start gap-1">
+            <QuoteOutcomeBadge status={quote.outcome_status} />
+            {hasEditPermission ? (
+              <QuoteOutcomeMenu
+                currentStatus={quote.outcome_status}
+                onSelect={(status) => onMarkOutcome(quote, status)}
+              />
+            ) : null}
           </div>
         </div>
 
@@ -940,6 +1070,6 @@ function QuoteListCard({
           </div>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }

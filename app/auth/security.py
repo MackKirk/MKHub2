@@ -745,6 +745,9 @@ def _has_permission(user: User, perm: str) -> bool:
                     pass
                 elif area == 'training':
                     pass
+                elif area == 'sales':
+                    # Quotations UI grants sales:quotations:* only (no sales:access checkbox)
+                    pass
                 else:
                     # Check if area access is explicitly denied (False in override)
                     if area_access_key in perm_map and not perm_map.get(area_access_key):

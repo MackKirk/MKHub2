@@ -267,6 +267,7 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
         widget.type === 'kpi' ||
         widget.type === 'list_projects' ||
         widget.type === 'list_opportunities' ||
+        widget.type === 'project_calendar' ||
         (widget.type === 'shortcuts' && widgetHasServicesShortcuts(initial.items as string[] | undefined));
       if (needsLine && !initial.business_line) {
         initial.business_line = inferDefaultHomeBusinessLine(me);
@@ -313,6 +314,7 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
       widget.type === 'kpi' ||
       widget.type === 'list_projects' ||
       widget.type === 'list_opportunities' ||
+      widget.type === 'project_calendar' ||
       (widget.type === 'shortcuts' && widgetHasServicesShortcuts(savedConfig.items as string[] | undefined))
     ) {
       savedConfig.business_line = configBusinessLine;
@@ -330,6 +332,7 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
     widget.type === 'kpi' ||
     widget.type === 'list_projects' ||
     widget.type === 'list_opportunities' ||
+    widget.type === 'project_calendar' ||
     (widget.type === 'shortcuts' && widgetHasServicesShortcuts(config.items as string[] | undefined));
 
   const chartParsed = parseChartMetric(String(config.metric ?? 'opportunities_by_status'));

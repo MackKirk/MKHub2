@@ -6,6 +6,8 @@ export type Quote = {
   created_at?: string;
   updated_at?: string;
   estimator_id?: string;
+  estimator_name?: string | null;
+  estimator_avatar_file_id?: string | null;
   project_division_ids?: string[];
   client_name?: string;
   client_display_name?: string;
@@ -14,6 +16,12 @@ export type Quote = {
   estimated_value?: number;
   title?: string;
   data?: any;
+  outcome_status?: string;
+  outcome_at?: string | null;
+  outcome_set_by_id?: string | null;
+  outcome_note?: string | null;
+  lost_reason?: string | null;
+  outcome_value?: number | null;
 };
 
 export type QuoteSortKey =
@@ -79,11 +87,12 @@ export function parseViewMode(raw: string | null): QuoteViewMode {
   return raw === 'table' ? 'table' : 'cards';
 }
 
-/** Strip UI-only params before calling GET /quotes */
+/** Strip UI-only params before calling GET /quotes or /quotes/insights */
 export function buildQuotesApiQuery(searchParams: URLSearchParams): string {
   const params = new URLSearchParams(searchParams);
   params.delete('view');
   params.delete('sort');
+  params.delete('panel');
   const s = params.toString();
   return s ? `?${s}` : '';
 }
@@ -91,7 +100,8 @@ export function buildQuotesApiQuery(searchParams: URLSearchParams): string {
 export function preserveUiParams(
   params: URLSearchParams,
   view: QuoteViewMode,
-  sort: QuoteSortKey
+  sort: QuoteSortKey,
+  panel?: 'list' | 'insights'
 ): URLSearchParams {
   if (view === 'table') {
     params.set('view', 'table');
@@ -102,6 +112,11 @@ export function preserveUiParams(
     params.set('sort', sort);
   } else {
     params.delete('sort');
+  }
+  if (panel === 'insights') {
+    params.set('panel', 'insights');
+  } else {
+    params.delete('panel');
   }
   return params;
 }
@@ -134,6 +149,8 @@ export function getQuoteDocumentType(quote: Quote): string {
 }
 
 export function getEstimatorName(quote: Quote, employees?: any[]): string {
+  const fromApi = (quote.estimator_name || '').trim();
+  if (fromApi) return fromApi;
   const estimator = employees?.find((e: any) => String(e.id) === String(quote.estimator_id));
   return estimator?.name || estimator?.username || '—';
 }
@@ -192,11 +209,37 @@ export function getQuoteValue(quote: Quote): number {
   return Number(data.bid_price || data.estimate_total_estimate || 0);
 }
 
-export function summarizeQuotes(quotes: Quote[]): { count: number; total: number; average: number } {
+export function summarizeQuotes(quotes: Quote[]): {
+  count: number;
+  total: number;
+  average: number;
+  pending: number;
+  successful: number;
+  not_successful: number;
+  win_rate: number | null;
+  value_won: number;
+} {
   const count = quotes.length;
   const total = quotes.reduce((sum, q) => sum + getQuoteValue(q), 0);
   const average = count > 0 ? total / count : 0;
-  return { count, total, average };
+  let pending = 0;
+  let successful = 0;
+  let not_successful = 0;
+  let value_won = 0;
+  for (const q of quotes) {
+    const status = q.outcome_status || 'pending';
+    if (status === 'successful') {
+      successful += 1;
+      value_won += q.outcome_value != null && Number(q.outcome_value) > 0 ? Number(q.outcome_value) : getQuoteValue(q);
+    } else if (status === 'not_successful') {
+      not_successful += 1;
+    } else {
+      pending += 1;
+    }
+  }
+  const decided = successful + not_successful;
+  const win_rate = decided > 0 ? successful / decided : null;
+  return { count, total, average, pending, successful, not_successful, win_rate, value_won };
 }
 
 function compareStrings(a: string, b: string): number {

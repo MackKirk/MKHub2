@@ -3379,6 +3379,44 @@ def create_app() -> FastAPI:
                         except Exception:
                             pass
 
+                    # Quote commercial outcome columns
+                    try:
+                        for col, ddl in [
+                            ("outcome_status", "VARCHAR(30) NOT NULL DEFAULT 'pending'"),
+                            ("outcome_at", "TIMESTAMPTZ NULL"),
+                            ("outcome_set_by_id", "UUID NULL REFERENCES users(id) ON DELETE SET NULL"),
+                            ("outcome_note", "TEXT NULL"),
+                            ("lost_reason", "VARCHAR(50) NULL"),
+                            ("outcome_value", "NUMERIC(14, 2) NULL"),
+                        ]:
+                            exists = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_schema = 'public' AND table_name = 'quotes' AND column_name = :c
+                                    LIMIT 1
+                                    """
+                                ),
+                                {"c": col},
+                            ).fetchall()
+                            if not exists:
+                                db.execute(text(f"ALTER TABLE quotes ADD COLUMN {col} {ddl}"))
+                                db.commit()
+                                print(f"[startup] Added quotes.{col}")
+                        db.execute(
+                            text(
+                                "CREATE INDEX IF NOT EXISTS ix_quotes_outcome_status ON quotes (outcome_status)"
+                            )
+                        )
+                        db.execute(
+                            text(
+                                "CREATE INDEX IF NOT EXISTS ix_quotes_outcome_at ON quotes (outcome_at)"
+                            )
+                        )
+                        db.commit()
+                    except Exception as _e:
+                        print(f"[startup] quotes outcome columns migration (non-critical): {_e}")
+
                     print("[startup] Schema migrations check completed")
             except Exception as e:
                 print(f"[startup] Schema migrations check error (non-critical): {e}")

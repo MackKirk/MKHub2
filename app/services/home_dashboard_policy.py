@@ -80,7 +80,7 @@ def home_widget_allowed_for_user(user: User, widget: Dict[str, Any]) -> bool:
             # unknown shortcut id: allow (forward compatible)
         return True
 
-    if wtype in ("kpi", "chart", "list_projects", "list_opportunities"):
+    if wtype in ("kpi", "chart", "list_projects", "list_opportunities", "project_calendar"):
         bl = cfg.get("business_line")
         return user_may_use_business_line_on_home(user, bl if isinstance(bl, str) else None)
 

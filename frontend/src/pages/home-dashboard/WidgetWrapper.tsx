@@ -65,7 +65,8 @@ export function WidgetWrapper({ widget, isEditMode, onRemove, onOpenConfig, chil
       : (widget.title ?? widget.type);
   const icon = getWidgetIcon(widget);
 
-  const isCalendar = widget.type === 'calendar';
+  const isPersonalCalendar = widget.type === 'calendar';
+  const isProjectCalendar = widget.type === 'project_calendar';
 
   return (
     <div className={uiCx(cardClass, 'flex flex-col', cardHoverClass)}>
@@ -123,9 +124,11 @@ export function WidgetWrapper({ widget, isEditMode, onRemove, onOpenConfig, chil
       <div
         className={uiCx(
           'min-h-0 flex-1',
-          isCalendar
+          isPersonalCalendar
             ? 'overflow-hidden p-1'
-            : 'overflow-auto p-[clamp(0.25rem,2cqh,0.75rem)]',
+            : isProjectCalendar
+              ? 'overflow-auto p-1.5'
+              : 'overflow-auto p-[clamp(0.25rem,2cqh,0.75rem)]',
         )}
       >
         {children}
