@@ -1,7 +1,7 @@
 import uuid
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import asc, func, nullslast
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional, List, Dict, Any
@@ -25,14 +25,19 @@ def _divisions_for_user(db: Session, user_id: uuid.UUID) -> List[Dict[str, str]]
     return [{"id": str(div_id), "label": (label or "").strip()} for _, div_id, label in rows]
 
 
-def _employee_directory_payload(u: User, ep: Optional[EmployeeProfile], divisions: List[Dict[str, str]]) -> Dict[str, Any]:
+def _employee_display_name(u: User, ep: Optional[EmployeeProfile]) -> str:
     name = (getattr(ep, "preferred_name", None) or "").strip() if ep else ""
     if not name:
         first = (getattr(ep, "first_name", None) or "").strip() if ep else ""
         last = (getattr(ep, "last_name", None) or "").strip() if ep else ""
         name = " ".join([x for x in [first, last] if x])
     if not name:
-        name = u.username
+        name = u.username or str(u.id)
+    return name
+
+
+def _employee_directory_payload(u: User, ep: Optional[EmployeeProfile], divisions: List[Dict[str, str]]) -> Dict[str, Any]:
+    name = _employee_display_name(u, ep)
 
     dept_from_divisions = ", ".join(d["label"] for d in divisions if d.get("label")) if divisions else None
     department = dept_from_divisions or ((getattr(ep, "division", None) or "").strip() or None if ep else None)
@@ -112,6 +117,7 @@ def list_employees(
     limit: int = 200,
     active_only: bool = False,
     sort: str = "recent",
+    lite: bool = Query(False, description="id, name, username, is_active only"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -133,6 +139,17 @@ def list_employees(
     else:
         query = query.order_by(User.created_at.desc())
     rows = query.limit(effective_limit).all()
+
+    if lite:
+        return [
+            {
+                "id": str(u.id),
+                "username": u.username,
+                "name": _employee_display_name(u, ep),
+                "is_active": bool(getattr(u, "is_active", True)),
+            }
+            for u, ep in rows
+        ]
 
     # Load divisions in one batch query to avoid N+1 and heavy joinedload
     user_ids = [u.id for u, _ in rows]

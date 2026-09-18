@@ -4,9 +4,11 @@ import toast from 'react-hot-toast';
 import { Clock, TriangleAlert } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { attendanceWorkDate, getTodayLocal } from '@/lib/dateUtils';
 import { isCompleteLocalDatetime, LocalDateTimeFields } from '@/components/LocalDateTimeFields';
+import { JobSearchCombobox } from '@/components/JobSearchCombobox';
 import {
+  attendanceManualEntryQuickInfo,
   scWorkerAttendanceDetailQuickInfo,
   scWorkerManualAttendanceQuickInfo,
 } from '@/lib/formModalQuickInfo';
@@ -18,7 +20,6 @@ import {
   AppBadge,
   AppButton,
   AppCard,
-  AppCheckbox,
   AppCheckboxControl,
   AppCombobox,
   AppControlLabelRow,
@@ -42,8 +43,13 @@ import {
   AppSortableEntityListSortColumn,
   AppTooltip,
   AppUserSelect,
+  formatTimeDisplay,
+  getAppTabButtonClassName,
+  uiBorders,
+  uiColors,
   uiCx,
   uiLayout,
+  uiRadius,
   uiSpacing,
   uiTypography,
   sortListByAppColumn,
@@ -227,6 +233,254 @@ const formatBreak = (breakMinutes?: number | null) => {
   return `${m}m`;
 };
 
+const BREAK_PRESETS = [
+  { minutes: 0, label: 'None' },
+  { minutes: 15, label: '15 min' },
+  { minutes: 30, label: '30 min' },
+  { minutes: 45, label: '45 min' },
+  { minutes: 60, label: '1 hour' },
+] as const;
+
+function isBreakPresetMinutes(minutes: number) {
+  return BREAK_PRESETS.some((preset) => preset.minutes === minutes);
+}
+
+function formatDurationMinutes(total?: number | null) {
+  if (total == null || Number.isNaN(total) || total < 0) return '—';
+  const h = Math.floor(total / 60);
+  const m = Math.round(total % 60);
+  if (h <= 0) return `${m}m`;
+  return `${h}h ${String(m).padStart(2, '0')}m`;
+}
+
+function AttendanceBreakField({
+  minutes,
+  custom,
+  onChange,
+  disabled,
+}: {
+  minutes: number;
+  custom: boolean;
+  onChange: (minutes: number, custom: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <AppControlLabelRow
+        label="Break"
+        fieldHint={
+          <AppFieldHint hint="Break\n\nUnpaid break deducted from the logged time. Pick a common length, or Custom to type minutes." />
+        }
+      />
+      <div className="flex flex-wrap gap-2">
+        {BREAK_PRESETS.map((preset) => (
+          <button
+            key={preset.minutes}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(preset.minutes, false)}
+            className={getAppTabButtonClassName(!custom && minutes === preset.minutes)}
+          >
+            {preset.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            onChange(minutes > 0 ? minutes : 30, true);
+          }}
+          className={getAppTabButtonClassName(custom)}
+        >
+          Custom
+        </button>
+      </div>
+      {custom ? (
+        <AppInput
+          label="Minutes"
+          type="number"
+          min={0}
+          step={5}
+          value={String(minutes)}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = parseInt(e.target.value, 10);
+            onChange(Number.isNaN(next) ? 0 : Math.max(0, next), true);
+          }}
+          fieldHint="Minutes\n\nTotal unpaid break minutes for this row."
+        />
+      ) : null}
+    </div>
+  );
+}
+
+const DEFAULT_CLOCK_IN = '08:00';
+const DEFAULT_CLOCK_OUT = '16:00';
+
+function localDatePart(value: string): string {
+  if (!value?.includes('T')) return value?.trim() || '';
+  return value.split('T')[0] || '';
+}
+
+function localTimePart(value: string): string {
+  if (!value?.includes('T')) return '';
+  const timePart = value.split('T')[1] || '';
+  return /^\d{2}:\d{2}/.test(timePart) ? timePart.slice(0, 5) : '';
+}
+
+function combineLocalDatetime(date: string, time: string): string {
+  if (!date) return '';
+  return time ? `${date}T${time}` : `${date}T`;
+}
+
+function defaultShiftForDate(date: string) {
+  return {
+    clock_in_time: combineLocalDatetime(date, DEFAULT_CLOCK_IN),
+    clock_out_time: combineLocalDatetime(date, DEFAULT_CLOCK_OUT),
+  };
+}
+
+function addMinutesLocal(value: string, minutes: number): string {
+  const utc = toUtcISOString(value);
+  if (!utc) return value;
+  return toLocalInputValue(new Date(new Date(utc).getTime() + minutes * 60 * 1000).toISOString());
+}
+
+function shiftFromWorkedHours(date: string, hours: number) {
+  const start = combineLocalDatetime(date, DEFAULT_CLOCK_IN);
+  if (!hours || hours <= 0) return defaultShiftForDate(date);
+  return {
+    clock_in_time: start,
+    clock_out_time: addMinutesLocal(start, Math.round(hours * 60)),
+  };
+}
+
+function applyClockInKeepingLinkedOutDate<T extends { clock_in_time: string; clock_out_time: string }>(
+  prev: T,
+  nextIn: string,
+): T {
+  const prevInDate = localDatePart(prev.clock_in_time);
+  const nextInDate = localDatePart(nextIn);
+  const outDate = localDatePart(prev.clock_out_time);
+  const outTime = localTimePart(prev.clock_out_time) || DEFAULT_CLOCK_OUT;
+  const datesWereLinked = !outDate || !prevInDate || outDate === prevInDate;
+  return {
+    ...prev,
+    clock_in_time: nextIn,
+    clock_out_time:
+      datesWereLinked && nextInDate ? combineLocalDatetime(nextInDate, outTime) : prev.clock_out_time,
+  };
+}
+
+function AttendanceTotalHoursField({
+  clockIn,
+  clockOut,
+  grossMinutes,
+  breakMinutes,
+}: {
+  clockIn: string;
+  clockOut: string;
+  grossMinutes: number | null;
+  breakMinutes: number;
+}) {
+  const inLabel = formatTimeDisplay(localTimePart(clockIn));
+  const outLabel = formatTimeDisplay(localTimePart(clockOut));
+  const inDate = localDatePart(clockIn);
+  const outDate = localDatePart(clockOut);
+  const nextDay = Boolean(inDate && outDate && inDate !== outDate);
+  const net = grossMinutes == null ? null : Math.max(0, grossMinutes - Math.max(0, breakMinutes));
+  const range =
+    inLabel && outLabel
+      ? `${inLabel} – ${outLabel}${nextDay ? ' (next day)' : ''}`
+      : 'Set clock in and clock out to see hours.';
+
+  return (
+    <div className="space-y-1.5">
+      <AppControlLabelRow
+        label="Total hours"
+        fieldHint={
+          <AppFieldHint hint="Total hours\n\nCalculated from clock in to clock out. Not edited directly — change the times below." />
+        }
+      />
+      <div className={uiCx(uiRadius.control, uiBorders.input, uiColors.surfaceSubtle, 'px-3 py-2.5')}>
+        <div className="text-lg font-semibold tabular-nums text-gray-900">
+          {grossMinutes == null ? '—' : formatDurationMinutes(grossMinutes)}
+        </div>
+        <p className={uiTypography.helper}>
+          {range}
+          {grossMinutes != null && breakMinutes > 0 ? (
+            <>
+              {' · '}
+              {formatDurationMinutes(breakMinutes)} break
+              {' · '}
+              <span className="font-medium text-gray-800">{formatDurationMinutes(net)} after break</span>
+            </>
+          ) : null}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const ATTENDANCE_STATUS_OPTIONS = [
+  {
+    key: 'approved',
+    label: 'Approved',
+    active: 'border-emerald-600 bg-emerald-50 text-emerald-800',
+  },
+  {
+    key: 'pending',
+    label: 'Pending',
+    active: 'border-amber-500 bg-amber-50 text-amber-900',
+  },
+  {
+    key: 'rejected',
+    label: 'Rejected',
+    active: 'border-red-500 bg-red-50 text-red-800',
+  },
+] as const;
+
+function AttendanceStatusField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <AppControlLabelRow
+        label="Status *"
+        fieldHint={<AppFieldHint hint="Status\n\nApproval state for this row (approved, pending, or rejected)." />}
+      />
+      <div className="flex flex-wrap gap-2">
+        {ATTENDANCE_STATUS_OPTIONS.map((option) => {
+          const isActive = value === option.key;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(option.key)}
+              className={uiCx(
+                'inline-flex items-center px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                uiRadius.tab,
+                uiTypography.controlLabel,
+                isActive ? option.active : uiCx(uiBorders.strong, 'bg-white text-gray-700 hover:bg-gray-50'),
+              )}
+              aria-pressed={isActive}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const extractJobType = (reason?: string | null) => {
   if (!reason) return null;
   if (reason.startsWith('JOB_TYPE:')) {
@@ -376,10 +630,7 @@ const buildEvents = (attendances: Attendance[], projects: Project[] = []): Atten
       project_id: projectId,
       shift_id: att.shift_id || undefined,
       clock_in_id: att.clock_in_time ? att.id : null,
-      // For "hours worked", store the date (not time) so we can use it for editing
-      clock_in_time: isHoursWorked && att.clock_in_time
-        ? formatDateLocal(new Date(att.clock_in_time)) + 'T00:00:00Z'
-        : att.clock_in_time || null,
+      clock_in_time: att.clock_in_time || null,
       clock_in_status: att.clock_in_time
         ? att.record_kind === 'subcontractor'
           ? ((att as Attendance).hr_status || 'approved').toLowerCase()
@@ -387,10 +638,7 @@ const buildEvents = (attendances: Attendance[], projects: Project[] = []): Atten
         : null,
       clock_in_reason: att.clock_in_time ? att.reason_text : null,
       clock_out_id: att.clock_out_time ? att.id : null,
-      // For "hours worked", store the date (not time) so we can use it for editing
-      clock_out_time: isHoursWorked && att.clock_out_time
-        ? formatDateLocal(new Date(att.clock_out_time)) + 'T00:00:00Z'
-        : att.clock_out_time || null,
+      clock_out_time: att.clock_out_time || null,
       clock_out_status: att.clock_out_time
         ? att.record_kind === 'subcontractor'
           ? ((att as Attendance).hr_status || 'approved').toLowerCase()
@@ -466,18 +714,15 @@ export default function Attendance() {
     clock_in_time: '',
     clock_out_time: '',
     status: 'approved',
-    entry_mode: 'time' as 'time' | 'hours',
-    hours_worked: '',
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set());
   const [deletingSelected, setDeletingSelected] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Manual break time
-  const [insertBreakTime, setInsertBreakTime] = useState<boolean>(false);
-  const [breakHours, setBreakHours] = useState<string>('0');
-  const [breakMinutes, setBreakMinutes] = useState<string>('0');
+  // Unpaid break on this row (minutes). 0 = no break.
+  const [breakMinutesTotal, setBreakMinutesTotal] = useState(0);
+  const [breakCustom, setBreakCustom] = useState(false);
   
 
   // Build query string for filters
@@ -507,7 +752,19 @@ export default function Attendance() {
     ? `/settings/attendance/list?${queryString}`
     : '/settings/attendance/list';
 
-  const { data: attendances, isLoading, error, refetch } = useQuery({
+  const attendanceEmployeesQuery = {
+    limit: 2000,
+    activeOnly: true,
+    sort: 'name' as const,
+    lite: true,
+  };
+  const { data: users, isLoading: isEmployeesLoading } = useQuery({
+    queryKey: employeesDirectoryQueryKey(attendanceEmployeesQuery),
+    queryFn: () => fetchEmployeesDirectory(attendanceEmployeesQuery),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: attendances, isLoading, isFetching: isHoursFetching, error, refetch } = useQuery({
     queryKey: ['settings-attendance', queryString, refreshKey],
     queryFn: async () => {
       const result = await api<Attendance[]>('GET', url);
@@ -515,6 +772,7 @@ export default function Attendance() {
       return Array.isArray(result) ? result : [];
     },
     placeholderData: keepPreviousData,
+    enabled: viewMode === 'list' || !isEmployeesLoading,
   });
 
   const { data: projects = [] } = useQuery({
@@ -523,6 +781,7 @@ export default function Attendance() {
       const result = await api<Project[]>('GET', '/projects');
       return Array.isArray(result) ? result : [];
     },
+    enabled: !isEmployeesLoading,
   });
 
   const { data: subcontractorCompanies = [] } = useQuery({
@@ -535,17 +794,7 @@ export default function Attendance() {
       const items = Array.isArray(result?.items) ? result.items : [];
       return items;
     },
-  });
-
-  const attendanceEmployeesQuery = {
-    limit: 2000,
-    activeOnly: true,
-    sort: 'name' as const,
-  };
-  const { data: users, isLoading: isEmployeesLoading } = useQuery({
-    queryKey: employeesDirectoryQueryKey(attendanceEmployeesQuery),
-    queryFn: () => fetchEmployeesDirectory(attendanceEmployeesQuery),
-    staleTime: 5 * 60 * 1000,
+    enabled: viewMode === 'list',
   });
 
   const attendanceEvents = useMemo(() => {
@@ -595,7 +844,7 @@ export default function Attendance() {
     return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [employeeUsers, attendanceEvents, filters.worker_id]);
 
-  const isWeekLoading = isEmployeesLoading || isLoading;
+  const isWeekLoading = isEmployeesLoading;
 
   const workerFilterOptions = useMemo(() => {
     const list = Array.isArray(users) ? users : [];
@@ -702,13 +951,10 @@ export default function Attendance() {
       clock_in_time: '',
       clock_out_time: '',
       status: 'approved',
-      entry_mode: 'time',
-      hours_worked: '',
     });
     setSelectedWorkers([]);
-    setInsertBreakTime(false);
-    setBreakHours('0');
-    setBreakMinutes('0');
+    setBreakMinutesTotal(0);
+    setBreakCustom(false);
     setEditingEvent(null);
   };
 
@@ -727,117 +973,87 @@ export default function Attendance() {
           clock_in_time: toLocalInputValue(event.clock_in_time),
           clock_out_time: toLocalInputValue(event.clock_out_time),
           status: st === 'pending' || st === 'rejected' ? st : 'approved',
-          entry_mode: 'time',
-          hours_worked: '',
         });
         if (event.break_minutes && event.break_minutes > 0) {
-          const breakH = Math.floor(event.break_minutes / 60);
-          const breakM = event.break_minutes % 60;
-          setInsertBreakTime(true);
-          setBreakHours(String(breakH));
-          setBreakMinutes(String(breakM).padStart(2, '0'));
+          setBreakMinutesTotal(event.break_minutes);
+          setBreakCustom(!isBreakPresetMinutes(event.break_minutes));
         } else {
-          setInsertBreakTime(false);
-          setBreakHours('0');
-          setBreakMinutes('0');
+          setBreakMinutesTotal(0);
+          setBreakCustom(false);
         }
         setShowModal(true);
         return;
       }
 
-      // Detect if this event was created as "hours worked"
-      const isHoursWorked = event.is_hours_worked || 
+      const isHoursWorked =
+        event.is_hours_worked ||
         (event.clock_in_reason && event.clock_in_reason.includes('HOURS_WORKED:')) ||
         (event.clock_out_reason && event.clock_out_reason.includes('HOURS_WORKED:'));
-      
-      // Extract hours_worked value if it's a "hours worked" entry
-      let hoursWorkedValue = '';
+
+      let hoursWorkedValue = event.hours_worked ?? null;
       if (isHoursWorked) {
         const reason = event.clock_in_reason || event.clock_out_reason || '';
-        const parts = reason.split('|');
-        for (const part of parts) {
-          if (part.startsWith('HOURS_WORKED:')) {
-            hoursWorkedValue = part.replace('HOURS_WORKED:', '');
-            break;
-          }
-        }
+        const fromReason = extractHoursWorked(reason);
+        if (fromReason != null) hoursWorkedValue = fromReason;
       }
-      
-      // For "hours worked" entries, extract only the date part (no time)
-      // We now store the date in clock_in_time even for "hours worked" entries
-      let clockInTimeValue = '';
-      if (isHoursWorked) {
-        // For "hours worked", clock_in_time contains the date at midnight (YYYY-MM-DDT00:00:00Z)
-        // Extract date part and format for date input
-        if (event.clock_in_time) {
-          const datePart = formatDateLocal(new Date(event.clock_in_time));
-          clockInTimeValue = `${datePart}T00:00`; // Set to midnight for date input
-        } else if (event.clock_out_time) {
-          // Fallback to clock_out_time if clock_in_time is not available
-          const datePart = formatDateLocal(new Date(event.clock_out_time));
-          clockInTimeValue = `${datePart}T00:00`;
-        }
-      } else {
-        clockInTimeValue = toLocalInputValue(event.clock_in_time);
-      }
-      
-      // Determine job_type: use project_id if available (from shift), otherwise use job_type from reason_text
+
       const jobTypeForForm = event.project_id || event.job_type || '0';
-      
+      let clockInTimeValue = toLocalInputValue(event.clock_in_time);
+      let clockOutTimeValue = toLocalInputValue(event.clock_out_time);
+
+      if (isHoursWorked) {
+        const datePart = event.clock_in_time
+          ? attendanceWorkDate(event.clock_in_time, true)
+          : event.clock_out_time
+            ? attendanceWorkDate(event.clock_out_time, true)
+            : getTodayLocal();
+        const mapped = shiftFromWorkedHours(datePart, hoursWorkedValue ?? 8);
+        clockInTimeValue = mapped.clock_in_time;
+        clockOutTimeValue = mapped.clock_out_time;
+      } else if (!clockOutTimeValue && clockInTimeValue) {
+        clockOutTimeValue = combineLocalDatetime(localDatePart(clockInTimeValue), DEFAULT_CLOCK_OUT);
+      } else if (!clockInTimeValue) {
+        const fallback = defaultShiftForDate(getTodayLocal());
+        clockInTimeValue = fallback.clock_in_time;
+        clockOutTimeValue = clockOutTimeValue || fallback.clock_out_time;
+      }
+
       setFormData({
         worker_id: event.worker_id,
         job_type: jobTypeForForm,
         clock_in_time: clockInTimeValue,
-        clock_out_time: toLocalInputValue(event.clock_out_time),
+        clock_out_time: clockOutTimeValue,
         status: event.clock_in_status || 'approved',
-        entry_mode: isHoursWorked ? 'hours' : 'time',
-        hours_worked: hoursWorkedValue,
       });
       
       // Load manual break time if exists
       if (event.break_minutes && event.break_minutes > 0) {
-        const breakH = Math.floor(event.break_minutes / 60);
-        const breakM = event.break_minutes % 60;
-        setInsertBreakTime(true);
-        setBreakHours(String(breakH));
-        setBreakMinutes(String(breakM).padStart(2, '0'));
+        setBreakMinutesTotal(event.break_minutes);
+        setBreakCustom(!isBreakPresetMinutes(event.break_minutes));
       } else {
-        setInsertBreakTime(false);
-        setBreakHours('0');
-        setBreakMinutes('0');
+        setBreakMinutesTotal(0);
+        setBreakCustom(false);
       }
     } else {
-      const now = new Date();
-      const tzOffset = now.getTimezoneOffset();
-      const local = new Date(now.getTime() - tzOffset * 60000)
-        .toISOString()
-        .slice(0, 16);
       setEditingEvent(null);
       if (seed?.workerId && seed.date) {
         setSelectedWorkers([seed.workerId]);
         setFormData({
           worker_id: seed.workerId,
           job_type: '0',
-          clock_in_time: `${seed.date}T08:00`,
-          clock_out_time: '',
+          ...defaultShiftForDate(seed.date),
           status: 'approved',
-          entry_mode: 'hours',
-          hours_worked: '',
         });
       } else {
         setFormData({
           worker_id: '',
           job_type: '0',
-          clock_in_time: local,
-          clock_out_time: '',
+          ...defaultShiftForDate(getTodayLocal()),
           status: 'approved',
-          entry_mode: 'time',
-          hours_worked: '',
         });
       }
-      setInsertBreakTime(false);
-      setBreakHours('0');
-      setBreakMinutes('0');
+      setBreakMinutesTotal(0);
+      setBreakCustom(false);
     }
     setShowModal(true);
   };
@@ -849,8 +1065,8 @@ export default function Attendance() {
     }
     setViewingEvent(null);
     const result = await confirm({
-      title: 'Delete Attendance Event',
-      message: 'Are you sure you want to delete this attendance event (clock-in/out)? This action cannot be undone.',
+      title: 'Delete attendance',
+      message: 'This removes the hours for this worker on this day. This cannot be undone.',
       confirmText: 'Delete',
       cancelText: 'Cancel',
     });
@@ -907,6 +1123,7 @@ export default function Attendance() {
       setRefreshKey(prev => prev + 1);
       
       toast.success('Attendance event deleted');
+      closeAttendanceModal();
     } catch (err: any) {
       console.error('Delete error:', err);
       toast.error(err?.message || 'Failed to delete event');
@@ -1041,40 +1258,29 @@ export default function Attendance() {
     }
     setIsSubmitting(true);
 
-    // Validation rules differ for new vs edit and for entry mode
-    if (editingEvent) {
-      if (!formData.clock_in_time) {
-        toast.error('Clock-in time is required');
-        setIsSubmitting(false);
-        return;
-      }
-    } else {
-      if (formData.entry_mode === 'time') {
-        if (!formData.clock_in_time || !formData.clock_out_time) {
-          toast.error('Clock-in and clock-out times are required');
-          setIsSubmitting(false);
-          return;
-        }
-      } else {
-        if (!formData.clock_in_time) {
-          toast.error('Clock-in time is required when using hours worked');
-          setIsSubmitting(false);
-          return;
-        }
-        const hours = parseFloat(formData.hours_worked || '0');
-        if (!formData.hours_worked || isNaN(hours) || hours <= 0) {
-          toast.error('Please enter a valid number of hours worked');
-          setIsSubmitting(false);
-          return;
-        }
-      }
+    if (!isCompleteLocalDatetime(formData.clock_in_time)) {
+      toast.error('Clock-in time is required');
+      setIsSubmitting(false);
+      return;
+    }
+    if (!isEditingSubcontractor && !isCompleteLocalDatetime(formData.clock_out_time)) {
+      toast.error('Clock-in and clock-out times are required');
+      setIsSubmitting(false);
+      return;
     }
 
-    let clockInUtc = toUtcISOString(formData.clock_in_time);
-    let clockOutUtc = toUtcISOString(formData.clock_out_time);
+    const clockInUtc = toUtcISOString(formData.clock_in_time);
+    const clockOutUtc = isCompleteLocalDatetime(formData.clock_out_time)
+      ? toUtcISOString(formData.clock_out_time)
+      : null;
 
-    // Validate that clock-out time is not before or equal to clock-in time
-    if (clockInUtc && clockOutUtc) {
+    if (!clockInUtc) {
+      toast.error('Clock-in time is required');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (clockOutUtc) {
       const clockInDate = new Date(clockInUtc);
       const clockOutDate = new Date(clockOutUtc);
       if (clockOutDate <= clockInDate) {
@@ -1082,13 +1288,10 @@ export default function Attendance() {
         setIsSubmitting(false);
         return;
       }
-      
-      // Validate break time: break cannot be greater than or equal to total time
-      if (insertBreakTime) {
-        const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+
+      if (breakMinutesTotal > 0) {
         const totalMinutes = Math.floor((clockOutDate.getTime() - clockInDate.getTime()) / (1000 * 60));
-        
-        if (breakTotalMinutes >= totalMinutes) {
+        if (breakMinutesTotal >= totalMinutes) {
           toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time.');
           setIsSubmitting(false);
           return;
@@ -1096,30 +1299,7 @@ export default function Attendance() {
       }
     }
 
-    // When using "hours worked" (both create and edit), auto-calculate clock-out
-    // and mark with HOURS_WORKED in reason_text
-    let reasonText = `JOB_TYPE:${formData.job_type}`;
-    if (formData.entry_mode === 'hours' && formData.clock_in_time) {
-      const hours = parseFloat(formData.hours_worked || '0');
-      if (hours > 0) {
-        // Extract date part and ensure it's at midnight local time
-        const datePart = formData.clock_in_time.slice(0, 10); // YYYY-MM-DD
-        const midnightLocal = `${datePart}T00:00`;
-        
-        // Convert to UTC
-        clockInUtc = toUtcISOString(midnightLocal);
-        
-        if (clockInUtc) {
-          // Set clock-out to clock-in + hours
-          const inDate = new Date(clockInUtc);
-          const outDate = new Date(inDate.getTime() + hours * 3600000);
-          clockOutUtc = outDate.toISOString();
-        }
-        
-        // Add HOURS_WORKED marker to reason_text
-        reasonText = `JOB_TYPE:${formData.job_type}|HOURS_WORKED:${hours}`;
-      }
-    }
+    const reasonText = `JOB_TYPE:${formData.job_type}`;
 
     try {
       if (editingEvent?.record_kind === 'subcontractor') {
@@ -1148,9 +1328,7 @@ export default function Attendance() {
             hr_status: formData.status,
           };
           if (clockOutUtc) {
-            patchBody.manual_break_minutes = insertBreakTime
-              ? parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10)
-              : 0;
+            patchBody.manual_break_minutes = clockOutUtc ? Math.max(0, breakMinutesTotal) : 0;
           }
           await api('PATCH', `/subcontractors/attendance/${attendanceId}`, patchBody);
           toast.success('Attendance updated');
@@ -1188,14 +1366,15 @@ export default function Attendance() {
           clock_in_time: clockInUtc,
           clock_out_time: clockOutUtc,
           status: formData.status,
+          entry_kind: 'clock',
+          declared_hours: null,
           // Always include reason_text to allow job editing even when there's a shift_id
           reason_text: reasonText,
         };
         
-        // Add manual break time if checkbox is checked and clock_out_time exists
-        if (clockOutUtc && insertBreakTime) {
-          const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
-          updatePayload.manual_break_minutes = breakTotalMinutes;
+        // Always send break so clearing a previous break is persisted
+        if (clockOutUtc) {
+          updatePayload.manual_break_minutes = Math.max(0, breakMinutesTotal);
         }
         
         try {
@@ -1228,14 +1407,6 @@ export default function Attendance() {
         }
       } else {
         // NEW MODEL: Create attendance records for each selected worker
-        // For "hours worked", we MUST have both clock-in and clock-out
-        if (formData.entry_mode === 'hours' && !clockOutUtc) {
-          toast.error('Failed to calculate clock-out time for hours worked entry');
-          setIsSubmitting(false);
-          return;
-        }
-
-        // Create attendance for each selected worker
         let successCount = 0;
         let errorCount = 0;
         const errors: string[] = [];
@@ -1248,13 +1419,14 @@ export default function Attendance() {
             clock_in_time: clockInUtc,
             clock_out_time: clockOutUtc,
             status: formData.status,
+            entry_kind: 'clock',
+            declared_hours: null,
             reason_text: reasonText,
           };
           
-          // Add manual break time if checkbox is checked and clock_out_time exists
-          if (clockOutUtc && insertBreakTime) {
-            const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
-            createPayload.manual_break_minutes = breakTotalMinutes;
+          // Always send break so clearing a previous break is persisted
+          if (clockOutUtc) {
+            createPayload.manual_break_minutes = Math.max(0, breakMinutesTotal);
           }
           
           try {
@@ -1342,27 +1514,29 @@ export default function Attendance() {
 
   const isSubmitDisabled = useMemo(() => {
     if (isSagePaid(editingEvent?.sage_state, editingEvent?.sage_locked)) return true;
+    if (!isCompleteLocalDatetime(formData.clock_in_time)) return true;
     if (editingEvent?.record_kind === 'subcontractor') {
-      return !isCompleteLocalDatetime(formData.clock_in_time) || !projectsList.some((p) => p.id === formData.job_type);
+      if (formData.clock_out_time && !isCompleteLocalDatetime(formData.clock_out_time)) return true;
+      return !projectsList.some((p) => p.id === formData.job_type);
     }
-    if (editingEvent) {
-      if (formData.entry_mode === 'time') {
-        if (!isCompleteLocalDatetime(formData.clock_in_time)) return true;
-        return !formData.worker_id;
-      }
-      if (!formData.clock_in_time?.slice(0, 10)) return true;
-      const hours = parseFloat(formData.hours_worked || '0');
-      return !formData.worker_id || !formData.hours_worked || Number.isNaN(hours) || hours <= 0;
-    }
-    if ((Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0) return true;
-    if (formData.entry_mode === 'time') {
-      if (!isCompleteLocalDatetime(formData.clock_in_time)) return true;
-      return !isCompleteLocalDatetime(formData.clock_out_time);
-    }
-    if (!formData.clock_in_time?.slice(0, 10)) return true;
-    const hours = parseFloat(formData.hours_worked || '0');
-    return !formData.hours_worked || Number.isNaN(hours) || hours <= 0;
+    if (!isCompleteLocalDatetime(formData.clock_out_time)) return true;
+    if (editingEvent) return !formData.worker_id;
+    return (Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0;
   }, [editingEvent, formData, projectsList, selectedWorkers]);
+
+  const attendanceLocked = isSagePaid(editingEvent?.sage_state, editingEvent?.sage_locked);
+  const isSubcontractorEdit = editingEvent?.record_kind === 'subcontractor';
+
+  const entryGrossMinutes = useMemo(() => {
+    if (!isCompleteLocalDatetime(formData.clock_in_time) || !isCompleteLocalDatetime(formData.clock_out_time)) {
+      return null;
+    }
+    const inUtc = toUtcISOString(formData.clock_in_time);
+    const outUtc = toUtcISOString(formData.clock_out_time);
+    if (!inUtc || !outUtc) return null;
+    const minutes = Math.floor((new Date(outUtc).getTime() - new Date(inUtc).getTime()) / 60000);
+    return minutes > 0 ? minutes : null;
+  }, [formData.clock_in_time, formData.clock_out_time]);
 
   return (
     <div className={uiCx('w-full min-w-0 overflow-x-hidden', uiSpacing.pageStack, 'min-h-full bg-gray-50')}>
@@ -1515,6 +1689,7 @@ export default function Attendance() {
           jobLabel={eventJobLabel}
           canEdit={canEditAttendance}
           isLoading={isWeekLoading}
+          hoursLoading={viewMode === 'week' && !isEmployeesLoading && (isLoading || attendances == null)}
           onAdd={(workerId, date) => handleOpenModal(undefined, { workerId, date })}
           onEdit={(entry) => {
             const match = attendanceEvents.find((e) => e.event_id === entry.event_id);
@@ -1867,49 +2042,84 @@ export default function Attendance() {
       <AppFormModal
         open={showModal}
         onClose={closeAttendanceModal}
-        title={editingEvent ? 'Edit Attendance Event' : 'New Attendance'}
-        description={
-          editingEvent
-            ? editingEvent.record_kind === 'subcontractor'
-              ? 'Update project and clock times (subcontractor attendance).'
-              : 'Update clock-in/out and status'
-            : 'Add manual clock-in/out or hours worked'
+        formWidth="comfortable"
+        title={
+          attendanceLocked
+            ? 'Attendance (locked)'
+            : editingEvent
+              ? 'Edit attendance'
+              : 'New attendance'
         }
-        quickInfo={scWorkerManualAttendanceQuickInfo(!!editingEvent)}
+        description={
+          attendanceLocked
+            ? SAGE_PAID_MESSAGE
+            : editingEvent
+              ? isSubcontractorEdit
+                ? 'Update project, clock times, and approval.'
+                : `Change job, hours, break, or approval${editingEvent.worker_name ? ` for ${editingEvent.worker_name}` : ''}.`
+              : 'Add hours for one or more employees.'
+        }
+        quickInfo={
+          isSubcontractorEdit
+            ? scWorkerManualAttendanceQuickInfo(true)
+            : attendanceManualEntryQuickInfo(!!editingEvent)
+        }
         footer={
-          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={closeAttendanceModal}>
-              Cancel
-            </AppButton>
-            <AppButton
-              type="button"
-              size="sm"
-              disabled={isSubmitDisabled}
-              loading={isSubmitting}
-              onClick={() => void handleSubmit()}
-            >
-              {isSubmitting
-                ? 'Saving...'
-                : isSagePaid(editingEvent?.sage_state, editingEvent?.sage_locked)
-                  ? 'Locked'
-                  : editingEvent
-                    ? 'Update'
-                    : 'Create'}
-            </AppButton>
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-between')}>
+            <div>
+              {editingEvent && !attendanceLocked ? (
+                <AppButton
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  loading={deletingId === editingEvent.event_id}
+                  disabled={Boolean(deletingId)}
+                  onClick={() => void handleDeleteEvent(editingEvent)}
+                >
+                  Delete
+                </AppButton>
+              ) : null}
+            </div>
+            <div className={uiCx(uiLayout.actionsRow)}>
+              <AppButton type="button" variant="secondary" size="sm" onClick={closeAttendanceModal}>
+                Cancel
+              </AppButton>
+              <AppButton
+                type="button"
+                size="sm"
+                disabled={isSubmitDisabled}
+                loading={isSubmitting}
+                onClick={() => void handleSubmit()}
+              >
+                {isSubmitting
+                  ? 'Saving...'
+                  : attendanceLocked
+                    ? 'Locked'
+                    : editingEvent
+                      ? 'Update'
+                      : 'Create'}
+              </AppButton>
+            </div>
           </div>
         }
       >
         <div className={uiSpacing.sectionStack}>
-          {editingEvent && isSagePaid(editingEvent.sage_state, editingEvent.sage_locked) ? (
-            <div className={uiCx('rounded-lg border border-gray-200 bg-gray-50 p-3', uiTypography.helper, 'text-gray-800')}>
+          {attendanceLocked ? (
+            <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, 'p-3', uiTypography.helper, 'text-gray-800')}>
               {SAGE_PAID_MESSAGE}
             </div>
           ) : null}
           {editingEvent?.sage_state === 'error' && editingEvent.sage_error ? (
-            <div className={uiCx('rounded-lg border border-red-200 bg-red-50 p-3', uiTypography.helper, 'text-red-800')}>
+            <div className={uiCx(uiRadius.control, 'border border-red-200 bg-red-50 p-3', uiTypography.helper, 'text-red-800')}>
               {editingEvent.sage_error}
             </div>
           ) : null}
+          <AttendanceTotalHoursField
+            clockIn={formData.clock_in_time}
+            clockOut={formData.clock_out_time}
+            grossMinutes={entryGrossMinutes}
+            breakMinutes={breakMinutesTotal}
+          />
           {editingEvent ? (
             editingEvent.record_kind === 'subcontractor' ? (
               <AppReadOnlyField
@@ -1925,12 +2135,13 @@ export default function Attendance() {
               />
             ) : (
               <AppUserSelect
-                label="Worker *"
+                label="Worker"
                 users={employeeUsers}
                 value={formData.worker_id}
-                onChange={(userId) => setFormData({ ...formData, worker_id: userId })}
-                placeholder="Select a worker..."
-                fieldHint="Worker\n\nEmployee this attendance row applies to."
+                onChange={() => undefined}
+                disabled
+                helperText="Worker cannot be changed. Delete this row and add a new one for a different person."
+                fieldHint="Worker\n\nEmployee this attendance row belongs to."
               />
             )
           ) : (
@@ -1941,208 +2152,62 @@ export default function Attendance() {
               value={selectedWorkers}
               onChange={setSelectedWorkers}
               placeholder="Select workers..."
+              helperText="The same hours are created for everyone you select."
               fieldHint="Workers\n\nOne or more internal employees to create the same attendance row for."
             />
           )}
-          {editingEvent?.record_kind === 'subcontractor' ? (
+          {isSubcontractorEdit ? (
             <AppProjectSelect
               label="Project *"
               value={formData.job_type}
               onChange={(id) => setFormData({ ...formData, job_type: id })}
+              disabled={attendanceLocked}
               fieldHint="Project\n\nJob site where this subcontractor worker was on site."
             />
           ) : (
-            <AppSelect
-              label="Job *"
+            <JobSearchCombobox
               value={formData.job_type}
-              onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
-              fieldHint="Job\n\nProject or job code this attendance row applies to."
-              options={jobOptions.map((job) => ({
-                value: job.id,
-                label: `${job.code} - ${job.name}`,
-              }))}
+              onChange={(jobId) => setFormData((prev) => ({ ...prev, job_type: jobId || '0' }))}
+              disabled={attendanceLocked}
+              fieldHint="Job\n\nProject or office job (Shop, Repairs, Stat Holiday) this row applies to. Type to search."
             />
           )}
-          <div>
-            <AppControlLabelRow
-              label="Entry Type"
-              fieldHint={
-                <AppFieldHint hint="Entry type\n\nClock in / out — enter start and end times. Hours worked — enter total hours for one work date." />
-              }
-            />
-            <div className="inline-flex overflow-hidden rounded-lg border border-gray-200 bg-gray-50 text-xs">
-              <AppButton
-                type="button"
-                variant={formData.entry_mode === 'time' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="rounded-none border-0 shadow-none"
-                onClick={() => {
-                  setFormData((prev) => ({
-                    ...prev,
-                    entry_mode: 'time',
-                    hours_worked: '',
-                  }));
-                }}
-              >
-                Clock In / Out
-              </AppButton>
-              <AppButton
-                type="button"
-                variant={formData.entry_mode === 'hours' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="rounded-none border-0 border-l border-gray-200 shadow-none"
-                onClick={() => {
-                  setFormData((prev) => {
-                    const datePart = prev.clock_in_time ? prev.clock_in_time.slice(0, 10) : getTodayLocal();
-                    let hoursWorked = '';
-                    if (prev.clock_in_time && prev.clock_out_time) {
-                      const inTime = new Date(prev.clock_in_time);
-                      const outTime = new Date(prev.clock_out_time);
-                      const diffMs = outTime.getTime() - inTime.getTime();
-                      const diffHours = diffMs / (1000 * 60 * 60);
-                      if (diffHours > 0) hoursWorked = diffHours.toString();
-                    }
-                    return {
-                      ...prev,
-                      entry_mode: 'hours',
-                      clock_in_time: `${datePart}T00:00`,
-                      clock_out_time: '',
-                      hours_worked: hoursWorked,
-                    };
-                  });
-                }}
-              >
-                Hours Worked
-              </AppButton>
-            </div>
-          </div>
-          {formData.entry_mode === 'time' ? (
-            <LocalDateTimeFields
-              key={`clock-in-${editingEvent?.event_id ?? 'new'}`}
-              label="Clock in"
-              value={formData.clock_in_time}
-              onChange={(next) => setFormData((prev) => ({ ...prev, clock_in_time: next }))}
-              required
-              dateFieldHint="Clock-in date\n\nDay the employee started on site."
-              timeFieldHint="Clock-in time\n\nLocal time when the employee clocked in (15-minute steps)."
-            />
-          ) : (
-            <AppDatePicker
-              label="Work Date *"
-              value={formData.clock_in_time ? formData.clock_in_time.slice(0, 10) : ''}
-              onChange={(e) => {
-                const date = e.target.value;
-                setFormData((prev) => ({
-                  ...prev,
-                  clock_in_time: date ? `${date}T00:00` : '',
-                }));
-              }}
-              fieldHint="Work date\n\nCalendar day when the hours were worked."
-              required
-            />
-          )}
-          {formData.entry_mode === 'time' && (
-            <>
-              <LocalDateTimeFields
-                key={`clock-out-${editingEvent?.event_id ?? 'new'}`}
-                label="Clock out"
-                value={formData.clock_out_time}
-                onChange={(next) => setFormData((prev) => ({ ...prev, clock_out_time: next }))}
-                required={!editingEvent}
-                dateFieldHint="Clock-out date\n\nDay the employee finished on site."
-                timeFieldHint="Clock-out time\n\nLocal time when the employee clocked out. Must be after clock-in."
-              />
-              <div>
-                <AppCheckbox
-                  label="Insert break time"
-                  fieldHint="Insert break time\n\nSubtract unpaid break minutes from the total session time."
-                  checked={insertBreakTime}
-                  onChange={setInsertBreakTime}
-                />
-                {insertBreakTime && (
-                  <div className="flex flex-wrap items-end gap-3 pl-8">
-                    <AppSelect
-                      className="min-w-[100px] flex-1"
-                      label="Hours"
-                      value={breakHours}
-                      onChange={(e) => setBreakHours(e.target.value)}
-                      options={Array.from({ length: 3 }, (_, i) => ({
-                        value: String(i),
-                        label: String(i),
-                      }))}
-                    />
-                    <AppSelect
-                      className="min-w-[100px] flex-1"
-                      label="Minutes"
-                      value={breakMinutes}
-                      onChange={(e) => setBreakMinutes(e.target.value)}
-                      options={Array.from({ length: 12 }, (_, i) => {
-                        const m = i * 5;
-                        const v = String(m).padStart(2, '0');
-                        return { value: v, label: v };
-                      })}
-                    />
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-          {formData.entry_mode === 'hours' && (
-            <>
-              <AppInput
-                label="Hours Worked *"
-                type="number"
-                min={0}
-                step="0.25"
-                value={formData.hours_worked}
-                onChange={(e) => setFormData({ ...formData, hours_worked: e.target.value })}
-                placeholder="e.g. 8"
-                fieldHint="Hours worked\n\nTotal hours for the work date (e.g. 8 for a full day)."
-                required
-              />
-              <div>
-                <AppCheckbox label="Insert break time" checked={insertBreakTime} onChange={setInsertBreakTime} />
-                {insertBreakTime && (
-                  <div className="flex flex-wrap items-end gap-3 pl-8">
-                    <AppSelect
-                      className="min-w-[100px] flex-1"
-                      label="Hours"
-                      value={breakHours}
-                      onChange={(e) => setBreakHours(e.target.value)}
-                      options={Array.from({ length: 3 }, (_, i) => ({
-                        value: String(i),
-                        label: String(i),
-                      }))}
-                    />
-                    <AppSelect
-                      className="min-w-[100px] flex-1"
-                      label="Minutes"
-                      value={breakMinutes}
-                      onChange={(e) => setBreakMinutes(e.target.value)}
-                      options={Array.from({ length: 12 }, (_, i) => {
-                        const m = i * 5;
-                        const v = String(m).padStart(2, '0');
-                        return { value: v, label: v };
-                      })}
-                    />
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-          {editingEvent && (
-            <AppSelect
-              label="Status *"
+          <LocalDateTimeFields
+            key={`clock-in-${editingEvent?.event_id ?? 'new'}`}
+            label="Clock in"
+            value={formData.clock_in_time}
+            onChange={(next) => setFormData((prev) => applyClockInKeepingLinkedOutDate(prev, next))}
+            required
+            disabled={attendanceLocked}
+            dateFieldHint="Clock-in date\n\nWork day for this row. Changing it also moves clock out when both were on the same day."
+            timeFieldHint="Clock-in time\n\nStart of the shift. New rows start at 8:00 AM."
+          />
+          <LocalDateTimeFields
+            key={`clock-out-${editingEvent?.event_id ?? 'new'}`}
+            label="Clock out"
+            value={formData.clock_out_time}
+            onChange={(next) => setFormData((prev) => ({ ...prev, clock_out_time: next }))}
+            required
+            disabled={attendanceLocked}
+            dateFieldHint="Clock-out date\n\nStays on the same day as clock in unless you change it here."
+            timeFieldHint="Clock-out time\n\nEnd of the shift. New rows start at 4:00 PM."
+          />
+          <AttendanceBreakField
+            minutes={breakMinutesTotal}
+            custom={breakCustom}
+            disabled={attendanceLocked}
+            onChange={(minutes, custom) => {
+              setBreakMinutesTotal(minutes);
+              setBreakCustom(custom);
+            }}
+          />
+          {editingEvent ? (
+            <AttendanceStatusField
               value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              fieldHint="Status\n\nApproval state for this row (approved, pending, or rejected)."
-              options={[
-                { value: 'approved', label: 'Approved' },
-                { value: 'pending', label: 'Pending' },
-                { value: 'rejected', label: 'Rejected' },
-              ]}
+              disabled={attendanceLocked}
+              onChange={(status) => setFormData((prev) => ({ ...prev, status }))}
             />
-          )}
+          ) : null}
         </div>
       </AppFormModal>
     </div>

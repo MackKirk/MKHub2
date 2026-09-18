@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     inbound_email_max_attachments: int = Field(default=10, alias="INBOUND_EMAIL_MAX_ATTACHMENTS")
     inbound_email_max_attachment_mb: int = Field(default=20, alias="INBOUND_EMAIL_MAX_ATTACHMENT_MB")
 
+    # Windows Sage companion (Time Slips). Header: X-Sage-Companion-Secret
+    sage_companion_secret: Optional[str] = Field(default=None, alias="SAGE_COMPANION_SECRET")
+
     # Feature flags
     feature_flags_json: str = Field(default="{}", alias="FEATURE_FLAGS")
     signature_restricted_mode: bool = Field(default=False, alias="SIGNATURE_RESTRICTED_MODE")

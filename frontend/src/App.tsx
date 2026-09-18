@@ -120,6 +120,7 @@ import TrainingCourseEdit from './pages/TrainingCourseEdit';
 import TrainingLearningDashboard from './pages/TrainingLearningDashboard';
 import SystemAdmin from './pages/SystemAdmin';
 import Attendance from './pages/Attendance';
+import VeriClockImport from './pages/VeriClockImport';
 import Notifications from './pages/Notifications';
 import Install from './pages/Install';
 import DesignSystemShowcase from './pages/dev/DesignSystemShowcase';
@@ -256,6 +257,7 @@ export default function App(){
           <Route path="/human-resources/offboarding/:caseId" element={<AppShell><Suspense fallback={null}><OffboardingDetailPage /></Suspense></AppShell>} />
           <Route path="/users/:userId" element={<AppShell><UserInfo/></AppShell>} />
           <Route path="/settings/attendance" element={<AppShell><Attendance/></AppShell>} />
+          <Route path="/human-resources/vericlock-import" element={<AppShell><VeriClockImport /></AppShell>} />
           <Route path="/community" element={<AppShell><Community/></AppShell>} />
           <Route path="/community/groups" element={<AppShell><CommunityGroups/></AppShell>} />
           <Route path="/community/insights" element={<AppShell><CommunityInsights/></AppShell>} />

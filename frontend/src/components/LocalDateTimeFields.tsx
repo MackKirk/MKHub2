@@ -33,6 +33,7 @@ type LocalDateTimeFieldsProps = {
   value: string;
   onChange: (next: string) => void;
   required?: boolean;
+  disabled?: boolean;
   dateFieldHint?: string;
   timeFieldHint?: string;
 };
@@ -43,6 +44,7 @@ export function LocalDateTimeFields({
   value,
   onChange,
   required,
+  disabled,
   dateFieldHint,
   timeFieldHint,
 }: LocalDateTimeFieldsProps) {
@@ -65,6 +67,7 @@ export function LocalDateTimeFields({
           label="Date"
           fieldHint={dateHintNode}
           value={date}
+          disabled={disabled}
           onChange={(e) => {
             const d = e.target.value;
             if (!d) {
@@ -79,6 +82,7 @@ export function LocalDateTimeFields({
           label="Time"
           fieldHint={timeHintNode}
           value={time}
+          disabled={disabled}
           onChange={(e) => {
             const t = e.target.value;
             if (!date) return;

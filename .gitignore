@@ -45,6 +45,7 @@ sage-companion/**/*.exe
 sage-companion/**/*.pdb
 sage-companion/**/appsettings.local.json
 sage-companion/**/*.user
+sage-companion/dist/*.zip
 
 # Sage 50 Canada company files / backups (payroll data — never commit)
 *.sai

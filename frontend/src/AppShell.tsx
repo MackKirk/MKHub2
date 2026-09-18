@@ -929,6 +929,7 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'onboarding-admin', label: 'Onboarding', path: '/onboarding/admin', icon: <IconDocument />, requiredPermission: 'hr:onboarding:read' },
         { id: 'offboarding', label: 'Offboarding', path: '/human-resources/offboarding', icon: <IconDocument />, requiredPermission: 'hr:offboarding:read' },
         { id: 'attendance', label: 'Attendance', path: '/settings/attendance', icon: <IconCalendar />, requiredPermission: 'hr:attendance:read' },
+        { id: 'vericlock-import', label: 'VeriClock import', path: '/human-resources/vericlock-import', icon: <IconCalendar />, requiredPermission: 'hr:attendance:write' },
         { id: 'community', label: 'Community', path: '/community', icon: <IconUsersGroup />, requiredPermission: 'hr:community:read' },
       ],
     },

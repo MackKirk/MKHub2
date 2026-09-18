@@ -2474,6 +2474,8 @@ class Attendance(Base):
     sage_paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     sage_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     sage_urgent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # VeriClock history import — unique per punch so re-runs skip duplicates.
+    external_ref: Mapped[Optional[str]] = mapped_column(String(80), nullable=True, unique=True, index=True)
 
     # Legacy fields (for migration compatibility - will be removed after migration)
     type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # in|out - DEPRECATED, kept for migration
@@ -2492,6 +2494,42 @@ class Attendance(Base):
         Index('idx_attendance_status', 'status'),
         Index('idx_attendance_project_id', 'project_id'),
         Index('idx_attendance_work_type_id', 'work_type_id'),
+    )
+
+
+class VeriClockEmployeeMap(Base):
+    """Temporary VeriClock Employee ID → Hub user map for history import."""
+
+    __tablename__ = "vericlock_employee_maps"
+
+    vericlock_employee_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    hub_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    skip: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    vericlock_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    vericlock_group: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class VeriClockJobMap(Base):
+    """Temporary VeriClock Job Code → Hub project / predefined job map."""
+
+    __tablename__ = "vericlock_job_maps"
+
+    vericlock_job_code: Mapped[str] = mapped_column(String(20), primary_key=True)
+    hub_project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    predefined_job_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    skip: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    vericlock_label: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
 

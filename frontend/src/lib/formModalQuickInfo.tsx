@@ -238,6 +238,56 @@ export function scWorkerClockQuickInfo(clockType: 'in' | 'out'): ReactNode {
   });
 }
 
+/** Attendance page — New / Edit hours for internal employees. */
+export function attendanceManualEntryQuickInfo(editing: boolean): ReactNode {
+  return formModalQuickInfo({
+    purpose: editing ? (
+      <>
+        Correct an existing timesheet row — for example, change the job, hours, or approval after a supervisor review.
+      </>
+    ) : (
+      <>
+        Add hours for one or more employees when they were not clocked in live — for example, office entry from a paper
+        timesheet.
+      </>
+    ),
+    howToUse: (
+      <>
+        {editing ? (
+          <>
+            The worker cannot be changed here. Choose a {uiLabel('Job')}, then adjust {uiLabel('Clock in')} and{' '}
+            {uiLabel('Clock out')}. {uiLabel('Total hours')} updates from those times. Set {uiLabel('Status')} before
+            saving.
+          </>
+        ) : (
+          <>
+            Select {uiLabel('Workers')} and a {uiLabel('Job')}. Rows start at 8:00 AM–4:00 PM on the same day. Change the
+            times if needed; {uiLabel('Total hours')} stays read-only.
+          </>
+        )}
+      </>
+    ),
+    behavior: (
+      <>
+        Changing the clock-in date also moves clock out when both were on the same day. Change the clock-out date only
+        if the shift ends on another day. {uiLabel('Break')} is unpaid time subtracted from the span.
+      </>
+    ),
+    actions: (
+      <>
+        {uiLabel('Cancel')} discards changes. {editing ? uiLabel('Update') : uiLabel('Create')} saves and refreshes the
+        list.
+        {editing ? (
+          <>
+            {' '}
+            {uiLabel('Delete')} removes this row after you confirm.
+          </>
+        ) : null}
+      </>
+    ),
+  });
+}
+
 /** Subcontractor worker — manual New / Edit attendance on the Timesheet tab. */
 export function scWorkerManualAttendanceQuickInfo(editing: boolean): ReactNode {
   return formModalQuickInfo({

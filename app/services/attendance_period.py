@@ -111,6 +111,30 @@ def period_response_fields(att: Attendance, work_type: Optional[WorkType] = None
     }
 
 
+def payload_treats_as_hours_only(payload: Optional[dict], attendance: Optional[Attendance] = None) -> bool:
+    """Whether this write should skip clock rounding / stay hours-only.
+
+    An explicit `entry_kind: clock` (the Attendance editor) always wins so a
+    hours-only row can be converted to clock times without inheriting the
+    previous HOURS_WORKED marker.
+    """
+    payload = payload or {}
+    kind = str(payload.get("entry_kind") or "").strip()
+    if kind == ENTRY_KIND_CLOCK:
+        return False
+    if kind == ENTRY_KIND_HOURS_ONLY:
+        return True
+    incoming_reason = payload.get("reason_text")
+    if incoming_reason is not None:
+        return "HOURS_WORKED:" in str(incoming_reason)
+    if attendance is None:
+        return False
+    return (
+        "HOURS_WORKED:" in (getattr(attendance, "reason_text", None) or "")
+        or effective_entry_kind(attendance) == ENTRY_KIND_HOURS_ONLY
+    )
+
+
 def apply_attendance_period_fields(
     db: Session,
     attendance: Attendance,
@@ -138,7 +162,8 @@ def apply_attendance_period_fields(
     hours_raw = payload.get("declared_hours")
     if hours_raw is None and payload.get("hours_worked") is not None:
         hours_raw = payload.get("hours_worked")
-    if hours_raw is None:
+    converting_to_clock = str(payload.get("entry_kind") or "").strip() == ENTRY_KIND_CLOCK
+    if hours_raw is None and not converting_to_clock:
         hours_raw = markers.get("hours_worked")
     declared = None
     if hours_raw is not None and str(hours_raw).strip() != "":
@@ -146,10 +171,14 @@ def apply_attendance_period_fields(
             declared = float(hours_raw)
         except (TypeError, ValueError):
             declared = None
+    if converting_to_clock:
+        declared = None
     attendance.declared_hours = declared
 
     kind = (payload.get("entry_kind") or "").strip()
-    if not kind:
+    if converting_to_clock:
+        kind = ENTRY_KIND_CLOCK
+    elif not kind:
         if declared is not None:
             kind = ENTRY_KIND_HOURS_ONLY
         else:
@@ -179,7 +208,7 @@ def apply_attendance_period_fields(
                 project_id, predefined = split_job_ref(resolved_job)
                 attendance.project_id = project_id
                 attendance.predefined_job_code = predefined
-            if incoming_markers.get("hours_worked") and declared is None:
+            if not converting_to_clock and incoming_markers.get("hours_worked") and declared is None:
                 try:
                     attendance.declared_hours = float(incoming_markers["hours_worked"])
                     attendance.entry_kind = ENTRY_KIND_HOURS_ONLY

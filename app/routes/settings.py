@@ -30,6 +30,7 @@ from ..services.attendance_job_labels import (
 )
 from ..services.attendance_period import (
     apply_attendance_period_fields,
+    payload_treats_as_hours_only,
     effective_declared_hours,
     effective_entry_kind,
     effective_job_type,
@@ -848,11 +849,7 @@ def update_attendance(
         except:
             raise HTTPException(status_code=400, detail="Invalid clock_out_time format")
 
-    hours_only = (
-        payload.get("entry_kind") == "hours_only"
-        or "HOURS_WORKED:" in (payload.get("reason_text") or attendance.reason_text or "")
-        or effective_entry_kind(attendance) == "hours_only"
-    )
+    hours_only = payload_treats_as_hours_only(payload, attendance)
     if not hours_only:
         if new_clock_in_time is not None and "clock_in_time" in payload:
             new_clock_in_time = round_clock_datetime(new_clock_in_time)
@@ -1403,18 +1400,9 @@ def list_attendances(
         # Order by clock_in_time or clock_out_time
         from sqlalchemy import func
         attendances = query.order_by(func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).desc()).limit(limit).all()
-        total_in_db = db.query(Attendance).count()
-        logger.info(f"Query returned {len(attendances)} attendance records (total in DB: {total_in_db})")
-        
-        # Debug: log first few attendance IDs if any
-        if attendances:
-            logger.info(f"First attendance IDs: {[str(a.id) for a in attendances[:3]]}")
-        else:
-            logger.warning(f"No attendances found from query, but DB has {total_in_db} records!")
-        
+
         # Get all unique worker IDs and shift IDs for batch fetching
         worker_ids_str = list(set([str(a.worker_id) for a in attendances]))
-        logger.info(f"Unique worker IDs (as strings): {worker_ids_str}")
         users_dict = {}
         profiles_dict = {}
         if worker_ids_str:
@@ -1423,7 +1411,6 @@ def list_attendances(
                 worker_ids_uuid = [uuid.UUID(wid) for wid in worker_ids_str]
                 users = db.query(User).filter(User.id.in_(worker_ids_uuid)).all()
                 users_dict = {str(u.id): u for u in users}
-                logger.info(f"Found {len(users_dict)} users for {len(worker_ids_uuid)} worker IDs")
             except Exception as e:
                 logger.error(f"Error fetching users: {e}", exc_info=True)
             try:
@@ -1431,7 +1418,6 @@ def list_attendances(
                 worker_ids_uuid = [uuid.UUID(wid) for wid in worker_ids_str]
                 profiles = db.query(EmployeeProfile).filter(EmployeeProfile.user_id.in_(worker_ids_uuid)).all()
                 profiles_dict = {str(p.user_id): p for p in profiles}
-                logger.info(f"Found {len(profiles_dict)} profiles for {len(worker_ids_uuid)} worker IDs")
             except Exception as e:
                 logger.error(f"Error fetching profiles: {e}", exc_info=True)
         
@@ -1456,7 +1442,6 @@ def list_attendances(
             projects_dict.update(load_projects_by_id(db, direct_project_ids))
         
         result = []
-        logger.info(f"Processing {len(attendances)} attendances...")
         for i, att in enumerate(attendances):
             try:
                 logger.debug(f"Processing attendance {i+1}/{len(attendances)}: {att.id}")
@@ -1518,39 +1503,15 @@ def list_attendances(
                 time_selected = att.clock_in_time if att.clock_in_time else att.clock_out_time
                 time_entered = att.clock_in_entered_utc if att.clock_in_time else att.clock_out_entered_utc
                 
-                # Use break_minutes from database (already calculated and saved, including manual breaks)
-                # Only calculate if not already set in database
                 break_minutes = att.break_minutes
-                if break_minutes is None and att.clock_in_time and att.clock_out_time:
-                    # Fallback: calculate if not set (for old records or edge cases)
-                    break_minutes = calculate_break_minutes(
-                        db, att.worker_id, att.clock_in_time, att.clock_out_time
-                    )
                 
-                # Check if shift was deleted (soft-delete uses status="deleted")
                 shift_deleted = False
                 shift_deleted_by = None
                 shift_deleted_at = None
-                
                 if att.shift_id:
-                    shift = shifts_dict.get(str(att.shift_id)) if att.shift_id else None
+                    shift = shifts_dict.get(str(att.shift_id))
                     if not shift or getattr(shift, "status", None) == "deleted":
                         shift_deleted = True
-                        # Get information about who deleted the shift from audit log
-                        delete_log = db.query(AuditLog).filter(
-                            AuditLog.entity_type == "shift",
-                            AuditLog.entity_id == att.shift_id,
-                            AuditLog.action == "DELETE"
-                        ).order_by(AuditLog.timestamp_utc.desc()).first()
-                        
-                        if delete_log:
-                            shift_deleted_at = delete_log.timestamp_utc.isoformat() if delete_log.timestamp_utc else None
-                            # Get actor name
-                            actor = db.query(User).filter(User.id == delete_log.actor_id).first()
-                            if actor:
-                                shift_deleted_by = actor.username or actor.email or str(delete_log.actor_id)
-                            else:
-                                shift_deleted_by = str(delete_log.actor_id)
 
                 shift_row = shifts_dict.get(str(att.shift_id)) if att.shift_id else None
                 project_id_str = str(shift_row.project_id) if shift_row and shift_row.project_id else None
@@ -1610,14 +1571,7 @@ def list_attendances(
                 logger.error(f"Error processing attendance {att.id}: {str(e)}", exc_info=True)
                 # Continue processing other attendances even if one fails
                 continue
-        
-        logger.info(f"Returning {len(result)} attendance records (from {len(attendances)} raw records)")
-        if len(result) == 0 and len(attendances) > 0:
-            logger.warning(f"WARNING: Found {len(attendances)} attendance records but result list is empty!")
-            # Debug: try to see what's wrong
-            for i, att in enumerate(attendances[:3]):
-                att_type = "in" if att.clock_in_time else ("out" if att.clock_out_time else "unknown")
-                logger.warning(f"  Attendance {i+1}: id={att.id}, worker_id={att.worker_id}, type={att_type}, shift_id={att.shift_id}")
+
         internal_result = result if isinstance(result, list) else []
         if rk == "internal":
             for it in internal_result:
@@ -1775,10 +1729,7 @@ def create_attendance_manual(
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid clock_out_time format: {str(e)}")
 
-    hours_only = (
-        payload.get("entry_kind") == "hours_only"
-        or "HOURS_WORKED:" in (payload.get("reason_text") or "")
-    )
+    hours_only = payload_treats_as_hours_only(payload)
     if not hours_only:
         if clock_in_time_utc is not None:
             clock_in_time_utc = round_clock_datetime(clock_in_time_utc)
@@ -1981,6 +1932,7 @@ def create_attendance_manual(
             attendance.updated_by = user.id
             db.add(attendance)
     
+    db.flush()
     refresh_sage_export_state(attendance)
     db.commit()
     db.refresh(attendance)

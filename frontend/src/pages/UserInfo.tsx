@@ -5,7 +5,7 @@ import { api, withFileAccessToken, revokeRefreshOnLogout } from '@/lib/api';
 import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { sortByLabel } from '@/lib/sortOptions';
 import { PROJECT_DIVISIONS_QUERY_KEY } from '@/lib/businessLine';
-import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
+import { attendanceWorkDate, formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -2995,11 +2995,11 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
           // For "hours worked", clock_in_time contains the date at midnight (YYYY-MM-DDT00:00:00Z)
           // Extract date part and format for date input
           if (att.clock_in_time) {
-            const datePart = formatDateLocal(new Date(att.clock_in_time));
+            const datePart = attendanceWorkDate(att.clock_in_time, true);
             clockInTimeValue = `${datePart}T00:00`; // Set to midnight for date input
           } else if (att.clock_out_time) {
             // Fallback to clock_out_time if clock_in_time is not available
-            const datePart = formatDateLocal(new Date(att.clock_out_time));
+            const datePart = attendanceWorkDate(att.clock_out_time, true);
             clockInTimeValue = `${datePart}T00:00`;
           }
         } else {

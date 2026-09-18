@@ -4,7 +4,9 @@ The Windows companion pulls queued rows and acks sent/paid. MKHub never talks to
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 from ..models.models import Attendance
 from .attendance_period import ENTRY_KIND_HOURS_ONLY, effective_declared_hours, effective_entry_kind
@@ -14,6 +16,7 @@ SAGE_QUEUED = "queued"
 SAGE_SENT = "sent"
 SAGE_PAID = "paid"
 SAGE_ERROR = "error"
+SOURCE_VERICLOCK = "vericlock"
 
 SAGE_PAID_MESSAGE = (
     "These hours were already used in Sage payroll and cannot be changed."
@@ -45,8 +48,89 @@ def is_sage_paid(att: Attendance) -> bool:
 
 
 def sage_source_key_for(att: Attendance) -> str:
-    hexid = str(att.id).replace("-", "")
+    hexid = str(getattr(att, "id", "") or "").replace("-", "")
+    if not hexid or hexid.lower() == "none":
+        raise ValueError("attendance id is required for Sage source key")
     return ("MKH" + hexid)[:20]
+
+
+def _has_persisted_id(att: Attendance) -> bool:
+    hexid = str(getattr(att, "id", "") or "").replace("-", "")
+    return bool(hexid) and hexid.lower() != "none"
+
+
+def _ensure_source_key(att: Attendance) -> None:
+    if not _has_persisted_id(att):
+        return
+    key = (getattr(att, "sage_source_key", None) or "").strip()
+    if not key or key.startswith("MKHNone") or len(key) < 8:
+        att.sage_source_key = sage_source_key_for(att)
+
+
+def hours_for_export(att: Attendance) -> Optional[float]:
+    declared = effective_declared_hours(att)
+    if declared is not None and declared > 0:
+        return declared
+    clock_in = getattr(att, "clock_in_time", None)
+    clock_out = getattr(att, "clock_out_time", None)
+    if not clock_in or not clock_out:
+        return None
+    try:
+        seconds = (clock_out - clock_in).total_seconds()
+    except TypeError:
+        return None
+    hours = seconds / 3600.0
+    break_min = getattr(att, "break_minutes", None) or 0
+    try:
+        hours -= float(break_min) / 60.0
+    except (TypeError, ValueError):
+        pass
+    return max(0.0, hours)
+
+
+def hours_hhmmss(hours: Optional[float]) -> Optional[str]:
+    if hours is None:
+        return None
+    total = int(round(float(hours) * 3600))
+    if total < 0:
+        total = 0
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def work_date_mmddyyyy(att: Attendance, tz_name: str = "America/Vancouver") -> Optional[str]:
+    raw = getattr(att, "clock_in_time", None) or getattr(att, "clock_out_time", None)
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if raw.tzinfo is None:
+        raw = raw.replace(tzinfo=timezone.utc)
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = timezone.utc
+    local = raw.astimezone(tz)
+    return local.strftime("%m-%d-%Y")
+
+
+def worker_display_name(profile: Any, user: Any) -> str:
+    if profile is not None:
+        preferred = (getattr(profile, "preferred_name", None) or "").strip()
+        if preferred:
+            return preferred
+        first = (getattr(profile, "first_name", None) or "").strip()
+        last = (getattr(profile, "last_name", None) or "").strip()
+        name = " ".join(p for p in (first, last) if p)
+        if name:
+            return name
+    if user is not None:
+        return (getattr(user, "name", None) or getattr(user, "username", None) or "Unknown").strip() or "Unknown"
+    return "Unknown"
 
 
 def sage_display_state(att: Attendance) -> str:
@@ -67,13 +151,19 @@ def refresh_sage_export_state(att: Attendance, *, hours_changed: bool = False) -
     current = _stored_state(att)
     if current == SAGE_PAID:
         return
+    source = (getattr(att, "source", None) or "").strip().lower()
+    if source == SOURCE_VERICLOCK:
+        # Already in Sage via VeriClock — never queue for the companion.
+        att.sage_state = SAGE_SENT
+        att.sage_urgent = False
+        att.sage_error = None
+        return
     if not is_sage_eligible(att):
         if current == SAGE_SENT:
             return
         att.sage_state = SAGE_NONE
         return
-    if not getattr(att, "sage_source_key", None):
-        att.sage_source_key = sage_source_key_for(att)
+    _ensure_source_key(att)
     if current == SAGE_SENT and hours_changed:
         att.sage_state = SAGE_QUEUED
         att.sage_error = None
@@ -101,19 +191,34 @@ def sage_response_fields(att: Attendance) -> Dict[str, Any]:
     }
 
 
-def sage_queue_payload(att: Attendance) -> Dict[str, Any]:
+def sage_queue_payload(
+    att: Attendance,
+    *,
+    worker_name: Optional[str] = None,
+    sage_item: Optional[str] = None,
+    sage_customer: str = "0 Customer",
+    tz_name: str = "America/Vancouver",
+) -> Dict[str, Any]:
     clock_in = getattr(att, "clock_in_time", None)
     clock_out = getattr(att, "clock_out_time", None)
+    _ensure_source_key(att)
     fields = sage_response_fields(att)
-    if not fields.get("sage_source_key"):
-        fields["sage_source_key"] = sage_source_key_for(att)
+    hours = hours_for_export(att)
+    name = (worker_name or "").strip() or "Unknown"
     return {
         "attendance_id": str(att.id),
         "worker_id": str(att.worker_id),
-        "clock_in_time": clock_in.isoformat() if clock_in else None,
-        "clock_out_time": clock_out.isoformat() if clock_out else None,
+        "worker_name": name,
+        "sage_employee_name": name,
+        "clock_in_time": clock_in.isoformat() if hasattr(clock_in, "isoformat") else clock_in,
+        "clock_out_time": clock_out.isoformat() if hasattr(clock_out, "isoformat") else clock_out,
+        "work_date": work_date_mmddyyyy(att, tz_name),
+        "hours": hours,
+        "hours_hhmmss": hours_hhmmss(hours),
         "entry_kind": effective_entry_kind(att),
         "declared_hours": effective_declared_hours(att),
+        "sage_item": sage_item,
+        "sage_customer": sage_customer,
         "status": getattr(att, "status", None),
         **fields,
     }
@@ -137,8 +242,7 @@ def apply_sage_ack(
     att.sage_state = wanted
     if sage_rec_id:
         att.sage_rec_id = str(sage_rec_id)[:40]
-    if not getattr(att, "sage_source_key", None):
-        att.sage_source_key = sage_source_key_for(att)
+    _ensure_source_key(att)
     if wanted == SAGE_SENT:
         att.sage_synced_at = now
         att.sage_error = None
