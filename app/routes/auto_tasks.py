@@ -15,6 +15,8 @@ from ..models.models import AutoTaskLog, AutoTaskRoute, TaskItem, User
 from ..services.auto_task_catalog import AUTO_TASK_TRIGGERS, get_trigger, starts_after_would_cycle
 from ..services.auto_task_service import (
     get_or_empty_route,
+    resolve_due_anchor,
+    resolve_due_in_days,
     resolve_starts_after_key,
     resolve_task_copy,
     serialize_route_recipients,
@@ -29,6 +31,7 @@ class AutoTaskRouteUpdate(BaseModel):
     recipient_user_ids: list[str] = Field(default_factory=list)
     recipient_division_ids: list[str] = Field(default_factory=list)
     due_in_days: Optional[int] = None
+    due_anchor: Optional[str] = None
     task_title: Optional[str] = None
     task_description: Optional[str] = None
     notify_push: bool = True
@@ -83,10 +86,12 @@ def _serialize_trigger(db: Session, trigger) -> dict:
         "task_title": task_title,
         "task_description": task_description,
         "enabled": True if route is None else bool(route.enabled),
-        "due_in_days": route.due_in_days if route else None,
+        "due_in_days": resolve_due_in_days(trigger, route),
+        "due_anchor": resolve_due_anchor(trigger, route),
         "notify_push": True if route is None else bool(route.notify_push),
         "notify_email": False if route is None else bool(route.notify_email),
         "chain_only": bool(trigger.chain_only),
+        "always_on": bool(getattr(trigger, "always_on", False)),
         "starts_after_key": starts_after_key,
         "starts_after_name": starts_after_name,
         "starts_after_title": starts_after_title,
@@ -190,8 +195,11 @@ def update_auto_task_route(
     if not trigger:
         raise HTTPException(status_code=404, detail="Unknown auto-task trigger")
     due_in_days = payload.due_in_days
-    if due_in_days is not None and (due_in_days < 1 or due_in_days > 365):
-        raise HTTPException(status_code=400, detail="due_in_days must be between 1 and 365")
+    if due_in_days is not None and (due_in_days < 0 or due_in_days > 365):
+        raise HTTPException(status_code=400, detail="due_in_days must be between 0 and 365")
+    due_anchor = (payload.due_anchor or "").strip().lower() or None
+    if due_anchor is not None and due_anchor not in ("invite_sent", "hire_date"):
+        raise HTTPException(status_code=400, detail="due_anchor must be invite_sent or hire_date")
     title = (payload.task_title or "").strip()
     if not title:
         raise HTTPException(status_code=400, detail="Task title is required")
@@ -219,6 +227,7 @@ def update_auto_task_route(
     route.recipient_user_ids = _clean_ids(payload.recipient_user_ids)
     route.recipient_division_ids = _clean_ids(payload.recipient_division_ids)
     route.due_in_days = due_in_days
+    route.due_anchor = due_anchor or resolve_due_anchor(trigger, None)
     route.task_title = title
     route.task_description = (payload.task_description or "").strip() or None
     route.notify_push = bool(payload.notify_push)

@@ -1,10 +1,14 @@
 """Tests for invite-driven onboarding document filtering."""
 import unittest
 import uuid
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from app.services.onboarding_assign import (
+    is_additional_package_role,
+    is_hiring_package_role,
     normalize_invite_document_ids,
+    normalize_package_role,
     resolve_onboarding_document_filter,
 )
 
@@ -12,6 +16,22 @@ from app.services.onboarding_assign import (
 class _FakeProfile:
     def __init__(self, onboarding_document_ids):
         self.onboarding_document_ids = onboarding_document_ids
+
+
+class TestPackageRoleHelpers(unittest.TestCase):
+    def test_normalize(self):
+        self.assertEqual(normalize_package_role(None), "hiring_package")
+        self.assertEqual(normalize_package_role(""), "hiring_package")
+        self.assertEqual(normalize_package_role("Hiring_Package"), "hiring_package")
+        self.assertEqual(normalize_package_role("additional"), "additional")
+        self.assertEqual(normalize_package_role("  ADDITIONAL  "), "additional")
+
+    def test_predicates(self):
+        self.assertTrue(is_hiring_package_role(None))
+        self.assertTrue(is_hiring_package_role("hiring_package"))
+        self.assertFalse(is_hiring_package_role("additional"))
+        self.assertTrue(is_additional_package_role("additional"))
+        self.assertFalse(is_additional_package_role("hiring_package"))
 
 
 class TestResolveOnboardingDocumentFilter(unittest.TestCase):
@@ -36,12 +56,26 @@ class TestResolveOnboardingDocumentFilter(unittest.TestCase):
         result = resolve_onboarding_document_filter(db, subject_id)
         self.assertEqual(result, {id1, id2})
 
+    def test_empty_list_means_assign_none(self):
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = _FakeProfile([])
+        subject_id = uuid.uuid4()
+        result = resolve_onboarding_document_filter(db, subject_id)
+        self.assertEqual(result, set())
+
 
 class TestNormalizeInviteDocumentIds(unittest.TestCase):
-    def test_empty_returns_none(self):
+    def test_none_returns_none(self):
         db = MagicMock()
         self.assertIsNone(normalize_invite_document_ids(db, None))
+
+    def test_empty_defaults_to_none_all_docs(self):
+        db = MagicMock()
         self.assertIsNone(normalize_invite_document_ids(db, []))
+
+    def test_empty_with_flag_returns_empty_list(self):
+        db = MagicMock()
+        self.assertEqual(normalize_invite_document_ids(db, [], empty_means_none=True), [])
 
     def test_invalid_ids_raise(self):
         db = MagicMock()
@@ -49,12 +83,91 @@ class TestNormalizeInviteDocumentIds(unittest.TestCase):
         with self.assertRaises(ValueError):
             normalize_invite_document_ids(db, [str(uuid.uuid4())])
 
-    def test_valid_ids_returned(self):
+    def test_valid_hiring_package_ids_returned(self):
         doc_id = uuid.uuid4()
         db = MagicMock()
-        db.query.return_value.filter.return_value.all.return_value = [(doc_id,)]
+        db.query.return_value.filter.return_value.all.return_value = [
+            SimpleNamespace(id=doc_id, package_role="hiring_package"),
+        ]
         result = normalize_invite_document_ids(db, [str(doc_id)])
         self.assertEqual(result, [str(doc_id)])
+
+    def test_rejects_additional_role_only(self):
+        doc_id = uuid.uuid4()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.all.return_value = [
+            SimpleNamespace(id=doc_id, package_role="additional"),
+        ]
+        with self.assertRaises(ValueError):
+            normalize_invite_document_ids(db, [str(doc_id)])
+
+    def test_filters_out_additional_keeps_hiring(self):
+        hire_id = uuid.uuid4()
+        add_id = uuid.uuid4()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.all.return_value = [
+            SimpleNamespace(id=hire_id, package_role="hiring_package"),
+            SimpleNamespace(id=add_id, package_role="additional"),
+        ]
+        result = normalize_invite_document_ids(db, [str(hire_id), str(add_id)])
+        self.assertEqual(result, [str(hire_id)])
+
+
+class TestApplySkipsAdditionalRole(unittest.TestCase):
+    @patch("app.services.onboarding_assign.fire_invite_additional_documents", create=True)
+    @patch("app.services.onboarding_assign.is_onboarding_document_delivery_enabled", return_value=True)
+    @patch("app.services.onboarding_assign.ensure_assignment_items_for_base_doc")
+    @patch("app.services.onboarding_assign.resolve_onboarding_document_filter", return_value=None)
+    @patch("app.services.onboarding_assign.get_or_create_system_package")
+    @patch("app.services.onboarding_assign.hire_anchor_start")
+    def test_apply_only_hiring_package(
+        self,
+        mock_hire_start,
+        mock_pkg,
+        mock_filter,
+        mock_ensure,
+        mock_delivery,
+        _mock_fire_unused,
+    ):
+        from datetime import datetime, timezone
+
+        from app.services.onboarding_assign import apply_onboarding_after_profile_complete
+
+        subject = uuid.uuid4()
+        hire_doc = SimpleNamespace(id=uuid.uuid4(), package_role="hiring_package", name="A", sort_order=0)
+        add_doc = SimpleNamespace(id=uuid.uuid4(), package_role="additional", name="B", sort_order=1)
+        user = SimpleNamespace(id=subject)
+        ep = SimpleNamespace(hire_date=None, invited_by_user_id=None, user_id=subject)
+        pkg = SimpleNamespace(id=uuid.uuid4())
+
+        mock_hire_start.return_value = datetime.now(timezone.utc)
+        mock_pkg.return_value = pkg
+
+        db = MagicMock()
+
+        def query_side_effect(model):
+            m = MagicMock()
+            name = getattr(model, "__name__", str(model))
+            if "User" in name:
+                m.filter.return_value.first.return_value = user
+            elif "EmployeeProfile" in name:
+                m.filter.return_value.first.return_value = ep
+            elif "OnboardingBaseDocument" in name:
+                m.order_by.return_value.all.return_value = [hire_doc, add_doc]
+            else:
+                m.filter.return_value.first.return_value = None
+            return m
+
+        db.query.side_effect = query_side_effect
+
+        with patch(
+            "app.services.invite_additional_documents.fire_invite_additional_documents"
+        ) as mock_fire:
+            apply_onboarding_after_profile_complete(db, subject)
+
+        self.assertEqual(mock_ensure.call_count, 1)
+        self.assertEqual(mock_ensure.call_args.kwargs["bd"], hire_doc)
+        mock_fire.assert_called_once()
 
 
 if __name__ == "__main__":

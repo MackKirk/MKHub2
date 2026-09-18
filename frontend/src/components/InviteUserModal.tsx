@@ -4,6 +4,12 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { inviteUserFieldHints, inviteUserQuickInfo } from '@/lib/formModalQuickInfo';
 import { userProfileFieldHint } from '@/lib/userProfileFieldHints';
+import { formatContactPhone } from '@/lib/contactPhoto';
+import { getUserPickerLabel } from '@/lib/userDisplay';
+import InviteAdditionalDocsPicker, {
+  type AdditionalDocRef,
+} from '@/components/InviteAdditionalDocsPicker';
+import InviteOnboardingPackagePicker from '@/components/InviteOnboardingPackagePicker';
 import {
   AppButton,
   AppCheckbox,
@@ -14,6 +20,7 @@ import {
   AppSectionHeader,
   AppSelect,
   AppTextarea,
+  AppTooltip,
   AppUserSelect,
   uiCx,
   uiLayout,
@@ -33,17 +40,86 @@ type OnboardingBaseDoc = {
   name: string;
   display_name?: string | null;
   employee_visible?: boolean;
+  package_role?: string | null;
   sort_order?: number;
 };
 
-const TOTAL_STEPS = 3;
+type ProjectDivisionNode = {
+  id: string;
+  label: string;
+  subdivisions?: { id: string; label: string }[];
+};
 
-const STEP_LABELS = ['Basic information', 'Job information', 'Onboarding requirements'] as const;
+const TOTAL_STEPS = 4;
+
+const STEP_LABELS = [
+  'Hire basics',
+  'Onboarding requirements',
+  'Documents to sign',
+  'Review & send',
+] as const;
+
+const PAY_TYPE_OPTIONS = [
+  { value: 'hourly', label: 'Hourly' },
+  { value: 'salary', label: 'Salary' },
+  { value: 'contract', label: 'Contract' },
+];
+
+/** Digits + optional decimal (max 2 places). Strips $, commas, unit text. */
+function sanitizePayRateInput(raw: string): string {
+  let s = raw.replace(/[^0-9.]/g, '');
+  const dot = s.indexOf('.');
+  if (dot !== -1) {
+    s = `${s.slice(0, dot + 1)}${s.slice(dot + 1).replace(/\./g, '')}`;
+    const [whole, frac = ''] = s.split('.');
+    s = `${whole}.${frac.slice(0, 2)}`;
+  }
+  if (s.startsWith('.')) s = `0${s}`;
+  return s;
+}
+
+function normalizePayRateForSave(raw: string): string | null {
+  const t = sanitizePayRateInput(raw).trim();
+  if (!t || t === '.') return null;
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0) return null;
+  if (t.includes('.')) {
+    return n.toFixed(2).replace(/\.?0+$/, '') || '0';
+  }
+  return String(Math.trunc(n));
+}
+
+function payTypeSuffix(type: string): string {
+  if (type === 'salary') return '/ year';
+  if (type === 'contract') return '/ contract';
+  if (type === 'hourly') return '/ hour';
+  return '';
+}
+
+function formatPayForReview(rate: string, type: string): string {
+  const normalized = normalizePayRateForSave(rate);
+  if (!normalized) return '';
+  const n = Number(normalized);
+  const amount = Number.isFinite(n)
+    ? n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+    : `$${normalized}`;
+  const suffix = payTypeSuffix(type);
+  return suffix ? `${amount} ${suffix}` : amount;
+}
 
 function isValidEmail(value: string): boolean {
   const v = value.trim();
   if (!v) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className={uiTypography.helper}>{label}</div>
+      <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5 break-words')}>{value || '—'}</div>
+    </div>
+  );
 }
 
 export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
@@ -53,54 +129,100 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
     queryFn: () => api<any>('GET', '/settings'),
     enabled: isOpen,
   });
+  const { data: projectDivisionsTree = [], isLoading: projectDivisionsLoading } = useQuery({
+    queryKey: ['project-divisions'],
+    queryFn: () => api<ProjectDivisionNode[]>('GET', '/settings/project-divisions'),
+    enabled: isOpen,
+    staleTime: 300_000,
+  });
   const { data: baseDocs = [], isLoading: baseDocsLoading } = useQuery({
     queryKey: ['onb-base-docs'],
     queryFn: () => api<OnboardingBaseDoc[]>('GET', '/onboarding/base-documents'),
     enabled: isOpen,
   });
+  const { data: usersOptionsRaw = [] } = useQuery({
+    queryKey: ['users-options', { limit: 5000 }],
+    queryFn: () => api<any[]>('GET', '/auth/users/options?limit=5000'),
+    enabled: isOpen,
+    staleTime: 300_000,
+  });
   const divisions: Division[] = (settings?.divisions || []) as Division[];
-  const employmentTypes = (settings?.employment_types || []) as any[];
+
+  const supervisorUsers = useMemo(
+    () =>
+      (usersOptionsRaw || []).map((u: any) => ({
+        id: String(u.id),
+        name: u.name,
+        username: u.username,
+        email: u.email,
+        first_name: u.first_name,
+        last_name: u.last_name,
+        preferred_name: u.preferred_name,
+        department: u.department,
+        division: u.division,
+        profile_photo_file_id: u.profile_photo_file_id,
+        profile: u.profile,
+      })),
+    [usersOptionsRaw],
+  );
 
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
   const [selectedDivisionIds, setSelectedDivisionIds] = useState<string[]>([]);
+  const [selectedProjectDivisionIds, setSelectedProjectDivisionIds] = useState<string[]>([]);
+  const [includeOnboardingPackage, setIncludeOnboardingPackage] = useState(true);
+  const [customizePackage, setCustomizePackage] = useState(false);
+  const [showPackageList, setShowPackageList] = useState(false);
+  const [packagePickerOpen, setPackagePickerOpen] = useState(false);
   const [documentIds, setDocumentIds] = useState<string[]>([]);
+  const [additionalDocuments, setAdditionalDocuments] = useState<AdditionalDocRef[]>([]);
+  const [hireDate, setHireDate] = useState('');
+  const [managerUserId, setManagerUserId] = useState('');
+  const [payRate, setPayRate] = useState('');
+  const [payType, setPayType] = useState('hourly');
   const [needsEmail, setNeedsEmail] = useState(false);
   const [needsBusinessCard, setNeedsBusinessCard] = useState(false);
   const [needsPhone, setNeedsPhone] = useState(false);
   const [needsVehicle, setNeedsVehicle] = useState(false);
   const [needsEquipment, setNeedsEquipment] = useState(false);
   const [equipmentList, setEquipmentList] = useState('');
-  const [hireDate, setHireDate] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
-  const [workEmail, setWorkEmail] = useState('');
-  const [workPhone, setWorkPhone] = useState('');
-  const [managerUserId, setManagerUserId] = useState('');
-  const [payRate, setPayRate] = useState('');
-  const [payType, setPayType] = useState('');
-  const [employmentType, setEmploymentType] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const divisionOptions = divisions.map((div) => ({
-    value: String(div.id),
-    label: div.label,
-  }));
+  const divisionOptions = useMemo(
+    () =>
+      divisions.map((div) => ({
+        value: String(div.id),
+        label: div.label,
+      })),
+    [divisions],
+  );
 
-  const payTypeOptions = [
-    { value: 'hourly', label: 'Hourly' },
-    { value: 'salary', label: 'Salary' },
-    { value: 'contract', label: 'Contract' },
-  ];
-
-  const employmentTypeOptions = employmentTypes.map((et: any) => ({
-    value: et.label,
-    label: et.label,
-  }));
+  const projectDivisionOptions = useMemo(() => {
+    const flat: { value: string; label: string }[] = [];
+    for (const div of projectDivisionsTree) {
+      flat.push({ value: String(div.id), label: String(div.label) });
+      for (const sub of div.subdivisions || []) {
+        flat.push({
+          value: String(sub.id),
+          label: `${div.label} - ${sub.label}`,
+        });
+      }
+    }
+    return flat;
+  }, [projectDivisionsTree]);
 
   const activeDocumentOptions = useMemo(
     () =>
       baseDocs
-        .filter((d) => d.employee_visible !== false)
+        .filter(
+          (d) =>
+            d.employee_visible !== false &&
+            (d.package_role || 'hiring_package').trim().toLowerCase() !== 'additional',
+        )
         .sort((a, b) => {
           const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
           if (orderDiff !== 0) return orderDiff;
@@ -117,29 +239,68 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
 
   const canProceedStep1 = useMemo(() => {
     if (!isValidEmail(email)) return false;
+    if (!jobTitle.trim()) return false;
     if (selectedDivisionIds.length === 0) return false;
+    if (selectedProjectDivisionIds.length === 0) return false;
     return true;
-  }, [email, selectedDivisionIds]);
+  }, [email, jobTitle, selectedDivisionIds, selectedProjectDivisionIds]);
+
+  const canProceedDocsStep = useMemo(() => {
+    if (includeOnboardingPackage && customizePackage && documentIds.length === 0) return false;
+    return true;
+  }, [includeOnboardingPackage, customizePackage, documentIds]);
+
+  const step1MissingRequired = useMemo(() => {
+    const missing: string[] = [];
+    if (!isValidEmail(email)) missing.push('Email Address');
+    if (!jobTitle.trim()) missing.push('Job Title');
+    if (selectedDivisionIds.length === 0) missing.push('Departments');
+    if (selectedProjectDivisionIds.length === 0) missing.push('Project Divisions');
+    return missing;
+  }, [email, jobTitle, selectedDivisionIds, selectedProjectDivisionIds]);
+
+  const docsStepMissingRequired = useMemo(() => {
+    if (includeOnboardingPackage && customizePackage && documentIds.length === 0) {
+      return ['Select at least one package document'];
+    }
+    return [];
+  }, [includeOnboardingPackage, customizePackage, documentIds]);
+
+  const nextDisabledTooltip = useMemo(() => {
+    if (step === 1 && step1MissingRequired.length > 0) {
+      return `Complete required fields: ${step1MissingRequired.join(', ')}`;
+    }
+    if (step === 3 && docsStepMissingRequired.length > 0) {
+      return docsStepMissingRequired.join(', ');
+    }
+    return '';
+  }, [step, step1MissingRequired, docsStepMissingRequired]);
 
   const resetForm = () => {
     setStep(1);
     setEmail('');
+    setFirstName('');
+    setLastName('');
+    setPhone('');
+    setJobTitle('');
     setSelectedDivisionIds([]);
+    setSelectedProjectDivisionIds([]);
+    setIncludeOnboardingPackage(true);
+    setCustomizePackage(false);
+    setShowPackageList(false);
+    setPackagePickerOpen(false);
     setDocumentIds([]);
+    setAdditionalDocuments([]);
+    setHireDate('');
+    setManagerUserId('');
+    setPayRate('');
+    setPayType('hourly');
     setNeedsEmail(false);
     setNeedsBusinessCard(false);
     setNeedsPhone(false);
     setNeedsVehicle(false);
     setNeedsEquipment(false);
     setEquipmentList('');
-    setHireDate('');
-    setJobTitle('');
-    setWorkEmail('');
-    setWorkPhone('');
-    setManagerUserId('');
-    setPayRate('');
-    setPayType('');
-    setEmploymentType('');
   };
 
   useEffect(() => {
@@ -155,12 +316,63 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
 
   const handleNext = () => {
     if (step === 1 && !canProceedStep1) return;
+    if (step === 3 && !canProceedDocsStep) return;
     setStep((s) => Math.min(s + 1, TOTAL_STEPS));
   };
 
   const handleBack = () => {
     setStep((s) => Math.max(s - 1, 1));
   };
+
+  const supervisorLabel = useMemo(() => {
+    if (!managerUserId) return '';
+    const u = supervisorUsers.find((x) => x.id === managerUserId);
+    return u ? getUserPickerLabel(u) : '';
+  }, [managerUserId, supervisorUsers]);
+
+  const payRateSuffix = payTypeSuffix(payType);
+
+  const departmentLabels = selectedDivisionIds
+    .map((id) => divisionOptions.find((o) => o.value === id)?.label || id)
+    .join(', ');
+
+  const projectDivisionLabels = selectedProjectDivisionIds
+    .map((id) => projectDivisionOptions.find((o) => o.value === id)?.label || id)
+    .join(', ');
+
+  const packageReviewLabel = !includeOnboardingPackage
+    ? 'None'
+    : customizePackage
+      ? `Customized (${documentIds
+          .map((id) => activeDocumentOptions.find((o) => o.value === id)?.label || id)
+          .join(', ')})`
+      : `Default (${activeDocumentOptions.length} docs)`;
+
+  const additionalReviewLabel =
+    additionalDocuments.length === 0
+      ? 'None'
+      : additionalDocuments.map((d) => d.name).join(', ');
+
+  const requirementsReviewLabel = useMemo(() => {
+    const items: string[] = [];
+    if (needsEmail) items.push('Email account');
+    if (needsBusinessCard) items.push('Business cards');
+    if (needsPhone) items.push('Phone');
+    if (needsVehicle) items.push('Vehicle');
+    if (needsEquipment) {
+      items.push(
+        equipmentList.trim() ? `Equipment (${equipmentList.trim()})` : 'Equipment or tools',
+      );
+    }
+    return items.length ? items.join(', ') : 'None';
+  }, [
+    needsEmail,
+    needsBusinessCard,
+    needsPhone,
+    needsVehicle,
+    needsEquipment,
+    equipmentList,
+  ]);
 
   const handleSendInvite = async () => {
     if (loading) return;
@@ -169,11 +381,8 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
       setStep(1);
       return;
     }
-
-    const trimmedWorkEmail = workEmail.trim();
-    if (trimmedWorkEmail && !isValidEmail(trimmedWorkEmail)) {
-      toast.error('Work email must be a valid email address');
-      setStep(2);
+    if (!canProceedDocsStep) {
+      setStep(3);
       return;
     }
 
@@ -182,25 +391,37 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
     try {
       await api('POST', '/auth/invite', {
         email_personal: email.trim(),
-        division_ids: selectedDivisionIds.length > 0 ? selectedDivisionIds : null,
-        document_ids: documentIds.length > 0 ? documentIds : null,
+        first_name: firstName.trim() || null,
+        last_name: lastName.trim() || null,
+        phone: phone.trim() || null,
+        job_title: jobTitle.trim(),
+        division_ids: selectedDivisionIds,
+        project_division_ids: selectedProjectDivisionIds,
+        include_onboarding_package: includeOnboardingPackage,
+        document_ids: !includeOnboardingPackage
+          ? []
+          : customizePackage
+            ? documentIds
+            : null,
+        additional_documents: additionalDocuments.map((d) => ({
+          source: d.source,
+          id: d.id,
+          name: d.name,
+        })),
+        hire_date: hireDate || null,
+        manager_user_id: managerUserId.trim() || null,
+        pay_rate: normalizePayRateForSave(payRate),
+        pay_type: normalizePayRateForSave(payRate) ? payType || 'hourly' : null,
         needs_email: needsEmail,
         needs_business_card: needsBusinessCard,
         needs_phone: needsPhone,
         needs_vehicle: needsVehicle,
         needs_equipment: needsEquipment,
-        equipment_list: needsEquipment && equipmentList ? equipmentList : null,
-        hire_date: hireDate || null,
-        job_title: jobTitle || null,
-        work_email: trimmedWorkEmail || null,
-        work_phone: workPhone || null,
-        manager_user_id: managerUserId || null,
-        pay_rate: payRate || null,
-        pay_type: payType || null,
-        employment_type: employmentType || null,
+        equipment_list: needsEquipment ? equipmentList.trim() || null : null,
       });
 
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('Invite sent');
       onClose();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to send invite');
@@ -224,6 +445,8 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
       <span className={stepPillClass(2)}>2</span>
       <span className="text-gray-400">→</span>
       <span className={stepPillClass(3)}>3</span>
+      <span className="text-gray-400">→</span>
+      <span className={stepPillClass(4)}>4</span>
     </div>
   );
 
@@ -242,20 +465,35 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
           </AppButton>
         ) : null}
         {step < TOTAL_STEPS ? (
-          <AppButton
-            type="button"
-            size="sm"
-            onClick={handleNext}
-            disabled={loading || (step === 1 && !canProceedStep1)}
+          <AppTooltip
+            content={nextDisabledTooltip}
+            wrap
+            disabled={
+              (step === 1 && canProceedStep1) ||
+              (step === 3 && canProceedDocsStep) ||
+              (step !== 1 && step !== 3)
+            }
+            placement="top"
           >
-            Next
-          </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              onClick={handleNext}
+              disabled={
+                loading ||
+                (step === 1 && !canProceedStep1) ||
+                (step === 3 && !canProceedDocsStep)
+              }
+            >
+              Next
+            </AppButton>
+          </AppTooltip>
         ) : (
           <AppButton
             type="button"
             size="sm"
             loading={loading}
-            disabled={loading}
+            disabled={loading || !canProceedStep1 || !canProceedDocsStep}
             onClick={() => void handleSendInvite()}
           >
             {loading ? 'Sending...' : 'Send Invite'}
@@ -270,6 +508,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
       open={isOpen}
       onClose={handleClose}
       size="lg"
+      formWidth="wide"
       title="Invite New User"
       description={stepSubtitle}
       headerExtra={stepIndicators}
@@ -280,161 +519,144 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
         {step === 1 ? (
           <div className={uiSpacing.sectionStack}>
             <AppSectionHeader
-              title="Basic Information"
-              description="Personal email, department assignment, and documents to sign."
+              title="Hire basics"
+              description="Who you're inviting and how they'll be set up in the Hub."
             />
 
-            <AppInput
-              type="email"
-              label="Email Address *"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="user@example.com"
-              disabled={loading}
-              fieldHint={inviteUserFieldHints.email_personal}
-            />
+            <div className={uiLayout.sectionGrid2}>
+              <AppInput
+                label="First Name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="First name"
+                disabled={loading}
+                fieldHint={inviteUserFieldHints.first_name}
+              />
+              <AppInput
+                label="Last Name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Last name"
+                disabled={loading}
+                fieldHint={inviteUserFieldHints.last_name}
+              />
 
-            <AppMultiSelect
-              label={
-                <>
-                  Department<span className="text-brand-red"> *</span>
-                </>
-              }
-              value={selectedDivisionIds}
-              onChange={setSelectedDivisionIds}
-              options={divisionOptions}
-              placeholder="Select departments..."
-              searchable
-              disabled={loading}
-              fieldHint={inviteUserFieldHints.departments}
-            />
+              <AppInput
+                type="email"
+                label="Email Address *"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="user@example.com"
+                disabled={loading}
+                fieldHint={inviteUserFieldHints.email_personal}
+              />
+              <AppInput
+                type="tel"
+                label="Phone"
+                value={phone}
+                onChange={(e) => setPhone(formatContactPhone(e.target.value))}
+                placeholder="(555) 123-4567"
+                disabled={loading}
+                fieldHint={inviteUserFieldHints.phone}
+              />
 
-            <AppMultiSelect
-              label="Documents to Sign (optional)"
-              value={documentIds}
-              onChange={setDocumentIds}
-              options={activeDocumentOptions}
-              placeholder={baseDocsLoading ? 'Loading documents...' : 'Select documents...'}
-              searchable
-              disabled={loading || baseDocsLoading}
-              fieldHint={inviteUserFieldHints.documents_to_sign}
-              helperText={
-                baseDocsLoading
-                  ? undefined
-                  : activeDocumentOptions.length === 0
-                    ? 'No active onboarding documents. Add or activate documents in Onboarding Admin.'
-                    : 'Leave empty to assign all active documents. Select specific documents to assign only those for signing.'
-              }
-            />
-          </div>
-        ) : null}
-
-        {step === 2 ? (
-          <div className={uiSpacing.sectionStack}>
-            <AppSectionHeader
-              title="Job Information"
-              description="Role, reporting, and compensation details (all optional)."
-            />
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <AppInput
+                label="Job Title *"
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                placeholder="e.g., Roofer"
+                disabled={loading}
+                fieldHint={userProfileFieldHint('job_title')}
+              />
               <AppDatePicker
                 id="invite-hire-date"
-                label="Hire Date (optional)"
+                label="Hire Date"
                 value={hireDate}
                 onChange={(e) => setHireDate(e.target.value)}
                 disabled={loading}
                 fieldHint={userProfileFieldHint('hire_date')}
               />
 
-              <AppInput
-                label="Job Title (optional)"
-                value={jobTitle}
-                onChange={(e) => setJobTitle(e.target.value)}
-                placeholder="e.g., Software Engineer"
+              <AppMultiSelect
+                label={
+                  <>
+                    Departments<span className="text-brand-red"> *</span>
+                  </>
+                }
+                value={selectedDivisionIds}
+                onChange={setSelectedDivisionIds}
+                options={divisionOptions}
+                placeholder="Select departments..."
+                searchable
                 disabled={loading}
-                fieldHint={userProfileFieldHint('job_title')}
+                fieldHint={inviteUserFieldHints.departments}
               />
-
-              <AppInput
-                type="email"
-                label="Work Email (optional)"
-                value={workEmail}
-                onChange={(e) => setWorkEmail(e.target.value)}
-                placeholder="work@company.com"
-                disabled={loading}
-                fieldHint={userProfileFieldHint('work_email')}
-              />
-
-              <AppInput
-                type="tel"
-                label="Work Phone (optional)"
-                value={workPhone}
-                onChange={(e) => setWorkPhone(e.target.value)}
-                placeholder="+1 (555) 123-4567"
-                disabled={loading}
-                fieldHint={userProfileFieldHint('work_phone')}
+              <AppMultiSelect
+                label={
+                  <>
+                    Project Divisions<span className="text-brand-red"> *</span>
+                  </>
+                }
+                value={selectedProjectDivisionIds}
+                onChange={setSelectedProjectDivisionIds}
+                options={projectDivisionOptions}
+                placeholder={
+                  projectDivisionsLoading ? 'Loading project divisions...' : 'Select project divisions...'
+                }
+                searchable
+                disabled={loading || projectDivisionsLoading}
+                fieldHint={inviteUserFieldHints.project_divisions}
               />
 
               <AppUserSelect
-                mode="single"
-                label="Manager (optional)"
+                label="Supervisor"
                 value={managerUserId}
                 onChange={setManagerUserId}
-                placeholder="Select a manager..."
+                users={supervisorUsers}
+                placeholder="Select supervisor..."
                 disabled={loading}
-                fieldHint={userProfileFieldHint('manager_user_id')}
+                fieldHint={inviteUserFieldHints.manager_user_id}
               />
 
-              {employmentTypes.length > 0 ? (
+              <div className="grid min-w-0 grid-cols-2 gap-3">
                 <AppSelect
-                  label="Employment Type (optional)"
-                  value={employmentType}
-                  onChange={(e) => setEmploymentType(e.target.value)}
-                  options={employmentTypeOptions}
+                  label="Pay Type"
+                  value={payType}
+                  onChange={(e) => setPayType(e.target.value)}
+                  options={PAY_TYPE_OPTIONS}
                   placeholder="Select type..."
                   disabled={loading}
-                  fieldHint={userProfileFieldHint('employment_type')}
+                  fieldHint={userProfileFieldHint('pay_type')}
                 />
-              ) : (
                 <AppInput
-                  label="Employment Type (optional)"
-                  value={employmentType}
-                  onChange={(e) => setEmploymentType(e.target.value)}
-                  placeholder="e.g., full-time, part-time"
+                  label="Pay Rate"
+                  inputMode="decimal"
+                  value={payRate}
+                  onChange={(e) => setPayRate(sanitizePayRateInput(e.target.value))}
+                  placeholder={payType === 'salary' ? '100000' : '50'}
                   disabled={loading}
-                  fieldHint={userProfileFieldHint('employment_type')}
+                  leftIcon={<span className="text-xs font-medium text-gray-500">$</span>}
+                  rightIcon={
+                    payRateSuffix ? (
+                      <span className="pr-1 text-[11px] font-medium whitespace-nowrap text-gray-500">
+                        {payRateSuffix}
+                      </span>
+                    ) : undefined
+                  }
+                  inputClassName={payRateSuffix ? 'pr-20' : undefined}
+                  fieldHint={userProfileFieldHint('pay_rate')}
                 />
-              )}
-
-              <AppInput
-                label="Pay Rate (optional)"
-                value={payRate}
-                onChange={(e) => setPayRate(e.target.value)}
-                placeholder="e.g., $50/hour or $100,000/year"
-                disabled={loading}
-                fieldHint={userProfileFieldHint('pay_rate')}
-              />
-
-              <AppSelect
-                label="Pay Type (optional)"
-                value={payType}
-                onChange={(e) => setPayType(e.target.value)}
-                options={payTypeOptions}
-                placeholder="Select type..."
-                disabled={loading}
-                fieldHint={userProfileFieldHint('pay_type')}
-              />
+              </div>
             </div>
           </div>
         ) : null}
 
-        {step === 3 ? (
+        {step === 2 ? (
           <div className={uiSpacing.sectionStack}>
             <AppSectionHeader
-              title="Onboarding Requirements"
-              description="Equipment and resources this employee will need."
+              title="Onboarding requirements"
+              description="Equipment and resources this employee will need. Assignees are configured in Settings → Auto tasks."
             />
-
             <div className={uiSpacing.sectionStack}>
               <AppCheckbox
                 label="This user will need an email account"
@@ -467,21 +689,199 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
               <AppCheckbox
                 label="This user will need equipment or tools"
                 checked={needsEquipment}
-                onChange={setNeedsEquipment}
+                onChange={(checked) => {
+                  setNeedsEquipment(checked);
+                  if (!checked) setEquipmentList('');
+                }}
                 disabled={loading}
                 fieldHint={inviteUserFieldHints.needs_equipment}
               />
               {needsEquipment ? (
                 <AppTextarea
-                  label="Equipment list (optional)"
+                  label="Equipment list"
                   value={equipmentList}
                   onChange={(e) => setEquipmentList(e.target.value)}
-                  placeholder="Please list the equipment/tools needed..."
                   rows={3}
+                  placeholder="Laptop, PPE, tools, keys…"
                   disabled={loading}
                   fieldHint={inviteUserFieldHints.equipment_list}
                 />
               ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {step === 3 ? (
+          <div className={uiSpacing.sectionStack}>
+            <AppSectionHeader
+              title="Documents to sign"
+              description="Onboarding package for every hire, plus optional contracts and additional docs."
+            />
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <AppSectionHeader
+                title="Onboarding Package"
+                description="Standard hiring documents from Onboarding Admin."
+              />
+              <div className={uiCx('mt-3', uiSpacing.sectionStack)}>
+                <AppCheckbox
+                  label="Include onboarding package"
+                  checked={includeOnboardingPackage}
+                  onChange={(checked) => {
+                    setIncludeOnboardingPackage(checked);
+                    if (!checked) {
+                      setCustomizePackage(false);
+                      setDocumentIds([]);
+                      setShowPackageList(false);
+                      setPackagePickerOpen(false);
+                    }
+                  }}
+                  disabled={loading}
+                  fieldHint={inviteUserFieldHints.include_onboarding_package}
+                />
+                {includeOnboardingPackage ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={uiCx(
+                          'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+                          customizePackage
+                            ? 'bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-200/80'
+                            : 'bg-gray-100 text-gray-700',
+                        )}
+                      >
+                        {customizePackage ? 'Customized' : 'Default package'}
+                      </span>
+                      <span className={uiTypography.helper}>
+                        {baseDocsLoading
+                          ? 'Loading package documents…'
+                          : customizePackage
+                            ? `${documentIds.length} of ${activeDocumentOptions.length} documents`
+                            : `All ${activeDocumentOptions.length} document${activeDocumentOptions.length === 1 ? '' : 's'}`}
+                      </span>
+                      {!baseDocsLoading && activeDocumentOptions.length > 0 && !customizePackage ? (
+                        <button
+                          type="button"
+                          className="text-sm font-medium text-gray-800 underline-offset-2 hover:underline"
+                          onClick={() => setShowPackageList((v) => !v)}
+                        >
+                          {showPackageList ? 'Hide list' : 'View list'}
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {showPackageList && !customizePackage ? (
+                      <ul className="max-h-40 list-disc overflow-y-auto pl-5 text-sm text-gray-700">
+                        {activeDocumentOptions.map((d) => (
+                          <li key={d.value}>{d.label}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+
+                    {customizePackage ? (
+                      <div className="flex flex-wrap gap-2">
+                        {documentIds.map((id) => {
+                          const label = activeDocumentOptions.find((o) => o.value === id)?.label || id;
+                          return (
+                            <span
+                              key={id}
+                              className="inline-flex max-w-full items-center rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-800"
+                            >
+                              <span className="truncate">{label}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <div className={uiLayout.actionsRow}>
+                      <AppButton
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={loading || baseDocsLoading || activeDocumentOptions.length === 0}
+                        onClick={() => setPackagePickerOpen(true)}
+                      >
+                        Customize
+                      </AppButton>
+                      {customizePackage ? (
+                        <AppButton
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={loading}
+                          onClick={() => {
+                            setCustomizePackage(false);
+                            setDocumentIds([]);
+                          }}
+                        >
+                          Reset to default
+                        </AppButton>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <p className={uiTypography.helper}>
+                    No onboarding package documents will be assigned.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <InviteOnboardingPackagePicker
+              open={packagePickerOpen}
+              onClose={() => setPackagePickerOpen(false)}
+              documents={baseDocs}
+              isLoading={baseDocsLoading}
+              customized={customizePackage}
+              selectedIds={documentIds}
+              disabled={loading}
+              onApply={(ids) => {
+                setCustomizePackage(true);
+                setDocumentIds(ids);
+                setShowPackageList(false);
+              }}
+            />
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <AppSectionHeader
+                title="Additional documents"
+                description="Optional. Contracts and docs for this hire."
+              />
+              <div className="mt-3">
+                <InviteAdditionalDocsPicker
+                  value={additionalDocuments}
+                  onChange={setAdditionalDocuments}
+                  jobTitle={jobTitle}
+                  disabled={loading}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {step === 4 ? (
+          <div className={uiSpacing.sectionStack}>
+            <AppSectionHeader
+              title="Review & send"
+              description="Confirm the hire details, then send the invitation email."
+            />
+            <div className={uiLayout.sectionGrid2}>
+              <ReviewRow label="Email" value={email.trim()} />
+              <ReviewRow
+                label="Name"
+                value={`${firstName.trim()} ${lastName.trim()}`.trim()}
+              />
+              <ReviewRow label="Phone" value={phone.trim()} />
+              <ReviewRow label="Job title" value={jobTitle.trim()} />
+              <ReviewRow label="Departments" value={departmentLabels} />
+              <ReviewRow label="Project divisions" value={projectDivisionLabels} />
+              <ReviewRow label="Hire date" value={hireDate} />
+              <ReviewRow label="Supervisor" value={supervisorLabel} />
+              <ReviewRow label="Pay" value={formatPayForReview(payRate, payType)} />
+              <ReviewRow label="Onboarding requirements" value={requirementsReviewLabel} />
+              <ReviewRow label="Onboarding package" value={packageReviewLabel} />
+              <ReviewRow label="Additional documents" value={additionalReviewLabel} />
             </div>
           </div>
         ) : null}

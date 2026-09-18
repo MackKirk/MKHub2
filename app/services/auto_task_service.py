@@ -20,12 +20,14 @@ from ..models.models import (
 )
 from ..schemas.auth import InviteRequest
 from ..services.auto_task_catalog import (
+    ALWAYS_ON_ONBOARDING_KEYS,
     AUTO_TASK_TRIGGERS,
     ONBOARDING_FLAG_TO_TRIGGER,
     get_trigger,
     render_template,
     sort_keys_by_starts_after,
 )
+from ..services.invite_hire import invite_display_name, parse_invite_date
 from ..services.notifications import should_send_notification
 from ..services.task_service import create_task_item, get_user_display
 
@@ -79,6 +81,64 @@ def resolve_starts_after_key(trigger, route: Optional[AutoTaskRoute]) -> Optiona
     if route is not None:
         return route_starts_after_key(route)
     return trigger.default_starts_after_key
+
+
+def resolve_due_anchor(trigger, route: Optional[AutoTaskRoute]) -> str:
+    if route is not None:
+        anchor = (route.due_anchor or "").strip().lower()
+        if anchor in ("hire_date", "invite_sent"):
+            return anchor
+    catalog_anchor = (getattr(trigger, "default_due_anchor", None) or "").strip().lower()
+    if catalog_anchor in ("hire_date", "invite_sent"):
+        return catalog_anchor
+    return "invite_sent"
+
+
+def resolve_due_in_days(trigger, route: Optional[AutoTaskRoute]) -> Optional[int]:
+    if route is not None and route.due_in_days is not None:
+        try:
+            return int(route.due_in_days)
+        except (TypeError, ValueError):
+            return None
+    default = getattr(trigger, "default_due_in_days", None)
+    if default is None:
+        return None
+    try:
+        return int(default)
+    except (TypeError, ValueError):
+        return None
+
+
+def compute_due_date(
+    *,
+    due_anchor: str,
+    due_in_days: Optional[int],
+    context: dict[str, Any],
+    trigger_key: str,
+) -> Optional[datetime]:
+    if due_in_days is None:
+        return None
+    try:
+        offset = int(due_in_days)
+    except (TypeError, ValueError):
+        return None
+    if offset < 0:
+        return None
+
+    now = datetime.now(timezone.utc)
+    if due_anchor == "hire_date":
+        raw = (context.get("hire_date_iso") or "").strip()
+        parsed = parse_invite_date(raw) if raw else None
+        if parsed is not None:
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            base = parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+            return base + timedelta(days=offset)
+        logger.warning(
+            "auto_task_hire_date_missing_fallback_invite_sent",
+            trigger_key=trigger_key,
+        )
+    return now + timedelta(days=offset)
 
 
 def starts_after_map_from_routes(routes: list[AutoTaskRoute]) -> dict[str, Optional[str]]:
@@ -266,7 +326,8 @@ def fire_trigger(
     user_ids = _as_id_list(route.recipient_user_ids if route else None)
     division_ids_raw = _as_id_list(route.recipient_division_ids if route else None)
     notify_push = True if route is None else bool(route.notify_push)
-    due_in_days = route.due_in_days if route else None
+    due_anchor = resolve_due_anchor(trigger, route)
+    due_in_days = resolve_due_in_days(trigger, route)
     title_template, description_template = resolve_task_copy(trigger, route)
     title = render_template(title_template, context)
     wait_payload = {
@@ -302,9 +363,12 @@ def fire_trigger(
         )
 
     description = render_template(description_template, context)
-    due_date = None
-    if due_in_days and due_in_days > 0:
-        due_date = datetime.now(timezone.utc) + timedelta(days=int(due_in_days))
+    due_date = compute_due_date(
+        due_anchor=due_anchor,
+        due_in_days=due_in_days,
+        context=context,
+        trigger_key=trigger_key,
+    )
 
     created_tasks: list[TaskItem] = []
     notify_user_ids: set[uuid.UUID] = set()
@@ -404,13 +468,65 @@ def fire_trigger(
         )
 
 
-def invite_context(req: InviteRequest) -> dict[str, str]:
+def invite_context(
+    req: InviteRequest,
+    *,
+    db: Optional[Session] = None,
+) -> dict[str, str]:
     email = (req.email_personal or "").strip()
+    hire_raw = (req.hire_date or "").strip() if isinstance(req.hire_date, str) else ""
+
+    pay_rate = (req.pay_rate or "").strip() if req.pay_rate else ""
+    pay_type = (req.pay_type or "").strip() if req.pay_type else ""
+    if pay_rate and pay_type:
+        pay = f"{pay_rate} ({pay_type})"
+    elif pay_rate:
+        pay = pay_rate
+    else:
+        pay = ""
+
+    supervisor = ""
+    departments = ""
+    project_divisions = ""
+
+    if db is not None:
+        mgr = (req.manager_user_id or "").strip() if req.manager_user_id else ""
+        if mgr:
+            try:
+                mgr_uuid = uuid.UUID(mgr)
+                supervisor = get_user_display(db, mgr_uuid) or ""
+            except (ValueError, TypeError, AttributeError):
+                supervisor = ""
+
+        div_ids = [str(x).strip() for x in (req.division_ids or []) if str(x).strip()]
+        if div_ids:
+            labels: list[str] = []
+            for raw in div_ids:
+                try:
+                    uid = uuid.UUID(raw)
+                except (ValueError, TypeError, AttributeError):
+                    continue
+                item = db.query(SettingItem).filter(SettingItem.id == uid).first()
+                if item and item.label:
+                    labels.append(str(item.label))
+            departments = ", ".join(labels)
+
+        proj_ids = [str(x).strip() for x in (req.project_division_ids or []) if str(x).strip()]
+        if proj_ids:
+            # Project division labels are not always SettingItems; keep ids if unlabeled.
+            project_divisions = ", ".join(proj_ids)
+
     return {
-        "name": email or "new hire",
+        "name": invite_display_name(req),
         "email": _dash(email),
+        "phone": _dash(req.phone),
         "job_title": _dash(req.job_title),
-        "hire_date": _dash(req.hire_date),
+        "hire_date": _dash(hire_raw),
+        "hire_date_iso": hire_raw,
+        "supervisor": _dash(supervisor),
+        "departments": _dash(departments),
+        "project_divisions": _dash(project_divisions),
+        "pay": _dash(pay),
         "equipment_list": _dash(req.equipment_list),
     }
 
@@ -422,7 +538,7 @@ def fire_onboarding_invite_auto_tasks(
     req: InviteRequest,
     requested_by_id: uuid.UUID,
 ) -> None:
-    context = invite_context(req)
+    context = invite_context(req, db=db)
     origin_id = str(invite.id)
     origin_label = req.email_personal
     flags = {
@@ -432,11 +548,12 @@ def fire_onboarding_invite_auto_tasks(
         "needs_vehicle": bool(req.needs_vehicle),
         "needs_equipment": bool(req.needs_equipment),
     }
-    requested_keys = [
+    checkbox_keys = [
         trigger_key
         for flag, trigger_key in ONBOARDING_FLAG_TO_TRIGGER.items()
         if flags.get(flag)
     ]
+    requested_keys = list(dict.fromkeys([*ALWAYS_ON_ONBOARDING_KEYS, *checkbox_keys]))
     routes = (
         db.query(AutoTaskRoute)
         .filter(AutoTaskRoute.trigger_key.in_(requested_keys))

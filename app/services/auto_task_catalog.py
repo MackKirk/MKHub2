@@ -4,6 +4,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+# Shared hire details block for onboarding task bodies.
+_HIRE_DETAILS = (
+    "New hire details:\n"
+    "Name: {name}\n"
+    "Invite email: {email}\n"
+    "Phone: {phone}\n"
+    "Job title: {job_title}\n"
+    "Hire date: {hire_date}\n"
+    "Supervisor: {supervisor}\n"
+    "Departments: {departments}\n"
+    "Project divisions: {project_divisions}\n"
+    "Pay: {pay}"
+)
+
+_INTRO = (
+    "A new team member has been invited to MK Hub and needs your attention.\n\n"
+)
+
 
 @dataclass(frozen=True)
 class AutoTaskTriggerDef:
@@ -17,8 +35,13 @@ class AutoTaskTriggerDef:
     task_description_template: str
     # Not fired from an invite checkbox; created when the Starts-after task is done.
     chain_only: bool = False
+    # Fired on every invite send (not tied to a checkbox).
+    always_on: bool = False
     # Prefill in Settings when no route has been saved yet. Engine uses the saved route.
     default_starts_after_key: Optional[str] = None
+    # invite_sent | hire_date — used when route has no due_anchor saved yet.
+    default_due_anchor: Optional[str] = None
+    default_due_in_days: Optional[int] = None
 
 
 ONBOARDING_CATEGORY = "onboarding"
@@ -33,10 +56,9 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         when="When an invite is sent with “This user will need an email account” checked.",
         task_title_template="Provision company email for {name}",
         task_description_template=(
-            "Provision a company email account before this person starts.\n\n"
-            "Invite email: {email}\n"
-            "Job title: {job_title}\n"
-            "Hire date: {hire_date}"
+            f"{_INTRO}"
+            "Please provision a company email account before this person starts.\n\n"
+            f"{_HIRE_DETAILS}"
         ),
     ),
     AutoTaskTriggerDef(
@@ -48,10 +70,9 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         when="When an invite is sent with “This user will need business cards” checked.",
         task_title_template="Order business cards for {name}",
         task_description_template=(
-            "Order business cards before this person starts.\n\n"
-            "Invite email: {email}\n"
-            "Job title: {job_title}\n"
-            "Hire date: {hire_date}"
+            f"{_INTRO}"
+            "Please order business cards before this person starts.\n\n"
+            f"{_HIRE_DETAILS}"
         ),
     ),
     AutoTaskTriggerDef(
@@ -63,10 +84,9 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         when="When an invite is sent with “This user will need a phone” checked.",
         task_title_template="Assign company phone for {name}",
         task_description_template=(
-            "Assign a company phone or mobile line before this person starts.\n\n"
-            "Invite email: {email}\n"
-            "Job title: {job_title}\n"
-            "Hire date: {hire_date}"
+            f"{_INTRO}"
+            "Please assign a company phone or mobile line before this person starts.\n\n"
+            f"{_HIRE_DETAILS}"
         ),
     ),
     AutoTaskTriggerDef(
@@ -78,10 +98,9 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         when="When an invite is sent with “This user will receive a vehicle” checked.",
         task_title_template="Assign company vehicle for {name}",
         task_description_template=(
-            "Assign a company vehicle before this person starts.\n\n"
-            "Invite email: {email}\n"
-            "Job title: {job_title}\n"
-            "Hire date: {hire_date}"
+            f"{_INTRO}"
+            "Please assign a company vehicle before this person starts.\n\n"
+            f"{_HIRE_DETAILS}"
         ),
     ),
     AutoTaskTriggerDef(
@@ -93,10 +112,9 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         when="When an invite is sent with “This user will need equipment or tools” checked.",
         task_title_template="Prepare equipment for {name}",
         task_description_template=(
-            "Prepare equipment or tools before this person starts.\n\n"
-            "Invite email: {email}\n"
-            "Job title: {job_title}\n"
-            "Hire date: {hire_date}\n\n"
+            f"{_INTRO}"
+            "Please prepare equipment or tools before this person starts.\n\n"
+            f"{_HIRE_DETAILS}\n\n"
             "Equipment list:\n{equipment_list}"
         ),
     ),
@@ -109,13 +127,82 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         when="After the company vehicle task for this hire is completed. Not an invite checkbox.",
         task_title_template="Wrap company vehicle for {name}",
         task_description_template=(
-            "Wrap the company vehicle assigned to this person.\n\n"
-            "Invite email: {email}\n"
-            "Job title: {job_title}\n"
-            "Hire date: {hire_date}"
+            f"{_INTRO}"
+            "Please wrap the company vehicle assigned to this person.\n\n"
+            f"{_HIRE_DETAILS}"
         ),
         chain_only=True,
         default_starts_after_key="onboarding.needs_vehicle",
+    ),
+    AutoTaskTriggerDef(
+        key="onboarding.sage_setup",
+        category=ONBOARDING_CATEGORY,
+        category_label="Onboarding",
+        name="Set up new hire in Sage",
+        description="Accountant should set up the new hire in Sage (external).",
+        when="Every time an invite is sent (always-on).",
+        task_title_template="Set up new hire in Sage: {name}",
+        task_description_template=(
+            f"{_INTRO}"
+            "Please set up this new hire in Sage before or on their start date.\n\n"
+            f"{_HIRE_DETAILS}"
+        ),
+        always_on=True,
+        default_due_anchor="hire_date",
+        default_due_in_days=0,
+    ),
+    AutoTaskTriggerDef(
+        key="onboarding.benefits_setup",
+        category=ONBOARDING_CATEGORY,
+        category_label="Onboarding",
+        name="Benefits set up",
+        description="Accountant should complete benefits setup for the new hire (external).",
+        when="Every time an invite is sent (always-on).",
+        task_title_template="Benefits set up for {name}",
+        task_description_template=(
+            f"{_INTRO}"
+            "Please complete benefits setup for this new hire.\n\n"
+            f"{_HIRE_DETAILS}"
+        ),
+        always_on=True,
+        default_due_anchor="hire_date",
+        default_due_in_days=60,
+    ),
+    AutoTaskTriggerDef(
+        key="onboarding.probation_evaluation",
+        category=ONBOARDING_CATEGORY,
+        category_label="Onboarding",
+        name="Probation period evaluation",
+        description="Accountant/HR probation evaluation due about 11 weeks after hire date.",
+        when="Every time an invite is sent (always-on). Default due: hire date + 11 weeks.",
+        task_title_template="Probation period evaluation for {name}",
+        task_description_template=(
+            f"{_INTRO}"
+            "Please complete the probation period evaluation for this new hire "
+            "(typically due about 11 weeks after the hire date).\n\n"
+            f"{_HIRE_DETAILS}"
+        ),
+        always_on=True,
+        default_due_anchor="hire_date",
+        default_due_in_days=77,
+    ),
+    AutoTaskTriggerDef(
+        key="onboarding.safety_review_3mo",
+        category=ONBOARDING_CATEGORY,
+        category_label="Onboarding",
+        name="3-month safety review",
+        description="Safety review due about 10–11 weeks after hire date.",
+        when="Every time an invite is sent (always-on). Default due: hire date + 11 weeks.",
+        task_title_template="3-month safety review for {name}",
+        task_description_template=(
+            f"{_INTRO}"
+            "Please complete the 3-month safety review for this new hire "
+            "(typically due about 10–11 weeks after the hire date).\n\n"
+            f"{_HIRE_DETAILS}"
+        ),
+        always_on=True,
+        default_due_anchor="hire_date",
+        default_due_in_days=77,
     ),
 )
 
@@ -128,6 +215,8 @@ ONBOARDING_FLAG_TO_TRIGGER = {
     "needs_vehicle": "onboarding.needs_vehicle",
     "needs_equipment": "onboarding.needs_equipment",
 }
+
+ALWAYS_ON_ONBOARDING_KEYS = [t.key for t in AUTO_TASK_TRIGGERS if t.always_on]
 
 
 def get_trigger(key: str) -> Optional[AutoTaskTriggerDef]:

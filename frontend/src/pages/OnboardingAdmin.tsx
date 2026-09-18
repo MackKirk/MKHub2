@@ -45,6 +45,7 @@ type BaseDoc = {
   assignee_user_ids?: string[];
   required?: boolean;
   employee_visible?: boolean;
+  package_role?: string | null;
   display_name?: string | null;
   notification_message?: string | null;
   delivery_mode?: string;
@@ -122,6 +123,7 @@ export default function OnboardingAdmin() {
   const [pfAssigneeUserIds, setPfAssigneeUserIds] = useState<Set<string>>(() => new Set());
   const [pfRequired, setPfRequired] = useState(true);
   const [pfEmployeeVisible, setPfEmployeeVisible] = useState(true);
+  const [pfPackageRole, setPfPackageRole] = useState<'hiring_package' | 'additional'>('hiring_package');
   const [pfDisplayName, setPfDisplayName] = useState('');
   const [pfMessage, setPfMessage] = useState('');
   const [pfDelivery, setPfDelivery] = useState<'none' | 'on_hire' | 'custom'>('on_hire');
@@ -145,6 +147,9 @@ export default function OnboardingAdmin() {
     setPfAssigneeUserIds(new Set(ids));
     setPfRequired(prefsDoc.required !== false);
     setPfEmployeeVisible(prefsDoc.employee_visible !== false);
+    setPfPackageRole(
+      (prefsDoc.package_role || '').trim().toLowerCase() === 'additional' ? 'additional' : 'hiring_package',
+    );
     setPfDisplayName(prefsDoc.display_name || '');
     setPfMessage(prefsDoc.notification_message || '');
     const mode = (prefsDoc.delivery_mode || 'on_hire').toLowerCase();
@@ -183,6 +188,7 @@ export default function OnboardingAdmin() {
       assignee_user_ids: pfAssigneeType === 'user' ? Array.from(pfAssigneeUserIds) : null,
       required: pfRequired,
       employee_visible: pfEmployeeVisible,
+      package_role: pfPackageRole,
       display_name: pfDisplayName.trim() || null,
       notification_message: pfMessage.trim() || null,
       delivery_mode: mode,
@@ -343,26 +349,43 @@ export default function OnboardingAdmin() {
       {tab === 'docs' && (
         <div className={uiSpacing.sectionStack}>
           <PdfSignatureDocumentLibrary
-            documents={baseDocs}
+            documents={baseDocs.map((d) => {
+              const isAdditional = (d.package_role || '').trim().toLowerCase() === 'additional';
+              return {
+                ...d,
+                badge: isAdditional ? 'Additional' : 'Hiring',
+                badgeVariant: isAdditional ? ('additional' as const) : ('hiring' as const),
+              };
+            })}
             fileCategoryId="onboarding-base"
             thumbnailUrl={(id) => `/onboarding/base-documents/${id}/thumbnail`}
             previewUrl={(id) => `/onboarding/base-documents/${id}/preview`}
             sectionTitle="Base documents (PDF)"
             emptyTitle="No base documents yet."
             emptyDescription="Upload PDFs above."
-            extraMenuItems={[{ label: 'Preferences', onSelect: openDocPreferences }]}
+            extraMenuItems={[
+              {
+                label: 'Preferences',
+                onSelect: (d) => openDocPreferences(baseDocs.find((x) => x.id === d.id) || d),
+              },
+            ]}
             deleteConfirmMessage={(doc) =>
               `Delete "${doc.name}"? Pending assignments may block this.`
             }
-            onCreate={async (name, fileId) => {
-              await api('POST', '/onboarding/base-documents', { name, file_id: fileId });
+            promptPackageRoleOnCreate
+            onCreate={async (name, fileId, meta) => {
+              await api('POST', '/onboarding/base-documents', {
+                name,
+                file_id: fileId,
+                package_role: meta?.package_role || 'hiring_package',
+              });
               await refetchDocs();
             }}
             onDelete={async (doc) => {
               await api('DELETE', `/onboarding/base-documents/${doc.id}`);
               await refetchDocs();
             }}
-            onEditTemplate={(doc) => setTemplateDoc(doc)}
+            onEditTemplate={(doc) => setTemplateDoc(baseDocs.find((x) => x.id === doc.id) || doc)}
           />
         </div>
       )}
@@ -476,6 +499,18 @@ export default function OnboardingAdmin() {
                     fieldHint="Active\n\nInactive documents are not assigned during onboarding."
                   />
                 </div>
+                <AppSelect
+                  label="Package role"
+                  value={pfPackageRole}
+                  onChange={(e) =>
+                    setPfPackageRole(e.target.value === 'additional' ? 'additional' : 'hiring_package')
+                  }
+                  options={[
+                    { value: 'hiring_package', label: 'Hiring package' },
+                    { value: 'additional', label: 'Additional documents' },
+                  ]}
+                  fieldHint="Package role\n\nHiring package docs are in the default invite package. Additional docs are optional extras selected on invite Step 2."
+                />
               </div>
             </AppCard>
 

@@ -1990,10 +1990,24 @@ export const onboardingResendFieldHints = {
 export const inviteUserFieldHints = {
   email_personal:
     'Email address\n\nPersonal email where the new hire receives the invitation link. They use it to register and sign in.',
+  first_name:
+    'First name\n\nOptional. Prefills the registration form when provided. The new hire can still edit it.',
+  last_name:
+    'Last name\n\nOptional. Prefills the registration form when provided. The new hire can still edit it.',
+  phone:
+    'Phone\n\nOptional personal phone. Copied to the employee profile when they register.',
   departments:
-    'Department\n\nInternal division(s) assigned when the employee completes registration. At least one is required.',
+    'Departments\n\nHR departments (internal divisions) assigned when the employee completes registration. At least one is required.',
+  project_divisions:
+    'Project divisions\n\nProject lines or branches they work on. At least one is required. Copied to the employee profile on registration.',
+  manager_user_id:
+    'Supervisor\n\nOptional. Reports-to manager for org chart and approvals. Copied to the employee profile when they register.',
   documents_to_sign:
-    'Documents to sign\n\nOptional. Leave empty to assign all active onboarding documents (per Onboarding Admin). Select specific documents to assign only those for this hire.',
+    'Package documents\n\nIn Customize, choose which hiring package documents to assign. At least one is required.',
+  include_onboarding_package:
+    'Include onboarding package\n\nWhen on, the hire receives onboarding package documents (all by default, or your customized subset). Turn off to send none from the package.',
+  customize_package:
+    'Customize\n\nOpen the document picker to send a subset of the hiring package instead of all documents. Reset to default restores the full package.',
   needs_email: 'Email account\n\nCheck if IT should provision a company email account for this person.',
   needs_business_card: 'Business cards\n\nCheck if business cards should be ordered before their start date.',
   needs_phone: 'Phone\n\nCheck if a company phone or mobile line should be assigned.',
@@ -2013,15 +2027,19 @@ export const inviteUserQuickInfo = formModalQuickInfo({
   ),
   howToUse: (
     <>
-      Step 1: enter {uiLabel('Email Address')} and {uiLabel('Department')} (required); optionally choose{' '}
-      {uiLabel('Documents to Sign')}. Step 2: add optional job details. Step 3: mark equipment and resources they may
-      need before starting.
+      Step 1: enter {uiLabel('Email Address')}, {uiLabel('Job Title')}, {uiLabel('Departments')}, and{' '}
+      {uiLabel('Project Divisions')} (required). Optionally add name, phone, hire date, supervisor, and pay. Step 2: mark
+      optional resources (email, phone, vehicle, etc.) — tasks go to people configured in Settings → Auto tasks. Step 3:
+      keep the default onboarding package (or customize / exclude it) and optionally add contracts or docs. Step 4: review
+      and send. Accountant and Safety auto-tasks also fire on every send when recipients are configured.
     </>
   ),
   behavior: (
     <>
-      {uiLabel('Next')} is enabled only when required fields on the current step are valid. The invitation email is sent
-      only when you click {uiLabel('Send Invite')} on step 3.
+      {uiLabel('Next')} is enabled only when required fields are valid. The invitation email is sent only when you click{' '}
+      {uiLabel('Send Invite')} on step 4. Departments and project divisions are applied when the invitee registers.
+      Additional documents are sent for signature after their profile is complete. Always-on tasks (Sage, Benefits,
+      Probation, Safety review) and optional requirement tasks are created at send time for assigned users/divisions.
     </>
   ),
   actions: (
@@ -2245,16 +2263,16 @@ export const autoTaskRouteQuickInfo = formModalQuickInfo({
   howToUse: (
     <>
       Edit {uiLabel('Task title')} and {uiLabel('Task description')}, then pick {uiLabel('People')} and/or{' '}
-      {uiLabel('Divisions')}. Use {uiLabel('Starts after')} if this task should wait for another auto task. Optionally
-      set {uiLabel('Expected completion (days)')}.
+      {uiLabel('Divisions')}. Use {uiLabel('Starts after')} if this task should wait for another auto task. Set{' '}
+      {uiLabel('Due from')} (invite sent or hire date) and optional {uiLabel('Expected completion (days)')} (0 allowed).
     </>
   ),
   behavior: (
     <>
-      Placeholders like {'{name}'} and {'{email}'} are filled in when the task is created. Each person gets their own
-      task. Each division gets one shared task that anyone on that team can pick up. If {uiLabel('Starts after')} is
-      set, this task is created only when that other task is done — unless it was never created for the same hire, in
-      which case this one starts immediately.
+      Placeholders like {'{name}'}, {'{email}'}, {'{job_title}'}, and {'{hire_date}'} are filled when the task is
+      created. Each person gets their own task. Each division gets one shared task. Always-on onboarding triggers fire
+      on every invite send; checkbox triggers only when that requirement is marked. If {uiLabel('Starts after')} is set,
+      this task waits until that other task is done — unless it was never created for the same hire.
     </>
   ),
   actions: (

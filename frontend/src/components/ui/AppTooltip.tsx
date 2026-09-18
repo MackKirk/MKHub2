@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { getOverlayRoot } from '@/lib/overlayRoot';
 import { uiTooltip, uiCx } from './tokens';
 
 const TOOLTIP_GAP_PX = 4;
@@ -71,7 +72,7 @@ function computeTooltipCoords(
 
 /**
  * Dark hover/focus tooltip (Opportunities estimator avatar pattern).
- * Renders in document.body so position:fixed uses viewport coordinates.
+ * Renders in `#overlay-root` so it stacks above modals (same layer as field hints).
  * Horizontally clamps to the viewport so tips near edges (e.g. after the menu/sidebar change) are not cut off.
  */
 export function AppTooltip({
@@ -151,7 +152,7 @@ export function AppTooltip({
           <span className={arrowClass} style={arrowStyle} aria-hidden />
         </span>
       </span>,
-      document.body,
+      getOverlayRoot(),
     );
 
   return (

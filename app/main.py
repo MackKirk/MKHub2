@@ -1220,7 +1220,11 @@ def create_app() -> FastAPI:
 
                     for _tbl, _col, _ddl in (
                         ("employee_profiles", "onboarding_document_ids", "JSON NULL"),
+                        ("employee_profiles", "invite_additional_documents", "JSON NULL"),
+                        ("employee_profiles", "invite_additional_documents_applied_at", "TIMESTAMPTZ NULL"),
+                        ("employee_profiles", "invited_by_user_id", "UUID NULL"),
                         ("invites", "document_ids", "JSON NULL"),
+                        ("invites", "additional_documents", "JSON NULL"),
                     ):
                         rows = db.execute(
                             text(
@@ -2350,6 +2354,7 @@ def create_app() -> FastAPI:
                             ("onboarding_base_documents", "notification_policy", "JSONB"),
                             ("onboarding_base_documents", "signing_deadline_days", "INTEGER NOT NULL DEFAULT 7"),
                             ("onboarding_base_documents", "signature_template", "JSONB"),
+                            ("onboarding_base_documents", "package_role", "VARCHAR(32) NOT NULL DEFAULT 'hiring_package'"),
                         ]:
                             if not _onb_col(tbl, col):
                                 db.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col} {ddl}"))
@@ -3303,6 +3308,17 @@ def create_app() -> FastAPI:
                             ("onboarding_requirements", "JSON"),
                             ("job_title", "VARCHAR(255)"),
                             ("hire_date", "VARCHAR(50)"),
+                            ("project_division_ids", "JSON"),
+                            ("first_name", "VARCHAR(100)"),
+                            ("last_name", "VARCHAR(100)"),
+                            ("phone", "VARCHAR(100)"),
+                            ("work_email", "VARCHAR(255)"),
+                            ("work_phone", "VARCHAR(100)"),
+                            ("manager_user_id", "VARCHAR(64)"),
+                            ("pay_rate", "VARCHAR(100)"),
+                            ("pay_type", "VARCHAR(50)"),
+                            ("employment_type", "VARCHAR(50)"),
+                            ("additional_documents", "JSON"),
                         ]:
                             exists = db.execute(
                                 text(
@@ -3325,6 +3341,7 @@ def create_app() -> FastAPI:
                             ("task_title", "VARCHAR(255)"),
                             ("task_description", "TEXT"),
                             ("starts_after_key", "VARCHAR(100)"),
+                            ("due_anchor", "VARCHAR(32) DEFAULT 'invite_sent'"),
                         ]:
                             exists = db.execute(
                                 text(

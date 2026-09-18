@@ -12,18 +12,39 @@ class UsernameSuggestResponse(BaseModel):
     available: bool
 
 
+class AdditionalDocumentRef(BaseModel):
+    source: str  # document_type | onboarding_base
+    id: str
+    name: Optional[str] = None
+
+    @field_validator("source")
+    @classmethod
+    def _validate_source(cls, v: str) -> str:
+        s = (v or "").strip().lower()
+        if s not in ("document_type", "onboarding_base"):
+            raise ValueError("source must be document_type or onboarding_base")
+        return s
+
+
 class InviteRequest(BaseModel):
     email_personal: EmailStr
     division_id: Optional[str] = None  # Legacy: kept for backward compatibility
     division_name: Optional[str] = None  # Legacy: kept for backward compatibility
-    division_ids: Optional[List[str]] = None  # Array of division IDs (UUIDs as strings)
+    division_ids: Optional[List[str]] = None  # Array of department (HR division) UUIDs as strings
+    project_division_ids: Optional[List[str]] = None  # Array of project division UUIDs as strings
     document_ids: Optional[List[str]] = None
+    include_onboarding_package: bool = True
+    additional_documents: Optional[List[AdditionalDocumentRef]] = None
     needs_email: bool = False
     needs_business_card: bool = False
     needs_phone: bool = False
     needs_vehicle: bool = False
     needs_equipment: bool = False
     equipment_list: Optional[str] = None
+    # Optional hiree identity / contact
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
     # Job information
     hire_date: Optional[str] = None
     job_title: Optional[str] = None

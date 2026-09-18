@@ -124,11 +124,22 @@ class Invite(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of division UUIDs as strings
-    document_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of onboarding base document UUIDs as strings; null = all active docs
+    division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of department (HR division) UUIDs as strings
+    project_division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of project division UUIDs as strings
+    document_ids: Mapped[Optional[list]] = mapped_column(JSON)  # null = all hiring_package; [] = none; [ids] = subset
+    additional_documents: Mapped[Optional[list]] = mapped_column(JSON)  # [{source, id, name}] document_type | onboarding_base
     onboarding_requirements: Mapped[Optional[dict]] = mapped_column(JSON)
+    first_name: Mapped[Optional[str]] = mapped_column(String(100))
+    last_name: Mapped[Optional[str]] = mapped_column(String(100))
+    phone: Mapped[Optional[str]] = mapped_column(String(100))
     job_title: Mapped[Optional[str]] = mapped_column(String(255))
     hire_date: Mapped[Optional[str]] = mapped_column(String(50))
+    work_email: Mapped[Optional[str]] = mapped_column(String(255))
+    work_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    manager_user_id: Mapped[Optional[str]] = mapped_column(String(64))
+    pay_rate: Mapped[Optional[str]] = mapped_column(String(100))
+    pay_type: Mapped[Optional[str]] = mapped_column(String(50))
+    employment_type: Mapped[Optional[str]] = mapped_column(String(50))
 
 
 class RefreshToken(Base):
@@ -1342,7 +1353,10 @@ class EmployeeProfile(Base):
     cloth_size: Mapped[Optional[str]] = mapped_column(String(50))
     cloth_sizes_custom: Mapped[Optional[list]] = mapped_column(JSON)
     project_division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of project division/subdivision UUIDs (from project_divisions SettingList)
-    onboarding_document_ids: Mapped[Optional[list]] = mapped_column(JSON)  # From invite: null = all active docs; list = only those base document IDs
+    onboarding_document_ids: Mapped[Optional[list]] = mapped_column(JSON)  # From invite: null = all hiring_package; [] = none; [ids] = subset
+    invite_additional_documents: Mapped[Optional[list]] = mapped_column(JSON)  # From invite additional_documents
+    invite_additional_documents_applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    invited_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
 
     # Sistema / Auditoria
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
@@ -1573,6 +1587,8 @@ class OnboardingBaseDocument(Base):
     assignee_user_ids: Mapped[Optional[list]] = mapped_column(JSON)
     required: Mapped[bool] = mapped_column(Boolean, default=True)
     employee_visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    # hiring_package = default invite package; additional = optional invite extras only
+    package_role: Mapped[str] = mapped_column(String(32), default="hiring_package", nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     display_name: Mapped[Optional[str]] = mapped_column(String(255))
     notification_message: Mapped[Optional[str]] = mapped_column(String(4000))
@@ -2313,6 +2329,8 @@ class AutoTaskRoute(Base):
     recipient_user_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
     recipient_division_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
     due_in_days: Mapped[Optional[int]] = mapped_column(Integer)
+    # invite_sent | hire_date — when hire_date, due = hire_date + due_in_days
+    due_anchor: Mapped[Optional[str]] = mapped_column(String(32), default="invite_sent")
     task_title: Mapped[Optional[str]] = mapped_column(String(255))
     task_description: Mapped[Optional[str]] = mapped_column(Text)
     notify_push: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

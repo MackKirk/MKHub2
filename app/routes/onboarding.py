@@ -121,6 +121,11 @@ def _base_document_dict(r: OnboardingBaseDocument) -> dict:
         "assignee_user_ids": assignee_ids,
         "required": getattr(r, "required", True),
         "employee_visible": getattr(r, "employee_visible", True),
+        "package_role": (
+            (getattr(r, "package_role", None) or "hiring_package").strip().lower()
+            if getattr(r, "package_role", None)
+            else "hiring_package"
+        ),
         "sort_order": getattr(r, "sort_order", 0) or 0,
         "display_name": getattr(r, "display_name", None),
         "notification_message": getattr(r, "notification_message", None),
@@ -175,6 +180,11 @@ def _apply_base_document_preferences(bd: OnboardingBaseDocument, payload: dict) 
         bd.required = bool(payload.get("required", True))
     if "employee_visible" in payload:
         bd.employee_visible = bool(payload.get("employee_visible", True))
+    if "package_role" in payload:
+        role = (payload.get("package_role") or "hiring_package").strip().lower()
+        if role not in ("hiring_package", "additional"):
+            raise HTTPException(422, "package_role must be hiring_package or additional")
+        bd.package_role = role
     if "sort_order" in payload:
         bd.sort_order = int(payload.get("sort_order") or 0)
     if "display_name" in payload:
@@ -320,6 +330,12 @@ def create_base_document(
         sign_placement=placement,
         default_deadline_days=days,
     )
+    raw_role = payload.get("package_role")
+    if raw_role is not None:
+        role = str(raw_role or "").strip().lower()
+        if role not in ("hiring_package", "additional"):
+            raise HTTPException(422, "package_role must be hiring_package or additional")
+        bd.package_role = role
     db.add(bd)
     db.commit()
     db.refresh(bd)
@@ -359,6 +375,7 @@ def update_base_document(
         "assignee_user_ids",
         "required",
         "employee_visible",
+        "package_role",
         "sort_order",
         "display_name",
         "notification_message",

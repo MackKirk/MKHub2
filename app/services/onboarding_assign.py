@@ -1,6 +1,6 @@
 """Apply onboarding base documents to users; HR Documents folder helper."""
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Set
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -22,15 +22,48 @@ from .profile_complete import is_profile_complete
 
 SYSTEM_ONBOARDING_PACKAGE_NAME = "HR Onboarding"
 
+HIRING_PACKAGE_ROLE = "hiring_package"
+ADDITIONAL_PACKAGE_ROLE = "additional"
 
-def normalize_invite_document_ids(db: Session, document_ids: Optional[List[str]]) -> Optional[List[str]]:
+
+def normalize_package_role(value: Optional[str]) -> str:
+    """Missing/blank → hiring_package (legacy rows)."""
+    s = (value or "").strip().lower()
+    if s == ADDITIONAL_PACKAGE_ROLE:
+        return ADDITIONAL_PACKAGE_ROLE
+    return HIRING_PACKAGE_ROLE
+
+
+def is_hiring_package_role(value: Optional[str]) -> bool:
+    return normalize_package_role(value) == HIRING_PACKAGE_ROLE
+
+
+def is_additional_package_role(value: Optional[str]) -> bool:
+    return normalize_package_role(value) == ADDITIONAL_PACKAGE_ROLE
+
+
+def normalize_invite_document_ids(
+    db: Session,
+    document_ids: Optional[List[str]],
+    *,
+    empty_means_none: bool = False,
+) -> Optional[List[str]]:
     """
     Normalize invite document selection.
-    Returns None when empty (assign all active docs) or a deduped list of valid base document UUID strings.
-    Raises ValueError when IDs were provided but none are valid.
+
+    - None → None (assign all hiring_package docs), unless empty_means_none (unused for None)
+    - [] → None historically; when empty_means_none=True → [] (assign no base docs)
+    - [ids] → deduped list of valid visible hiring_package base document UUID strings
+
+    Raises ValueError when non-empty IDs were provided but none are valid.
     """
-    if not document_ids:
+    if document_ids is None:
         return None
+    if not isinstance(document_ids, list):
+        return None
+    if len(document_ids) == 0:
+        return [] if empty_means_none else None
+
     seen: set[str] = set()
     requested: List[str] = []
     for raw in document_ids:
@@ -40,7 +73,7 @@ def normalize_invite_document_ids(db: Session, document_ids: Optional[List[str]]
         seen.add(s)
         requested.append(s)
     if not requested:
-        return None
+        return [] if empty_means_none else None
 
     parsed_ids: List[UUID] = []
     for s in requested:
@@ -52,14 +85,18 @@ def normalize_invite_document_ids(db: Session, document_ids: Optional[List[str]]
         raise ValueError("No valid onboarding documents in selection")
 
     valid_rows = (
-        db.query(OnboardingBaseDocument.id)
+        db.query(OnboardingBaseDocument)
         .filter(
             OnboardingBaseDocument.id.in_(parsed_ids),
             OnboardingBaseDocument.employee_visible.isnot(False),
         )
         .all()
     )
-    valid_ids = [str(row[0]) for row in valid_rows]
+    valid_ids = [
+        str(row.id)
+        for row in valid_rows
+        if is_hiring_package_role(getattr(row, "package_role", None))
+    ]
     if not valid_ids:
         raise ValueError("No valid onboarding documents in selection")
     return valid_ids
@@ -67,7 +104,8 @@ def normalize_invite_document_ids(db: Session, document_ids: Optional[List[str]]
 
 def resolve_onboarding_document_filter(db: Session, subject_user_id: UUID) -> Optional[Set[str]]:
     """
-    Return None to assign all active base documents, or a set of allowed base document ID strings.
+    Return None to assign all hiring_package base documents, or a set of allowed base document ID strings.
+    An empty set means assign none (explicit empty list on the profile).
     """
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == subject_user_id).first()
     if not ep:
@@ -77,6 +115,7 @@ def resolve_onboarding_document_filter(db: Session, subject_user_id: UUID) -> Op
         return None
     if not isinstance(raw, list):
         return None
+    # Explicit empty list = no base docs (distinct from None = all)
     return {str(x) for x in raw if x}
 
 
@@ -142,6 +181,84 @@ def _get_or_create_assignment(db: Session, user_id: UUID, package_id: UUID, now:
     return a
 
 
+def ensure_assignment_items_for_base_doc(
+    db: Session,
+    *,
+    bd: OnboardingBaseDocument,
+    subject_user_id: UUID,
+    package_id: UUID,
+    hire_start: datetime,
+    now: datetime,
+) -> int:
+    """
+    Create OnboardingAssignmentItem(s) for one base document for a hire subject.
+    Returns number of items created. Respects delivery_mode, assignees, and dedupe.
+    """
+    if not getattr(bd, "employee_visible", True):
+        return 0
+
+    assignee_type = (getattr(bd, "assignee_type", None) or "employee").lower()
+    if assignee_type == "employee":
+        assignee_targets: List[tuple[UUID, Optional[UUID]]] = [(subject_user_id, None)]
+    else:
+        raw_ids = getattr(bd, "assignee_user_ids", None)
+        uid_list: List[UUID] = []
+        if isinstance(raw_ids, list):
+            seen = set()
+            for x in raw_ids:
+                try:
+                    u = UUID(str(x))
+                    if u not in seen:
+                        seen.add(u)
+                        uid_list.append(u)
+                except Exception:
+                    continue
+        if not uid_list and getattr(bd, "assignee_user_id", None):
+            uid_list = [bd.assignee_user_id]
+        if not uid_list:
+            return 0
+        assignee_targets = [(u, subject_user_id) for u in uid_list]
+
+    available_at = compute_available_at(bd, hire_start, now)
+    if available_at is None:
+        return 0
+
+    sd = getattr(bd, "signing_deadline_days", None)
+    signing_days = sd if isinstance(sd, int) and sd >= 1 else (bd.default_deadline_days or 7)
+    deadline = available_at + timedelta(days=signing_days)
+    disp = (getattr(bd, "display_name", None) or "").strip() or bd.name
+    msg = (getattr(bd, "notification_message", None) or "").strip() or None
+    req = getattr(bd, "required", True)
+    sig_req = getattr(bd, "requires_signature", True)
+
+    if not sig_req:
+        st = "signed" if available_at <= now else "scheduled"
+    else:
+        st = item_initial_status(available_at, now)
+
+    created = 0
+    for target_uid, subject_uid in assignee_targets:
+        asn = _get_or_create_assignment(db, target_uid, package_id, now)
+        if _assignment_item_exists(db, asn.id, bd.id, subject_uid):
+            continue
+        db.add(
+            OnboardingAssignmentItem(
+                assignment_id=asn.id,
+                base_document_id=bd.id,
+                required=req,
+                employee_visible=bool(getattr(bd, "employee_visible", True)),
+                available_at=available_at,
+                deadline_at=deadline,
+                status=st,
+                display_name=disp,
+                user_message=msg,
+                subject_user_id=subject_uid,
+            )
+        )
+        created += 1
+    return created
+
+
 def maybe_apply_onboarding_after_profile_complete(db: Session, user_id: UUID) -> None:
     """If profile just became complete, run onboarding assignment once (idempotent per user)."""
     if not is_profile_complete(db, user_id):
@@ -157,91 +274,64 @@ def is_onboarding_document_delivery_enabled(db: Session) -> bool:
 
 def apply_onboarding_after_profile_complete(db: Session, subject_user_id: UUID) -> None:
     """
-    Assign all onboarding base documents according to each document's preferences.
+    Assign hiring_package onboarding base documents according to each document's preferences.
     `subject_user_id` is the user who completed the profile wizard (the new hire).
+    Always attempts invite additional documents afterward (contracts / additional forms).
     """
     user = db.query(User).filter(User.id == subject_user_id).first()
     if not user:
-        return
-    if not is_onboarding_document_delivery_enabled(db):
         return
     now = datetime.now(timezone.utc)
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == subject_user_id).first()
     hire_dt = ep.hire_date if ep else None
     hire_start = hire_anchor_start(hire_dt, now)
 
-    pkg = get_or_create_system_package(db)
-    # Ensure assignment row exists for the new hire (system package); items deduped per (doc, subject) below
-    _get_or_create_assignment(db, subject_user_id, pkg.id, now)
+    if is_onboarding_document_delivery_enabled(db):
+        pkg = get_or_create_system_package(db)
+        # Ensure assignment row exists for the new hire (system package); items deduped per (doc, subject) below
+        _get_or_create_assignment(db, subject_user_id, pkg.id, now)
 
-    base_docs = (
-        db.query(OnboardingBaseDocument).order_by(OnboardingBaseDocument.sort_order.asc(), OnboardingBaseDocument.name.asc()).all()
-    )
-    allowed_doc_ids = resolve_onboarding_document_filter(db, subject_user_id)
+        base_docs = (
+            db.query(OnboardingBaseDocument)
+            .order_by(OnboardingBaseDocument.sort_order.asc(), OnboardingBaseDocument.name.asc())
+            .all()
+        )
+        allowed_doc_ids = resolve_onboarding_document_filter(db, subject_user_id)
 
-    for bd in base_docs:
-        if allowed_doc_ids is not None and str(bd.id) not in allowed_doc_ids:
-            continue
-        if not getattr(bd, "employee_visible", True):
-            continue
-        assignee_type = (getattr(bd, "assignee_type", None) or "employee").lower()
-        if assignee_type == "employee":
-            assignee_targets: List[tuple[UUID, Optional[UUID]]] = [(subject_user_id, None)]
-        else:
-            raw_ids = getattr(bd, "assignee_user_ids", None)
-            uid_list: List[UUID] = []
-            if isinstance(raw_ids, list):
-                seen = set()
-                for x in raw_ids:
-                    try:
-                        u = UUID(str(x))
-                        if u not in seen:
-                            seen.add(u)
-                            uid_list.append(u)
-                    except Exception:
-                        continue
-            if not uid_list and getattr(bd, "assignee_user_id", None):
-                uid_list = [bd.assignee_user_id]
-            if not uid_list:
+        for bd in base_docs:
+            if not is_hiring_package_role(getattr(bd, "package_role", None)):
                 continue
-            assignee_targets = [(u, subject_user_id) for u in uid_list]
-
-        available_at = compute_available_at(bd, hire_start, now)
-        if available_at is None:
-            continue
-
-        sd = getattr(bd, "signing_deadline_days", None)
-        signing_days = sd if isinstance(sd, int) and sd >= 1 else (bd.default_deadline_days or 7)
-        deadline = available_at + timedelta(days=signing_days)
-        disp = (getattr(bd, "display_name", None) or "").strip() or bd.name
-        msg = (getattr(bd, "notification_message", None) or "").strip() or None
-        req = getattr(bd, "required", True)
-        sig_req = getattr(bd, "requires_signature", True)
-
-        if not sig_req:
-            st = "signed" if available_at <= now else "scheduled"
-        else:
-            st = item_initial_status(available_at, now)
-
-        for target_uid, subject_uid in assignee_targets:
-            asn = _get_or_create_assignment(db, target_uid, pkg.id, now)
-            if _assignment_item_exists(db, asn.id, bd.id, subject_uid):
+            if allowed_doc_ids is not None and str(bd.id) not in allowed_doc_ids:
                 continue
-            db.add(
-                OnboardingAssignmentItem(
-                    assignment_id=asn.id,
-                    base_document_id=bd.id,
-                    required=req,
-                    employee_visible=bool(getattr(bd, "employee_visible", True)),
-                    available_at=available_at,
-                    deadline_at=deadline,
-                    status=st,
-                    display_name=disp,
-                    user_message=msg,
-                    subject_user_id=subject_uid,
-                )
+            ensure_assignment_items_for_base_doc(
+                db,
+                bd=bd,
+                subject_user_id=subject_user_id,
+                package_id=pkg.id,
+                hire_start=hire_start,
+                now=now,
             )
-    db.commit()
+        db.commit()
+
+    try:
+        from .invite_additional_documents import fire_invite_additional_documents
+
+        inviter_id = None
+        if ep is not None:
+            inviter_id = getattr(ep, "invited_by_user_id", None)
+        fire_invite_additional_documents(
+            db,
+            subject_user_id=subject_user_id,
+            requested_by_id=inviter_id,
+        )
+    except Exception as e:
+        import structlog
+
+        structlog.get_logger().warning(
+            "invite_additional_documents_hook_failed",
+            error=str(e),
+            subject_user_id=str(subject_user_id),
+        )
 
 
 def create_resend_assignment_items(

@@ -228,10 +228,10 @@ export const uiFieldHint = {
   ),
 } as const;
 
-/** Dark label tooltip (Opportunities list / filter chips). Portaled via AppTooltip. */
+/** Dark label tooltip (Opportunities list / filter chips). Portaled via AppTooltip into `#overlay-root`. */
 export const uiTooltip = {
-  /** Viewport-anchored shell only — do not add `relative` here (breaks `fixed`). */
-  shell: 'pointer-events-none fixed z-[9999]',
+  /** Viewport-anchored shell only — do not add `relative` here (breaks `fixed`). Above modal shells (z-50). */
+  shell: 'pointer-events-none fixed z-[100060]',
   panel:
     'relative inline-block whitespace-nowrap rounded px-2 py-1 text-xs text-white shadow-lg bg-gray-900',
   /** Multi-line explanations (e.g. disabled action reasons). */

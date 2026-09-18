@@ -46,7 +46,12 @@ type DocumentTemplateSelectionPanelProps = {
   subjectUserId?: string | null;
   mode: 'create' | 'add';
   showBlank?: boolean;
+  /** When false, hide From template / From background tabs and show only document-type presets. */
+  showBackground?: boolean;
+  /** When true, multi-page types confirm the full preset immediately (no page subset UI). */
+  fullDocumentTypesOnly?: boolean;
   designSystem?: boolean;
+  emptyPresetsMessage?: string;
   onConfirm: (selection: DocumentCreationSelection) => void | Promise<void>;
   onFooterChange: (footer: DocumentTemplateSelectionFooter) => void;
   onPhaseChange?: (phase: DocumentTemplateSelectionPhase, ctx?: DocumentTemplateSelectionPhaseContext) => void;
@@ -101,7 +106,10 @@ export function DocumentTemplateSelectionPanel({
   subjectUserId,
   mode,
   showBlank = true,
+  showBackground = true,
+  fullDocumentTypesOnly = false,
   designSystem = true,
+  emptyPresetsMessage,
   onConfirm,
   onFooterChange,
   onPhaseChange,
@@ -130,6 +138,10 @@ export function DocumentTemplateSelectionPanel({
     setSelectedPageIndices(new Set());
     setView('grid');
   }, []);
+
+  useEffect(() => {
+    if (!showBackground && tab === 'background') setTab('template');
+  }, [showBackground, tab]);
 
   useEffect(() => {
     if (tab === 'background') resetSelection();
@@ -190,11 +202,15 @@ export function DocumentTemplateSelectionPanel({
       const dt = visibleDocumentTypes.find((d) => d.id === documentTypeId);
       if (!dt) return;
       if (!isMultiPageTemplate(dt)) return;
+      if (fullDocumentTypesOnly) {
+        void confirmPreset(documentTypeId);
+        return;
+      }
       setSelectedTypeId(documentTypeId);
       setSelectedPageIndices(new Set());
       setView('options');
     },
-    [busy, disabled, visibleDocumentTypes],
+    [busy, confirmPreset, disabled, fullDocumentTypesOnly, visibleDocumentTypes],
   );
 
   const handleBackgroundSelect = useCallback(
@@ -441,8 +457,10 @@ export function DocumentTemplateSelectionPanel({
   const templateGrid =
     visibleDocumentTypes.length === 0 && !isLoading ? (
       <p className="text-sm text-gray-500 py-8 text-center">
-        No document templates yet. Use &quot;From background&quot; to start with a single page, or create templates
-        in Document templates.
+        {emptyPresetsMessage ||
+          (showBackground
+            ? 'No document templates yet. Use "From background" to start with a single page, or create templates in Document templates.'
+            : 'No employee contracts available. Add Document Types in the Employee Contract category.')}
       </p>
     ) : (
       <DocumentTypePicker
@@ -460,8 +478,10 @@ export function DocumentTemplateSelectionPanel({
     <>
       {view === 'grid' ? (
         <>
-          <TemplateTabButtons tab={tab} onTabChange={setTab} disabled={disabled || busy} />
-          {tab === 'template' ? (
+          {showBackground ? (
+            <TemplateTabButtons tab={tab} onTabChange={setTab} disabled={disabled || busy} />
+          ) : null}
+          {tab === 'template' || !showBackground ? (
             templateGrid
           ) : (
             <BackgroundPagePicker

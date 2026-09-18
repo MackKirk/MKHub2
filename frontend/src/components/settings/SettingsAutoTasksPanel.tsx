@@ -39,9 +39,11 @@ type AutoTaskTrigger = {
   task_description: string;
   enabled: boolean;
   due_in_days: number | null;
+  due_anchor: 'invite_sent' | 'hire_date';
   notify_push: boolean;
   has_recipients: boolean;
   chain_only: boolean;
+  always_on: boolean;
   starts_after_key: string | null;
   starts_after_name: string | null;
   starts_after_title: string | null;
@@ -71,7 +73,12 @@ type DivisionOption = { id: string; label: string };
 type Props = { canEdit: boolean };
 
 const PLACEHOLDER_HINT =
-  'You can use {name}, {email}, {job_title}, {hire_date}, and {equipment_list}. They are filled in when the task is created.';
+  'You can use {name}, {email}, {phone}, {job_title}, {hire_date}, {supervisor}, {departments}, {project_divisions}, {pay}, and {equipment_list}. They are filled in when the task is created.';
+
+const DUE_ANCHOR_OPTIONS = [
+  { value: 'invite_sent', label: 'Invite sent' },
+  { value: 'hire_date', label: 'Hire date' },
+];
 
 function logStatusBadge(status: string) {
   if (status === 'created') return <AppBadge variant="success">Created</AppBadge>;
@@ -99,6 +106,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
   const [divisionIds, setDivisionIds] = useState<string[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [dueInDays, setDueInDays] = useState('');
+  const [dueAnchor, setDueAnchor] = useState<'invite_sent' | 'hire_date'>('invite_sent');
   const [startsAfterKey, setStartsAfterKey] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -148,6 +156,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
       recipient_user_ids: string[];
       recipient_division_ids: string[];
       due_in_days: number | null;
+      due_anchor: 'invite_sent' | 'hire_date';
       notify_push: boolean;
       starts_after_key: string | null;
     }) =>
@@ -158,6 +167,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
         recipient_user_ids: payload.recipient_user_ids,
         recipient_division_ids: payload.recipient_division_ids,
         due_in_days: payload.due_in_days,
+        due_anchor: payload.due_anchor,
         notify_push: payload.notify_push,
         notify_email: false,
         starts_after_key: payload.starts_after_key,
@@ -179,6 +189,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
     setDivisionIds(item.recipients.divisions.map((d) => d.id));
     setEnabled(item.enabled);
     setDueInDays(item.due_in_days != null ? String(item.due_in_days) : '');
+    setDueAnchor(item.due_anchor === 'hire_date' ? 'hire_date' : 'invite_sent');
     setStartsAfterKey(item.starts_after_key || '');
   };
 
@@ -193,8 +204,8 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
     let due: number | null = null;
     if (trimmed) {
       const parsed = Number(trimmed);
-      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 365) {
-        toast.error('Expected completion must be 1–365 days, or empty');
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 365) {
+        toast.error('Expected completion must be 0–365 days, or empty');
         return;
       }
       due = parsed;
@@ -211,6 +222,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
       recipient_user_ids: userIds,
       recipient_division_ids: divisionIds,
       due_in_days: due,
+      due_anchor: dueAnchor,
       notify_push: editing.notify_push,
       starts_after_key: startsAfterKey || null,
     });
@@ -244,9 +256,12 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
                       <p className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{item.task_title}</p>
                       <p className={uiCx(uiTypography.helper, 'mt-0.5 truncate')}>
                         {recipientLine(item)}
+                        {item.always_on ? ' · Always on invite' : ''}
                         {item.starts_after_name ? ` · after ${item.starts_after_name}` : ''}
-                        {item.due_in_days
-                          ? ` · ${item.due_in_days} day${item.due_in_days === 1 ? '' : 's'}`
+                        {item.due_in_days != null
+                          ? ` · ${item.due_in_days} day${item.due_in_days === 1 ? '' : 's'} from ${
+                              item.due_anchor === 'hire_date' ? 'hire date' : 'invite'
+                            }`
                           : ''}
                         {!item.enabled ? ' · Off' : ''}
                       </p>
@@ -359,16 +374,27 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
                   : 'Starts after\n\nWait until this other auto task is done before creating this one. If that task was not created for the same hire (for example the invite checkbox was off), this task starts immediately.'
               }
             />
+            <AppSelect
+              label="Due from"
+              options={DUE_ANCHOR_OPTIONS}
+              value={dueAnchor}
+              onChange={(e) =>
+                setDueAnchor(e.target.value === 'hire_date' ? 'hire_date' : 'invite_sent')
+              }
+              disabled={!canEdit || saveMutation.isPending}
+              sortOptions={false}
+              fieldHint="Due from\n\nHire date: due = hire date + offset days. Invite sent: due = when the task is created + offset days."
+            />
             <AppInput
               label="Expected completion (days)"
               type="number"
-              min={1}
+              min={0}
               max={365}
               value={dueInDays}
               onChange={(e) => setDueInDays(e.target.value)}
               placeholder="Optional"
               disabled={!canEdit || saveMutation.isPending}
-              fieldHint="Expected completion\n\nOptional. Number of days from when the task is created until it is due."
+              fieldHint="Expected completion\n\nOptional. Offset in days from Due from (0 is allowed, e.g. due on hire date)."
             />
             <AppCheckbox
               label="Enabled"

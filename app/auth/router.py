@@ -114,29 +114,47 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
         has_perm = False
     if not (has_admin or has_perm):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    from ..services.invite_hire import resolve_invite_org_and_title, _opt_str
+
+    try:
+        division_ids_list, project_division_ids_list, job_title = resolve_invite_org_and_title(req)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
     token = str(uuid.uuid4())
-    email_local = req.email_personal.split("@")[0]
-    # Extract name parts from email (assume format like first.last or first_last)
-    name_parts = email_local.replace('.', ' ').replace('_', ' ').split()
-    first_name = name_parts[0] if name_parts else email_local
-    last_name = name_parts[1] if len(name_parts) > 1 else email_local
-    suggested = find_available_username(db, first_name, last_name)
-    
-    # Store division_ids if provided (for multiple departments)
-    division_ids_list = None
-    if req.division_ids and len(req.division_ids) > 0:
-        division_ids_list = req.division_ids
-    elif req.division_id:
-        # Legacy: support single division_id for backward compatibility
-        division_ids_list = [req.division_id]
+    req_first = _opt_str(req.first_name)
+    req_last = _opt_str(req.last_name)
+    if req_first and req_last:
+        suggested = find_available_username(db, req_first, req_last)
+    else:
+        email_local = req.email_personal.split("@")[0]
+        name_parts = email_local.replace('.', ' ').replace('_', ' ').split()
+        first_name = name_parts[0] if name_parts else email_local
+        last_name = name_parts[1] if len(name_parts) > 1 else email_local
+        suggested = find_available_username(db, first_name, last_name)
 
     try:
         from ..services.onboarding_assign import normalize_invite_document_ids
+        from ..services.invite_additional_documents import validate_invite_additional_documents
 
-        document_ids_list = normalize_invite_document_ids(db, req.document_ids)
+        include_pkg = bool(getattr(req, "include_onboarding_package", True))
+        if not include_pkg:
+            document_ids_list: Optional[list] = []
+        elif req.document_ids is not None and len(req.document_ids) > 0:
+            document_ids_list = normalize_invite_document_ids(db, req.document_ids, empty_means_none=False)
+        else:
+            # Default package: all active
+            document_ids_list = None
+
+        additional_documents = validate_invite_additional_documents(
+            db, getattr(req, "additional_documents", None) or []
+        )
+    except HTTPException:
+        raise
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    
+        raise HTTPException(status_code=422, detail=str(e))
+
     inv = Invite(
         email_personal=req.email_personal,
         token=token,
@@ -144,7 +162,9 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
         created_by=user.id,
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         division_ids=division_ids_list,
+        project_division_ids=project_division_ids_list,
         document_ids=document_ids_list,
+        additional_documents=additional_documents or None,
         onboarding_requirements={
             "needs_email": bool(req.needs_email),
             "needs_business_card": bool(req.needs_business_card),
@@ -153,8 +173,17 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
             "needs_equipment": bool(req.needs_equipment),
             "equipment_list": req.equipment_list,
         },
-        job_title=req.job_title,
-        hire_date=req.hire_date,
+        first_name=req_first,
+        last_name=req_last,
+        phone=_opt_str(req.phone),
+        job_title=job_title,
+        hire_date=_opt_str(req.hire_date),
+        work_email=_opt_str(str(req.work_email) if req.work_email else None),
+        work_phone=_opt_str(req.work_phone),
+        manager_user_id=_opt_str(req.manager_user_id),
+        pay_rate=_opt_str(req.pay_rate),
+        pay_type=_opt_str(req.pay_type),
+        employment_type=_opt_str(req.employment_type),
     )
     db.add(inv)
     db.flush()
@@ -805,7 +834,14 @@ def invite_validate(token: str, db: Session = Depends(get_db)):
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if inv.accepted_at is not None or (expires_at and expires_at < now_utc):
         raise HTTPException(status_code=400, detail="Invalid or expired invite")
-    return {"email_personal": inv.email_personal, "suggested_username": inv.suggested_username}
+    return {
+        "email_personal": inv.email_personal,
+        "suggested_username": inv.suggested_username,
+        "first_name": inv.first_name,
+        "last_name": inv.last_name,
+        "job_title": inv.job_title,
+        "hire_date": inv.hire_date,
+    }
 
 
 # Admin utilities for testing/resetting
@@ -908,6 +944,7 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
 
     # Create or update profile with provided details (non-breaking if omitted)
     from ..models.models import EmployeeProfile
+    from ..services.invite_hire import apply_invite_fields_to_profile, _opt_str as _invite_opt_str
 
     def _parse_dt(value: Optional[str]) -> Optional[datetime]:
         if not value:
@@ -923,40 +960,52 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
         return None
 
     try:
-        ep = None
+        ep = EmployeeProfile(user_id=user.id)
         if payload.profile:
-            ep = EmployeeProfile(user_id=user.id)
             data = payload.profile.dict(exclude_unset=True)
-            # Convert date-like fields
             for k in ("date_of_birth", "hire_date", "termination_date"):
                 if k in data:
                     data[k] = _parse_dt(data.get(k))
-            # Convert manager id to UUID if provided
             if data.get("manager_user_id"):
                 try:
                     data["manager_user_id"] = uuid.UUID(str(data["manager_user_id"]))
                 except Exception:
                     data["manager_user_id"] = None
-            # Always persist names from payload
             if payload.first_name:
                 data["first_name"] = payload.first_name
             if payload.last_name:
                 data["last_name"] = payload.last_name
-            data["onboarding_document_ids"] = inv.document_ids
             for field, value in data.items():
                 setattr(ep, field, value)
-            db.add(ep)
-            db.commit()
-        else:
-            # Create minimal profile with names
-            ep = EmployeeProfile(
-                user_id=user.id,
-                first_name=payload.first_name,
-                last_name=payload.last_name,
-                onboarding_document_ids=inv.document_ids,
-            )
-            db.add(ep)
-            db.commit()
+
+        apply_invite_fields_to_profile(
+            ep,
+            inv,
+            payload_first_name=payload.first_name,
+            payload_last_name=payload.last_name,
+        )
+        # Registration names win when provided
+        if _invite_opt_str(payload.first_name):
+            ep.first_name = payload.first_name.strip()
+        if _invite_opt_str(payload.last_name):
+            ep.last_name = payload.last_name.strip()
+        # Explicit profile payload wins over invite defaults for set keys
+        if payload.profile:
+            data = payload.profile.dict(exclude_unset=True)
+            for k in ("date_of_birth", "hire_date", "termination_date"):
+                if k in data:
+                    data[k] = _parse_dt(data.get(k))
+            if data.get("manager_user_id"):
+                try:
+                    data["manager_user_id"] = uuid.UUID(str(data["manager_user_id"]))
+                except Exception:
+                    data["manager_user_id"] = None
+            for field, value in data.items():
+                if value is not None and value != "":
+                    setattr(ep, field, value)
+
+        db.add(ep)
+        db.commit()
     except Exception as e:
         structlog.get_logger().warning("profile_create_failed", error=str(e))
         db.rollback()
