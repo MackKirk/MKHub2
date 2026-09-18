@@ -1,4 +1,4 @@
-"""Calendar data for Projects list Calendar View (B1: active range ∪ shifts)."""
+"""Calendar data for Projects list Calendar View (days with scheduled shifts only)."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
@@ -330,6 +330,7 @@ def get_project_calendar_data(
 
     days_out: dict[str, list[dict[str, Any]]] = {}
     calendar_days = _daterange(cal_start, cal_end)
+    projects_with_shifts: set[str] = set()
 
     for p in projects:
         pid = str(p.id)
@@ -338,11 +339,12 @@ def get_project_calendar_data(
         for day in calendar_days:
             day_key = day.isoformat()
             day_shifts = shifts_by_project_day.get((pid, day_key), [])
-            in_range = _day_in_active_range(day, active_start, active_end)
-            if not in_range and not day_shifts:
+            if not day_shifts:
                 continue
+            in_range = _day_in_active_range(day, active_start, active_end)
             entry = build_project_entry(p, day, day_shifts, in_range, has_date_range)
             days_out.setdefault(day_key, []).append(entry)
+            projects_with_shifts.add(pid)
 
     for day_key in days_out:
         days_out[day_key].sort(key=lambda e: (e.get("code") or "", e.get("name") or ""))
@@ -352,7 +354,7 @@ def get_project_calendar_data(
         "meta": {
             "start": start,
             "end": end,
-            "project_count": len(projects),
+            "project_count": len(projects_with_shifts),
             "days_with_activity": len(days_out),
         },
     }
