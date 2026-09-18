@@ -234,7 +234,7 @@ export default function VeriClockImport() {
     try {
       const data = await api<PreviewResponse>('POST', '/integrations/vericlock/preview', {
         csv_text: text,
-        hours_only_date: opts?.hoursOnlyDate ?? hoursOnlyDate || null,
+        hours_only_date: (opts?.hoursOnlyDate ?? hoursOnlyDate) || null,
         allow_unmatched_jobs: opts?.allowUnmatchedJobs ?? allowUnmatchedJobs,
         overwrite_existing: opts?.overwriteExisting ?? overwriteExisting,
       });
