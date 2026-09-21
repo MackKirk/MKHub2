@@ -2437,14 +2437,47 @@ def create_emergency_contact(user_id: str, payload: dict = Body(...), db: Sessio
         if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
             raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeEmergencyContact
+    import re
+
+    name = (payload.get("name") or "").strip()
+    mobile_phone = (payload.get("mobile_phone") or "").strip() or None
+    relationship = (payload.get("relationship") or "").strip() or None
+
+    def _norm_name(value: Optional[str]) -> str:
+        return " ".join(str(value or "").strip().lower().split())
+
+    def _norm_phone(value: Optional[str]) -> str:
+        return re.sub(r"\D+", "", str(value or ""))
+
+    # Deduplicate double-submits / script spam: same user + name + mobile already exists.
+    want_name = _norm_name(name)
+    want_phone = _norm_phone(mobile_phone)
+    if want_name and want_phone:
+        for existing in (
+            db.query(EmployeeEmergencyContact)
+            .filter(EmployeeEmergencyContact.user_id == user_id)
+            .all()
+        ):
+            if _norm_name(existing.name) == want_name and _norm_phone(existing.mobile_phone) == want_phone:
+                if str(user.id) == str(user_id):
+                    try:
+                        from ..services.onboarding_assign import maybe_apply_onboarding_after_profile_complete
+
+                        maybe_apply_onboarding_after_profile_complete(db, user.id)
+                    except Exception as ex:
+                        structlog.get_logger().warning(
+                            "onboarding_after_emergency_contact_failed", error=str(ex)
+                        )
+                return {"id": str(existing.id), "deduped": True}
+
     e = EmployeeEmergencyContact(
         user_id=user_id,
-        name=payload.get("name"),
-        relationship=payload.get("relationship"),
+        name=name or payload.get("name"),
+        relationship=relationship,
         is_primary=bool(payload.get("is_primary")),
         work_phone=payload.get("work_phone"),
         home_phone=payload.get("home_phone"),
-        mobile_phone=payload.get("mobile_phone"),
+        mobile_phone=mobile_phone,
         email=payload.get("email"),
         address=payload.get("address"),
     )

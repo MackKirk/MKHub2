@@ -278,6 +278,29 @@ def _send_signature_template(
     )
 
 
+def _active_signature_exists_for_document_type(
+    db: Session,
+    *,
+    type_id: UUID,
+    subject_user_id: UUID,
+) -> bool:
+    """True if this hire already has a non-cancelled signature request for this document type."""
+    from ..models.models import DocumentSignatureRequest
+
+    row = (
+        db.query(DocumentSignatureRequest.id)
+        .join(UserDocument, UserDocument.id == DocumentSignatureRequest.user_document_id)
+        .filter(
+            UserDocument.document_type_id == type_id,
+            UserDocument.subject_user_id == subject_user_id,
+            DocumentSignatureRequest.cancelled_at.is_(None),
+            DocumentSignatureRequest.status != "cancelled",
+        )
+        .first()
+    )
+    return row is not None
+
+
 def _send_document_type(
     db: Session,
     *,
@@ -294,6 +317,16 @@ def _send_document_type(
         link_standalone_doc_to_employee_subject,
     )
     from ..services.document_title import build_scoped_document_title, unique_title_in_scope
+
+    if _active_signature_exists_for_document_type(
+        db, type_id=type_id, subject_user_id=subject_user_id
+    ):
+        logger.info(
+            "invite_additional_document_type_skipped_duplicate type=%s subject=%s",
+            str(type_id),
+            str(subject_user_id),
+        )
+        return
 
     doc_type = db.query(DocumentType).filter(DocumentType.id == type_id).first()
     if not doc_type:
@@ -426,12 +459,33 @@ def fire_invite_additional_documents(
 ) -> None:
     """
     Create signature requests for invite additional documents (idempotent per profile).
-    Best-effort per item; marks applied_at even if some items skip/fail.
+
+    Claims ``invite_additional_documents_applied_at`` up front (with row lock when
+    supported) so concurrent profile/emergency-complete hooks cannot re-enter and
+    duplicate Document Builder contracts. Best-effort per item after the claim.
     """
-    ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == subject_user_id).first()
+    ep = (
+        db.query(EmployeeProfile)
+        .filter(EmployeeProfile.user_id == subject_user_id)
+        .with_for_update()
+        .first()
+    )
     if not ep:
         return
     if getattr(ep, "invite_additional_documents_applied_at", None):
+        return
+
+    # Claim before creating any signature requests. _create_signature_request commits
+    # mid-flight; without an early claim, a second hook can still see applied_at=NULL.
+    ep.invite_additional_documents_applied_at = datetime.now(timezone.utc)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "invite_additional_documents_claim_failed subject=%s",
+            str(subject_user_id),
+        )
         return
 
     raw = getattr(ep, "invite_additional_documents", None)
@@ -497,17 +551,9 @@ def fire_invite_additional_documents(
             )
             errors.append({"source": source, "id": rid, "name": name, "error": str(exc)[:500]})
 
-    ep.invite_additional_documents_applied_at = datetime.now(timezone.utc)
     if errors:
-        # Store lightly for support; do not block onboarding
-        try:
-            existing = getattr(ep, "invite_additional_documents", None) or []
-            # keep list as-is; errors only logged
-            _ = existing
-        except Exception:
-            pass
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
-        logger.exception("invite_additional_documents_commit_failed")
+        logger.warning(
+            "invite_additional_documents_partial_errors subject=%s count=%s",
+            str(subject_user_id),
+            len(errors),
+        )

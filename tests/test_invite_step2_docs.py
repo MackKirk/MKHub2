@@ -171,6 +171,13 @@ class TestBuildHireAssignments(unittest.TestCase):
 
 
 class TestFireInviteAdditionalDocuments(unittest.TestCase):
+    def _profile_first(self, db, ep):
+        """Wire MagicMock for EmployeeProfile .filter().with_for_update().first()."""
+        locked = MagicMock()
+        locked.first.return_value = ep
+        db.query.return_value.filter.return_value.with_for_update.return_value = locked
+        return locked
+
     def test_idempotent_when_already_applied(self):
         subject = uuid.uuid4()
         ep = SimpleNamespace(
@@ -179,7 +186,7 @@ class TestFireInviteAdditionalDocuments(unittest.TestCase):
             invited_by_user_id=uuid.uuid4(),
         )
         db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = ep
+        self._profile_first(db, ep)
         fire_invite_additional_documents(db, subject_user_id=subject)
         db.commit.assert_not_called()
 
@@ -194,14 +201,9 @@ class TestFireInviteAdditionalDocuments(unittest.TestCase):
         inviter_user = SimpleNamespace(id=inviter)
 
         db = MagicMock()
-        results = [ep, inviter_user]
-
-        def filter_first():
-            if results:
-                return results.pop(0)
-            return None
-
-        db.query.return_value.filter.return_value.first.side_effect = filter_first
+        self._profile_first(db, ep)
+        # Inviter lookup: query(User).filter(...).first() — no with_for_update
+        db.query.return_value.filter.return_value.first.return_value = inviter_user
         fire_invite_additional_documents(db, subject_user_id=subject, requested_by_id=inviter)
         self.assertIsNotNone(ep.invite_additional_documents_applied_at)
         db.commit.assert_called()
@@ -219,8 +221,8 @@ class TestFireInviteAdditionalDocuments(unittest.TestCase):
         )
         inviter_user = SimpleNamespace(id=inviter)
         db = MagicMock()
-        results = [ep, inviter_user]
-        db.query.return_value.filter.return_value.first.side_effect = lambda: results.pop(0) if results else None
+        self._profile_first(db, ep)
+        db.query.return_value.filter.return_value.first.return_value = inviter_user
         fire_invite_additional_documents(db, subject_user_id=subject, requested_by_id=inviter)
         self.assertIsNotNone(ep.invite_additional_documents_applied_at)
         mock_send.assert_called_once()
@@ -238,8 +240,8 @@ class TestFireInviteAdditionalDocuments(unittest.TestCase):
         )
         inviter_user = SimpleNamespace(id=inviter)
         db = MagicMock()
-        results = [ep, inviter_user]
-        db.query.return_value.filter.return_value.first.side_effect = lambda: results.pop(0) if results else None
+        self._profile_first(db, ep)
+        db.query.return_value.filter.return_value.first.return_value = inviter_user
         fire_invite_additional_documents(db, subject_user_id=subject, requested_by_id=inviter)
         mock_ob.assert_called_once()
         mock_dt.assert_not_called()
@@ -260,13 +262,56 @@ class TestFireInviteAdditionalDocuments(unittest.TestCase):
         )
         inviter_user = SimpleNamespace(id=inviter)
         db = MagicMock()
-        results = [ep, inviter_user]
-        db.query.return_value.filter.return_value.first.side_effect = lambda: results.pop(0) if results else None
+        self._profile_first(db, ep)
+        db.query.return_value.filter.return_value.first.return_value = inviter_user
         fire_invite_additional_documents(db, subject_user_id=subject, requested_by_id=inviter)
         self.assertIsNotNone(ep.invite_additional_documents_applied_at)
         mock_sig.assert_not_called()
         mock_dt.assert_not_called()
 
+    @patch("app.services.invite_additional_documents._send_document_type")
+    def test_second_call_skips_after_claim(self, mock_send):
+        subject = uuid.uuid4()
+        inviter = uuid.uuid4()
+        doc_id = str(uuid.uuid4())
+        ep = SimpleNamespace(
+            invite_additional_documents_applied_at=None,
+            invite_additional_documents=[{"source": "document_type", "id": doc_id, "name": "X"}],
+            invited_by_user_id=inviter,
+        )
+        inviter_user = SimpleNamespace(id=inviter)
+        db = MagicMock()
+        self._profile_first(db, ep)
+        db.query.return_value.filter.return_value.first.return_value = inviter_user
+        fire_invite_additional_documents(db, subject_user_id=subject, requested_by_id=inviter)
+        mock_send.assert_called_once()
+        mock_send.reset_mock()
+        fire_invite_additional_documents(db, subject_user_id=subject, requested_by_id=inviter)
+        mock_send.assert_not_called()
+
+
+class TestActiveSignatureExistsForDocumentType(unittest.TestCase):
+    def test_true_when_row_found(self):
+        from app.services.invite_additional_documents import _active_signature_exists_for_document_type
+
+        db = MagicMock()
+        db.query.return_value.join.return_value.filter.return_value.first.return_value = (uuid.uuid4(),)
+        self.assertTrue(
+            _active_signature_exists_for_document_type(
+                db, type_id=uuid.uuid4(), subject_user_id=uuid.uuid4()
+            )
+        )
+
+    def test_false_when_missing(self):
+        from app.services.invite_additional_documents import _active_signature_exists_for_document_type
+
+        db = MagicMock()
+        db.query.return_value.join.return_value.filter.return_value.first.return_value = None
+        self.assertFalse(
+            _active_signature_exists_for_document_type(
+                db, type_id=uuid.uuid4(), subject_user_id=uuid.uuid4()
+            )
+        )
 
 if __name__ == "__main__":
     unittest.main()

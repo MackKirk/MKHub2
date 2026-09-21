@@ -5677,6 +5677,7 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
   const [eEmail, setEEmail] = useState('');
   const [eAddress, setEAddress] = useState('');
   const [eIsPrimary, setEIsPrimary] = useState(false);
+  const [saving, setSaving] = useState(false);
   
   const formatPhone = (v:string)=>{
     const d = String(v||'').replace(/\D+/g,'').slice(0,11);
@@ -5703,10 +5704,12 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
   };
   
   const handleCreate = async () => {
+    if (saving) return;
     if (!name.trim()) {
       toast.error('Name is required');
       return;
     }
+    setSaving(true);
     try {
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`, {
         name,
@@ -5731,14 +5734,18 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
       refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to create contact');
+    } finally {
+      setSaving(false);
     }
   };
   
   const handleUpdate = async (contactId: string) => {
+    if (saving) return;
     if (!eName.trim()) {
       toast.error('Name is required');
       return;
     }
+    setSaving(true);
     try {
       await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`, {
         name: eName,
@@ -5755,6 +5762,8 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
       refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to update contact');
+    } finally {
+      setSaving(false);
     }
   };
   
@@ -5943,6 +5952,7 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
       <AppFormModal
         open={createOpen}
         onClose={() => {
+          if (saving) return;
           setCreateOpen(false);
           resetCreateForm();
         }}
@@ -5956,6 +5966,7 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
               type="button"
               variant="secondary"
               size="sm"
+              disabled={saving}
               onClick={() => {
                 setCreateOpen(false);
                 resetCreateForm();
@@ -5963,7 +5974,7 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
             >
               Cancel
             </AppButton>
-            <AppButton type="button" size="sm" onClick={handleCreate}>
+            <AppButton type="button" size="sm" disabled={saving} loading={saving} onClick={handleCreate}>
               Create
             </AppButton>
           </div>
@@ -5974,7 +5985,10 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
 
       <AppFormModal
         open={editId !== null}
-        onClose={cancelEdit}
+        onClose={() => {
+          if (saving) return;
+          cancelEdit();
+        }}
         title="Edit Emergency Contact"
         description="Update contact details or mark as primary."
         formWidth="comfortable"
@@ -5985,15 +5999,22 @@ function EmergencyContactsSection({ userId, canEdit, showFieldHints }: { userId:
               variant="secondary"
               size="sm"
               className="!text-red-600 hover:!bg-red-50"
+              disabled={saving}
               onClick={() => editId && handleDelete(editId)}
             >
               Delete
             </AppButton>
             <div className="flex items-center gap-2">
-              <AppButton type="button" variant="secondary" size="sm" onClick={cancelEdit}>
+              <AppButton type="button" variant="secondary" size="sm" disabled={saving} onClick={cancelEdit}>
                 Cancel
               </AppButton>
-              <AppButton type="button" size="sm" onClick={() => editId && handleUpdate(editId)}>
+              <AppButton
+                type="button"
+                size="sm"
+                disabled={saving}
+                loading={saving}
+                onClick={() => editId && handleUpdate(editId)}
+              >
                 Save
               </AppButton>
             </div>
@@ -6492,6 +6513,7 @@ function VisaInformationSection({
   const [eExpiryDate, setEExpiryDate] = useState('');
   const [eStatus, setEStatus] = useState('Active');
   const [eNotes, setENotes] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const visaStatusOptions = [
     { value: 'CURRENT', label: 'CURRENT' },
@@ -6540,10 +6562,12 @@ function VisaInformationSection({
   };
 
   const handleCreate = async () => {
+    if (saving) return;
     if (!visaType.trim()) {
       toast.error('Visa type is required');
       return;
     }
+    setSaving(true);
     try {
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/visas`, {
         visa_type: visaType,
@@ -6560,15 +6584,19 @@ function VisaInformationSection({
       await refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to create visa entry');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleUpdate = async () => {
+    if (saving) return;
     if (!editId) return;
     if (!eVisaType.trim()) {
       toast.error('Visa type is required');
       return;
     }
+    setSaving(true);
     try {
       await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/visas/${editId}`, {
         visa_type: eVisaType,
@@ -6584,6 +6612,8 @@ function VisaInformationSection({
       await refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to update visa entry');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -6791,6 +6821,7 @@ function VisaInformationSection({
               type="button"
               variant="secondary"
               size="sm"
+              disabled={saving}
               onClick={() => {
                 setCreateOpen(false);
                 resetCreateForm();
@@ -6798,7 +6829,7 @@ function VisaInformationSection({
             >
               Cancel
             </AppButton>
-            <AppButton type="button" size="sm" onClick={handleCreate}>
+            <AppButton type="button" size="sm" disabled={saving} loading={saving} onClick={handleCreate}>
               Create
             </AppButton>
           </div>
@@ -6809,17 +6840,20 @@ function VisaInformationSection({
 
       <AppFormModal
         open={editId !== null}
-        onClose={() => setEditId(null)}
+        onClose={() => {
+          if (saving) return;
+          setEditId(null);
+        }}
         title="Edit Visa Entry"
         description="Work permit, study permit, or other visa details."
         formWidth="comfortable"
         quickInfo={showFieldHints ? userVisaEntryQuickInfo : undefined}
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={() => setEditId(null)}>
+            <AppButton type="button" variant="secondary" size="sm" disabled={saving} onClick={() => setEditId(null)}>
               Cancel
             </AppButton>
-            <AppButton type="button" size="sm" onClick={handleUpdate}>
+            <AppButton type="button" size="sm" disabled={saving} loading={saving} onClick={handleUpdate}>
               Save
             </AppButton>
           </div>
