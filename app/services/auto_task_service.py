@@ -23,6 +23,7 @@ from ..services.auto_task_catalog import (
     ALWAYS_ON_ONBOARDING_KEYS,
     AUTO_TASK_TRIGGERS,
     ONBOARDING_FLAG_TO_TRIGGER,
+    TRIGGER_KEY_TO_NOTE_FIELD,
     get_trigger,
     render_template,
     sort_keys_by_starts_after,
@@ -39,6 +40,28 @@ ORIGIN_AUTO_TASK = "auto_task"
 def _dash(value: Optional[str]) -> str:
     text = (value or "").strip()
     return text if text else "—"
+
+
+def requirement_notes_map(req: InviteRequest) -> dict[str, str]:
+    """Normalize per-card invite notes; equipment_list remains a legacy alias."""
+    out: dict[str, str] = {}
+    raw: dict[str, Any] = {}
+    rn = getattr(req, "requirement_notes", None)
+    if rn is not None:
+        if hasattr(rn, "model_dump"):
+            raw = rn.model_dump() or {}
+        elif isinstance(rn, dict):
+            raw = rn
+    for key in ("email", "business_card", "phone", "computer", "vehicle", "equipment"):
+        val = raw.get(key)
+        text = (str(val).strip() if val is not None else "")
+        if text:
+            out[key] = text
+    if "equipment" not in out:
+        legacy = (req.equipment_list or "").strip() if req.equipment_list else ""
+        if legacy:
+            out["equipment"] = legacy
+    return out
 
 
 def _parse_uuid(value: str) -> Optional[uuid.UUID]:
@@ -516,6 +539,7 @@ def invite_context(
             # Project division labels are not always SettingItems; keep ids if unlabeled.
             project_divisions = ", ".join(proj_ids)
 
+    notes = requirement_notes_map(req)
     return {
         "name": invite_display_name(req),
         "email": _dash(email),
@@ -527,7 +551,8 @@ def invite_context(
         "departments": _dash(departments),
         "project_divisions": _dash(project_divisions),
         "pay": _dash(pay),
-        "equipment_list": _dash(req.equipment_list),
+        "equipment_list": _dash(notes.get("equipment")),
+        "notes_block": "",
     }
 
 
@@ -538,13 +563,15 @@ def fire_onboarding_invite_auto_tasks(
     req: InviteRequest,
     requested_by_id: uuid.UUID,
 ) -> None:
-    context = invite_context(req, db=db)
+    base_context = invite_context(req, db=db)
+    notes = requirement_notes_map(req)
     origin_id = str(invite.id)
     origin_label = req.email_personal
     flags = {
         "needs_email": bool(req.needs_email),
         "needs_business_card": bool(req.needs_business_card),
         "needs_phone": bool(req.needs_phone),
+        "needs_computer": bool(req.needs_computer),
         "needs_vehicle": bool(req.needs_vehicle),
         "needs_equipment": bool(req.needs_equipment),
     }
@@ -563,6 +590,14 @@ def fire_onboarding_invite_auto_tasks(
     )
     ordered_keys = sort_keys_by_starts_after(requested_keys, starts_after_map_from_routes(routes))
     for trigger_key in ordered_keys:
+        context = {**base_context, "notes_block": ""}
+        note_field = TRIGGER_KEY_TO_NOTE_FIELD.get(trigger_key)
+        if note_field:
+            note_text = notes.get(note_field, "")
+            if trigger_key == "onboarding.needs_equipment":
+                context["equipment_list"] = _dash(note_text)
+            elif note_text:
+                context["notes_block"] = f"\n\nNotes:\n{note_text}"
         try:
             fire_trigger(
                 db,

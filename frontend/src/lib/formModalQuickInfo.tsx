@@ -2041,7 +2041,7 @@ export const inviteUserFieldHints = {
   email_personal:
     'Email address\n\nPersonal email where the new hire receives the invitation link. They use it to register and sign in.',
   first_name:
-    'First name\n\nOptional. Prefills the registration form when provided. The new hire can still edit it.',
+    'First name\n\nRequired. Prefills the registration form and appears on onboarding auto-tasks.',
   last_name:
     'Last name\n\nOptional. Prefills the registration form when provided. The new hire can still edit it.',
   phone:
@@ -2061,11 +2061,15 @@ export const inviteUserFieldHints = {
   needs_email: 'Email account\n\nCheck if IT should provision a company email account for this person.',
   needs_business_card: 'Business cards\n\nCheck if business cards should be ordered before their start date.',
   needs_phone: 'Phone\n\nCheck if a company phone or mobile line should be assigned.',
+  needs_computer:
+    'Computer/Laptop\n\nCheck if IT should assign a company computer or laptop for this person.',
   needs_vehicle: 'Vehicle\n\nCheck if this employee will receive a company vehicle.',
   needs_equipment:
     'Equipment or tools\n\nCheck if special equipment or tools should be prepared before day one.',
   equipment_list:
-    'Equipment list\n\nList specific items needed (laptop, PPE, tools, keys, etc.).',
+    'Equipment list\n\nList specific items needed (PPE, tools, keys, etc.). Goes only on the equipment auto-task.',
+  requirement_notes:
+    'Requirement notes\n\nOptional detail for the focused resource card. Each note goes only to that card’s auto-task — not shared across cards.',
 } as const;
 
 export const inviteUserQuickInfo = formModalQuickInfo({
@@ -2077,11 +2081,12 @@ export const inviteUserQuickInfo = formModalQuickInfo({
   ),
   howToUse: (
     <>
-      Step 1: enter {uiLabel('Email Address')}, {uiLabel('Job Title')}, {uiLabel('Departments')}, and{' '}
-      {uiLabel('Project Divisions')} (required). Optionally add name, phone, hire date, supervisor, and pay. Step 2: mark
-      optional resources (email, phone, vehicle, etc.) — tasks go to people configured in Settings → Auto tasks. Step 3:
-      keep the default onboarding package (or customize / exclude it) and optionally add contracts or docs. Step 4: review
-      and send. Accountant and Safety auto-tasks also fire on every send when recipients are configured.
+      Step 1: enter {uiLabel('First Name')}, {uiLabel('Email Address')}, {uiLabel('Job Title')},{' '}
+      {uiLabel('Departments')}, {uiLabel('Project Divisions')}, {uiLabel('Pay Type')}, and {uiLabel('Pay Rate')}{' '}
+      (required). Hire date defaults to today and can be changed. Optionally add last name, phone, and supervisor. Step
+      2: mark optional resources (email, phone, vehicle, etc.) — tasks go to people configured in Settings → Auto tasks.
+      Step 3: keep the default onboarding package (or customize / exclude it) and optionally add contracts or docs. Step
+      4: review and send. Accountant and Safety auto-tasks also fire on every send when recipients are configured.
     </>
   ),
   behavior: (

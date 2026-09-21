@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { Car, IdCard, Laptop, Mail, Smartphone, Wrench, type LucideProps } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -14,6 +15,7 @@ import {
   AppButton,
   AppCheckbox,
   AppDatePicker,
+  AppFieldHint,
   AppFormModal,
   AppInput,
   AppMultiSelect,
@@ -113,12 +115,167 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
+/** Local calendar date as YYYY-MM-DD for AppDatePicker. */
+function todayLocalIsoDate(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function ReviewRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <div className={uiTypography.helper}>{label}</div>
       <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5 break-words')}>{value || '—'}</div>
     </div>
+  );
+}
+
+type RequirementId = 'email' | 'business_card' | 'phone' | 'computer' | 'vehicle' | 'equipment';
+
+type RequirementOption = {
+  id: RequirementId;
+  title: string;
+  subtitle: string;
+  icon: ComponentType<LucideProps>;
+  fieldHint: ReactNode;
+};
+
+const REQUIREMENT_OPTIONS: RequirementOption[] = [
+  {
+    id: 'email',
+    title: 'Email account',
+    subtitle: 'Company email to provision',
+    icon: Mail,
+    fieldHint: inviteUserFieldHints.needs_email,
+  },
+  {
+    id: 'business_card',
+    title: 'Business cards',
+    subtitle: 'Order before start date',
+    icon: IdCard,
+    fieldHint: inviteUserFieldHints.needs_business_card,
+  },
+  {
+    id: 'phone',
+    title: 'Phone',
+    subtitle: 'Company phone or mobile',
+    icon: Smartphone,
+    fieldHint: inviteUserFieldHints.needs_phone,
+  },
+  {
+    id: 'computer',
+    title: 'Computer/Laptop',
+    subtitle: 'Assign a workstation',
+    icon: Laptop,
+    fieldHint: inviteUserFieldHints.needs_computer,
+  },
+  {
+    id: 'vehicle',
+    title: 'Vehicle',
+    subtitle: 'Assign a company vehicle',
+    icon: Car,
+    fieldHint: inviteUserFieldHints.needs_vehicle,
+  },
+  {
+    id: 'equipment',
+    title: 'Equipment or tools',
+    subtitle: 'Prepare gear for day one',
+    icon: Wrench,
+    fieldHint: inviteUserFieldHints.needs_equipment,
+  },
+];
+
+const EMPTY_REQUIREMENT_NOTES: Record<RequirementId, string> = {
+  email: '',
+  business_card: '',
+  phone: '',
+  computer: '',
+  vehicle: '',
+  equipment: '',
+};
+
+const REQUIREMENT_NOTE_PLACEHOLDERS: Record<RequirementId, string> = {
+  email: 'e.g. preferred alias, mailbox size…',
+  business_card: 'e.g. title on card, quantity…',
+  phone: 'e.g. iPhone preferred, already has SIM…',
+  computer: 'e.g. MacBook Pro 14", docking station…',
+  vehicle: 'e.g. wrap color, truck vs van…',
+  equipment: 'PPE, tools, keys…',
+};
+
+function RequirementCard({
+  option,
+  selected,
+  focused,
+  hasNote,
+  disabled,
+  onSelect,
+}: {
+  option: RequirementOption;
+  selected: boolean;
+  focused: boolean;
+  hasNote: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+}) {
+  const Icon = option.icon;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-pressed={selected}
+      aria-current={focused ? 'true' : undefined}
+      onClick={onSelect}
+      className={uiCx(
+        'relative flex flex-col items-start gap-2 rounded-lg border p-2.5 pr-8 text-left transition-colors outline-none focus-visible:outline-none',
+        // ring-inset: outer rings get clipped by the modal's overflow-y-auto
+        focused
+          ? 'border-brand-red bg-red-50 ring-2 ring-inset ring-brand-red'
+          : selected
+            ? 'border-brand-red bg-red-50 ring-1 ring-inset ring-brand-red/50'
+            : 'border-gray-200 bg-white hover:border-brand-red/40 hover:bg-gray-50',
+        disabled && 'cursor-not-allowed opacity-60',
+      )}
+    >
+      <span
+        className={uiCx(
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+          selected ? 'bg-white text-brand-red' : 'bg-gray-100 text-gray-600',
+        )}
+      >
+        <Icon className="h-4 w-4" aria-hidden />
+      </span>
+      <span className="min-w-0 w-full">
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="truncate text-xs font-semibold text-gray-900">{option.title}</span>
+          {option.fieldHint ? <AppFieldHint hint={option.fieldHint} /> : null}
+        </span>
+        <span className="mt-0.5 block text-[10px] leading-snug text-gray-500">{option.subtitle}</span>
+      </span>
+      {hasNote ? (
+        <span
+          className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-brand-red"
+          title="Has note"
+          aria-hidden
+        />
+      ) : null}
+      <span
+        className={uiCx(
+          'absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded border',
+          selected
+            ? 'border-brand-red bg-brand-red text-white'
+            : 'border-gray-300 bg-white text-transparent',
+        )}
+        aria-hidden
+      >
+        <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      </span>
+    </button>
   );
 }
 
@@ -180,17 +337,59 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   const [packagePickerOpen, setPackagePickerOpen] = useState(false);
   const [documentIds, setDocumentIds] = useState<string[]>([]);
   const [additionalDocuments, setAdditionalDocuments] = useState<AdditionalDocRef[]>([]);
-  const [hireDate, setHireDate] = useState('');
+  const [hireDate, setHireDate] = useState(todayLocalIsoDate);
   const [managerUserId, setManagerUserId] = useState('');
   const [payRate, setPayRate] = useState('');
   const [payType, setPayType] = useState('hourly');
   const [needsEmail, setNeedsEmail] = useState(false);
   const [needsBusinessCard, setNeedsBusinessCard] = useState(false);
   const [needsPhone, setNeedsPhone] = useState(false);
+  const [needsComputer, setNeedsComputer] = useState(false);
   const [needsVehicle, setNeedsVehicle] = useState(false);
   const [needsEquipment, setNeedsEquipment] = useState(false);
-  const [equipmentList, setEquipmentList] = useState('');
+  const [requirementNotes, setRequirementNotes] =
+    useState<Record<RequirementId, string>>(EMPTY_REQUIREMENT_NOTES);
+  const [focusedRequirementId, setFocusedRequirementId] = useState<RequirementId | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const requirementSelected: Record<RequirementId, boolean> = {
+    email: needsEmail,
+    business_card: needsBusinessCard,
+    phone: needsPhone,
+    computer: needsComputer,
+    vehicle: needsVehicle,
+    equipment: needsEquipment,
+  };
+
+  const setRequirementSelected = (id: RequirementId, value: boolean) => {
+    if (id === 'email') setNeedsEmail(value);
+    else if (id === 'business_card') setNeedsBusinessCard(value);
+    else if (id === 'phone') setNeedsPhone(value);
+    else if (id === 'computer') setNeedsComputer(value);
+    else if (id === 'vehicle') setNeedsVehicle(value);
+    else setNeedsEquipment(value);
+  };
+
+  const handleRequirementSelect = (id: RequirementId) => {
+    const selected = requirementSelected[id];
+    if (!selected) {
+      setRequirementSelected(id, true);
+      setFocusedRequirementId(id);
+      return;
+    }
+    if (focusedRequirementId !== id) {
+      setFocusedRequirementId(id);
+      return;
+    }
+    setRequirementSelected(id, false);
+    setRequirementNotes((prev) => ({ ...prev, [id]: '' }));
+    const stillOn = REQUIREMENT_OPTIONS.map((o) => o.id).filter(
+      (oid) => oid !== id && requirementSelected[oid],
+    );
+    setFocusedRequirementId(stillOn[0] ?? null);
+  };
+
+  const focusedRequirement = REQUIREMENT_OPTIONS.find((o) => o.id === focusedRequirementId) ?? null;
 
   const divisionOptions = useMemo(
     () =>
@@ -238,12 +437,15 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   );
 
   const canProceedStep1 = useMemo(() => {
+    if (!firstName.trim()) return false;
     if (!isValidEmail(email)) return false;
     if (!jobTitle.trim()) return false;
     if (selectedDivisionIds.length === 0) return false;
     if (selectedProjectDivisionIds.length === 0) return false;
+    if (!payType.trim()) return false;
+    if (!normalizePayRateForSave(payRate)) return false;
     return true;
-  }, [email, jobTitle, selectedDivisionIds, selectedProjectDivisionIds]);
+  }, [firstName, email, jobTitle, selectedDivisionIds, selectedProjectDivisionIds, payType, payRate]);
 
   const canProceedDocsStep = useMemo(() => {
     if (includeOnboardingPackage && customizePackage && documentIds.length === 0) return false;
@@ -252,12 +454,15 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
 
   const step1MissingRequired = useMemo(() => {
     const missing: string[] = [];
+    if (!firstName.trim()) missing.push('First Name');
     if (!isValidEmail(email)) missing.push('Email Address');
     if (!jobTitle.trim()) missing.push('Job Title');
     if (selectedDivisionIds.length === 0) missing.push('Departments');
     if (selectedProjectDivisionIds.length === 0) missing.push('Project Divisions');
+    if (!payType.trim()) missing.push('Pay Type');
+    if (!normalizePayRateForSave(payRate)) missing.push('Pay Rate');
     return missing;
-  }, [email, jobTitle, selectedDivisionIds, selectedProjectDivisionIds]);
+  }, [firstName, email, jobTitle, selectedDivisionIds, selectedProjectDivisionIds, payType, payRate]);
 
   const docsStepMissingRequired = useMemo(() => {
     if (includeOnboardingPackage && customizePackage && documentIds.length === 0) {
@@ -291,16 +496,18 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
     setPackagePickerOpen(false);
     setDocumentIds([]);
     setAdditionalDocuments([]);
-    setHireDate('');
+    setHireDate(todayLocalIsoDate());
     setManagerUserId('');
     setPayRate('');
     setPayType('hourly');
     setNeedsEmail(false);
     setNeedsBusinessCard(false);
     setNeedsPhone(false);
+    setNeedsComputer(false);
     setNeedsVehicle(false);
     setNeedsEquipment(false);
-    setEquipmentList('');
+    setRequirementNotes(EMPTY_REQUIREMENT_NOTES);
+    setFocusedRequirementId(null);
   };
 
   useEffect(() => {
@@ -355,23 +562,26 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
 
   const requirementsReviewLabel = useMemo(() => {
     const items: string[] = [];
-    if (needsEmail) items.push('Email account');
-    if (needsBusinessCard) items.push('Business cards');
-    if (needsPhone) items.push('Phone');
-    if (needsVehicle) items.push('Vehicle');
-    if (needsEquipment) {
-      items.push(
-        equipmentList.trim() ? `Equipment (${equipmentList.trim()})` : 'Equipment or tools',
-      );
-    }
+    const push = (on: boolean, title: string, id: RequirementId) => {
+      if (!on) return;
+      const note = requirementNotes[id].trim();
+      items.push(note ? `${title} (${note})` : title);
+    };
+    push(needsEmail, 'Email account', 'email');
+    push(needsBusinessCard, 'Business cards', 'business_card');
+    push(needsPhone, 'Phone', 'phone');
+    push(needsComputer, 'Computer/Laptop', 'computer');
+    push(needsVehicle, 'Vehicle', 'vehicle');
+    push(needsEquipment, 'Equipment or tools', 'equipment');
     return items.length ? items.join(', ') : 'None';
   }, [
     needsEmail,
     needsBusinessCard,
     needsPhone,
+    needsComputer,
     needsVehicle,
     needsEquipment,
-    equipmentList,
+    requirementNotes,
   ]);
 
   const handleSendInvite = async () => {
@@ -391,7 +601,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
     try {
       await api('POST', '/auth/invite', {
         email_personal: email.trim(),
-        first_name: firstName.trim() || null,
+        first_name: firstName.trim(),
         last_name: lastName.trim() || null,
         phone: phone.trim() || null,
         job_title: jobTitle.trim(),
@@ -408,16 +618,27 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
           id: d.id,
           name: d.name,
         })),
-        hire_date: hireDate || null,
+        hire_date: hireDate || todayLocalIsoDate(),
         manager_user_id: managerUserId.trim() || null,
         pay_rate: normalizePayRateForSave(payRate),
-        pay_type: normalizePayRateForSave(payRate) ? payType || 'hourly' : null,
+        pay_type: payType.trim() || 'hourly',
         needs_email: needsEmail,
         needs_business_card: needsBusinessCard,
         needs_phone: needsPhone,
+        needs_computer: needsComputer,
         needs_vehicle: needsVehicle,
         needs_equipment: needsEquipment,
-        equipment_list: needsEquipment ? equipmentList.trim() || null : null,
+        equipment_list: needsEquipment ? requirementNotes.equipment.trim() || null : null,
+        requirement_notes: {
+          email: needsEmail ? requirementNotes.email.trim() || null : null,
+          business_card: needsBusinessCard
+            ? requirementNotes.business_card.trim() || null
+            : null,
+          phone: needsPhone ? requirementNotes.phone.trim() || null : null,
+          computer: needsComputer ? requirementNotes.computer.trim() || null : null,
+          vehicle: needsVehicle ? requirementNotes.vehicle.trim() || null : null,
+          equipment: needsEquipment ? requirementNotes.equipment.trim() || null : null,
+        },
       });
 
       queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -525,7 +746,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
 
             <div className={uiLayout.sectionGrid2}>
               <AppInput
-                label="First Name"
+                label="First Name *"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 placeholder="First name"
@@ -620,7 +841,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
 
               <div className="grid min-w-0 grid-cols-2 gap-3">
                 <AppSelect
-                  label="Pay Type"
+                  label="Pay Type *"
                   value={payType}
                   onChange={(e) => setPayType(e.target.value)}
                   options={PAY_TYPE_OPTIONS}
@@ -629,7 +850,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
                   fieldHint={userProfileFieldHint('pay_type')}
                 />
                 <AppInput
-                  label="Pay Rate"
+                  label="Pay Rate *"
                   inputMode="decimal"
                   value={payRate}
                   onChange={(e) => setPayRate(sanitizePayRateInput(e.target.value))}
@@ -655,59 +876,44 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
           <div className={uiSpacing.sectionStack}>
             <AppSectionHeader
               title="Onboarding requirements"
-              description="Equipment and resources this employee will need. Assignees are configured in Settings → Auto tasks."
+              description="Tap a card to request that resource. Assignees are configured in Settings → Auto tasks."
             />
-            <div className={uiSpacing.sectionStack}>
-              <AppCheckbox
-                label="This user will need an email account"
-                checked={needsEmail}
-                onChange={setNeedsEmail}
-                disabled={loading}
-                fieldHint={inviteUserFieldHints.needs_email}
-              />
-              <AppCheckbox
-                label="This user will need business cards"
-                checked={needsBusinessCard}
-                onChange={setNeedsBusinessCard}
-                disabled={loading}
-                fieldHint={inviteUserFieldHints.needs_business_card}
-              />
-              <AppCheckbox
-                label="This user will need a phone"
-                checked={needsPhone}
-                onChange={setNeedsPhone}
-                disabled={loading}
-                fieldHint={inviteUserFieldHints.needs_phone}
-              />
-              <AppCheckbox
-                label="This user will receive a vehicle"
-                checked={needsVehicle}
-                onChange={setNeedsVehicle}
-                disabled={loading}
-                fieldHint={inviteUserFieldHints.needs_vehicle}
-              />
-              <AppCheckbox
-                label="This user will need equipment or tools"
-                checked={needsEquipment}
-                onChange={(checked) => {
-                  setNeedsEquipment(checked);
-                  if (!checked) setEquipmentList('');
-                }}
-                disabled={loading}
-                fieldHint={inviteUserFieldHints.needs_equipment}
-              />
-              {needsEquipment ? (
-                <AppTextarea
-                  label="Equipment list"
-                  value={equipmentList}
-                  onChange={(e) => setEquipmentList(e.target.value)}
-                  rows={3}
-                  placeholder="Laptop, PPE, tools, keys…"
-                  disabled={loading}
-                  fieldHint={inviteUserFieldHints.equipment_list}
-                />
-              ) : null}
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+              {REQUIREMENT_OPTIONS.map((option) => {
+                const selected = requirementSelected[option.id];
+                return (
+                  <RequirementCard
+                    key={option.id}
+                    option={option}
+                    selected={selected}
+                    focused={focusedRequirementId === option.id}
+                    hasNote={Boolean(requirementNotes[option.id].trim())}
+                    disabled={loading}
+                    onSelect={() => handleRequirementSelect(option.id)}
+                  />
+                );
+              })}
             </div>
+            {focusedRequirement ? (
+              <AppTextarea
+                label={`Notes for ${focusedRequirement.title} (optional)`}
+                value={requirementNotes[focusedRequirement.id]}
+                onChange={(e) =>
+                  setRequirementNotes((prev) => ({
+                    ...prev,
+                    [focusedRequirement.id]: e.target.value,
+                  }))
+                }
+                rows={3}
+                placeholder={REQUIREMENT_NOTE_PLACEHOLDERS[focusedRequirement.id]}
+                disabled={loading}
+                fieldHint={
+                  focusedRequirement.id === 'equipment'
+                    ? inviteUserFieldHints.equipment_list
+                    : inviteUserFieldHints.requirement_notes
+                }
+              />
+            ) : null}
           </div>
         ) : null}
 

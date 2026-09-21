@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 from app.auth.settings_permissions import settings_permissions_payload
-from app.schemas.auth import InviteRequest
+from app.schemas.auth import InviteRequest, RequirementNotes
 from app.services.auto_task_catalog import (
     ALWAYS_ON_ONBOARDING_KEYS,
     AUTO_TASK_TRIGGERS,
@@ -16,6 +16,7 @@ from app.services.auto_task_catalog import (
 from app.services.auto_task_service import (
     compute_due_date,
     invite_context,
+    requirement_notes_map,
     resolve_due_anchor,
     resolve_due_in_days,
 )
@@ -31,6 +32,7 @@ class TestAutoTaskCatalog(unittest.TestCase):
                 "onboarding.needs_email",
                 "onboarding.needs_business_card",
                 "onboarding.needs_phone",
+                "onboarding.needs_computer",
                 "onboarding.needs_vehicle",
                 "onboarding.needs_equipment",
             ],
@@ -155,6 +157,68 @@ class TestInviteContext(unittest.TestCase):
         self.assertEqual(ctx["phone"], "555-0100")
         self.assertIn("50", ctx["pay"])
         self.assertIn("hourly", ctx["pay"])
+
+    def test_requirement_notes_map_and_templates(self):
+        req = InviteRequest(
+            email_personal="ada@example.com",
+            needs_phone=True,
+            needs_equipment=True,
+            equipment_list="legacy drill",
+            requirement_notes=RequirementNotes(
+                phone="prefers iPhone",
+                equipment="laptop + PPE",
+            ),
+        )
+        notes = requirement_notes_map(req)
+        self.assertEqual(notes["phone"], "prefers iPhone")
+        self.assertEqual(notes["equipment"], "laptop + PPE")
+
+        phone_tpl = get_trigger("onboarding.needs_phone").task_description_template
+        with_notes = render_template(
+            phone_tpl,
+            {
+                "name": "Ada",
+                "email": "ada@example.com",
+                "phone": "—",
+                "job_title": "—",
+                "hire_date": "—",
+                "supervisor": "—",
+                "departments": "—",
+                "project_divisions": "—",
+                "pay": "—",
+                "notes_block": "\n\nNotes:\nprefers iPhone",
+            },
+        )
+        self.assertIn("Notes:\nprefers iPhone", with_notes)
+        without = render_template(
+            phone_tpl,
+            {
+                "name": "Ada",
+                "email": "ada@example.com",
+                "phone": "—",
+                "job_title": "—",
+                "hire_date": "—",
+                "supervisor": "—",
+                "departments": "—",
+                "project_divisions": "—",
+                "pay": "—",
+                "notes_block": "",
+            },
+        )
+        self.assertNotIn("Notes:", without)
+
+        legacy = InviteRequest(
+            email_personal="bob@example.com",
+            equipment_list="only legacy",
+        )
+        self.assertEqual(requirement_notes_map(legacy)["equipment"], "only legacy")
+        ctx = invite_context(
+            InviteRequest(
+                email_personal="c@example.com",
+                requirement_notes=RequirementNotes(equipment="from notes"),
+            )
+        )
+        self.assertEqual(ctx["equipment_list"], "from notes")
 
 
 class TestAutoTaskPermissions(unittest.TestCase):

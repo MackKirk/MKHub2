@@ -26,6 +26,17 @@ class AdditionalDocumentRef(BaseModel):
         return s
 
 
+class RequirementNotes(BaseModel):
+    """Optional free-text notes keyed by invite requirement card."""
+
+    email: Optional[str] = None
+    business_card: Optional[str] = None
+    phone: Optional[str] = None
+    computer: Optional[str] = None
+    vehicle: Optional[str] = None
+    equipment: Optional[str] = None
+
+
 class InviteRequest(BaseModel):
     email_personal: EmailStr
     division_id: Optional[str] = None  # Legacy: kept for backward compatibility
@@ -38,9 +49,11 @@ class InviteRequest(BaseModel):
     needs_email: bool = False
     needs_business_card: bool = False
     needs_phone: bool = False
+    needs_computer: bool = False
     needs_vehicle: bool = False
     needs_equipment: bool = False
-    equipment_list: Optional[str] = None
+    equipment_list: Optional[str] = None  # Legacy alias for requirement_notes.equipment
+    requirement_notes: Optional[RequirementNotes] = None
     # Optional hiree identity / contact
     first_name: Optional[str] = None
     last_name: Optional[str] = None

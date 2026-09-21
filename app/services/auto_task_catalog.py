@@ -59,6 +59,7 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
             f"{_INTRO}"
             "Please provision a company email account before this person starts.\n\n"
             f"{_HIRE_DETAILS}"
+            "{notes_block}"
         ),
     ),
     AutoTaskTriggerDef(
@@ -73,6 +74,7 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
             f"{_INTRO}"
             "Please order business cards before this person starts.\n\n"
             f"{_HIRE_DETAILS}"
+            "{notes_block}"
         ),
     ),
     AutoTaskTriggerDef(
@@ -87,6 +89,22 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
             f"{_INTRO}"
             "Please assign a company phone or mobile line before this person starts.\n\n"
             f"{_HIRE_DETAILS}"
+            "{notes_block}"
+        ),
+    ),
+    AutoTaskTriggerDef(
+        key="onboarding.needs_computer",
+        category=ONBOARDING_CATEGORY,
+        category_label="Onboarding",
+        name="Computer / laptop",
+        description="A company computer or laptop should be assigned.",
+        when="When an invite is sent with “Computer/Laptop” checked.",
+        task_title_template="Assign computer/laptop for {name}",
+        task_description_template=(
+            f"{_INTRO}"
+            "Please assign a company computer or laptop before this person starts.\n\n"
+            f"{_HIRE_DETAILS}"
+            "{notes_block}"
         ),
     ),
     AutoTaskTriggerDef(
@@ -101,6 +119,7 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
             f"{_INTRO}"
             "Please assign a company vehicle before this person starts.\n\n"
             f"{_HIRE_DETAILS}"
+            "{notes_block}"
         ),
     ),
     AutoTaskTriggerDef(
@@ -212,8 +231,19 @@ ONBOARDING_FLAG_TO_TRIGGER = {
     "needs_email": "onboarding.needs_email",
     "needs_business_card": "onboarding.needs_business_card",
     "needs_phone": "onboarding.needs_phone",
+    "needs_computer": "onboarding.needs_computer",
     "needs_vehicle": "onboarding.needs_vehicle",
     "needs_equipment": "onboarding.needs_equipment",
+}
+
+# Maps invite requirement note fields → trigger keys (per-card notes, not shared).
+TRIGGER_KEY_TO_NOTE_FIELD = {
+    "onboarding.needs_email": "email",
+    "onboarding.needs_business_card": "business_card",
+    "onboarding.needs_phone": "phone",
+    "onboarding.needs_computer": "computer",
+    "onboarding.needs_vehicle": "vehicle",
+    "onboarding.needs_equipment": "equipment",
 }
 
 ALWAYS_ON_ONBOARDING_KEYS = [t.key for t in AUTO_TASK_TRIGGERS if t.always_on]

@@ -169,9 +169,26 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
             "needs_email": bool(req.needs_email),
             "needs_business_card": bool(req.needs_business_card),
             "needs_phone": bool(req.needs_phone),
+            "needs_computer": bool(req.needs_computer),
             "needs_vehicle": bool(req.needs_vehicle),
             "needs_equipment": bool(req.needs_equipment),
-            "equipment_list": req.equipment_list,
+            "equipment_list": (
+                (req.requirement_notes.equipment if req.requirement_notes else None)
+                or req.equipment_list
+            ),
+            "requirement_notes": {
+                "email": (req.requirement_notes.email if req.requirement_notes else None),
+                "business_card": (
+                    req.requirement_notes.business_card if req.requirement_notes else None
+                ),
+                "phone": (req.requirement_notes.phone if req.requirement_notes else None),
+                "computer": (req.requirement_notes.computer if req.requirement_notes else None),
+                "vehicle": (req.requirement_notes.vehicle if req.requirement_notes else None),
+                "equipment": (
+                    (req.requirement_notes.equipment if req.requirement_notes else None)
+                    or req.equipment_list
+                ),
+            },
         },
         first_name=req_first,
         last_name=req_last,
