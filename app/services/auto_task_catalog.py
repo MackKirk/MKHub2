@@ -22,6 +22,24 @@ _INTRO = (
     "A new team member has been invited to MK Hub and needs your attention.\n\n"
 )
 
+_ORIGIN_STEP2 = (
+    "Why this task exists:\n"
+    "Created when an invite was sent with the matching card selected on "
+    "Invite → Step 2 (Onboarding requirements).\n\n"
+)
+
+_ORIGIN_ALWAYS = (
+    "Why this task exists:\n"
+    "Always-on onboarding task — created automatically on every invite send "
+    "(not tied to a Step 2 requirement card).\n\n"
+)
+
+_ORIGIN_CHAIN = (
+    "Why this task exists:\n"
+    "Chained onboarding task — created after the prerequisite auto-task for "
+    "the same hire was completed (not an invite Step 2 card).\n\n"
+)
+
 
 @dataclass(frozen=True)
 class AutoTaskTriggerDef:
@@ -52,12 +70,23 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         category=ONBOARDING_CATEGORY,
         category_label="Onboarding",
         name="Company email account",
-        description="IT should provision a company email account for the new hire.",
-        when="When an invite is sent with “This user will need an email account” checked.",
+        description=(
+            "IT provisions a company email for the new hire. "
+            "Optional notes from the Email account card appear only on this task."
+        ),
+        when=(
+            "Invite User → Step 2 (Onboarding requirements). "
+            "Fires when Send Invite runs and the Email account card is selected."
+        ),
         task_title_template="Provision company email for {name}",
         task_description_template=(
             f"{_INTRO}"
-            "Please provision a company email account before this person starts.\n\n"
+            f"{_ORIGIN_STEP2}"
+            "Action required:\n"
+            "Provision a company email account before this person starts. "
+            "Create the mailbox, apply the standard security policies, add them to the "
+            "appropriate distribution lists or groups, and share access details securely "
+            "with the hire or their supervisor.\n\n"
             f"{_HIRE_DETAILS}"
             "{notes_block}"
         ),
@@ -67,12 +96,22 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         category=ONBOARDING_CATEGORY,
         category_label="Onboarding",
         name="Business cards",
-        description="Business cards should be ordered before the start date.",
-        when="When an invite is sent with “This user will need business cards” checked.",
+        description=(
+            "Business cards should be ordered before the start date. "
+            "Optional notes from the Business cards card appear only on this task."
+        ),
+        when=(
+            "Invite User → Step 2 (Onboarding requirements). "
+            "Fires when Send Invite runs and the Business cards card is selected."
+        ),
         task_title_template="Order business cards for {name}",
         task_description_template=(
             f"{_INTRO}"
-            "Please order business cards before this person starts.\n\n"
+            f"{_ORIGIN_STEP2}"
+            "Action required:\n"
+            "Order business cards so they are ready by the hire date. "
+            "Confirm name spelling, job title, and any branding details before placing the order. "
+            "Coordinate delivery with the supervisor if needed.\n\n"
             f"{_HIRE_DETAILS}"
             "{notes_block}"
         ),
@@ -82,12 +121,22 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         category=ONBOARDING_CATEGORY,
         category_label="Onboarding",
         name="Company phone",
-        description="A company phone or mobile line should be assigned.",
-        when="When an invite is sent with “This user will need a phone” checked.",
+        description=(
+            "A company phone or mobile line should be assigned. "
+            "Optional notes from the Phone card appear only on this task."
+        ),
+        when=(
+            "Invite User → Step 2 (Onboarding requirements). "
+            "Fires when Send Invite runs and the Phone card is selected."
+        ),
         task_title_template="Assign company phone for {name}",
         task_description_template=(
             f"{_INTRO}"
-            "Please assign a company phone or mobile line before this person starts.\n\n"
+            f"{_ORIGIN_STEP2}"
+            "Action required:\n"
+            "Assign a company phone or mobile line before this person starts. "
+            "Prepare the device or SIM, enroll it in company policies if required, "
+            "and confirm the number with the hire or their supervisor.\n\n"
             f"{_HIRE_DETAILS}"
             "{notes_block}"
         ),
@@ -97,12 +146,22 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         category=ONBOARDING_CATEGORY,
         category_label="Onboarding",
         name="Computer / laptop",
-        description="A company computer or laptop should be assigned.",
-        when="When an invite is sent with “Computer/Laptop” checked.",
+        description=(
+            "A company computer or laptop should be assigned. "
+            "Optional notes from the Computer/Laptop card appear only on this task."
+        ),
+        when=(
+            "Invite User → Step 2 (Onboarding requirements). "
+            "Fires when Send Invite runs and the Computer/Laptop card is selected."
+        ),
         task_title_template="Assign computer/laptop for {name}",
         task_description_template=(
             f"{_INTRO}"
-            "Please assign a company computer or laptop before this person starts.\n\n"
+            f"{_ORIGIN_STEP2}"
+            "Action required:\n"
+            "Assign a company computer or laptop before this person starts. "
+            "Image or configure the device, install required software, enroll it in "
+            "company management, and arrange handover with the hire or their supervisor.\n\n"
             f"{_HIRE_DETAILS}"
             "{notes_block}"
         ),
@@ -112,12 +171,24 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         category=ONBOARDING_CATEGORY,
         category_label="Onboarding",
         name="Company vehicle",
-        description="This employee will receive a company vehicle.",
-        when="When an invite is sent with “This user will receive a vehicle” checked.",
+        description=(
+            "A company vehicle should be assigned to the new hire. "
+            "Optional notes from the Vehicle card appear only on this task. "
+            "Completing this task can unlock Vehicle wrap when that chain is configured."
+        ),
+        when=(
+            "Invite User → Step 2 (Onboarding requirements). "
+            "Fires when Send Invite runs and the Vehicle card is selected."
+        ),
         task_title_template="Assign company vehicle for {name}",
         task_description_template=(
             f"{_INTRO}"
-            "Please assign a company vehicle before this person starts.\n\n"
+            f"{_ORIGIN_STEP2}"
+            "Action required:\n"
+            "Assign a company vehicle before this person starts. "
+            "Confirm availability, insurance/registration status, and keys or access. "
+            "Record the assignment and notify the supervisor. Completing this task may "
+            "start a follow-up Vehicle wrap task if that chain is enabled.\n\n"
             f"{_HIRE_DETAILS}"
             "{notes_block}"
         ),
@@ -127,12 +198,22 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         category=ONBOARDING_CATEGORY,
         category_label="Onboarding",
         name="Equipment or tools",
-        description="Special equipment or tools should be prepared before day one.",
-        when="When an invite is sent with “This user will need equipment or tools” checked.",
+        description=(
+            "Special equipment or tools should be prepared before day one. "
+            "Notes from the Equipment or tools card become the equipment list on this task."
+        ),
+        when=(
+            "Invite User → Step 2 (Onboarding requirements). "
+            "Fires when Send Invite runs and the Equipment or tools card is selected."
+        ),
         task_title_template="Prepare equipment for {name}",
         task_description_template=(
             f"{_INTRO}"
-            "Please prepare equipment or tools before this person starts.\n\n"
+            f"{_ORIGIN_STEP2}"
+            "Action required:\n"
+            "Prepare the equipment or tools listed below before day one. "
+            "Confirm each item is available, labeled if needed, and ready for handover "
+            "to the hire or their supervisor.\n\n"
             f"{_HIRE_DETAILS}\n\n"
             "Equipment list:\n{equipment_list}"
         ),
@@ -142,45 +223,52 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         category=ONBOARDING_CATEGORY,
         category_label="Onboarding",
         name="Vehicle wrap",
-        description="The assigned company vehicle should be wrapped after it is ready.",
-        when="After the company vehicle task for this hire is completed. Not an invite checkbox.",
+        description=(
+            "Wrap the company vehicle after it has been assigned. "
+            "Not controlled by an invite Step 2 card — created when the Company vehicle "
+            "task for the same hire is completed."
+        ),
+        when=(
+            "Chained from Invite onboarding. "
+            "Created after the Company vehicle auto-task for the same hire is marked done "
+            "(only if that vehicle task was created)."
+        ),
         task_title_template="Wrap company vehicle for {name}",
         task_description_template=(
             f"{_INTRO}"
-            "Please wrap the company vehicle assigned to this person.\n\n"
+            f"{_ORIGIN_CHAIN}"
+            "Action required:\n"
+            "Schedule and complete the company vehicle wrap for the vehicle assigned to "
+            "this hire. Confirm graphics/specs with the supervisor if needed, then update "
+            "fleet records when the wrap is finished.\n\n"
             f"{_HIRE_DETAILS}"
         ),
         chain_only=True,
         default_starts_after_key="onboarding.needs_vehicle",
     ),
     AutoTaskTriggerDef(
-        key="onboarding.sage_setup",
-        category=ONBOARDING_CATEGORY,
-        category_label="Onboarding",
-        name="Set up new hire in Sage",
-        description="Accountant should set up the new hire in Sage (external).",
-        when="Every time an invite is sent (always-on).",
-        task_title_template="Set up new hire in Sage: {name}",
-        task_description_template=(
-            f"{_INTRO}"
-            "Please set up this new hire in Sage before or on their start date.\n\n"
-            f"{_HIRE_DETAILS}"
-        ),
-        always_on=True,
-        default_due_anchor="hire_date",
-        default_due_in_days=0,
-    ),
-    AutoTaskTriggerDef(
         key="onboarding.benefits_setup",
         category=ONBOARDING_CATEGORY,
         category_label="Onboarding",
         name="Benefits set up",
-        description="Accountant should complete benefits setup for the new hire (external).",
-        when="Every time an invite is sent (always-on).",
+        description=(
+            "Accountant completes benefits setup for the new hire (external process). "
+            "No Step 2 card — fires on every successful invite send when recipients are configured. "
+            "Default due: hire date + 60 days."
+        ),
+        when=(
+            "Invite User → Send Invite (always-on). "
+            "Created on every invite send; not tied to a Step 2 requirement card. "
+            "Default due: hire date + 60 days."
+        ),
         task_title_template="Benefits set up for {name}",
         task_description_template=(
             f"{_INTRO}"
-            "Please complete benefits setup for this new hire.\n\n"
+            f"{_ORIGIN_ALWAYS}"
+            "Action required:\n"
+            "Complete benefits enrollment and setup for this new hire in the external "
+            "benefits systems. Confirm eligibility, plan options, and effective dates with "
+            "HR as needed. Default target: about 60 days after the hire date.\n\n"
             f"{_HIRE_DETAILS}"
         ),
         always_on=True,
@@ -192,13 +280,24 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         category=ONBOARDING_CATEGORY,
         category_label="Onboarding",
         name="Probation period evaluation",
-        description="Accountant/HR probation evaluation due about 11 weeks after hire date.",
-        when="Every time an invite is sent (always-on). Default due: hire date + 11 weeks.",
+        description=(
+            "HR/accountant probation evaluation for the new hire. "
+            "No Step 2 card — fires on every successful invite send when recipients are configured. "
+            "Default due: hire date + 77 days (~11 weeks)."
+        ),
+        when=(
+            "Invite User → Send Invite (always-on). "
+            "Created on every invite send; not tied to a Step 2 requirement card. "
+            "Default due: hire date + 77 days (~11 weeks)."
+        ),
         task_title_template="Probation period evaluation for {name}",
         task_description_template=(
             f"{_INTRO}"
-            "Please complete the probation period evaluation for this new hire "
-            "(typically due about 11 weeks after the hire date).\n\n"
+            f"{_ORIGIN_ALWAYS}"
+            "Action required:\n"
+            "Complete the probation period evaluation for this new hire. "
+            "Gather feedback from the supervisor, document the outcome, and follow the "
+            "standard HR process. Default target: about 11 weeks (77 days) after the hire date.\n\n"
             f"{_HIRE_DETAILS}"
         ),
         always_on=True,
@@ -210,13 +309,24 @@ AUTO_TASK_TRIGGERS: tuple[AutoTaskTriggerDef, ...] = (
         category=ONBOARDING_CATEGORY,
         category_label="Onboarding",
         name="3-month safety review",
-        description="Safety review due about 10–11 weeks after hire date.",
-        when="Every time an invite is sent (always-on). Default due: hire date + 11 weeks.",
+        description=(
+            "Safety completes the 3-month review for the new hire. "
+            "No Step 2 card — fires on every successful invite send when recipients are configured. "
+            "Default due: hire date + 77 days (~11 weeks)."
+        ),
+        when=(
+            "Invite User → Send Invite (always-on). "
+            "Created on every invite send; not tied to a Step 2 requirement card. "
+            "Default due: hire date + 77 days (~11 weeks)."
+        ),
         task_title_template="3-month safety review for {name}",
         task_description_template=(
             f"{_INTRO}"
-            "Please complete the 3-month safety review for this new hire "
-            "(typically due about 10–11 weeks after the hire date).\n\n"
+            f"{_ORIGIN_ALWAYS}"
+            "Action required:\n"
+            "Complete the 3-month safety review for this new hire. "
+            "Confirm training status, review any incidents or observations, and document "
+            "the outcome. Default target: about 10–11 weeks (77 days) after the hire date.\n\n"
             f"{_HIRE_DETAILS}"
         ),
         always_on=True,

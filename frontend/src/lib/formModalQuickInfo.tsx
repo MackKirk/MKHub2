@@ -2093,7 +2093,7 @@ export const inviteUserQuickInfo = formModalQuickInfo({
     <>
       {uiLabel('Next')} is enabled only when required fields are valid. The invitation email is sent only when you click{' '}
       {uiLabel('Send Invite')} on step 4. Departments and project divisions are applied when the invitee registers.
-      Additional documents are sent for signature after their profile is complete. Always-on tasks (Sage, Benefits,
+      Additional documents are sent for signature after their profile is complete. Always-on tasks (Benefits,
       Probation, Safety review) and optional requirement tasks are created at send time for assigned users/divisions.
     </>
   ),

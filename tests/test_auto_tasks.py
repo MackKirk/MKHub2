@@ -43,7 +43,6 @@ class TestAutoTaskCatalog(unittest.TestCase):
             flag_keys
             + ["onboarding.wrap_vehicle"]
             + [
-                "onboarding.sage_setup",
                 "onboarding.benefits_setup",
                 "onboarding.probation_evaluation",
                 "onboarding.safety_review_3mo",
@@ -59,7 +58,6 @@ class TestAutoTaskCatalog(unittest.TestCase):
         self.assertEqual(
             ALWAYS_ON_ONBOARDING_KEYS,
             [
-                "onboarding.sage_setup",
                 "onboarding.benefits_setup",
                 "onboarding.probation_evaluation",
                 "onboarding.safety_review_3mo",
@@ -75,10 +73,10 @@ class TestAutoTaskCatalog(unittest.TestCase):
 
         probation = get_trigger("onboarding.probation_evaluation")
         safety = get_trigger("onboarding.safety_review_3mo")
+        benefits = get_trigger("onboarding.benefits_setup")
         self.assertEqual(probation.default_due_in_days, 77)
         self.assertEqual(safety.default_due_in_days, 77)
-        sage = get_trigger("onboarding.sage_setup")
-        self.assertEqual(sage.default_due_in_days, 0)
+        self.assertEqual(benefits.default_due_in_days, 60)
 
     def test_render_template_fills_and_missing_keys(self):
         title = render_template("Order business cards for {name}", {"name": "Ada"})
@@ -96,7 +94,7 @@ class TestAutoTaskDueAnchor(unittest.TestCase):
         self.assertEqual(resolve_due_in_days(trigger, None), 77)
 
     def test_resolve_saved_route_wins(self):
-        trigger = get_trigger("onboarding.sage_setup")
+        trigger = get_trigger("onboarding.benefits_setup")
         route = MagicMock()
         route.due_anchor = "invite_sent"
         route.due_in_days = 3
@@ -119,7 +117,7 @@ class TestAutoTaskDueAnchor(unittest.TestCase):
             due_anchor="hire_date",
             due_in_days=0,
             context={"hire_date_iso": "2026-03-15"},
-            trigger_key="onboarding.sage_setup",
+            trigger_key="onboarding.benefits_setup",
         )
         self.assertEqual(due, datetime(2026, 3, 15, tzinfo=timezone.utc))
 
