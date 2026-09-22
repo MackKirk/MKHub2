@@ -164,8 +164,8 @@ def _send_onboarding_base(
     *,
     base_document_id: UUID,
     subject_user_id: UUID,
-) -> None:
-    """Create OnboardingAssignmentItem(s) for an additional base document."""
+) -> int:
+    """Create OnboardingAssignmentItem(s) for an additional base document. Returns items created."""
     if not is_onboarding_document_delivery_enabled(db):
         raise ValueError("onboarding document delivery is disabled")
     bd = db.query(OnboardingBaseDocument).filter(OnboardingBaseDocument.id == base_document_id).first()
@@ -181,14 +181,28 @@ def _send_onboarding_base(
     hire_dt = ep.hire_date if ep else None
     hire_start = hire_anchor_start(hire_dt, now)
     pkg = get_or_create_system_package(db)
-    ensure_assignment_items_for_base_doc(
+    created = ensure_assignment_items_for_base_doc(
         db,
         bd=bd,
         subject_user_id=subject_user_id,
         package_id=pkg.id,
         hire_start=hire_start,
         now=now,
+        force_delivery=True,
     )
+    if created == 0:
+        from .onboarding_assign import _assignment_item_exists, _get_or_create_assignment
+
+        asn = _get_or_create_assignment(db, subject_user_id, pkg.id, now)
+        if _assignment_item_exists(db, asn.id, bd.id, None) or _assignment_item_exists(
+            db, asn.id, bd.id, subject_user_id
+        ):
+            return 0
+        raise ValueError(
+            "additional onboarding document produced no assignment "
+            "(check delivery_mode, assignees, or employee_visible)"
+        )
+    return created
 
 
 def _send_signature_template(
@@ -460,9 +474,11 @@ def fire_invite_additional_documents(
     """
     Create signature requests for invite additional documents (idempotent per profile).
 
-    Claims ``invite_additional_documents_applied_at`` up front (with row lock when
-    supported) so concurrent profile/emergency-complete hooks cannot re-enter and
-    duplicate Document Builder contracts. Best-effort per item after the claim.
+    Claims ``invite_additional_documents_applied_at`` early so concurrent hooks cannot
+    double-create Document Builder contracts. Items are still processed on later calls
+    with per-item dedupe so a mid-loop failure (e.g. additional base doc never committed)
+    can recover. ``onboarding_base`` work is committed explicitly — contracts commit
+    inside ``_create_signature_request``.
     """
     ep = (
         db.query(EmployeeProfile)
@@ -472,24 +488,26 @@ def fire_invite_additional_documents(
     )
     if not ep:
         return
-    if getattr(ep, "invite_additional_documents_applied_at", None):
-        return
 
-    # Claim before creating any signature requests. _create_signature_request commits
-    # mid-flight; without an early claim, a second hook can still see applied_at=NULL.
-    ep.invite_additional_documents_applied_at = datetime.now(timezone.utc)
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
-        logger.exception(
-            "invite_additional_documents_claim_failed subject=%s",
-            str(subject_user_id),
-        )
-        return
+    already_claimed = bool(getattr(ep, "invite_additional_documents_applied_at", None))
+    if not already_claimed:
+        # Claim before creating signature requests. _create_signature_request commits
+        # mid-flight; without an early claim, a second hook can still see applied_at=NULL.
+        ep.invite_additional_documents_applied_at = datetime.now(timezone.utc)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "invite_additional_documents_claim_failed subject=%s",
+                str(subject_user_id),
+            )
+            return
 
     raw = getattr(ep, "invite_additional_documents", None)
     items: List[Any] = raw if isinstance(raw, list) else []
+    if not items:
+        return
 
     inviter_id = requested_by_id or getattr(ep, "invited_by_user_id", None)
     requested_by = None
@@ -532,8 +550,14 @@ def fire_invite_additional_documents(
                     base_document_id=uid,
                     subject_user_id=subject_user_id,
                 )
+                # Contracts commit inside _create_signature_request; base docs must commit here
+                # or they are rolled back when the request session closes.
+                try:
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    raise
             else:
-                # Legacy invite data (e.g. signature_template): skip + log
                 logger.warning(
                     "invite_additional_document_skipped_unsupported_source source=%s id=%s doc=%s",
                     source,
@@ -553,7 +577,8 @@ def fire_invite_additional_documents(
 
     if errors:
         logger.warning(
-            "invite_additional_documents_partial_errors subject=%s count=%s",
+            "invite_additional_documents_partial_errors subject=%s count=%s already_claimed=%s",
             str(subject_user_id),
             len(errors),
+            already_claimed,
         )

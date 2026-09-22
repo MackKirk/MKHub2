@@ -170,5 +170,60 @@ class TestApplySkipsAdditionalRole(unittest.TestCase):
         mock_fire.assert_called_once()
 
 
+class TestForceDeliveryOnNoneMode(unittest.TestCase):
+    @patch("app.services.onboarding_assign._assignment_item_exists", return_value=False)
+    @patch("app.services.onboarding_assign._get_or_create_assignment")
+    def test_force_delivery_creates_when_mode_none(self, mock_asn, mock_exists):
+        from datetime import datetime, timezone
+
+        from app.services.onboarding_assign import ensure_assignment_items_for_base_doc
+
+        now = datetime.now(timezone.utc)
+        subject = uuid.uuid4()
+        pkg = uuid.uuid4()
+        bd = SimpleNamespace(
+            id=uuid.uuid4(),
+            name="07. Something",
+            display_name="07. Something",
+            employee_visible=True,
+            assignee_type="employee",
+            assignee_user_ids=None,
+            assignee_user_id=None,
+            delivery_mode="none",
+            signing_deadline_days=7,
+            default_deadline_days=7,
+            notification_message=None,
+            required=True,
+            requires_signature=True,
+        )
+        asn = SimpleNamespace(id=uuid.uuid4())
+        mock_asn.return_value = asn
+        db = MagicMock()
+
+        created = ensure_assignment_items_for_base_doc(
+            db,
+            bd=bd,
+            subject_user_id=subject,
+            package_id=pkg,
+            hire_start=now,
+            now=now,
+            force_delivery=False,
+        )
+        self.assertEqual(created, 0)
+        self.assertEqual(db.add.call_count, 0)
+
+        created = ensure_assignment_items_for_base_doc(
+            db,
+            bd=bd,
+            subject_user_id=subject,
+            package_id=pkg,
+            hire_start=now,
+            now=now,
+            force_delivery=True,
+        )
+        self.assertEqual(created, 1)
+        self.assertEqual(db.add.call_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

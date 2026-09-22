@@ -270,7 +270,8 @@ class TestFireInviteAdditionalDocuments(unittest.TestCase):
         mock_dt.assert_not_called()
 
     @patch("app.services.invite_additional_documents._send_document_type")
-    def test_second_call_skips_after_claim(self, mock_send):
+    def test_second_call_still_processes_idempotently(self, mock_send):
+        """After claim, a later hook still runs items (per-item dedupe) so mid-loop failures can recover."""
         subject = uuid.uuid4()
         inviter = uuid.uuid4()
         doc_id = str(uuid.uuid4())
@@ -287,8 +288,26 @@ class TestFireInviteAdditionalDocuments(unittest.TestCase):
         mock_send.assert_called_once()
         mock_send.reset_mock()
         fire_invite_additional_documents(db, subject_user_id=subject, requested_by_id=inviter)
-        mock_send.assert_not_called()
+        mock_send.assert_called_once()
 
+    @patch("app.services.invite_additional_documents._send_onboarding_base")
+    def test_onboarding_base_commits_after_send(self, mock_ob):
+        subject = uuid.uuid4()
+        inviter = uuid.uuid4()
+        doc_id = str(uuid.uuid4())
+        ep = SimpleNamespace(
+            invite_additional_documents_applied_at=None,
+            invite_additional_documents=[{"source": "onboarding_base", "id": doc_id, "name": "Form"}],
+            invited_by_user_id=inviter,
+        )
+        inviter_user = SimpleNamespace(id=inviter)
+        db = MagicMock()
+        self._profile_first(db, ep)
+        db.query.return_value.filter.return_value.first.return_value = inviter_user
+        fire_invite_additional_documents(db, subject_user_id=subject, requested_by_id=inviter)
+        mock_ob.assert_called_once()
+        # Claim commit + post-send commit
+        self.assertGreaterEqual(db.commit.call_count, 2)
 
 class TestActiveSignatureExistsForDocumentType(unittest.TestCase):
     def test_true_when_row_found(self):

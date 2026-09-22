@@ -189,10 +189,14 @@ def ensure_assignment_items_for_base_doc(
     package_id: UUID,
     hire_start: datetime,
     now: datetime,
+    force_delivery: bool = False,
 ) -> int:
     """
     Create OnboardingAssignmentItem(s) for one base document for a hire subject.
     Returns number of items created. Respects delivery_mode, assignees, and dedupe.
+
+    When ``force_delivery`` is True (explicit invite selection), ``delivery_mode=none``
+    is treated as on_hire so selected docs are not silently dropped.
     """
     if not getattr(bd, "employee_visible", True):
         return 0
@@ -221,7 +225,10 @@ def ensure_assignment_items_for_base_doc(
 
     available_at = compute_available_at(bd, hire_start, now)
     if available_at is None:
-        return 0
+        if not force_delivery:
+            return 0
+        # Invite explicitly selected this doc — ignore delivery_mode=none.
+        available_at = hire_start if hire_start > now else now
 
     sd = getattr(bd, "signing_deadline_days", None)
     signing_days = sd if isinstance(sd, int) and sd >= 1 else (bd.default_deadline_days or 7)
@@ -297,20 +304,41 @@ def apply_onboarding_after_profile_complete(db: Session, subject_user_id: UUID) 
             .all()
         )
         allowed_doc_ids = resolve_onboarding_document_filter(db, subject_user_id)
+        # Explicit invite list: force delivery so delivery_mode=none cannot drop a selected doc.
+        force_selected = allowed_doc_ids is not None
 
         for bd in base_docs:
             if not is_hiring_package_role(getattr(bd, "package_role", None)):
                 continue
             if allowed_doc_ids is not None and str(bd.id) not in allowed_doc_ids:
                 continue
-            ensure_assignment_items_for_base_doc(
+            created = ensure_assignment_items_for_base_doc(
                 db,
                 bd=bd,
                 subject_user_id=subject_user_id,
                 package_id=pkg.id,
                 hire_start=hire_start,
                 now=now,
+                force_delivery=force_selected,
             )
+            if created == 0:
+                import structlog
+
+                log = structlog.get_logger()
+                payload = dict(
+                    base_document_id=str(bd.id),
+                    name=getattr(bd, "display_name", None) or bd.name,
+                    subject_user_id=str(subject_user_id),
+                    delivery_mode=getattr(bd, "delivery_mode", None),
+                    employee_visible=getattr(bd, "employee_visible", None),
+                    assignee_type=getattr(bd, "assignee_type", None),
+                    force_delivery=force_selected,
+                )
+                # Explicit invite selection that still produced nothing is a real miss.
+                if force_selected:
+                    log.warning("onboarding_package_doc_no_items", **payload)
+                else:
+                    log.info("onboarding_package_doc_no_items", **payload)
         db.commit()
 
     try:
