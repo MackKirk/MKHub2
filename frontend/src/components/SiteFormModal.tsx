@@ -115,10 +115,14 @@ export default function SiteFormModal({
   }, []);
 
   const addressInputClass = uiDropdown.trigger;
+  const siteId = site?.id ?? null;
 
+  // Only re-hydrate when the modal opens or the site id changes.
+  // Parent often passes a fresh `site` object each render; depending on `site`
+  // would wipe in-progress Address 2/3 rows (and abort autocomplete).
   useEffect(() => {
     if (!open) return;
-    if (site?.id) {
+    if (siteId && site) {
       const next = siteToForm(site);
       setForm(next);
       setShowAddress2(!!(next.site_address_line2 || next.site_address_line2_complement));
@@ -132,7 +136,13 @@ export default function SiteFormModal({
     setCoverBlob(null);
     setPickerOpen(false);
     setNameError(false);
-  }, [open, site, coverUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally siteId, not site object
+  }, [open, siteId]);
+
+  useEffect(() => {
+    if (!open) return;
+    setCoverPreview(coverUrl || '');
+  }, [open, coverUrl]);
 
   const handleClose = useCallback(() => {
     setIsSaving(false);

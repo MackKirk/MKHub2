@@ -12,6 +12,7 @@ from ..models.models import (
     EmployeeProfile,
     Project,
     Client,
+    ClientSite,
     Quote,
     FleetAsset,
     Equipment,
@@ -34,6 +35,44 @@ def _safe_uuid(val: Any) -> Optional[uuid.UUID]:
         return uuid.UUID(str(val))
     except Exception:
         return None
+
+
+def _project_text_match(like: str):
+    """Name/code/client/project address + linked site address lines (1–3)."""
+    return or_(
+        Project.name.ilike(like),
+        Project.code.ilike(like),
+        Client.name.ilike(like),
+        Client.display_name.ilike(like),
+        Project.address.ilike(like),
+        Project.address_city.ilike(like),
+        Project.address_province.ilike(like),
+        Project.address_country.ilike(like),
+        Client.address_line1.ilike(like),
+        Client.address_line2.ilike(like),
+        Client.city.ilike(like),
+        Client.province.ilike(like),
+        Client.postal_code.ilike(like),
+        Client.country.ilike(like),
+        ClientSite.site_name.ilike(like),
+        ClientSite.site_address_line1.ilike(like),
+        ClientSite.site_address_line1_complement.ilike(like),
+        ClientSite.site_address_line2.ilike(like),
+        ClientSite.site_address_line2_complement.ilike(like),
+        ClientSite.site_address_line3.ilike(like),
+        ClientSite.site_address_line3_complement.ilike(like),
+        ClientSite.site_city.ilike(like),
+        ClientSite.site_province.ilike(like),
+        ClientSite.site_postal_code.ilike(like),
+        ClientSite.site_country.ilike(like),
+    )
+
+
+def _project_search_href(p: Project, *, opportunity: bool) -> str:
+    is_rm = getattr(p, "business_line", None) == BUSINESS_LINE_REPAIRS_MAINTENANCE
+    if opportunity:
+        return f"/rm-opportunities/{p.id}" if is_rm else f"/opportunities/{p.id}"
+    return f"/rm-projects/{p.id}" if is_rm else f"/projects/{p.id}"
 
 
 @router.get("")
@@ -67,26 +106,10 @@ def global_search(
                     Client,
                     and_(Project.client_id == Client.id, Client.deleted_at.is_(None)),
                 )
+                .outerjoin(ClientSite, Project.site_id == ClientSite.id)
                 .filter(Project.is_bidding.is_(False), Project.deleted_at.is_(None))
                 .filter(project_scope)
-                .filter(
-                    or_(
-                        Project.name.ilike(like),
-                        Project.code.ilike(like),
-                        Client.name.ilike(like),
-                        Client.display_name.ilike(like),
-                        Project.address.ilike(like),
-                        Project.address_city.ilike(like),
-                        Project.address_province.ilike(like),
-                        Project.address_country.ilike(like),
-                        Client.address_line1.ilike(like),
-                        Client.address_line2.ilike(like),
-                        Client.city.ilike(like),
-                        Client.province.ilike(like),
-                        Client.postal_code.ilike(like),
-                        Client.country.ilike(like),
-                    )
-                )
+                .filter(_project_text_match(like))
                 .order_by(Project.created_at.desc())
                 .limit(limit)
                 .all()
@@ -104,7 +127,7 @@ def global_search(
                         "id": pid,
                         "title": title or name or pid,
                         "subtitle": client_name or None,
-                        "href": f"/projects/{pid}",
+                        "href": _project_search_href(p, opportunity=False),
                     }
                 )
             if items:
@@ -121,26 +144,10 @@ def global_search(
                     Client,
                     and_(Project.client_id == Client.id, Client.deleted_at.is_(None)),
                 )
+                .outerjoin(ClientSite, Project.site_id == ClientSite.id)
                 .filter(Project.is_bidding.is_(True), Project.deleted_at.is_(None))
                 .filter(project_scope)
-                .filter(
-                    or_(
-                        Project.name.ilike(like),
-                        Project.code.ilike(like),
-                        Client.name.ilike(like),
-                        Client.display_name.ilike(like),
-                        Project.address.ilike(like),
-                        Project.address_city.ilike(like),
-                        Project.address_province.ilike(like),
-                        Project.address_country.ilike(like),
-                        Client.address_line1.ilike(like),
-                        Client.address_line2.ilike(like),
-                        Client.city.ilike(like),
-                        Client.province.ilike(like),
-                        Client.postal_code.ilike(like),
-                        Client.country.ilike(like),
-                    )
-                )
+                .filter(_project_text_match(like))
                 .order_by(Project.created_at.desc())
                 .limit(limit)
                 .all()
@@ -158,14 +165,13 @@ def global_search(
                         "id": pid,
                         "title": title or name or pid,
                         "subtitle": client_name or None,
-                        "href": f"/opportunities/{pid}",
+                        "href": _project_search_href(p, opportunity=True),
                     }
                 )
             if items:
                 sections.append({"id": "opportunities", "label": "Opportunities", "items": items})
         except Exception:
             pass
-
     # ----- Customers -----
     if _has_permission(user, "business:customers:read"):
         try:

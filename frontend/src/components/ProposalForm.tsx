@@ -340,6 +340,8 @@ export default function ProposalForm({
   projectStatusLabel,
   designSystem = false,
   isAdmin = false,
+  canApprovePricing = false,
+  canDeletePricing = false,
   disableHistoryGuard = false,
 }: {
   mode: 'new' | 'edit';
@@ -359,6 +361,10 @@ export default function ProposalForm({
   designSystem?: boolean;
   /** When true, admins can re-approve pricing items marked as not approved. */
   isAdmin?: boolean;
+  /** Costs tool: approve not-approved pricing items (admin also passes via canApprovePricing). */
+  canApprovePricing?: boolean;
+  /** Costs tool: permanently delete pricing items. */
+  canDeletePricing?: boolean;
   /** Skip popstate/pushState guard — use when parent handles in-app back/tabs (e.g. ProjectDetail). */
   disableHistoryGuard?: boolean;
 }) {
@@ -1313,7 +1319,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, showPictureKeyInPdf, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
 
   const handleSave = useCallback(async()=>{
-    const allowAdminApprovalSave = isAdmin && saveTriggeredByApprovalChangeRef.current;
+    const allowAdminApprovalSave =
+      (isAdmin || canApprovePricing || canDeletePricing) &&
+      saveTriggeredByApprovalChangeRef.current;
     if (disabled && !allowAdminApprovalSave) {
       saveTriggeredByApprovalChangeRef.current = false;
       return;
@@ -1450,7 +1458,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         saveInFlightRef.current = null;
       }
     }
-  }, [disabled, isAdmin, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, showPictureKeyInPdf, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting, grandTotal, project?.code, showOnlyPricing]);
+  }, [disabled, isAdmin, canApprovePricing, canDeletePricing, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, showPictureKeyInPdf, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting, grandTotal, project?.code, showOnlyPricing]);
 
   // When approval flags change (not approved / re-approve), save immediately so project_division_ids and overview update
   useEffect(() => {
@@ -1466,13 +1474,13 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       saveTriggeredByApprovalChangeRef.current &&
       projectId &&
       mode === 'edit' &&
-      (!disabled || isAdmin)
+      (!disabled || isAdmin || canApprovePricing || canDeletePricing)
     ) {
-      // Do not clear the ref here — handleSave reads it to allow admin approve while form is disabled.
+      // Do not clear the ref here — handleSave reads it to allow approve/delete while form is disabled.
       // Always call latest handleSave (ref updated above); it serializes with in-flight saves.
       void handleSaveRef.current?.();
     }
-  }, [pricingItems, projectId, mode, disabled, isAdmin]);
+  }, [pricingItems, optionalServices, projectId, mode, disabled, isAdmin, canApprovePricing, canDeletePricing]);
 
   // Clear global unsaved state when ProposalForm unmounts (e.g. user switched tab)
   useEffect(() => {
@@ -2862,14 +2870,14 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     )}
                   >
                   {isNotApproved && (
-                    <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5">
+                    <div className="flex flex-shrink-0 flex-col items-start gap-1">
                       <span
                         className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-[10px] font-semibold text-amber-900"
                         title="This item was not approved during conversion and is read-only."
                       >
                         Not approved
                       </span>
-                      {isAdmin ? (
+                      {canApprovePricing ? (
                         <button
                           type="button"
                           className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
@@ -2890,6 +2898,27 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           }}
                         >
                           Approve
+                        </button>
+                      ) : null}
+                      {canDeletePricing ? (
+                        <button
+                          type="button"
+                          className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
+                          onClick={async () => {
+                            const result = await confirm({
+                              title: 'Delete pricing item',
+                              message:
+                                'Permanently delete this item? This cannot be undone.',
+                              confirmText: 'Delete',
+                              cancelText: 'Cancel',
+                            });
+                            if (result === 'confirm') {
+                              saveTriggeredByApprovalChangeRef.current = true;
+                              setPricingItems((arr) => arr.filter((_, j) => j !== i));
+                            }
+                          }}
+                        >
+                          Delete
                         </button>
                       ) : null}
                     </div>
@@ -3286,14 +3315,27 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         const isProjectInProgress = isBidding === false && (projectStatusLabel || '').trim().toLowerCase() === 'in progress';
                         if (isProjectInProgress) {
                           const result = await confirm({
-                            title: 'Mark as not approved',
-                            message: 'Mark this item as not approved? It will remain in the list for tracking but will not count in totals.',
+                            title: 'Pricing item',
+                            message: 'Mark this item as not approved (kept for tracking, excluded from totals), or delete it permanently.',
                             confirmText: 'Mark as "Not approved"',
                             cancelText: 'Cancel',
+                            showDiscard: canDeletePricing,
+                            discardText: 'Delete permanently',
                           });
                           if (result === 'confirm') {
                             setPricingItems(arr => arr.map((x, j) => j === i ? { ...x, approved: false } : x));
                             saveTriggeredByApprovalChangeRef.current = true;
+                          } else if (result === 'discard' && canDeletePricing) {
+                            const deleteResult = await confirm({
+                              title: 'Delete pricing item',
+                              message: 'Permanently delete this item? This cannot be undone.',
+                              confirmText: 'Delete',
+                              cancelText: 'Cancel',
+                            });
+                            if (deleteResult === 'confirm') {
+                              saveTriggeredByApprovalChangeRef.current = true;
+                              setPricingItems(arr => arr.filter((_, j) => j !== i));
+                            }
                           }
                         } else {
                           if (isBidding) {
@@ -3330,14 +3372,27 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         const isProjectInProgress = isBidding === false && (projectStatusLabel || '').trim().toLowerCase() === 'in progress';
                         if (isProjectInProgress) {
                           const result = await confirm({
-                            title: 'Mark as not approved',
-                            message: 'Mark this item as not approved? It will remain in the list for tracking but will not count in totals.',
+                            title: 'Pricing item',
+                            message: 'Mark this item as not approved (kept for tracking, excluded from totals), or delete it permanently.',
                             confirmText: 'Mark as "Not approved"',
                             cancelText: 'Cancel',
+                            showDiscard: canDeletePricing,
+                            discardText: 'Delete permanently',
                           });
                           if (result === 'confirm') {
                             setPricingItems(arr => arr.map((x, j) => j === i ? { ...x, approved: false } : x));
                             saveTriggeredByApprovalChangeRef.current = true;
+                          } else if (result === 'discard' && canDeletePricing) {
+                            const deleteResult = await confirm({
+                              title: 'Delete pricing item',
+                              message: 'Permanently delete this item? This cannot be undone.',
+                              confirmText: 'Delete',
+                              cancelText: 'Cancel',
+                            });
+                            if (deleteResult === 'confirm') {
+                              saveTriggeredByApprovalChangeRef.current = true;
+                              setPricingItems(arr => arr.filter((_, j) => j !== i));
+                            }
                           }
                         } else {
                           if (isBidding) {
@@ -3554,14 +3609,14 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       )}
                     >
                       {isNotApproved && (
-                        <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5">
+                        <div className="flex flex-shrink-0 flex-col items-start gap-1">
                           <span
                             className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-[10px] font-semibold text-amber-900"
                             title="This service was not approved during conversion and is read-only."
                           >
                             Not approved
                           </span>
-                          {isAdmin ? (
+                          {canApprovePricing ? (
                             <button
                               type="button"
                               className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
@@ -3581,6 +3636,26 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                               }}
                             >
                               Approve
+                            </button>
+                          ) : null}
+                          {canDeletePricing ? (
+                            <button
+                              type="button"
+                              className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
+                              onClick={async () => {
+                                const result = await confirm({
+                                  title: 'Delete optional service',
+                                  message: 'Permanently delete this service? This cannot be undone.',
+                                  confirmText: 'Delete',
+                                  cancelText: 'Cancel',
+                                });
+                                if (result === 'confirm') {
+                                  saveTriggeredByApprovalChangeRef.current = true;
+                                  setOptionalServices((arr) => arr.filter((_, j) => j !== i));
+                                }
+                              }}
+                            >
+                              Delete
                             </button>
                           ) : null}
                         </div>
@@ -3742,14 +3817,14 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       )}
                     >
                       {isNotApproved && (
-                        <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5">
+                        <div className="flex flex-shrink-0 flex-col items-start gap-1">
                           <span
                             className="inline-flex w-fit items-center rounded-md border border-amber-300 bg-amber-200 px-2 py-1 text-[10px] font-semibold text-amber-900"
                             title="This service was not approved during conversion and is read-only."
                           >
                             Not approved
                           </span>
-                          {isAdmin ? (
+                          {canApprovePricing ? (
                             <button
                               type="button"
                               className="rounded-md border border-dashed border-gray-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-gray-600 hover:border-gray-500 hover:bg-gray-50 hover:text-gray-800"
@@ -3769,6 +3844,26 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                               }}
                             >
                               Approve
+                            </button>
+                          ) : null}
+                          {canDeletePricing ? (
+                            <button
+                              type="button"
+                              className="rounded-md border border-dashed border-red-400 bg-transparent px-1.5 py-0.5 text-[10px] font-medium leading-tight text-red-700 hover:border-red-500 hover:bg-red-50 hover:text-red-800"
+                              onClick={async () => {
+                                const result = await confirm({
+                                  title: 'Delete optional service',
+                                  message: 'Permanently delete this service? This cannot be undone.',
+                                  confirmText: 'Delete',
+                                  cancelText: 'Cancel',
+                                });
+                                if (result === 'confirm') {
+                                  saveTriggeredByApprovalChangeRef.current = true;
+                                  setOptionalServices((arr) => arr.filter((_, j) => j !== i));
+                                }
+                              }}
+                            >
+                              Delete
                             </button>
                           ) : null}
                         </div>

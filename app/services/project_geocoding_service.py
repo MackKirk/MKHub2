@@ -62,7 +62,15 @@ def normalize_project_address(project: Project, site: Optional[ClientSite] = Non
         if val and str(val).strip():
             parts.append(str(val).strip())
     if site:
-        for field in ("site_address_line1", "site_address_line2", "site_city", "site_province", "site_postal_code", "site_country"):
+        for field in (
+            "site_address_line1",
+            "site_address_line2",
+            "site_address_line3",
+            "site_city",
+            "site_province",
+            "site_postal_code",
+            "site_country",
+        ):
             val = getattr(site, field, None)
             if val and str(val).strip():
                 s = str(val).strip()

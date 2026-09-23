@@ -210,6 +210,37 @@ export const PROJECT_LINE_PREFIX: Record<ProjectLine, string> = {
   repairs: 'business:rm:projects',
 };
 
+export function projectProposalToolPermKey(
+  businessLine: string | undefined | null,
+  tool: 'approve' | 'delete',
+  pathname?: string
+): string {
+  const line = projectLineFromBusinessLine(resolveProjectBusinessLine(businessLine, pathname));
+  return `${PROJECT_LINE_PREFIX[line]}:proposal:${tool}`;
+}
+
+/** Approve not-approved pricing items (Proposal tools). Admin bypasses. */
+export function hasProjectProposalApprovePermission(
+  permissions: Set<string> | Record<string, boolean>,
+  businessLine: string | undefined | null,
+  isAdmin = false,
+  pathname?: string
+): boolean {
+  if (isAdmin) return true;
+  return hasPerm(permissions, projectProposalToolPermKey(businessLine, 'approve', pathname));
+}
+
+/** Permanently delete pricing items (Proposal tools). Admin bypasses. */
+export function hasProjectProposalDeletePermission(
+  permissions: Set<string> | Record<string, boolean>,
+  businessLine: string | undefined | null,
+  isAdmin = false,
+  pathname?: string
+): boolean {
+  if (isAdmin) return true;
+  return hasPerm(permissions, projectProposalToolPermKey(businessLine, 'delete', pathname));
+}
+
 export type ProjectLineCategoryConfigKeys = {
   filesRead: string;
   filesWrite: string;

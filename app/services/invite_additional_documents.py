@@ -189,6 +189,7 @@ def _send_onboarding_base(
         hire_start=hire_start,
         now=now,
         force_delivery=True,
+        force_employee_assignee=True,
     )
     if created == 0:
         from .onboarding_assign import _assignment_item_exists, _get_or_create_assignment

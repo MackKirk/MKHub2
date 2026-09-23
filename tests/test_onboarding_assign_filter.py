@@ -225,5 +225,66 @@ class TestForceDeliveryOnNoneMode(unittest.TestCase):
         self.assertEqual(db.add.call_count, 1)
 
 
+class TestForceEmployeeAssignee(unittest.TestCase):
+    @patch("app.services.onboarding_assign._assignment_item_exists", return_value=False)
+    @patch("app.services.onboarding_assign._get_or_create_assignment")
+    def test_force_employee_overrides_user_assignee(self, mock_asn, mock_exists):
+        from datetime import datetime, timezone
+
+        from app.services.onboarding_assign import ensure_assignment_items_for_base_doc
+
+        now = datetime.now(timezone.utc)
+        subject = uuid.uuid4()
+        company_user = uuid.uuid4()
+        pkg = uuid.uuid4()
+        bd = SimpleNamespace(
+            id=uuid.uuid4(),
+            name="13. Payroll Hours Policy 2026",
+            display_name=None,
+            employee_visible=True,
+            assignee_type="user",
+            assignee_user_ids=[str(company_user)],
+            assignee_user_id=company_user,
+            delivery_mode="on_hire",
+            signing_deadline_days=7,
+            default_deadline_days=7,
+            notification_message=None,
+            required=True,
+            requires_signature=True,
+        )
+        asn = SimpleNamespace(id=uuid.uuid4())
+        mock_asn.return_value = asn
+        db = MagicMock()
+
+        # Without force: assigns to company user
+        created = ensure_assignment_items_for_base_doc(
+            db,
+            bd=bd,
+            subject_user_id=subject,
+            package_id=pkg,
+            hire_start=now,
+            now=now,
+        )
+        self.assertEqual(created, 1)
+        mock_asn.assert_called_with(db, company_user, pkg, now)
+
+        mock_asn.reset_mock()
+        db.reset_mock()
+        mock_asn.return_value = asn
+
+        # With force: assigns to hire
+        created = ensure_assignment_items_for_base_doc(
+            db,
+            bd=bd,
+            subject_user_id=subject,
+            package_id=pkg,
+            hire_start=now,
+            now=now,
+            force_employee_assignee=True,
+        )
+        self.assertEqual(created, 1)
+        mock_asn.assert_called_with(db, subject, pkg, now)
+
+
 if __name__ == "__main__":
     unittest.main()

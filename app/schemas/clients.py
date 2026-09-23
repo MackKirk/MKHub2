@@ -97,7 +97,11 @@ class ClientContactResponse(ClientContactBase):
 class ClientSiteBase(BaseModel):
     site_name: Optional[str] = None
     site_address_line1: Optional[str] = None
+    site_address_line1_complement: Optional[str] = None
     site_address_line2: Optional[str] = None
+    site_address_line2_complement: Optional[str] = None
+    site_address_line3: Optional[str] = None
+    site_address_line3_complement: Optional[str] = None
     site_city: Optional[str] = None
     site_province: Optional[str] = None
     site_postal_code: Optional[str] = None

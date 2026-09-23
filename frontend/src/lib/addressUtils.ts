@@ -32,33 +32,47 @@ export function formatAddressDisplay(opts: {
   return parts.join(', ') || '—';
 }
 
-/** Hero site line: street, city, postal — no province or country. */
+/** Hero site line(s): street, city, postal — no province or country. One entry per address line. */
+export function formatSiteHeroAddressLines(opts: {
+  address_line1?: string | null;
+  address_line2?: string | null;
+  address_line3?: string | null;
+  city?: string | null;
+  postal_code?: string | null;
+}): string[] {
+  const cityField = (opts.city || '').trim();
+  const postalField = (opts.postal_code || '').trim();
+  const rawLines = [opts.address_line1, opts.address_line2, opts.address_line3]
+    .map((line) => (line || '').trim())
+    .filter(Boolean);
+
+  if (rawLines.length === 0) {
+    const fallback = [cityField, postalField].filter(Boolean).join(', ');
+    return fallback ? [fallback] : [];
+  }
+
+  return rawLines.map((line) => {
+    if (line.includes(',')) {
+      const parsed = parseFullAddressForHero(line);
+      const parts = [parsed.street, parsed.city || cityField || undefined, parsed.postal || postalField || undefined].filter(
+        Boolean,
+      );
+      return parts.join(', ');
+    }
+    return [line, cityField, postalField].filter(Boolean).join(', ');
+  });
+}
+
+/** Single-string hero address (list cards). Joins multiple site lines with " / ". */
 export function formatSiteHeroAddress(opts: {
   address_line1?: string | null;
   address_line2?: string | null;
+  address_line3?: string | null;
   city?: string | null;
   postal_code?: string | null;
 }): string | null {
-  const l1 = (opts.address_line1 || '').trim();
-  const l2 = (opts.address_line2 || '').trim();
-  const cityField = (opts.city || '').trim();
-  const postalField = (opts.postal_code || '').trim();
-
-  if (!l1 && !l2 && !cityField && !postalField) return null;
-
-  if (l1.includes(',')) {
-    const parsed = parseFullAddressForHero(l1);
-    const parts = [parsed.street, parsed.city, parsed.postal].filter(Boolean);
-    return parts.length > 0 ? parts.join(', ') : null;
-  }
-
-  const streetParts: string[] = [];
-  if (l1 && l2) streetParts.push(`${l1} / ${l2}`);
-  else if (l1) streetParts.push(l1);
-  else if (l2) streetParts.push(l2);
-
-  const parts = [...streetParts, cityField, postalField].filter(Boolean);
-  return parts.length > 0 ? parts.join(', ') : null;
+  const lines = formatSiteHeroAddressLines(opts);
+  return lines.length > 0 ? lines.join(' / ') : null;
 }
 
 const HERO_POSTAL_RE = /\b([A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d)\b/;

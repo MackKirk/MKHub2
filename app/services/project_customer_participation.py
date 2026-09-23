@@ -27,7 +27,11 @@ def project_site_address_payload(p: Project, site: Any = None) -> Dict[str, Any]
         "site_id": str(getattr(p, "site_id", None)) if getattr(p, "site_id", None) else None,
         "site_name": getattr(site, "site_name", None) if site else None,
         "site_address_line1": getattr(site, "site_address_line1", None) if site else None,
+        "site_address_line1_complement": getattr(site, "site_address_line1_complement", None) if site else None,
         "site_address_line2": getattr(site, "site_address_line2", None) if site else None,
+        "site_address_line2_complement": getattr(site, "site_address_line2_complement", None) if site else None,
+        "site_address_line3": getattr(site, "site_address_line3", None) if site else None,
+        "site_address_line3_complement": getattr(site, "site_address_line3_complement", None) if site else None,
         "site_city": getattr(site, "site_city", None) if site else None,
         "site_postal_code": getattr(site, "site_postal_code", None) if site else None,
     }

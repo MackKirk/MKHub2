@@ -22,6 +22,8 @@ const LINE_PROJECT_SUB_KEYS = LINE_PROJECT_PREFIXES.flatMap((prefix) => [
     `${prefix}:${feat}:read`,
     `${prefix}:${feat}:write`,
   ]),
+  `${prefix}:proposal:approve`,
+  `${prefix}:proposal:delete`,
   `${prefix}:warranties:costs:read`,
   `${prefix}:members:write`,
   `${prefix}:owner:write`,

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import { parseGooglePlaceResult, type ParsedPlaceAddress } from '@/lib/placesFromDetails';
+import { useFixedPortalDropdownPosition } from '@/hooks/useFixedPortalDropdownPosition';
 import { uiBorders, uiCx, uiRadius, uiShadows } from '@/components/ui/tokens';
 
 interface AddressAutocompleteProps {
@@ -33,6 +36,7 @@ type Prediction = { description?: string; place_id?: string };
 const AUTOCOMPLETE_DEBOUNCE_MS = 200;
 const autocompleteCache = new Map<string, Prediction[]>();
 const detailsCache = new Map<string, ParsedPlaceAddress>();
+let placesKeyWarned = false;
 
 function cacheKey(text: string, types: string) {
   return `${types}:${text.trim().toLowerCase()}`;
@@ -56,6 +60,11 @@ export default function AddressAutocomplete({
   const abortRef = useRef<AbortController | null>(null);
   const requestGenRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const portalListIdRef = useRef(`places-ac-${Math.random().toString(36).slice(2)}`);
+  const menuStyle = useFixedPortalDropdownPosition(open && predictions.length > 0, containerRef, {
+    zIndex: 100050,
+    maxHeightPx: 224,
+  });
 
   const fetchPredictions = useCallback(async (text: string) => {
     const t = text.trim();
@@ -82,7 +91,7 @@ export default function AddressAutocomplete({
 
     setLoading(true);
     try {
-      const d: { predictions?: Prediction[] } = await api(
+      const d: { predictions?: Prediction[]; status?: string; error_message?: string } = await api(
         'GET',
         `/integrations/places/autocomplete?q=${encodeURIComponent(t)}&types=address`,
         undefined,
@@ -90,6 +99,13 @@ export default function AddressAutocomplete({
         controller.signal,
       );
       if (gen !== requestGenRef.current) return;
+      if (d.status === 'REQUEST_DENIED' && !placesKeyWarned) {
+        placesKeyWarned = true;
+        toast.error(
+          'Address suggestions unavailable: GOOGLE_PLACES_API_KEY must be a server key (not browser/referer-restricted).',
+          { duration: 8000 },
+        );
+      }
       const list = d.predictions || [];
       autocompleteCache.set(key, list);
       setPredictions(list);
@@ -129,6 +145,7 @@ export default function AddressAutocomplete({
       if (cached) {
         applyParsed(cached);
         setSelecting(false);
+        selectingRef.current = false;
         return;
       }
 
@@ -159,9 +176,11 @@ export default function AddressAutocomplete({
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      if (containerRef.current?.contains(target)) return;
+      const portal = document.getElementById(portalListIdRef.current);
+      if (portal?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => {
@@ -172,6 +191,37 @@ export default function AddressAutocomplete({
   }, []);
 
   const busy = loading || selecting;
+  const portalListId = portalListIdRef.current;
+
+  const dropdown =
+    open && predictions.length > 0 && menuStyle ? (
+      <ul
+        id={portalListId}
+        style={menuStyle}
+        className={uiCx(
+          'overflow-auto bg-white py-1 text-sm',
+          uiRadius.dropdownMenu,
+          uiBorders.subtle,
+          uiShadows.elevated,
+        )}
+      >
+        {predictions.map((p, i) => (
+          <li key={p.place_id || i}>
+            <button
+              type="button"
+              className="w-full px-3 py-2 text-left hover:bg-gray-100 disabled:opacity-50"
+              disabled={selecting}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                void selectPrediction(p);
+              }}
+            >
+              {p.description || p.place_id}
+            </button>
+          </li>
+        ))}
+      </ul>
+    ) : null;
 
   return (
     <div ref={containerRef} className="relative">
@@ -195,32 +245,7 @@ export default function AddressAutocomplete({
           …
         </div>
       )}
-      {open && predictions.length > 0 && (
-        <ul
-          className={uiCx(
-            'absolute z-[100050] mt-1 max-h-56 w-full overflow-auto bg-white py-1 text-sm',
-            uiRadius.dropdownMenu,
-            uiBorders.subtle,
-            uiShadows.elevated,
-          )}
-        >
-          {predictions.map((p, i) => (
-            <li key={p.place_id || i}>
-              <button
-                type="button"
-                className="w-full px-3 py-2 text-left hover:bg-gray-100 disabled:opacity-50"
-                disabled={selecting}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  void selectPrediction(p);
-                }}
-              >
-                {p.description || p.place_id}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {typeof document !== 'undefined' && dropdown ? createPortal(dropdown, document.body) : null}
     </div>
   );
 }

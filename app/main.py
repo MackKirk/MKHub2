@@ -2508,6 +2508,23 @@ def create_app() -> FastAPI:
                     except Exception as _e:
                         print(f"[startup] client_files.notes column (non-critical): {_e}")
 
+                    # Site address line 3 + complements (SiteFormModal already sends these)
+                    try:
+                        for _col in (
+                            "site_address_line1_complement",
+                            "site_address_line2_complement",
+                            "site_address_line3",
+                            "site_address_line3_complement",
+                        ):
+                            db.execute(
+                                text(
+                                    f"ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS {_col} VARCHAR(255) NULL"
+                                )
+                            )
+                        db.commit()
+                    except Exception as _e:
+                        print(f"[startup] client_sites address line3/complements (non-critical): {_e}")
+
                     # Soft-delete columns for company file documents (ClientDocument rows)
                     try:
                         _cd_cols = db.execute(

@@ -5,6 +5,7 @@ import { formatSiteHeroAddress } from '@/lib/addressUtils';
 export type ProjectListAddressFields = {
   site_address_line1?: string;
   site_address_line2?: string;
+  site_address_line3?: string;
   site_city?: string;
   site_postal_code?: string;
   address?: string;
@@ -58,6 +59,7 @@ export function getProjectListHeroAddress(project: ProjectListAddressFields): st
   return formatSiteHeroAddress({
     address_line1: project.site_address_line1 || project.address,
     address_line2: project.site_address_line2,
+    address_line3: project.site_address_line3,
     city: project.site_city || project.address_city,
     postal_code: project.site_postal_code || project.address_postal_code,
   });

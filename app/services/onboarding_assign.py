@@ -190,6 +190,7 @@ def ensure_assignment_items_for_base_doc(
     hire_start: datetime,
     now: datetime,
     force_delivery: bool = False,
+    force_employee_assignee: bool = False,
 ) -> int:
     """
     Create OnboardingAssignmentItem(s) for one base document for a hire subject.
@@ -197,12 +198,16 @@ def ensure_assignment_items_for_base_doc(
 
     When ``force_delivery`` is True (explicit invite selection), ``delivery_mode=none``
     is treated as on_hire so selected docs are not silently dropped.
+
+    When ``force_employee_assignee`` is True (hire onboarding package), the item is
+    always assigned to the new hire — ignoring assignee_type=user — so package docs
+    appear in the hire inbox rather than a company user's.
     """
     if not getattr(bd, "employee_visible", True):
         return 0
 
     assignee_type = (getattr(bd, "assignee_type", None) or "employee").lower()
-    if assignee_type == "employee":
+    if force_employee_assignee or assignee_type == "employee":
         assignee_targets: List[tuple[UUID, Optional[UUID]]] = [(subject_user_id, None)]
     else:
         raw_ids = getattr(bd, "assignee_user_ids", None)
@@ -320,6 +325,7 @@ def apply_onboarding_after_profile_complete(db: Session, subject_user_id: UUID) 
                 hire_start=hire_start,
                 now=now,
                 force_delivery=force_selected,
+                force_employee_assignee=True,
             )
             if created == 0:
                 import structlog
@@ -333,6 +339,7 @@ def apply_onboarding_after_profile_complete(db: Session, subject_user_id: UUID) 
                     employee_visible=getattr(bd, "employee_visible", None),
                     assignee_type=getattr(bd, "assignee_type", None),
                     force_delivery=force_selected,
+                    force_employee_assignee=True,
                 )
                 # Explicit invite selection that still produced nothing is a real miss.
                 if force_selected:

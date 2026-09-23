@@ -1,12 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useMemo, useState, useEffect, useCallback } from 'react';
-import { Link, useSearchParams, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { BarChart3, FileText, LayoutGrid, List, Plus, Search, SlidersHorizontal, Table } from 'lucide-react';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import { useConfirm } from '@/components/ConfirmProvider';
 import { QuoteOutcomeBadge } from '@/components/quotes/QuoteOutcomeBadge';
 import { QuoteOutcomeMenu } from '@/components/quotes/QuoteOutcomeMenu';
 import { QuoteOutcomeModal } from '@/components/quotes/QuoteOutcomeModal';
@@ -271,6 +273,8 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
 
 export default function Quotes() {
   const location = useLocation();
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
 
@@ -405,6 +409,29 @@ export default function Quotes() {
   const permissions = new Set(me?.permissions || []);
   const hasViewPermission = isAdmin || permissions.has('sales:quotations:read');
   const hasEditPermission = isAdmin || permissions.has('sales:quotations:write');
+
+  const handleDeleteQuote = useCallback(
+    async (quote: Quote) => {
+      const label = quote.code || quote.order_number || getQuoteDocumentType(quote) || 'this quotation';
+      const result = await confirm({
+        title: 'Delete quotation',
+        message: `Are you sure you want to delete ${label}? This action cannot be undone.`,
+        confirmText: 'Delete',
+      });
+      if (result !== 'confirm') return;
+      try {
+        await api('DELETE', `/quotes/${encodeURIComponent(String(quote.id))}`);
+        toast.success('Quotation deleted');
+        await queryClient.invalidateQueries({ queryKey: ['quotes'] });
+        if (quote.client_id) {
+          await queryClient.invalidateQueries({ queryKey: ['clientQuotes', quote.client_id] });
+        }
+      } catch (e: any) {
+        toast.error(e?.response?.data?.detail || 'Failed to delete quotation');
+      }
+    },
+    [confirm, queryClient],
+  );
 
   const filterFields: FieldConfig[] = useMemo(
     () => [
@@ -708,6 +735,7 @@ export default function Quotes() {
                 location={location}
                 onColumnSort={handleColumnSort}
                 onMarkOutcome={(quote, status) => setOutcomeModal({ quote, initialStatus: status })}
+                onDeleteQuote={handleDeleteQuote}
               />
             ) : (
               <QuotesCardsView
@@ -719,6 +747,7 @@ export default function Quotes() {
                 location={location}
                 listCardAnimClass={listCardAnimClass}
                 onMarkOutcome={(quote, status) => setOutcomeModal({ quote, initialStatus: status })}
+                onDeleteQuote={handleDeleteQuote}
               />
             )}
           </AppCard>
@@ -755,6 +784,7 @@ function QuotesTableView({
   location,
   onColumnSort,
   onMarkOutcome,
+  onDeleteQuote,
 }: {
   quotes: Quote[];
   employees?: any[];
@@ -766,7 +796,10 @@ function QuotesTableView({
   location: ReturnType<typeof useLocation>;
   onColumnSort: (column: QuoteTableColumn) => void;
   onMarkOutcome: (quote: Quote, status: QuoteOutcomeStatus) => void;
+  onDeleteQuote: (quote: Quote) => void;
 }) {
+  const navigate = useNavigate();
+
   if (isLoading && !quotes.length) {
     return (
       <div className={uiCx(uiSpacing.cardPadding, 'text-center', uiTypography.helper)}>
@@ -862,15 +895,25 @@ function QuotesTableView({
               const clientName = getQuoteClientName(quote) || 'No client';
               const documentType = getQuoteDocumentType(quote);
               const estimatorName = getEstimatorName(quote, employees);
+              const detailPath = `/quotes/${encodeURIComponent(String(quote.id))}`;
+              const openDetail = () => navigate(detailPath);
 
               return (
                 <AppSortableEntityListRow
                   key={quote.id}
-                  as="link"
-                  to={`/quotes/${encodeURIComponent(String(quote.id))}`}
+                  as="div"
                   variant="flat"
                   gridCols={QUOTES_TABLE_GRID}
                   minWidth={QUOTES_TABLE_MIN_WIDTH}
+                  role="link"
+                  tabIndex={0}
+                  onClick={openDetail}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openDetail();
+                    }
+                  }}
                 >
                   <div className={uiCx('min-w-0 truncate', uiTypography.body)} title={clientName}>
                     {clientName}
@@ -890,11 +933,16 @@ function QuotesTableView({
                   <div className={uiCx('min-w-0 text-right font-semibold text-brand-red whitespace-nowrap', uiTypography.body)}>
                     {formatQuoteValueDisplay(value)}
                   </div>
-                  <div className="flex min-w-0 justify-end">
+                  <div
+                    className="flex min-w-0 justify-end"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
                     {hasEditPermission ? (
                       <QuoteOutcomeMenu
                         currentStatus={quote.outcome_status}
                         onSelect={(status) => onMarkOutcome(quote, status)}
+                        onDelete={() => onDeleteQuote(quote)}
                       />
                     ) : null}
                   </div>
@@ -929,6 +977,7 @@ function QuotesCardsView({
   location,
   listCardAnimClass,
   onMarkOutcome,
+  onDeleteQuote,
 }: {
   quotes: Quote[];
   employees?: any[];
@@ -938,6 +987,7 @@ function QuotesCardsView({
   location: ReturnType<typeof useLocation>;
   listCardAnimClass?: string;
   onMarkOutcome: (quote: Quote, status: QuoteOutcomeStatus) => void;
+  onDeleteQuote: (quote: Quote) => void;
 }) {
   if (isLoading && !quotes.length) {
     return (
@@ -970,6 +1020,7 @@ function QuotesCardsView({
             clientFiles={clientFiles?.[quote.client_id || ''] || []}
             hasEditPermission={hasEditPermission}
             onMarkOutcome={onMarkOutcome}
+            onDeleteQuote={onDeleteQuote}
           />
         ))}
       </div>
@@ -989,12 +1040,14 @@ function QuoteListCard({
   clientFiles: _clientFiles,
   hasEditPermission,
   onMarkOutcome,
+  onDeleteQuote,
 }: {
   quote: Quote;
   employees?: any[];
   clientFiles?: any[];
   hasEditPermission: boolean;
   onMarkOutcome: (quote: Quote, status: QuoteOutcomeStatus) => void;
+  onDeleteQuote: (quote: Quote) => void;
 }) {
   const clientName = getQuoteClientName(quote);
   const created = (quote.created_at || '').slice(0, 10);
@@ -1042,6 +1095,7 @@ function QuoteListCard({
               <QuoteOutcomeMenu
                 currentStatus={quote.outcome_status}
                 onSelect={(status) => onMarkOutcome(quote, status)}
+                onDelete={() => onDeleteQuote(quote)}
               />
             ) : null}
           </div>

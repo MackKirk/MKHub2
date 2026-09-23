@@ -29,8 +29,10 @@ const SUB_READ_MARKERS = [
 export type ProjectLineConfigKind =
   | 'construction-files'
   | 'construction-reports'
+  | 'construction-proposal'
   | 'repairs-files'
-  | 'repairs-reports';
+  | 'repairs-reports'
+  | 'repairs-proposal';
 
 export type ProjectLinePermissionRow =
   | {
@@ -90,6 +92,9 @@ function configKindForKey(key: string, line: ProjectLine): ProjectLineConfigKind
   }
   if (key === `${prefix}:reports:read` || key === `${prefix}:reports:write`) {
     return line === 'construction' ? 'construction-reports' : 'repairs-reports';
+  }
+  if (key === `${prefix}:proposal:read` || key === `${prefix}:proposal:write`) {
+    return line === 'construction' ? 'construction-proposal' : 'repairs-proposal';
   }
   return undefined;
 }
@@ -205,6 +210,12 @@ function ensureMainLineRead(
   if (!next[readKey]) next[readKey] = true;
 }
 
+function clearProposalToolPermissions(next: Record<string, boolean>, proposalWriteKey: string): void {
+  if (!proposalWriteKey.endsWith(':proposal:write')) return;
+  next[proposalWriteKey.replace(':proposal:write', ':proposal:approve')] = false;
+  next[proposalWriteKey.replace(':proposal:write', ':proposal:delete')] = false;
+}
+
 export function applyProjectLineAccessLevel(
   line: ProjectLine,
   areaPerms: PermDef[],
@@ -220,6 +231,7 @@ export function applyProjectLineAccessLevel(
     if (level === 'blocked') {
       next[row.readKey] = false;
       next[row.writeKey] = false;
+      clearProposalToolPermissions(next, row.writeKey);
       if (row.readKey === mainReadKey) {
         return applyPermissionUncheckCascade(row.readKey, next);
       }
@@ -232,6 +244,7 @@ export function applyProjectLineAccessLevel(
     if (level === 'view') {
       next[row.readKey] = true;
       next[row.writeKey] = false;
+      clearProposalToolPermissions(next, row.writeKey);
       clearLegacyProjectSubPermissions(next);
       return next;
     }
