@@ -68,7 +68,11 @@ const SignatureInboxCard = forwardRef<HTMLElement, SignatureInboxCardProps>(func
   const styles = variantStyles[variant];
   const dueDate = formatDueDate(item.deadline_at);
   const overdueLabel = item.is_overdue ? daysOverdueLabel(item.deadline_at) : null;
-  const sentBy = item.requested_by_name ? `Sent by ${item.requested_by_name}` : null;
+  // Invite-origin items use source_label "Onboarding Process" and omit Sent by.
+  const sentBy =
+    !(item.source_label || '').trim() && item.requested_by_name
+      ? `Sent by ${item.requested_by_name}`
+      : null;
   const metaParts = [sourceLabel(item), sentBy].filter(Boolean);
 
   const showPreview =

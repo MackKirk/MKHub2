@@ -100,6 +100,88 @@ class TestSignatureCompliance(unittest.TestCase):
         self.assertIsNotNone(part.available_at)
         self.assertIsNone(part.deadline_at)
 
+    def test_inbox_source_label_invite(self):
+        from app.services.signature_compliance import (
+            ONBOARDING_PROCESS_SOURCE_LABEL,
+            _inbox_source_label,
+        )
+
+        self.assertEqual(_inbox_source_label("invite"), ONBOARDING_PROCESS_SOURCE_LABEL)
+        self.assertEqual(_inbox_source_label("INVITE"), ONBOARDING_PROCESS_SOURCE_LABEL)
+        self.assertIsNone(_inbox_source_label(None))
+        self.assertIsNone(_inbox_source_label(""))
+        self.assertIsNone(_inbox_source_label("manual"))
+
+    @patch("app.services.signature_compliance.get_user_display", return_value="Fernando")
+    @patch("app.services.signature_compliance.promote_scheduled_assignment_items")
+    def test_inbox_invite_origin_suppresses_sent_by(self, _promote, _display):
+        from app.services.signature_compliance import get_user_signature_inbox
+
+        uid = uuid.uuid4()
+        now = datetime.now(timezone.utc)
+
+        ob_item = MagicMock()
+        ob_item.id = uuid.uuid4()
+        ob_item.status = "pending"
+        ob_item.required = True
+        ob_item.deadline_at = now + timedelta(days=7)
+        ob_item.available_at = now
+        ob_item.display_name = "14. Overtime Policy"
+        ob_item.user_message = None
+        ob_item.signed_at = None
+        ob_item.signed_file_id = None
+        ob_item.subject_user_id = None
+        ob_item.origin = "invite"
+
+        part = MagicMock()
+        part.request_id = uuid.uuid4()
+        part.signer_user_id = uid
+        part.status = "ready"
+        part.deadline_at = now + timedelta(days=7)
+        part.available_at = now
+        part.role_label = "Employee"
+        part.role = "employee"
+        part.signed_at = None
+        part.created_at = now
+
+        req = MagicMock()
+        req.id = part.request_id
+        req.status = "pending"
+        req.display_name = "Estimator Contract"
+        req.requested_by_id = uuid.uuid4()
+        req.block_hub_access = False
+        req.message_to_signers = None
+        req.signed_file_id = None
+        req.created_at = now
+        req.origin = "invite"
+
+        db = MagicMock()
+
+        def query_side_effect(model):
+            m = MagicMock()
+            name = getattr(model, "__name__", str(model))
+            if "DocumentSignatureParticipant" in name:
+                m.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [part]
+            elif "DocumentSignatureRequest" in name:
+                m.filter.return_value.first.return_value = req
+            else:
+                m.filter.return_value.first.return_value = None
+            return m
+
+        db.query.side_effect = query_side_effect
+
+        with patch(
+            "app.services.signature_compliance._onboarding_my_items", return_value=[ob_item]
+        ):
+            out = get_user_signature_inbox(db, uid)
+
+        by_title = {i["title"]: i for i in out["items"]}
+        self.assertEqual(by_title["14. Overtime Policy"]["source_label"], "Onboarding Process")
+        self.assertIsNone(by_title["14. Overtime Policy"]["requested_by_name"])
+        self.assertEqual(by_title["Estimator Contract"]["source_label"], "Onboarding Process")
+        self.assertIsNone(by_title["Estimator Contract"]["requested_by_name"])
+        self.assertEqual(by_title["Estimator Contract"]["source"], "document_builder")
+
 
 if __name__ == "__main__":
     unittest.main()

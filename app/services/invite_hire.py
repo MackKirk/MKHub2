@@ -130,3 +130,6 @@ def apply_invite_fields_to_profile(
             ep.invited_by_user_id = created_by if isinstance(created_by, uuid.UUID) else uuid.UUID(str(created_by))
         except Exception:
             pass
+    invite_ip = _opt_str(getattr(inv, "created_from_ip", None))
+    if invite_ip:
+        ep.invited_from_ip = invite_ip[:100]

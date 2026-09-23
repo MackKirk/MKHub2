@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -90,12 +90,43 @@ def _signature_notification_link() -> str:
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-    if forwarded:
-        return forwarded[:64]
+    """Best-effort client IP for signature audit (create + sign)."""
+    headers = request.headers
+    for key in ("x-forwarded-for", "x-real-ip", "cf-connecting-ip"):
+        raw = (headers.get(key) or "").split(",")[0].strip()
+        if raw:
+            return raw[:64]
     if request.client and request.client.host:
         return str(request.client.host)[:64]
+    scope_client = (request.scope or {}).get("client")
+    if isinstance(scope_client, (list, tuple)) and scope_client and scope_client[0]:
+        return str(scope_client[0])[:64]
     return ""
+
+
+def _persist_requester_ip(db: Session, row: DocumentSignatureRequest, ip: Optional[str]) -> None:
+    """Write requester_ip even if the ORM insert somehow left it null."""
+    ip_norm = (ip or "").strip() or None
+    if not ip_norm or not row or not row.id:
+        return
+    if (getattr(row, "requester_ip", None) or "").strip() == ip_norm:
+        return
+    row.requester_ip = ip_norm
+    try:
+        from sqlalchemy import text
+
+        db.execute(
+            text(
+                "UPDATE document_signature_requests SET requester_ip = :ip WHERE id = :id"
+            ),
+            {"ip": ip_norm[:100], "id": str(row.id)},
+        )
+        db.commit()
+        db.refresh(row)
+    except Exception:
+        db.rollback()
+        # Non-fatal for send — certificate may still show unknown.
+        pass
 
 
 def save_document_signature_pdf(
@@ -350,6 +381,8 @@ def _create_signature_request(
     signing_deadline_days: Optional[int],
     block_hub_access: bool,
     message_to_signers: Optional[str],
+    origin: Optional[str] = None,
+    requester_ip: Optional[str] = None,
 ) -> DocumentSignatureRequest:
     """Persist DocumentSignatureRequest + participants + first-signer notification."""
     first_role = required_roles[0]
@@ -366,6 +399,8 @@ def _create_signature_request(
         created_by_id=user.id,
     )
     now = datetime.now(timezone.utc)
+    origin_norm = (origin or "").strip().lower() or None
+    ip_norm = (requester_ip or "").strip() or None
     row = DocumentSignatureRequest(
         user_document_id=doc.id,
         source_pdf_file_id=source_fo.id,
@@ -373,11 +408,13 @@ def _create_signature_request(
         signature_template=normalized,
         signer_user_id=first_signer_id,
         requested_by_id=user.id,
+        requester_ip=ip_norm,
         status="pending",
         display_name=(doc.title or "Document").strip() or "Document",
         signing_deadline_days=signing_deadline_days,
         block_hub_access=block_hub_access,
         message_to_signers=message_to_signers,
+        origin=origin_norm,
         created_at=now,
         updated_at=now,
     )
@@ -434,6 +471,7 @@ def _create_signature_request(
             changes_json={
                 "signing_deadline_days": signing_deadline_days,
                 "block_hub_access": block_hub_access,
+                "requester_ip": ip_norm,
             },
         )
         db.commit()
@@ -445,11 +483,13 @@ def _create_signature_request(
 @router.post("/documents/{document_id}/send-for-signature")
 def send_for_signature(
     document_id: str,
-    payload: dict,
+    http_request: Request,
+    payload: dict = Body(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions("documents:write", "business:projects:documents:write")),
 ):
+    sender_ip = _client_ip(http_request)
     try:
         did = UUID(document_id)
     except Exception:
@@ -553,7 +593,9 @@ def send_for_signature(
         signing_deadline_days=signing_deadline_days,
         block_hub_access=block_hub_access,
         message_to_signers=message_to_signers,
+        requester_ip=sender_ip,
     )
+    _persist_requester_ip(db, row, sender_ip)
     return _request_dict(row, db)
 
 
@@ -906,6 +948,19 @@ async def me_sign(
         part.user_agent = client_ua or None
 
         requested_by = (get_user_display(db, row.requested_by_id) or "").strip() or "Document sender"
+        requester_user = (
+            db.query(User).filter(User.id == row.requested_by_id).first() if row.requested_by_id else None
+        )
+        requested_by_email = (
+            (
+                (requester_user.email_personal if requester_user else None)
+                or (requester_user.email_corporate if requester_user else None)
+                or ""
+            )
+            if requester_user
+            else ""
+        )
+        requested_ip = (getattr(row, "requester_ip", None) or "").strip() or "unknown"
         acceptance = "I have read and agree to this document."
 
         cert_signers = []
@@ -921,7 +976,11 @@ async def me_sign(
             )
             if not pname:
                 pname = (get_user_display(db, p.signer_user_id) or "").strip() or "Signer"
-            pemail = (su.email_personal if su else None) or ""
+            pemail = (
+                (su.email_personal if su else None)
+                or (su.email_corporate if su else None)
+                or ""
+            )
             sat = p.signed_at or now
             cert_signers.append(
                 {
@@ -941,9 +1000,12 @@ async def me_sign(
             base_doc_hash=base_hash,
             requested_by=requested_by,
             requested_at=row.created_at or now,
+            requested_by_email=requested_by_email or "",
+            requested_ip=requested_ip,
             acceptance_statement=acceptance,
             signers=cert_signers,
             tz_name=settings.tz_default or "America/Vancouver",
+            db=db,
         )
         fname = f"{safe_name}_signed_{now.strftime('%Y%m%d')}.pdf"
         doc = db.query(UserDocument).filter(UserDocument.id == row.user_document_id).first()

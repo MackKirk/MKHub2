@@ -7,7 +7,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 from PyPDF2 import PdfReader, PdfWriter
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 
@@ -15,6 +15,7 @@ from ..utils.pdf_hash import sha256_bytes
 from .time_rules import utc_to_local
 
 _DEFAULT_TZ = "America/Vancouver"
+SIGNATURE_CERTIFICATE_TEMPLATE_NAME = "Certified Doc"
 
 
 def _utc_signed_at(signed_at: datetime) -> datetime:
@@ -32,6 +33,217 @@ def _local_signed_at(signed_at: datetime, tz_name: str) -> datetime:
 def _page_size(page) -> tuple[float, float]:
     mb = page.mediabox
     return float(mb.width), float(mb.height)
+
+
+def _margin_pct(margins: Optional[dict], key: str) -> float:
+    if not isinstance(margins, dict):
+        return 0.0
+    try:
+        v = float(margins.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(100.0, v))
+
+
+def content_box_from_margins(
+    page_w: float,
+    page_h: float,
+    margins: Optional[dict],
+    *,
+    fallback_inset_pt: float = 50.0,
+    elements: Optional[List[dict]] = None,
+) -> tuple[float, float, float, float]:
+    """
+    Return (x, y_bottom, width, y_top) content box in PDF points (origin bottom-left).
+
+    Margins define the initial content rect. Block elements carve out forbidden zones:
+    top blocks push ``y_top`` down; bottom blocks raise ``y_bottom``; side blocks shrink width.
+    """
+    L = _margin_pct(margins, "left_pct")
+    R = _margin_pct(margins, "right_pct")
+    T = _margin_pct(margins, "top_pct")
+    B = _margin_pct(margins, "bottom_pct")
+    has_blocks = any(
+        isinstance(el, dict) and str(el.get("type") or "").strip().lower() == "block"
+        for el in (elements or [])
+    )
+    if L == 0 and R == 0 and T == 0 and B == 0 and not has_blocks:
+        inset = fallback_inset_pt
+        return inset, inset, max(0.0, page_w - 2 * inset), page_h - inset
+
+    if L == 0 and R == 0 and T == 0 and B == 0:
+        inset = 36.0
+        x = inset
+        width = max(0.0, page_w - 2 * inset)
+        y_bottom = inset
+        y_top = page_h - inset
+    else:
+        x = page_w * (L / 100.0)
+        y_bottom = page_h * (B / 100.0)
+        y_top = page_h * (1.0 - T / 100.0)
+        width = page_w * (1.0 - L / 100.0 - R / 100.0)
+
+    for el in elements or []:
+        if not isinstance(el, dict):
+            continue
+        if str(el.get("type") or "").strip().lower() != "block":
+            continue
+        try:
+            bx = float(el.get("x_pct") or 0)
+            by = float(el.get("y_pct") or 0)
+            bw = float(el.get("width_pct") or 0)
+            bh = float(el.get("height_pct") or 0)
+        except (TypeError, ValueError):
+            continue
+        bx = max(0.0, min(100.0, bx))
+        by = max(0.0, min(100.0, by))
+        bw = max(0.0, min(100.0 - bx, bw))
+        bh = max(0.0, min(100.0 - by, bh))
+        if bw <= 0 or bh <= 0:
+            continue
+
+        # Element coords are %-from-top-left; PDF y grows upward.
+        block_left = page_w * (bx / 100.0)
+        block_right = page_w * ((bx + bw) / 100.0)
+        block_pdf_top = page_h * (1.0 - by / 100.0)
+        block_pdf_bottom = page_h * (1.0 - (by + bh) / 100.0)
+
+        free_left = x
+        free_right = x + width
+        free_bottom = y_bottom
+        free_top = y_top
+        if block_right <= free_left or block_left >= free_right:
+            continue
+        if block_pdf_top <= free_bottom or block_pdf_bottom >= free_top:
+            continue
+
+        # Keep top-left text flow: largest free sub-rect that avoids the block.
+        # Tuples are (x, y_bottom, width, y_top).
+        candidates: List[tuple[float, float, float, float]] = []
+        if block_pdf_bottom > free_bottom + 20:
+            candidates.append((free_left, free_bottom, free_right - free_left, block_pdf_bottom))
+        if free_top > block_pdf_top + 20:
+            candidates.append((free_left, block_pdf_top, free_right - free_left, free_top))
+        if block_left > free_left + 40:
+            candidates.append((free_left, free_bottom, block_left - free_left, free_top))
+        if free_right > block_right + 40:
+            candidates.append((block_right, free_bottom, free_right - block_right, free_top))
+
+        if not candidates:
+            continue
+
+        best = max(
+            candidates,
+            key=lambda r: (max(0.0, r[2]) * max(0.0, r[3] - r[1]), r[3]),
+        )
+        x, y_bottom, width, y_top = best
+
+    if width < 40:
+        width = max(40.0, page_w - 2 * fallback_inset_pt)
+        x = (page_w - width) / 2.0
+    if y_top - y_bottom < 40:
+        mid = (y_top + y_bottom) / 2.0
+        y_bottom = mid - 20
+        y_top = mid + 20
+    return x, y_bottom, width, y_top
+
+
+def resolve_signature_certificate_template_assets(
+    db: Any,
+) -> tuple[Optional[bytes], Optional[dict], List[dict], Dict[str, bytes]]:
+    """
+    Load Certified Doc assets for the signature certificate.
+
+    Prefers DocumentType named \"Certified Doc\" (page layout with background + blocks),
+    then falls back to a DocumentTemplate with that name.
+
+    Returns (background_bytes, margins, page_elements, image_bytes_by_file_id).
+    """
+    empty: tuple[Optional[bytes], Optional[dict], List[dict], Dict[str, bytes]] = (
+        None,
+        None,
+        [],
+        {},
+    )
+    if db is None:
+        return empty
+    try:
+        from uuid import UUID
+
+        from ..models.models import DocumentTemplate, DocumentType
+        from ..document_creator.pdf_builder import _read_file_bytes
+    except Exception:
+        return empty
+
+    background_bytes: Optional[bytes] = None
+    margins: Optional[dict] = None
+    elements: List[dict] = []
+    image_files: Dict[str, bytes] = {}
+    template_id = None
+
+    dtype = (
+        db.query(DocumentType)
+        .filter(DocumentType.name == SIGNATURE_CERTIFICATE_TEMPLATE_NAME)
+        .first()
+    )
+    if dtype and isinstance(dtype.page_templates, list) and dtype.page_templates:
+        page0 = dtype.page_templates[0] if isinstance(dtype.page_templates[0], dict) else {}
+        tid = page0.get("template_id")
+        if tid:
+            template_id = tid
+        page_margins = page0.get("margins")
+        if isinstance(page_margins, dict):
+            margins = page_margins
+        raw_els = page0.get("elements")
+        if isinstance(raw_els, list):
+            elements = [e for e in raw_els if isinstance(e, dict)]
+
+    if template_id is None:
+        row = (
+            db.query(DocumentTemplate)
+            .filter(DocumentTemplate.name == SIGNATURE_CERTIFICATE_TEMPLATE_NAME)
+            .first()
+        )
+        if row:
+            template_id = str(row.id)
+            if margins is None and isinstance(getattr(row, "margins", None), dict):
+                margins = row.margins
+
+    if template_id:
+        try:
+            tuid = UUID(str(template_id))
+        except Exception:
+            tuid = None
+        if tuid:
+            tmpl = db.query(DocumentTemplate).filter(DocumentTemplate.id == tuid).first()
+            if tmpl:
+                if margins is None and isinstance(getattr(tmpl, "margins", None), dict):
+                    margins = tmpl.margins
+                fid = getattr(tmpl, "background_file_id", None)
+                if fid:
+                    try:
+                        background_bytes = _read_file_bytes(db, fid)
+                    except Exception:
+                        background_bytes = None
+
+    for el in elements:
+        if str(el.get("type") or "").strip().lower() != "image":
+            continue
+        raw_id = str(el.get("content") or "").strip()
+        if not raw_id or raw_id in image_files:
+            continue
+        try:
+            iuid = UUID(raw_id)
+        except Exception:
+            continue
+        try:
+            data = _read_file_bytes(db, iuid)
+        except Exception:
+            data = None
+        if data:
+            image_files[raw_id] = data
+
+    return background_bytes, margins, elements, image_files
 
 
 def overlay_signature_on_pdf(
@@ -101,6 +313,8 @@ def build_certificate_page_pdf(
     requested_at_utc: str,
     acceptance_statement: str,
     signers: Optional[List[Dict[str, Any]]] = None,
+    requested_by_email: str = "",
+    requested_ip: str = "",
     # Backward-compatible single-signer kwargs (onboarding / older callers)
     signer_name: str = "",
     signer_email: str = "",
@@ -108,88 +322,311 @@ def build_certificate_page_pdf(
     signed_utc: str = "",
     ip_address: str = "",
     user_agent: str = "",
+    background_bytes: Optional[bytes] = None,
+    margins: Optional[dict] = None,
+    elements: Optional[List[dict]] = None,
+    image_bytes_by_id: Optional[Dict[str, bytes]] = None,
 ) -> bytes:
+    """
+    Build the Electronic Signature Certificate page(s).
+
+    When ``background_bytes`` is set (Certified Doc), uses A4 + content box from
+    ``margins`` / block elements. Overflow continues on additional certified pages.
+    Layout uses Montserrat (document default) with decorative section rules.
+    User agent and local signed time are not printed — only UTC.
+    """
+    _ = signed_local, user_agent  # retained for call-site compat; not rendered
     if not signers:
         signers = [
             {
                 "name": signer_name,
                 "email": signer_email,
-                "signed_local": signed_local,
                 "signed_utc": signed_utc,
                 "ip_address": ip_address,
-                "user_agent": user_agent,
             }
         ]
 
-    buf = io.BytesIO()
-    w, h = letter
-    c = canvas.Canvas(buf, pagesize=letter)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, h - 50, "Electronic Signature Certificate")
-    c.setFont("Helvetica", 9)
-    y = h - 80
+    from reportlab.lib.colors import Color, black
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    from ..document_creator.pdf_builder import _get_fonts_map, _pick_font
+
+    fonts_map = _get_fonts_map()
+    font_reg = _pick_font(fonts_map, "Montserrat", bold=False, italic=False)
+    font_bold = _pick_font(fonts_map, "Montserrat", bold=True, italic=False)
+    rule_color = Color(0.72, 0.72, 0.72)
+    muted_color = Color(0.35, 0.35, 0.35)
+
+    page_els = [e for e in (elements or []) if isinstance(e, dict)]
+    images = image_bytes_by_id or {}
+    page_w, page_h = A4
+    x0, y_bottom, box_w, y_top = content_box_from_margins(
+        page_w, page_h, margins, elements=page_els
+    )
+    body_size = 10
+    header_size = 11
+    title_size = 13
     line = 14
-    bottom_margin = 50
+    section_gap = 16
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    page_index = 0
+    y = y_top
+
+    def _wrap_to_width(text: str, font_name: str, font_size: float) -> list[str]:
+        raw = (text or "").strip() or ""
+        if not raw:
+            return [""]
+        # Prefer word wrap; fall back to hard split for long tokens (hashes).
+        words = raw.split()
+        if not words:
+            return [""]
+        lines_out: list[str] = []
+        cur = ""
+        for word in words:
+            trial = f"{cur} {word}".strip() if cur else word
+            if stringWidth(trial, font_name, font_size) <= box_w:
+                cur = trial
+                continue
+            if cur:
+                lines_out.append(cur)
+            if stringWidth(word, font_name, font_size) <= box_w:
+                cur = word
+            else:
+                # Hard-break long unbroken strings (SHA / UUID)
+                chunk = ""
+                for ch in word:
+                    trial_c = chunk + ch
+                    if stringWidth(trial_c, font_name, font_size) <= box_w:
+                        chunk = trial_c
+                    else:
+                        if chunk:
+                            lines_out.append(chunk)
+                        chunk = ch
+                cur = chunk
+        if cur:
+            lines_out.append(cur)
+        return lines_out or [""]
+
+    def _draw_background():
+        if not background_bytes:
+            return
+        try:
+            from PIL import Image
+
+            from ..document_creator.pdf_builder import _draw_raster_image_on_canvas
+
+            pil_im = Image.open(io.BytesIO(background_bytes))
+            if pil_im.mode not in ("RGB", "RGBA"):
+                pil_im = pil_im.convert("RGBA" if "A" in pil_im.getbands() else "RGB")
+            _draw_raster_image_on_canvas(c, pil_im, page_w, page_h, 0, 0, page_w, page_h)
+        except Exception:
+            pass
+
+    def _draw_layout_images():
+        if not images:
+            return
+        try:
+            from PIL import Image
+
+            from ..document_creator.pdf_builder import _draw_raster_image_on_canvas
+        except Exception:
+            return
+        for el in page_els:
+            if str(el.get("type") or "").strip().lower() != "image":
+                continue
+            raw_id = str(el.get("content") or "").strip()
+            data = images.get(raw_id)
+            if not data:
+                continue
+            try:
+                x_pct = float(el.get("x_pct") or 0) / 100.0
+                y_pct = float(el.get("y_pct") or 0) / 100.0
+                w_pct = float(el.get("width_pct") or 0) / 100.0
+                h_pct = float(el.get("height_pct") or 0) / 100.0
+            except (TypeError, ValueError):
+                continue
+            x = page_w * x_pct
+            w = page_w * w_pct
+            h = page_h * h_pct
+            y_img = page_h * (1.0 - y_pct - h_pct)
+            try:
+                pil_im = Image.open(io.BytesIO(data))
+                if pil_im.mode not in ("RGB", "RGBA"):
+                    pil_im = pil_im.convert("RGBA" if "A" in pil_im.getbands() else "RGB")
+                _draw_raster_image_on_canvas(c, pil_im, w, h, x, y_img, w, h)
+            except Exception:
+                continue
+
+    # Equal clearance on both sides of every decorative rule (text ↔ nearest line).
+    # Pad-below includes room for the next heading's ascent above its baseline.
+    rule_pad = 12.0
+    rule_inner = 2.4
+    rule_below_to_baseline = rule_pad + header_size * 0.85
+
+    def _draw_rule():
+        """Draw double rule with equal visual clearance above and below."""
+        nonlocal y
+        ensure_space(rule_pad + rule_inner + rule_below_to_baseline)
+        y -= rule_pad
+        c.setStrokeColor(rule_color)
+        c.setLineWidth(0.75)
+        c.line(x0, y, x0 + box_w, y)
+        c.setLineWidth(0.4)
+        c.line(x0, y - rule_inner, x0 + box_w, y - rule_inner)
+        c.setStrokeColor(black)
+        y -= rule_inner + rule_below_to_baseline
+
+    def _start_page(*, continuation: bool = False):
+        nonlocal y, page_index
+        if continuation:
+            c.showPage()
+            page_index += 1
+        _draw_background()
+        _draw_layout_images()
+        c.setFillColor(black)
+        c.setFont(font_bold, title_size)
+        title = "Electronic Signature Certificate"
+        if continuation:
+            title = f"{title} (continued)"
+        title_baseline = y_top - 2
+        c.drawString(x0, title_baseline, title)
+        # Cursor just below title descenders — _draw_rule owns the shared pad.
+        y = title_baseline - max(2.5, title_size * 0.35)
 
     def ensure_space(needed: float = line):
         nonlocal y
-        if y - needed < bottom_margin:
-            c.showPage()
-            c.setFont("Helvetica", 9)
-            y = h - 50
+        if y - needed < y_bottom:
+            _start_page(continuation=True)
 
-    def block(title: str, lines: list[str]):
+    def draw_lines(
+        text: str,
+        *,
+        bold: bool = False,
+        size: float = body_size,
+        color=black,
+        gap: float = line,
+        settle: bool = False,
+    ):
+        """
+        Draw wrapped text. By default advances a full line gap after the last
+        line (for stacking paragraphs). With settle=True, leaves the cursor
+        just below the last line's descenders so a following _draw_rule gets
+        the same rule_pad as everywhere else.
+        """
         nonlocal y
-        ensure_space(line * (2 + max(1, len(lines))))
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(50, y, title)
-        y -= line
-        c.setFont("Helvetica", 9)
-        for t in lines:
-            for chunk in _wrap(t, 90):
-                ensure_space(line)
-                c.drawString(50, y, chunk)
-                y -= line
-        y -= 6
+        font = font_bold if bold else font_reg
+        c.setFillColor(color)
+        c.setFont(font, size)
+        chunks = _wrap_to_width(text, font, size)
+        for i, chunk in enumerate(chunks):
+            is_last = i == len(chunks) - 1
+            advance = max(2.5, size * 0.35) if (settle and is_last) else gap
+            # When settling before a rule, reserve the full rule stack too.
+            needed = advance
+            if settle and is_last:
+                needed = advance + rule_pad + rule_inner + rule_below_to_baseline
+            ensure_space(needed)
+            c.drawString(x0, y, chunk)
+            y -= advance
+        c.setFillColor(black)
 
-    block(
-        "Document",
+    def audit_block(heading: str, rows: list[str], *, settle: bool = False):
+        nonlocal y
+        ensure_space(line * (2 + len(rows)) + section_gap)
+        draw_lines(heading, bold=True, size=header_size, gap=line + 1)
+        for i, row in enumerate(rows):
+            is_last = i == len(rows) - 1
+            draw_lines(
+                row,
+                bold=False,
+                size=body_size,
+                color=muted_color,
+                gap=line,
+                settle=settle and is_last,
+            )
+        if not settle:
+            y -= section_gap * 0.45
+
+    _start_page(continuation=False)
+
+    # --- Header (filename + document id between decorative rules) ---
+    _draw_rule()
+    draw_lines((document_name or "Document").strip() or "Document", bold=True, size=header_size, gap=line + 1)
+    has_hash = bool((document_hash_before_sign or "").strip())
+    draw_lines(
+        f"Document ID: {(document_id or '').strip()}",
+        bold=False,
+        size=9,
+        color=muted_color,
+        gap=12,
+        settle=not has_hash,
+    )
+    if has_hash:
+        draw_lines(
+            f"SHA-256: {document_hash_before_sign.strip()}",
+            bold=False,
+            size=8,
+            color=muted_color,
+            gap=11,
+            settle=True,
+        )
+    _draw_rule()
+
+    # --- Requested (same shape as Signed: when / name (email) / IP) ---
+    req_name = (requested_by or "").strip() or "—"
+    req_email = (requested_by_email or "").strip()
+    req_who = f"{req_name} ({req_email})" if req_email else req_name
+    req_when = (requested_at_utc or "").strip() or "—"
+    req_ip = (requested_ip or "").strip() or "unknown"
+    audit_block(
+        "Requested:",
         [
-            f"Name: {document_name}",
-            f"ID: {document_id}",
-            f"SHA-256 (base document): {document_hash_before_sign}",
+            req_when,
+            req_who,
+            f"IP: {req_ip}",
         ],
     )
-    block("Assignment", [f"Assigned by: {requested_by}", f"Assigned at (UTC): {requested_at_utc}"])
 
+    # --- Signed (one block per signer) ---
     multi = len(signers) > 1
     for i, s in enumerate(signers, start=1):
-        role_lbl = (str(s.get("role_label") or "")).strip()
+        role_lbl = (str(s.get("role_label") or "").strip())
         if multi:
-            title = f"Signature {i}" + (f" — {role_lbl}" if role_lbl else "")
+            heading = f"Signed — {role_lbl}:" if role_lbl else f"Signed ({i}):"
         else:
-            title = "Signature" + (f" — {role_lbl}" if role_lbl else "")
-        block(
-            title,
+            heading = f"Signed — {role_lbl}:" if role_lbl else "Signed:"
+        name = (str(s.get("name") or "").strip()) or "—"
+        email = (str(s.get("email") or "").strip())
+        who = f"{name} ({email})" if email else name
+        when = (str(s.get("signed_utc") or "").strip()) or "—"
+        ip = (str(s.get("ip_address") or "").strip()) or "unknown"
+        audit_block(
+            heading,
             [
-                f"Signer: {s.get('name') or ''}",
-                f"Email: {s.get('email') or ''}",
-                f"Signed (local): {s.get('signed_local') or ''}",
-                f"Signed (UTC): {s.get('signed_utc') or ''}",
-                f"IP address: {s.get('ip_address') or 'unknown'}",
-                f"User agent: {(s.get('user_agent') or '')[:200]}",
+                when,
+                who,
+                f"IP: {ip}",
             ],
+            settle=(i == len(signers)),
         )
 
-    block("Acceptance", [acceptance_statement or "I have read and agree to this document."])
-    block(
-        "Legal notice",
-        [
-            "This document constitutes electronic acknowledgment under applicable law.",
-            "The signature and metadata above form part of the audit record for this transaction.",
-        ],
+    _draw_rule()
+    accept = (acceptance_statement or "").strip() or "I have read and agree to this document."
+    draw_lines("Acceptance", bold=True, size=header_size, gap=line + 1)
+    draw_lines(accept, bold=False, size=body_size, color=muted_color, gap=line)
+    y -= 8
+    draw_lines("Legal notice", bold=True, size=header_size, gap=line + 1)
+    draw_lines(
+        "This document constitutes electronic acknowledgment under applicable law. "
+        "The signature and metadata above form part of the audit record for this transaction.",
+        bold=False,
+        size=9,
+        color=muted_color,
+        gap=12,
     )
-    c.showPage()
+
     c.save()
     buf.seek(0)
     return buf.read()
@@ -429,6 +866,8 @@ def build_signed_pdf_with_certificate_from_merged(
     requested_at: datetime,
     acceptance_statement: str,
     signers: Optional[List[Dict[str, Any]]] = None,
+    requested_by_email: str = "",
+    requested_ip: str = "",
     # Backward-compatible single-signer kwargs
     signer_name: str = "",
     signer_email: str = "",
@@ -436,6 +875,7 @@ def build_signed_pdf_with_certificate_from_merged(
     ip_address: str = "",
     user_agent: str = "",
     tz_name: str = _DEFAULT_TZ,
+    db: Any = None,
 ) -> Tuple[bytes, str]:
     req_utc = (
         requested_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -447,15 +887,13 @@ def build_signed_pdf_with_certificate_from_merged(
     if not cert_signers:
         if signed_at is None:
             signed_at = datetime.now(timezone.utc)
-        signed_local, signed_utc = _format_signed_times(signed_at, tz_name)
+        _signed_local, signed_utc = _format_signed_times(signed_at, tz_name)
         cert_signers = [
             {
                 "name": signer_name,
                 "email": signer_email,
-                "signed_local": signed_local,
                 "signed_utc": signed_utc,
                 "ip_address": ip_address or "unknown",
-                "user_agent": user_agent or "",
             }
         ]
     else:
@@ -464,13 +902,19 @@ def build_signed_pdf_with_certificate_from_merged(
         for s in cert_signers:
             entry = dict(s)
             sat = entry.pop("signed_at", None)
-            if sat is not None and (not entry.get("signed_local") or not entry.get("signed_utc")):
+            if sat is not None and not entry.get("signed_utc"):
                 if isinstance(sat, datetime):
-                    sl, su = _format_signed_times(sat, tz_name)
-                    entry.setdefault("signed_local", sl)
-                    entry.setdefault("signed_utc", su)
+                    _sl, su = _format_signed_times(sat, tz_name)
+                    entry["signed_utc"] = su
+            # Local time / user agent are not rendered on the certificate.
+            entry.pop("signed_local", None)
+            entry.pop("user_agent", None)
             normalized.append(entry)
         cert_signers = normalized
+
+    background_bytes, margins, page_elements, image_bytes_by_id = (
+        resolve_signature_certificate_template_assets(db)
+    )
 
     cert = build_certificate_page_pdf(
         document_name=document_name,
@@ -478,8 +922,14 @@ def build_signed_pdf_with_certificate_from_merged(
         document_hash_before_sign=base_doc_hash,
         requested_by=requested_by,
         requested_at_utc=req_utc,
+        requested_by_email=requested_by_email,
+        requested_ip=requested_ip,
         acceptance_statement=acceptance_statement,
         signers=cert_signers,
+        background_bytes=background_bytes,
+        margins=margins,
+        elements=page_elements,
+        image_bytes_by_id=image_bytes_by_id,
     )
     final = append_pdf_pages(merged_pdf_bytes, cert)
     final = make_signed_pdf_non_interactive(final)
@@ -502,7 +952,10 @@ def build_signed_pdf_with_certificate(
     ip_address: str,
     user_agent: str,
     acceptance_statement: str,
+    requested_by_email: str = "",
+    requested_ip: str = "",
     tz_name: str = _DEFAULT_TZ,
+    db: Any = None,
 ) -> Tuple[bytes, str]:
     local = _local_signed_at(signed_at, tz_name)
     display_dt = local.strftime("%Y-%m-%d %H:%M %Z")
@@ -529,6 +982,8 @@ def build_signed_pdf_with_certificate(
         base_doc_hash=base_doc_hash,
         requested_by=requested_by,
         requested_at=requested_at,
+        requested_by_email=requested_by_email,
+        requested_ip=requested_ip,
         signer_name=signer_name,
         signer_email=signer_email,
         signed_at=signed_at,
@@ -536,4 +991,5 @@ def build_signed_pdf_with_certificate(
         user_agent=user_agent,
         acceptance_statement=acceptance_statement,
         tz_name=tz_name,
+        db=db,
     )

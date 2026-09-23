@@ -191,6 +191,7 @@ def ensure_assignment_items_for_base_doc(
     now: datetime,
     force_delivery: bool = False,
     force_employee_assignee: bool = False,
+    origin: Optional[str] = None,
 ) -> int:
     """
     Create OnboardingAssignmentItem(s) for one base document for a hire subject.
@@ -242,6 +243,7 @@ def ensure_assignment_items_for_base_doc(
     msg = (getattr(bd, "notification_message", None) or "").strip() or None
     req = getattr(bd, "required", True)
     sig_req = getattr(bd, "requires_signature", True)
+    origin_norm = (origin or "").strip().lower() or None
 
     if not sig_req:
         st = "signed" if available_at <= now else "scheduled"
@@ -265,6 +267,7 @@ def ensure_assignment_items_for_base_doc(
                 display_name=disp,
                 user_message=msg,
                 subject_user_id=subject_uid,
+                origin=origin_norm,
             )
         )
         created += 1
@@ -312,6 +315,9 @@ def apply_onboarding_after_profile_complete(db: Session, subject_user_id: UUID) 
         # Explicit invite list: force delivery so delivery_mode=none cannot drop a selected doc.
         force_selected = allowed_doc_ids is not None
 
+        # Hire package from Invite New User (or any profile-complete assign for invited hires).
+        invite_origin = "invite" if (ep is not None and getattr(ep, "invited_by_user_id", None)) else None
+
         for bd in base_docs:
             if not is_hiring_package_role(getattr(bd, "package_role", None)):
                 continue
@@ -326,6 +332,7 @@ def apply_onboarding_after_profile_complete(db: Session, subject_user_id: UUID) 
                 now=now,
                 force_delivery=force_selected,
                 force_employee_assignee=True,
+                origin=invite_origin,
             )
             if created == 0:
                 import structlog

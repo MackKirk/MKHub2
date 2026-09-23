@@ -1245,8 +1245,10 @@ def create_app() -> FastAPI:
                         ("employee_profiles", "invite_additional_documents", "JSON NULL"),
                         ("employee_profiles", "invite_additional_documents_applied_at", "TIMESTAMPTZ NULL"),
                         ("employee_profiles", "invited_by_user_id", "UUID NULL"),
+                        ("employee_profiles", "invited_from_ip", "VARCHAR(100) NULL"),
                         ("invites", "document_ids", "JSON NULL"),
                         ("invites", "additional_documents", "JSON NULL"),
+                        ("invites", "created_from_ip", "VARCHAR(100) NULL"),
                     ):
                         rows = db.execute(
                             text(
@@ -1980,6 +1982,8 @@ def create_app() -> FastAPI:
                             ("message_to_signers", "VARCHAR(4000)"),
                             ("cancelled_at", "TIMESTAMPTZ"),
                             ("cancelled_by_id", "UUID REFERENCES users(id) ON DELETE SET NULL"),
+                            ("origin", "VARCHAR(32)"),
+                            ("requester_ip", "VARCHAR(100)"),
                         ]
                         for col_name, col_type in sig_req_cols:
                             try:
@@ -2341,6 +2345,7 @@ def create_app() -> FastAPI:
                         for tbl, col, ddl in [
                             ("onboarding_assignment_items", "display_name", "VARCHAR(255)"),
                             ("onboarding_assignment_items", "user_message", "VARCHAR(4000)"),
+                            ("onboarding_assignment_items", "origin", "VARCHAR(32)"),
                         ]:
                             if not _onb_col(tbl, col):
                                 db.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col} {ddl}"))

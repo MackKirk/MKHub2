@@ -4,6 +4,7 @@ import {
   formatDueDate,
   getCardVariant,
   sortActionRequired,
+  sourceLabel,
   type SignatureInboxItem,
 } from './signatureInboxUtils';
 
@@ -40,5 +41,11 @@ describe('signatureInboxUtils', () => {
     const past = new Date();
     past.setDate(past.getDate() - 2);
     expect(daysOverdueLabel(past.toISOString())).toBe('2 days overdue');
+  });
+
+  it('sourceLabel prefers source_label override for invite origin', () => {
+    expect(sourceLabel({ ...baseItem, source_label: 'Onboarding Process' })).toBe('Onboarding Process');
+    expect(sourceLabel({ ...baseItem, source: 'onboarding' })).toBe('Onboarding');
+    expect(sourceLabel(baseItem)).toBe('Document Builder');
   });
 });

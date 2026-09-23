@@ -190,6 +190,7 @@ def _send_onboarding_base(
         now=now,
         force_delivery=True,
         force_employee_assignee=True,
+        origin="invite",
     )
     if created == 0:
         from .onboarding_assign import _assignment_item_exists, _get_or_create_assignment
@@ -212,6 +213,7 @@ def _send_signature_template(
     template_id: UUID,
     subject_user_id: UUID,
     requested_by: User,
+    requester_ip: Optional[str] = None,
 ) -> None:
     from ..routes.document_signature_requests import (
         _create_signature_request,
@@ -290,6 +292,8 @@ def _send_signature_template(
         signing_deadline_days=7,
         block_hub_access=False,
         message_to_signers=None,
+        origin="invite",
+        requester_ip=requester_ip,
     )
 
 
@@ -322,6 +326,7 @@ def _send_document_type(
     type_id: UUID,
     subject_user_id: UUID,
     requested_by: User,
+    requester_ip: Optional[str] = None,
 ) -> None:
     from ..document_creator.pdf_builder import build_pdf_bytes
     from ..document_creator.signature_fields import build_signature_template_payload
@@ -463,6 +468,8 @@ def _send_document_type(
         signing_deadline_days=7,
         block_hub_access=False,
         message_to_signers=None,
+        origin="invite",
+        requester_ip=requester_ip,
     )
 
 
@@ -519,6 +526,7 @@ def fire_invite_additional_documents(
             "invite_additional_documents_no_inviter subject=%s",
             str(subject_user_id),
         )
+    requester_ip = (getattr(ep, "invited_from_ip", None) or "").strip() or None
 
     errors: List[dict] = []
     for entry in items:
@@ -544,6 +552,7 @@ def fire_invite_additional_documents(
                     type_id=uid,
                     subject_user_id=subject_user_id,
                     requested_by=requested_by,
+                    requester_ip=requester_ip,
                 )
             elif source == "onboarding_base":
                 _send_onboarding_base(

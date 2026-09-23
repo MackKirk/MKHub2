@@ -98,7 +98,12 @@ def username_suggest(req: UsernameSuggestRequest, reserve: bool = False, db: Ses
 
 
 @router.post("/invite")
-def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def invite_user(
+    req: InviteRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     # Allow if user has admin role OR invite:send permission
     has_admin = any(r.name == "admin" for r in user.roles)
     has_perm = False
@@ -201,6 +206,7 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
         pay_rate=_opt_str(req.pay_rate),
         pay_type=_opt_str(req.pay_type),
         employment_type=_opt_str(req.employment_type),
+        created_from_ip=(login_client_ip(request) or "").strip() or None,
     )
     db.add(inv)
     db.flush()

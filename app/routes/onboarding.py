@@ -938,9 +938,14 @@ async def me_sign(
     email = user.email_personal or (user.email or "")
     asn = db.query(OnboardingAssignment).filter(OnboardingAssignment.id == it.assignment_id).first()
     requested_at = asn.assigned_at if asn else now
+    requested_by_email = ""
+    requested_ip = "unknown"
     if asn and asn.assigned_by_id:
+        assigner = db.query(User).filter(User.id == asn.assigned_by_id).first()
         assigner_label = (get_user_display(db, asn.assigned_by_id) or "").strip()
         requested_by = assigner_label or "Unknown"
+        if assigner:
+            requested_by_email = (assigner.email_personal or assigner.email_corporate or "") or ""
     else:
         requested_by = "HR Onboarding"
     acceptance = "I have read and agree to this document."
@@ -965,6 +970,8 @@ async def me_sign(
             base_doc_hash=base_hash,
             requested_by=requested_by,
             requested_at=requested_at,
+            requested_by_email=requested_by_email,
+            requested_ip=requested_ip,
             signer_name=signer_name,
             signer_email=email or "",
             signed_at=now,
@@ -972,6 +979,7 @@ async def me_sign(
             user_agent=request.headers.get("user-agent") or "",
             acceptance_statement=acceptance,
             tz_name=settings.tz_default or "America/Vancouver",
+            db=db,
         )
     else:
         raw = signature_base64.split(",")[-1] if "," in signature_base64 else signature_base64
@@ -991,6 +999,8 @@ async def me_sign(
             base_doc_hash=base_hash,
             requested_by=requested_by,
             requested_at=requested_at,
+            requested_by_email=requested_by_email,
+            requested_ip=requested_ip,
             signer_name=signer_name,
             signer_email=email or "",
             signed_at=now,
@@ -998,6 +1008,7 @@ async def me_sign(
             user_agent=request.headers.get("user-agent") or "",
             acceptance_statement=acceptance,
             tz_name=settings.tz_default or "America/Vancouver",
+            db=db,
         )
     # Signed PDFs live in the new hire's HR folder. When someone else signs (subject_user_id set),
     # storage still belongs to the employee the document is about; the actual signer is on the cert / created_by.

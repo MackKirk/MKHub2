@@ -103,6 +103,8 @@ class TestApplyInviteFieldsToProfile(unittest.TestCase):
             manager_user_id=mgr,
             project_division_ids=dept_proj,
             document_ids=["doc-1"],
+            created_from_ip="203.0.113.50",
+            created_by=None,
         )
         ep = SimpleNamespace()
         apply_invite_fields_to_profile(ep, inv, payload_first_name="RegisterFirst", payload_last_name=None)
@@ -121,6 +123,7 @@ class TestApplyInviteFieldsToProfile(unittest.TestCase):
         self.assertEqual(ep.manager_user_id, uuid.UUID(mgr))
         self.assertEqual(ep.project_division_ids, dept_proj)
         self.assertEqual(ep.onboarding_document_ids, ["doc-1"])
+        self.assertEqual(ep.invited_from_ip, "203.0.113.50")
 
     def test_parse_invite_date(self):
         dt = parse_invite_date("2026-09-15")

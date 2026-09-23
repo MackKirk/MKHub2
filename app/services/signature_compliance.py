@@ -19,6 +19,16 @@ from ..models.models import (
 from ..services.onboarding_assign import promote_scheduled_assignment_items
 from ..services.task_service import get_user_display
 
+# Personal inbox display when docs were created via Invite New User.
+SIGNATURE_ORIGIN_INVITE = "invite"
+ONBOARDING_PROCESS_SOURCE_LABEL = "Onboarding Process"
+
+
+def _inbox_source_label(origin: Optional[str]) -> Optional[str]:
+    if (origin or "").strip().lower() == SIGNATURE_ORIGIN_INVITE:
+        return ONBOARDING_PROCESS_SOURCE_LABEL
+    return None
+
 
 class ComplianceCheckError(Exception):
     """Compliance query failed — enforcement boundary may fail-open."""
@@ -308,9 +318,11 @@ def get_user_signature_inbox(
             sections["action_required"] += 1
         elif status == "signed":
             sections["completed"] += 1
+        source_label = _inbox_source_label(getattr(it, "origin", None))
         row = {
             "id": str(it.id),
             "source": "onboarding",
+            "source_label": source_label,
             "title": (it.display_name or "").strip() or "Onboarding document",
             "status": status,
             "available_at": _aware(it.available_at).isoformat() if it.available_at else None,
@@ -319,6 +331,7 @@ def get_user_signature_inbox(
             "block_on_overdue": block_on_overdue,
             "is_access_blocker": is_access_blocker,
             "required": it.required,
+            # Invite-origin: suppress "Sent by" — label is Onboarding Process.
             "requested_by_name": None,
             "created_at": _aware(it.available_at).isoformat() if it.available_at else None,
             "my_role_label": None,
@@ -380,10 +393,15 @@ def get_user_signature_inbox(
             sections["waiting"] += 1
         elif status == "signed":
             sections["completed"] += 1
+        source_label = _inbox_source_label(getattr(req, "origin", None))
+        requested_by_name = None
+        if not source_label:
+            requested_by_name = get_user_display(db, req.requested_by_id) if req.requested_by_id else None
         items.append(
             {
                 "id": str(req.id),
                 "source": "document_builder",
+                "source_label": source_label,
                 "title": req.display_name or "Document",
                 "status": status,
                 "available_at": _aware(p.available_at).isoformat() if p.available_at else None,
@@ -392,7 +410,7 @@ def get_user_signature_inbox(
                 "block_on_overdue": block_on_overdue,
                 "is_access_blocker": is_access_blocker,
                 "required": None,
-                "requested_by_name": get_user_display(db, req.requested_by_id) if req.requested_by_id else None,
+                "requested_by_name": requested_by_name,
                 "created_at": req.created_at.isoformat() if req.created_at else None,
                 "my_role_label": p.role_label or p.role,
                 "participant_status": p.status,

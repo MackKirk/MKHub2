@@ -140,6 +140,8 @@ class Invite(Base):
     pay_rate: Mapped[Optional[str]] = mapped_column(String(100))
     pay_type: Mapped[Optional[str]] = mapped_column(String(50))
     employment_type: Mapped[Optional[str]] = mapped_column(String(50))
+    # Client IP of the admin who created the invite (certificate Requested audit).
+    created_from_ip: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
 
 class RefreshToken(Base):
@@ -1041,6 +1043,8 @@ class DocumentSignatureRequest(Base):
     requested_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Client IP captured when the signature request was created (certificate audit).
+    requester_ip: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     signed_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -1052,6 +1056,8 @@ class DocumentSignatureRequest(Base):
     signing_deadline_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     block_hub_access: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     message_to_signers: Mapped[Optional[str]] = mapped_column(String(4000), nullable=True)
+    # invite = created from Invite New User additional/contract fire; null = manual send
+    origin: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
     cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -1361,6 +1367,8 @@ class EmployeeProfile(Base):
     invite_additional_documents: Mapped[Optional[list]] = mapped_column(JSON)  # From invite additional_documents
     invite_additional_documents_applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     invited_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    # Copied from Invite.created_from_ip at accept — used when firing invite signature requests.
+    invited_from_ip: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Sistema / Auditoria
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
@@ -1678,6 +1686,8 @@ class OnboardingAssignmentItem(Base):
     signed_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
     # When the signer is not the new hire, which user this document is about (new employee)
     subject_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    # invite = assigned via Invite New User / hire profile-complete package; null = resend/manual
+    origin: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
 
 
 class OnboardingSignedDocument(Base):

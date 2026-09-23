@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -26,10 +26,12 @@ from ..services.onboarding_storage import read_file_object_bytes
 from ..services.pdf_page_preview import inline_pdf_response, pdf_first_page_png
 from ..utils.pdf_hash import sha256_bytes
 from .document_signature_requests import (
+    _client_ip,
     _create_signature_request,
     _parse_assignments,
     _parse_signing_order,
     _parse_signing_settings,
+    _persist_requester_ip,
     _request_dict,
     link_standalone_doc_to_employee_subject,
 )
@@ -172,7 +174,8 @@ def delete_template(
 @router.post("/{doc_id}/send-for-signature")
 def send_template_for_signature(
     doc_id: UUID,
-    payload: dict,
+    http_request: Request,
+    payload: dict = Body(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(
@@ -272,6 +275,7 @@ def send_template_for_signature(
 
     signing_deadline_days, block_hub_access, message_to_signers = _parse_signing_settings(payload or {}, user)
 
+    sender_ip = _client_ip(http_request)
     req_row = _create_signature_request(
         db,
         user,
@@ -284,5 +288,7 @@ def send_template_for_signature(
         signing_deadline_days=signing_deadline_days,
         block_hub_access=block_hub_access,
         message_to_signers=message_to_signers,
+        requester_ip=sender_ip,
     )
+    _persist_requester_ip(db, req_row, sender_ip)
     return _request_dict(req_row, db)
