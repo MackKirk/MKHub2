@@ -1058,6 +1058,13 @@ class DocumentSignatureRequest(Base):
     message_to_signers: Mapped[Optional[str]] = mapped_column(String(4000), nullable=True)
     # invite = created from Invite New User additional/contract fire; null = manual send
     origin: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+    # When created from an onboarding base PDF template (package / additional).
+    onboarding_base_document_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("onboarding_base_documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

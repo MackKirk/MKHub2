@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import toast from 'react-hot-toast';
 import { overlayPxToPdfRect, pdfRectToOverlayStyle, type PdfRect } from '@/lib/pdfCoordinates';
 import { onboardingSignatureTemplateQuickInfo } from '@/lib/formModalQuickInfo';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -12,6 +13,7 @@ import {
   AppFormModal,
   AppSectionHeader,
   AppSelect,
+  AppUserSelect,
   uiBorders,
   uiCx,
   uiLayout,
@@ -19,6 +21,12 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
+import { getUserPickerLabel } from '@/lib/userDisplay';
+import {
+  buildSigningFlowLabel,
+  getAssigneeOptions,
+} from '@/lib/signatureTemplateAssigneeUtils';
+import { useAppUserSelectCatalog } from '@/components/ui/useAppUserSelectCatalog';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -32,6 +40,8 @@ export type TemplateFieldType =
   | 'signature'
   | 'initials';
 
+const SIGNING_FIELD_TYPES: TemplateFieldType[] = ['signature', 'initials', 'date'];
+
 export type TemplateField = {
   id: string;
   type: TemplateFieldType;
@@ -40,6 +50,8 @@ export type TemplateField = {
   field_name: string;
   required: boolean;
   assignee: 'employee' | 'user';
+  /** Required when assignee is user (onboarding mode). */
+  assignee_user_id?: string;
   employee_info_key?: string;
 };
 
@@ -53,6 +65,7 @@ export type SigTemplatePayload = {
     field_name: string;
     required: boolean;
     assignee: string;
+    assignee_user_id?: string;
     employee_info_key?: string;
   }>;
 };
@@ -65,6 +78,8 @@ type Props = {
   saveTemplate: (payload: { signature_template: SigTemplatePayload }) => Promise<void>;
   onClose: () => void;
   onSaved: () => void;
+  /** onboarding: New Hire / User+picker. generic: Employee / User (Signature Editor hub). */
+  assigneeMode?: 'onboarding' | 'generic';
 };
 
 function defaultFieldLabel(t: TemplateFieldType): string {
@@ -129,11 +144,6 @@ function newField(t: TemplateFieldType, pageIndex: number, rect?: PdfRect): Temp
 
 const EMPLOYEE_INFO_OPTIONS = Object.entries(EMPLOYEE_INFO_KEY_LABELS).map(([value, label]) => ({ value, label }));
 
-const ASSIGNEE_OPTIONS = [
-  { value: 'employee', label: 'Employee' },
-  { value: 'user', label: 'User' },
-];
-
 const SIG_TEMPLATE_DIALOG_COLLAPSED = '!max-w-[1400px] !w-[min(1400px,95vw)] !h-[min(90vh,56rem)]';
 const SIG_TEMPLATE_DIALOG_EXPANDED = '!max-w-[calc(1400px+16rem+1.5rem)] !w-[min(calc(1400px+16rem+1.5rem),95vw)] !h-[min(90vh,56rem)]';
 
@@ -194,7 +204,9 @@ export default function SignatureTemplateEditor({
   saveTemplate,
   onClose,
   onSaved,
+  assigneeMode = 'generic',
 }: Props) {
+  const isOnboarding = assigneeMode === 'onboarding';
   const confirm = useConfirm();
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [pageHeights, setPageHeights] = useState<number[]>([]);
@@ -243,10 +255,44 @@ export default function SignatureTemplateEditor({
         field_name: f.field_name,
         required: f.required,
         assignee: f.assignee,
+        ...(f.assignee === 'user' && f.assignee_user_id ? { assignee_user_id: f.assignee_user_id } : {}),
         ...(f.type === 'employee_info' ? { employee_info_key: f.employee_info_key } : {}),
       }));
 
   const currentSnapshot = useMemo(() => JSON.stringify(normalizeFieldsForCompare(fields)), [fields]);
+
+  const userIdsForCatalog = useMemo(
+    () =>
+      fields
+        .filter((f) => f.assignee === 'user' && f.assignee_user_id)
+        .map((f) => f.assignee_user_id as string),
+    [fields],
+  );
+  const catalog = useAppUserSelectCatalog({
+    search: '',
+    enabled: isOnboarding,
+    fetchList: isOnboarding,
+    selectedIds: userIdsForCatalog,
+  });
+  const userLabelById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of catalog.selectedUsers ?? []) {
+      if (u?.id) m.set(u.id, getUserPickerLabel(u));
+    }
+    for (const u of catalog.users ?? []) {
+      if (u?.id && !m.has(u.id)) m.set(u.id, getUserPickerLabel(u));
+    }
+    return m;
+  }, [catalog.selectedUsers, catalog.users]);
+
+  const signingFlowLabel = useMemo(
+    () =>
+      buildSigningFlowLabel(fields, {
+        assigneeMode,
+        userLabelById,
+      }),
+    [fields, assigneeMode, userLabelById],
+  );
 
   /** In-memory copy for Ctrl+C / Ctrl+V (same session). */
   const fieldClipboardRef = useRef<TemplateField | null>(null);
@@ -425,16 +471,24 @@ export default function SignatureTemplateEditor({
   );
 
   useEffect(() => {
-    const initFields: TemplateField[] = (initialTemplate?.fields ?? []).map((f) => ({
-      id: f.id,
-      type: f.type as TemplateFieldType,
-      page_index: f.page_index,
-      rect: { ...f.rect },
-      field_name: f.field_name,
-      required: !!f.required,
-      assignee: (f.assignee === 'user' ? 'user' : 'employee') as 'employee' | 'user',
-      employee_info_key: f.employee_info_key,
-    }));
+    const initFields: TemplateField[] = (initialTemplate?.fields ?? []).map((f) => {
+      const assignee = (f.assignee === 'user' ? 'user' : 'employee') as 'employee' | 'user';
+      const uid =
+        assignee === 'user' && typeof f.assignee_user_id === 'string' && f.assignee_user_id.trim()
+          ? f.assignee_user_id.trim()
+          : undefined;
+      return {
+        id: f.id,
+        type: f.type as TemplateFieldType,
+        page_index: f.page_index,
+        rect: { ...f.rect },
+        field_name: f.field_name,
+        required: !!f.required,
+        assignee,
+        ...(uid ? { assignee_user_id: uid } : {}),
+        employee_info_key: f.employee_info_key,
+      };
+    });
 
     initialSnapshotRef.current = JSON.stringify(normalizeFieldsForCompare(initFields));
     setFields(initFields);
@@ -571,6 +625,26 @@ export default function SignatureTemplateEditor({
   };
 
   const save = async () => {
+    if (isOnboarding) {
+      const signing = fields.filter((f) => SIGNING_FIELD_TYPES.includes(f.type));
+      if (signing.length > 0) {
+        const hasHire = signing.some((f) => f.assignee === 'employee');
+        if (!hasHire) {
+          toast.error('Add at least one New Hire signature field (Who completes → New Hire).');
+          return;
+        }
+        const missingUser = signing.find((f) => f.assignee === 'user' && !(f.assignee_user_id || '').trim());
+        if (missingUser) {
+          toast.error('Select a user for every field with Who completes → User.');
+          return;
+        }
+      }
+      const anyUserMissing = fields.find((f) => f.assignee === 'user' && !(f.assignee_user_id || '').trim());
+      if (anyUserMissing) {
+        toast.error('Select a user for every field with Who completes → User.');
+        return;
+      }
+    }
     setSaving(true);
     try {
       const payload = {
@@ -584,6 +658,9 @@ export default function SignatureTemplateEditor({
             field_name: getFieldDisplayName(f),
             required: f.required,
             assignee: f.assignee,
+            ...(f.assignee === 'user' && f.assignee_user_id
+              ? { assignee_user_id: f.assignee_user_id }
+              : {}),
             ...(f.type === 'employee_info' && f.employee_info_key ? { employee_info_key: f.employee_info_key } : {}),
           })),
         },
@@ -816,8 +893,20 @@ export default function SignatureTemplateEditor({
           >
             <AppSectionHeader
               title="Signature setup"
-              description="Add a field type to place it on the page you are viewing."
+              description={
+                isOnboarding
+                  ? 'Who signs each field is set here. Delivery and turn order follow this template when the hire is invited.'
+                  : 'Add a field type to place it on the page you are viewing.'
+              }
             />
+            {isOnboarding ? (
+              <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                <p className={uiTypography.helper}>
+                  <span className="font-medium text-gray-800">Signing flow: </span>
+                  {signingFlowLabel}
+                </p>
+              </div>
+            ) : null}
             <div className="mt-4 grid grid-cols-2 gap-2">
               {FIELD_TYPES.map(({ type, label }) => (
                 <AppButton
@@ -855,16 +944,44 @@ export default function SignatureTemplateEditor({
                   <AppSelect
                     label="Who completes"
                     value={selected.assignee}
-                    options={ASSIGNEE_OPTIONS}
-                    onChange={(e) =>
+                    options={getAssigneeOptions(assigneeMode)}
+                    onChange={(e) => {
+                      const next = e.target.value as 'employee' | 'user';
                       setFields((fs) =>
-                        fs.map((x) =>
-                          x.id === selected.id ? { ...x, assignee: e.target.value as 'employee' | 'user' } : x,
-                        ),
-                      )
+                        fs.map((x) => {
+                          if (x.id !== selected.id) return x;
+                          if (next === 'employee') {
+                            const { assignee_user_id: _drop, ...rest } = x;
+                            return { ...rest, assignee: 'employee' };
+                          }
+                          return { ...x, assignee: 'user' };
+                        }),
+                      );
+                    }}
+                    fieldHint={
+                      isOnboarding
+                        ? 'Who completes\n\nNew Hire = the person completing onboarding. User = a fixed company/manager signer for this document on every hire — pick them below.'
+                        : 'Who completes\n\nEmployee = the new hire fills this field. User = a specific signer assigned when the document is sent.'
                     }
-                    fieldHint="Who completes\n\nEmployee = the new hire fills this field. User = a specific signer assigned to the document."
                   />
+                  {isOnboarding && selected.assignee === 'user' ? (
+                    <AppUserSelect
+                      mode="single"
+                      label="Signer"
+                      value={selected.assignee_user_id || ''}
+                      onChange={(userId) =>
+                        setFields((fs) =>
+                          fs.map((x) =>
+                            x.id === selected.id
+                              ? { ...x, assignee: 'user', assignee_user_id: userId || undefined }
+                              : x,
+                          ),
+                        )
+                      }
+                      placeholder="Search user…"
+                      fieldHint="Signer\n\nThis person completes this field for every hire who receives this document."
+                    />
+                  ) : null}
                   {selected.type === 'employee_info' ? (
                     <AppSelect
                       label="Info"

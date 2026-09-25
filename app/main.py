@@ -1984,6 +1984,10 @@ def create_app() -> FastAPI:
                             ("cancelled_by_id", "UUID REFERENCES users(id) ON DELETE SET NULL"),
                             ("origin", "VARCHAR(32)"),
                             ("requester_ip", "VARCHAR(100)"),
+                            (
+                                "onboarding_base_document_id",
+                                "UUID REFERENCES onboarding_base_documents(id) ON DELETE SET NULL",
+                            ),
                         ]
                         for col_name, col_type in sig_req_cols:
                             try:

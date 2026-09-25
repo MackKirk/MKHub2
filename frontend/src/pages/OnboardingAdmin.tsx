@@ -44,6 +44,8 @@ type BaseDoc = {
   assignee_user_id?: string | null;
   assignee_user_ids?: string[];
   required?: boolean;
+  /** Alias of required — Block Hub access if overdue (Document Builder parity). */
+  block_hub_access?: boolean;
   employee_visible?: boolean;
   package_role?: string | null;
   display_name?: string | null;
@@ -71,11 +73,6 @@ function mapUserPickerRow(u: UserPickerRow): AppUserSelectUser {
     username: u.username,
   };
 }
-
-const NOTIFICATION_PRESETS = [
-  { value: 'soon_after_available', label: 'Soon after document is available' },
-  { value: 'placeholder', label: 'Default (notifications not sent yet)' },
-];
 
 export default function OnboardingAdmin() {
   const qc = useQueryClient();
@@ -119,9 +116,7 @@ export default function OnboardingAdmin() {
 
   const [prefsDoc, setPrefsDoc] = useState<BaseDoc | null>(null);
   const [templateDoc, setTemplateDoc] = useState<BaseDoc | null>(null);
-  const [pfAssigneeType, setPfAssigneeType] = useState<'employee' | 'user'>('employee');
-  const [pfAssigneeUserIds, setPfAssigneeUserIds] = useState<Set<string>>(() => new Set());
-  const [pfRequired, setPfRequired] = useState(true);
+  const [pfBlockHub, setPfBlockHub] = useState(true);
   const [pfEmployeeVisible, setPfEmployeeVisible] = useState(true);
   const [pfPackageRole, setPfPackageRole] = useState<'hiring_package' | 'additional'>('hiring_package');
   const [pfDisplayName, setPfDisplayName] = useState('');
@@ -130,22 +125,16 @@ export default function OnboardingAdmin() {
   const [pfAmt, setPfAmt] = useState(1);
   const [pfUnit, setPfUnit] = useState<'days' | 'weeks' | 'months'>('months');
   const [pfDir, setPfDir] = useState<'before' | 'after'>('after');
-  const [pfNotifTiming, setPfNotifTiming] = useState('placeholder');
-  const [pfReqSig, setPfReqSig] = useState(true);
   const [pfSigningDays, setPfSigningDays] = useState(7);
   const [pfSaving, setPfSaving] = useState(false);
 
   useEffect(() => {
     if (!prefsDoc) return;
-    setPfAssigneeType((prefsDoc.assignee_type || 'employee').toLowerCase() === 'user' ? 'user' : 'employee');
-    const ids =
-      prefsDoc.assignee_user_ids && prefsDoc.assignee_user_ids.length > 0
-        ? prefsDoc.assignee_user_ids
-        : prefsDoc.assignee_user_id
-          ? [prefsDoc.assignee_user_id]
-          : [];
-    setPfAssigneeUserIds(new Set(ids));
-    setPfRequired(prefsDoc.required !== false);
+    const block =
+      prefsDoc.block_hub_access !== undefined
+        ? prefsDoc.block_hub_access !== false
+        : prefsDoc.required !== false;
+    setPfBlockHub(block);
     setPfEmployeeVisible(prefsDoc.employee_visible !== false);
     setPfPackageRole(
       (prefsDoc.package_role || '').trim().toLowerCase() === 'additional' ? 'additional' : 'hiring_package',
@@ -159,9 +148,6 @@ export default function OnboardingAdmin() {
     setPfAmt(prefsDoc.delivery_amount || 1);
     setPfUnit((prefsDoc.delivery_unit as 'days' | 'weeks' | 'months') || 'months');
     setPfDir((prefsDoc.delivery_direction as 'before' | 'after') || 'after');
-    setPfReqSig(prefsDoc.requires_signature !== false);
-    const pol = prefsDoc.notification_policy as { timing?: string } | null;
-    setPfNotifTiming(pol?.timing || 'placeholder');
     setPfSigningDays(Math.max(1, Number(prefsDoc.signing_deadline_days) || 7));
   }, [prefsDoc]);
 
@@ -177,23 +163,22 @@ export default function OnboardingAdmin() {
 
   const saveDocPreferences = async () => {
     if (!prefsDoc) return;
-    if (pfAssigneeType === 'user' && pfAssigneeUserIds.size === 0) {
-      toast.error('Select at least one user for this document');
-      return;
-    }
     const mode = pfDelivery;
     const payload: Record<string, unknown> = {
-      assignee_type: pfAssigneeType,
+      // Template-driven signers: clear legacy Send-to prefs on every save.
+      assignee_type: 'employee',
       assignee_user_id: null,
-      assignee_user_ids: pfAssigneeType === 'user' ? Array.from(pfAssigneeUserIds) : null,
-      required: pfRequired,
+      assignee_user_ids: null,
+      // Builder parity: block hub if overdue (aliases required on the server).
+      block_hub_access: pfBlockHub,
+      required: pfBlockHub,
       employee_visible: pfEmployeeVisible,
       package_role: pfPackageRole,
       display_name: pfDisplayName.trim() || null,
       notification_message: pfMessage.trim() || null,
       delivery_mode: mode,
-      requires_signature: pfReqSig,
-      notification_policy: { timing: pfNotifTiming },
+      // Notify when available (Builder parity); clear unused timing policy.
+      notification_policy: null,
       signing_deadline_days: Math.max(1, pfSigningDays),
     };
     if (mode === 'custom') {
@@ -427,225 +412,158 @@ export default function OnboardingAdmin() {
       >
         {prefsDoc ? (
           <div className={uiSpacing.sectionStack}>
-            <AppCard bodyClassName={uiSpacing.cardPadding}>
-              <AppSectionHeader title="Assignment" />
-              <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
-                <div>
-                  <AppControlLabelRow
-                    label="Send to"
-                    fieldHint={
-                      <AppFieldHint hint="Send to\n\nEmployee = the new hire receives this document. Specific users = selected users each get a copy to sign with context about the new hire. After signing, the PDF is always saved in the new hire's HR documents folder (including when a specific user signs)." />
-                    }
-                  />
-                  <fieldset className={uiCx('mt-2', uiSpacing.sectionStack)}>
-                    <legend className="sr-only">Send to</legend>
-                    <label className={uiCx('flex cursor-pointer items-center gap-2', uiTypography.body)}>
-                      <input
-                        type="radio"
-                        name="pfAssignee"
-                        className="text-brand-red focus:ring-brand-red"
-                        checked={pfAssigneeType === 'employee'}
-                        onChange={() => {
-                          setPfAssigneeType('employee');
-                          setPfAssigneeUserIds(new Set());
-                        }}
-                      />
-                      Employee (new hire)
-                    </label>
-                    <label className={uiCx('flex cursor-pointer items-center gap-2', uiTypography.body)}>
-                      <input
-                        type="radio"
-                        name="pfAssignee"
-                        className="text-brand-red focus:ring-brand-red"
-                        checked={pfAssigneeType === 'user'}
-                        onChange={() => setPfAssigneeType('user')}
-                      />
-                      Specific users
-                    </label>
-                  </fieldset>
-                  {pfAssigneeType === 'user' ? (
-                    <div className={uiCx('relative z-[1] mt-3', uiSpacing.sectionStack)}>
-                      <AppUserSelect
-                        mode="multiple"
-                        label="Choose signers"
-                        users={userPickerUsers}
-                        value={Array.from(pfAssigneeUserIds)}
-                        onChange={(ids) => setPfAssigneeUserIds(new Set(ids))}
-                        disabled={usersPickerLoading || userPickerList.length === 0}
-                        placeholder="Search users to add…"
-                        fieldHint="Choose signers\n\nSearch and select one or more users. Each selected user receives a copy to sign; selections appear as chips below the field."
-                      />
-                      <p className={uiTypography.helper}>
-                        {userPickerList.length} user{userPickerList.length === 1 ? '' : 's'} in directory
-                      </p>
-                      {usersPickerLoading ? <p className={uiTypography.helper}>Loading users…</p> : null}
-                      {!usersPickerLoading && userPickerList.length === 0 ? (
-                        <p className="text-xs text-amber-800">No users found.</p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-                <div className={uiCx('grid grid-cols-1 gap-4 border-t border-gray-100 pt-2 sm:grid-cols-2')}>
-                  <AppCheckbox
-                    label="Required"
-                    checked={pfRequired}
-                    onChange={setPfRequired}
-                    fieldHint="Required\n\nWhen checked, this document must be signed before onboarding can complete (when delivery is enabled)."
-                  />
+            <p className={uiTypography.helper}>
+              Who signs each field—and whether e-signature is needed—is set in Edit signature template (Who completes).
+              Delivery and turn order follow that template when the hire is invited.
+            </p>
+
+            {/* 2×2 grid: pairs share row height — no empty column stack */}
+            <div className={uiCx(uiLayout.sectionGrid2, 'items-stretch')}>
+              <AppCard className="h-full" bodyClassName={uiSpacing.cardPadding}>
+                <AppSectionHeader title="Document" />
+                <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
                   <AppCheckbox
                     label="Active"
                     checked={pfEmployeeVisible}
                     onChange={setPfEmployeeVisible}
                     fieldHint="Active\n\nInactive documents are not assigned during onboarding."
                   />
-                </div>
-                <AppSelect
-                  label="Package role"
-                  value={pfPackageRole}
-                  onChange={(e) =>
-                    setPfPackageRole(e.target.value === 'additional' ? 'additional' : 'hiring_package')
-                  }
-                  options={[
-                    { value: 'hiring_package', label: 'Hiring package' },
-                    { value: 'additional', label: 'Additional documents' },
-                  ]}
-                  fieldHint="Package role\n\nHiring package docs are in the default invite package. Additional docs are optional extras selected on invite Step 2."
-                />
-              </div>
-            </AppCard>
-
-            <AppCard bodyClassName={uiSpacing.cardPadding}>
-              <AppSectionHeader title="Signing and deadlines" />
-              <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
-                <AppInput
-                  type="number"
-                  min={1}
-                  label="Days to sign after available"
-                  value={pfSigningDays}
-                  onChange={(e) => setPfSigningDays(Math.max(1, +e.target.value || 7))}
-                  fieldHint="Days to sign after available\n\nAfter this window with pending required documents, the app may block access until signing is completed."
-                />
-                <AppCheckbox
-                  label="Require e-signature (PDF)"
-                  checked={pfReqSig}
-                  onChange={setPfReqSig}
-                  className="border-t border-gray-100 pt-1"
-                  fieldHint="Require e-signature (PDF)\n\nWhen enabled, the signer must apply an e-signature on the PDF."
-                />
-              </div>
-            </AppCard>
-
-            <AppCard bodyClassName={uiSpacing.cardPadding}>
-              <AppSectionHeader title="Availability and notifications" />
-              <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
-                <div>
-                  <AppControlLabelRow
-                    label="Available for signature"
-                    fieldHint={
-                      <AppFieldHint hint="Available for signature\n\nControls when the document is assigned: manual only (use Resend), on the hire date, or a custom offset before or after the hire date." />
+                  <AppSelect
+                    label="Package role"
+                    value={pfPackageRole}
+                    onChange={(e) =>
+                      setPfPackageRole(e.target.value === 'additional' ? 'additional' : 'hiring_package')
                     }
+                    options={[
+                      { value: 'hiring_package', label: 'Hiring package' },
+                      { value: 'additional', label: 'Additional documents' },
+                    ]}
+                    fieldHint="Package role\n\nHiring package docs are in the default invite package. Additional docs are optional extras selected on invite Step 2."
                   />
-                  <fieldset className={uiCx('mt-2', uiSpacing.sectionStack)}>
-                    <legend className="sr-only">Available for signature</legend>
-                    <label className={uiCx('flex cursor-pointer items-center gap-2', uiTypography.body)}>
-                      <input
-                        type="radio"
-                        name="pfDel"
-                        className="text-brand-red focus:ring-brand-red"
-                        checked={pfDelivery === 'none'}
-                        onChange={() => setPfDelivery('none')}
-                      />
-                      Manual only (use Resend)
-                    </label>
-                    <label className={uiCx('flex cursor-pointer items-center gap-2', uiTypography.body)}>
-                      <input
-                        type="radio"
-                        name="pfDel"
-                        className="text-brand-red focus:ring-brand-red"
-                        checked={pfDelivery === 'on_hire'}
-                        onChange={() => setPfDelivery('on_hire')}
-                      />
-                      On hire date
-                    </label>
-                    <label className={uiCx('flex cursor-pointer items-center gap-2', uiTypography.body)}>
-                      <input
-                        type="radio"
-                        name="pfDel"
-                        className="text-brand-red focus:ring-brand-red"
-                        checked={pfDelivery === 'custom'}
-                        onChange={() => setPfDelivery('custom')}
-                      />
-                      Custom relative to hire date
-                    </label>
-                  </fieldset>
-                  {pfDelivery === 'custom' ? (
-                    <div className={uiCx('mt-3 flex flex-wrap items-end gap-2 pl-1')}>
-                      <AppInput
-                        type="number"
-                        min={1}
-                        label="Amount"
-                        value={pfAmt}
-                        onChange={(e) => setPfAmt(+e.target.value || 1)}
-                        className="w-20"
-                        fieldHint="Amount\n\nNumber of days, weeks, or months relative to the hire date."
-                      />
-                      <AppSelect
-                        label="Unit"
-                        value={pfUnit}
-                        onChange={(e) => setPfUnit(e.target.value as 'days' | 'weeks' | 'months')}
-                        options={[
-                          { value: 'days', label: 'Days' },
-                          { value: 'weeks', label: 'Weeks' },
-                          { value: 'months', label: 'Months' },
-                        ]}
-                        triggerClassName="min-w-[7rem]"
-                        fieldHint="Unit\n\nTime unit for the custom offset from the hire date."
-                      />
-                      <AppSelect
-                        label="Direction"
-                        value={pfDir}
-                        onChange={(e) => setPfDir(e.target.value as 'before' | 'after')}
-                        options={[
-                          { value: 'after', label: 'after' },
-                          { value: 'before', label: 'before' },
-                        ]}
-                        triggerClassName="min-w-[6rem]"
-                        fieldHint="Direction\n\nWhether the offset is before or after the hire date."
-                      />
-                      <span className={uiCx(uiTypography.body, 'pb-2')}>hire date</span>
-                    </div>
-                  ) : null}
                 </div>
-                <AppSelect
-                  label="When to notify"
-                  value={pfNotifTiming}
-                  onChange={(e) => setPfNotifTiming(e.target.value)}
-                  options={NOTIFICATION_PRESETS}
-                  fieldHint="When to notify\n\nControls when a notification may be sent after the document becomes available."
-                />
-              </div>
-            </AppCard>
+              </AppCard>
 
-            <AppCard bodyClassName={uiSpacing.cardPadding}>
-              <AppSectionHeader title="Display and messaging" />
-              <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
-                <AppInput
-                  label="Display name"
-                  value={pfDisplayName}
-                  onChange={(e) => setPfDisplayName(e.target.value)}
-                  placeholder={prefsDoc.name}
-                  fieldHint="Display name\n\nOptional label shown to the employee instead of the uploaded file name."
-                />
-                <AppTextarea
-                  label="Message (notifications)"
-                  value={pfMessage}
-                  onChange={(e) => setPfMessage(e.target.value)}
-                  placeholder="Shown when notifications are enabled"
-                  rows={4}
-                  fieldHint="Message (notifications)\n\nOptional text included when notifications are sent for this document."
-                />
-              </div>
-            </AppCard>
+              <AppCard className="h-full" bodyClassName={uiSpacing.cardPadding}>
+                <AppSectionHeader title="Signing and deadlines" />
+                <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
+                  <AppInput
+                    type="number"
+                    min={1}
+                    label="Signing deadline (days per turn)"
+                    value={pfSigningDays}
+                    onChange={(e) => setPfSigningDays(Math.max(1, +e.target.value || 7))}
+                    fieldHint="Signing deadline (days per turn)\n\nSame as Document Builder: each signer has this many days after the document becomes available (or after their turn starts). Used when the template has signature fields."
+                  />
+                  <AppCheckbox
+                    label="Block Hub access if overdue"
+                    checked={pfBlockHub}
+                    onChange={setPfBlockHub}
+                    fieldHint="Block Hub access if overdue\n\nRequires a signing deadline. Same as Document Builder: if the hire (or other signer) misses the deadline on this document, Hub access may be blocked until they sign."
+                  />
+                </div>
+              </AppCard>
+
+              <AppCard className="h-full" bodyClassName={uiSpacing.cardPadding}>
+                <AppSectionHeader title="Availability" />
+                <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
+                  <div>
+                    <AppControlLabelRow
+                      label="Available for signature"
+                      fieldHint={
+                        <AppFieldHint hint="Available for signature\n\nControls when the document is assigned: manual only (use Resend), on the hire date, or a custom offset before or after the hire date. Signers are notified when the document becomes available for their turn (same as Document Builder)." />
+                      }
+                    />
+                    <fieldset className={uiCx('mt-2', uiSpacing.sectionStack)}>
+                      <legend className="sr-only">Available for signature</legend>
+                      <label className={uiCx('flex cursor-pointer items-center gap-2', uiTypography.body)}>
+                        <input
+                          type="radio"
+                          name="pfDel"
+                          className="text-brand-red focus:ring-brand-red"
+                          checked={pfDelivery === 'none'}
+                          onChange={() => setPfDelivery('none')}
+                        />
+                        Manual only (use Resend)
+                      </label>
+                      <label className={uiCx('flex cursor-pointer items-center gap-2', uiTypography.body)}>
+                        <input
+                          type="radio"
+                          name="pfDel"
+                          className="text-brand-red focus:ring-brand-red"
+                          checked={pfDelivery === 'on_hire'}
+                          onChange={() => setPfDelivery('on_hire')}
+                        />
+                        On hire date
+                      </label>
+                      <label className={uiCx('flex cursor-pointer items-center gap-2', uiTypography.body)}>
+                        <input
+                          type="radio"
+                          name="pfDel"
+                          className="text-brand-red focus:ring-brand-red"
+                          checked={pfDelivery === 'custom'}
+                          onChange={() => setPfDelivery('custom')}
+                        />
+                        Custom relative to hire date
+                      </label>
+                    </fieldset>
+                    {pfDelivery === 'custom' ? (
+                      <div className={uiCx('mt-3', uiLayout.sectionGrid2)}>
+                        <AppInput
+                          type="number"
+                          min={1}
+                          label="Amount"
+                          value={pfAmt}
+                          onChange={(e) => setPfAmt(+e.target.value || 1)}
+                          fieldHint="Amount\n\nNumber of days, weeks, or months relative to the hire date."
+                        />
+                        <AppSelect
+                          label="Unit"
+                          value={pfUnit}
+                          onChange={(e) => setPfUnit(e.target.value as 'days' | 'weeks' | 'months')}
+                          options={[
+                            { value: 'days', label: 'Days' },
+                            { value: 'weeks', label: 'Weeks' },
+                            { value: 'months', label: 'Months' },
+                          ]}
+                          fieldHint="Unit\n\nTime unit for the custom offset from the hire date."
+                        />
+                        <AppSelect
+                          label="Direction"
+                          value={pfDir}
+                          onChange={(e) => setPfDir(e.target.value as 'before' | 'after')}
+                          options={[
+                            { value: 'after', label: 'after hire date' },
+                            { value: 'before', label: 'before hire date' },
+                          ]}
+                          fieldHint="Direction\n\nWhether the offset is before or after the hire date."
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </AppCard>
+
+              <AppCard className="h-full" bodyClassName={uiSpacing.cardPadding}>
+                <AppSectionHeader title="Display and messaging" />
+                <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
+                  <AppInput
+                    label="Display name"
+                    value={pfDisplayName}
+                    onChange={(e) => setPfDisplayName(e.target.value)}
+                    placeholder={prefsDoc.name}
+                    fieldHint="Display name\n\nOptional label shown to the employee instead of the uploaded file name."
+                  />
+                  <AppTextarea
+                    label="Message (notifications)"
+                    value={pfMessage}
+                    onChange={(e) => setPfMessage(e.target.value)}
+                    placeholder="Shown when notifications are enabled"
+                    rows={4}
+                    fieldHint="Message (notifications)\n\nOptional text included when notifications are sent for this document."
+                  />
+                </div>
+              </AppCard>
+            </div>
           </div>
         ) : null}
       </AppFormModal>
@@ -758,6 +676,7 @@ export default function OnboardingAdmin() {
         <SignatureTemplateEditor
           docId={templateDoc.id}
           docName={templateDoc.name}
+          assigneeMode="onboarding"
           initialTemplate={templateDoc.signature_template as SigTemplatePayload | null | undefined}
           loadPdf={() => fetchAuthorizedBinary(`/onboarding/base-documents/${templateDoc.id}/preview`)}
           saveTemplate={(payload) => api('PUT', `/onboarding/base-documents/${templateDoc.id}`, payload)}

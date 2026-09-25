@@ -1947,21 +1947,23 @@ export const signDocumentQuickInfo = formModalQuickInfo({
 export const onboardingSignatureTemplateQuickInfo = formModalQuickInfo({
   purpose: (
     <>
-      Place signature and data fields on the base PDF so new hires and other signers know exactly what to complete when
-      this document is assigned.
+      Place signature and data fields on the base PDF. For onboarding, {uiLabel('Who completes')} decides whether the
+      New Hire or a fixed User signs each field — delivery and turn order follow this template.
     </>
   ),
   howToUse: (
     <>
       Scroll the PDF or use {uiLabel('Page')} ‹ › to choose a page. Under {uiLabel('Signature setup')}, click a field
       type to add it where you are currently looking. Drag a field to move it; use the corner handle to resize. Select a
-      field to edit {uiLabel('Field properties')} in the right panel.
+      field to edit {uiLabel('Field properties')}. For User fields, pick the signer in the dropdown. Watch{' '}
+      {uiLabel('Signing flow')} for the turn order.
     </>
   ),
   behavior: (
     <>
-      New fields are placed in the part of the PDF visible in the scroll area. Saved positions use PDF coordinates. With
-      a field selected, use Ctrl+C / Ctrl+V (Cmd on Mac) to copy and paste a duplicate on the page in view.
+      New fields are placed in the part of the PDF visible in the scroll area. When the template has New Hire and User
+      signing fields, invite delivery creates one document with sequential turns (same idea as Document Builder). With a
+      field selected, use Ctrl+C / Ctrl+V (Cmd on Mac) to copy and paste a duplicate on the page in view.
     </>
   ),
   actions: (
@@ -1976,21 +1978,25 @@ export const onboardingSignatureTemplateQuickInfo = formModalQuickInfo({
 export const onboardingDocPreferencesQuickInfo = formModalQuickInfo({
   purpose: (
     <>
-      Configure how this base PDF is assigned, when it becomes available for signature, and what new hires see during
-      onboarding.
+      Configure when this base PDF becomes available and the same signing deadline / Hub-block settings as Document
+      Builder. Who signs—and whether e-signature is needed—comes from {uiLabel('Edit signature template')} (
+      {uiLabel('Who completes')}).
     </>
   ),
   howToUse: (
     <>
-      Use {uiLabel('Assignment')} for the new hire or specific signers. Set {uiLabel('Signing and deadlines')} and{' '}
-      {uiLabel('Availability and notifications')} for timing. Optional {uiLabel('Display and messaging')} overrides the
-      title and notification text.
+      Set {uiLabel('Document')} for active and package role. Use {uiLabel('Signing and deadlines')} for{' '}
+      {uiLabel('Signing deadline (days per turn)')} and {uiLabel('Block Hub access if overdue')}, then{' '}
+      {uiLabel('Availability')} for when the document is assigned. Optional {uiLabel('Display and messaging')} overrides
+      the title and message text. Signers are notified when the document becomes available for their turn.
     </>
   ),
   behavior: (
     <>
-      Inactive documents are skipped during onboarding. Required documents that remain unsigned after the deadline may
-      block app access. Signed PDFs are always stored in the new hire&apos;s HR documents folder.
+      Inactive documents are skipped. If the template has Signature, Initials, or Date fields, delivery uses a Document
+      Builder–style envelope (turns + certificate) and notifies each signer when it is their turn. Without those fields,
+      the PDF is delivered without e-signature. With Hub block enabled, overdue unsigned docs can limit Hub access.
+      Signed PDFs are stored in the new hire&apos;s HR documents folder.
     </>
   ),
   actions: (

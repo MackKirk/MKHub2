@@ -165,7 +165,7 @@ def _send_onboarding_base(
     base_document_id: UUID,
     subject_user_id: UUID,
 ) -> int:
-    """Create OnboardingAssignmentItem(s) for an additional base document. Returns items created."""
+    """Create envelope or OnboardingAssignmentItem(s) for an additional base document."""
     if not is_onboarding_document_delivery_enabled(db):
         raise ValueError("onboarding document delivery is disabled")
     bd = db.query(OnboardingBaseDocument).filter(OnboardingBaseDocument.id == base_document_id).first()
@@ -175,6 +175,20 @@ def _send_onboarding_base(
         raise ValueError("onboarding document is not package_role additional")
     if getattr(bd, "employee_visible", True) is False:
         raise ValueError("onboarding document is inactive")
+
+    from .onboarding_envelope import (
+        _active_onboarding_base_signature,
+        onboarding_base_should_use_envelope,
+        send_onboarding_base_as_envelope,
+    )
+
+    if onboarding_base_should_use_envelope(bd):
+        if _active_onboarding_base_signature(
+            db, base_document_id=bd.id, subject_user_id=subject_user_id
+        ):
+            return 0
+        send_onboarding_base_as_envelope(db, bd=bd, subject_user_id=subject_user_id)
+        return 1
 
     now = datetime.now(timezone.utc)
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == subject_user_id).first()
@@ -205,7 +219,6 @@ def _send_onboarding_base(
             "(check delivery_mode, assignees, or employee_visible)"
         )
     return created
-
 
 def _send_signature_template(
     db: Session,

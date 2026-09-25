@@ -109,6 +109,7 @@ def _assignee_user_ids_from_bd(bd: OnboardingBaseDocument) -> List[str]:
 
 def _base_document_dict(r: OnboardingBaseDocument) -> dict:
     assignee_ids = _assignee_user_ids_from_bd(r)
+    required = bool(getattr(r, "required", True))
     return {
         "id": str(r.id),
         "name": r.name,
@@ -119,7 +120,9 @@ def _base_document_dict(r: OnboardingBaseDocument) -> dict:
         "assignee_type": (getattr(r, "assignee_type", None) or "employee").lower(),
         "assignee_user_id": assignee_ids[0] if assignee_ids else None,
         "assignee_user_ids": assignee_ids,
-        "required": getattr(r, "required", True),
+        "required": required,
+        # Document Builder parity alias (same storage as required).
+        "block_hub_access": required,
         "employee_visible": getattr(r, "employee_visible", True),
         "package_role": (
             (getattr(r, "package_role", None) or "hiring_package").strip().lower()
@@ -141,42 +144,17 @@ def _base_document_dict(r: OnboardingBaseDocument) -> dict:
 
 
 def _apply_base_document_preferences(bd: OnboardingBaseDocument, payload: dict) -> None:
-    if "assignee_type" in payload:
-        at = (payload.get("assignee_type") or "employee").lower()
-        if at not in ("employee", "user"):
-            raise HTTPException(400, "assignee_type must be employee or user")
-        bd.assignee_type = at
-        if at == "employee":
-            bd.assignee_user_id = None
-            bd.assignee_user_ids = None
-    if "assignee_user_ids" in payload:
-        raw = payload.get("assignee_user_ids")
-        if raw is None:
-            bd.assignee_user_ids = None
-            bd.assignee_user_id = None
-        elif isinstance(raw, list):
-            seen_u = set()
-            uniq_u: List[UUID] = []
-            for x in raw:
-                try:
-                    u = UUID(str(x))
-                    if u not in seen_u:
-                        seen_u.add(u)
-                        uniq_u.append(u)
-                except Exception:
-                    continue
-            bd.assignee_user_ids = [str(u) for u in uniq_u] if uniq_u else None
-            bd.assignee_user_id = uniq_u[0] if len(uniq_u) == 1 else None
-        else:
-            raise HTTPException(400, "assignee_user_ids must be a list or null")
-    if "assignee_user_id" in payload and "assignee_user_ids" not in payload:
-        v = payload.get("assignee_user_id")
-        bd.assignee_user_id = UUID(str(v)) if v else None
-        if bd.assignee_user_id:
-            bd.assignee_user_ids = [str(bd.assignee_user_id)]
-        elif (bd.assignee_type or "employee").lower() == "user":
-            bd.assignee_user_ids = None
-    if "required" in payload:
+    # Template-driven signers: always clear legacy Send-to prefs when preferences are saved.
+    # Explicit assignee_* in payload still accepted for backwards compat, then forced to employee.
+    if "assignee_type" in payload or "assignee_user_ids" in payload or "assignee_user_id" in payload:
+        pass  # ignore client values; cleared below
+    bd.assignee_type = "employee"
+    bd.assignee_user_id = None
+    bd.assignee_user_ids = None
+    # Prefs no longer set requires_signature — inferred from signature template on template save / delivery.
+    if "block_hub_access" in payload:
+        bd.required = bool(payload.get("block_hub_access"))
+    elif "required" in payload:
         bd.required = bool(payload.get("required", True))
     if "employee_visible" in payload:
         bd.employee_visible = bool(payload.get("employee_visible", True))
@@ -204,15 +182,20 @@ def _apply_base_document_preferences(bd: OnboardingBaseDocument, payload: dict) 
         bd.delivery_unit = payload.get("delivery_unit")
     if "delivery_direction" in payload:
         bd.delivery_direction = payload.get("delivery_direction")
-    if "requires_signature" in payload:
-        bd.requires_signature = bool(payload.get("requires_signature", True))
     if "notification_policy" in payload:
-        bd.notification_policy = payload.get("notification_policy")
+        # Timing presets removed: notify on available is always the default (DSR path).
+        # Clear stale policy when prefs are saved.
+        bd.notification_policy = None
     if "signing_deadline_days" in payload:
         ddays = int(payload["signing_deadline_days"] or 7)
         if ddays < 1:
             raise HTTPException(400, "signing_deadline_days must be >= 1")
         bd.signing_deadline_days = ddays
+    # Builder rule: block hub requires a valid signing deadline.
+    if bd.required:
+        days = getattr(bd, "signing_deadline_days", None)
+        if not isinstance(days, int) or days < 1:
+            raise HTTPException(400, "signing_deadline_days required when block_hub_access is enabled")
     if bd.delivery_mode == "custom":
         if not bd.delivery_amount or bd.delivery_amount < 1:
             raise HTTPException(400, "custom delivery requires delivery_amount >= 1")
@@ -222,10 +205,6 @@ def _apply_base_document_preferences(bd: OnboardingBaseDocument, payload: dict) 
         d = (bd.delivery_direction or "").lower()
         if d not in ("before", "after"):
             raise HTTPException(400, "delivery_direction must be before or after")
-    at = (bd.assignee_type or "employee").lower()
-    if at == "user" and not _assignee_user_ids_from_bd(bd):
-        raise HTTPException(400, "assignee_user_ids must include at least one user when assignee_type is user")
-
 
 # ----- Admin -----
 
@@ -374,6 +353,7 @@ def update_base_document(
         "assignee_user_id",
         "assignee_user_ids",
         "required",
+        "block_hub_access",
         "employee_visible",
         "package_role",
         "sort_order",
@@ -383,7 +363,6 @@ def update_base_document(
         "delivery_amount",
         "delivery_unit",
         "delivery_direction",
-        "requires_signature",
         "notification_policy",
         "signing_deadline_days",
     }
@@ -393,14 +372,19 @@ def update_base_document(
         st = payload.get("signature_template")
         if st is None:
             bd.signature_template = None
+            bd.requires_signature = False
         else:
             from ..models.models import FileObject
+            from ..services.onboarding_signature_template import signing_fields_in_template
 
             fo = db.query(FileObject).filter(FileObject.id == bd.file_id).first()
             if not fo:
                 raise HTTPException(400, "file not found")
             pdf_bytes = read_file_object_bytes(db, fo)
-            bd.signature_template = validate_and_normalize_template(st, pdf_bytes)
+            bd.signature_template = validate_and_normalize_template(
+                st, pdf_bytes, require_user_assignee_ids=True
+            )
+            bd.requires_signature = bool(signing_fields_in_template(bd.signature_template))
     db.commit()
     return {"status": "ok"}
 
@@ -920,7 +904,9 @@ async def me_sign(
     bd = db.query(OnboardingBaseDocument).filter(OnboardingBaseDocument.id == it.base_document_id).first()
     if not bd:
         raise HTTPException(404, "Base document missing")
-    if not getattr(bd, "requires_signature", True):
+    from ..services.onboarding_envelope import base_document_needs_esignature
+
+    if not base_document_needs_esignature(bd):
         raise HTTPException(400, "This document does not require a signature")
     from ..models.models import FileObject
 

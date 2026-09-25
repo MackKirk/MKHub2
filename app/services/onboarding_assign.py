@@ -242,7 +242,9 @@ def ensure_assignment_items_for_base_doc(
     disp = (getattr(bd, "display_name", None) or "").strip() or bd.name
     msg = (getattr(bd, "notification_message", None) or "").strip() or None
     req = getattr(bd, "required", True)
-    sig_req = getattr(bd, "requires_signature", True)
+    from .onboarding_envelope import base_document_needs_esignature
+
+    sig_req = base_document_needs_esignature(bd)
     origin_norm = (origin or "").strip().lower() or None
 
     if not sig_req:
@@ -323,6 +325,34 @@ def apply_onboarding_after_profile_complete(db: Session, subject_user_id: UUID) 
                 continue
             if allowed_doc_ids is not None and str(bd.id) not in allowed_doc_ids:
                 continue
+
+            from .onboarding_envelope import (
+                onboarding_base_should_use_envelope,
+                send_onboarding_base_as_envelope,
+            )
+
+            available_at = compute_available_at(bd, hire_start, now)
+            if available_at is None and not force_selected:
+                continue
+
+            if onboarding_base_should_use_envelope(bd):
+                try:
+                    send_onboarding_base_as_envelope(
+                        db, bd=bd, subject_user_id=subject_user_id
+                    )
+                    continue
+                except Exception as e:
+                    import structlog
+
+                    structlog.get_logger().warning(
+                        "onboarding_package_envelope_failed",
+                        base_document_id=str(bd.id),
+                        name=getattr(bd, "display_name", None) or bd.name,
+                        subject_user_id=str(subject_user_id),
+                        error=str(e),
+                    )
+                    # Fall through to legacy assignment item so hire still gets a task.
+
             created = ensure_assignment_items_for_base_doc(
                 db,
                 bd=bd,
@@ -440,6 +470,8 @@ def create_resend_assignment_items(
 
 def promote_scheduled_assignment_items(db: Session, user_id: UUID) -> None:
     """Flip scheduled items to pending (or signed if no signature required) when available_at has passed."""
+    from .onboarding_envelope import base_document_needs_esignature
+
     now = datetime.now(timezone.utc)
     q = (
         db.query(OnboardingAssignmentItem)
@@ -452,7 +484,7 @@ def promote_scheduled_assignment_items(db: Session, user_id: UUID) -> None:
     )
     for it in q.all():
         bd = db.query(OnboardingBaseDocument).filter(OnboardingBaseDocument.id == it.base_document_id).first()
-        if bd and not getattr(bd, "requires_signature", True):
+        if bd and not base_document_needs_esignature(bd):
             it.status = "signed"
         else:
             it.status = "pending"

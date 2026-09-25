@@ -383,6 +383,7 @@ def _create_signature_request(
     message_to_signers: Optional[str],
     origin: Optional[str] = None,
     requester_ip: Optional[str] = None,
+    onboarding_base_document_id: Optional[UUID] = None,
 ) -> DocumentSignatureRequest:
     """Persist DocumentSignatureRequest + participants + first-signer notification."""
     first_role = required_roles[0]
@@ -415,6 +416,7 @@ def _create_signature_request(
         block_hub_access=block_hub_access,
         message_to_signers=message_to_signers,
         origin=origin_norm,
+        onboarding_base_document_id=onboarding_base_document_id,
         created_at=now,
         updated_at=now,
     )
