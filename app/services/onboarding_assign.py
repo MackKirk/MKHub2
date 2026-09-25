@@ -102,6 +102,39 @@ def normalize_invite_document_ids(
     return valid_ids
 
 
+def list_active_hiring_package_ids(db: Session) -> List[str]:
+    """Active hiring-package base document ids — the invite default package snapshot."""
+    rows = (
+        db.query(OnboardingBaseDocument)
+        .order_by(OnboardingBaseDocument.sort_order.asc(), OnboardingBaseDocument.name.asc())
+        .all()
+    )
+    return [
+        str(row.id)
+        for row in rows
+        if getattr(row, "employee_visible", True) is not False
+        and is_hiring_package_role(getattr(row, "package_role", None))
+    ]
+
+
+def base_doc_included_in_package_delivery(
+    bd: OnboardingBaseDocument,
+    allowed_doc_ids: Optional[Set[str]],
+) -> bool:
+    """
+    Whether profile-complete should deliver this hiring-package base doc.
+
+    Explicit invite selection (a set of ids) is the only allow-list.
+    None means the legacy default: every currently active hiring-package doc.
+    Inactive docs are never included on that default path.
+    """
+    if not is_hiring_package_role(getattr(bd, "package_role", None)):
+        return False
+    if allowed_doc_ids is not None:
+        return str(bd.id) in allowed_doc_ids
+    return getattr(bd, "employee_visible", True) is not False
+
+
 def resolve_onboarding_document_filter(db: Session, subject_user_id: UUID) -> Optional[Set[str]]:
     """
     Return None to assign all hiring_package base documents, or a set of allowed base document ID strings.
@@ -321,9 +354,7 @@ def apply_onboarding_after_profile_complete(db: Session, subject_user_id: UUID) 
         invite_origin = "invite" if (ep is not None and getattr(ep, "invited_by_user_id", None)) else None
 
         for bd in base_docs:
-            if not is_hiring_package_role(getattr(bd, "package_role", None)):
-                continue
-            if allowed_doc_ids is not None and str(bd.id) not in allowed_doc_ids:
+            if not base_doc_included_in_package_delivery(bd, allowed_doc_ids):
                 continue
 
             from .onboarding_envelope import (

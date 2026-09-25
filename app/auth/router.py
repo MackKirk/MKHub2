@@ -140,7 +140,10 @@ def invite_user(
         suggested = find_available_username(db, first_name, last_name)
 
     try:
-        from ..services.onboarding_assign import normalize_invite_document_ids
+        from ..services.onboarding_assign import (
+            list_active_hiring_package_ids,
+            normalize_invite_document_ids,
+        )
         from ..services.invite_additional_documents import validate_invite_additional_documents
 
         include_pkg = bool(getattr(req, "include_onboarding_package", True))
@@ -149,8 +152,10 @@ def invite_user(
         elif req.document_ids is not None and len(req.document_ids) > 0:
             document_ids_list = normalize_invite_document_ids(db, req.document_ids, empty_means_none=False)
         else:
-            # Default package: all active
-            document_ids_list = None
+            # Default package: snapshot the active hiring-package docs shown at invite time.
+            # Storing the ids (not null) keeps later profile-complete from picking up inactive
+            # or newly added documents the inviter never confirmed.
+            document_ids_list = list_active_hiring_package_ids(db)
 
         additional_documents = validate_invite_additional_documents(
             db, getattr(req, "additional_documents", None) or []

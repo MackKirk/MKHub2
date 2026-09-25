@@ -34,6 +34,27 @@ class TestPackageRoleHelpers(unittest.TestCase):
         self.assertFalse(is_additional_package_role("hiring_package"))
 
 
+class TestPackageDeliveryInclusion(unittest.TestCase):
+    def test_default_skips_inactive(self):
+        from app.services.onboarding_assign import base_doc_included_in_package_delivery
+
+        active = SimpleNamespace(id="a", package_role="hiring_package", employee_visible=True)
+        inactive = SimpleNamespace(id="b", package_role="hiring_package", employee_visible=False)
+        additional = SimpleNamespace(id="c", package_role="additional", employee_visible=True)
+        self.assertTrue(base_doc_included_in_package_delivery(active, None))
+        self.assertFalse(base_doc_included_in_package_delivery(inactive, None))
+        self.assertFalse(base_doc_included_in_package_delivery(additional, None))
+
+    def test_explicit_list_only_selected(self):
+        from app.services.onboarding_assign import base_doc_included_in_package_delivery
+
+        selected = SimpleNamespace(id="a", package_role="hiring_package", employee_visible=True)
+        other = SimpleNamespace(id="b", package_role="hiring_package", employee_visible=True)
+        allowed = {"a"}
+        self.assertTrue(base_doc_included_in_package_delivery(selected, allowed))
+        self.assertFalse(base_doc_included_in_package_delivery(other, allowed))
+
+
 class TestResolveOnboardingDocumentFilter(unittest.TestCase):
     def test_none_means_no_filter(self):
         db = MagicMock()
