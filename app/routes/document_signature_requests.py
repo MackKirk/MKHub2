@@ -89,6 +89,15 @@ def _signature_notification_link() -> str:
     return "/personal/signatures"
 
 
+def _signature_pending_message(display_name: str, note: Optional[str] = None) -> str:
+    """Inbox copy for a signature turn. Optional note is the onboarding/send message."""
+    base = f'"{display_name}" is waiting for your signature.'
+    extra = (note or "").strip()
+    if not extra:
+        return base
+    return f"{base} {extra}"
+
+
 def _client_ip(request: Request) -> str:
     """Best-effort client IP for signature audit (create + sign)."""
     headers = request.headers
@@ -439,7 +448,6 @@ def _create_signature_request(
         db.add(part)
 
     disp = (doc.title or "Document").strip() or "Document"
-    role_lbl = labels.get(first_role) or first_role
     db.add(
         Notification(
             user_id=first_signer_id,
@@ -447,7 +455,7 @@ def _create_signature_request(
             template_key="document_signature_pending",
             payload_json={
                 "title": "Document to sign",
-                "message": f'"{disp}" is waiting for your signature ({role_lbl}).',
+                "message": _signature_pending_message(disp, message_to_signers),
                 "type": "default",
                 "link": _signature_notification_link(),
                 "read": False,
@@ -1071,7 +1079,6 @@ async def me_sign(
         set_participant_turn_deadline(nxt, row, now=now)
         row.signer_user_id = nxt.signer_user_id
         disp = (row.display_name or "Document").strip() or "Document"
-        role_lbl = _participant_role_label(nxt)
         db.add(
             Notification(
                 user_id=nxt.signer_user_id,
@@ -1079,7 +1086,7 @@ async def me_sign(
                 template_key="document_signature_pending",
                 payload_json={
                     "title": "Document to sign",
-                    "message": f'"{disp}" is waiting for your signature ({role_lbl}).',
+                    "message": _signature_pending_message(disp, getattr(row, "message_to_signers", None)),
                     "type": "default",
                     "link": _signature_notification_link(),
                     "read": False,

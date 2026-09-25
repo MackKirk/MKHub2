@@ -589,21 +589,15 @@ def build_certificate_page_pdf(
         ],
     )
 
-    # --- Signed (one block per signer) ---
-    multi = len(signers) > 1
+    # --- Signed (one block per signer; same heading as Requested) ---
     for i, s in enumerate(signers, start=1):
-        role_lbl = (str(s.get("role_label") or "").strip())
-        if multi:
-            heading = f"Signed — {role_lbl}:" if role_lbl else f"Signed ({i}):"
-        else:
-            heading = f"Signed — {role_lbl}:" if role_lbl else "Signed:"
         name = (str(s.get("name") or "").strip()) or "—"
         email = (str(s.get("email") or "").strip())
         who = f"{name} ({email})" if email else name
         when = (str(s.get("signed_utc") or "").strip()) or "—"
         ip = (str(s.get("ip_address") or "").strip()) or "unknown"
         audit_block(
-            heading,
+            "Signed:",
             [
                 when,
                 who,

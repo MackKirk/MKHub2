@@ -545,6 +545,8 @@ def update_task_description(
     viewer_division = viewer_divisions[0] if viewer_divisions else None  # For backward compatibility
     task = _get_task(task_id, db)
     _ensure_view_permission(task, me, viewer_divisions)
+    if (task.origin_type or "") == "auto_task":
+        raise HTTPException(status_code=400, detail="Auto-task descriptions cannot be edited")
 
     old_desc = (task.description or "").strip()
     new_desc = (payload.description or "").strip()

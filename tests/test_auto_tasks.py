@@ -261,5 +261,24 @@ class TestAutoTaskStartsAfter(unittest.TestCase):
         self.assertFalse(starts_after_would_cycle("a", None, {"a": "b"}))
 
 
+class TestProjectDivisionLabels(unittest.TestCase):
+    def test_subdivision_uses_parent_name(self):
+        import uuid
+        from types import SimpleNamespace
+
+        from app.services.auto_task_service import _labels_for_ids
+
+        parent_id = uuid.uuid4()
+        child_id = uuid.uuid4()
+        parent = SimpleNamespace(label="Roofing", parent_id=None)
+        child = SimpleNamespace(label="Metal", parent_id=parent_id)
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.side_effect = [child, parent]
+        self.assertEqual(
+            _labels_for_ids(db, [str(child_id)], include_parent=True),
+            "Roofing - Metal",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

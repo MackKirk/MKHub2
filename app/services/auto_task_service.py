@@ -37,6 +37,35 @@ logger = structlog.get_logger()
 ORIGIN_AUTO_TASK = "auto_task"
 
 
+def _setting_item_label(db: Session, item_id: uuid.UUID, *, include_parent: bool) -> str:
+    item = db.query(SettingItem).filter(SettingItem.id == item_id).first()
+    if not item or not (item.label or "").strip():
+        return ""
+    label = str(item.label).strip()
+    parent_id = getattr(item, "parent_id", None)
+    if include_parent and parent_id:
+        parent = db.query(SettingItem).filter(SettingItem.id == parent_id).first()
+        parent_label = (getattr(parent, "label", None) or "").strip() if parent else ""
+        if parent_label:
+            return f"{parent_label} - {label}"
+    return label
+
+
+def _labels_for_ids(db: Session, raw_ids: list, *, include_parent: bool) -> str:
+    labels: list[str] = []
+    for raw in raw_ids:
+        text = str(raw).strip()
+        if not text:
+            continue
+        try:
+            uid = uuid.UUID(text)
+        except (ValueError, TypeError, AttributeError):
+            continue
+        label = _setting_item_label(db, uid, include_parent=include_parent)
+        labels.append(label or text)
+    return ", ".join(labels)
+
+
 def _dash(value: Optional[str]) -> str:
     text = (value or "").strip()
     return text if text else "—"
@@ -386,6 +415,9 @@ def fire_trigger(
         )
 
     description = render_template(description_template, context)
+    notes_block = str(context.get("notes_block") or "").strip()
+    if notes_block and notes_block not in description:
+        description = description.rstrip() + "\n\n" + notes_block
     due_date = compute_due_date(
         due_anchor=due_anchor,
         due_in_days=due_in_days,
@@ -523,21 +555,11 @@ def invite_context(
 
         div_ids = [str(x).strip() for x in (req.division_ids or []) if str(x).strip()]
         if div_ids:
-            labels: list[str] = []
-            for raw in div_ids:
-                try:
-                    uid = uuid.UUID(raw)
-                except (ValueError, TypeError, AttributeError):
-                    continue
-                item = db.query(SettingItem).filter(SettingItem.id == uid).first()
-                if item and item.label:
-                    labels.append(str(item.label))
-            departments = ", ".join(labels)
+            departments = _labels_for_ids(db, div_ids, include_parent=False)
 
         proj_ids = [str(x).strip() for x in (req.project_division_ids or []) if str(x).strip()]
         if proj_ids:
-            # Project division labels are not always SettingItems; keep ids if unlabeled.
-            project_divisions = ", ".join(proj_ids)
+            project_divisions = _labels_for_ids(db, proj_ids, include_parent=True)
 
     notes = requirement_notes_map(req)
     return {
