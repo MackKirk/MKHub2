@@ -40,9 +40,11 @@ function formatDayShort(dateStr: string): string {
 type ScheduleWidgetProps = {
   config?: Record<string, unknown>;
   embedded?: boolean;
+  fillHeight?: boolean;
 };
 
-export function ScheduleWidget({ config: _config, embedded = false }: ScheduleWidgetProps) {
+export function ScheduleWidget({ config: _config, embedded = false, fillHeight }: ScheduleWidgetProps) {
+  const bounded = fillHeight ?? true;
   const { ready } = useAnimationReady();
   const [anchorDate, setAnchorDate] = useState<Date>(() => {
     const d = new Date();
@@ -186,7 +188,7 @@ export function ScheduleWidget({ config: _config, embedded = false }: ScheduleWi
   const content = (
     <>
       {weekControls}
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+      <div className={bounded ? 'min-h-0 flex-1 space-y-3 overflow-y-auto pr-1' : 'space-y-3'}>
         {totalShifts === 0 ? (
           embedded ? (
             <AppEmptyState title="No shifts this week" className="py-6" />

@@ -14,7 +14,7 @@ import {
   uiTypography,
 } from '@/components/ui';
 import { ScheduleWidget } from '@/pages/home-dashboard/widgets/ScheduleWidget';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
@@ -75,7 +75,7 @@ export default function Overview() {
       <AppPageHeader
         title={greetingTitle}
         subtitle={jobTitle || undefined}
-        icon={<LayoutGrid className="h-4 w-4" />}
+        icon={<LayoutGrid className="h-4 w-4" />}
       />
 
       <div className={uiLayout.pageOverview}>
@@ -95,7 +95,7 @@ export default function Overview() {
         </AppCard>
 
         <aside className={uiCx('flex h-full min-h-0 min-w-0 flex-col', uiSpacing.sectionStack)}>
-          <AppCard title="Clock In / Out" subtitle="Start or finish your work session">
+          <AppCard title="Clock In / Out" subtitle="Log start and end times at the end of the day">
             <OverviewClockPanel />
           </AppCard>
           <AppCard title="Schedule" subtitle="Your weekly shift snapshot">
@@ -112,7 +112,6 @@ export default function Overview() {
 
 function OverviewClockPanel() {
   const todayStr = getTodayLocal();
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [clockModal, setClockModal] = useState<'in' | 'out' | null>(null);
 
   const { data: currentUser } = useQuery({
@@ -177,21 +176,6 @@ function OverviewClockPanel() {
   const canClockOut =
     hasOpenClockIn && !!openClockIn && (openClockIn.status === 'approved' || openClockIn.status === 'pending');
 
-  const workingDurationLive = useMemo(() => {
-    if (!openClockIn?.clock_in_time) return null;
-    const clockInDate = new Date(openClockIn.clock_in_time);
-    const diffMs = currentTime.getTime() - clockInDate.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    return diffHours > 0 ? `${diffHours}h ${diffMinutes}m` : `${diffMinutes}m`;
-  }, [openClockIn, currentTime]);
-
-  useEffect(() => {
-    if (!hasOpenClockIn) return;
-    const interval = setInterval(() => setCurrentTime(new Date()), 60_000);
-    return () => clearInterval(interval);
-  }, [hasOpenClockIn]);
-
   return (
     <div className={uiSpacing.sectionStack}>
       {clockModal && (
@@ -207,8 +191,8 @@ function OverviewClockPanel() {
           {isLoading
             ? 'Loading attendance...'
             : hasOpenClockIn
-              ? `Clocked in${workingDurationLive ? ` · ${workingDurationLive}` : ''}`
-              : 'Ready to clock in'}
+              ? 'Open entry — add an end time'
+              : 'Ready to log hours'}
         </div>
       </div>
 
@@ -239,7 +223,9 @@ function OverviewQuickLinks() {
     <div className="divide-y divide-gray-100">
       <QuickLink to="/tasks" label="Tasks" description="Open your task queue" />
       <QuickLink to="/task-requests" label="Requests" description="Review pending task requests" />
-      <QuickLink to="/clock-in-out" label="Clock History" description="Manage attendance records" />
+      <QuickLink to="/clock-in-out" label="My hours" description="This week’s start and end times" />
+      <QuickLink to="/time-off" label="Time Off" description="Request a day off" />
+      <QuickLink to="/sick-leave" label="Sick Leave" description="Report an absence" />
     </div>
   );
 }

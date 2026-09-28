@@ -10,7 +10,7 @@ const STATIC_PRESETS: Record<string, { label: string; path: string; description:
   tasks: { label: 'Tasks', path: '/tasks', description: 'View your tasks' },
   schedule: { label: 'Schedule', path: '/schedule', description: 'Open your schedule' },
   customers: { label: 'Customers', path: '/customers', description: 'Browse customers' },
-  clock: { label: 'Clock in/out', path: '/clock-in-out', description: 'Track attendance' },
+  clock: { label: 'Log hours', path: '/clock-in-out', description: 'Enter start and end times' },
 };
 
 const SERVICE_PRESET_META: Record<string, { label: string; description: string; pathKey: 'projects' | 'opportunities' | 'business' }> = {

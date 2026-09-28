@@ -506,6 +506,7 @@ export default function UserInfo(){
   }, [me]);
   const canViewAssets = useMemo(() => {
     if (!me) return false;
+    if (userId && String(me.id) === String(userId)) return true;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
@@ -516,7 +517,7 @@ export default function UserInfo(){
       perms.includes('fleet:equipment:read') ||
       perms.includes('equipment:read')
     );
-  }, [me]);
+  }, [me, userId]);
 
   /** Activity tab: explicit HR permission or system admin (matches backend). */
   const canViewActivity = useMemo(() => {

@@ -193,10 +193,13 @@ export default function App(){
           <Route path="/onboarding/documents" element={<OnboardingDocuments />} />
           <Route path="/onboarding/admin" element={<AppShell><OnboardingAdmin/></AppShell>} />
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
+          <Route path="/home/dashboard" element={<Navigate to="/home" replace />} />
           <Route path="/overview" element={<AppShell><Overview/></AppShell>} />
           <Route path="/profile" element={<AppShell><Profile/></AppShell>} />
           <Route path="/schedule" element={<AppShell><Schedule/></AppShell>} />
           <Route path="/clock-in-out" element={<AppShell><ClockInOut/></AppShell>} />
+          <Route path="/time-off" element={<AppShell><ClockInOut/></AppShell>} />
+          <Route path="/sick-leave" element={<AppShell><ClockInOut/></AppShell>} />
           <Route path="/task-requests" element={<AppShell><TaskRequests/></AppShell>} />
           <Route path="/tasks" element={<AppShell><Tasks/></AppShell>} />
           <Route path="/print-shop" element={<AppShell><PrintShopList/></AppShell>} />

@@ -42,7 +42,7 @@ export const DEFAULT_HOME_DASHBOARD: HomeDashboardState = {
     { id: 'f063ecf5-aeb8-4a9e-96ea-c608b996ee43', type: 'shortcuts', title: 'Customers', config: { items: ['customers'] } },
     { id: '2d78ec9c-0c76-49da-9819-c4a03ef3f753', type: 'calendar', title: 'Calendar', config: {} },
     { id: 'a2d76703-89ec-4d90-8539-d517ec1701c9', type: 'chart', title: 'Projects by division', config: { chartType: 'donut', metric: 'projects_by_division', mode: 'quantity', palette: 'cool' } },
-    { id: '70732f90-3d96-43e0-b5ab-b8e48dd7b907', type: 'shortcuts', title: 'Clock in/out', config: { items: ['clock'] } },
+    { id: '70732f90-3d96-43e0-b5ab-b8e48dd7b907', type: 'shortcuts', title: 'Log hours', config: { items: ['clock'] } },
     { id: 'c55e0580-ee23-46fb-809d-c4535ff8bb6f', type: 'schedule', title: 'Schedule', config: {} },
   ],
 };

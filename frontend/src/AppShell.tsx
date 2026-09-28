@@ -118,6 +118,18 @@ const IconClock = () => (
   </svg>
 );
 
+const IconSun = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364 6.364l-1.414-1.414M7.05 7.05L5.636 5.636m12.728 0L16.95 7.05M7.05 16.95l-1.414 1.414M12 8a4 4 0 100 8 4 4 0 000-8z" />
+  </svg>
+);
+
+const IconMedkit = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-3-3v6m8 5H4a2 2 0 01-2-2V8a2 2 0 012-2h3.172a2 2 0 001.414-.586l.828-.828A2 2 0 0110.828 4h2.344a2 2 0 011.414.586l.828.828A2 2 0 0016.828 6H20a2 2 0 012 2v11a2 2 0 01-2 2z" />
+  </svg>
+);
+
 const IconClipboard = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -740,6 +752,8 @@ export default function AppShell({ children }: PropsWithChildren){
       items: [
         { id: 'overview', label: 'Overview', path: '/overview', icon: <IconOverview /> },
         { id: 'schedule', label: 'Schedule', path: '/schedule', icon: <IconCalendar /> },
+        { id: 'time-off', label: 'Time Off', path: '/time-off', icon: <IconSun /> },
+        { id: 'sick-leave', label: 'Sick Leave', path: '/sick-leave', icon: <IconMedkit /> },
         { id: 'clock-in-out', label: 'Clock In/Out', path: '/clock-in-out', icon: <IconClock /> },
         { id: 'task-requests', label: 'Requests', path: '/task-requests', icon: <IconRequest /> },
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },

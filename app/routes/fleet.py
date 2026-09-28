@@ -29,6 +29,8 @@ from ..auth.security import (
     has_equipment_list_permission,
     has_equipment_write_permission,
     has_equipment_tab_permission,
+    _has_permission,
+    _user_is_admin,
 )
 from ..services.permissions import is_admin
 from ..services.asset_assignment_service import (
@@ -2306,13 +2308,32 @@ def get_overdue_equipment(
 def get_user_assets(
     user_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:access", "fleet:read", "equipment:read", "hr:users:view:assets", "hr:users:view:general")),
+    current_user=Depends(get_current_user),
 ):
     """Get assets currently with this user and full checkout/assignment history."""
     try:
         user_uuid = uuid.UUID(user_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid user id")
+
+    is_self = str(current_user.id) == str(user_uuid)
+    can_view = (
+        is_self
+        or _user_is_admin(current_user)
+        or any(
+            _has_permission(current_user, perm)
+            for perm in (
+                "fleet:access",
+                "fleet:read",
+                "equipment:read",
+                "hr:users:view:assets",
+                "hr:users:view:general",
+            )
+        )
+    )
+    if not can_view:
+        raise HTTPException(status_code=403, detail="missing permission")
+
     user = db.query(User).filter(User.id == user_uuid).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

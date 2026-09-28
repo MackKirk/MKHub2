@@ -2507,6 +2507,33 @@ def get_direct_attendances_for_date(
     return result
 
 
+@router.get("/attendance/needs-attention")
+def get_my_attendance_needs_attention(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Open or pending clock-ins for the current user from before today (local)."""
+    now_utc = datetime.now(timezone.utc)
+    today_local = utc_to_local(now_utc, settings.tz_default).date()
+    today_start_utc = local_to_utc(datetime.combine(today_local, time.min), settings.tz_default)
+
+    count = (
+        db.query(Attendance)
+        .filter(
+            Attendance.worker_id == user.id,
+            Attendance.clock_in_time.isnot(None),
+            Attendance.clock_in_time < today_start_utc,
+            Attendance.status != "rejected",
+            or_(
+                Attendance.clock_out_time.is_(None),
+                Attendance.status == "pending",
+            ),
+        )
+        .count()
+    )
+    return {"count": int(count)}
+
+
 @router.get("/attendance/weekly-summary")
 def get_weekly_attendance_summary(
     week_start: Optional[str] = None,  # YYYY-MM-DD format, defaults to current week (Sunday)

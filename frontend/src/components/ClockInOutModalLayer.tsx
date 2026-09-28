@@ -1,42 +1,30 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Briefcase, ChevronLeft, ChevronRight, Clock, Coffee, Info, Zap } from 'lucide-react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { JobSearchCombobox } from '@/components/JobSearchCombobox';
 import { formatJobPickerLine, getPredefinedJob, isPredefinedJobId } from '@/constants/predefinedJobs';
-import { formatRoundedHhmm, parseHhmm } from '@/lib/timePickerUtils';
+import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { formatRoundedHhmm } from '@/lib/timePickerUtils';
 import {
   AppButton,
+  AppCard,
+  AppCheckbox,
   AppControlLabelRow,
+  AppDatePicker,
   AppFieldHint,
   AppFormModal,
   AppModal,
   AppSelect,
-  uiBorders,
+  AppTimePicker,
   uiCx,
   uiDropdown,
   uiLayout,
   uiRadius,
-  uiSpacing,
   uiTypography,
 } from '@/components/ui';
-
-const hourSelectOptions = Array.from({ length: 12 }, (_, i) => ({
-  value: String(i + 1),
-  label: String(i + 1),
-}));
-
-const minuteSelectOptions = Array.from({ length: 12 }, (_, i) => {
-  const m = i * 5;
-  const v = String(m).padStart(2, '0');
-  return { value: v, label: v };
-});
-
-const amPmSelectOptions = [
-  { value: 'AM', label: 'AM' },
-  { value: 'PM', label: 'PM' },
-] as const;
 
 function formatTime12h(timeStr: string | null | undefined): string {
   if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
@@ -50,12 +38,60 @@ function formatTime12h(timeStr: string | null | undefined): string {
   return `${hours12}:${minutes} ${period}`;
 }
 
+function parseQuarterHour(hhmm: string): { hours: number; minutes: number } | null {
+  if (!hhmm || !hhmm.includes(':')) return null;
+  const [hours, minutes] = hhmm.split(':').map(Number);
+  if (
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59 ||
+    minutes % 15 !== 0
+  ) {
+    return null;
+  }
+  return { hours, minutes };
+}
+
+function localDateTime(year: number, month: number, day: number, hours: number, minutes: number) {
+  return new Date(year, month - 1, day, hours, minutes, 0);
+}
+
 function formatDateShort(dateStr: string): string {
   const date = new Date(dateStr + 'T00:00:00');
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
   });
+}
+
+function formatClockTimestamp(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function capitalizeWeekday(name: string): string {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return '';
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+}
+
+function weekStartSundayFrom(dateStr: string): Date {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+function shiftLocalDate(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return formatDateLocal(d);
 }
 
 type Shift = {
@@ -88,6 +124,25 @@ type Project = {
   code?: string;
 };
 
+type WeeklySummaryDay = {
+  date: string;
+  day_name: string;
+  clock_in: string | null;
+  clock_out: string | null;
+  hours_worked_minutes: number;
+  hours_worked_formatted: string;
+};
+
+type WeeklySummary = {
+  week_start: string;
+  week_end: string;
+  days: WeeklySummaryDay[];
+  total_minutes: number;
+  total_hours_formatted: string;
+  reg_hours_formatted?: string;
+  total_break_formatted?: string;
+};
+
 function isHoursWorked(attendance: Attendance | null): boolean {
   if (!attendance?.reason_text) return false;
   return attendance.reason_text.includes('HOURS_WORKED:');
@@ -101,27 +156,42 @@ export type ClockInOutModalLayerProps = {
   shiftById?: Shift | null;
   /** Lets parent disable main clock tiles while submit is in flight */
   onBusyChange?: (busy: boolean) => void;
+  /** Keep the parent date in sync when the modal date picker changes. */
+  onDateChange?: (date: string) => void;
 };
 
 export function ClockInOutModalLayer({
-  selectedDate,
+  selectedDate: dateProp,
   clockType,
   onClose,
   shiftById = null,
   onBusyChange,
+  onDateChange,
 }: ClockInOutModalLayerProps) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const todayStr = getTodayLocal();
+
+  const [selectedDate, setSelectedDate] = useState(dateProp);
+  useEffect(() => {
+    setSelectedDate(dateProp);
+  }, [dateProp]);
+
+  const goToDate = useCallback(
+    (next: string) => {
+      setSelectedDate(next);
+      onDateChange?.(next);
+    },
+    [onDateChange],
+  );
 
   const [selectedJob, setSelectedJob] = useState<string>('');
   const [jobTouched, setJobTouched] = useState<boolean>(false);
   const [shiftPickOpen, setShiftPickOpen] = useState<boolean>(false);
   const [shiftPickOptions, setShiftPickOptions] = useState<Shift[]>([]);
   const [shiftPickSelectedId, setShiftPickSelectedId] = useState<string>('');
-  const [selectedHour12, setSelectedHour12] = useState<string>('');
-  const [selectedMinute, setSelectedMinute] = useState<string>('');
-  const [selectedAmPm, setSelectedAmPm] = useState<'AM' | 'PM'>('AM');
-  const [selectedTime, setSelectedTime] = useState<string>('');
+  const [startTime, setStartTime] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('');
   const [submitting, setSubmittingInternal] = useState(false);
   const setSubmitting = useCallback(
     (v: boolean) => {
@@ -144,17 +214,6 @@ export function ClockInOutModalLayer({
     queryFn: () => api<any>('GET', '/auth/me'),
     staleTime: 0,
   });
-
-  const hasUnrestrictedClock = useMemo(() => {
-    if (!currentUser) return false;
-    const roles = currentUser?.roles || [];
-    const isAdmin = roles.some((r: string) => String(r || '').toLowerCase() === 'admin');
-    if (isAdmin) return true;
-    const permissions = currentUser?.permissions || [];
-    const hasHrPermission = permissions.includes('hr:timesheet:unrestricted_clock');
-    const hasLegacyPermission = permissions.includes('timesheet:unrestricted_clock');
-    return hasHrPermission || hasLegacyPermission;
-  }, [currentUser]);
 
   const { data: shiftsForSelectedDate = [] } = useQuery({
     queryKey: ['clock-in-out-shifts', selectedDate, currentUser?.id],
@@ -220,6 +279,22 @@ export function ClockInOutModalLayer({
   });
 
   const allAttendancesForDate = allAttendancesData?.attendances || [];
+
+  const weekStartStr = useMemo(
+    () => formatDateLocal(weekStartSundayFrom(selectedDate)),
+    [selectedDate],
+  );
+
+  const { data: weeklySummary } = useQuery({
+    queryKey: ['weekly-attendance-summary', weekStartStr, currentUser?.id],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('week_start', weekStartStr);
+      if (currentUser?.id) params.set('worker_id', currentUser.id);
+      return api<WeeklySummary>('GET', `/dispatch/attendance/weekly-summary?${params.toString()}`);
+    },
+    enabled: !!currentUser?.id,
+  });
 
   const { data: project } = useQuery({
     queryKey: ['project', selectedDateShift?.project_id],
@@ -407,14 +482,10 @@ export function ClockInOutModalLayer({
 
   useEffect(() => {
     if (clockType) {
-      const roundedHhmm = formatRoundedHhmm();
-      const { hour12, minute, amPm } = parseHhmm(roundedHhmm);
-      setSelectedHour12(hour12);
-      setSelectedMinute(minute);
-      setSelectedAmPm(amPm || 'AM');
-      setSelectedTime(roundedHhmm);
+      setStartTime('');
+      setEndTime(formatRoundedHhmm());
     }
-  }, [clockType]);
+  }, [clockType, selectedDate]);
 
   const getCurrentLocation = useCallback(() => {
     setGpsLoading(true);
@@ -449,27 +520,9 @@ export function ClockInOutModalLayer({
     }
   }, [clockType, getCurrentLocation]);
 
-  const updateTimeFrom12h = (hour12: string, minute: string, amPm: 'AM' | 'PM') => {
-    if (!hour12 || !minute) {
-      setSelectedTime('');
-      return;
-    }
-
-    const hour24 =
-      amPm === 'PM' && parseInt(hour12, 10) !== 12
-        ? parseInt(hour12, 10) + 12
-        : amPm === 'AM' && parseInt(hour12, 10) === 12
-          ? 0
-          : parseInt(hour12, 10);
-
-    const timeStr = `${String(hour24).padStart(2, '0')}:${minute}`;
-    setSelectedTime(timeStr);
-  };
-
   const resetLocalModalState = useCallback(() => {
-    setSelectedTime('');
-    setSelectedHour12('');
-    setSelectedMinute('');
+    setStartTime('');
+    setEndTime('');
     setInsertBreakTime(false);
     setBreakHours('0');
     setBreakMinutes('0');
@@ -512,53 +565,75 @@ export function ClockInOutModalLayer({
       }
     }
 
-    let timeToUse = selectedTime;
-    if (!timeToUse || !timeToUse.includes(':')) {
-      timeToUse = formatRoundedHhmm();
+    if (clockType === 'in' && !startTime) {
+      toast.error('Please set a start time');
+      return;
     }
 
-    const [hours, minutes] = timeToUse.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 15 !== 0 || minutes < 0 || minutes > 59) {
-      toast.error('Please select a valid time in 15-minute increments');
+    const endParsed = parseQuarterHour(endTime);
+    if (!endParsed) {
+      toast.error('Please select a valid end time in 15-minute increments');
       return;
     }
 
     const [year, month, day] = selectedDate.split('-').map(Number);
-    const selectedDateTime = new Date(year, month - 1, day, hours, minutes, 0);
     const now = new Date();
     const maxFutureMs = 4 * 60 * 1000;
-    if (selectedDateTime.getTime() > now.getTime() + maxFutureMs) {
-      toast.error('Clock-in/out cannot be in the future. Please select a valid time.');
-      setSubmitting(false);
+    const endDateTime = localDateTime(year, month, day, endParsed.hours, endParsed.minutes);
+    if (endDateTime.getTime() > now.getTime() + maxFutureMs) {
+      toast.error('End time cannot be in the future. Please select a valid time.');
       return;
+    }
+
+    let startDateTime: Date | null = null;
+    if (clockType === 'in') {
+      const startParsed = parseQuarterHour(startTime);
+      if (!startParsed) {
+        toast.error('Please select a valid start time in 15-minute increments');
+        return;
+      }
+      startDateTime = localDateTime(year, month, day, startParsed.hours, startParsed.minutes);
+      if (endDateTime.getTime() <= startDateTime.getTime()) {
+        toast.error('End time must be after start time');
+        return;
+      }
     }
 
     if (clockType === 'out') {
       if (openClockIn && openClockIn.clock_in_time) {
         const clockInDate = new Date(openClockIn.clock_in_time);
-        if (selectedDateTime <= clockInDate) {
+        if (endDateTime <= clockInDate) {
           toast.error('Clock-out time must be after clock-in time. Please select a valid time.');
-          setSubmitting(false);
           return;
         }
 
         if (insertBreakTime) {
           const breakTotalMinutes = parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10);
-          const totalMinutes = Math.floor((selectedDateTime.getTime() - clockInDate.getTime()) / (1000 * 60));
+          const totalMinutes = Math.floor((endDateTime.getTime() - clockInDate.getTime()) / (1000 * 60));
 
           if (breakTotalMinutes >= totalMinutes) {
             toast.error(
-              'Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time.'
+              'Break time cannot be greater than or equal to the total attendance time. Please adjust the break or end time.',
             );
-            setSubmitting(false);
             return;
           }
         }
       }
     }
 
-    const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-    const time12h = formatTime12h(timeStr);
+    if (clockType === 'in' && startDateTime && insertBreakTime) {
+      const breakTotalMinutes = parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10);
+      const totalMinutes = Math.floor((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60));
+      if (breakTotalMinutes >= totalMinutes) {
+        toast.error(
+          'Break time cannot be greater than or equal to the total attendance time. Please adjust the break or times.',
+        );
+        return;
+      }
+    }
+
+    const endStr = `${String(endParsed.hours).padStart(2, '0')}:${String(endParsed.minutes).padStart(2, '0')}`;
+    const startStr = startTime;
     const dateFormatted = formatDateShort(selectedDate);
 
     let projectJobName = '';
@@ -571,70 +646,64 @@ export function ClockInOutModalLayer({
       else projectJobName = selectedJob;
     }
 
-    let confirmationMessage = '';
-    if (clockType === 'out' && openClockIn) {
-      const clockInTime = new Date(openClockIn.clock_in_time!);
-      const clockInHour = clockInTime.getHours();
-      const clockInMin = clockInTime.getMinutes();
-      const clockInTime12h = formatTime12h(`${String(clockInHour).padStart(2, '0')}:${String(clockInMin).padStart(2, '0')}`);
-
-      let breakTotalMinutes = 0;
-      let breakInfo = '';
-      if (insertBreakTime) {
-        breakTotalMinutes = parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10);
-        if (breakTotalMinutes > 0) {
-          const breakH = Math.floor(breakTotalMinutes / 60);
-          const breakM = breakTotalMinutes % 60;
-          breakInfo = breakM > 0 ? `Break: ${breakH}h ${breakM}min` : `Break: ${breakH}h`;
-        }
-      }
-
-      const [yearOut, monthOut, dayOut] = selectedDate.split('-').map(Number);
-      const clockOutDateTime = new Date(yearOut, monthOut - 1, dayOut, hours, minutes, 0);
-      const clockInDateTime = new Date(clockInTime);
-      const diffMs = clockOutDateTime.getTime() - clockInDateTime.getTime();
-      const totalMinutes = Math.floor(diffMs / (1000 * 60));
-
-      const netMinutes = Math.max(0, totalMinutes - breakTotalMinutes);
-      const workedHours = Math.floor(netMinutes / 60);
-      const workedMinutes = netMinutes % 60;
-      const hoursWorkedStr = workedMinutes > 0 ? `${workedHours}h ${workedMinutes}min` : `${workedHours}h`;
-
-      confirmationMessage =
-        `You are about to clock out with the following details:\n\n` +
-        `Date: ${dateFormatted}\n` +
-        `Clock In: ${clockInTime12h}\n` +
-        `Clock Out: ${time12h}${breakInfo ? `\n${breakInfo}` : ''}\n` +
-        `Hours Worked: ${hoursWorkedStr}${projectJobName ? `\nProject/Job: ${projectJobName}` : ''}\n\n` +
-        `Do you want to confirm?`;
-    } else {
-      confirmationMessage = `You are about to clock ${clockType === 'in' ? 'in' : 'out'} on ${dateFormatted} at ${time12h}${projectJobName ? ` for ${projectJobName}` : ''}.\n\nDo you want to confirm?`;
+    const breakTotalMinutes = insertBreakTime
+      ? parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10)
+      : 0;
+    let breakInfo = '';
+    if (breakTotalMinutes > 0) {
+      const breakH = Math.floor(breakTotalMinutes / 60);
+      const breakM = breakTotalMinutes % 60;
+      breakInfo = breakM > 0 ? `Break: ${breakH}h ${breakM}min` : `Break: ${breakH}h`;
     }
 
+    const periodStart =
+      clockType === 'out' && openClockIn?.clock_in_time
+        ? new Date(openClockIn.clock_in_time)
+        : startDateTime;
+    const totalMinutes = periodStart
+      ? Math.floor((endDateTime.getTime() - periodStart.getTime()) / (1000 * 60))
+      : 0;
+    const netMinutes = Math.max(0, totalMinutes - breakTotalMinutes);
+    const workedHours = Math.floor(netMinutes / 60);
+    const workedMinutes = netMinutes % 60;
+    const hoursWorkedStr = workedMinutes > 0 ? `${workedHours}h ${workedMinutes}min` : `${workedHours}h`;
+
+    const confirmationMessage =
+      clockType === 'in'
+        ? `Log hours on ${dateFormatted} from ${formatTime12h(startStr)} to ${formatTime12h(endStr)}` +
+          `${breakInfo ? `\n${breakInfo}` : ''}\nHours: ${hoursWorkedStr}` +
+          `${projectJobName ? `\nJob: ${projectJobName}` : ''}`
+        : `Clock out on ${dateFormatted} at ${formatTime12h(endStr)}` +
+          `${breakInfo ? `\n${breakInfo}` : ''}\nHours: ${hoursWorkedStr}` +
+          `${projectJobName ? `\nJob: ${projectJobName}` : ''}`;
+
     const confirmationResult = await confirm({
-      title: `Confirm Clock-${clockType === 'in' ? 'In' : 'Out'}`,
+      title: clockType === 'in' ? 'Confirm hours' : 'Confirm clock out',
       message: confirmationMessage,
       confirmText: 'Confirm',
       cancelText: 'Cancel',
     });
 
     if (confirmationResult !== 'confirm') {
-      setSubmitting(false);
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const timeSelectedLocal = `${selectedDate}T${timeStr}:00`;
-
       const payload: Record<string, unknown> = {
         type: clockType,
-        time_selected_local: timeSelectedLocal,
+        time_selected_local:
+          clockType === 'in'
+            ? `${selectedDate}T${startStr}:00`
+            : `${selectedDate}T${endStr}:00`,
       };
 
-      if (clockType === 'out' && insertBreakTime) {
-        const breakTotalMinutes = parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10);
+      if (clockType === 'in') {
+        payload.clock_out_time_local = `${selectedDate}T${endStr}:00`;
+      }
+
+      if (insertBreakTime && breakTotalMinutes > 0) {
         payload.manual_break_minutes = breakTotalMinutes;
       }
 
@@ -686,9 +755,9 @@ export function ClockInOutModalLayer({
       }
 
       if (result.status === 'approved') {
-        toast.success(`Clock-${clockType} approved successfully`);
+        toast.success(clockType === 'in' ? 'Hours saved' : 'Clock-out approved');
       } else if (result.status === 'pending') {
-        toast.success(`Clock-${clockType} submitted for approval`);
+        toast.success(clockType === 'in' ? 'Hours submitted for approval' : 'Clock-out submitted for approval');
       }
 
       resetLocalModalState();
@@ -711,6 +780,7 @@ export function ClockInOutModalLayer({
       queryClient.invalidateQueries({ queryKey: ['shift-attendances'] });
       queryClient.invalidateQueries({ queryKey: ['attendance-today'] });
       queryClient.invalidateQueries({ queryKey: ['overview-clock-attendances'] });
+      queryClient.invalidateQueries({ queryKey: ['attendance-needs-attention'] });
 
       onClose();
     } catch (error: unknown) {
@@ -743,23 +813,72 @@ export function ClockInOutModalLayer({
     setShiftPickSelectedId('');
   };
 
+  const isToday = selectedDate === todayStr;
+  const isCurrentWeek = weekStartStr === formatDateLocal(weekStartSundayFrom(todayStr));
+  const hoursPreview = useMemo(() => {
+    const endParsed = parseQuarterHour(endTime);
+    if (!endParsed) return null;
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const endDateTime = localDateTime(year, month, day, endParsed.hours, endParsed.minutes);
+    let startDateTime: Date | null = null;
+    if (clockType === 'out' && openClockIn?.clock_in_time) {
+      startDateTime = new Date(openClockIn.clock_in_time);
+    } else if (clockType === 'in') {
+      const startParsed = parseQuarterHour(startTime);
+      if (!startParsed) return null;
+      startDateTime = localDateTime(year, month, day, startParsed.hours, startParsed.minutes);
+    }
+    if (!startDateTime || endDateTime.getTime() <= startDateTime.getTime()) return null;
+    const breakTotal = insertBreakTime ? parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10) : 0;
+    const total = Math.floor((endDateTime.getTime() - startDateTime.getTime()) / 60_000);
+    const net = Math.max(0, total - (Number.isNaN(breakTotal) ? 0 : breakTotal));
+    const hours = Math.floor(net / 60);
+    const minutes = net % 60;
+    return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+  }, [
+    breakHours,
+    breakMinutes,
+    clockType,
+    endTime,
+    insertBreakTime,
+    openClockIn?.clock_in_time,
+    selectedDate,
+    startTime,
+  ]);
+
+  const infoBanner = hasOpenClockIn
+    ? 'This entry is missing an end time. Use Clock out to add one.'
+    : nextPendingShift
+      ? `Next scheduled shift: ${nextPendingShift.project_name || 'Unknown'} (${formatTime12h(nextPendingShift.start_time)} – ${formatTime12h(nextPendingShift.end_time)})`
+      : 'At the end of the day, log your start time, end time, and any break.';
+
+  const weekRangeLabel = weeklySummary
+    ? `${formatDateShort(weeklySummary.week_start)} – ${formatDateShort(weeklySummary.week_end)}`
+    : '';
+  const daysWithHours = (weeklySummary?.days ?? []).filter(
+    (day) => day.clock_in || day.clock_out || (day.hours_worked_minutes && day.hours_worked_minutes > 0),
+  );
+
+  const canSubmit =
+    !submitting &&
+    (clockType === 'in' ? Boolean(selectedJob && startTime && endTime) : Boolean(endTime));
+
   return (
     <>
       <AppFormModal
         open
         onClose={closeModal}
-        title={`Clock ${clockType === 'in' ? 'In' : 'Out'}`}
+        formWidth="wide"
+        title={clockType === 'in' ? 'Log hours' : 'Clock out'}
         description={
-          clockType === 'in' ? 'Record your clock-in time and job' : 'Record your clock-out time'
+          clockType === 'in'
+            ? 'Enter start and end time at the end of the day. Times use 15-minute steps.'
+            : 'Add an end time to an open entry.'
         }
         quickInfo={
           <>
-            <p>Your location may be captured when you submit clock in/out.</p>
-            <p>
-              {!hasUnrestrictedClock
-                ? 'Time is locked to the current time unless an administrator enables time editing.'
-                : 'You can adjust the time when unrestricted clock editing is enabled on your account.'}
-            </p>
+            <p>Log a complete shift: start, end, and job. This is not a live timer.</p>
+            <p>Location is optional and does not block submit.</p>
             {clockType === 'in' && selectedDateShift && project ? (
               <p>Job is pre-filled from your scheduled shift when applicable.</p>
             ) : null}
@@ -767,176 +886,305 @@ export function ClockInOutModalLayer({
         }
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton variant="secondary" size="sm" onClick={closeModal}>
+            <AppButton variant="secondary" onClick={closeModal}>
               Cancel
             </AppButton>
-            <AppButton size="sm" onClick={handleClockInOut} loading={submitting} disabled={submitting}>
-              Submit
-            </AppButton>
+            {clockType === 'in' ? (
+              <button
+                type="button"
+                onClick={() => void handleClockInOut()}
+                disabled={!canSubmit}
+                className={uiCx(
+                  'inline-flex h-9 items-center justify-center gap-2 px-5 text-xs font-semibold text-white shadow-sm',
+                  'bg-gradient-to-br from-green-500 via-green-600 to-emerald-800',
+                  uiRadius.control,
+                  'hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60',
+                )}
+              >
+                {submitting ? 'Saving…' : 'Log hours'}
+              </button>
+            ) : (
+              <AppButton variant="danger" onClick={() => void handleClockInOut()} loading={submitting} disabled={!canSubmit}>
+                Clock out
+              </AppButton>
+            )}
           </div>
         }
       >
-        <div className="space-y-1.5">
-          <AppControlLabelRow
-            label="Time *"
-            fieldHint={
-              <AppFieldHint
-                hint={
-                  hasUnrestrictedClock
-                    ? 'Time\n\nThe clock time for this entry. You can adjust it when time editing is enabled on your account.'
-                    : 'Time\n\nLocked to the current time. Contact an administrator to enable time editing.'
-                }
-              />
-            }
-          />
-          <div className="flex items-center gap-2">
-            <AppSelect
-              className="min-w-0 flex-1"
-              value={selectedHour12}
-              onChange={(e) => {
-                const hour12 = e.target.value;
-                setSelectedHour12(hour12);
-                updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
-              }}
-              options={hourSelectOptions}
-              placeholder="Hour"
-              disabled={!hasUnrestrictedClock}
-              required
-              sortOptions={false}
-            />
-            <span className="shrink-0 text-xs font-medium text-gray-500">:</span>
-            <AppSelect
-              className="min-w-0 flex-1"
-              value={selectedMinute}
-              onChange={(e) => {
-                const minute = e.target.value;
-                setSelectedMinute(minute);
-                updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
-              }}
-              options={minuteSelectOptions}
-              placeholder="Min"
-              disabled={!hasUnrestrictedClock}
-              required
-              sortOptions={false}
-            />
-            <AppSelect
-              className="min-w-0 flex-1"
-              value={selectedAmPm}
-              onChange={(e) => {
-                const amPm = e.target.value as 'AM' | 'PM';
-                setSelectedAmPm(amPm);
-                updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
-              }}
-              options={[...amPmSelectOptions]}
-              disabled={!hasUnrestrictedClock}
-              required
-              sortOptions={false}
-            />
-          </div>
-        </div>
-
-        {clockType === 'in' && (
-          <div>
-            <JobSearchCombobox
-              value={selectedJob}
-              onChange={(jobId) => {
-                setJobTouched(true);
-                setSelectedJob(jobId);
-              }}
-              disabled={isJobLocked}
-              fieldHint={
-                selectedDateShift && project
-                  ? 'Job\n\nPre-filled from your scheduled shift for today. Change only if you are clocking in to a different job.'
-                  : 'Job\n\nThe project or predefined job you are clocking in to.'
-              }
-            />
-          </div>
-        )}
-
-        {clockType === 'out' && (
-          <div className="space-y-2">
-            <div className="space-y-1.5">
-              <AppControlLabelRow
-                label="Insert Break Time"
-                fieldHint={
-                  <AppFieldHint hint="Break time\n\nOptional unpaid break deducted from hours worked on clock out." />
-                }
-              />
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={insertBreakTime}
-                  onChange={(e) => setInsertBreakTime(e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                />
-                <span className={uiTypography.helper}>Include break in this clock out</span>
-              </label>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1.15fr)_minmax(16rem,0.85fr)] md:items-start">
+          <div className="space-y-3">
+            <div
+              className={uiCx(
+                'flex items-center gap-3 px-4 py-3.5 text-white shadow-sm',
+                uiRadius.card,
+                clockType === 'in'
+                  ? 'bg-gradient-to-br from-green-500 via-green-600 to-emerald-800'
+                  : 'bg-gradient-to-br from-red-500 via-red-600 to-rose-800',
+              )}
+            >
+              <span
+                className={uiCx(
+                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white',
+                  clockType === 'in' ? 'text-green-700' : 'text-red-700',
+                )}
+              >
+                <Clock className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <div className="text-base font-semibold">
+                  {clockType === 'in' ? 'Log hours' : 'Clock out'}
+                </div>
+                <div className="text-xs text-white/85">
+                  {hoursPreview ? `This entry: ${hoursPreview}` : 'Start, end, and break in 15-minute steps'}
+                </div>
+              </div>
             </div>
-            {insertBreakTime && (
-              <div className="grid grid-cols-2 gap-3">
-                <AppSelect
-                  label="Hours"
-                  value={breakHours}
-                  onChange={(e) => setBreakHours(e.target.value)}
-                  options={Array.from({ length: 3 }, (_, i) => ({ value: String(i), label: String(i) }))}
-                />
-                <AppSelect
-                  label="Minutes"
-                  value={breakMinutes}
-                  onChange={(e) => setBreakMinutes(e.target.value)}
-                  options={Array.from({ length: 12 }, (_, i) => {
-                    const m = i * 5;
-                    const v = String(m).padStart(2, '0');
-                    return { value: v, label: v };
-                  })}
-                />
+
+            <div className="flex flex-wrap items-center gap-2">
+              <AppButton
+                variant="secondary"
+                size="sm"
+                leftIcon={<ChevronLeft className="h-4 w-4" />}
+                onClick={() => goToDate(shiftLocalDate(selectedDate, -1))}
+                aria-label="Previous day"
+              />
+              <AppButton variant="secondary" size="sm" onClick={() => goToDate(todayStr)}>
+                {isToday ? 'Today' : formatDateShort(selectedDate)}
+              </AppButton>
+              <AppButton
+                variant="secondary"
+                size="sm"
+                rightIcon={<ChevronRight className="h-4 w-4" />}
+                onClick={() => goToDate(shiftLocalDate(selectedDate, 1))}
+                aria-label="Next day"
+              />
+              <AppDatePicker
+                id="log-hours-date"
+                value={selectedDate}
+                onChange={(e) => e.target.value && goToDate(e.target.value)}
+                triggerClassName="w-[9.5rem]"
+                aria-label="Select date"
+              />
+            </div>
+
+            {clockType === 'in' ? (
+              <JobSearchCombobox
+                value={selectedJob}
+                onChange={(jobId) => {
+                  setJobTouched(true);
+                  setSelectedJob(jobId);
+                }}
+                disabled={isJobLocked}
+                fieldHint={
+                  selectedDateShift && project
+                    ? 'Job\n\nPre-filled from your scheduled shift for today. Change only if you worked a different job.'
+                    : 'Job\n\nThe project or office job these hours belong to.'
+                }
+              />
+            ) : (
+              <div className={uiCx('rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5', uiRadius.control)}>
+                <div className="text-[11px] font-medium text-gray-500">Job</div>
+                <div className="mt-0.5 truncate text-sm font-semibold text-gray-900">
+                  {clockInJobName || 'Open entry'}
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        <div className="space-y-1.5">
-          <AppControlLabelRow
-            label="Location"
-            fieldHint={
-              <AppFieldHint hint="Location\n\nGPS coordinates may be captured when you submit. Allow location access in your browser if prompted." />
-            }
-          />
-          {gpsLocation ? (
-            <div className={uiCx('rounded-lg border border-green-200 bg-green-50 p-3', uiRadius.control)}>
-              <div className="flex items-center gap-2 text-xs font-medium text-green-800">
-                <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                <span>Location captured</span>
+            <div className={clockType === 'in' ? 'grid grid-cols-1 gap-3 sm:grid-cols-2' : 'grid grid-cols-1'}>
+              {clockType === 'in' ? (
+                <AppTimePicker
+                  label="Start time *"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  required
+                  fieldHint="Start time\n\nWhen this job started. 15-minute steps (8:00, 8:15, 8:30, 8:45)."
+                />
+              ) : null}
+              <AppTimePicker
+                label={clockType === 'in' ? 'End time *' : 'Clock out *'}
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                required
+                fieldHint={
+                  clockType === 'in'
+                    ? 'End time\n\nWhen this job ended. Defaults to now, rounded to 15 minutes.'
+                    : 'Clock out\n\nEnd time for the open entry. 15-minute steps.'
+                }
+              />
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-3">
+              <AppCheckbox
+                label="Include break in these hours"
+                checked={insertBreakTime}
+                onChange={setInsertBreakTime}
+                fieldHint="Break time\n\nOptional unpaid break deducted from hours worked."
+              />
+              {insertBreakTime ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <AppSelect
+                    label="Hours"
+                    value={breakHours}
+                    onChange={(e) => setBreakHours(e.target.value)}
+                    options={Array.from({ length: 3 }, (_, i) => ({ value: String(i), label: String(i) }))}
+                  />
+                  <AppSelect
+                    label="Minutes"
+                    value={breakMinutes}
+                    onChange={(e) => setBreakMinutes(e.target.value)}
+                    options={Array.from({ length: 12 }, (_, i) => {
+                      const m = i * 5;
+                      const v = String(m).padStart(2, '0');
+                      return { value: v, label: v };
+                    })}
+                  />
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-1">
+              <AppButton
+                variant="ghost"
+                size="sm"
+                leftIcon={<ChevronLeft className="h-4 w-4" />}
+                onClick={() => goToDate(shiftLocalDate(selectedDate, -7))}
+                aria-label="Previous week"
+              />
+              <div className={uiCx('min-h-11 flex-1 rounded-xl px-2 py-1.5 text-center', isCurrentWeek ? 'bg-emerald-50' : 'bg-gray-50')}>
+                <div className={uiCx('text-sm font-semibold', isCurrentWeek ? 'text-emerald-800' : 'text-gray-900')}>
+                  {weekRangeLabel || 'This week'}
+                </div>
+                {isCurrentWeek ? <div className="text-[10px] font-medium text-emerald-700">this week</div> : null}
               </div>
-              <div className="mt-1 text-xs text-green-700">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
+              <AppButton
+                variant="ghost"
+                size="sm"
+                rightIcon={<ChevronRight className="h-4 w-4" />}
+                onClick={() => goToDate(shiftLocalDate(selectedDate, 7))}
+                aria-label="Next week"
+              />
             </div>
-          ) : gpsLoading ? (
-            <div className={uiCx('rounded-lg border border-blue-200 bg-blue-50 p-3', uiRadius.control)}>
-              <div className="flex items-center gap-2 text-xs text-blue-800">
-                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-800 border-t-transparent" />
-                <span>Getting location...</span>
-              </div>
+
+            <AppCard>
+              {weeklySummary ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <HoursSideMetric
+                      icon={<Clock className="h-3.5 w-3.5" />}
+                      tint="bg-emerald-50 text-emerald-700"
+                      label="Total"
+                      value={weeklySummary.total_hours_formatted || '0h 00m'}
+                    />
+                    <HoursSideMetric
+                      icon={<Briefcase className="h-3.5 w-3.5" />}
+                      tint="bg-blue-50 text-blue-700"
+                      label="Regular"
+                      value={weeklySummary.reg_hours_formatted || '0h 00m'}
+                    />
+                    <HoursSideMetric
+                      icon={<Zap className="h-3.5 w-3.5" />}
+                      tint="bg-orange-50 text-orange-700"
+                      label="Overtime"
+                      value="0h 00m"
+                    />
+                    <HoursSideMetric
+                      icon={<Coffee className="h-3.5 w-3.5" />}
+                      tint="bg-gray-100 text-gray-600"
+                      label="Breaks"
+                      value={weeklySummary.total_break_formatted || '0h 00m'}
+                    />
+                  </div>
+                  {daysWithHours.length > 0 ? (
+                    <div className="mt-2 divide-y divide-gray-100 border-t border-gray-100">
+                      {daysWithHours.map((day, index) => {
+                        const inT = day.clock_in ? formatClockTimestamp(day.clock_in) : null;
+                        const outT = day.clock_out ? formatClockTimestamp(day.clock_out) : null;
+                        const range = inT && outT ? `${inT} – ${outT}` : inT ? `${inT} – --:--` : null;
+                        return (
+                          <button
+                            key={`${day.date}-${day.clock_in || 'no-in'}-${index}`}
+                            type="button"
+                            onClick={() => goToDate(day.date)}
+                            className={uiCx(
+                              'flex w-full items-center gap-2 py-2 text-left hover:bg-gray-50',
+                              day.date === selectedDate && 'bg-emerald-50/70',
+                            )}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-semibold text-gray-900">
+                                {capitalizeWeekday(day.day_name)} · {formatDateShort(day.date)}
+                              </div>
+                              {range ? <div className="mt-0.5 text-[11px] text-gray-500">{range}</div> : null}
+                            </div>
+                            <div className="text-xs font-semibold tabular-nums text-gray-900">
+                              {day.hours_worked_formatted || '0h 00m'}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-center text-xs text-gray-500">No hours logged this week</p>
+                  )}
+                </>
+              ) : (
+                <div className={uiTypography.helper}>Loading this week’s hours…</div>
+              )}
+            </AppCard>
+
+            <div className="space-y-1.5">
+              <AppControlLabelRow
+                label="Location"
+                fieldHint={
+                  <AppFieldHint hint="Location\n\nOptional. GPS may be captured if you allow it. It does not block logging hours." />
+                }
+              />
+              {gpsLocation ? (
+                <div className={uiCx('rounded-lg border border-green-200 bg-green-50 p-3', uiRadius.control)}>
+                  <div className="flex items-center gap-2 text-xs font-medium text-green-800">
+                    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Location captured</span>
+                  </div>
+                  <div className="mt-1 text-xs text-green-700">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
+                </div>
+              ) : gpsLoading ? (
+                <div className={uiCx('rounded-lg border border-blue-200 bg-blue-50 p-3', uiRadius.control)}>
+                  <div className="flex items-center gap-2 text-xs text-blue-800">
+                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-800 border-t-transparent" />
+                    <span>Getting location...</span>
+                  </div>
+                </div>
+              ) : gpsError ? (
+                <div className={uiCx('rounded-lg border border-yellow-200 bg-yellow-50 p-3', uiRadius.control)}>
+                  <div className="text-xs text-yellow-800">
+                    {gpsError}
+                    <button
+                      type="button"
+                      onClick={getCurrentLocation}
+                      className="ml-2 font-medium underline hover:text-yellow-900"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className={uiCx('rounded-lg border border-gray-200 bg-gray-50 p-3', uiRadius.control)}>
+                  <div className="text-xs text-gray-600">No location data</div>
+                </div>
+              )}
             </div>
-          ) : gpsError ? (
-            <div className={uiCx('rounded-lg border border-yellow-200 bg-yellow-50 p-3', uiRadius.control)}>
-              <div className="text-xs text-yellow-800">
-                {gpsError}
-                <button
-                  type="button"
-                  onClick={getCurrentLocation}
-                  className="ml-2 font-medium underline hover:text-yellow-900"
-                >
-                  Try again
-                </button>
-              </div>
+
+            <div className="flex items-start gap-2.5 rounded-2xl bg-emerald-50 px-3 py-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-700">
+                <Info className="h-4 w-4" />
+              </span>
+              <p className="pt-1 text-xs text-emerald-800">{infoBanner}</p>
             </div>
-          ) : (
-            <div className={uiCx('rounded-lg border border-gray-200 bg-gray-50 p-3', uiRadius.control)}>
-              <div className="text-xs text-gray-600">No location data</div>
-            </div>
-          )}
+          </div>
         </div>
       </AppFormModal>
 
@@ -997,5 +1245,27 @@ export function ClockInOutModalLayer({
         </ul>
       </AppModal>
     </>
+  );
+}
+
+function HoursSideMetric({
+  icon,
+  tint,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  tint: string;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={uiCx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', tint)}>{icon}</span>
+      <div className="min-w-0">
+        <div className="text-xs font-semibold tabular-nums text-gray-900">{value}</div>
+        <div className="text-[10px] text-gray-500">{label}</div>
+      </div>
+    </div>
   );
 }
