@@ -56,6 +56,7 @@ export function UserEmergencyContactsSection({
   const [eEmail, setEEmail] = useState('');
   const [eAddress, setEAddress] = useState('');
   const [eIsPrimary, setEIsPrimary] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const formatPhone = (v: string) => {
     const d = String(v || '').replace(/\D+/g, '').slice(0, 11);
@@ -82,10 +83,12 @@ export function UserEmergencyContactsSection({
   };
 
   const handleCreate = async () => {
+    if (saving) return;
     if (!name.trim()) {
       toast.error('Name is required');
       return;
     }
+    setSaving(true);
     try {
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`, {
         name,
@@ -110,14 +113,18 @@ export function UserEmergencyContactsSection({
       refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to create contact');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleUpdate = async (contactId: string) => {
+    if (saving) return;
     if (!eName.trim()) {
       toast.error('Name is required');
       return;
     }
+    setSaving(true);
     try {
       await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`, {
         name: eName,
@@ -134,6 +141,8 @@ export function UserEmergencyContactsSection({
       refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to update contact');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -324,6 +333,7 @@ export function UserEmergencyContactsSection({
       <AppFormModal
         open={createOpen}
         onClose={() => {
+          if (saving) return;
           setCreateOpen(false);
           resetCreateForm();
         }}
@@ -337,6 +347,7 @@ export function UserEmergencyContactsSection({
               type="button"
               variant="secondary"
               size="sm"
+              disabled={saving}
               onClick={() => {
                 setCreateOpen(false);
                 resetCreateForm();
@@ -344,7 +355,7 @@ export function UserEmergencyContactsSection({
             >
               Cancel
             </AppButton>
-            <AppButton type="button" size="sm" onClick={handleCreate}>
+            <AppButton type="button" size="sm" disabled={saving} loading={saving} onClick={handleCreate}>
               Create
             </AppButton>
           </div>
@@ -355,7 +366,10 @@ export function UserEmergencyContactsSection({
 
       <AppFormModal
         open={editId !== null}
-        onClose={cancelEdit}
+        onClose={() => {
+          if (saving) return;
+          cancelEdit();
+        }}
         title="Edit Emergency Contact"
         description="Update contact details or mark as primary."
         formWidth="comfortable"
@@ -366,15 +380,22 @@ export function UserEmergencyContactsSection({
               variant="secondary"
               size="sm"
               className="!text-red-600 hover:!bg-red-50"
+              disabled={saving}
               onClick={() => editId && handleDelete(editId)}
             >
               Delete
             </AppButton>
             <div className="flex items-center gap-2">
-              <AppButton type="button" variant="secondary" size="sm" onClick={cancelEdit}>
+              <AppButton type="button" variant="secondary" size="sm" disabled={saving} onClick={cancelEdit}>
                 Cancel
               </AppButton>
-              <AppButton type="button" size="sm" onClick={() => editId && handleUpdate(editId)}>
+              <AppButton
+                type="button"
+                size="sm"
+                disabled={saving}
+                loading={saving}
+                onClick={() => editId && handleUpdate(editId)}
+              >
                 Save
               </AppButton>
             </div>

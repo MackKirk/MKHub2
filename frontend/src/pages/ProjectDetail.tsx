@@ -13,7 +13,7 @@ import type { ReactNode } from 'react';
 import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
-import { formatSiteHeroAddress } from '@/lib/addressUtils';
+import { formatSiteHeroAddressLines } from '@/lib/addressUtils';
 import toast from 'react-hot-toast';
 import {
   readAllDirectoryEntries,
@@ -1028,7 +1028,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, project_number?:string|null, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, scope_of_work?:string|null, job_completion_estimate?:string|null, crew_material_list?:{ id: string; name: string; quantity?: string|null; unit?: string|null; notes?: string|null }[]|null, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, created_at?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
+type Project = { id:string, code?:string, project_number?:string|null, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, scope_of_work?:string|null, job_completion_estimate?:string|null, crew_material_list?:{ id: string; name: string; quantity?: string|null; unit?: string|null; notes?: string|null }[]|null, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, created_at?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_address_line3?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string, purchase_order_number?:string|null, billing_contact?:string|null, invoice_to?:string|null, billing_email?:string|null, po_required?:boolean, billing_address_line1?:string|null, billing_address_line2?:string|null, billing_country?:string|null, billing_province?:string|null, billing_city?:string|null, billing_postal_code?:string|null, billing_differs_from_customer?:boolean, invoice_blocked_reason?:string|null };
 
 function projectAwardedRelatedIdsSet(proj: Project | null | undefined): Set<string> {
   const raw = proj?.awarded_related_client_ids;
@@ -1078,18 +1078,23 @@ function ProjectHeroSiteField({
   const siteName = proj?.site_name?.trim();
   const city = (proj?.site_city || proj?.address_city || '').trim();
   const province = (proj?.site_province || proj?.address_province || '').trim();
-  const heroAddress = formatSiteHeroAddress({
+  const heroAddressLines = formatSiteHeroAddressLines({
     address_line1: proj?.site_address_line1 || proj?.address,
     address_line2: proj?.site_address_line2,
+    address_line3: proj?.site_address_line3,
     city: proj?.site_city || proj?.address_city,
     postal_code: proj?.site_postal_code || proj?.address_postal_code,
   });
 
   const displayName =
     siteName ||
-    heroAddress ||
+    heroAddressLines[0] ||
     (city && province ? `${city}, ${province}` : city || province || '—');
-  const addressBelow = siteName && heroAddress ? heroAddress : null;
+  const addressBelowLines = siteName
+    ? heroAddressLines
+    : heroAddressLines.length > 1
+      ? heroAddressLines.slice(1)
+      : [];
 
   return (
     <div>
@@ -1113,11 +1118,14 @@ function ProjectHeroSiteField({
         ) : null}
       </div>
       <div className="text-xs font-semibold text-gray-900 break-words">{displayName}</div>
-      {addressBelow ? (
-        <div className="mt-0.5 text-[11px] font-normal leading-snug text-gray-600 break-words">
-          {addressBelow}
+      {addressBelowLines.map((line) => (
+        <div
+          key={line}
+          className="mt-0.5 text-[11px] font-normal leading-snug text-gray-600 break-words"
+        >
+          {line}
         </div>
-      ) : null}
+      ))}
     </div>
   );
 }
@@ -9485,9 +9493,29 @@ function EditSiteModal({ projectId, project, designSystem, onClose, onSave, onSi
         <div>
           <span className={designSystem ? uiTypography.helper : 'text-gray-600 font-medium'}>Address:</span>
           <span className="ml-2 text-gray-900">{selectedSite.site_address_line1}</span>
+          {selectedSite.site_address_line1_complement && (
+            <div className={designSystem ? 'ml-12 text-gray-700' : 'ml-20 text-gray-700'}>
+              {selectedSite.site_address_line1_complement}
+            </div>
+          )}
           {selectedSite.site_address_line2 && (
             <div className={designSystem ? 'ml-12 text-gray-700' : 'ml-20 text-gray-700'}>
               {selectedSite.site_address_line2}
+            </div>
+          )}
+          {selectedSite.site_address_line2_complement && (
+            <div className={designSystem ? 'ml-12 text-gray-700' : 'ml-20 text-gray-700'}>
+              {selectedSite.site_address_line2_complement}
+            </div>
+          )}
+          {selectedSite.site_address_line3 && (
+            <div className={designSystem ? 'ml-12 text-gray-700' : 'ml-20 text-gray-700'}>
+              {selectedSite.site_address_line3}
+            </div>
+          )}
+          {selectedSite.site_address_line3_complement && (
+            <div className={designSystem ? 'ml-12 text-gray-700' : 'ml-20 text-gray-700'}>
+              {selectedSite.site_address_line3_complement}
             </div>
           )}
         </div>

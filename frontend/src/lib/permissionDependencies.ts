@@ -212,6 +212,18 @@ export function canEnablePermission(
     return hasRepairsLineRead(permissions);
   }
   if (
+    permKey === 'business:construction:projects:proposal:approve' ||
+    permKey === 'business:construction:projects:proposal:delete'
+  ) {
+    return has('business:construction:projects:proposal:write');
+  }
+  if (
+    permKey === 'business:rm:projects:proposal:approve' ||
+    permKey === 'business:rm:projects:proposal:delete'
+  ) {
+    return has('business:rm:projects:proposal:write');
+  }
+  if (
     permKey.startsWith('business:construction:projects:') &&
     permKey.endsWith(':read') &&
     permKey !== 'business:construction:projects:read' &&
@@ -322,6 +334,18 @@ export function permissionEnableBlockedMessage(permKey: string): string | null {
   }
   if (permKey === 'business:rm:projects:owner:write') {
     return 'Requires "View Projects & Opportunities (Repairs & Maintenance)" first';
+  }
+  if (
+    permKey === 'business:construction:projects:proposal:approve' ||
+    permKey === 'business:construction:projects:proposal:delete'
+  ) {
+    return 'Requires Edit Proposal (Production) first';
+  }
+  if (
+    permKey === 'business:rm:projects:proposal:approve' ||
+    permKey === 'business:rm:projects:proposal:delete'
+  ) {
+    return 'Requires Edit Proposal (Repairs & Maintenance) first';
   }
   if (permKey === 'business:construction:projects:write') {
     return 'Requires "View Projects & Opportunities (Production)" first';
@@ -662,6 +686,19 @@ export function applyPermissionUncheckCascade(
     uncheckedKey !== 'business:projects:read'
   ) {
     newPerms[uncheckedKey.replace(':read', ':write')] = false;
+  } else if (
+    uncheckedKey === 'business:construction:projects:proposal:read' ||
+    uncheckedKey === 'business:rm:projects:proposal:read'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
+    newPerms[uncheckedKey.replace(':read', ':approve')] = false;
+    newPerms[uncheckedKey.replace(':read', ':delete')] = false;
+  } else if (
+    uncheckedKey === 'business:construction:projects:proposal:write' ||
+    uncheckedKey === 'business:rm:projects:proposal:write'
+  ) {
+    newPerms[uncheckedKey.replace(':write', ':approve')] = false;
+    newPerms[uncheckedKey.replace(':write', ':delete')] = false;
   } else if (
     (uncheckedKey.startsWith('business:construction:projects:') ||
       uncheckedKey.startsWith('business:rm:projects:')) &&

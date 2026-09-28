@@ -1,6 +1,8 @@
 export type SignatureInboxItem = {
   id: string;
   source: 'onboarding' | 'document_builder';
+  /** When set (e.g. invite flow), shown instead of the technical source name. */
+  source_label?: string | null;
   title: string;
   status: 'action_required' | 'waiting' | 'signed' | 'cancelled';
   available_at?: string | null;
@@ -35,6 +37,8 @@ export function getCardVariant(item: SignatureInboxItem): SignatureCardVariant {
 }
 
 export function sourceLabel(item: SignatureInboxItem): string {
+  const override = (item.source_label || '').trim();
+  if (override) return override;
   return item.source === 'onboarding' ? 'Onboarding' : 'Document Builder';
 }
 

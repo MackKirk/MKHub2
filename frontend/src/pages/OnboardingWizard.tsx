@@ -1216,6 +1216,7 @@ function EmergencyContactsStep({ userId, highlightMissing }: { userId: string; h
   const [eAddressPostalCode, setEAddressPostalCode] = useState('');
   const [eAddressCountry, setEAddressCountry] = useState('');
   const [eIsPrimary, setEIsPrimary] = useState(false);
+  const [saving, setSaving] = useState(false);
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   
@@ -1249,6 +1250,7 @@ function EmergencyContactsStep({ userId, highlightMissing }: { userId: string; h
   };
   
   const handleCreate = async () => {
+    if (saving) return;
     if (!name.trim()) {
       toast.error('Name is required');
       return;
@@ -1262,6 +1264,7 @@ function EmergencyContactsStep({ userId, highlightMissing }: { userId: string; h
       return;
     }
     
+    setSaving(true);
     try {
       const willBePrimary = isFirstContact || isPrimary;
       
@@ -1305,10 +1308,13 @@ function EmergencyContactsStep({ userId, highlightMissing }: { userId: string; h
       await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
     } catch (error: any) {
       toast.error(error?.message || 'Failed to create contact');
+    } finally {
+      setSaving(false);
     }
   };
   
   const handleUpdate = async (contactId: string) => {
+    if (saving) return;
     if (!eName.trim()) {
       toast.error('Name is required');
       return;
@@ -1322,6 +1328,7 @@ function EmergencyContactsStep({ userId, highlightMissing }: { userId: string; h
       return;
     }
     
+    setSaving(true);
     try {
       if (eIsPrimary && data && data.length > 0) {
         const primaryContact = data.find((c: any) => c.is_primary && c.id !== contactId);
@@ -1352,6 +1359,8 @@ function EmergencyContactsStep({ userId, highlightMissing }: { userId: string; h
       await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
     } catch (error: any) {
       toast.error(error?.message || 'Failed to update contact');
+    } finally {
+      setSaving(false);
     }
   };
   
@@ -1592,6 +1601,7 @@ function EmergencyContactsStep({ userId, highlightMissing }: { userId: string; h
       <AppFormModal
         open={createOpen}
         onClose={() => {
+          if (saving) return;
           setCreateOpen(false);
           resetCreateForm();
         }}
@@ -1604,6 +1614,7 @@ function EmergencyContactsStep({ userId, highlightMissing }: { userId: string; h
               type="button"
               variant="secondary"
               size="sm"
+              disabled={saving}
               onClick={() => {
                 setCreateOpen(false);
                 resetCreateForm();
@@ -1611,7 +1622,7 @@ function EmergencyContactsStep({ userId, highlightMissing }: { userId: string; h
             >
               Cancel
             </AppButton>
-            <AppButton type="button" size="sm" onClick={handleCreate}>
+            <AppButton type="button" size="sm" disabled={saving} loading={saving} onClick={handleCreate}>
               Create
             </AppButton>
           </div>
@@ -1622,16 +1633,25 @@ function EmergencyContactsStep({ userId, highlightMissing }: { userId: string; h
 
       <AppFormModal
         open={editId !== null}
-        onClose={cancelEdit}
+        onClose={() => {
+          if (saving) return;
+          cancelEdit();
+        }}
         title="Edit Emergency Contact"
         description="Update contact details or mark as primary."
         formWidth="comfortable"
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={cancelEdit}>
+            <AppButton type="button" variant="secondary" size="sm" disabled={saving} onClick={cancelEdit}>
               Cancel
             </AppButton>
-            <AppButton type="button" size="sm" onClick={() => editId && handleUpdate(editId)}>
+            <AppButton
+              type="button"
+              size="sm"
+              disabled={saving}
+              loading={saving}
+              onClick={() => editId && handleUpdate(editId)}
+            >
               Save
             </AppButton>
           </div>
@@ -1964,6 +1984,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
   const [eExpiryDate, setEExpiryDate] = useState('');
   const [eStatus, setEStatus] = useState('Active');
   const [eNotes, setENotes] = useState('');
+  const [saving, setSaving] = useState(false);
   const confirm = useConfirm();
   
   const getDateForInput = (dateStr: string | null) => {
@@ -1992,10 +2013,12 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
   };
   
   const handleCreate = async () => {
+    if (saving) return;
     if (!visaType.trim()) {
       toast.error('Visa type is required');
       return;
     }
+    setSaving(true);
     try {
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/visas`, {
         visa_type: visaType,
@@ -2018,14 +2041,18 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
       await refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to create visa entry');
+    } finally {
+      setSaving(false);
     }
   };
   
   const handleUpdate = async (visaId: string) => {
+    if (saving) return;
     if (!eVisaType.trim()) {
       toast.error('Visa type is required');
       return;
     }
+    setSaving(true);
     try {
       await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/visas/${visaId}`, {
         visa_type: eVisaType,
@@ -2041,6 +2068,8 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
       refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to update visa entry');
+    } finally {
+      setSaving(false);
     }
   };
   
@@ -2170,6 +2199,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
       <AppFormModal
         open={createOpen}
         onClose={() => {
+          if (saving) return;
           setCreateOpen(false);
           resetCreateForm();
         }}
@@ -2182,6 +2212,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
               type="button"
               variant="secondary"
               size="sm"
+              disabled={saving}
               onClick={() => {
                 setCreateOpen(false);
                 resetCreateForm();
@@ -2189,7 +2220,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
             >
               Cancel
             </AppButton>
-            <AppButton type="button" size="sm" onClick={handleCreate}>
+            <AppButton type="button" size="sm" disabled={saving} loading={saving} onClick={handleCreate}>
               Create
             </AppButton>
           </div>
@@ -2200,16 +2231,25 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
 
       <AppFormModal
         open={editId !== null}
-        onClose={cancelEdit}
+        onClose={() => {
+          if (saving) return;
+          cancelEdit();
+        }}
         title="Edit Visa Entry"
         description="Update visa details."
         formWidth="comfortable"
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
-            <AppButton type="button" variant="secondary" size="sm" onClick={cancelEdit}>
+            <AppButton type="button" variant="secondary" size="sm" disabled={saving} onClick={cancelEdit}>
               Cancel
             </AppButton>
-            <AppButton type="button" size="sm" onClick={() => editId && handleUpdate(editId)}>
+            <AppButton
+              type="button"
+              size="sm"
+              disabled={saving}
+              loading={saving}
+              onClick={() => editId && handleUpdate(editId)}
+            >
               Save
             </AppButton>
           </div>

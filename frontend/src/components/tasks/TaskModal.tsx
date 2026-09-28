@@ -740,6 +740,10 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
               <div className={uiSpacing.sectionStack}>
                 {task.origin?.type === 'bug' ? (
                   <BugReportDescription description={task.description || ''} />
+                ) : task.origin?.type === 'auto_task' ? (
+                  <p className={uiCx(uiTypography.body, 'whitespace-pre-wrap')}>
+                    {(parsed.description || task.description || '').trim() || 'No description.'}
+                  </p>
                 ) : (
                   <AppTextarea
                     defaultValue={parsed.description}

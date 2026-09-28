@@ -52,7 +52,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
                 if (canLeaveToHome) navigate('/home', { replace: true });
               }}
               disabled={!canLeaveToHome}
-              title={canLeaveToHome ? undefined : 'Complete required signatures before returning to the Hub'}
+              title={canLeaveToHome ? undefined : 'Complete overdue Hub-blocking signatures before returning to the Hub'}
               className={`px-3 py-2 text-xs font-medium rounded-lg shadow-sm ${
                 canLeaveToHome
                   ? 'text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:opacity-95'
@@ -213,7 +213,7 @@ export default function OnboardingDocuments() {
           </div>
           {status?.past_deadline && pendingRequired.length > 0 && (
             <div className="mt-4 p-4 rounded-lg bg-red-50 border border-red-200 text-red-900 text-sm">
-              Your access is limited until all required documents are signed.
+              Your access is limited until overdue documents that block Hub access are signed.
             </div>
           )}
         </div>
@@ -251,7 +251,7 @@ export default function OnboardingDocuments() {
                         </span>
                       ) : (
                         <span className="inline-flex px-2.5 py-1 rounded-md text-xs font-medium bg-amber-100 text-amber-900">
-                          Pending{d.required ? ' · Required' : ''}
+                          Pending{d.required ? ' · Blocks hub if overdue' : ''}
                         </span>
                       )}
                     </td>
@@ -302,7 +302,7 @@ export default function OnboardingDocuments() {
             {pendingRequired.length === 0
               ? 'Continue to MK Hub'
               : blockedByDeadline
-                ? 'Sign required documents first'
+                ? 'Sign blocking documents first'
                 : 'Skip for now'}
           </button>
         </div>

@@ -5,6 +5,8 @@ import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import ProposalForm from '@/components/ProposalForm';
 import {
+  hasProjectProposalApprovePermission,
+  hasProjectProposalDeletePermission,
   hasProjectFeatureWritePermission,
   isAdminRole,
   resolveProjectBusinessLine,
@@ -73,6 +75,18 @@ export default function ProjectProposalTab({
     permissions,
     resolvedBusinessLine,
     'proposal',
+    isAdmin,
+    location.pathname
+  );
+  const canApprovePricing = hasProjectProposalApprovePermission(
+    permissions,
+    resolvedBusinessLine,
+    isAdmin,
+    location.pathname
+  );
+  const canDeletePricing = hasProjectProposalDeletePermission(
+    permissions,
+    resolvedBusinessLine,
     isAdmin,
     location.pathname
   );
@@ -210,6 +224,8 @@ export default function ProjectProposalTab({
         initial={proposalData || null}
         disabled={!canEdit}
         isAdmin={isAdmin}
+        canApprovePricing={canApprovePricing}
+        canDeletePricing={canDeletePricing}
         showOnlyPricing={showOnlyPricing}
         saveRef={proposalFormSaveRef}
         showRestrictionWarning={!canEdit && !!restrictionMessage}

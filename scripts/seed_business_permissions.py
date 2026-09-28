@@ -366,6 +366,21 @@ def seed_business_permissions():
                     "sort_index": sort,
                 })
                 sort += 1
+                if feat == "proposal":
+                    business_permissions.append({
+                        "key": f"{prefix}:proposal:approve",
+                        "label": "Approve pricing items",
+                        "description": "Allows approving not-approved pricing and optional-service items on projects",
+                        "sort_index": sort,
+                    })
+                    sort += 1
+                    business_permissions.append({
+                        "key": f"{prefix}:proposal:delete",
+                        "label": "Delete pricing items",
+                        "description": "Allows permanently deleting pricing and optional-service items on projects",
+                        "sort_index": sort,
+                    })
+                    sort += 1
             business_permissions.append({
                 "key": f"{prefix}:warranties:costs:read",
                 "label": "View Warranty Claim Costs",
@@ -429,6 +444,19 @@ def seed_business_permissions():
                     if perm and perm.is_active:
                         perm.is_active = False
                         print(f"Deactivated permission: {key}")
+
+        # Pricing tools moved from Costs → Proposal; deactivate misplaced Costs tool keys
+        for prefix in ("business:construction:projects", "business:rm:projects"):
+            for action in ("approve", "delete"):
+                key = f"{prefix}:costs:{action}"
+                perm = (
+                    db.query(PermissionDefinition)
+                    .filter(PermissionDefinition.key == key)
+                    .first()
+                )
+                if perm and perm.is_active:
+                    perm.is_active = False
+                    print(f"Deactivated permission: {key}")
 
         db.commit()
         print(f"\nSuccessfully seeded Business permissions!")

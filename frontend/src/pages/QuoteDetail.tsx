@@ -1,11 +1,12 @@
-import { useParams, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import {
   useMemo,
   useState,
   useRef,
   useLayoutEffect,
+  useCallback,
   type CSSProperties,
   type ReactNode,
 } from 'react';
@@ -13,6 +14,7 @@ import toast from 'react-hot-toast';
 import { ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import QuoteForm from '@/components/QuoteForm';
 import ImagePicker from '@/components/ImagePicker';
+import { useConfirm } from '@/components/ConfirmProvider';
 import { QuoteOutcomeBadge } from '@/components/quotes/QuoteOutcomeBadge';
 import { QuoteOutcomeModal } from '@/components/quotes/QuoteOutcomeModal';
 import {
@@ -112,6 +114,7 @@ function QuoteDetailHero({
   onToggleCollapse,
   onChangeCover,
   onEditOutcome,
+  onDelete,
 }: {
   quote: Quote;
   client?: { display_name?: string; name?: string } | null;
@@ -123,6 +126,7 @@ function QuoteDetailHero({
   onToggleCollapse: () => void;
   onChangeCover: () => void;
   onEditOutcome: () => void;
+  onDelete: () => void;
 }) {
   const heroMeasureRef = useRef<HTMLDivElement>(null);
   const [heroExpandedHeight, setHeroExpandedHeight] = useState(320);
@@ -296,6 +300,9 @@ function QuoteDetailHero({
                   >
                     <span>{resultActionLabel}</span>
                   </button>
+                  <AppButton type="button" variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={onDelete}>
+                    Delete quotation
+                  </AppButton>
                 </div>
               ) : null}
             </div>
@@ -341,9 +348,14 @@ function QuoteDetailHero({
                 <div className="text-xs text-gray-400">—</div>
               )}
               {hasEditPermission ? (
-                <AppButton type="button" variant="secondary" size="sm" onClick={onEditOutcome}>
-                  {resultActionLabel}
-                </AppButton>
+                <>
+                  <AppButton type="button" variant="secondary" size="sm" onClick={onEditOutcome}>
+                    {resultActionLabel}
+                  </AppButton>
+                  <AppButton type="button" variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={onDelete}>
+                    Delete
+                  </AppButton>
+                </>
               ) : null}
             </div>
           </div>
@@ -367,6 +379,9 @@ function QuoteDetailHero({
 
 export default function QuoteDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const { data: quote, isLoading } = useQuery({
     queryKey: ['quote', id],
     queryFn: () => api<Quote>('GET', `/quotes/${id}`),
@@ -429,6 +444,28 @@ export default function QuoteDetail() {
     navigateBackFromQuote();
   };
 
+  const handleDeleteQuote = useCallback(async () => {
+    if (!quote?.id) return;
+    const label = quote.code || quote.order_number || documentTitle || 'this quotation';
+    const result = await confirm({
+      title: 'Delete quotation',
+      message: `Are you sure you want to delete ${label}? This action cannot be undone.`,
+      confirmText: 'Delete',
+    });
+    if (result !== 'confirm') return;
+    try {
+      await api('DELETE', `/quotes/${encodeURIComponent(String(quote.id))}`);
+      toast.success('Quotation deleted');
+      await queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      if (quote.client_id) {
+        await queryClient.invalidateQueries({ queryKey: ['clientQuotes', quote.client_id] });
+      }
+      navigate('/quotes');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to delete quotation');
+    }
+  }, [confirm, documentTitle, navigate, queryClient, quote]);
+
   const pageBackLabel = 'Back';
 
   if (isLoading) {
@@ -469,6 +506,7 @@ export default function QuoteDetail() {
           onToggleCollapse={() => setIsHeroCollapsed((v) => !v)}
           onChangeCover={() => setPickerOpen(true)}
           onEditOutcome={() => setOutcomeModalOpen(true)}
+          onDelete={handleDeleteQuote}
         />
 
         {hasViewPermission ? (

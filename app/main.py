@@ -1242,7 +1242,13 @@ def create_app() -> FastAPI:
 
                     for _tbl, _col, _ddl in (
                         ("employee_profiles", "onboarding_document_ids", "JSON NULL"),
+                        ("employee_profiles", "invite_additional_documents", "JSON NULL"),
+                        ("employee_profiles", "invite_additional_documents_applied_at", "TIMESTAMPTZ NULL"),
+                        ("employee_profiles", "invited_by_user_id", "UUID NULL"),
+                        ("employee_profiles", "invited_from_ip", "VARCHAR(100) NULL"),
                         ("invites", "document_ids", "JSON NULL"),
+                        ("invites", "additional_documents", "JSON NULL"),
+                        ("invites", "created_from_ip", "VARCHAR(100) NULL"),
                     ):
                         rows = db.execute(
                             text(
@@ -1976,6 +1982,12 @@ def create_app() -> FastAPI:
                             ("message_to_signers", "VARCHAR(4000)"),
                             ("cancelled_at", "TIMESTAMPTZ"),
                             ("cancelled_by_id", "UUID REFERENCES users(id) ON DELETE SET NULL"),
+                            ("origin", "VARCHAR(32)"),
+                            ("requester_ip", "VARCHAR(100)"),
+                            (
+                                "onboarding_base_document_id",
+                                "UUID REFERENCES onboarding_base_documents(id) ON DELETE SET NULL",
+                            ),
                         ]
                         for col_name, col_type in sig_req_cols:
                             try:
@@ -2337,6 +2349,7 @@ def create_app() -> FastAPI:
                         for tbl, col, ddl in [
                             ("onboarding_assignment_items", "display_name", "VARCHAR(255)"),
                             ("onboarding_assignment_items", "user_message", "VARCHAR(4000)"),
+                            ("onboarding_assignment_items", "origin", "VARCHAR(32)"),
                         ]:
                             if not _onb_col(tbl, col):
                                 db.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col} {ddl}"))
@@ -2372,6 +2385,7 @@ def create_app() -> FastAPI:
                             ("onboarding_base_documents", "notification_policy", "JSONB"),
                             ("onboarding_base_documents", "signing_deadline_days", "INTEGER NOT NULL DEFAULT 7"),
                             ("onboarding_base_documents", "signature_template", "JSONB"),
+                            ("onboarding_base_documents", "package_role", "VARCHAR(32) NOT NULL DEFAULT 'hiring_package'"),
                         ]:
                             if not _onb_col(tbl, col):
                                 db.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col} {ddl}"))
@@ -2502,6 +2516,23 @@ def create_app() -> FastAPI:
                             print("[startup] Added client_files.notes")
                     except Exception as _e:
                         print(f"[startup] client_files.notes column (non-critical): {_e}")
+
+                    # Site address line 3 + complements (SiteFormModal already sends these)
+                    try:
+                        for _col in (
+                            "site_address_line1_complement",
+                            "site_address_line2_complement",
+                            "site_address_line3",
+                            "site_address_line3_complement",
+                        ):
+                            db.execute(
+                                text(
+                                    f"ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS {_col} VARCHAR(255) NULL"
+                                )
+                            )
+                        db.commit()
+                    except Exception as _e:
+                        print(f"[startup] client_sites address line3/complements (non-critical): {_e}")
 
                     # Soft-delete columns for company file documents (ClientDocument rows)
                     try:
@@ -3325,6 +3356,17 @@ def create_app() -> FastAPI:
                             ("onboarding_requirements", "JSON"),
                             ("job_title", "VARCHAR(255)"),
                             ("hire_date", "VARCHAR(50)"),
+                            ("project_division_ids", "JSON"),
+                            ("first_name", "VARCHAR(100)"),
+                            ("last_name", "VARCHAR(100)"),
+                            ("phone", "VARCHAR(100)"),
+                            ("work_email", "VARCHAR(255)"),
+                            ("work_phone", "VARCHAR(100)"),
+                            ("manager_user_id", "VARCHAR(64)"),
+                            ("pay_rate", "VARCHAR(100)"),
+                            ("pay_type", "VARCHAR(50)"),
+                            ("employment_type", "VARCHAR(50)"),
+                            ("additional_documents", "JSON"),
                         ]:
                             exists = db.execute(
                                 text(
@@ -3347,6 +3389,7 @@ def create_app() -> FastAPI:
                             ("task_title", "VARCHAR(255)"),
                             ("task_description", "TEXT"),
                             ("starts_after_key", "VARCHAR(100)"),
+                            ("due_anchor", "VARCHAR(32) DEFAULT 'invite_sent'"),
                         ]:
                             exists = db.execute(
                                 text(

@@ -20,11 +20,17 @@ export default function Register() {
 
   useEffect(() => {
     if (token) {
-      // Fetch invite details to pre-fill email
+      // Fetch invite details to pre-fill email and optional names
       api<any>('GET', `/auth/invite/${encodeURIComponent(token)}`)
         .then((j) => {
           if (j && j.email_personal) {
             setEmail(j.email_personal);
+          }
+          if (j?.first_name) {
+            setFirst(String(j.first_name));
+          }
+          if (j?.last_name) {
+            setLast(String(j.last_name));
           }
         })
         .catch(() => {});

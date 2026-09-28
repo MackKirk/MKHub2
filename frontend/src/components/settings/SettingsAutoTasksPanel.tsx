@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Pencil } from 'lucide-react';
@@ -19,6 +19,7 @@ import {
   AppTextarea,
   AppUserSelect,
   uiCx,
+  uiLayout,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
@@ -34,14 +35,19 @@ type AutoTaskTrigger = {
   category: string;
   category_label: string;
   name: string;
+  description: string;
   when: string;
   task_title: string;
   task_description: string;
+  default_task_title: string;
+  default_task_description: string;
   enabled: boolean;
   due_in_days: number | null;
+  due_anchor: 'invite_sent' | 'hire_date';
   notify_push: boolean;
   has_recipients: boolean;
   chain_only: boolean;
+  always_on: boolean;
   starts_after_key: string | null;
   starts_after_name: string | null;
   starts_after_title: string | null;
@@ -71,7 +77,12 @@ type DivisionOption = { id: string; label: string };
 type Props = { canEdit: boolean };
 
 const PLACEHOLDER_HINT =
-  'You can use {name}, {email}, {job_title}, {hire_date}, and {equipment_list}. They are filled in when the task is created.';
+  'You can use {name}, {email}, {phone}, {job_title}, {hire_date}, {supervisor}, {departments}, {project_divisions}, {pay}, {equipment_list}, and {notes_block}. They are filled in when the task is created.';
+
+const DUE_ANCHOR_OPTIONS = [
+  { value: 'invite_sent', label: 'Invite sent' },
+  { value: 'hire_date', label: 'Hire date' },
+];
 
 function logStatusBadge(status: string) {
   if (status === 'created') return <AppBadge variant="success">Created</AppBadge>;
@@ -89,6 +100,40 @@ function recipientLine(item: AutoTaskTrigger): string {
   return names.length ? names.join(', ') : 'No recipients';
 }
 
+function triggerOriginBadges(item: AutoTaskTrigger) {
+  const badges: ReactNode[] = [];
+  if (item.always_on) {
+    badges.push(
+      <AppBadge key="always" variant="info">
+        Always on
+      </AppBadge>,
+    );
+  } else if (item.chain_only) {
+    badges.push(
+      <AppBadge key="chain">
+        {item.starts_after_name ? `After ${item.starts_after_name}` : 'Chained'}
+      </AppBadge>,
+    );
+  } else {
+    badges.push(
+      <AppBadge key="step2">Invite Step 2</AppBadge>,
+    );
+  }
+  if (!item.chain_only && item.starts_after_name) {
+    badges.push(
+      <AppBadge key="after">After {item.starts_after_name}</AppBadge>,
+    );
+  }
+  if (!item.enabled) {
+    badges.push(
+      <AppBadge key="off" variant="warning">
+        Off
+      </AppBadge>,
+    );
+  }
+  return badges;
+}
+
 export default function SettingsAutoTasksPanel({ canEdit }: Props) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'triggers' | 'activity'>('triggers');
@@ -99,6 +144,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
   const [divisionIds, setDivisionIds] = useState<string[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [dueInDays, setDueInDays] = useState('');
+  const [dueAnchor, setDueAnchor] = useState<'invite_sent' | 'hire_date'>('invite_sent');
   const [startsAfterKey, setStartsAfterKey] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -148,6 +194,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
       recipient_user_ids: string[];
       recipient_division_ids: string[];
       due_in_days: number | null;
+      due_anchor: 'invite_sent' | 'hire_date';
       notify_push: boolean;
       starts_after_key: string | null;
     }) =>
@@ -158,6 +205,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
         recipient_user_ids: payload.recipient_user_ids,
         recipient_division_ids: payload.recipient_division_ids,
         due_in_days: payload.due_in_days,
+        due_anchor: payload.due_anchor,
         notify_push: payload.notify_push,
         notify_email: false,
         starts_after_key: payload.starts_after_key,
@@ -173,12 +221,19 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
 
   const openEdit = (item: AutoTaskTrigger) => {
     setEditing(item);
-    setTaskTitle(item.task_title);
-    setTaskDescription(item.task_description);
+    setTaskTitle(item.task_title || item.default_task_title);
+    // Prefer the richer catalog default when a short/older custom override is still stored.
+    const savedDesc = (item.task_description || '').trim();
+    const catalogDesc = (item.default_task_description || '').trim();
+    const useCatalog =
+      Boolean(catalogDesc) &&
+      (!savedDesc || !savedDesc.includes('Action required:'));
+    setTaskDescription(useCatalog ? catalogDesc : savedDesc);
     setUserIds(item.recipients.users.map((u) => u.id));
     setDivisionIds(item.recipients.divisions.map((d) => d.id));
     setEnabled(item.enabled);
     setDueInDays(item.due_in_days != null ? String(item.due_in_days) : '');
+    setDueAnchor(item.due_anchor === 'hire_date' ? 'hire_date' : 'invite_sent');
     setStartsAfterKey(item.starts_after_key || '');
   };
 
@@ -193,8 +248,8 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
     let due: number | null = null;
     if (trimmed) {
       const parsed = Number(trimmed);
-      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 365) {
-        toast.error('Expected completion must be 1–365 days, or empty');
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 365) {
+        toast.error('Expected completion must be 0–365 days, or empty');
         return;
       }
       due = parsed;
@@ -211,6 +266,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
       recipient_user_ids: userIds,
       recipient_division_ids: divisionIds,
       due_in_days: due,
+      due_anchor: dueAnchor,
       notify_push: editing.notify_push,
       starts_after_key: startsAfterKey || null,
     });
@@ -239,16 +295,22 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
             <AppCard key={group.label} title={group.label} bodyClassName="!p-0">
               <ul className="divide-y divide-gray-100">
                 {group.items.map((item) => (
-                  <li key={item.key} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <div className="min-w-0">
-                      <p className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{item.task_title}</p>
+                  <li key={item.key} className="flex items-start justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className={uiCx(uiTypography.body, 'font-medium text-gray-900')}>{item.name}</p>
+                        {triggerOriginBadges(item)}
+                      </div>
+                      <p className={uiCx(uiTypography.helper, 'mt-1 line-clamp-2 text-gray-600')}>
+                        {item.when}
+                      </p>
                       <p className={uiCx(uiTypography.helper, 'mt-0.5 truncate')}>
                         {recipientLine(item)}
-                        {item.starts_after_name ? ` · after ${item.starts_after_name}` : ''}
-                        {item.due_in_days
-                          ? ` · ${item.due_in_days} day${item.due_in_days === 1 ? '' : 's'}`
+                        {item.due_in_days != null
+                          ? ` · ${item.due_in_days} day${item.due_in_days === 1 ? '' : 's'} from ${
+                              item.due_anchor === 'hire_date' ? 'hire date' : 'invite'
+                            }`
                           : ''}
-                        {!item.enabled ? ' · Off' : ''}
                       </p>
                     </div>
                     {canEdit ? (
@@ -256,6 +318,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
                         type="button"
                         size="sm"
                         variant="secondary"
+                        className="shrink-0"
                         leftIcon={<Pencil className="h-3.5 w-3.5" />}
                         onClick={() => openEdit(item)}
                       >
@@ -297,36 +360,53 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
         open={!!editing}
         onClose={() => setEditing(null)}
         title={editing ? editing.name : 'Edit auto task'}
-        description={editing?.when}
+        description={editing?.description || editing?.when}
+        formWidth="comfortable"
         quickInfo={autoTaskRouteQuickInfo}
         footer={
-          <>
-            <AppButton type="button" variant="secondary" onClick={() => setEditing(null)} disabled={saveMutation.isPending}>
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setEditing(null)}
+              disabled={saveMutation.isPending}
+            >
               Cancel
             </AppButton>
-            <AppButton type="button" onClick={handleSave} disabled={saveMutation.isPending || !canEdit}>
+            <AppButton
+              type="button"
+              size="sm"
+              onClick={handleSave}
+              disabled={saveMutation.isPending || !canEdit}
+              loading={saveMutation.isPending}
+            >
               Save
             </AppButton>
-          </>
+          </div>
         }
       >
         {editing ? (
-          <div className={uiSpacing.sectionStack}>
-            <AppInput
-              label="Task title"
-              value={taskTitle}
-              onChange={(e) => setTaskTitle(e.target.value)}
-              disabled={!canEdit || saveMutation.isPending}
-              fieldHint={`Task title\n\n${PLACEHOLDER_HINT}`}
-            />
-            <AppTextarea
-              label="Task description"
-              value={taskDescription}
-              onChange={(e) => setTaskDescription(e.target.value)}
-              rows={5}
-              disabled={!canEdit || saveMutation.isPending}
-              fieldHint={`Task description\n\n${PLACEHOLDER_HINT}`}
-            />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <AppInput
+                label="Task title"
+                value={taskTitle}
+                onChange={(e) => setTaskTitle(e.target.value)}
+                disabled={!canEdit || saveMutation.isPending}
+                fieldHint={`Task title\n\n${PLACEHOLDER_HINT}`}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <AppTextarea
+                label="Task description"
+                value={taskDescription}
+                onChange={(e) => setTaskDescription(e.target.value)}
+                rows={12}
+                disabled={!canEdit || saveMutation.isPending}
+                fieldHint={`Task description\n\n${PLACEHOLDER_HINT}`}
+              />
+            </div>
             <AppUserSelect
               mode="multiple"
               label="People"
@@ -334,6 +414,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
               onChange={setUserIds}
               disabled={!canEdit || saveMutation.isPending}
               placeholder="Select people…"
+              showSelectedChips={false}
               fieldHint="People\n\nEach selected person gets their own copy of the task. Use this when the same person always handles this action."
             />
             <AppMultiSelect
@@ -344,6 +425,7 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
               disabled={!canEdit || saveMutation.isPending}
               placeholder="Select divisions…"
               searchable
+              showSelectedChips={false}
               fieldHint="Divisions\n\nCreates one shared task for the division. Anyone on that team can pick it up."
             />
             <AppSelect
@@ -359,24 +441,37 @@ export default function SettingsAutoTasksPanel({ canEdit }: Props) {
                   : 'Starts after\n\nWait until this other auto task is done before creating this one. If that task was not created for the same hire (for example the invite checkbox was off), this task starts immediately.'
               }
             />
+            <AppSelect
+              label="Due from"
+              options={DUE_ANCHOR_OPTIONS}
+              value={dueAnchor}
+              onChange={(e) =>
+                setDueAnchor(e.target.value === 'hire_date' ? 'hire_date' : 'invite_sent')
+              }
+              disabled={!canEdit || saveMutation.isPending}
+              sortOptions={false}
+              fieldHint="Due from\n\nHire date: due = hire date + offset days. Invite sent: due = when the task is created + offset days."
+            />
             <AppInput
               label="Expected completion (days)"
               type="number"
-              min={1}
+              min={0}
               max={365}
               value={dueInDays}
               onChange={(e) => setDueInDays(e.target.value)}
               placeholder="Optional"
               disabled={!canEdit || saveMutation.isPending}
-              fieldHint="Expected completion\n\nOptional. Number of days from when the task is created until it is due."
+              fieldHint="Expected completion\n\nOptional. Offset in days from Due from (0 is allowed, e.g. due on hire date)."
             />
-            <AppCheckbox
-              label="Enabled"
-              checked={enabled}
-              onChange={setEnabled}
-              disabled={!canEdit || saveMutation.isPending}
-              fieldHint="Enabled\n\nWhen off, this trigger does nothing even if recipients are set."
-            />
+            <div className="flex items-end pb-1">
+              <AppCheckbox
+                label="Enabled"
+                checked={enabled}
+                onChange={setEnabled}
+                disabled={!canEdit || saveMutation.isPending}
+                fieldHint="Enabled\n\nWhen off, this trigger does nothing even if recipients are set."
+              />
+            </div>
           </div>
         ) : null}
       </AppFormModal>

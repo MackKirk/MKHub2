@@ -238,7 +238,13 @@ export function DocumentPagePreviewThumbnails({
     );
   }
   return (
-    <div className="flex flex-shrink-0 items-center gap-1">
+    <div
+      className={
+        fillWidth
+          ? 'flex h-full w-full items-stretch gap-1'
+          : 'flex flex-shrink-0 items-center gap-1'
+      }
+    >
       {toShow.map((page, i) => {
         const template = templates.find((t) => t.id === (page.template_id ?? ''));
         const backgroundUrl = template?.background_file_id
@@ -251,7 +257,11 @@ export function DocumentPagePreviewThumbnails({
             backgroundUrl={backgroundUrl}
             thumbWidthPx={thumbWidthPx}
             fillWidth={fillWidth}
-            className="rounded border border-gray-200 shadow-sm"
+            className={
+              fillWidth
+                ? 'h-full w-full rounded-none border-0 shadow-none'
+                : 'rounded border border-gray-200 shadow-sm'
+            }
           />
         );
       })}

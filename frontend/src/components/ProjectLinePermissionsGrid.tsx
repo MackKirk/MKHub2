@@ -21,6 +21,7 @@ export function ProjectLinePermissionsGrid({
   onAccessLevelChange,
   onConfigureProjectFiles,
   onConfigureProjectReports,
+  onConfigureProjectProposal,
 }: {
   line: ProjectLine;
   areaPerms: Perm[];
@@ -29,6 +30,7 @@ export function ProjectLinePermissionsGrid({
   onAccessLevelChange: (row: ProjectLinePermissionRow, level: PermissionAccessLevel) => void;
   onConfigureProjectFiles?: (line: ProjectLine) => void;
   onConfigureProjectReports?: (line: ProjectLine) => void;
+  onConfigureProjectProposal?: (line: ProjectLine) => void;
 }) {
   const rows = buildProjectLinePermissionRows(line, areaPerms);
   if (rows.length === 0) return null;
@@ -50,6 +52,7 @@ export function ProjectLinePermissionsGrid({
     if (level === 'blocked') return false;
     if (row.configKind?.endsWith('-files')) return !!onConfigureProjectFiles;
     if (row.configKind?.endsWith('-reports')) return !!onConfigureProjectReports;
+    if (row.configKind?.endsWith('-proposal')) return !!onConfigureProjectProposal;
     return false;
   };
 
@@ -57,6 +60,20 @@ export function ProjectLinePermissionsGrid({
     if (row.kind !== 'pair' || !row.configKind) return;
     if (row.configKind?.endsWith('-files')) onConfigureProjectFiles?.(line);
     if (row.configKind?.endsWith('-reports')) onConfigureProjectReports?.(line);
+    if (row.configKind?.endsWith('-proposal')) onConfigureProjectProposal?.(line);
+  };
+
+  const gearTitle = (row: ProjectLinePermissionRow) => {
+    if (row.kind === 'pair' && row.configKind?.includes('files')) {
+      return 'Configure file category access (view / edit per category)';
+    }
+    if (row.kind === 'pair' && row.configKind?.includes('reports')) {
+      return 'Configure Notes/History category access (view / edit per category)';
+    }
+    if (row.kind === 'pair' && row.configKind?.includes('proposal')) {
+      return 'Configure Proposal tools (approve / delete pricing items)';
+    }
+    return 'Configure';
   };
 
   return (
@@ -93,11 +110,7 @@ export function ProjectLinePermissionsGrid({
                       variant="ghost"
                       size="sm"
                       className="ml-auto h-10 w-10 shrink-0 p-0 text-gray-600 hover:text-gray-900"
-                      title={
-                        row.kind === 'pair' && row.configKind?.includes('files')
-                          ? 'Configure file category access (view / edit per category)'
-                          : 'Configure Notes/History category access (view / edit per category)'
-                      }
+                      title={gearTitle(row)}
                       onClick={() => onGearClick(row)}
                     >
                       <Settings className="h-6 w-6" aria-hidden strokeWidth={2.25} />

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import ProjectFilesCategoriesModal from '@/components/ProjectFilesCategoriesModal';
 import ProjectReportCategoriesModal from '@/components/ProjectReportCategoriesModal';
+import ProjectProposalToolsModal, { proposalToolKeys } from '@/components/ProjectProposalToolsModal';
 import { CustomerPermissionsGrid } from '@/components/CustomerPermissionsGrid';
 import { SupplierPermissionsGrid } from '@/components/SupplierPermissionsGrid';
 import { ProductPermissionsGrid } from '@/components/ProductPermissionsGrid';
@@ -236,7 +237,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
   const [showDocumentTemplateCategoriesModal, setShowDocumentTemplateCategoriesModal] = useState(false);
   const [categoryModal, setCategoryModal] = useState<{
     line: ProjectLine;
-    feature: 'files' | 'reports';
+    feature: 'files' | 'reports' | 'proposal';
   } | null>(null);
 
   const permissionsHydratedForUser = useRef<string | null>(null);
@@ -354,6 +355,10 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
 
   const openProjectReportsCategoriesModal = (line: ProjectLine) => {
     setCategoryModal({ line, feature: 'reports' });
+  };
+
+  const openProjectProposalToolsModal = (line: ProjectLine) => {
+    setCategoryModal({ line, feature: 'proposal' });
   };
 
   // Notify parent of dirty state changes
@@ -1036,6 +1041,30 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
           }}
         />
       )}
+      {categoryModal?.feature === 'proposal' && (
+        <ProjectProposalToolsModal
+          open
+          line={categoryModal.line}
+          approve={!!permissions[proposalToolKeys(categoryModal.line).approve]}
+          delete={!!permissions[proposalToolKeys(categoryModal.line).delete]}
+          canEdit={canEdit}
+          onClose={() => setCategoryModal(null)}
+          onSave={({ approve, delete: del }) => {
+            const keys = proposalToolKeys(categoryModal.line);
+            setPermissions((prev) => {
+              const next = { ...prev };
+              next[keys.approve] = approve;
+              next[keys.delete] = del;
+              if ((approve || del) && !next[keys.write]) {
+                next[keys.read] = true;
+                next[keys.write] = true;
+              }
+              return next;
+            });
+            setCategoryModal(null);
+          }}
+        />
+      )}
       <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
         <AppSectionHeader
           title="Permissions"
@@ -1417,6 +1446,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                               }
                               onConfigureProjectFiles={openProjectFilesCategoriesModal}
                               onConfigureProjectReports={openProjectReportsCategoriesModal}
+                              onConfigureProjectProposal={openProjectProposalToolsModal}
                             />
                           );
                         })()}
@@ -1531,6 +1561,7 @@ export const UserPermissionsSection = forwardRef<UserPermissionsRef, UserPermiss
                               }
                               onConfigureProjectFiles={openProjectFilesCategoriesModal}
                               onConfigureProjectReports={openProjectReportsCategoriesModal}
+                              onConfigureProjectProposal={openProjectProposalToolsModal}
                             />
                           );
                         })()}

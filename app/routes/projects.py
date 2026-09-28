@@ -1551,6 +1551,11 @@ def get_project(
         "site_id": str(getattr(p,'site_id', None)) if getattr(p,'site_id', None) else None,
         "site_name": getattr(site, 'site_name', None),
         "site_address_line1": getattr(site, 'site_address_line1', None),
+        "site_address_line1_complement": getattr(site, 'site_address_line1_complement', None),
+        "site_address_line2": getattr(site, 'site_address_line2', None),
+        "site_address_line2_complement": getattr(site, 'site_address_line2_complement', None),
+        "site_address_line3": getattr(site, 'site_address_line3', None),
+        "site_address_line3_complement": getattr(site, 'site_address_line3_complement', None),
         "site_city": getattr(site, 'site_city', None),
         "site_province": getattr(site, 'site_province', None),
         "site_country": getattr(site, 'site_country', None),
@@ -7107,11 +7112,12 @@ def _apply_business_opportunity_list_filters(
     if value_max is not None:
         query = query.filter(Project.cost_estimated <= value_max)
     
-    # Search - include client name and address fields (project + client)
+    # Search - include client name and address fields (project + client + site)
     if q:
         from ..models.models import Client
         like = f"%{q}%"
         query = query.outerjoin(Client, Project.client_id == Client.id)
+        query = query.outerjoin(ClientSite, Project.site_id == ClientSite.id)
         query = query.filter(
             or_(
                 Project.name.ilike(like),
@@ -7128,6 +7134,17 @@ def _apply_business_opportunity_list_filters(
                 Client.province.ilike(like),
                 Client.postal_code.ilike(like),
                 Client.country.ilike(like),
+                ClientSite.site_name.ilike(like),
+                ClientSite.site_address_line1.ilike(like),
+                ClientSite.site_address_line1_complement.ilike(like),
+                ClientSite.site_address_line2.ilike(like),
+                ClientSite.site_address_line2_complement.ilike(like),
+                ClientSite.site_address_line3.ilike(like),
+                ClientSite.site_address_line3_complement.ilike(like),
+                ClientSite.site_city.ilike(like),
+                ClientSite.site_province.ilike(like),
+                ClientSite.site_postal_code.ilike(like),
+                ClientSite.site_country.ilike(like),
             )
         )
     
@@ -7955,6 +7972,27 @@ def business_projects(
         
         # Get list of matching client IDs
         matching_ids = [str(cid[0]) for cid in matching_client_ids.all()]
+
+        matching_site_ids = [
+            sid[0]
+            for sid in db.query(ClientSite.id)
+            .filter(
+                or_(
+                    ClientSite.site_name.ilike(like),
+                    ClientSite.site_address_line1.ilike(like),
+                    ClientSite.site_address_line1_complement.ilike(like),
+                    ClientSite.site_address_line2.ilike(like),
+                    ClientSite.site_address_line2_complement.ilike(like),
+                    ClientSite.site_address_line3.ilike(like),
+                    ClientSite.site_address_line3_complement.ilike(like),
+                    ClientSite.site_city.ilike(like),
+                    ClientSite.site_province.ilike(like),
+                    ClientSite.site_postal_code.ilike(like),
+                    ClientSite.site_country.ilike(like),
+                )
+            )
+            .all()
+        ]
         
         # Then filter projects by name, code, address, or client_id in matching clients
         search_conditions = [
@@ -7974,6 +8012,9 @@ def business_projects(
                 search_conditions.append(Project.client_id.in_(matching_uuids))
             except ValueError:
                 pass
+
+        if matching_site_ids:
+            search_conditions.append(Project.site_id.in_(matching_site_ids))
         
         query = query.filter(or_(*search_conditions))
     

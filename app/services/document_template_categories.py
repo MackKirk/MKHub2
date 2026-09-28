@@ -10,6 +10,12 @@ from ..models.models import SettingItem, SettingList, User
 
 LIST_NAME = "document_template_categories"
 PERMISSION_CONFIG_KEY = "document_hub:templates:categories:read"
+EMPLOYEE_CONTRACT_CATEGORY = "Employee Contract"
+
+
+def is_employee_contract_category(category: Optional[str]) -> bool:
+    """Match frontend isEmployeeContractCategory (canonical singular, case-insensitive)."""
+    return (category or "").strip().lower() == EMPLOYEE_CONTRACT_CATEGORY.lower()
 
 
 def ensure_document_template_categories_list(db: Session) -> None:

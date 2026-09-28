@@ -9,11 +9,13 @@ import {
   AppCard,
   AppEmptyState,
   AppFileUpload,
+  AppFormModal,
   AppModal,
   AppSectionHeader,
   AppTooltip,
   uiCx,
   uiDropdown,
+  uiLayout,
   uiRadius,
   uiSpacing,
   uiTypography,
@@ -23,6 +25,14 @@ export type PdfSignatureLibraryDoc = {
   id: string;
   name: string;
   signature_template?: { version: number; fields: unknown[] } | null;
+  /** Optional short badge under the name (e.g. Hiring / Additional). */
+  badge?: string | null;
+  /** Color tone for the badge. Defaults from badge text when omitted. */
+  badgeVariant?: 'hiring' | 'additional' | 'neutral';
+};
+
+export type PdfSignatureCreateMeta = {
+  package_role?: 'hiring_package' | 'additional';
 };
 
 export type PdfSignatureLibraryMenuItem<T extends PdfSignatureLibraryDoc = PdfSignatureLibraryDoc> = {
@@ -140,7 +150,7 @@ type Props<T extends PdfSignatureLibraryDoc> = {
   fileCategoryId: string;
   thumbnailUrl: (docId: string) => string;
   previewUrl: (docId: string) => string;
-  onCreate: (name: string, fileId: string) => Promise<void>;
+  onCreate: (name: string, fileId: string, meta?: PdfSignatureCreateMeta) => Promise<void>;
   onDelete: (doc: T) => Promise<void>;
   onEditTemplate: (doc: T) => void;
   extraMenuItems?: PdfSignatureLibraryMenuItem<T>[];
@@ -149,6 +159,8 @@ type Props<T extends PdfSignatureLibraryDoc> = {
   emptyTitle?: string;
   emptyDescription?: string;
   deleteConfirmMessage?: (doc: T) => string;
+  /** When true, ask Hiring vs Additional for each PDF before creating the document. */
+  promptPackageRoleOnCreate?: boolean;
 };
 
 export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibraryDoc>({
@@ -165,6 +177,7 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
   emptyTitle = 'No documents yet.',
   emptyDescription = 'Upload PDFs above.',
   deleteConfirmMessage,
+  promptPackageRoleOnCreate = false,
 }: Props<T>) {
   const askConfirm = useConfirm();
   const [uploading, setUploading] = useState(false);
@@ -176,6 +189,10 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingRole, setPendingRole] = useState<'hiring_package' | 'additional'>('hiring_package');
+  const [pendingIndex, setPendingIndex] = useState(0);
+  const [pendingCreated, setPendingCreated] = useState(0);
 
   const closePreview = () => {
     previewAbortRef.current?.abort();
@@ -227,7 +244,11 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
     setMenuAnchor((prev) => (prev && prev.top === next.top && prev.left === next.left ? prev : next));
   }, [menuOpenId]);
 
-  const uploadOnePdf = async (file: File, docName: string) => {
+  const uploadOnePdf = async (
+    file: File,
+    docName: string,
+    meta?: PdfSignatureCreateMeta,
+  ) => {
     const type = file.type || 'application/pdf';
     const up = await api<{ upload_url: string; key: string }>('POST', '/files/upload', {
       original_name: file.name,
@@ -248,7 +269,53 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
       checksum_sha256: 'na',
       content_type: type,
     });
-    await onCreate(docName, conf.id);
+    await onCreate(docName, conf.id, meta);
+  };
+
+  const finishPendingQueue = (created: number) => {
+    setPendingFiles([]);
+    setPendingIndex(0);
+    setPendingCreated(0);
+    setPendingRole('hiring_package');
+    setUploading(false);
+    if (created > 0) toast.success(`${created} document(s) added`);
+  };
+
+  const advancePending = (createdSoFar: number) => {
+    const next = pendingIndex + 1;
+    if (next >= pendingFiles.length) {
+      finishPendingQueue(createdSoFar);
+      return;
+    }
+    setPendingIndex(next);
+    setPendingRole('hiring_package');
+    setPendingCreated(createdSoFar);
+  };
+
+  const confirmPendingRole = async () => {
+    const file = pendingFiles[pendingIndex];
+    if (!file || uploading) return;
+    setUploading(true);
+    try {
+      await uploadOnePdf(file, displayNameFromPdfFile(file), { package_role: pendingRole });
+      advancePending(pendingCreated + 1);
+    } catch (e: unknown) {
+      toast.error(`${file.name}: ${e instanceof Error ? e.message : 'failed'}`);
+      advancePending(pendingCreated);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const skipPendingFile = () => {
+    if (uploading) return;
+    advancePending(pendingCreated);
+  };
+
+  const cancelPendingQueue = () => {
+    if (uploading) return;
+    const created = pendingCreated;
+    finishPendingQueue(created);
   };
 
   const processPdfFiles = async (fileList: FileList | File[]) => {
@@ -277,6 +344,14 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
     }
     if (pdfs.length === 0) return;
 
+    if (promptPackageRoleOnCreate) {
+      setPendingFiles(pdfs);
+      setPendingIndex(0);
+      setPendingCreated(0);
+      setPendingRole('hiring_package');
+      return;
+    }
+
     setUploading(true);
     let ok = 0;
     for (const file of pdfs) {
@@ -290,6 +365,9 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
     setUploading(false);
     if (ok > 0) toast.success(`${ok} document(s) added`);
   };
+
+  const pendingFile = pendingFiles[pendingIndex] ?? null;
+  const pendingOpen = Boolean(pendingFile);
 
   const openPreview = async (docId: string, name: string) => {
     previewAbortRef.current?.abort();
@@ -330,6 +408,81 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
 
   return (
     <>
+      <AppFormModal
+        open={pendingOpen}
+        onClose={() => {
+          if (!uploading) cancelPendingQueue();
+        }}
+        title="Choose package role"
+        description={
+          pendingFile ? (
+            <>
+              <span className="block truncate font-medium text-gray-900" title={pendingFile.name}>
+                {displayNameFromPdfFile(pendingFile)}
+              </span>
+              <span className="block">
+                File {pendingIndex + 1} of {pendingFiles.length}. Choose where this document belongs before
+                uploading.
+              </span>
+            </>
+          ) : null
+        }
+        size="md"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-between')}>
+            <AppButton type="button" variant="secondary" size="sm" disabled={uploading} onClick={cancelPendingQueue}>
+              Cancel remaining
+            </AppButton>
+            <div className={uiCx(uiLayout.actionsRow)}>
+              <AppButton type="button" variant="secondary" size="sm" disabled={uploading} onClick={skipPendingFile}>
+                Skip
+              </AppButton>
+              <AppButton
+                type="button"
+                size="sm"
+                loading={uploading}
+                disabled={uploading}
+                onClick={() => void confirmPendingRole()}
+              >
+                Add document
+              </AppButton>
+            </div>
+          </div>
+        }
+      >
+        <fieldset className={uiSpacing.sectionStack}>
+          <legend className="sr-only">Package role</legend>
+          <label className={uiCx('flex cursor-pointer items-start gap-2 rounded-lg border border-gray-200 p-3', pendingRole === 'hiring_package' && 'border-brand-red bg-red-50/50')}>
+            <input
+              type="radio"
+              name="pending-package-role"
+              className="mt-1 text-brand-red focus:ring-brand-red"
+              checked={pendingRole === 'hiring_package'}
+              disabled={uploading}
+              onChange={() => setPendingRole('hiring_package')}
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-900">Hiring package</span>
+              <span className={uiTypography.helper}>Included in the default invite onboarding package.</span>
+            </span>
+          </label>
+          <label className={uiCx('flex cursor-pointer items-start gap-2 rounded-lg border border-gray-200 p-3', pendingRole === 'additional' && 'border-brand-red bg-red-50/50')}>
+            <input
+              type="radio"
+              name="pending-package-role"
+              className="mt-1 text-brand-red focus:ring-brand-red"
+              checked={pendingRole === 'additional'}
+              disabled={uploading}
+              onChange={() => setPendingRole('additional')}
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-900">Additional documents</span>
+              <span className={uiTypography.helper}>Optional extras selected on invite Step 2.</span>
+            </span>
+          </label>
+        </fieldset>
+      </AppFormModal>
+
       {menuDoc &&
         menuAnchor &&
         typeof document !== 'undefined' &&
@@ -407,14 +560,16 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
             label=""
             value={[]}
             onChange={() => undefined}
-            disabled={uploading || readOnly}
+            disabled={uploading || readOnly || pendingOpen}
             onFilesSelected={(files) => processPdfFiles(files)}
             helperText={
               readOnly
                 ? 'View only.'
-                : uploading
-                  ? 'Uploading…'
-                  : 'Drag-and-drop your document here or choose files from your computer.'
+                : pendingOpen
+                  ? 'Finish choosing package role for the selected file(s)…'
+                  : uploading
+                    ? 'Uploading…'
+                    : 'Drag-and-drop your document here or choose files from your computer.'
             }
           />
         </div>
@@ -481,6 +636,27 @@ export default function PdfSignatureDocumentLibrary<T extends PdfSignatureLibrar
                 <div className={uiCx(uiTypography.controlLabel, 'line-clamp-2 w-full px-0.5 pt-0.5 font-semibold text-gray-900')}>
                   {d.name}
                 </div>
+                {d.badge ? (
+                  <span
+                    className={uiCx(
+                      'mx-auto mt-0.5 inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+                      (() => {
+                        const variant =
+                          d.badgeVariant ||
+                          (d.badge.toLowerCase() === 'additional'
+                            ? 'additional'
+                            : d.badge.toLowerCase() === 'hiring'
+                              ? 'hiring'
+                              : 'neutral');
+                        if (variant === 'hiring') return 'bg-red-100 text-red-800 ring-1 ring-inset ring-red-200/80';
+                        if (variant === 'additional') return 'bg-sky-100 text-sky-800 ring-1 ring-inset ring-sky-200/80';
+                        return 'bg-gray-100 text-gray-600';
+                      })(),
+                    )}
+                  >
+                    {d.badge}
+                  </span>
+                ) : null}
               </div>
             </div>
           ))}

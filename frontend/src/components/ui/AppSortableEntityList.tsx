@@ -255,25 +255,20 @@ export function AppSortableEntityListRow(props: AppSortableEntityListRowProps) {
     variant === 'flat' ? uiSortableEntityList.rowFlat : 'grid p-4',
   );
 
-  if (variant === 'card' && as === 'link') {
+  if (as === 'link') {
     const { to, ...linkRest } = rest as AppSortableEntityListRowLinkProps;
     return (
       <Link
         to={to}
-        className={uiCx(uiSortableEntityList.rowCard, gridClass, className)}
+        className={uiCx(
+          variant === 'flat' ? undefined : uiSortableEntityList.rowCard,
+          gridClass,
+          className,
+        )}
         {...linkRest}
       >
         {children}
       </Link>
-    );
-  }
-
-  if (variant === 'flat') {
-    const divProps = rest as AppSortableEntityListRowDivProps;
-    return (
-      <div className={uiCx(gridClass, className)} {...divProps}>
-        {children}
-      </div>
     );
   }
 

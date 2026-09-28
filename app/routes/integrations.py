@@ -100,7 +100,7 @@ def places_autocomplete(
 ):
     """Proxy Google Places Autocomplete (server-side key; never exposed to browser)."""
     if not settings.google_places_api_key:
-        return {"predictions": [], "status": "REQUEST_DENIED"}
+        return {"predictions": [], "status": "REQUEST_DENIED", "error_message": "GOOGLE_PLACES_API_KEY not configured"}
     params: dict = {
         "input": q,
         "key": settings.google_places_api_key,
@@ -115,7 +115,13 @@ def places_autocomplete(
             params=params,
         )
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        # Referer-restricted (browser) keys fail here — need a server/IP key.
+        if data.get("status") == "REQUEST_DENIED":
+            print(
+                f"[places] autocomplete REQUEST_DENIED: {data.get('error_message') or 'check GOOGLE_PLACES_API_KEY restrictions'}"
+            )
+        return data
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="Places autocomplete unavailable")
 

@@ -118,20 +118,24 @@ def signing_fields_in_template(template: Optional[dict]) -> List[dict]:
 
 
 def signer_role_for_base_document(bd) -> str:
-    """Matches template field assignee filter to who receives this document."""
-    return (getattr(bd, "assignee_type", None) or "employee").lower()
+    """Legacy helper: hire signing always uses employee-tagged fields."""
+    _ = bd
+    return "employee"
 
 
 def filter_fields_for_signer(template: Optional[dict], bd) -> List[dict]:
-    """Return template fields applicable to the current document assignee role."""
+    """
+    Fields for the hire on the legacy assignment-item sign path.
+    Always filters to employee-tagged fields (ignores obsolete bd.assignee_type=user).
+    """
     if not template or not isinstance(template.get("fields"), list):
         return []
-    role = signer_role_for_base_document(bd)
+    _ = bd
     out: List[dict] = []
     for f in template["fields"]:
         if not isinstance(f, dict):
             continue
-        if (f.get("assignee") or "employee").lower() == role:
+        if (f.get("assignee") or "employee").lower() == "employee":
             out.append(f)
     return out
 
@@ -157,10 +161,19 @@ def _page_sizes_pdf_bytes(pdf_bytes: bytes) -> List[Tuple[float, float]]:
         doc.close()
 
 
-def validate_and_normalize_template(template: Any, pdf_bytes: bytes) -> dict:
+def validate_and_normalize_template(
+    template: Any,
+    pdf_bytes: bytes,
+    *,
+    require_user_assignee_ids: bool = False,
+) -> dict:
     """
     Validate template JSON; normalize rects and field metadata.
     Rects use PDF user space: origin bottom-left, units points (same as ReportLab).
+
+    When ``require_user_assignee_ids`` is True (onboarding base docs), every field with
+    assignee ``user`` must include a valid ``assignee_user_id``, and signing fields must
+    include at least one New Hire (employee) field.
     """
     if template is None:
         raise HTTPException(400, "signature_template is required")
@@ -244,6 +257,19 @@ def validate_and_normalize_template(template: Any, pdf_bytes: bytes) -> dict:
             "required": required,
             "assignee": assignee,
         }
+        if assignee == "user":
+            raw_uid = raw.get("assignee_user_id")
+            uid_str = (str(raw_uid).strip() if raw_uid is not None else "")
+            if uid_str:
+                try:
+                    entry["assignee_user_id"] = str(UUID(uid_str))
+                except Exception:
+                    raise HTTPException(400, f"fields[{idx}].assignee_user_id must be a UUID")
+            elif require_user_assignee_ids:
+                raise HTTPException(
+                    400,
+                    f"fields[{idx}].assignee_user_id is required when assignee is user",
+                )
         if ftype == "employee_info":
             key = (raw.get("employee_info_key") or "full_name").strip().lower()
             if key not in EMPLOYEE_INFO_KEYS:
@@ -251,6 +277,14 @@ def validate_and_normalize_template(template: Any, pdf_bytes: bytes) -> dict:
             entry["employee_info_key"] = key
         # type "value": currency amount is entered by the signer; no template text
         fields_out.append(entry)
+
+    if require_user_assignee_ids:
+        signing = [f for f in fields_out if f.get("type") in SIGNING_FIELD_TYPES]
+        if signing and not any((f.get("assignee") or "") == "employee" for f in signing):
+            raise HTTPException(
+                400,
+                "Onboarding templates with signature fields must include at least one New Hire (employee) field",
+            )
 
     return {"version": version, "fields": fields_out}
 
