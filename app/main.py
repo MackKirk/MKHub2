@@ -1246,6 +1246,7 @@ def create_app() -> FastAPI:
                         ("employee_profiles", "invite_additional_documents_applied_at", "TIMESTAMPTZ NULL"),
                         ("employee_profiles", "invited_by_user_id", "UUID NULL"),
                         ("employee_profiles", "invited_from_ip", "VARCHAR(100) NULL"),
+                        ("employee_profiles", "needs_register_hours", "BOOLEAN NOT NULL DEFAULT FALSE"),
                         ("invites", "document_ids", "JSON NULL"),
                         ("invites", "additional_documents", "JSON NULL"),
                         ("invites", "created_from_ip", "VARCHAR(100) NULL"),

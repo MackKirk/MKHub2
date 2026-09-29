@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Briefcase, ChevronLeft, ChevronRight, Clock, Coffee, Info, Zap } from 'lucide-react';
+import { Briefcase, ChevronLeft, ChevronRight, Clock, Coffee, Info, AlertTriangle, Zap } from 'lucide-react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -11,13 +11,11 @@ import { formatRoundedHhmm } from '@/lib/timePickerUtils';
 import {
   AppButton,
   AppCard,
-  AppCheckbox,
   AppControlLabelRow,
   AppDatePicker,
   AppFieldHint,
   AppFormModal,
   AppModal,
-  AppSelect,
   AppTimePicker,
   uiCx,
   uiDropdown,
@@ -205,10 +203,6 @@ export function ClockInOutModalLayer({
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string>('');
 
-  const [insertBreakTime, setInsertBreakTime] = useState<boolean>(false);
-  const [breakHours, setBreakHours] = useState<string>('0');
-  const [breakMinutes, setBreakMinutes] = useState<string>('0');
-
   const { data: currentUser } = useQuery({
     queryKey: ['me'],
     queryFn: () => api<any>('GET', '/auth/me'),
@@ -295,6 +289,21 @@ export function ClockInOutModalLayer({
     },
     enabled: !!currentUser?.id,
   });
+
+  const { data: needsAttention } = useQuery({
+    queryKey: ['attendance-needs-attention'],
+    queryFn: () =>
+      api<{ count: number; items?: { date: string; missing_clock_out?: boolean }[] }>(
+        'GET',
+        '/dispatch/attendance/needs-attention',
+      ),
+    enabled: !!currentUser?.id,
+    staleTime: 30_000,
+  });
+
+  const pendingPastDays = needsAttention?.items ?? [];
+  const pendingPastCount = needsAttention?.count ?? pendingPastDays.length;
+  const firstPendingPastDate = pendingPastDays[0]?.date ?? null;
 
   const { data: project } = useQuery({
     queryKey: ['project', selectedDateShift?.project_id],
@@ -523,9 +532,6 @@ export function ClockInOutModalLayer({
   const resetLocalModalState = useCallback(() => {
     setStartTime('');
     setEndTime('');
-    setInsertBreakTime(false);
-    setBreakHours('0');
-    setBreakMinutes('0');
     setGpsLocation(null);
     setGpsError('');
     setShiftPickOpen(false);
@@ -606,29 +612,6 @@ export function ClockInOutModalLayer({
           toast.error('Clock-out time must be after clock-in time. Please select a valid time.');
           return;
         }
-
-        if (insertBreakTime) {
-          const breakTotalMinutes = parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10);
-          const totalMinutes = Math.floor((endDateTime.getTime() - clockInDate.getTime()) / (1000 * 60));
-
-          if (breakTotalMinutes >= totalMinutes) {
-            toast.error(
-              'Break time cannot be greater than or equal to the total attendance time. Please adjust the break or end time.',
-            );
-            return;
-          }
-        }
-      }
-    }
-
-    if (clockType === 'in' && startDateTime && insertBreakTime) {
-      const breakTotalMinutes = parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10);
-      const totalMinutes = Math.floor((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60));
-      if (breakTotalMinutes >= totalMinutes) {
-        toast.error(
-          'Break time cannot be greater than or equal to the total attendance time. Please adjust the break or times.',
-        );
-        return;
       }
     }
 
@@ -646,16 +629,6 @@ export function ClockInOutModalLayer({
       else projectJobName = selectedJob;
     }
 
-    const breakTotalMinutes = insertBreakTime
-      ? parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10)
-      : 0;
-    let breakInfo = '';
-    if (breakTotalMinutes > 0) {
-      const breakH = Math.floor(breakTotalMinutes / 60);
-      const breakM = breakTotalMinutes % 60;
-      breakInfo = breakM > 0 ? `Break: ${breakH}h ${breakM}min` : `Break: ${breakH}h`;
-    }
-
     const periodStart =
       clockType === 'out' && openClockIn?.clock_in_time
         ? new Date(openClockIn.clock_in_time)
@@ -663,18 +636,17 @@ export function ClockInOutModalLayer({
     const totalMinutes = periodStart
       ? Math.floor((endDateTime.getTime() - periodStart.getTime()) / (1000 * 60))
       : 0;
-    const netMinutes = Math.max(0, totalMinutes - breakTotalMinutes);
-    const workedHours = Math.floor(netMinutes / 60);
-    const workedMinutes = netMinutes % 60;
+    const workedHours = Math.floor(totalMinutes / 60);
+    const workedMinutes = totalMinutes % 60;
     const hoursWorkedStr = workedMinutes > 0 ? `${workedHours}h ${workedMinutes}min` : `${workedHours}h`;
 
     const confirmationMessage =
       clockType === 'in'
         ? `Log hours on ${dateFormatted} from ${formatTime12h(startStr)} to ${formatTime12h(endStr)}` +
-          `${breakInfo ? `\n${breakInfo}` : ''}\nHours: ${hoursWorkedStr}` +
+          `\nHours: ${hoursWorkedStr}` +
           `${projectJobName ? `\nJob: ${projectJobName}` : ''}`
         : `Clock out on ${dateFormatted} at ${formatTime12h(endStr)}` +
-          `${breakInfo ? `\n${breakInfo}` : ''}\nHours: ${hoursWorkedStr}` +
+          `\nHours: ${hoursWorkedStr}` +
           `${projectJobName ? `\nJob: ${projectJobName}` : ''}`;
 
     const confirmationResult = await confirm({
@@ -701,10 +673,6 @@ export function ClockInOutModalLayer({
 
       if (clockType === 'in') {
         payload.clock_out_time_local = `${selectedDate}T${endStr}:00`;
-      }
-
-      if (insertBreakTime && breakTotalMinutes > 0) {
-        payload.manual_break_minutes = breakTotalMinutes;
       }
 
       if (gpsLocation) {
@@ -829,18 +797,13 @@ export function ClockInOutModalLayer({
       startDateTime = localDateTime(year, month, day, startParsed.hours, startParsed.minutes);
     }
     if (!startDateTime || endDateTime.getTime() <= startDateTime.getTime()) return null;
-    const breakTotal = insertBreakTime ? parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10) : 0;
     const total = Math.floor((endDateTime.getTime() - startDateTime.getTime()) / 60_000);
-    const net = Math.max(0, total - (Number.isNaN(breakTotal) ? 0 : breakTotal));
-    const hours = Math.floor(net / 60);
-    const minutes = net % 60;
+    const hours = Math.floor(total / 60);
+    const minutes = total % 60;
     return `${hours}h ${String(minutes).padStart(2, '0')}m`;
   }, [
-    breakHours,
-    breakMinutes,
     clockType,
     endTime,
-    insertBreakTime,
     openClockIn?.clock_in_time,
     selectedDate,
     startTime,
@@ -850,14 +813,34 @@ export function ClockInOutModalLayer({
     ? 'This entry is missing an end time. Use Clock out to add one.'
     : nextPendingShift
       ? `Next scheduled shift: ${nextPendingShift.project_name || 'Unknown'} (${formatTime12h(nextPendingShift.start_time)} – ${formatTime12h(nextPendingShift.end_time)})`
-      : 'At the end of the day, log your start time, end time, and any break.';
+      : 'At the end of the day, log your start time and end time.';
 
   const weekRangeLabel = weeklySummary
     ? `${formatDateShort(weeklySummary.week_start)} – ${formatDateShort(weeklySummary.week_end)}`
-    : '';
-  const daysWithHours = (weeklySummary?.days ?? []).filter(
-    (day) => day.clock_in || day.clock_out || (day.hours_worked_minutes && day.hours_worked_minutes > 0),
-  );
+    : `${formatDateShort(weekStartStr)} – ${formatDateShort(shiftLocalDate(weekStartStr, 6))}`;
+
+  const weekDayRows = useMemo(() => {
+    const byDate = new Map((weeklySummary?.days ?? []).map((d) => [d.date, d]));
+    const rows: WeeklySummaryDay[] = [];
+    for (let i = 0; i < 7; i++) {
+      const date = shiftLocalDate(weekStartStr, i);
+      const existing = byDate.get(date);
+      if (existing) {
+        rows.push(existing);
+        continue;
+      }
+      const dayName = new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
+      rows.push({
+        date,
+        day_name: dayName,
+        clock_in: null,
+        clock_out: null,
+        hours_worked_minutes: 0,
+        hours_worked_formatted: '0h 00m',
+      });
+    }
+    return rows;
+  }, [weekStartStr, weeklySummary]);
 
   const canSubmit =
     !submitting &&
@@ -935,7 +918,7 @@ export function ClockInOutModalLayer({
                   {clockType === 'in' ? 'Log hours' : 'Clock out'}
                 </div>
                 <div className="text-xs text-white/85">
-                  {hoursPreview ? `This entry: ${hoursPreview}` : 'Start, end, and break in 15-minute steps'}
+                  {hoursPreview ? `This entry: ${hoursPreview}` : 'Start and end time in 15-minute steps'}
                 </div>
               </div>
             </div>
@@ -966,6 +949,51 @@ export function ClockInOutModalLayer({
                 aria-label="Select date"
               />
             </div>
+
+            {pendingPastCount > 0 && firstPendingPastDate ? (
+              <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-amber-700">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-amber-900">
+                    {pendingPastCount === 1
+                      ? '1 past day still needs attention'
+                      : `${pendingPastCount} past days still need attention`}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-amber-800">
+                    Open entries from before today are missing an end time.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => goToDate(firstPendingPastDate)}
+                    className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-amber-900 underline hover:text-amber-950"
+                  >
+                    Go to {formatDateShort(firstPendingPastDate)}
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                  {pendingPastDays.length > 1 ? (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {pendingPastDays.slice(0, 5).map((item) => (
+                        <button
+                          key={item.date}
+                          type="button"
+                          onClick={() => goToDate(item.date)}
+                          className={uiCx(
+                            'rounded-md border px-1.5 py-0.5 text-[10px] font-semibold',
+                            item.date === selectedDate
+                              ? 'border-amber-400 bg-amber-100 text-amber-950'
+                              : 'border-amber-200 bg-white text-amber-800 hover:bg-amber-100',
+                          )}
+                        >
+                          {formatDateShort(item.date)}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
             {clockType === 'in' ? (
               <JobSearchCombobox
@@ -1013,127 +1041,6 @@ export function ClockInOutModalLayer({
               />
             </div>
 
-            <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-3">
-              <AppCheckbox
-                label="Include break in these hours"
-                checked={insertBreakTime}
-                onChange={setInsertBreakTime}
-                fieldHint="Break time\n\nOptional unpaid break deducted from hours worked."
-              />
-              {insertBreakTime ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <AppSelect
-                    label="Hours"
-                    value={breakHours}
-                    onChange={(e) => setBreakHours(e.target.value)}
-                    options={Array.from({ length: 3 }, (_, i) => ({ value: String(i), label: String(i) }))}
-                  />
-                  <AppSelect
-                    label="Minutes"
-                    value={breakMinutes}
-                    onChange={(e) => setBreakMinutes(e.target.value)}
-                    options={Array.from({ length: 12 }, (_, i) => {
-                      const m = i * 5;
-                      const v = String(m).padStart(2, '0');
-                      return { value: v, label: v };
-                    })}
-                  />
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center gap-1">
-              <AppButton
-                variant="ghost"
-                size="sm"
-                leftIcon={<ChevronLeft className="h-4 w-4" />}
-                onClick={() => goToDate(shiftLocalDate(selectedDate, -7))}
-                aria-label="Previous week"
-              />
-              <div className={uiCx('min-h-11 flex-1 rounded-xl px-2 py-1.5 text-center', isCurrentWeek ? 'bg-emerald-50' : 'bg-gray-50')}>
-                <div className={uiCx('text-sm font-semibold', isCurrentWeek ? 'text-emerald-800' : 'text-gray-900')}>
-                  {weekRangeLabel || 'This week'}
-                </div>
-                {isCurrentWeek ? <div className="text-[10px] font-medium text-emerald-700">this week</div> : null}
-              </div>
-              <AppButton
-                variant="ghost"
-                size="sm"
-                rightIcon={<ChevronRight className="h-4 w-4" />}
-                onClick={() => goToDate(shiftLocalDate(selectedDate, 7))}
-                aria-label="Next week"
-              />
-            </div>
-
-            <AppCard>
-              {weeklySummary ? (
-                <>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <HoursSideMetric
-                      icon={<Clock className="h-3.5 w-3.5" />}
-                      tint="bg-emerald-50 text-emerald-700"
-                      label="Total"
-                      value={weeklySummary.total_hours_formatted || '0h 00m'}
-                    />
-                    <HoursSideMetric
-                      icon={<Briefcase className="h-3.5 w-3.5" />}
-                      tint="bg-blue-50 text-blue-700"
-                      label="Regular"
-                      value={weeklySummary.reg_hours_formatted || '0h 00m'}
-                    />
-                    <HoursSideMetric
-                      icon={<Zap className="h-3.5 w-3.5" />}
-                      tint="bg-orange-50 text-orange-700"
-                      label="Overtime"
-                      value="0h 00m"
-                    />
-                    <HoursSideMetric
-                      icon={<Coffee className="h-3.5 w-3.5" />}
-                      tint="bg-gray-100 text-gray-600"
-                      label="Breaks"
-                      value={weeklySummary.total_break_formatted || '0h 00m'}
-                    />
-                  </div>
-                  {daysWithHours.length > 0 ? (
-                    <div className="mt-2 divide-y divide-gray-100 border-t border-gray-100">
-                      {daysWithHours.map((day, index) => {
-                        const inT = day.clock_in ? formatClockTimestamp(day.clock_in) : null;
-                        const outT = day.clock_out ? formatClockTimestamp(day.clock_out) : null;
-                        const range = inT && outT ? `${inT} – ${outT}` : inT ? `${inT} – --:--` : null;
-                        return (
-                          <button
-                            key={`${day.date}-${day.clock_in || 'no-in'}-${index}`}
-                            type="button"
-                            onClick={() => goToDate(day.date)}
-                            className={uiCx(
-                              'flex w-full items-center gap-2 py-2 text-left hover:bg-gray-50',
-                              day.date === selectedDate && 'bg-emerald-50/70',
-                            )}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="text-xs font-semibold text-gray-900">
-                                {capitalizeWeekday(day.day_name)} · {formatDateShort(day.date)}
-                              </div>
-                              {range ? <div className="mt-0.5 text-[11px] text-gray-500">{range}</div> : null}
-                            </div>
-                            <div className="text-xs font-semibold tabular-nums text-gray-900">
-                              {day.hours_worked_formatted || '0h 00m'}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="mt-2 text-center text-xs text-gray-500">No hours logged this week</p>
-                  )}
-                </>
-              ) : (
-                <div className={uiTypography.helper}>Loading this week’s hours…</div>
-              )}
-            </AppCard>
-
             <div className="space-y-1.5">
               <AppControlLabelRow
                 label="Location"
@@ -1177,7 +1084,108 @@ export function ClockInOutModalLayer({
                 </div>
               )}
             </div>
+          </div>
 
+          <div className="space-y-3">
+            <div className="flex items-center gap-1">
+              <AppButton
+                variant="ghost"
+                size="sm"
+                leftIcon={<ChevronLeft className="h-4 w-4" />}
+                onClick={() => goToDate(shiftLocalDate(selectedDate, -7))}
+                aria-label="Previous week"
+              />
+              <div className={uiCx('min-h-11 flex-1 rounded-xl px-2 py-1.5 text-center', isCurrentWeek ? 'bg-emerald-50' : 'bg-gray-50')}>
+                <div className={uiCx('text-sm font-semibold', isCurrentWeek ? 'text-emerald-800' : 'text-gray-900')}>
+                  {weekRangeLabel || 'This week'}
+                </div>
+                {isCurrentWeek ? <div className="text-[10px] font-medium text-emerald-700">this week</div> : null}
+              </div>
+              <AppButton
+                variant="ghost"
+                size="sm"
+                rightIcon={<ChevronRight className="h-4 w-4" />}
+                onClick={() => goToDate(shiftLocalDate(selectedDate, 7))}
+                aria-label="Next week"
+              />
+            </div>
+
+            <AppCard>
+              <div className="grid grid-cols-2 gap-2.5">
+                <HoursSideMetric
+                  icon={<Clock className="h-3.5 w-3.5" />}
+                  tint="bg-emerald-50 text-emerald-700"
+                  label="Total"
+                  value={weeklySummary?.total_hours_formatted || '0h 00m'}
+                />
+                <HoursSideMetric
+                  icon={<Briefcase className="h-3.5 w-3.5" />}
+                  tint="bg-blue-50 text-blue-700"
+                  label="Regular"
+                  value={weeklySummary?.reg_hours_formatted || '0h 00m'}
+                />
+                <HoursSideMetric
+                  icon={<Zap className="h-3.5 w-3.5" />}
+                  tint="bg-orange-50 text-orange-700"
+                  label="Overtime"
+                  value="0h 00m"
+                />
+                <HoursSideMetric
+                  icon={<Coffee className="h-3.5 w-3.5" />}
+                  tint="bg-gray-100 text-gray-600"
+                  label="Breaks"
+                  value={weeklySummary?.total_break_formatted || '0h 00m'}
+                />
+              </div>
+              <div className="mt-2 divide-y divide-gray-100 border-t border-gray-100">
+                {weekDayRows.map((day) => {
+                  const inT = day.clock_in ? formatClockTimestamp(day.clock_in) : null;
+                  const outT = day.clock_out ? formatClockTimestamp(day.clock_out) : null;
+                  const range = inT && outT ? `${inT} – ${outT}` : inT ? `${inT} – --:--` : null;
+                  const hasHours =
+                    Boolean(day.clock_in || day.clock_out) ||
+                    (day.hours_worked_minutes && day.hours_worked_minutes > 0);
+                  return (
+                    <button
+                      key={day.date}
+                      type="button"
+                      onClick={() => goToDate(day.date)}
+                      className={uiCx(
+                        'flex w-full items-center gap-2 py-2 text-left hover:bg-gray-50',
+                        day.date === selectedDate && 'bg-emerald-50/70',
+                      )}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className={uiCx(
+                            'text-xs font-semibold',
+                            hasHours ? 'text-gray-900' : 'text-gray-500',
+                          )}
+                        >
+                          {capitalizeWeekday(day.day_name)} · {formatDateShort(day.date)}
+                        </div>
+                        {range ? (
+                          <div className="mt-0.5 text-[11px] text-gray-500">{range}</div>
+                        ) : (
+                          <div className="mt-0.5 text-[11px] text-gray-400">No hours logged</div>
+                        )}
+                      </div>
+                      <div
+                        className={uiCx(
+                          'text-xs font-semibold tabular-nums',
+                          hasHours ? 'text-gray-900' : 'text-gray-400',
+                        )}
+                      >
+                        {day.hours_worked_formatted || '0h 00m'}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {!weeklySummary ? (
+                <p className={uiCx(uiTypography.helper, 'mt-2 text-center')}>Updating hours…</p>
+              ) : null}
+            </AppCard>
             <div className="flex items-start gap-2.5 rounded-2xl bg-emerald-50 px-3 py-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-700">
                 <Info className="h-4 w-4" />
@@ -1187,7 +1195,6 @@ export function ClockInOutModalLayer({
           </div>
         </div>
       </AppFormModal>
-
       <AppModal
         open={shiftPickOpen}
         onClose={closeShiftPick}

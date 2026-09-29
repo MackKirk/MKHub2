@@ -9,8 +9,9 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models.models import Attendance, DevicePushToken, HoursReminderEvent, User
+from ..models.models import Attendance, DevicePushToken, EmployeeProfile, HoursReminderEvent, User
 from ..services.expo_push import send_expo_push
+from ..services.hours_registration import employee_should_register_hours
 from ..services.notifications import should_send_notification
 from ..services.time_rules import local_to_utc
 
@@ -97,6 +98,13 @@ def process_hours_reminders(db: Session, *, force: bool = False) -> int:
         .all()
     }
 
+    profiles = {
+        row.user_id: row
+        for row in db.query(EmployeeProfile)
+        .filter(EmployeeProfile.user_id.in_([u.id for _, u in tokens]))
+        .all()
+    }
+
     sent = 0
     stale_tokens: list[str] = []
     grouped: dict = {}
@@ -109,6 +117,8 @@ def process_hours_reminders(db: Session, *, force: bool = False) -> int:
     for user_id, bundle in grouped.items():
         try:
             if user_id in already_sent:
+                continue
+            if not employee_should_register_hours(profile=profiles.get(user_id)):
                 continue
             if not should_send_notification(db, user_id, "push", settings.tz_default):
                 continue

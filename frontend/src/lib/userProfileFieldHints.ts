@@ -31,6 +31,8 @@ export const USER_PROFILE_FIELD_HINTS: Record<string, string> = {
   project_division_ids: 'Project divisions\n\nProject lines or branches they work on.',
   pay_rate: 'Pay rate\n\nCompensation amount as a number only (e.g. 29 or 50.00). Unit comes from Pay type.',
   pay_type: 'Pay type\n\nHow pay is structured: hourly, salary, or contract. Shown with the rate as / hour, / year, etc.',
+  needs_register_hours:
+    'Needs to register hours\n\nSalary roles skip hour logging and hours reminders by default. Turn this on only when a salary employee must still clock in.',
   salary_effective_date: 'Effective date\n\nWhen the new pay rate takes effect; stored as the first day of the selected date.',
   salary_justification: 'Change reason\n\nRequired explanation for the salary change (e.g. promotion, annual review, market adjustment).',
   salary_notes: 'Comment\n\nOptional internal notes about this salary entry.',

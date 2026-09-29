@@ -13,6 +13,7 @@ import CommunityCommentRichTextEditor from '@/components/community/CommunityComm
 import { useConfirm } from '@/components/ConfirmProvider';
 import { extractMentionsFromEditor } from '@/lib/communityPostEditorUtils';
 import { isCommunityEditorHtmlEmpty, sanitizeCommunityPostHtml } from '@/lib/communityPostHtml';
+import { communityOrphanImageAttachments } from '@/lib/communityPostPreview';
 import { sortByLabel } from '@/lib/sortOptions';
 import {
   AppBadge,
@@ -107,12 +108,20 @@ type EmployeeCommunityProps = {
   expanded?: boolean;
   feedMode?: boolean;
   onUnreadCountChange?: (count: number) => void;
+  /** Jump to this post in the feed (expand + scroll). */
+  focusPostId?: string | null;
+  /** Bumps to re-run jump when the same post is selected again. */
+  focusNonce?: number;
+  onFocusPostHandled?: () => void;
 };
 
 export default function EmployeeCommunity({
   expanded = false,
   feedMode = false,
   onUnreadCountChange,
+  focusPostId = null,
+  focusNonce,
+  onFocusPostHandled,
 }: EmployeeCommunityProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState<'all' | 'unread' | 'required' | 'urgent'>('all');
@@ -137,7 +146,7 @@ export default function EmployeeCommunity({
   const commentsPanelScrollRef = useRef<HTMLDivElement>(null);
   const attachmentsPanelScrollRef = useRef<HTMLDivElement>(null);
   const prefersReducedMotion = useReducedMotion();
-  const [visiblePostsCount, setVisiblePostsCount] = useState(feedMode ? 3 : Infinity);
+  const [visiblePostsCount, setVisiblePostsCount] = useState(feedMode ? 4 : Infinity);
   const feedContainerRef = useRef<HTMLDivElement>(null);
   const deepLinkHandled = useRef<string | null>(null);
   const lastCommentResetKey = useRef<string>('__init__');
@@ -228,17 +237,17 @@ export default function EmployeeCommunity({
   }, [posts]);
 
   const communityTabs = useMemo(
-    () =>
-      [
-        { key: 'all', label: 'All' },
-        { key: 'unread', label: 'Unread' },
-        { key: 'urgent', label: 'Urgent' },
-        { key: 'required', label: 'Required' },
-      ].map((tab) => ({
-        ...tab,
-        count: communityTabCounts[tab.key as keyof typeof communityTabCounts],
-      })),
-    [communityTabCounts],
+    () => {
+      const keys = feedMode
+        ? (['all', 'unread', 'required'] as const)
+        : (['all', 'unread', 'urgent', 'required'] as const);
+      return keys.map((key) => ({
+        key,
+        label: key === 'all' ? 'All' : key === 'unread' ? 'Unread' : key === 'urgent' ? 'Urgent' : 'Required',
+        count: communityTabCounts[key],
+      }));
+    },
+    [communityTabCounts, feedMode],
   );
 
   const filteredPosts = useMemo(() => {
@@ -249,27 +258,26 @@ export default function EmployeeCommunity({
     return postsForActiveTab;
   }, [postsForActiveTab, feedMode, visiblePostsCount]);
 
-  // Reset visible posts count when filter changes
+  // Reset visible posts when filters change (timeline starts with a few, then loads older on scroll)
   useEffect(() => {
     if (feedMode) {
-      setVisiblePostsCount(3);
+      setVisiblePostsCount(4);
     }
   }, [filter, feedMode, searchQ, relatedAreaFilter, priorityFilter, confirmedOnly]);
 
-  // Infinite scroll handler for feed mode
+  // Infinite scroll: load older posts as the user scrolls the timeline
   useEffect(() => {
     if (!feedMode || !feedContainerRef.current) return;
 
     const container = feedContainerRef.current;
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
-      // Load more when user scrolls to within 100px of the bottom
-      if (scrollHeight - scrollTop - clientHeight < 100) {
-        setVisiblePostsCount(prev => Math.min(prev + 3, postsForActiveTab.length));
+      if (scrollHeight - scrollTop - clientHeight < 160) {
+        setVisiblePostsCount((prev) => Math.min(prev + 4, postsForActiveTab.length));
       }
     };
 
-    container.addEventListener('scroll', handleScroll);
+    container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
   }, [feedMode, postsForActiveTab, listParams]);
 
@@ -587,6 +595,46 @@ export default function EmployeeCommunity({
     onUnreadCountChange?.(unreadCount);
   }, [unreadCount, onUnreadCountChange]);
 
+  const [highlightedPostId, setHighlightedPostId] = useState<string | null>(null);
+  const lastFocusKey = useRef<string>('');
+
+  // Jump from announcements inbox: clear filters, reveal post in slice, expand + scroll
+  useEffect(() => {
+    if (!feedMode || !focusPostId) return;
+    const key = `${focusPostId}:${focusNonce ?? 0}`;
+    if (lastFocusKey.current === key) return;
+    if (!Array.isArray(posts) || posts.length === 0) return;
+
+    const idx = posts.findIndex((p: CommunityPost) => p.id === focusPostId);
+    if (idx < 0) {
+      lastFocusKey.current = key;
+      onFocusPostHandled?.();
+      return;
+    }
+
+    lastFocusKey.current = key;
+    setFilter('all');
+    setSearchQ('');
+    setRelatedAreaFilter('');
+    setPriorityFilter('');
+    setConfirmedOnly(false);
+    setVisiblePostsCount((prev) => Math.max(prev, idx + 1, 4));
+    setHighlightedPostId(focusPostId);
+    markViewedMutation.mutate(focusPostId);
+
+    const timer = window.setTimeout(() => {
+      const safeId = focusPostId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const el = feedContainerRef.current?.querySelector(
+        `[data-community-post-id="${safeId}"]`,
+      ) as HTMLElement | null;
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      onFocusPostHandled?.();
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedMode, focusPostId, focusNonce, posts]);
+
   const hasActiveRefinements = Boolean(searchQ.trim() || relatedAreaFilter || priorityFilter || confirmedOnly);
 
   const clearRefinements = () => {
@@ -626,7 +674,7 @@ export default function EmployeeCommunity({
     <div
       className={uiCx(
         'flex min-w-0 flex-col',
-        feedMode || expanded ? 'h-full min-h-0' : '',
+        feedMode || expanded ? 'h-full min-h-0 flex-1' : '',
         !feedMode && !expanded ? uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, uiSpacing.cardPadding) : '',
       )}
     >
@@ -641,8 +689,21 @@ export default function EmployeeCommunity({
             <div className={uiTypography.sectionTitle}>{unreadCount}</div>
           </div>
         </header>
-      ) : null}
+      ) : (
+        <header className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
+          <h3 className={uiTypography.sectionTitle}>Employee Community</h3>
+          <AppTabs
+            className="shrink-0"
+            tabs={communityTabs}
+            value={filter === 'urgent' ? 'all' : filter}
+            onChange={(key) => setFilter(key as typeof filter)}
+            tone="community"
+            size="sm"
+          />
+        </header>
+      )}
 
+      {!feedMode ? (
       <div
         className={uiCx(
           'mb-3 shrink-0',
@@ -655,7 +716,7 @@ export default function EmployeeCommunity({
       >
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <AppInput
-            id={feedMode ? 'overview-community-search' : 'community-search'}
+            id="community-search"
             type="search"
             label="Search"
             placeholder="Search title or content..."
@@ -670,6 +731,7 @@ export default function EmployeeCommunity({
             tabs={communityTabs}
             value={filter}
             onChange={(key) => setFilter(key as typeof filter)}
+            tone="community"
           />
         </div>
 
@@ -679,7 +741,7 @@ export default function EmployeeCommunity({
           )}
         >
           <AppCombobox
-            id={feedMode ? 'overview-community-area-filter' : 'community-area-filter'}
+            id="community-area-filter"
             label="Area"
             value={relatedAreaFilter}
             onChange={setRelatedAreaFilter}
@@ -688,7 +750,7 @@ export default function EmployeeCommunity({
             emptyMessage="No areas match your search."
           />
           <AppCombobox
-            id={feedMode ? 'overview-community-priority-filter' : 'community-priority-filter'}
+            id="community-priority-filter"
             label="Priority"
             value={priorityFilter}
             onChange={setPriorityFilter}
@@ -722,12 +784,11 @@ export default function EmployeeCommunity({
           ) : null}
         </div>
       </div>
-
+      ) : null}
       <div
         ref={feedContainerRef}
         className={uiCx(
-          uiSpacing.sectionStack,
-          'min-h-0 overflow-y-auto pt-1',
+          'min-h-0 space-y-5 overflow-y-auto overscroll-y-contain pt-1 pb-4',
           expanded || feedMode ? 'flex-1' : '',
         )}
         style={feedMode ? {} : !expanded ? { maxHeight: '600px', height: '600px' } : { maxHeight: '100%' }}
@@ -738,33 +799,41 @@ export default function EmployeeCommunity({
             className="py-8"
           />
         ) : (
-          filteredPosts.map((post) => (
+          filteredPosts.map((post, index) => (
             <CommunityFeedPostSnippet
               key={post.id}
               post={post}
               feedMode={feedMode}
+              featured={index === 0}
+              forceExpanded={highlightedPostId === post.id}
               interactive
-              onCardClick={(e) => {
-                e.stopPropagation();
-                handleOpenModal(post);
-              }}
+              onCardClick={
+                feedMode
+                  ? undefined
+                  : (e) => {
+                      e.stopPropagation();
+                      handleOpenModal(post);
+                    }
+              }
+              onExpandChange={
+                feedMode
+                  ? (expanded) => {
+                      if (expanded) markViewedMutation.mutate(post.id);
+                    }
+                  : undefined
+              }
               onAuthorButtonClick={(e) => {
                 e.stopPropagation();
                 if (post.author_id) setDirectoryCardUserId(post.author_id);
               }}
               onLikeClick={(e) => handleLike(e, post)}
               onCommentClick={(e) => handleCommentClick(e, post)}
-              onOpenClick={
-                feedMode
-                  ? (e) => {
-                      e.stopPropagation();
-                      handleOpenModal(post);
-                    }
-                  : undefined
-              }
             />
           ))
         )}
+        {feedMode && filteredPosts.length > 0 && filteredPosts.length < postsForActiveTab.length ? (
+          <p className="pb-2 text-center text-xs text-gray-400">Scroll for older posts</p>
+        ) : null}
       </div>
 
       {/* Post Detail Modal */}
@@ -791,6 +860,7 @@ export default function EmployeeCommunity({
           modalPost.priority && modalPost.priority !== 'normal'
             ? modalPost.priority.charAt(0).toUpperCase() + modalPost.priority.slice(1)
             : null;
+        const orphanImages = communityOrphanImageAttachments(modalPost);
         const togglePanel = (panel: 'comments' | 'attachments') => {
           setActivePostPanel((current) => (current === panel ? null : panel));
         };
@@ -889,8 +959,21 @@ export default function EmployeeCommunity({
                     transition={{ layout: dockTransition }}
                     className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-2 pb-4"
                   >
-                    <div className="min-h-full text-sm leading-relaxed text-slate-900">
+                    <div className="text-sm leading-relaxed text-slate-900">
                       <CommunityPostBody html={modalPost.content} />
+                      {orphanImages.length > 0 ? (
+                        <div className="mt-4 space-y-3">
+                          {orphanImages.map((img) => (
+                            <figure key={img.key} className="overflow-hidden rounded-lg bg-slate-50">
+                              <img
+                                src={img.url}
+                                alt={img.name || ''}
+                                className="mx-auto h-auto max-h-[min(70vh,640px)] w-full object-contain"
+                              />
+                            </figure>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </motion.div>
 

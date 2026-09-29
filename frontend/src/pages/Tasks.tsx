@@ -123,7 +123,7 @@ export default function TasksPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const fromHome = location.state?.fromHome === true;
-  const navigateBackToOverview = useNavigateBack('/overview');
+  const navigateBackToOverview = useNavigateBack('/announcements');
   const queryClient = useQueryClient();
   const lastTasksSyncRef = useMemo(() => ({ current: null as string | null }), []);
 

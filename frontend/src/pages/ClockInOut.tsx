@@ -256,7 +256,7 @@ function HoursPanel() {
     ? 'This entry is missing an end time. Use Clock out to add one.'
     : nextPendingShift
       ? `Next scheduled shift: ${nextPendingShift.project_name || 'Unknown'} (${formatTime12h(nextPendingShift.start_time)} – ${formatTime12h(nextPendingShift.end_time)})`
-      : 'At the end of the day, log your start time, end time, and any break.';
+      : 'At the end of the day, log your start time and end time.';
 
   const daysWithHours = (weeklySummary?.days ?? []).filter(
     (day) => day.clock_in || day.clock_out || (day.hours_worked_minutes && day.hours_worked_minutes > 0),

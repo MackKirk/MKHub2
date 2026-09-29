@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
-import { Clock, TriangleAlert } from 'lucide-react';
+import { CalendarDays, Check, Clock, List, SlidersHorizontal, TriangleAlert, X } from 'lucide-react';
 import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { attendanceWorkDate, getTodayLocal } from '@/lib/dateUtils';
@@ -30,12 +30,12 @@ import {
   AppInput,
   AppListCreateItem,
   AppListRowIconButton,
+  AppModal,
   AppPageHeader,
   AppProjectSelect,
+  AppQuickFilterRow,
   AppReadOnlyField,
-  AppSectionHeader,
   AppSelect,
-  AppTabs,
   AppSortableEntityList,
   AppSortableEntityListFlatBody,
   AppSortableEntityListHeader,
@@ -50,6 +50,7 @@ import {
   uiCx,
   uiLayout,
   uiRadius,
+  uiShadows,
   uiSpacing,
   uiTypography,
   sortListByAppColumn,
@@ -62,6 +63,23 @@ import { AttendanceSageBadge } from '@/components/AttendanceSageBadge';
 import { isSagePaid, SAGE_PAID_MESSAGE } from '@/lib/sageAttendance';
 import { startOfSundayWeek, weekDateStrings } from '@/lib/weekUtils';
 
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onRemove}
+      className={uiCx(
+        'inline-flex items-center gap-1.5 border bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50',
+        uiRadius.control,
+        uiBorders.subtle,
+      )}
+    >
+      <span className="max-w-[14rem] truncate">{label}</span>
+      <X className="h-3 w-3 shrink-0 text-gray-400" aria-hidden />
+      <span className="sr-only">Remove filter</span>
+    </button>
+  );
+}
 
 type Attendance = {
   id: string;
@@ -694,6 +712,7 @@ export default function Attendance() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [viewMode, setViewMode] = useState<'list' | 'week'>('week');
   const [weekStart, setWeekStart] = useState<Date>(() => startOfSundayWeek(new Date()));
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [filters, setFilters] = useState({
     worker_id: '',
     start_date: '',
@@ -704,6 +723,27 @@ export default function Attendance() {
     subcontractor_company_id: '',
     project_id: '',
   });
+  const emptyFilters = {
+    worker_id: '',
+    start_date: '',
+    end_date: '',
+    status: '',
+    sage_state: '',
+    record_kind: 'internal' as const,
+    subcontractor_company_id: '',
+    project_id: '',
+  };
+  const hasActiveFilters = Boolean(
+    filters.worker_id ||
+      filters.start_date ||
+      filters.end_date ||
+      filters.status ||
+      filters.sage_state ||
+      filters.subcontractor_company_id ||
+      filters.project_id ||
+      filters.record_kind !== 'internal',
+  );
+  const clearAllFilters = () => setFilters({ ...emptyFilters });
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<AttendanceEvent | null>(null);
   const [viewingEvent, setViewingEvent] = useState<AttendanceEvent | null>(null);
@@ -716,6 +756,7 @@ export default function Attendance() {
     status: 'approved',
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set());
   const [deletingSelected, setDeletingSelected] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -896,6 +937,11 @@ export default function Attendance() {
     if (event.clock_in_status === 'pending' || event.clock_out_status === 'pending') return 'pending';
     return 'rejected';
   }, []);
+
+  const isPendingAttendance = useCallback(
+    (event: AttendanceEvent) => attendanceStatusSortKey(event) === 'pending',
+    [attendanceStatusSortKey],
+  );
 
   const sortedAttendanceEvents = useMemo(
     () =>
@@ -1129,6 +1175,41 @@ export default function Attendance() {
       toast.error(err?.message || 'Failed to delete event');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleApproveEvent = async (event: AttendanceEvent) => {
+    if (!isPendingAttendance(event)) return;
+    if (isSagePaid(event.sage_state, event.sage_locked)) {
+      toast.error('This attendance is locked in Sage and cannot be changed');
+      return;
+    }
+
+    const attendanceId =
+      event.record_kind === 'subcontractor'
+        ? event.event_id
+        : event.clock_in_id || event.clock_out_id || event.event_id;
+    if (!attendanceId) {
+      toast.error('Missing attendance id');
+      return;
+    }
+
+    setApprovingId(event.event_id);
+    try {
+      if (event.record_kind === 'subcontractor') {
+        await api('PATCH', `/subcontractors/attendance/${attendanceId}`, { hr_status: 'approved' });
+      } else {
+        await api('PUT', `/settings/attendance/${attendanceId}`, { status: 'approved' });
+      }
+      await queryClient.invalidateQueries({ queryKey: ['settings-attendance'], exact: false });
+      await queryClient.refetchQueries({ queryKey: ['settings-attendance'], exact: false });
+      queryClient.invalidateQueries({ queryKey: ['timesheet'], exact: false });
+      setRefreshKey((prev) => prev + 1);
+      toast.success('Attendance approved');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to approve attendance');
+    } finally {
+      setApprovingId(null);
     }
   };
 
@@ -1548,112 +1629,172 @@ export default function Attendance() {
             : 'Manage all clock-in/out records'
         }
         icon={<Clock className="h-4 w-4" />}
-        actions={
-          <AppTabs
-            value={viewMode}
-            onChange={(key) => setViewMode(key as 'list' | 'week')}
-            tabs={[
-              { key: 'week', label: 'Week' },
-              { key: 'list', label: 'List' },
-            ]}
-          />
-        }
       />
 
       <AppCard bodyClassName={uiSpacing.cardPadding}>
-        <AppSectionHeader
-          title="Filters"
-          description={
-            viewMode === 'week'
-              ? 'Week view is Sunday–Saturday for internal employees. Use List for subcontractors and bulk delete.'
-              : 'Narrow the attendance list by type, worker, project, or date.'
-          }
-        />
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {viewMode === 'list' ? (
-          <AppSelect
-            label="Record type"
-            value={filters.record_kind}
-            onChange={(e) =>
-              setFilters({
-                ...filters,
-                record_kind: e.target.value as 'internal' | 'subcontractor' | 'all',
-              })
-            }
-            options={[
-              { value: 'internal', label: 'Internal Employees' },
-              { value: 'subcontractor', label: 'Subcontractors' },
-              { value: 'all', label: 'All' },
-            ]}
-          />
-          ) : null}
-          <AppCombobox
-            label="Worker"
-            value={filters.worker_id}
-            onChange={(value) => setFilters({ ...filters, worker_id: value })}
-            options={workerFilterOptions}
-            placeholder="All Workers"
-          />
-          <AppProjectSelect
-            label="Project"
-            value={filters.project_id}
-            onChange={(id) => setFilters({ ...filters, project_id: id })}
-            allowEmpty
-            emptyOptionLabel="All Projects"
-          />
-          {viewMode === 'list' ? (
-          <AppCombobox
-            label="Subcontractor company"
-            value={filters.subcontractor_company_id}
-            onChange={(value) => setFilters({ ...filters, subcontractor_company_id: value })}
-            options={companyFilterOptions}
-            placeholder="All companies"
-          />
-          ) : null}
-          {viewMode === 'list' ? (
-          <AppDatePicker
-            label="Start Date"
-            value={filters.start_date}
-            onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-          />
-          ) : null}
-          {viewMode === 'list' ? (
-          <AppDatePicker
-            label="End Date"
-            value={filters.end_date}
-            onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-          />
-          ) : null}
-          <AppSelect
-            label="Status"
-            value={filters.status}
-            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-            options={[
-              { value: '', label: 'All Statuses' },
-              { value: 'approved', label: 'Approved' },
-              { value: 'pending', label: 'Pending' },
-              { value: 'rejected', label: 'Rejected' },
-              { value: 'open', label: 'Open (subcontractor)' },
-              { value: 'finalized', label: 'Finalized (subcontractor)' },
-            ]}
-          />
-          {filters.record_kind !== 'subcontractor' ? (
-          <AppSelect
-            label="Sage"
-            value={filters.sage_state}
-            onChange={(e) => setFilters({ ...filters, sage_state: e.target.value })}
-            options={[
-              { value: '', label: 'All Sage statuses' },
-              { value: 'none', label: 'Not queued' },
-              { value: 'queued', label: 'Queued' },
-              { value: 'sent', label: 'In Sage' },
-              { value: 'paid', label: 'Paid' },
-              { value: 'error', label: 'Sage error' },
-            ]}
-          />
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+          <div className={uiCx('flex shrink-0 items-stretch overflow-hidden', uiRadius.control, uiBorders.subtle)}>
+            <AppButton
+              type="button"
+              variant={viewMode === 'week' ? 'primary' : 'secondary'}
+              size="sm"
+              className="!rounded-none !px-2.5"
+              onClick={() => setViewMode('week')}
+              title="Week view"
+              aria-label="Week view"
+              aria-pressed={viewMode === 'week'}
+            >
+              <CalendarDays className="h-4 w-4" />
+              <span>Week</span>
+            </AppButton>
+            <AppButton
+              type="button"
+              variant={viewMode === 'list' ? 'primary' : 'secondary'}
+              size="sm"
+              className="!rounded-none !border-l-0 !px-2.5"
+              onClick={() => setViewMode('list')}
+              title="List view"
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
+            >
+              <List className="h-4 w-4" />
+              <span>List</span>
+            </AppButton>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <AppCombobox
+              value={filters.worker_id}
+              onChange={(value) => setFilters({ ...filters, worker_id: value })}
+              options={workerFilterOptions}
+              placeholder="Filter by worker…"
+            />
+          </div>
+
+          <AppButton
+            type="button"
+            variant="secondary"
+            size="sm"
+            leftIcon={<SlidersHorizontal className="h-4 w-4" />}
+            onClick={() => setIsFilterModalOpen(true)}
+          >
+            Filters
+          </AppButton>
+          {hasActiveFilters ? (
+            <AppButton type="button" variant="ghost" size="sm" onClick={clearAllFilters}>
+              Clear
+            </AppButton>
           ) : null}
         </div>
+
+        <AppQuickFilterRow
+          segments={[
+            {
+              key: 'status-all',
+              label: 'All statuses',
+              active: !filters.status,
+              onClick: () => setFilters({ ...filters, status: '' }),
+            },
+            {
+              key: 'status-pending',
+              label: 'Pending',
+              active: filters.status === 'pending',
+              onClick: () => setFilters({ ...filters, status: 'pending' }),
+            },
+            {
+              key: 'status-approved',
+              label: 'Approved',
+              active: filters.status === 'approved',
+              onClick: () => setFilters({ ...filters, status: 'approved' }),
+            },
+            {
+              key: 'status-rejected',
+              label: 'Rejected',
+              active: filters.status === 'rejected',
+              onClick: () => setFilters({ ...filters, status: 'rejected' }),
+            },
+          ]}
+        />
+
+        {viewMode === 'list' ? (
+          <AppQuickFilterRow
+            label="Record type:"
+            segments={[
+              {
+                key: 'kind-internal',
+                label: 'Internal',
+                active: filters.record_kind === 'internal',
+                onClick: () => setFilters({ ...filters, record_kind: 'internal' }),
+              },
+              {
+                key: 'kind-sub',
+                label: 'Subcontractors',
+                active: filters.record_kind === 'subcontractor',
+                onClick: () => setFilters({ ...filters, record_kind: 'subcontractor' }),
+              },
+              {
+                key: 'kind-all',
+                label: 'All',
+                active: filters.record_kind === 'all',
+                onClick: () => setFilters({ ...filters, record_kind: 'all' }),
+              },
+            ]}
+          />
+        ) : null}
       </AppCard>
+
+      {hasActiveFilters ? (
+        <div className={uiCx(uiLayout.actionsRow, 'flex-wrap gap-2')}>
+          {filters.worker_id ? (
+            <FilterChip
+              label={`Worker: ${workerFilterOptions.find((o) => o.value === filters.worker_id)?.label || 'Selected'}`}
+              onRemove={() => setFilters({ ...filters, worker_id: '' })}
+            />
+          ) : null}
+          {filters.project_id ? (
+            <FilterChip
+              label="Project filtered"
+              onRemove={() => setFilters({ ...filters, project_id: '' })}
+            />
+          ) : null}
+          {filters.start_date ? (
+            <FilterChip
+              label={`From ${filters.start_date}`}
+              onRemove={() => setFilters({ ...filters, start_date: '' })}
+            />
+          ) : null}
+          {filters.end_date ? (
+            <FilterChip
+              label={`To ${filters.end_date}`}
+              onRemove={() => setFilters({ ...filters, end_date: '' })}
+            />
+          ) : null}
+          {filters.subcontractor_company_id ? (
+            <FilterChip
+              label="Company filtered"
+              onRemove={() => setFilters({ ...filters, subcontractor_company_id: '' })}
+            />
+          ) : null}
+          {filters.sage_state ? (
+            <FilterChip
+              label={`Sage: ${filters.sage_state}`}
+              onRemove={() => setFilters({ ...filters, sage_state: '' })}
+            />
+          ) : null}
+          {filters.record_kind !== 'internal' ? (
+            <FilterChip
+              label={`Type: ${filters.record_kind === 'all' ? 'All' : 'Subcontractors'}`}
+              onRemove={() => setFilters({ ...filters, record_kind: 'internal' })}
+            />
+          ) : null}
+          {filters.status ? (
+            <FilterChip
+              label={`Status: ${filters.status}`}
+              onRemove={() => setFilters({ ...filters, status: '' })}
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       {error && (
         <div className={uiCx('rounded-xl border border-red-200 bg-red-50 p-3', uiTypography.helper, 'text-red-800')}>
@@ -1661,8 +1802,8 @@ export default function Attendance() {
         </div>
       )}
 
-      {viewMode === 'list' && canEditAttendance && selectedEvents.size > 0 && (
-        <div className={uiCx('flex items-center justify-between rounded-xl border bg-blue-50 p-3')}>
+      {viewMode === 'list' && canEditAttendance && selectedEvents.size > 0 ? (
+        <div className={uiCx('flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 px-3 py-2')}>
           <div className={uiCx(uiTypography.helper, 'font-medium text-blue-900')}>
             {selectedEvents.size} event(s) selected
           </div>
@@ -1677,7 +1818,7 @@ export default function Attendance() {
             Delete All Selected
           </AppButton>
         </div>
-      )}
+      ) : null}
 
       {viewMode === 'week' ? (
       <AppCard bodyClassName={uiSpacing.cardPadding}>
@@ -1698,15 +1839,22 @@ export default function Attendance() {
         />
       </AppCard>
       ) : (
-      <AppCard bodyClassName={uiSpacing.cardPadding}>
-        <div className="mt-4 flex flex-col gap-2 overflow-x-auto">
+      <AppCard
+        className={uiShadows.card}
+        bodyClassName={
+          !isLoading && attendanceEvents.length > 0 ? '!p-0' : uiSpacing.cardPadding
+        }
+      >
+        <div className="flex flex-col gap-0 overflow-x-auto">
           {canEditAttendance && (
-            <AppListCreateItem
-              label="New Attendance"
-              layout="row"
-              className={uiCx('w-full', ATTENDANCE_ADMIN_MIN_WIDTH)}
-              onClick={() => handleOpenModal()}
-            />
+            <div className={uiSpacing.cardPadding}>
+              <AppListCreateItem
+                label="New Attendance"
+                layout="row"
+                className={uiCx('w-full', ATTENDANCE_ADMIN_MIN_WIDTH)}
+                onClick={() => handleOpenModal()}
+              />
+            </div>
           )}
           {isLoading ? (
             <div className={uiCx(ATTENDANCE_ADMIN_MIN_WIDTH, 'px-4 py-4')}>
@@ -1801,7 +1949,7 @@ export default function Attendance() {
                   sortDir={sortDir}
                   onSort={setSort}
                 />
-                <div className="min-w-0 w-24" aria-hidden />
+                <div className="min-w-0 w-28" aria-hidden />
               </AppSortableEntityListHeader>
               <AppSortableEntityListFlatBody gridCols={listGridCols} minWidth={ATTENDANCE_ADMIN_MIN_WIDTH}>
                 {sortedAttendanceEvents.map((event) => (
@@ -1863,9 +2011,21 @@ export default function Attendance() {
                         empty="dash"
                       />
                     </div>
-                    <div className="flex w-24 shrink-0 items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex w-28 shrink-0 items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                       {canEditAttendance && (
                         <>
+                          {isPendingAttendance(event) ? (
+                            <AppListRowIconButton
+                              label="Approve attendance"
+                              icon={<Check className="h-3.5 w-3.5 text-emerald-700" strokeWidth={2.5} />}
+                              loading={approvingId === event.event_id}
+                              disabled={
+                                Boolean(approvingId) ||
+                                isSagePaid(event.sage_state, event.sage_locked)
+                              }
+                              onClick={() => void handleApproveEvent(event)}
+                            />
+                          ) : null}
                           <AppListRowIconButton
                             preset="edit"
                             label={isSagePaid(event.sage_state, event.sage_locked) ? 'View attendance' : 'Edit attendance'}
@@ -1900,6 +2060,109 @@ export default function Attendance() {
         </div>
       </AppCard>
       )}
+
+      <AppModal
+        open={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        title="Attendance filters"
+        description="Narrow records by worker, project, date range, status, or Sage."
+        size="md"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-between')}>
+            <AppButton type="button" variant="ghost" size="sm" onClick={clearAllFilters}>
+              Clear all
+            </AppButton>
+            <AppButton type="button" variant="primary" size="sm" onClick={() => setIsFilterModalOpen(false)}>
+              Done
+            </AppButton>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {viewMode === 'list' ? (
+            <AppSelect
+              label="Record type"
+              value={filters.record_kind}
+              onChange={(e) =>
+                setFilters({
+                  ...filters,
+                  record_kind: e.target.value as 'internal' | 'subcontractor' | 'all',
+                })
+              }
+              options={[
+                { value: 'internal', label: 'Internal Employees' },
+                { value: 'subcontractor', label: 'Subcontractors' },
+                { value: 'all', label: 'All' },
+              ]}
+            />
+          ) : null}
+          <AppCombobox
+            label="Worker"
+            value={filters.worker_id}
+            onChange={(value) => setFilters({ ...filters, worker_id: value })}
+            options={workerFilterOptions}
+            placeholder="All Workers"
+          />
+          <AppProjectSelect
+            label="Project"
+            value={filters.project_id}
+            onChange={(id) => setFilters({ ...filters, project_id: id })}
+            allowEmpty
+            emptyOptionLabel="All Projects"
+          />
+          {viewMode === 'list' ? (
+            <AppCombobox
+              label="Subcontractor company"
+              value={filters.subcontractor_company_id}
+              onChange={(value) => setFilters({ ...filters, subcontractor_company_id: value })}
+              options={companyFilterOptions}
+              placeholder="All companies"
+            />
+          ) : null}
+          {viewMode === 'list' ? (
+            <AppDatePicker
+              label="Start Date"
+              value={filters.start_date}
+              onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
+            />
+          ) : null}
+          {viewMode === 'list' ? (
+            <AppDatePicker
+              label="End Date"
+              value={filters.end_date}
+              onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
+            />
+          ) : null}
+          <AppSelect
+            label="Status"
+            value={filters.status}
+            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            options={[
+              { value: '', label: 'All Statuses' },
+              { value: 'approved', label: 'Approved' },
+              { value: 'pending', label: 'Pending' },
+              { value: 'rejected', label: 'Rejected' },
+              { value: 'open', label: 'Open (subcontractor)' },
+              { value: 'finalized', label: 'Finalized (subcontractor)' },
+            ]}
+          />
+          {filters.record_kind !== 'subcontractor' ? (
+            <AppSelect
+              label="Sage"
+              value={filters.sage_state}
+              onChange={(e) => setFilters({ ...filters, sage_state: e.target.value })}
+              options={[
+                { value: '', label: 'All Sage statuses' },
+                { value: 'none', label: 'Not queued' },
+                { value: 'queued', label: 'Queued' },
+                { value: 'sent', label: 'In Sage' },
+                { value: 'paid', label: 'Paid' },
+                { value: 'error', label: 'Sage error' },
+              ]}
+            />
+          ) : null}
+        </div>
+      </AppModal>
 
       <AppFormModal
         open={!!viewingEvent}

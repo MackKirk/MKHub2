@@ -29,6 +29,7 @@ import { getMyTasks } from "../services/tasks";
 import type { InboxNotification, OnboardingDocumentRow, SignatureRequestRow } from "../types/inbox";
 import type { TaskItem } from "../types/tasks";
 import { requestClockLog } from "../lib/clockNavigation";
+import { shouldRegisterHours } from "../lib/hoursRegistration";
 import {
   goToAppTab,
   goToSignPlaceholder,
@@ -185,15 +186,32 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
   const loadAndMaybeShowPending = useCallback(
     async (opts?: { force?: boolean }) => {
       if (!user?.id) return;
+      const mustRegisterHours = shouldRegisterHours(
+        user.pay_type,
+        user.needs_register_hours
+      );
       try {
         setPendingLoading(true);
         const snapshot = await fetchPending(user.id);
+        const hoursEligibleSnapshot: PendingSnapshot = mustRegisterHours
+          ? snapshot
+          : {
+              ...snapshot,
+              hours: null,
+              loggedToday: true,
+              hasContent:
+                snapshot.tasks.length > 0 ||
+                snapshot.otherOpenTaskCount > 0 ||
+                snapshot.signatureRequests.length > 0 ||
+                snapshot.onboardingDocs.length > 0
+            };
         const withJoke: PendingSnapshot =
+          mustRegisterHours &&
           isBlairHoursJoke(user.username) &&
-          !snapshot.loggedToday &&
+          !hoursEligibleSnapshot.loggedToday &&
           isWeekday()
             ? {
-                ...snapshot,
+                ...hoursEligibleSnapshot,
                 hours: {
                   label: formatWeekdayLong(new Date()),
                   date: formatDateLocal(new Date()),
@@ -201,8 +219,12 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
                 },
                 hasContent: true
               }
-            : snapshot;
-        await setupHoursReminders(snapshot.loggedToday, user.username);
+            : hoursEligibleSnapshot;
+        if (mustRegisterHours) {
+          await setupHoursReminders(withJoke.loggedToday, user.username);
+        } else {
+          await clearHoursReminderRegistration();
+        }
 
         const cadence = await loadPendingAlertCadence(user.id);
         const eligible = pendingAlertEligibility(
@@ -241,12 +263,22 @@ export const StartupAlertsProvider: React.FC<{ children: React.ReactNode }> = ({
           );
         }
       } catch {
-        void setupHoursReminders(false, user.username);
+        if (shouldRegisterHours(user.pay_type, user.needs_register_hours)) {
+          void setupHoursReminders(false, user.username);
+        } else {
+          void clearHoursReminderRegistration();
+        }
       } finally {
         setPendingLoading(false);
       }
     },
-    [applyPending, user?.id, user?.username]
+    [
+      applyPending,
+      user?.id,
+      user?.username,
+      user?.pay_type,
+      user?.needs_register_hours
+    ]
   );
 
   const refreshNotifications = useCallback(async () => {

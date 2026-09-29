@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   CalendarDays,
@@ -145,9 +145,33 @@ function QuickActionCard({
 /** Locked personal shortcuts above the customizable dashboard. Not a widget. */
 export function HomeQuickAccess() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const todayStr = getTodayLocal();
   const [clockModal, setClockModal] = useState<'in' | 'out' | null>(null);
   const [timeOffMode, setTimeOffMode] = useState<TimeOffMode | null>(null);
+
+  // Sidebar Personal → Time Off / Sick Leave / Clock In/Out land here with ?open=
+  useEffect(() => {
+    const open = (searchParams.get('open') || '').toLowerCase();
+    if (!open) return;
+
+    if (open === 'hours' || open === 'log-hours' || open === 'clock') {
+      setTimeOffMode(null);
+      setClockModal('in');
+    } else if (open === 'time-off' || open === 'vacation') {
+      setClockModal(null);
+      setTimeOffMode('vacation');
+    } else if (open === 'sick' || open === 'sick-leave') {
+      setClockModal(null);
+      setTimeOffMode('sick');
+    } else {
+      return;
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('open');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const { data: currentUser } = useQuery({
     queryKey: ['me'],
@@ -190,7 +214,7 @@ export function HomeQuickAccess() {
 
   const { data: priorClockAttention } = useQuery({
     queryKey: ['attendance-needs-attention'],
-    queryFn: () => api<{ count: number }>('GET', '/dispatch/attendance/needs-attention'),
+    queryFn: () => api<{ count: number; items?: { date: string }[] }>('GET', '/dispatch/attendance/needs-attention'),
     enabled: !!currentUser?.id,
     staleTime: 30_000,
   });
@@ -272,14 +296,6 @@ export function HomeQuickAccess() {
             onClick={() => setClockModal('in')}
           />
           <QuickActionCard
-            label="Schedule"
-            icon={<CalendarDays className="h-3.5 w-3.5" />}
-            accent="#2563EB"
-            tint="#DBEAFE"
-            watermark="/assets/brand/calendar-watermark.png"
-            onClick={() => navigate('/schedule')}
-          />
-          <QuickActionCard
             label="Time Off"
             icon={<Sun className="h-3.5 w-3.5" />}
             accent="#EA580C"
@@ -296,13 +312,21 @@ export function HomeQuickAccess() {
             onClick={() => setTimeOffMode('sick')}
           />
           <QuickActionCard
-            label="Community"
+            label="Schedule"
+            icon={<CalendarDays className="h-3.5 w-3.5" />}
+            accent="#2563EB"
+            tint="#DBEAFE"
+            watermark="/assets/brand/calendar-watermark.png"
+            onClick={() => navigate('/schedule')}
+          />
+          <QuickActionCard
+            label="Announcements"
             icon={<Megaphone className="h-3.5 w-3.5" />}
             accent="#4F46E5"
             tint="#E0E7FF"
             badge={communityBadge}
             badgeLabel={`${communityBadge} new or unread required posts`}
-            onClick={() => navigate('/overview')}
+            onClick={() => navigate('/announcements')}
           />
           <QuickActionCard
             label="Training"

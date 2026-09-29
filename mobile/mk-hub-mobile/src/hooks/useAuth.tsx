@@ -40,7 +40,9 @@ async function loadSessionData(accessToken: string) {
     ...profile.user,
     first_name: profile.profile?.first_name ?? profile.user.first_name,
     last_name: profile.profile?.last_name ?? profile.user.last_name,
-    roles: me.roles
+    roles: me.roles,
+    pay_type: profile.profile?.pay_type ?? null,
+    needs_register_hours: Boolean(profile.profile?.needs_register_hours),
   };
   return { user, roles: me.roles, permissions: me.permissions };
 }

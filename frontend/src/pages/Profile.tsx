@@ -106,7 +106,7 @@ export default function Profile(){
   const navigate = useNavigate();
   const location = useLocation();
   const fromHome = location.state?.fromHome === true;
-  const navigateBackToOverview = useNavigateBack('/overview');
+  const navigateBackToOverview = useNavigateBack('/announcements');
   const { data, isLoading } = useQuery({ queryKey:['meProfile'], queryFn: ()=>api<ProfileResp>('GET','/auth/me/profile') });
   const p = data?.profile || {};
   const u = (data?.user ?? {}) as ProfileResp['user'];

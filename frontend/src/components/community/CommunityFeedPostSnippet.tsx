@@ -1,6 +1,15 @@
-import { CommunityPostBody } from '@/components/community/CommunityPostBody';
+import { useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, Paperclip } from 'lucide-react';
 import { CommunityPostBanner } from '@/components/community/CommunityPostBanner';
+import { CommunityPostBody } from '@/components/community/CommunityPostBody';
 import { withFileAccessTokenIfNeeded } from '@/lib/api';
+import {
+  communityOrphanImageAttachments,
+  communityPostRailColors,
+  isCriticalCommunityPost,
+  isUrgentCommunityPost,
+} from '@/lib/communityPostPreview';
+import { uiCx } from '@/components/ui';
 
 export const COMMUNITY_FEED_AREA_LABELS: Record<string, string> = {
   general: 'General',
@@ -39,6 +48,8 @@ export type CommunityFeedPostSnippetPost = {
   comments_count?: number;
 };
 
+const SEE_MORE_PLAIN_CHARS = 320;
+
 function formatTimeAgo(dateString: string) {
   const date = new Date(dateString);
   const now = new Date();
@@ -52,48 +63,13 @@ function formatTimeAgo(dateString: string) {
   return date.toLocaleDateString();
 }
 
-function getTagColor(tag: string) {
-  switch (tag) {
-    case 'Announcement':
-      return 'bg-red-50 text-red-700';
-    case 'Urgent':
-      return 'bg-red-50 text-red-700';
-    case 'Required':
-      return 'bg-red-50 text-red-700';
-    case 'Image':
-      return 'bg-green-50 text-green-700';
-    case 'Document':
-      return 'bg-green-50 text-green-700';
-    case 'Groups':
-      return 'bg-blue-50 text-blue-700';
-    case 'Mack Kirk News':
-      return 'bg-blue-50 text-blue-700';
-    default:
-      return 'bg-gray-50 text-gray-700';
-  }
-}
-
-function getTagPriority(tag: string): number {
-  switch (tag) {
-    case 'Urgent':
-      return 1;
-    case 'Required':
-      return 2;
-    case 'Announcement':
-      return 3;
-    case 'Groups':
-      return 4;
-    case 'Image':
-    case 'Document':
-      return 5;
-    default:
-      return 99;
-  }
-}
-
-function sortTagsByPriority(tags: string[]): string[] {
-  if (!Array.isArray(tags)) return [];
-  return [...tags].sort((a, b) => getTagPriority(a) - getTagPriority(b));
+function plainTextLength(html: string | undefined): number {
+  if (!html) return 0;
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim().length;
 }
 
 function contentHasEmbeddedMedia(html: string | undefined): boolean {
@@ -106,16 +82,23 @@ function hasPostAttachment(post: CommunityFeedPostSnippetPost): boolean {
     post.document_url ||
       (Array.isArray(post.attachments) && post.attachments.length > 0) ||
       post.tags?.some((tag) => tag === 'Image' || tag === 'Document') ||
-      contentHasEmbeddedMedia(post.content)
+      contentHasEmbeddedMedia(post.content),
   );
 }
 
 type Props = {
   post: CommunityFeedPostSnippetPost;
-  /** Overview feed uses `true` (line-clamp-2 + stripMedia on body). */
+  /** Overview feed: inline expand instead of opening a detail modal. */
   feedMode: boolean;
+  /** Kept for callers; unused by the current layout. */
+  featured?: boolean;
+  /** Force the body open (e.g. jumped from announcements inbox). */
+  forceExpanded?: boolean;
   interactive?: boolean;
+  /** Used when not in feedMode (e.g. open detail modal). */
   onCardClick?: (e: React.MouseEvent) => void;
+  /** Fired when the feed body expands/collapses (e.g. mark viewed). */
+  onExpandChange?: (expanded: boolean) => void;
   onAuthorButtonClick?: (e: React.MouseEvent) => void;
   onLikeClick?: (e: React.MouseEvent) => void;
   onCommentClick?: (e: React.MouseEvent) => void;
@@ -125,159 +108,248 @@ type Props = {
 export function CommunityFeedPostSnippet({
   post,
   feedMode,
+  forceExpanded = false,
   interactive = true,
   onCardClick,
+  onExpandChange,
   onAuthorButtonClick,
   onLikeClick,
   onCommentClick,
   onOpenClick,
 }: Props) {
-  const pr = post.priority || '';
-  const isUrgent = pr === 'urgent' || pr === 'critical' || post.tags?.includes('Urgent') || false;
-  const isCritical = pr === 'critical';
+  const [bodyExpanded, setBodyExpanded] = useState(false);
+  useEffect(() => {
+    if (forceExpanded) setBodyExpanded(true);
+  }, [forceExpanded, post.id]);
+  const isUrgent = isUrgentCommunityPost(post);
+  const isCritical = isCriticalCommunityPost(post);
   const isRequired = post.requires_read_confirmation || post.tags?.includes('Required') || false;
-  const tagsWithoutMedia = sortTagsByPriority(post.tags || []).filter(
-    (tag) =>
-      tag !== 'Image' &&
-      tag !== 'Document' &&
-      tag.trim().toLowerCase() !== 'announcement'
-  );
-  const redundantTagKeys = new Set<string>();
-  if (isCritical) {
-    redundantTagKeys.add('critical');
-    redundantTagKeys.add('urgent');
-  } else if (isUrgent) {
-    redundantTagKeys.add('urgent');
-  }
-  if (isRequired) {
-    redundantTagKeys.add('required');
-  }
-  const filteredTagsForChips = tagsWithoutMedia.filter((tag) => !redundantTagKeys.has(tag.trim().toLowerCase()));
-  const visibleTags = filteredTagsForChips.slice(0, 2);
-  const hiddenTagCount = Math.max(0, filteredTagsForChips.length - visibleTags.length);
+  const isUnread = Boolean(post.is_unread);
+  const [railFrom, railTo] = communityPostRailColors(post);
+  const orphanImages = useMemo(() => communityOrphanImageAttachments(post), [post]);
   const attachmentCount = Array.isArray(post.attachments) ? post.attachments.length : 0;
   const hasAttachment = hasPostAttachment(post);
+  const hasCover = Boolean(post.photo_url);
+  const hasInlineMedia = contentHasEmbeddedMedia(post.content);
+  const textLen = plainTextLength(post.content);
+  const needsSeeMore =
+    feedMode &&
+    (textLen > SEE_MORE_PLAIN_CHARS || hasInlineMedia || orphanImages.length > 0);
+  const showFullBody = !feedMode || bodyExpanded || !needsSeeMore;
 
-  const outerInteractive =
-    interactive && onCardClick
-      ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-200'
-      : 'cursor-default';
+  const toggleBodyExpanded = () => {
+    setBodyExpanded((prev) => {
+      const next = !prev;
+      onExpandChange?.(next);
+      return next;
+    });
+  };
+
+  const handleArticleClick = (e: React.MouseEvent) => {
+    if (!interactive) return;
+    if (feedMode) {
+      if (needsSeeMore) toggleBodyExpanded();
+      return;
+    }
+    onCardClick?.(e);
+  };
+
+  const cardIsClickable = interactive && (feedMode ? needsSeeMore : Boolean(onCardClick));
+  const outerInteractive = cardIsClickable
+    ? 'cursor-pointer hover:shadow-md transition-shadow duration-200'
+    : 'cursor-default';
 
   return (
-    <div
-      className={`group border rounded-xl border-l-[3px] overflow-hidden bg-white shadow-sm ${outerInteractive} ${
-        isCritical
-          ? 'border-gray-200 border-l-red-700'
-          : isUrgent
-            ? 'border-gray-200 border-l-red-500'
-            : isRequired
-              ? 'border-gray-200 border-l-amber-500'
-              : 'border-gray-200 border-l-gray-200'
-      }`}
-      onClick={interactive ? onCardClick : undefined}
+    <article
+      data-community-post-id={post.id || undefined}
+      className={uiCx(
+        'group flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm',
+        forceExpanded && 'ring-2 ring-emerald-600/25',
+        outerInteractive,
+      )}
+      onClick={handleArticleClick}
     >
-      {post.photo_url ? (
-        <CommunityPostBanner src={post.photo_url} focalX={post.banner_focal_x} focalY={post.banner_focal_y} />
-      ) : null}
-      <div className="flex items-start gap-2.5 px-3.5 py-3">
-        <button
-          type="button"
-          className={`w-8 h-8 shrink-0 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden ring-offset-2 hover:ring-2 hover:ring-[#7f1010]/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/45 ${!interactive ? 'pointer-events-none' : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onAuthorButtonClick?.(e);
-          }}
-          aria-label={`View profile: ${post.author_name || 'Author'}`}
-        >
-          {post.author_avatar ? (
-            <img src={withFileAccessTokenIfNeeded(post.author_avatar)} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <span className="text-gray-500 text-sm">{(post.author_name || 'U')[0].toUpperCase()}</span>
-          )}
-        </button>
+      <div
+        className="w-1.5 shrink-0 self-stretch"
+        style={{ background: `linear-gradient(180deg, ${railFrom} 0%, ${railTo} 100%)` }}
+        aria-hidden
+      />
 
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <div className="flex items-center gap-2 mb-1">
-            {post.is_unread && (
-              <div className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" aria-label="Unread"></div>
+      <div className="min-w-0 flex-1">
+        {hasCover ? (
+          <CommunityPostBanner
+            src={post.photo_url!}
+            focalX={post.banner_focal_x}
+            focalY={post.banner_focal_y}
+          />
+        ) : null}
+
+        {/* Modal-aligned header: avatar + title + meta */}
+        <div className="flex items-start gap-3 px-4 pt-3.5">
+          <button
+            type="button"
+            className={uiCx(
+              'flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-slate-600',
+              'ring-offset-2 hover:ring-2 hover:ring-emerald-600/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/40',
+              !interactive && 'pointer-events-none',
             )}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAuthorButtonClick?.(e);
+            }}
+            aria-label={`View profile: ${post.author_name || 'Author'}`}
+          >
+            {post.author_avatar ? (
+              <img
+                src={withFileAccessTokenIfNeeded(post.author_avatar)}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="text-sm font-semibold">{(post.author_name || 'U')[0].toUpperCase()}</span>
+            )}
+          </button>
+
+          <div className="min-w-0 flex-1">
+            <h4 className="line-clamp-2 text-base font-semibold leading-snug text-slate-950">{post.title}</h4>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+              <button
+                type="button"
+                className={uiCx(
+                  'font-semibold text-slate-700 hover:text-emerald-800 hover:underline',
+                  !interactive && 'pointer-events-none',
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAuthorButtonClick?.(e);
+                }}
+              >
+                {post.author_name || 'Unknown'}
+              </button>
+              <span>{formatTimeAgo(post.created_at)}</span>
+              {post.related_area ? (
+                <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
+                  {COMMUNITY_FEED_AREA_LABELS[post.related_area] || post.related_area}
+                </span>
+              ) : null}
+              {isUnread ? (
+                <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-red-700">
+                  New
+                </span>
+              ) : null}
+              {isUrgent ? (
+                <span
+                  className={uiCx(
+                    'rounded-full px-1.5 py-0.5 text-[10px] font-bold tracking-wide',
+                    isCritical ? 'bg-red-100 text-red-800' : 'bg-amber-50 text-amber-800',
+                  )}
+                >
+                  {isCritical ? 'Critical' : 'Urgent'}
+                </span>
+              ) : null}
+              {isRequired ? (
+                <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-amber-800">
+                  Required
+                </span>
+              ) : null}
+              {hasAttachment ? (
+                <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                  <Paperclip className="h-3 w-3" />
+                  {attachmentCount > 1 ? `${attachmentCount}` : '1'}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pb-3.5 pt-3">
+          <div
+            className={uiCx(
+              'max-w-full overflow-hidden text-sm leading-relaxed text-slate-800',
+              !showFullBody && 'line-clamp-5',
+            )}
+          >
+            <CommunityPostBody html={post.content} stripMedia={!showFullBody} />
+          </div>
+
+          {showFullBody && orphanImages.length > 0 ? (
+            <div className="mt-3 space-y-2.5">
+              {orphanImages.map((img) => (
+                <figure key={img.key} className="overflow-hidden rounded-lg bg-slate-50">
+                  <img
+                    src={img.url}
+                    alt={img.name || ''}
+                    className="mx-auto h-auto max-h-[min(60vh,480px)] w-full object-contain"
+                  />
+                </figure>
+              ))}
+            </div>
+          ) : null}
+
+          {/* Collapsed: still surface the first image attachment so the feed isn't blank */}
+          {!showFullBody && !hasCover && orphanImages[0] ? (
+            <figure className="mt-3 overflow-hidden rounded-lg bg-slate-50">
+              <img
+                src={orphanImages[0].url}
+                alt={orphanImages[0].name || ''}
+                className="mx-auto h-auto max-h-56 w-full object-contain"
+              />
+            </figure>
+          ) : null}
+
+          {needsSeeMore ? (
             <button
               type="button"
-              className={`font-semibold text-xs text-gray-700 hover:text-[#7f1010] hover:underline truncate ${!interactive ? 'pointer-events-none' : ''}`}
+              className="mt-1.5 text-sm font-semibold text-emerald-800 hover:underline"
               onClick={(e) => {
                 e.stopPropagation();
-                onAuthorButtonClick?.(e);
+                toggleBodyExpanded();
               }}
             >
-              {post.author_name || 'Unknown'}
+              {bodyExpanded ? 'See less' : 'See more'}
             </button>
-            <span className="text-xs text-gray-400">· {formatTimeAgo(post.created_at)}</span>
-            {post.related_area && (
-              <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-600">
-                {COMMUNITY_FEED_AREA_LABELS[post.related_area] || post.related_area}
-              </span>
-            )}
-          </div>
+          ) : null}
 
-          <h4 className="font-semibold text-sm text-gray-900 truncate tracking-tight mb-1">{post.title}</h4>
-
-          {(visibleTags.length > 0 || isCritical || isUrgent || isRequired || hasAttachment || post.user_has_confirmed) && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {(isCritical || isUrgent || isRequired) && (
-                <span
-                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 tracking-wide ${
-                    isCritical ? 'bg-red-100 text-red-800' : isUrgent ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
-                  }`}
-                >
-                  {isCritical ? 'CRITICAL' : isUrgent ? 'URGENT' : 'REQUIRED'}
-                </span>
+          {isRequired ? (
+            <div
+              className={uiCx(
+                'mt-2.5 flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] font-medium',
+                post.user_has_confirmed
+                  ? 'border-emerald-200 text-emerald-800'
+                  : 'border-red-200 text-red-800',
               )}
-              {hasAttachment && (
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-50 text-slate-600 border border-slate-200">
-                  {attachmentCount > 1 ? `${attachmentCount} attachments` : 'Attachment'}
-                </span>
-              )}
-              {post.user_has_confirmed && (
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700 border border-green-100">
-                  Confirmed
-                </span>
-              )}
-              {visibleTags.map((tag) => (
-                <span key={tag} className={`px-1.5 py-0.5 rounded text-[10px] ${getTagColor(tag)}`}>
-                  {tag}
-                </span>
-              ))}
-              {hiddenTagCount > 0 && (
-                <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-50 text-gray-500">+{hiddenTagCount}</span>
-              )}
+              style={{
+                backgroundColor: post.user_has_confirmed ? '#ECFDF5' : '#FEF2F2',
+              }}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+              {post.user_has_confirmed ? 'Read confirmed' : 'Confirmation required'}
             </div>
-          )}
+          ) : null}
 
           <div
-            className={`text-xs mb-2 leading-relaxed max-w-full overflow-hidden ${
-              feedMode ? 'line-clamp-2' : 'line-clamp-1'
-            } text-gray-500`}
+            className={uiCx(
+              'mt-3 flex items-center gap-1 border-t border-gray-100 pt-2.5 text-xs',
+              !interactive && 'pointer-events-none',
+            )}
           >
-            <CommunityPostBody html={post.content} stripMedia />
-          </div>
-
-          <div className={`flex items-center gap-2 text-xs ${!interactive ? 'pointer-events-none' : ''}`}>
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onLikeClick?.(e);
               }}
-              className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-gray-100 active:opacity-60 transition-all ${
-                post.user_has_liked ? 'text-red-600' : 'text-gray-500'
-              }`}
+              className={uiCx(
+                'inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 transition-all hover:bg-gray-50 active:opacity-60',
+                post.user_has_liked ? 'text-red-600' : 'text-gray-500',
+              )}
             >
               {post.user_has_liked ? (
-                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24" aria-hidden>
+                <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24" aria-hidden>
                   <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
                 </svg>
               ) : (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -294,9 +366,9 @@ export function CommunityFeedPostSnippet({
                 e.stopPropagation();
                 onCommentClick?.(e);
               }}
-              className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-gray-100 active:opacity-60 transition-all text-gray-500"
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-gray-500 transition-all hover:bg-gray-50 active:opacity-60"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -306,27 +378,15 @@ export function CommunityFeedPostSnippet({
               </svg>
               <span className="font-medium">{post.comments_count ?? 0}</span>
             </button>
-            {feedMode && interactive && onOpenClick && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenClick(e);
-                }}
-                className="ml-auto rounded-lg px-2 py-1 text-xs font-semibold text-gray-600 transition-all duration-150 hover:bg-gray-50 hover:text-gray-900 active:scale-[0.98] active:bg-gray-100"
-              >
-                Open
-              </button>
-            )}
-            {feedMode && !interactive && (
-              <span className="ml-auto text-xs text-gray-400 font-medium">Preview</span>
-            )}
-            {!feedMode && (
-              <span className="ml-auto text-xs text-gray-400 font-medium">Click to view full post</span>
-            )}
+            {feedMode && !interactive ? (
+              <span className="ml-auto px-2 text-xs font-medium text-gray-400">Preview</span>
+            ) : null}
+            {!feedMode ? (
+              <span className="ml-auto px-2 text-xs font-medium text-gray-400">Click to view full post</span>
+            ) : null}
           </div>
         </div>
       </div>
-    </div>
+    </article>
   );
 }
